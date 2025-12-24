@@ -1,0 +1,31 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Build artifacts
+*.o
+*.bin
+*.elf
+
+# IDE
+.idea/
+*.iml
+
+# Temporary/development files
+PROGRESS.md
+RDF_POST.md
+*.tmp
+
+# Large files (schematics, datasheets)
+*.pdf
+
+# Images (unless needed for docs)
+*.png
+!docs/*.png
+
+# Local reference repos (kept out of version control)
+ESP32-S3-Touch-LCD-3.49/
+AndroidESPLibrary2/

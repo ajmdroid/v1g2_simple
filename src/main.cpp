@@ -1,0 +1,466 @@
+/**
+ * V1 Gen2 Simple Display - Main Application
+ * Target: Waveshare ESP32-S3-Touch-LCD-3.49 with Valentine1 Gen2 BLE
+ * 
+ * Features:
+ * - BLE client for V1 Gen2 radar detector
+ * - BLE server proxy for JBV1 app compatibility
+ * - 3.49" AMOLED display with touch support
+ * - WiFi web interface for configuration
+ * - 3-slot auto-push profile system
+ * - Tap-to-mute functionality
+ * - Alert logging and replay
+ * - Multiple color themes
+ * 
+ * Architecture:
+ * - FreeRTOS queue for BLE data handling
+ * - Non-blocking display updates
+ * - Persistent settings via Preferences
+ * 
+ * Author: Based on Valentine Research ESP protocol
+ * License: MIT
+ */
+
+#include <Arduino.h>
+#include <FS.h>
+#include "ble_client.h"
+#include "packet_parser.h"
+#include "display.h"
+#include "wifi_manager.h"
+#include "settings.h"
+#include "alert_logger.h"
+#include "touch_handler.h"
+#include "v1_profiles.h"
+#include "../include/config.h"
+#include <lvgl.h>
+#include <vector>
+#include <algorithm>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+
+// Global objects
+V1BLEClient bleClient;
+PacketParser parser;
+V1Display display;
+TouchHandler touchHandler;
+
+// Queue for BLE data - decouples BLE callbacks from display updates
+static QueueHandle_t bleDataQueue = nullptr;
+struct BLEDataPacket {
+    uint8_t data[64];  // Max expected packet size
+    size_t length;
+    uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
+};
+
+unsigned long lastDisplayUpdate = 0;
+unsigned long lastStatusUpdate = 0;
+unsigned long lastLvTick = 0;
+unsigned long lastRxMillis = 0;
+unsigned long lastDisplayDraw = 0;  // Throttle display updates
+const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
+
+
+// Buffer for accumulating BLE data in main loop context
+static std::vector<uint8_t> rxBuffer;
+
+
+// Callback for BLE data reception - just queues data, doesn't process
+// This runs in BLE task context, so we avoid SPI operations here
+void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
+    if (bleDataQueue && length > 0 && length <= sizeof(BLEDataPacket::data)) {
+        BLEDataPacket pkt;
+        memcpy(pkt.data, data, length);
+        pkt.length = length;
+        pkt.charUUID = charUUID;
+        // Non-blocking send to queue - if queue is full, drop the packet
+        xQueueSendFromISR(bleDataQueue, &pkt, nullptr);
+    }
+}
+
+// Callback when V1 connection is fully established
+// Handles auto-push of default profile and mode
+void onV1Connected() {
+    const V1Settings& s = settingsManager.get();
+    
+    if (!s.autoPushEnabled) {
+        Serial.println("[AutoPush] Disabled, skipping");
+        return;
+    }
+    
+    // Get the active slot configuration
+    AutoPushSlot activeSlot = settingsManager.getActiveSlot();
+    const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
+    Serial.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n", 
+                  slotNames[s.activeSlot], s.activeSlot);
+    
+    // Small delay to ensure V1 is ready
+    delay(500);
+    
+    // Push profile if configured
+    if (activeSlot.profileName.length() > 0) {
+        Serial.printf("[AutoPush] Loading profile: %s\n", activeSlot.profileName.c_str());
+        V1Profile profile;
+        if (v1ProfileManager.loadProfile(activeSlot.profileName, profile)) {
+            // Write user bytes to V1
+            if (bleClient.writeUserBytes(profile.settings.bytes)) {
+                Serial.println("[AutoPush] Profile settings pushed successfully");
+            } else {
+                Serial.println("[AutoPush] ERROR: Failed to push profile settings");
+            }
+            
+            // Set display on/off based on profile
+            delay(100);
+            bleClient.setDisplayOn(profile.displayOn);
+            Serial.printf("[AutoPush] Display set to: %s\n", profile.displayOn ? "ON" : "OFF");
+        } else {
+            Serial.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", activeSlot.profileName.c_str());
+        }
+    } else {
+        Serial.println("[AutoPush] No profile configured for active slot");
+    }
+    
+    // Set mode if configured (not UNKNOWN)
+    if (activeSlot.mode != V1_MODE_UNKNOWN) {
+        delay(100);
+        if (bleClient.setMode(static_cast<uint8_t>(activeSlot.mode))) {
+            const char* modeName = "Unknown";
+            if (activeSlot.mode == V1_MODE_ALL_BOGEYS) modeName = "All Bogeys";
+            else if (activeSlot.mode == V1_MODE_LOGIC) modeName = "Logic";
+            else if (activeSlot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
+            Serial.printf("[AutoPush] Mode set to: %s\n", modeName);
+        } else {
+            Serial.println("[AutoPush] ERROR: Failed to set mode");
+        }
+    }
+    
+    Serial.println("[AutoPush] Complete");
+}
+
+// Process queued BLE data - called from main loop (safe for SPI)
+void processBLEData() {
+    BLEDataPacket pkt;
+    
+    // Process all queued packets
+    while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
+        // Forward raw data to proxy clients (JBV1) - done here in main loop to avoid SPI conflicts
+        // Pass the source characteristic UUID so data is forwarded to the correct proxy characteristic
+        bleClient.forwardToProxy(pkt.data, pkt.length, pkt.charUUID);
+        
+        // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
+        rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+    }
+    
+    // If no data accumulated, return
+    if (rxBuffer.empty()) {
+        return;
+    }
+
+    // Trim runaway buffers
+    if (rxBuffer.size() > 512) {
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 256);
+    }
+
+    // Discard anything before the first start byte
+    auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
+    if (startIt == rxBuffer.end()) {
+        rxBuffer.clear();
+        return;
+    }
+    if (startIt != rxBuffer.begin()) {
+        rxBuffer.erase(rxBuffer.begin(), startIt);
+    }
+
+    while (true) {
+        auto s = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
+        if (s == rxBuffer.end()) {
+            rxBuffer.clear();
+            break;
+        }
+        auto e = std::find(s + 1, rxBuffer.end(), ESP_PACKET_END);
+        if (e == rxBuffer.end()) {
+            // wait for more data
+            if (s != rxBuffer.begin()) {
+                rxBuffer.erase(rxBuffer.begin(), s);
+            }
+            break;
+        }
+
+        std::vector<uint8_t> packet(s, e + 1);
+        rxBuffer.erase(rxBuffer.begin(), e + 1);
+
+        Serial.print("RX: ");
+        for (uint8_t b : packet) {
+            Serial.printf("%02X ", b);
+        }
+        Serial.println();
+
+        lastRxMillis = millis();
+
+        // Check for user bytes response (0x12) - V1 settings pull
+        if (packet.size() >= 12 && packet[3] == PACKET_ID_RESP_USER_BYTES) {
+            // Payload starts at byte 5, length is 6 bytes
+            uint8_t userBytes[6];
+            memcpy(userBytes, &packet[5], 6);
+            Serial.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
+                userBytes[0], userBytes[1], userBytes[2], userBytes[3], userBytes[4], userBytes[5]);
+            Serial.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
+                userBytes[0] & 0x01, (userBytes[0] >> 1) & 0x01, 
+                (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
+            v1ProfileManager.setCurrentSettings(userBytes);
+            Serial.println("Received V1 user bytes!");
+            continue;  // Don't pass to parser
+        }
+
+        if (parser.parse(packet.data(), packet.size())) {
+            // Throttle display updates to prevent crashes
+            unsigned long now = millis();
+            if (now - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
+                continue; // Skip this draw, let data accumulate
+            }
+            lastDisplayDraw = now;
+            
+            DisplayState state = parser.getDisplayState();
+
+            if (parser.hasAlerts()) {
+                AlertData priority = parser.getPriorityAlert();
+                int alertCount = parser.getAllAlerts().size();
+                display.update(priority, state, alertCount);
+                alertLogger.logAlert(priority, state, alertCount);
+
+                Serial.printf("Alert: %s, Dir: %d, Front: %d, Rear: %d, Freq: %lu MHz, Count: %d, Bands: 0x%02X\n",
+                              priority.band == BAND_KA ? "Ka" :
+                              priority.band == BAND_K ? "K" :
+                              priority.band == BAND_X ? "X" :
+                              priority.band == BAND_LASER ? "Laser" : "None",
+                              priority.direction,
+                              priority.frontStrength,
+                              priority.rearStrength,
+                              priority.frequency,
+                              alertCount,
+                              state.activeBands);
+            } else {
+                // No alerts - update display with just state info
+                static unsigned long lastStateLog = 0;
+                if (millis() - lastStateLog > 2000) {
+                    Serial.printf("DisplayState update: bands=0x%02X arrows=0x%02X bars=%d mute=%d\n",
+                                  state.activeBands, state.arrows, state.signalBars, state.muted);
+                    lastStateLog = millis();
+                }
+                display.update(state);
+                alertLogger.logClear(state);
+            }
+        }
+    }
+}
+
+void setup() {
+    // Wait for USB to stabilize after upload
+    delay(100);
+    
+    // Create BLE data queue early - before any BLE operations
+    bleDataQueue = xQueueCreate(32, sizeof(BLEDataPacket));
+    
+// Backlight is handled in display.begin() (inverted PWM for Waveshare)
+
+#if defined(PIN_POWER_ON) && PIN_POWER_ON >= 0
+    // Cut panel power until we intentionally bring it up
+    pinMode(PIN_POWER_ON, OUTPUT);
+    digitalWrite(PIN_POWER_ON, LOW);
+#endif
+
+    Serial.begin(115200);
+    delay(500);  // Give serial time to connect
+    
+    Serial.println("\n===================================");
+    Serial.println("V1 Gen2 Simple Display");
+    Serial.println("Firmware: " FIRMWARE_VERSION);
+    Serial.print("Board: ");
+    Serial.println(DISPLAY_NAME);
+    Serial.println("===================================\n");
+    
+    // Initialize display
+    if (!display.begin()) {
+        Serial.println("Display initialization failed!");
+        while (1) delay(1000);
+    }
+
+    // Add extra delay to ensure panel is fully cleared before enabling backlight
+    delay(200);
+
+    // Show RDF boot splash (backlight will be enabled after splash is drawn)
+    display.showBootSplash();
+    delay(4000);
+    // After splash, show the resting screen as the default idle view
+    display.showResting();
+    // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
+    
+    lastLvTick = millis();
+    
+    // Initialize settings
+    settingsManager.begin();
+
+    // Mount SD card for alert logging (non-fatal if missing)
+    alertLogger.begin();
+    
+    // Initialize V1 profile manager (uses alert logger's filesystem)
+    if (alertLogger.isReady()) {
+        v1ProfileManager.begin(alertLogger.getFilesystem());
+    }
+    
+    Serial.println("==============================");
+    Serial.println("WiFi Configuration:");
+    Serial.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
+    Serial.printf("  wifiMode: %d\n", settingsManager.get().wifiMode);
+    Serial.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
+    Serial.println("==============================");
+    
+    // Initialize WiFi manager
+    Serial.println("Starting WiFi manager...");
+    wifiManager.begin();
+        
+        // Set up callbacks for web interface
+        wifiManager.setStatusCallback([]() {
+            return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
+        });
+        
+        wifiManager.setAlertCallback([]() {
+            String json = "{";
+            if (parser.hasAlerts()) {
+                AlertData alert = parser.getPriorityAlert();
+                json += "\"active\":true,";
+                json += "\"band\":\"";
+                if (alert.band == BAND_KA) json += "Ka";
+                else if (alert.band == BAND_K) json += "K";
+                else if (alert.band == BAND_X) json += "X";
+                else if (alert.band == BAND_LASER) json += "LASER";
+                else json += "None";
+                json += "\",";
+                json += "\"strength\":" + String(alert.frontStrength) + ",";
+                json += "\"frequency\":" + String(alert.frequency) + ",";
+                json += "\"direction\":" + String(alert.direction);
+            } else {
+                json += "\"active\":false";
+            }
+            json += "}";
+            return json;
+        });
+        
+        // Set up command callback for dark mode and mute
+        wifiManager.setCommandCallback([](const char* cmd, bool state) {
+            if (strcmp(cmd, "display") == 0) {
+                return bleClient.setDisplayOn(state);
+            } else if (strcmp(cmd, "mute") == 0) {
+                return bleClient.setMute(state);
+            }
+            return false;
+        });
+        
+        Serial.println("WiFi initialized");
+    
+    // Initialize BLE client with proxy settings from preferences
+    const V1Settings& bleSettings = settingsManager.get();
+    Serial.printf("Starting BLE (proxy: %s, name: %s)\n", 
+                  bleSettings.proxyBLE ? "enabled" : "disabled",
+                  bleSettings.proxyName.c_str());
+    
+    if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
+        Serial.println("BLE initialization failed!");
+        display.showDisconnected();
+        while (1) delay(1000);
+    }
+    
+    // Register data callback
+    bleClient.onDataReceived(onV1Data);
+    
+    // Register V1 connection callback for auto-push
+    bleClient.onV1Connected(onV1Connected);
+    
+    // Initialize touch handler (SDA=17, SCL=18, addr=AXS_TOUCH_ADDR for AXS15231B touch, rst=-1 for no reset)
+    Serial.println("Initializing touch handler...");
+    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
+        Serial.println("Touch handler initialized successfully");
+    } else {
+        Serial.println("WARNING: Touch handler failed to initialize - continuing anyway");
+    }
+    
+    Serial.println("Setup complete - WiFi and BLE enabled");
+}
+
+void loop() {
+#if 1  // WiFi and BLE enabled
+    // Check for touch - tap anywhere to toggle mute
+    int16_t touchX, touchY;
+    if (touchHandler.getTouchPoint(touchX, touchY)) {
+        Serial.printf("MUTE TOGGLE: Screen tapped at (%d, %d)\n", touchX, touchY);
+        
+        // Get current mute state from parser and toggle it
+        DisplayState state = parser.getDisplayState();
+        bool currentMuted = state.muted;
+        bool newMuted = !currentMuted;  // Toggle the mute state
+        
+        Serial.printf("Current mute state: %s -> Sending: %s\n", 
+                      currentMuted ? "MUTED" : "UNMUTED",
+                      newMuted ? "MUTE_ON" : "MUTE_OFF");
+        
+        // Send mute command to V1
+        bool cmdSent = bleClient.setMute(newMuted);
+        Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+    }
+    
+    // Process BLE events
+    bleClient.process();
+    
+    // Process queued BLE data (safe for SPI - runs in main loop context)
+    processBLEData();
+
+    // Process WiFi/web server
+    wifiManager.process();
+    
+    // Update display periodically
+    unsigned long now = millis();
+    
+    if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
+        lastDisplayUpdate = now;
+        
+        // Check connection status
+        static bool wasConnected = false;
+        bool isConnected = bleClient.isConnected();
+        
+        if (isConnected && !wasConnected) {
+            display.setBluetoothConnected(true);
+            display.showResting(); // stay on resting view until data arrives
+            Serial.println("V1 connected!");
+        } else if (!isConnected && wasConnected) {
+            display.setBluetoothConnected(false);
+            display.clear();  // Clear alert/element data from display
+            display.showDisconnected();
+            Serial.println("V1 disconnected!");
+        }
+        
+        wasConnected = isConnected;
+
+        // If connected but not seeing traffic, re-request alert data periodically
+        static unsigned long lastReq = 0;
+        if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
+            Serial.println("No data recently; re-requesting alert data...");
+            bleClient.requestAlertData();
+            lastReq = now;
+        }
+    }
+    
+    // Status update (print to serial)
+    if (now - lastStatusUpdate >= STATUS_UPDATE_MS) {
+        lastStatusUpdate = now;
+        
+        if (bleClient.isConnected()) {
+            DisplayState state = parser.getDisplayState();
+            if (parser.hasAlerts()) {
+                Serial.printf("Active alerts: %d\n", parser.getAllAlerts().size());
+            }
+        }
+    }
+    
+#endif
+
+    delay(10);
+}
