@@ -205,10 +205,12 @@ constexpr Char14Seg CHAR14_MAP[] = {
     {'8', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_BL | S14_TL | S14_ML | S14_MR},
     {'9', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_TL | S14_ML | S14_MR},
     {'A', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_BR},
+    {'C', S14_TOP | S14_TL | S14_BL | S14_BOT},
     {'D', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_CT | S14_CB},
     {'E', S14_TOP | S14_TL | S14_ML | S14_BL | S14_BOT},
     {'L', S14_TL | S14_BL | S14_BOT},
     {'M', S14_TL | S14_TR | S14_BL | S14_BR | S14_DTL | S14_DTR},
+    {'N', S14_TL | S14_BL | S14_TR | S14_BR | S14_DTL | S14_DBR},
     {'R', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_DBR},
     {'S', S14_TOP | S14_TL | S14_ML | S14_MR | S14_BR | S14_BOT},
     {'T', S14_TOP | S14_CT | S14_CB},
@@ -777,6 +779,52 @@ void V1Display::showResting() {
 #endif
     
     Serial.println("showResting() complete");
+}
+
+void V1Display::showScanning() {
+    Serial.println("showScanning() called");
+    
+    // Clear and draw the base frame
+    TFT_CALL(fillScreen)(PALETTE_BG);
+    drawBaseFrame();
+    
+    // Draw idle state elements
+    drawTopCounter('0', false, true);
+    drawBandIndicators(0, false);
+    drawVerticalSignalBars(0, 0, BAND_KA, false);
+    drawDirectionArrow(DIR_NONE, false);
+    drawMuteIcon(false);
+    drawProfileIndicator(currentProfileSlot);
+    
+    // Draw "SCAN" in frequency area using 14-segment font
+#if defined(DISPLAY_WAVESHARE_349)
+    const float scale = 2.2f;
+#else
+    const float scale = 1.7f;
+#endif
+    SegMetrics m = segMetrics(scale);
+    int y = SCREEN_HEIGHT - m.digitH - 8;
+    
+    const char* text = "SCAN";
+    // Center the text
+    int width = measureSevenSegmentText("00.000", scale); // Use approx width of freq to center similarly
+    const int rightMargin = 120;
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    int x = (maxWidth - width) / 2;
+    if (x < 0) x = 0;
+    
+    // Clear area before drawing
+    FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+    
+    // Draw "SCAN" in red (using Ka band color)
+    draw14SegmentText(text, x, y, scale, PALETTE_KA, PALETTE_BG);
+    
+    // Reset lastState
+    lastState = DisplayState();
+    
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    tft->flush();
+#endif
 }
 
 void V1Display::showDemo() {

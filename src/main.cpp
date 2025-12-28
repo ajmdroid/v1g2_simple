@@ -427,8 +427,8 @@ void setup() {
     // Show RDF boot splash (backlight will be enabled after splash is drawn)
     display.showBootSplash();
     delay(4000);
-    // After splash, show the resting screen as the default idle view
-    display.showResting();
+    // After splash, show scanning screen until connected
+    display.showScanning();
     
     // Initialize settings first to get active profile slot
     settingsManager.begin();
@@ -656,9 +656,8 @@ void loop() {
             display.showResting(); // stay on resting view until data arrives
             Serial.println("V1 connected!");
         } else if (!isConnected && wasConnected) {
-            display.clear();  // Clear alert/element data from display
-            display.showDisconnected();
-            Serial.println("V1 disconnected!");
+            display.showScanning();
+            Serial.println("V1 disconnected - Scanning...");
         }
         
         wasConnected = isConnected;
