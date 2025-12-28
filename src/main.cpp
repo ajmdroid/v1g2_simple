@@ -570,7 +570,6 @@ void loop() {
                     const V1Settings& s = settingsManager.get();
                     int newSlot = (s.activeSlot + 1) % 3;
                     settingsManager.setActiveSlot(newSlot);
-                    settingsManager.save();
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);

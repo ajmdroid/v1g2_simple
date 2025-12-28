@@ -254,12 +254,13 @@ void PacketParser::decodeMode(const uint8_t* payload, size_t length) {
 }
 
 AlertData PacketParser::getPriorityAlert() const {
-    if (alerts.empty()) {
+    if (alertCount == 0) {
         return AlertData();
     }
 
-    AlertData priority = alerts[0];
-    for (const auto& alert : alerts) {
+    AlertData priority = alerts[0]; // alertCount > 0 guaranteed
+    for (size_t i = 1; i < alertCount; ++i) {
+        const auto& alert = alerts[i];
         uint8_t strength = std::max(alert.frontStrength, alert.rearStrength);
         uint8_t prioStrength = std::max(priority.frontStrength, priority.rearStrength);
         if (strength > prioStrength) {

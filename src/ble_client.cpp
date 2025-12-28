@@ -328,8 +328,11 @@ bool V1BLEClient::connectToServer() {
     }
 
     if (!connectedOk) {
-        Serial.printf("Failed to connect (error: %d)\n", pClient->getLastError());
-        NimBLEDevice::deleteClient(pClient);
+        int lastErr = pClient ? pClient->getLastError() : -1;
+        Serial.printf("Failed to connect (error: %d)\n", lastErr);
+        if (pClient) {
+            NimBLEDevice::deleteClient(pClient);
+        }
         pClient = nullptr;
         {
             SemaphoreGuard lock(bleMutex);
