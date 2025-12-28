@@ -31,6 +31,7 @@
 #include "alert_logger.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
+#include "battery_manager.h"
 #include "../include/config.h"
 #include <lvgl.h>
 #include <vector>
@@ -414,6 +415,17 @@ void setup() {
     Serial.println(DISPLAY_NAME);
     Serial.println("===================================\n");
     
+    // Initialize battery manager EARLY - needs to latch power on if running on battery
+    // This must happen before any long-running init to prevent shutdown
+#if defined(DISPLAY_WAVESHARE_349)
+    batteryManager.begin();
+    if (batteryManager.isOnBattery()) {
+        Serial.printf("[Battery] Voltage: %dmV (%d%%)\n", 
+                      batteryManager.getVoltageMillivolts(), 
+                      batteryManager.getPercentage());
+    }
+#endif
+    
     // Initialize display
     if (!display.begin()) {
         Serial.println("Display initialization failed!");
@@ -528,6 +540,11 @@ void setup() {
 
 void loop() {
 #if 1  // WiFi and BLE enabled
+    // Process power button for battery-powered operation (long-press to power off)
+#if defined(DISPLAY_WAVESHARE_349)
+    batteryManager.processPowerButton();
+#endif
+
     // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
     int16_t touchX, touchY;
     bool hasActiveAlert = parser.hasAlerts();
