@@ -42,6 +42,12 @@ void SettingsManager::load() {
     settings.slot0Color = preferences.getUShort("slot0color", 0x400A);
     settings.slot1Color = preferences.getUShort("slot1color", 0x07E0);
     settings.slot2Color = preferences.getUShort("slot2color", 0x8410);
+    settings.slot0Volume = preferences.getUChar("slot0vol", 0xFF);
+    settings.slot1Volume = preferences.getUChar("slot1vol", 0xFF);
+    settings.slot2Volume = preferences.getUChar("slot2vol", 0xFF);
+    settings.slot0MuteVolume = preferences.getUChar("slot0mute", 0xFF);
+    settings.slot1MuteVolume = preferences.getUChar("slot1mute", 0xFF);
+    settings.slot2MuteVolume = preferences.getUChar("slot2mute", 0xFF);
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -102,6 +108,12 @@ void SettingsManager::save() {
     written += preferences.putUShort("slot0color", settings.slot0Color);
     written += preferences.putUShort("slot1color", settings.slot1Color);
     written += preferences.putUShort("slot2color", settings.slot2Color);
+    written += preferences.putUChar("slot0vol", settings.slot0Volume);
+    written += preferences.putUChar("slot1vol", settings.slot1Volume);
+    written += preferences.putUChar("slot2vol", settings.slot2Volume);
+    written += preferences.putUChar("slot0mute", settings.slot0MuteVolume);
+    written += preferences.putUChar("slot1mute", settings.slot1MuteVolume);
+    written += preferences.putUChar("slot2mute", settings.slot2MuteVolume);
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -221,6 +233,15 @@ void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
     save();
 }
 
+void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume) {
+    switch (slotNum) {
+        case 0: settings.slot0Volume = volume; settings.slot0MuteVolume = muteVolume; break;
+        case 1: settings.slot1Volume = volume; settings.slot1MuteVolume = muteVolume; break;
+        case 2: settings.slot2Volume = volume; settings.slot2MuteVolume = muteVolume; break;
+    }
+    save();
+}
+
 void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                                         uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX) {
     settings.colorBogey = bogey;
@@ -238,6 +259,24 @@ AutoPushSlot SettingsManager::getActiveSlot() const {
         case 1: return settings.slot1_highway;
         case 2: return settings.slot2_comfort;
         default: return settings.slot0_default;
+    }
+}
+
+uint8_t SettingsManager::getSlotVolume(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0Volume;
+        case 1: return settings.slot1Volume;
+        case 2: return settings.slot2Volume;
+        default: return 0xFF;
+    }
+}
+
+uint8_t SettingsManager::getSlotMuteVolume(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0MuteVolume;
+        case 1: return settings.slot1MuteVolume;
+        case 2: return settings.slot2MuteVolume;
+        default: return 0xFF;
     }
 }
 

@@ -86,6 +86,12 @@ struct V1Settings {
     uint16_t slot0Color;         // Custom color for slot 0 display (default: purple 0x780F)
     uint16_t slot1Color;         // Custom color for slot 1 display (default: green 0x07E0)
     uint16_t slot2Color;         // Custom color for slot 2 display (default: grey 0x8410)
+    uint8_t slot0Volume;         // V1 main volume for slot 0 (0-9, 0xFF=no change)
+    uint8_t slot1Volume;         // V1 main volume for slot 1 (0-9, 0xFF=no change)
+    uint8_t slot2Volume;         // V1 main volume for slot 2 (0-9, 0xFF=no change)
+    uint8_t slot0MuteVolume;     // V1 mute volume for slot 0 (0-9, 0xFF=no change)
+    uint8_t slot1MuteVolume;     // V1 mute volume for slot 1 (0-9, 0xFF=no change)
+    uint8_t slot2MuteVolume;     // V1 mute volume for slot 2 (0-9, 0xFF=no change)
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -118,6 +124,12 @@ struct V1Settings {
         slot0Color(0x400A),
         slot1Color(0x07E0),
         slot2Color(0x8410),
+        slot0Volume(0xFF),
+        slot1Volume(0xFF),
+        slot2Volume(0xFF),
+        slot0MuteVolume(0xFF),
+        slot1MuteVolume(0xFF),
+        slot2MuteVolume(0xFF),
         slot0_default(),
         slot1_highway(),
         slot2_comfort() {}
@@ -148,11 +160,16 @@ public:
     void setSlot(int slotNum, const String& profileName, V1Mode mode);
     void setSlotName(int slotNum, const String& name);
     void setSlotColor(int slotNum, uint16_t color);
+    void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     
     // Get active slot configuration
     AutoPushSlot getActiveSlot() const;
+    
+    // Get slot volume settings (returns 0xFF for "no change")
+    uint8_t getSlotVolume(int slotNum) const;
+    uint8_t getSlotMuteVolume(int slotNum) const;
     
     // Batch update methods (don't auto-save, call save() after)
     void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }

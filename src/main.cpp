@@ -63,7 +63,7 @@ const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
 static bool localMuteOverride = false;
 static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
-const unsigned long LOCAL_MUTE_TIMEOUT_MS = 500;  // Clear override 500ms after alert ends
+const unsigned long LOCAL_MUTE_TIMEOUT_MS = 800;  // Clear override 800ms after alert ends
 
 // Track muted alert to detect stronger signals
 static uint8_t mutedAlertStrength = 0;
@@ -147,6 +147,19 @@ void onV1Connected() {
             Serial.printf("[AutoPush] Mode set to: %s\n", modeName);
         } else {
             Serial.println("[AutoPush] ERROR: Failed to set mode");
+        }
+    }
+    
+    // Set volumes if configured (not 0xFF = no change)
+    uint8_t mainVol = settingsManager.getSlotVolume(s.activeSlot);
+    uint8_t muteVol = settingsManager.getSlotMuteVolume(s.activeSlot);
+    
+    if (mainVol != 0xFF || muteVol != 0xFF) {
+        delay(100);
+        if (bleClient.setVolume(mainVol, muteVol)) {
+            Serial.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
+        } else {
+            Serial.println("[AutoPush] ERROR: Failed to set volume");
         }
     }
     
@@ -241,6 +254,8 @@ void processBLEData() {
                 if (hasAlerts) {
                     // Force muted state while alert is active
                     state.muted = localMuteOverride;
+                    // Reset timestamp so we get fresh timeout window when alert goes away
+                    localMuteTimestamp = millis();
                 } else {
                     // No alerts - check timeout
                     unsigned long now = millis();
@@ -309,7 +324,7 @@ void processBLEData() {
                         uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
                                            (priority.frequency - mutedAlertFreq) : 
                                            (mutedAlertFreq - priority.frequency);
-                        if (freqDiff > 15) {  // More than 15 MHz different
+                        if (freqDiff > 50) {  // More than 50 MHz different
                             differentAlert = true;
                             Serial.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
                                         mutedAlertFreq, priority.frequency, freqDiff);
@@ -350,12 +365,14 @@ void processBLEData() {
                         Serial.println("Alert cleared - clearing local mute override and sending unmute to V1");
                         localMuteActive = false;
                         localMuteOverride = false;
-                        state.muted = false;
                         mutedAlertStrength = 0;
                         mutedAlertBand = BAND_NONE;
                         mutedAlertFreq = 0;
                         // Send unmute command to V1
                         bleClient.setMute(false);
+                    } else {
+                        // Still waiting for timeout - skip display update to avoid color flash
+                        continue;
                     }
                 }
                 

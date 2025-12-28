@@ -737,6 +737,42 @@ bool V1BLEClient::setMode(uint8_t mode) {
     return sendCommand(packet, sizeof(packet));
 }
 
+bool V1BLEClient::setVolume(uint8_t mainVolume, uint8_t mutedVolume) {
+    // Clamp to valid range (0-9)
+    if (mainVolume != 0xFF && mainVolume > 9) mainVolume = 9;
+    if (mutedVolume != 0xFF && mutedVolume > 9) mutedVolume = 9;
+    
+    // Packet ID 0x39 = REQWRITEVOLUME
+    // Payload: mainVolume, mutedVolume (currentVolume), aux0
+    uint8_t packet[] = {
+        ESP_PACKET_START,                               // [0] 0xAA
+        static_cast<uint8_t>(0xD0 + ESP_PACKET_DEST_V1),// [1] 0xDA
+        static_cast<uint8_t>(0xE0 + ESP_PACKET_REMOTE), // [2] 0xE4
+        PACKET_ID_REQ_WRITE_VOLUME,                     // [3] 0x39
+        0x04,                                           // [4] payload length = 4 (3 data + checksum)
+        mainVolume,                                     // [5] main volume 0-9
+        mutedVolume,                                    // [6] muted volume 0-9  
+        0x00,                                           // [7] aux0 (unused, set to 0)
+        0x00,                                           // [8] checksum placeholder
+        ESP_PACKET_END                                  // [9] 0xAB
+    };
+    
+    // Calculate checksum over bytes 0-7 (8 bytes)
+    uint8_t checksum = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        checksum += packet[i];
+    }
+    packet[8] = checksum;
+    
+    Serial.printf("Setting V1 volume - main: %d, muted: %d, packet: ", mainVolume, mutedVolume);
+    for (size_t i = 0; i < sizeof(packet); i++) {
+        Serial.printf("%02X ", packet[i]);
+    }
+    Serial.println();
+    
+    return sendCommand(packet, sizeof(packet));
+}
+
 bool V1BLEClient::requestUserBytes() {
     // Build packet: AA D0+dest E0+src 11 01 [checksum] AB
     uint8_t packet[] = {

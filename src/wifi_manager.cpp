@@ -1588,6 +1588,12 @@ String WiFiManager::generateAutoPushSettingsJSON() {
     json += "\"slot0_color\":" + String(s.slot0Color) + ",";
     json += "\"slot1_color\":" + String(s.slot1Color) + ",";
     json += "\"slot2_color\":" + String(s.slot2Color) + ",";
+    json += "\"slot0_volume\":" + String(s.slot0Volume) + ",";
+    json += "\"slot1_volume\":" + String(s.slot1Volume) + ",";
+    json += "\"slot2_volume\":" + String(s.slot2Volume) + ",";
+    json += "\"slot0_muteVol\":" + String(s.slot0MuteVolume) + ",";
+    json += "\"slot1_muteVol\":" + String(s.slot1MuteVolume) + ",";
+    json += "\"slot2_muteVol\":" + String(s.slot2MuteVolume) + ",";
     json += "\"slot0_profile\":\"" + htmlEscape(s.slot0_default.profileName) + "\",";
     json += "\"slot0_mode\":" + String((int)s.slot0_default.mode) + ",";
     json += "\"slot1_profile\":\"" + htmlEscape(s.slot1_highway.profileName) + "\",";
@@ -1613,6 +1619,8 @@ void WiFiManager::handleAutoPushSlotSave() {
     int mode = server.arg("mode").toInt();
     String name = server.hasArg("name") ? server.arg("name") : "";
     int color = server.hasArg("color") ? server.arg("color").toInt() : -1;
+    int volume = server.hasArg("volume") ? server.arg("volume").toInt() : -1;
+    int muteVol = server.hasArg("muteVol") ? server.arg("muteVol").toInt() : -1;
     
     if (slot < 0 || slot > 2) {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
@@ -1628,6 +1636,17 @@ void WiFiManager::handleAutoPushSlotSave() {
     if (color >= 0) {
         settingsManager.setSlotColor(slot, static_cast<uint16_t>(color));
     }
+    
+    // Save slot volumes - preserve existing values if not provided
+    uint8_t existingVol = settingsManager.getSlotVolume(slot);
+    uint8_t existingMute = settingsManager.getSlotMuteVolume(slot);
+    uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
+    uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
+    
+    Serial.printf("[SaveSlot] Slot %d - volume: %d (was %d), muteVol: %d (was %d)\n", 
+                  slot, vol, existingVol, mute, existingMute);
+    
+    settingsManager.setSlotVolumes(slot, vol, mute);
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
     
@@ -1717,6 +1736,20 @@ void WiFiManager::handleAutoPushPushNow() {
     
     if (mode != V1_MODE_UNKNOWN) {
         bleClient.setMode(static_cast<uint8_t>(mode));
+    }
+    
+    // Set volumes if configured (not 0xFF = no change)
+    uint8_t mainVol = settingsManager.getSlotVolume(slot);
+    uint8_t muteVol = settingsManager.getSlotMuteVolume(slot);
+    
+    Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
+    
+    if (mainVol != 0xFF || muteVol != 0xFF) {
+        delay(100);
+        Serial.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
+        bleClient.setVolume(mainVol, muteVol);
+    } else {
+        Serial.println("[PushNow] Volume: No change");
     }
     
     // Update active slot and refresh display profile indicator
@@ -1976,6 +2009,38 @@ String WiFiManager::generateAutoPushHTML() {
                     <option value="3">Advanced Logic</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>V1 Volume</label>
+                <select id="volume-0">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Off)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Mute Volume</label>
+                <select id="muteVol-0">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Silent)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
             <div class="btn-group">
                 <button class="btn btn-primary" onclick="saveSlot(0)">Save</button>
                 <button class="btn btn-success" onclick="pushSlot(0)">Push Now</button>
@@ -2013,6 +2078,38 @@ String WiFiManager::generateAutoPushHTML() {
                     <option value="3">Advanced Logic</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>V1 Volume</label>
+                <select id="volume-1">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Off)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Mute Volume</label>
+                <select id="muteVol-1">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Silent)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
             <div class="btn-group">
                 <button class="btn btn-primary" onclick="saveSlot(1)">Save</button>
                 <button class="btn btn-success" onclick="pushSlot(1)">Push Now</button>
@@ -2048,6 +2145,38 @@ String WiFiManager::generateAutoPushHTML() {
                     <option value="1">All Bogeys</option>
                     <option value="2">Logic</option>
                     <option value="3">Advanced Logic</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>V1 Volume</label>
+                <select id="volume-2">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Off)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Mute Volume</label>
+                <select id="muteVol-2">
+                    <option value="255">No Change</option>
+                    <option value="0">0 (Silent)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9 (Max)</option>
                 </select>
             </div>
             <div class="btn-group">
@@ -2112,10 +2241,16 @@ String WiFiManager::generateAutoPushHTML() {
             // Load slot configurations
             document.getElementById('profile-0').value = settings.slot0_profile || '';
             document.getElementById('mode-0').value = settings.slot0_mode || 0;
+            document.getElementById('volume-0').value = settings.slot0_volume !== undefined ? settings.slot0_volume : 255;
+            document.getElementById('muteVol-0').value = settings.slot0_muteVol !== undefined ? settings.slot0_muteVol : 255;
             document.getElementById('profile-1').value = settings.slot1_profile || '';
             document.getElementById('mode-1').value = settings.slot1_mode || 0;
+            document.getElementById('volume-1').value = settings.slot1_volume !== undefined ? settings.slot1_volume : 255;
+            document.getElementById('muteVol-1').value = settings.slot1_muteVol !== undefined ? settings.slot1_muteVol : 255;
             document.getElementById('profile-2').value = settings.slot2_profile || '';
             document.getElementById('mode-2').value = settings.slot2_mode || 0;
+            document.getElementById('volume-2').value = settings.slot2_volume !== undefined ? settings.slot2_volume : 255;
+            document.getElementById('muteVol-2').value = settings.slot2_muteVol !== undefined ? settings.slot2_muteVol : 255;
             
             // Update active state
             updateActiveDisplay();
@@ -2176,6 +2311,8 @@ String WiFiManager::generateAutoPushHTML() {
             const color = hexToRgb565(colorHex);
             const profile = document.getElementById('profile-'+slot).value;
             const mode = document.getElementById('mode-'+slot).value;
+            const volume = document.getElementById('volume-'+slot).value;
+            const muteVol = document.getElementById('muteVol-'+slot).value;
             
             const data = new URLSearchParams();
             data.append('slot', slot);
@@ -2183,6 +2320,8 @@ String WiFiManager::generateAutoPushHTML() {
             data.append('color', color);
             data.append('profile', profile);
             data.append('mode', mode);
+            data.append('volume', volume);
+            data.append('muteVol', muteVol);
             
             fetch('/api/autopush/slot', {
                 method: 'POST',
@@ -2197,16 +2336,22 @@ String WiFiManager::generateAutoPushHTML() {
                         settings.slot0_color = color;
                         settings.slot0_profile = profile;
                         settings.slot0_mode = parseInt(mode);
+                        settings.slot0_volume = parseInt(volume);
+                        settings.slot0_muteVol = parseInt(muteVol);
                     } else if (slot === 1) {
                         settings.slot1_name = name;
                         settings.slot1_color = color;
                         settings.slot1_profile = profile;
                         settings.slot1_mode = parseInt(mode);
+                        settings.slot1_volume = parseInt(volume);
+                        settings.slot1_muteVol = parseInt(muteVol);
                     } else {
                         settings.slot2_name = name;
                         settings.slot2_color = color;
                         settings.slot2_profile = profile;
                         settings.slot2_mode = parseInt(mode);
+                        settings.slot2_volume = parseInt(volume);
+                        settings.slot2_muteVol = parseInt(muteVol);
                     }
                     updateQuickButtons();
                 } else {

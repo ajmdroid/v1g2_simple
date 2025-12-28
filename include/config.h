@@ -58,6 +58,7 @@
 #define PACKET_ID_TURN_ON_DISPLAY  0x33  // reqTurnOnMainDisplay
 #define PACKET_ID_MUTE_ON       0x34  // reqMuteOn
 #define PACKET_ID_MUTE_OFF      0x35  // reqMuteOff
+#define PACKET_ID_REQ_WRITE_VOLUME      0x39  // reqWriteVolume (mainVolume, mutedVolume, aux0)
 #define PACKET_ID_REQ_USER_BYTES   0x11  // reqUserBytes
 #define PACKET_ID_RESP_USER_BYTES  0x12  // respUserBytes
 #define PACKET_ID_WRITE_USER_BYTES 0x13  // reqWriteUserBytes
