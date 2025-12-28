@@ -300,7 +300,9 @@ bool V1BLEClient::connectToServer() {
             break;
         }
 
-        pClientCallbacks = new ClientCallbacks();
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
         pClient->setClientCallbacks(pClientCallbacks);
         pClient->setConnectionParams(12, 12, 0, 51);
         pClient->setConnectTimeout(10); // 10 second timeout

@@ -280,7 +280,7 @@ void processBLEData() {
 
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
-                int alertCount = parser.getAllAlerts().size();
+                int alertCount = parser.getAlertCount();
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
 
                 // Auto-unmute logic: new stronger signal or different band
