@@ -768,6 +768,9 @@ void V1Display::showResting() {
     // Profile indicator
     drawProfileIndicator(currentProfileSlot);
     
+    // Reset lastState so next update() detects changes from this "resting" state
+    lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
+    
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display
     tft->flush();

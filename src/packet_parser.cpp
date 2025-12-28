@@ -40,9 +40,7 @@ BandArrowData processBandArrow(uint8_t v) {
 }
 } // namespace
 
-PacketParser::PacketParser() {
-    alerts.clear();
-    alertChunks.clear();
+PacketParser::PacketParser() : alertCount(0), chunkCount(0) {
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
@@ -168,10 +166,10 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    uint8_t alertCount = payload[0] & 0x0F;
-    if (alertCount == 0) {
-        alerts.clear();
-        alertChunks.clear();
+    uint8_t receivedAlertCount = payload[0] & 0x0F;
+    if (receivedAlertCount == 0) {
+        alertCount = 0;
+        chunkCount = 0;
         displayState.signalBars = 0;
         displayState.arrows = DIR_NONE;
         displayState.activeBands = BAND_NONE;
@@ -183,45 +181,50 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    std::array<uint8_t, 7> chunk{};
-    size_t copyLen = std::min<size_t>(7, length);
-    for (size_t i = 0; i < copyLen; ++i) {
-        chunk[i] = payload[i];
+    // Add new chunk, checking for overflow
+    if (chunkCount < MAX_ALERTS) {
+        std::array<uint8_t, 7> chunk{};
+        size_t copyLen = std::min<size_t>(7, length);
+        for (size_t i = 0; i < copyLen; ++i) {
+            chunk[i] = payload[i];
+        }
+        alertChunks[chunkCount++] = chunk;
     }
-    alertChunks.push_back(chunk);
 
     // Wait until we've received the full set of alert table rows
-    if (alertChunks.size() < alertCount) {
+    if (chunkCount < receivedAlertCount) {
         return true;
     }
 
-    alerts.clear();
+    alertCount = 0;
     displayState.activeBands = BAND_NONE;
 
-    for (size_t i = 0; i < alertChunks.size() && i < alertCount; ++i) {
+    for (size_t i = 0; i < chunkCount && i < receivedAlertCount; ++i) {
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];
 
         Band band = decodeBand(bandArrow);
         Direction dir = decodeDirection(bandArrow);
 
-        AlertData alert;
-        alert.band = band;
-        alert.direction = dir;
-        alert.frontStrength = mapStrengthToBars(band, a[3]);
-        alert.rearStrength = mapStrengthToBars(band, a[4]);
-        alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
-        alert.isValid = true;
+        // Add new alert, checking for overflow
+        if (alertCount < MAX_ALERTS) {
+            AlertData& alert = alerts[alertCount++];
+            alert.band = band;
+            alert.direction = dir;
+            alert.frontStrength = mapStrengthToBars(band, a[3]);
+            alert.rearStrength = mapStrengthToBars(band, a[4]);
+            alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
+            alert.isValid = true;
 
-        alerts.push_back(alert);
-        if (band != BAND_NONE) {
-            displayState.activeBands |= band;
+            if (band != BAND_NONE) {
+                displayState.activeBands |= band;
+            }
+            // Mute bit rides in bandArrow too
+            displayState.muted = (bandArrow & 0x10) != 0;
         }
-        // Mute bit rides in bandArrow too
-        displayState.muted = (bandArrow & 0x10) != 0;
     }
 
-    if (!alerts.empty()) {
+    if (alertCount > 0) {
         AlertData priority = getPriorityAlert();
         displayState.signalBars = std::max(priority.frontStrength, priority.rearStrength);
         displayState.arrows = priority.direction;
@@ -230,7 +233,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         displayState.arrows = DIR_NONE;
     }
 
-    alertChunks.clear();
+    chunkCount = 0; // Clear chunks after processing
     return true;
 }
 

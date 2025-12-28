@@ -80,9 +80,6 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 // Static instance for callbacks
 static V1BLEClient* instancePtr = nullptr;
 
-// Global proxy connection status
-bool proxyClientConnected = false;
-
 V1BLEClient::V1BLEClient() 
     : pClient(nullptr)
     , pRemoteService(nullptr)
@@ -94,6 +91,7 @@ V1BLEClient::V1BLEClient()
     , pProxyWriteChar(nullptr)
     , proxyEnabled(false)
     , proxyServerInitialized(false)
+    , proxyClientConnected(false)
     , proxyName_("V1C-LE-S3")
     , dataCallback(nullptr)
     , connectCallback(nullptr)
@@ -101,8 +99,32 @@ V1BLEClient::V1BLEClient()
     , shouldConnect(false)
     , hasTargetDevice(false)
     , targetAddress()
-    , lastScanStart(0) {
+    , lastScanStart(0)
+    , pScanCallbacks(nullptr)
+    , pClientCallbacks(nullptr)
+    , pProxyServerCallbacks(nullptr)
+    , pProxyWriteCallbacks(nullptr) {
     instancePtr = this;
+}
+
+V1BLEClient::~V1BLEClient() {
+    // Delete allocated callback handlers to prevent memory leaks
+    if (pScanCallbacks) {
+        delete pScanCallbacks;
+        pScanCallbacks = nullptr;
+    }
+    if (pClientCallbacks) {
+        delete pClientCallbacks;
+        pClientCallbacks = nullptr;
+    }
+    if (pProxyServerCallbacks) {
+        delete pProxyServerCallbacks;
+        pProxyServerCallbacks = nullptr;
+    }
+    if (pProxyWriteCallbacks) {
+        delete pProxyWriteCallbacks;
+        pProxyWriteCallbacks = nullptr;
+    }
 }
 
 bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
@@ -139,7 +161,8 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    pScan->setScanCallbacks(new ScanCallbacks(this));
+    pScanCallbacks = new ScanCallbacks(this);
+    pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
     pScan->setInterval(16);   // 10ms interval - very aggressive scanning
     pScan->setWindow(16);     // 10ms window - 100% duty cycle for fastest discovery
@@ -162,6 +185,10 @@ bool V1BLEClient::isConnected() {
 
 bool V1BLEClient::isProxyClientConnected() {
     return proxyClientConnected;
+}
+
+void V1BLEClient::setProxyClientConnected(bool connected) {
+    proxyClientConnected = connected;
 }
 
 void V1BLEClient::onDataReceived(DataCallback callback) {
@@ -273,7 +300,8 @@ bool V1BLEClient::connectToServer() {
             break;
         }
 
-        pClient->setClientCallbacks(new ClientCallbacks());
+        pClientCallbacks = new ClientCallbacks();
+        pClient->setClientCallbacks(pClientCallbacks);
         pClient->setConnectionParams(12, 12, 0, 51);
         pClient->setConnectTimeout(10); // 10 second timeout
 
@@ -509,7 +537,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
 
     // Route proxy notifications (only B2CE alerts)
-    if (instancePtr->proxyEnabled && proxyClientConnected && instancePtr->pProxyNotifyChar) {
+    if (instancePtr->proxyEnabled && instancePtr->proxyClientConnected && instancePtr->pProxyNotifyChar) {
         if (xSemaphoreTake(instancePtr->bleNotifyMutex, pdMS_TO_TICKS(50))) {
             instancePtr->pProxyNotifyChar->setValue(pData, length);
             instancePtr->pProxyNotifyChar->notify();
@@ -886,17 +914,20 @@ void V1BLEClient::disconnect() {
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
     Serial.println("===== JBV1 PROXY CLIENT CONNECTED =====");
-    proxyClientConnected = true;
+    if (bleClient) {
+        bleClient->setProxyClientConnected(true);
+    }
 }
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
     Serial.printf("===== JBV1 PROXY CLIENT DISCONNECTED (reason: %d) =====\n", reason);
-    proxyClientConnected = false;
-    
-    // Resume advertising if V1 is still connected
-    if (instancePtr && instancePtr->isConnected()) {
-        Serial.println("Resuming proxy advertising...");
-        NimBLEDevice::startAdvertising();
+    if (bleClient) {
+        bleClient->setProxyClientConnected(false);
+        // Resume advertising if V1 is still connected
+        if (bleClient->isConnected()) {
+            Serial.println("Resuming proxy advertising...");
+            NimBLEDevice::startAdvertising();
+        }
     }
 }
 
@@ -952,7 +983,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     Serial.printf("Creating BLE proxy server as '%s'\n", deviceName);
     
     pServer = NimBLEDevice::createServer();
-    pServer->setCallbacks(new ProxyServerCallbacks());
+    pProxyServerCallbacks = new ProxyServerCallbacks(this);
+    pServer->setCallbacks(pProxyServerCallbacks);
     
     // Ensure server allows connections
     NimBLEDevice::setSecurityAuth(false, false, true);
@@ -972,7 +1004,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
         V1_COMMAND_WRITE_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    pProxyWriteChar->setCallbacks(new ProxyWriteCallbacks(this));
+    pProxyWriteCallbacks = new ProxyWriteCallbacks(this);
+    pProxyWriteChar->setCallbacks(pProxyWriteCallbacks);
     
     pProxyService->start();
     pServer->start();  // Required in NimBLE 2.x to enable connections
