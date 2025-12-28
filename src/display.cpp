@@ -866,8 +866,7 @@ void V1Display::update(const DisplayState& state) {
         firstUpdate = false;
         drawBaseFrame();
         char topChar = state.hasMode ? state.modeChar : '0';
-        bool showDot = std::isdigit(static_cast<unsigned char>(topChar));
-        drawTopCounter(topChar, state.muted, showDot);
+        drawTopCounter(topChar, state.muted, true);  // Always show dot
         drawBandIndicators(state.activeBands, state.muted);
         // BLE proxy status indicator
         
@@ -938,8 +937,13 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     // Use activeBands from display state (all detected bands), not just priority alert band
     uint8_t bandMask = state.activeBands;
     
-    // Show actual bogey count (clamp to single digit, use '9' for 9+)
-    char countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
+    // Show 'L' for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
+    char countChar;
+    if (alert.band == BAND_LASER) {
+        countChar = 'L';
+    } else {
+        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
+    }
     drawTopCounter(countChar, state.muted, true);
     
     // Frequency from priority alert

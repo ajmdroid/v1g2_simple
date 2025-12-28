@@ -128,29 +128,13 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     NimBLEDevice::setPower(ESP_PWR_LVL_P9); // Max power
     NimBLEDevice::setMTU(185);
     
-    // Match Kenny's init flow: create server and START advertising BEFORE scan
+    // Create proxy server early (required before BLE stack starts client operations)
+    // but DON'T start advertising until V1 connection is established
     if (proxyEnabled) {
-        Serial.println("Creating proxy server and starting advertising (Kenny's flow)...");
+        Serial.println("Creating proxy server (advertising delayed until V1 connects)...");
         initProxyServer(proxyName_.c_str());
         proxyServerInitialized = true;
-        
-        // Configure and start advertising now (will be stopped during scan)
-        NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-        NimBLEAdvertisementData advData;
-        NimBLEAdvertisementData scanRespData;
-        advData.setCompleteServices(pProxyService->getUUID());
-        advData.setAppearance(0x0C80);
-        scanRespData.setName(proxyName_.c_str());
-        pAdvertising->setAdvertisementData(advData);
-        pAdvertising->setScanResponseData(scanRespData);
-        pAdvertising->start();
-        Serial.println("Proxy advertising started (will stop during scan)");
-    }
-    
-    // Stop advertising before scanning (Kenny's approach)
-    if (proxyEnabled && proxyServerInitialized) {
-        Serial.println("Stopping advertising to scan for V1...");
-        NimBLEDevice::stopAdvertising();
+        // Do NOT start advertising here - wait for V1 connection
     }
     
     // Start scanning for V1 - optimized for reliable discovery
@@ -476,9 +460,22 @@ bool V1BLEClient::setupCharacteristics() {
     }
     
     // Now that V1 is connected, start proxy advertising if enabled
-    // Use FreeRTOS task with delay for NimBLE 2.x compatibility (Kenny's approach)
+    // Server was created in begin(), now we can advertise
     if (proxyEnabled && proxyServerInitialized) {
-        Serial.println("V1 connected! Scheduling proxy advertising...");
+        Serial.println("V1 connected! Starting proxy advertising...");
+        
+        // Configure advertising data
+        NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+        
+        NimBLEAdvertisementData advData;
+        NimBLEAdvertisementData scanRespData;
+        advData.setCompleteServices(pProxyService->getUUID());
+        advData.setAppearance(0x0C80);
+        scanRespData.setName(proxyName_.c_str());
+        pAdvertising->setAdvertisementData(advData);
+        pAdvertising->setScanResponseData(scanRespData);
+        
+        // Start advertising with delay for NimBLE 2.x compatibility
         startProxyAdvertising();
     }
     
@@ -942,6 +939,7 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pProxyWriteChar->setCallbacks(new ProxyWriteCallbacks(this));
     
     pProxyService->start();
+    pServer->start();  // Required in NimBLE 2.x to enable connections
     Serial.println("Proxy service created with 2 characteristics (notify + write)");
 }
 
