@@ -225,11 +225,14 @@ void processBLEData() {
         if (parser.parse(packet.data(), packet.size())) {
             DisplayState state = parser.getDisplayState();
 
+            // Cache alert status to avoid repeated calls
+            bool hasAlerts = parser.hasAlerts();
+
             // Apply local mute override FIRST before any other logic
             if (localMuteActive) {
                 // While alerts are active, ALWAYS apply override (no timeout)
                 // Timeout only applies when no alerts (waiting for V1 response)
-                if (parser.hasAlerts()) {
+                if (hasAlerts) {
                     // Force muted state while alert is active
                     state.muted = localMuteOverride;
                 } else {
@@ -255,18 +258,7 @@ void processBLEData() {
             }
             lastDisplayDraw = now;
 
-            // Clear local override ONLY when alerts are definitively gone
-            if (localMuteActive && !parser.hasAlerts()) {
-                Serial.println("Alert cleared - clearing local mute override");
-                localMuteActive = false;
-                localMuteOverride = false;
-                state.muted = false;
-                mutedAlertStrength = 0;
-                mutedAlertBand = BAND_NONE;
-                mutedAlertFreq = 0;
-            }
-
-            if (parser.hasAlerts()) {
+            if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAllAlerts().size();
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);

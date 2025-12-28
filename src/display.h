@@ -94,7 +94,6 @@ private:
     void drawDirectionArrow(Direction dir, bool muted);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
-    void drawMuteBadge(bool muted);
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawMuteIcon(bool muted);

@@ -209,10 +209,14 @@ constexpr Char14Seg CHAR14_MAP[] = {
     {'8', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_BL | S14_TL | S14_ML | S14_MR},
     {'9', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_TL | S14_ML | S14_MR},
     {'A', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_BR},
+    {'D', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_CT | S14_CB},
     {'E', S14_TOP | S14_TL | S14_ML | S14_BL | S14_BOT},
     {'L', S14_TL | S14_BL | S14_BOT},
+    {'M', S14_TL | S14_TR | S14_BL | S14_BR | S14_DTL | S14_DTR},
     {'R', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_DBR},
     {'S', S14_TOP | S14_TL | S14_ML | S14_MR | S14_BR | S14_BOT},
+    {'T', S14_TOP | S14_CT | S14_CB},
+    {'U', S14_TL | S14_TR | S14_BL | S14_BR | S14_BOT},
     {'-', S14_ML | S14_MR},
     {'.', 0}, // dot handled separately
 };
@@ -695,24 +699,6 @@ void V1Display::drawBluetoothIcon(bool connected) {
     DRAW_LINE(midX, botY, midX + wingX, botY - size/4, col);
     // Bottom right to center (going up-left)
     DRAW_LINE(midX + wingX, botY - size/4, midX - wingX, midY, col);
-}
-
-void V1Display::drawMuteBadge(bool muted) {
-    int x = SCREEN_WIDTH - 86;
-    int y = 10;
-    int w = 72;
-    int h = 20;
-
-    uint16_t outline = muted ? PALETTE_MUTED : TFT_DARKGREY;
-    uint16_t fill = muted ? PALETTE_MUTED : PALETTE_BG;
-
-    FILL_ROUND_RECT(x, y, w, h, 4, fill);
-    DRAW_ROUND_RECT(x, y, w, h, 4, outline);
-
-    GFX_setTextDatum(MC_DATUM);
-    TFT_CALL(setTextSize)(1);
-    TFT_CALL(setTextColor)(muted ? PALETTE_BG : outline, fill);
-    GFX_drawString(tft, muted ? "MUTED" : "LIVE", x + w / 2, y + h / 2 + 1);
 }
 
 void V1Display::showConnecting() {
