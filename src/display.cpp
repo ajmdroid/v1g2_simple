@@ -11,6 +11,7 @@
 #include "rdf_logo.h"  // RDF splash screen
 #include "v1_tech.h"   // V1 Tech logo
 #include "settings.h"
+#include "battery_manager.h"
 #include <esp_heap_caps.h>
 #include <cctype>
 
@@ -732,6 +733,66 @@ void V1Display::drawProfileIndicator(int slot) {
     // Draw the profile name centered over the dot
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_drawString(tft, name, x, y);
+    
+    // Draw battery indicator after profile name (if on battery)
+    drawBatteryIndicator();
+}
+
+void V1Display::drawBatteryIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    extern BatteryManager batteryManager;
+    
+    // Don't show if not on battery
+    if (!batteryManager.isOnBattery()) {
+        return;
+    }
+    
+    // Battery icon position - to the right side, before signal meters area
+    // Signal meters start at SCREEN_WIDTH - 120, so put battery before that
+    const int battX = SCREEN_WIDTH - 135;  // Left edge of battery icon
+    const int battY = 14;
+    const int battW = 24;   // Battery body width
+    const int battH = 14;   // Battery body height
+    const int capW = 3;     // Positive terminal cap width
+    const int capH = 6;     // Positive terminal cap height
+    const int padding = 2;  // Padding inside battery
+    const int sections = 5; // Number of charge sections
+    
+    // Get battery percentage
+    uint8_t pct = batteryManager.getPercentage();
+    int filledSections = (pct + 10) / 20;  // 0-20%=1, 21-40%=2, etc. (min 1 if >0)
+    if (pct == 0) filledSections = 0;
+    if (filledSections > sections) filledSections = sections;
+    
+    // Choose color based on level
+    uint16_t fillColor;
+    if (pct <= 20) {
+        fillColor = 0xF800;  // Red - critical
+    } else if (pct <= 40) {
+        fillColor = 0xFD20;  // Orange - low
+    } else {
+        fillColor = 0x07E0;  // Green - good
+    }
+    
+    // Clear area
+    FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+    
+    // Draw battery outline
+    DRAW_RECT(battX, battY, battW, battH, PALETTE_TEXT);  // Main body
+    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, PALETTE_TEXT);  // Positive cap
+    
+    // Draw charge sections
+    int sectionW = (battW - 2 * padding - (sections - 1)) / sections;  // Width of each section with 1px gap
+    for (int i = 0; i < sections; i++) {
+        int sx = battX + padding + i * (sectionW + 1);
+        int sy = battY + padding;
+        int sh = battH - 2 * padding;
+        
+        if (i < filledSections) {
+            FILL_RECT(sx, sy, sectionW, sh, fillColor);
+        }
+    }
+#endif
 }
 
 void V1Display::drawBluetoothIcon(bool connected) {

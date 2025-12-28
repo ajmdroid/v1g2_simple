@@ -73,6 +73,9 @@ public:
     
     // Profile indicator
     void drawProfileIndicator(int slot);  // 0=Default, 1=Highway, 2=Comfort
+    
+    // Battery indicator (only shows when on battery power)
+    void drawBatteryIndicator();
 
 private:
     // Display driver (Arduino_GFX)
