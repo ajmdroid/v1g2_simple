@@ -165,7 +165,7 @@ public:
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     
     // Get active slot configuration
-    AutoPushSlot getActiveSlot() const;
+    const AutoPushSlot& getActiveSlot() const;
     
     // Get slot volume settings (returns 0xFF for "no change")
     uint8_t getSlotVolume(int slotNum) const;

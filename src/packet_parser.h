@@ -64,7 +64,7 @@ public:
     bool parse(const uint8_t* data, size_t length);
     
     // Get current display state
-    DisplayState getDisplayState() const { return displayState; }
+    const DisplayState& getDisplayState() const { return displayState; }
     
     // Get priority alert (highest strength)
     AlertData getPriorityAlert() const;

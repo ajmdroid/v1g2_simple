@@ -28,6 +28,7 @@
 #include "wifi_manager.h"
 #include "settings.h"
 #include "alert_logger.h"
+#include "alert_db.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "../include/config.h"
@@ -343,6 +344,7 @@ void processBLEData() {
 
                 display.update(priority, state, alertCount);
                 alertLogger.logAlert(priority, state, alertCount);
+                alertDB.logAlert(priority, state, alertCount);  // SQLite logging
 
                 Serial.printf("Alert: %s, Dir: %d, Front: %d, Rear: %d, Freq: %lu MHz, Count: %d, Bands: 0x%02X\n",
                               priority.band == BAND_KA ? "Ka" :
@@ -381,7 +383,8 @@ void processBLEData() {
                     lastStateLog = millis();
                 }
                 display.update(state);
-                alertLogger.logClear(state);
+                alertLogger.updateStateOnClear(state);
+                alertDB.logClear();  // SQLite logging
             }
         }
     }
@@ -439,6 +442,16 @@ void setup() {
 
     // Mount SD card for alert logging (non-fatal if missing)
     alertLogger.begin();
+    
+    // Initialize SQLite alert database (uses same SD card)
+    if (alertLogger.isReady()) {
+        if (alertDB.begin()) {
+            Serial.printf("[Setup] AlertDB ready - %s\n", alertDB.statusText().c_str());
+            Serial.printf("[Setup] Total alerts in DB: %lu\n", alertDB.getTotalAlerts());
+        } else {
+            Serial.println("[Setup] AlertDB init failed - using CSV fallback");
+        }
+    }
     
     // Initialize V1 profile manager (uses alert logger's filesystem)
     if (alertLogger.isReady()) {

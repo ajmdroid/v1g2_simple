@@ -219,7 +219,7 @@ bool AlertLogger::logAlert(const AlertData& alert, const DisplayState& state, si
     return ok;
 }
 
-bool AlertLogger::logClear(const DisplayState& state) {
+bool AlertLogger::updateStateOnClear(const DisplayState& state) {
     // Don't log CLEAR/NONE events - just update internal state
     if (!ready) {
         return false;

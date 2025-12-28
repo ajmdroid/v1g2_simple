@@ -181,114 +181,58 @@ void WiFiManager::handleSettings() {
 void WiFiManager::handleSettingsSave() {
     Serial.println("=== handleSettingsSave() called ===");
     
-    // Log all received args
-    Serial.printf("Number of args: %d\n", server.args());
-    for (int i = 0; i < server.args(); i++) {
-        Serial.printf("  Arg[%d]: %s = %s\n", i, server.argName(i).c_str(), server.arg(i).c_str());
-    }
-    
     // Track if WiFi settings changed (these require restart)
     bool wifiChanged = false;
-    
-    // Open preferences directly
-    Preferences prefs;
-    if (!prefs.begin("v1settings", false)) {
-        Serial.println("ERROR: Failed to open preferences!");
-        server.send(500, "text/plain", "Failed to save settings");
-        return;
-    }
-    Serial.println("Preferences opened for writing");
-    
-    // Save each field and check return values
-    size_t written;
-    
+    const V1Settings& currentSettings = settingsManager.get();
+
+    // Although STA is disabled, we still process the args to keep them saved
     if (server.hasArg("ssid")) {
-        // STA mode disabled for now; keep values but we won't use them
         String ssid = server.arg("ssid");
         String pass = server.arg("password");
-        if (ssid != prefs.getString("ssid", "") || pass != prefs.getString("password", "")) {
+        if (ssid != currentSettings.ssid || pass != currentSettings.password) {
             wifiChanged = true;
         }
-        written = prefs.putString("ssid", ssid);
-        Serial.printf("Saved ssid='%s', bytes=%d (STA disabled)\n", ssid.c_str(), written);
-        written = prefs.putString("password", pass);
-        Serial.printf("Saved password, bytes=%d (STA disabled)\n", written);
+        settingsManager.updateWiFiCredentials(ssid, pass);
     }
     
     if (server.hasArg("ap_ssid")) {
         String apSsid = server.arg("ap_ssid");
         String apPass = server.arg("ap_password");
         if (apSsid.length() == 0 || apPass.length() < 8) {
-            prefs.end();
             server.send(400, "text/plain", "AP SSID required and password must be at least 8 characters");
             return;
         }
-        if (apSsid != prefs.getString("apSSID", "") || apPass != prefs.getString("apPassword", "")) {
+        if (apSsid != currentSettings.apSSID || apPass != currentSettings.apPassword) {
             wifiChanged = true;
         }
-        written = prefs.putString("apSSID", apSsid);
-        Serial.printf("Saved apSSID='%s', bytes=%d\n", apSsid.c_str(), written);
-        written = prefs.putString("apPassword", apPass);
-        Serial.printf("Saved apPassword, bytes=%d\n", written);
+        settingsManager.updateAPCredentials(apSsid, apPass);
     }
     
     // Force AP mode regardless of submitted value
-    int mode = V1_WIFI_AP;
-    if (mode != prefs.getInt("wifiMode", V1_WIFI_AP)) {
+    WiFiModeSetting mode = V1_WIFI_AP;
+    if (mode != currentSettings.wifiMode) {
         wifiChanged = true;
     }
-    written = prefs.putInt("wifiMode", mode);
-    Serial.printf("Saved wifiMode=%d (forced AP), bytes=%d\n", mode, written);
+    settingsManager.updateWiFiMode(mode);
     
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
-        written = prefs.putUChar("brightness", (uint8_t)brightness);
-        Serial.printf("Saved brightness=%d, bytes=%d\n", brightness, written);
+        settingsManager.updateBrightness((uint8_t)brightness);
     }
     
     if (server.hasArg("color_theme")) {
         int theme = server.arg("color_theme").toInt();
         theme = std::max(0, std::min(theme, 2));  // Clamp to valid theme range
-        written = prefs.putInt("colorTheme", theme);
-        Serial.printf("Saved colorTheme=%d, bytes=%d\n", theme, written);
+        settingsManager.updateColorTheme(static_cast<ColorTheme>(theme));
     }
     
-    // Auto-push settings now handled on dedicated /autopush page
+    // All changes are queued in the settingsManager instance. Now, save them all at once.
+    Serial.println("--- Calling settingsManager.save() ---");
+    settingsManager.save();
     
-    // Verify immediately before closing
-    Serial.println("--- Verifying before prefs.end() ---");
-    Serial.printf("  Read back wifiMode: %d\n", prefs.getInt("wifiMode", -999));
-    Serial.printf("  Read back brightness: %d\n", prefs.getUChar("brightness", 255));
-    Serial.printf("  Read back colorTheme: %d\n", prefs.getInt("colorTheme", -1));
-    Serial.printf("  Read back apSSID: %s\n", prefs.getString("apSSID", "FAIL").c_str());
-    
-    prefs.end();
-    Serial.println("Preferences closed");
-    
-    // Verify after closing by reopening read-only
-    Serial.println("--- Verifying after prefs.end() ---");
-    Preferences verify;
-    verify.begin("v1settings", true);
-    Serial.printf("  Read back wifiMode: %d\n", verify.getInt("wifiMode", -999));
-    Serial.printf("  Read back brightness: %d\n", verify.getUChar("brightness", 255));
-    Serial.printf("  Read back colorTheme: %d\n", verify.getInt("colorTheme", -1));
-    Serial.printf("  Read back apSSID: %s\n", verify.getString("apSSID", "FAIL").c_str());
-    verify.end();
-    
-    // Reload settings into memory
-    Serial.println("--- Calling settingsManager.load() ---");
-    settingsManager.load();
-    
-    // Print settings after reload
-    const V1Settings& s = settingsManager.get();
-    Serial.println("=== Settings after reload ===");
-    Serial.printf("  brightness: %d\n", s.brightness);
-    Serial.printf("  wifiMode: %d\n", s.wifiMode);
-    Serial.printf("  apSSID: %s\n", s.apSSID.c_str());
-    Serial.printf("  colorTheme: %d\n", s.colorTheme);
-    
-    // Update display color theme if it was changed
+    // The settingsManager instance is already up-to-date, no need to reload.
+    // We can directly apply any changes that need to take immediate effect.
     if (server.hasArg("color_theme")) {
         display.updateColorTheme();
         Serial.println("Display color theme updated");

@@ -254,7 +254,7 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
     save();
 }
 
-AutoPushSlot SettingsManager::getActiveSlot() const {
+const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
         case 2: return settings.slot2_comfort;
