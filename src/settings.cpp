@@ -27,8 +27,21 @@ void SettingsManager::load() {
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
     settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
+    settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
+    settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
+    settings.colorArrow = preferences.getUShort("colorArrow", 0xF800);
+    settings.colorBandL = preferences.getUShort("colorBandL", 0x001F);
+    settings.colorBandKa = preferences.getUShort("colorBandKa", 0xF800);
+    settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
+    settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
+    settings.slot0Name = preferences.getString("slot0name", "DEFAULT");
+    settings.slot1Name = preferences.getString("slot1name", "HIGHWAY");
+    settings.slot2Name = preferences.getString("slot2name", "COMFORT");
+    settings.slot0Color = preferences.getUShort("slot0color", 0x400A);
+    settings.slot1Color = preferences.getUShort("slot1color", 0x07E0);
+    settings.slot2Color = preferences.getUShort("slot2color", 0x8410);
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -74,8 +87,21 @@ void SettingsManager::save() {
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
     written += preferences.putUChar("brightness", settings.brightness);
     written += preferences.putInt("colorTheme", settings.colorTheme);
+    written += preferences.putUShort("colorBogey", settings.colorBogey);
+    written += preferences.putUShort("colorFreq", settings.colorFrequency);
+    written += preferences.putUShort("colorArrow", settings.colorArrow);
+    written += preferences.putUShort("colorBandL", settings.colorBandL);
+    written += preferences.putUShort("colorBandKa", settings.colorBandKa);
+    written += preferences.putUShort("colorBandK", settings.colorBandK);
+    written += preferences.putUShort("colorBandX", settings.colorBandX);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
+    written += preferences.putString("slot0name", settings.slot0Name);
+    written += preferences.putString("slot1name", settings.slot1Name);
+    written += preferences.putString("slot2name", settings.slot2Name);
+    written += preferences.putUShort("slot0color", settings.slot0Color);
+    written += preferences.putUShort("slot1color", settings.slot1Color);
+    written += preferences.putUShort("slot2color", settings.slot2Color);
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -167,6 +193,43 @@ void SettingsManager::setSlot(int slotNum, const String& profileName, V1Mode mod
             settings.slot2_comfort.mode = mode;
             break;
     }
+    save();
+}
+
+void SettingsManager::setSlotName(int slotNum, const String& name) {
+    // Convert to uppercase and limit to 20 characters for display consistency
+    String upperName = name;
+    upperName.toUpperCase();
+    if (upperName.length() > 20) {
+        upperName = upperName.substring(0, 20);
+    }
+    
+    switch (slotNum) {
+        case 0: settings.slot0Name = upperName; break;
+        case 1: settings.slot1Name = upperName; break;
+        case 2: settings.slot2Name = upperName; break;
+    }
+    save();
+}
+
+void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
+    switch (slotNum) {
+        case 0: settings.slot0Color = color; break;
+        case 1: settings.slot1Color = color; break;
+        case 2: settings.slot2Color = color; break;
+    }
+    save();
+}
+
+void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+                                        uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX) {
+    settings.colorBogey = bogey;
+    settings.colorFrequency = freq;
+    settings.colorArrow = arrow;
+    settings.colorBandL = bandL;
+    settings.colorBandKa = bandKa;
+    settings.colorBandK = bandK;
+    settings.colorBandX = bandX;
     save();
 }
 

@@ -611,15 +611,16 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
         buf[1] = '.';
     }
     
-    // Force digits to red; only grey when explicitly not digits and BT is down
+    // Force digits to custom bogey color; only grey when explicitly not digits and BT is down
+    const V1Settings& s = settingsManager.get();
     bool isDigit = (symbol >= '0' && symbol <= '9');
     uint16_t color;
     if (isDigit) {
-        color = PALETTE_KA;
+        color = s.colorBogey;
     } else if (!bluetoothConnected) {
         color = PALETTE_GRAY;
     } else {
-        color = muted ? PALETTE_MUTED : PALETTE_KA;
+        color = muted ? PALETTE_MUTED : s.colorBogey;
     }
     drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
 }
@@ -660,6 +661,77 @@ void V1Display::drawMuteIcon(bool muted) {
         // Clear the badge area when not muted
         FILL_RECT(x, y, w, h, PALETTE_BG);
     }
+}
+
+void V1Display::drawProfileIndicator(int slot) {
+    currentProfileSlot = slot;
+    
+    // Get custom slot names and colors from settings
+    extern SettingsManager settingsManager;
+    const V1Settings& s = settingsManager.get();
+    
+    // Use custom names, fallback to defaults (limited to 20 chars)
+    const char* name;
+    uint16_t color;
+    switch (slot % 3) {
+        case 0: 
+            name = s.slot0Name.length() > 0 ? s.slot0Name.c_str() : "DEFAULT"; 
+            color = s.slot0Color;
+            break;
+        case 1: 
+            name = s.slot1Name.length() > 0 ? s.slot1Name.c_str() : "HIGHWAY"; 
+            color = s.slot1Color;
+            break;
+        case 2: 
+            name = s.slot2Name.length() > 0 ? s.slot2Name.c_str() : "COMFORT"; 
+            color = s.slot2Color;
+            break;
+        default: 
+            name = "DEFAULT"; 
+            color = 0x780F;
+            break;
+    }
+    
+    // Calculate x position to center over the '.' in the frequency display
+    // Frequency format: "XX.XXX" - dot is after 2 digits
+#if defined(DISPLAY_WAVESHARE_349)
+    const float freqScale = 2.2f;
+#else
+    const float freqScale = 1.7f;
+#endif
+    SegMetrics mFreq = segMetrics(freqScale);
+    
+    // Calculate where frequency starts (same as drawFrequency)
+    int freqWidth = measureSevenSegmentText("35.500", freqScale);
+    const int rightMargin = 120;
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    int freqX = (maxWidth - freqWidth) / 2;
+    if (freqX < 0) freqX = 0;
+    
+    // Calculate dot center position: after 2 digits + 2 spacings
+    // Each digit is digitW wide, with spacing between
+    int dotCenterX = freqX + 2 * mFreq.digitW + 2 * mFreq.spacing + mFreq.dot / 2;
+    
+    // Measure the profile name text width
+    GFX_setTextDatum(TL_DATUM);  // Top-left
+    TFT_CALL(setTextSize)(2);    // Larger text for readability
+    int16_t nameWidth = strlen(name) * 12;  // Approximate: size 2 = ~12px per char
+    
+    // Center the name over the dot position
+    int x = dotCenterX - nameWidth / 2;
+    if (x < 120) x = 120;  // Don't overlap with band indicators on left (L/Ka/K/X)
+    
+    int y = 14;
+    
+    // Clear area for profile name only - don't overlap counter/band indicators
+    // Clear from x position to maxWidth, not from 0
+    int clearWidth = nameWidth + 10;
+    if (x + clearWidth > maxWidth) clearWidth = maxWidth - x;
+    FILL_RECT(x - 5, y - 2, clearWidth + 10, 28, PALETTE_BG);
+    
+    // Draw the profile name centered over the dot
+    TFT_CALL(setTextColor)(color, PALETTE_BG);
+    GFX_drawString(tft, name, x, y);
 }
 
 void V1Display::drawBluetoothIcon(bool connected) {
@@ -746,6 +818,9 @@ void V1Display::showResting() {
     
     // Mute indicator off
     drawMuteIcon(false);
+    
+    // Profile indicator
+    drawProfileIndicator(currentProfileSlot);
     
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display
@@ -884,6 +959,7 @@ void V1Display::update(const DisplayState& state) {
         drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, state.muted);
         drawDirectionArrow(state.arrows, state.muted);
         drawMuteIcon(state.muted);
+        drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();  // Push canvas to display
@@ -959,6 +1035,7 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     drawDirectionArrow(state.arrows, state.muted);
     
     drawMuteIcon(state.muted);
+    drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();  // Push canvas to display
@@ -1001,15 +1078,16 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
     const int startY = 12;   // Slightly lower to avoid clipping
 #endif
 
+    const V1Settings& s = settingsManager.get();
     struct BandCell {
         const char* label;
         uint8_t mask;
         uint16_t color;
     } cells[4] = {
-        {"L",  BAND_LASER, PALETTE_LASER},
-        {"Ka", BAND_KA,   PALETTE_KA},
-        {"K",  BAND_K,    PALETTE_K},
-        {"X",  BAND_X,    PALETTE_X}
+        {"L",  BAND_LASER, s.colorBandL},
+        {"Ka", BAND_KA,   s.colorBandKa},
+        {"K",  BAND_K,    s.colorBandK},
+        {"X",  BAND_X,    s.colorBandX}
     };
 
     GFX_setTextDatum(ML_DATUM);
@@ -1099,8 +1177,9 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
         
         // Clear area before drawing
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-        // Use muted grey for LASER when muted; otherwise laser blue
-        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED : PALETTE_LASER, PALETTE_BG);
+        // Use muted grey for LASER when muted; otherwise custom laser color
+        const V1Settings& set = settingsManager.get();
+        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED : set.colorBandL, PALETTE_BG);
         return;
     }
 
@@ -1120,8 +1199,9 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
     if (x < 0) x = 0;
     
     // Clear area before drawing
+    const V1Settings& s = settingsManager.get();
     FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    uint16_t freqColor = muted ? PALETTE_MUTED : (hasFreq ? PALETTE_KA : PALETTE_GRAY);
+    uint16_t freqColor = muted ? PALETTE_MUTED : (hasFreq ? s.colorFrequency : PALETTE_GRAY);
     drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
@@ -1164,7 +1244,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     // Bottom arrow center: below side arrow with gap  
     int bottomArrowCenterY = cy + sideBarH/2 + gap + bottomH/2;
 
-    uint16_t onCol = muted ? PALETTE_MUTED : PALETTE_ARROW;
+    const V1Settings& s = settingsManager.get();
+    uint16_t onCol = muted ? PALETTE_MUTED : s.colorArrow;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions
@@ -1286,20 +1367,22 @@ const char* V1Display::bandToString(Band band) {
 }
 
 uint16_t V1Display::getBandColor(Band band) {
+    const V1Settings& s = settingsManager.get();
     switch (band) {
-        case BAND_LASER: return PALETTE_LASER;
-        case BAND_KA: return PALETTE_KA;
-        case BAND_K: return PALETTE_K;
-        case BAND_X: return PALETTE_X;
+        case BAND_LASER: return s.colorBandL;
+        case BAND_KA: return s.colorBandKa;
+        case BAND_K: return s.colorBandK;
+        case BAND_X: return s.colorBandX;
         default: return PALETTE_TEXT;
     }
 }
 
 uint16_t V1Display::getArrowColor(Direction dir) {
+    const V1Settings& s = settingsManager.get();
     switch (dir) {
-        case DIR_FRONT: return PALETTE_ARROW;
-        case DIR_SIDE: return PALETTE_ARROW;
-        case DIR_REAR: return PALETTE_ARROW;
+        case DIR_FRONT: return s.colorArrow;
+        case DIR_SIDE: return s.colorArrow;
+        case DIR_REAR: return s.colorArrow;
         default: return TFT_DARKGREY;
     }
 }

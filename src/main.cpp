@@ -70,6 +70,12 @@ static uint8_t mutedAlertStrength = 0;
 static Band mutedAlertBand = BAND_NONE;
 static uint32_t mutedAlertFreq = 0;
 
+// Triple-tap detection for profile cycling
+static unsigned long lastTapTime = 0;
+static int tapCount = 0;
+const unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
+const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
+
 
 // Buffer for accumulating BLE data in main loop context
 static std::vector<uint8_t> rxBuffer;
@@ -405,12 +411,16 @@ void setup() {
     delay(4000);
     // After splash, show the resting screen as the default idle view
     display.showResting();
+    
+    // Initialize settings first to get active profile slot
+    settingsManager.begin();
+    
+    // Show the current profile indicator
+    display.drawProfileIndicator(settingsManager.get().activeSlot);
+    
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
     
     lastLvTick = millis();
-    
-    // Initialize settings
-    settingsManager.begin();
 
     // Mount SD card for alert logging (non-fatal if missing)
     alertLogger.begin();
@@ -501,43 +511,98 @@ void setup() {
 
 void loop() {
 #if 1  // WiFi and BLE enabled
-    // Check for touch - tap anywhere to toggle mute
+    // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
     int16_t touchX, touchY;
+    bool hasActiveAlert = parser.hasAlerts();
+    
     if (touchHandler.getTouchPoint(touchX, touchY)) {
-        Serial.printf("MUTE TOGGLE: Screen tapped at (%d, %d)\n", touchX, touchY);
+        unsigned long now = millis();
         
-        // Get current mute state from parser and toggle it
-        DisplayState state = parser.getDisplayState();
-        bool currentMuted = state.muted;
-        bool newMuted = !currentMuted;  // Toggle the mute state
-        
-        // Apply local override immediately for instant visual feedback
-        localMuteOverride = newMuted;
-        localMuteActive = true;
-        localMuteTimestamp = millis();
-        
-        // Store current alert details for detecting stronger signals
-        if (newMuted && parser.hasAlerts()) {
-            AlertData priority = parser.getPriorityAlert();
-            mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
-            mutedAlertBand = priority.band;
-            mutedAlertFreq = priority.frequency;
-            Serial.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
-                        mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
-        } else if (!newMuted) {
-            // Unmuting - clear stored alert
-            mutedAlertStrength = 0;
-            mutedAlertBand = BAND_NONE;
-            mutedAlertFreq = 0;
+        // Debounce check
+        if (now - lastTapTime >= TAP_DEBOUNCE_MS) {
+            // Check if this tap is within the window of previous taps
+            if (now - lastTapTime <= TAP_WINDOW_MS) {
+                tapCount++;
+            } else {
+                // Window expired, start new count
+                tapCount = 1;
+            }
+            lastTapTime = now;
+            
+            Serial.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
+            
+            // Check for triple-tap to cycle profiles (ONLY when no active alert)
+            if (tapCount >= 3) {
+                tapCount = 0;  // Reset tap count
+                
+                if (hasActiveAlert) {
+                    Serial.println("PROFILE CHANGE BLOCKED: Active alert present - tap to mute instead");
+                } else {
+                    // Cycle to next profile slot: 0 -> 1 -> 2 -> 0
+                    const V1Settings& s = settingsManager.get();
+                    int newSlot = (s.activeSlot + 1) % 3;
+                    settingsManager.setActiveSlot(newSlot);
+                    settingsManager.save();
+                    
+                    const char* slotNames[] = {"Default", "Highway", "Comfort"};
+                    Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
+                    
+                    // Update display to show new profile
+                    display.drawProfileIndicator(newSlot);
+                    
+                    // If connected to V1 and auto-push is enabled, push the new profile
+                    if (bleClient.isConnected() && s.autoPushEnabled) {
+                        Serial.println("Pushing new profile to V1...");
+                        onV1Connected();  // Re-use the connection callback to push profile
+                    }
+                }
+            }
         }
-        
-        Serial.printf("Current mute state: %s -> Sending: %s\n", 
-                      currentMuted ? "MUTED" : "UNMUTED",
-                      newMuted ? "MUTE_ON" : "MUTE_OFF");
-        
-        // Send mute command to V1
-        bool cmdSent = bleClient.setMute(newMuted);
-        Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+    } else {
+        // No touch - check if we have a pending single/double tap to process as mute toggle
+        unsigned long now = millis();
+        if (tapCount > 0 && tapCount < 3 && (now - lastTapTime > TAP_WINDOW_MS)) {
+            // Window expired with 1-2 taps - treat as mute toggle (ONLY with active alert)
+            Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
+            tapCount = 0;
+            
+            if (!hasActiveAlert) {
+                Serial.println("MUTE BLOCKED: No active alert to mute");
+            } else {
+                // Get current mute state from parser and toggle it
+                DisplayState state = parser.getDisplayState();
+                bool currentMuted = state.muted;
+                bool newMuted = !currentMuted;
+                
+                // Apply local override immediately for instant visual feedback
+                localMuteOverride = newMuted;
+                localMuteActive = true;
+                localMuteTimestamp = millis();
+                
+                // Store current alert details for detecting stronger signals
+                if (newMuted) {
+                    AlertData priority = parser.getPriorityAlert();
+                    mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
+                    mutedAlertBand = priority.band;
+                    mutedAlertFreq = priority.frequency;
+                    Serial.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
+                                mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
+                } else {
+                    // Unmuting - clear stored alert
+                    mutedAlertStrength = 0;
+                    mutedAlertBand = BAND_NONE;
+                    mutedAlertFreq = 0;
+                }
+                
+                Serial.printf("Current mute state: %s -> Sending: %s\n", 
+                              currentMuted ? "MUTED" : "UNMUTED",
+                              newMuted ? "MUTE_ON" : "MUTE_OFF");
+                
+                // Send mute command to V1
+                bool cmdSent = bleClient.setMute(newMuted);
+                Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+            }
+        }
     }
     
     // Process BLE events

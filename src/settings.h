@@ -68,9 +68,24 @@ struct V1Settings {
     uint8_t brightness;
     ColorTheme colorTheme;  // Color theme selection
     
+    // Custom display colors (RGB565 format)
+    uint16_t colorBogey;         // Bogey counter color
+    uint16_t colorFrequency;     // Frequency display color
+    uint16_t colorArrow;         // Direction arrow color
+    uint16_t colorBandL;         // Laser band color
+    uint16_t colorBandKa;        // Ka band color
+    uint16_t colorBandK;         // K band color
+    uint16_t colorBandX;         // X band color
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
+    String slot0Name;            // Custom display name for slot 0 (default: "DEFAULT")
+    String slot1Name;            // Custom display name for slot 1 (default: "HIGHWAY")
+    String slot2Name;            // Custom display name for slot 2 (default: "COMFORT")
+    uint16_t slot0Color;         // Custom color for slot 0 display (default: purple 0x780F)
+    uint16_t slot1Color;         // Custom color for slot 1 display (default: green 0x07E0)
+    uint16_t slot2Color;         // Custom color for slot 2 display (default: grey 0x8410)
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -88,8 +103,21 @@ struct V1Settings {
         turnOffDisplay(false),
         brightness(200),
         colorTheme(THEME_STANDARD),
+        colorBogey(0xF800),      // Red (same as KA)
+        colorFrequency(0xF800),  // Red (same as KA)
+        colorArrow(0xF800),      // Red
+        colorBandL(0x001F),      // Blue (laser)
+        colorBandKa(0xF800),     // Red
+        colorBandK(0x001F),      // Blue
+        colorBandX(0x07E0),      // Green
         autoPushEnabled(false),
         activeSlot(0),
+        slot0Name("DEFAULT"),
+        slot1Name("HIGHWAY"),
+        slot2Name("COMFORT"),
+        slot0Color(0x400A),
+        slot1Color(0x07E0),
+        slot2Color(0x8410),
         slot0_default(),
         slot1_highway(),
         slot2_comfort() {}
@@ -118,6 +146,10 @@ public:
     void setAutoPushEnabled(bool enabled);
     void setActiveSlot(int slot);
     void setSlot(int slotNum, const String& profileName, V1Mode mode);
+    void setSlotName(int slotNum, const String& name);
+    void setSlotColor(int slotNum, uint16_t color);
+    void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+                          uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     
     // Get active slot configuration
     AutoPushSlot getActiveSlot() const;

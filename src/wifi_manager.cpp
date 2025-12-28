@@ -149,6 +149,11 @@ void WiFiManager::setupWebServer() {
     server.on("/api/autopush/activate", HTTP_POST, [this]() { handleAutoPushActivate(); });
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
     
+    // Display Colors routes
+    server.on("/displaycolors", HTTP_GET, [this]() { handleDisplayColors(); });
+    server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
+    server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
+    
     server.onNotFound([this]() { handleNotFound(); });
 }
 
@@ -784,6 +789,14 @@ String WiFiManager::generateSettingsHTML() {
                 <p style="color:#888;margin-bottom:15px;">Configure 3 quick-access profiles for different driving scenarios</p>
                 <a href="/autopush" style="text-decoration:none;">
                     <button type="button" class="btn-full" style="background:#3a9104;">Manage Auto-Push Profiles →</button>
+                </a>
+            </div>
+            
+            <div class="card" style="text-align:center;">
+                <h2>🎨 Display Colors</h2>
+                <p style="color:#888;margin-bottom:15px;">Customize bogey, frequency, band, and arrow colors</p>
+                <a href="/displaycolors" style="text-decoration:none;">
+                    <button type="button" class="btn-full" style="background:#9c27b0;">Customize Display Colors →</button>
                 </a>
             </div>
             
@@ -1569,6 +1582,12 @@ String WiFiManager::generateAutoPushSettingsJSON() {
     String json = "{";
     json += "\"autoPushEnabled\":" + String(s.autoPushEnabled ? "true" : "false") + ",";
     json += "\"activeSlot\":" + String(s.activeSlot) + ",";
+    json += "\"slot0_name\":\"" + htmlEscape(s.slot0Name) + "\",";
+    json += "\"slot1_name\":\"" + htmlEscape(s.slot1Name) + "\",";
+    json += "\"slot2_name\":\"" + htmlEscape(s.slot2Name) + "\",";
+    json += "\"slot0_color\":" + String(s.slot0Color) + ",";
+    json += "\"slot1_color\":" + String(s.slot1Color) + ",";
+    json += "\"slot2_color\":" + String(s.slot2Color) + ",";
     json += "\"slot0_profile\":\"" + htmlEscape(s.slot0_default.profileName) + "\",";
     json += "\"slot0_mode\":" + String((int)s.slot0_default.mode) + ",";
     json += "\"slot1_profile\":\"" + htmlEscape(s.slot1_highway.profileName) + "\",";
@@ -1592,13 +1611,31 @@ void WiFiManager::handleAutoPushSlotSave() {
     int slot = server.arg("slot").toInt();
     String profile = server.arg("profile");
     int mode = server.arg("mode").toInt();
+    String name = server.hasArg("name") ? server.arg("name") : "";
+    int color = server.hasArg("color") ? server.arg("color").toInt() : -1;
     
     if (slot < 0 || slot > 2) {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
         return;
     }
     
+    // Save slot name if provided (limited to 20 chars by setSlotName)
+    if (name.length() > 0) {
+        settingsManager.setSlotName(slot, name);
+    }
+    
+    // Save slot color if provided
+    if (color >= 0) {
+        settingsManager.setSlotColor(slot, static_cast<uint16_t>(color));
+    }
+    
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
+    
+    // If this is the currently active slot, update the display immediately
+    if (slot == settingsManager.get().activeSlot) {
+        display.drawProfileIndicator(slot);
+    }
+    
     server.send(200, "application/json", "{\"success\":true}");
 }
 
@@ -1634,23 +1671,39 @@ void WiFiManager::handleAutoPushPushNow() {
         return;
     }
     
-    const V1Settings& s = settingsManager.get();
-    AutoPushSlot pushSlot;
+    // Check if profile/mode are passed directly (from Push Now button)
+    String profileName;
+    V1Mode mode = V1_MODE_UNKNOWN;
     
-    switch (slot) {
-        case 0: pushSlot = s.slot0_default; break;
-        case 1: pushSlot = s.slot1_highway; break;
-        case 2: pushSlot = s.slot2_comfort; break;
+    if (server.hasArg("profile") && server.arg("profile").length() > 0) {
+        // Use the form values directly
+        profileName = server.arg("profile");
+        if (server.hasArg("mode")) {
+            mode = static_cast<V1Mode>(server.arg("mode").toInt());
+        }
+    } else {
+        // Fall back to saved slot settings
+        const V1Settings& s = settingsManager.get();
+        AutoPushSlot pushSlot;
+        
+        switch (slot) {
+            case 0: pushSlot = s.slot0_default; break;
+            case 1: pushSlot = s.slot1_highway; break;
+            case 2: pushSlot = s.slot2_comfort; break;
+        }
+        
+        profileName = pushSlot.profileName;
+        mode = pushSlot.mode;
     }
     
-    if (pushSlot.profileName.length() == 0) {
+    if (profileName.length() == 0) {
         server.send(400, "application/json", "{\"error\":\"No profile configured for this slot\"}");
         return;
     }
     
     // Load and push the profile
     V1Profile profile;
-    if (!v1ProfileManager.loadProfile(pushSlot.profileName, profile)) {
+    if (!v1ProfileManager.loadProfile(profileName, profile)) {
         server.send(500, "application/json", "{\"error\":\"Failed to load profile\"}");
         return;
     }
@@ -1662,9 +1715,13 @@ void WiFiManager::handleAutoPushPushNow() {
     
     bleClient.setDisplayOn(profile.displayOn);
     
-    if (pushSlot.mode != V1_MODE_UNKNOWN) {
-        bleClient.setMode(static_cast<uint8_t>(pushSlot.mode));
+    if (mode != V1_MODE_UNKNOWN) {
+        bleClient.setMode(static_cast<uint8_t>(mode));
     }
+    
+    // Update active slot and refresh display profile indicator
+    settingsManager.setActiveSlot(slot);
+    display.drawProfileIndicator(slot);
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1868,17 +1925,17 @@ String WiFiManager::generateAutoPushHTML() {
             <div class="quick-push">
                 <div class="quick-btn" id="quick-0" onclick="quickPush(0)">
                     <div class="quick-btn-icon">🏠</div>
-                    <div class="quick-btn-label">Default</div>
+                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot0Name) + R"HTML(</div>
                     <div class="quick-btn-sub" id="quick-sub-0">Not configured</div>
                 </div>
                 <div class="quick-btn" id="quick-1" onclick="quickPush(1)">
                     <div class="quick-btn-icon">🏎️</div>
-                    <div class="quick-btn-label">Highway</div>
+                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot1Name) + R"HTML(</div>
                     <div class="quick-btn-sub" id="quick-sub-1">Not configured</div>
                 </div>
                 <div class="quick-btn" id="quick-2" onclick="quickPush(2)">
                     <div class="quick-btn-icon">👥</div>
-                    <div class="quick-btn-label">Passenger Comfort</div>
+                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot2Name) + R"HTML(</div>
                     <div class="quick-btn-sub" id="quick-sub-2">Not configured</div>
                 </div>
             </div>
@@ -1895,6 +1952,14 @@ String WiFiManager::generateAutoPushHTML() {
                     <h2 style="margin:0;">Default Profile</h2>
                 </div>
                 <div class="active-badge" id="badge-0" style="display:none;">ACTIVE</div>
+            </div>
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="name-0" maxlength="20" placeholder="DEFAULT" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>Display Color</label>
+                <input type="color" id="color-0" value="#400050">
             </div>
             <div class="form-group">
                 <label>Profile</label>
@@ -1926,6 +1991,14 @@ String WiFiManager::generateAutoPushHTML() {
                 <div class="active-badge" id="badge-1" style="display:none;">ACTIVE</div>
             </div>
             <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="name-1" maxlength="20" placeholder="HIGHWAY" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>Display Color</label>
+                <input type="color" id="color-1" value="#00fc00">
+            </div>
+            <div class="form-group">
                 <label>Profile</label>
                 <select id="profile-1">
                     <option value="">-- None --</option>
@@ -1955,6 +2028,14 @@ String WiFiManager::generateAutoPushHTML() {
                 <div class="active-badge" id="badge-2" style="display:none;">ACTIVE</div>
             </div>
             <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="name-2" maxlength="20" placeholder="COMFORT" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>Display Color</label>
+                <input type="color" id="color-2" value="#808080">
+            </div>
+            <div class="form-group">
                 <label>Profile</label>
                 <select id="profile-2">
                     <option value="">-- None --</option>
@@ -1979,6 +2060,22 @@ String WiFiManager::generateAutoPushHTML() {
     <script>
         const settings = )HTML" + generateAutoPushSettingsJSON() + R"HTML(;
         
+        // Convert RGB565 (16-bit) to HTML hex color
+        function rgb565ToHex(rgb565) {
+            const r = ((rgb565 >> 11) & 0x1F) << 3;
+            const g = ((rgb565 >> 5) & 0x3F) << 2;
+            const b = (rgb565 & 0x1F) << 3;
+            return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+        }
+        
+        // Convert HTML hex color to RGB565
+        function hexToRgb565(hex) {
+            const r = parseInt(hex.substr(1,2), 16) >> 3;
+            const g = parseInt(hex.substr(3,2), 16) >> 2;
+            const b = parseInt(hex.substr(5,2), 16) >> 3;
+            return (r << 11) | (g << 5) | b;
+        }
+        
         function showMessage(msg, isError) {
             const el = document.getElementById('message');
             el.innerHTML = '<div class="msg '+(isError?'error':'success')+'">'+msg+'</div>';
@@ -2002,6 +2099,16 @@ String WiFiManager::generateAutoPushHTML() {
         }
         
         function loadSettings() {
+            // Load slot names
+            document.getElementById('name-0').value = settings.slot0_name || 'DEFAULT';
+            document.getElementById('name-1').value = settings.slot1_name || 'HIGHWAY';
+            document.getElementById('name-2').value = settings.slot2_name || 'COMFORT';
+            
+            // Load slot colors (convert RGB565 to HTML hex)
+            document.getElementById('color-0').value = rgb565ToHex(settings.slot0_color || 0x400A);
+            document.getElementById('color-1').value = rgb565ToHex(settings.slot1_color || 0x07E0);
+            document.getElementById('color-2').value = rgb565ToHex(settings.slot2_color || 0x8410);
+            
             // Load slot configurations
             document.getElementById('profile-0').value = settings.slot0_profile || '';
             document.getElementById('mode-0').value = settings.slot0_mode || 0;
@@ -2031,14 +2138,22 @@ String WiFiManager::generateAutoPushHTML() {
         
         function updateQuickButtons() {
             const slots = [
-                {prof: settings.slot0_profile, mode: settings.slot0_mode},
-                {prof: settings.slot1_profile, mode: settings.slot1_mode},
-                {prof: settings.slot2_profile, mode: settings.slot2_mode}
+                {name: settings.slot0_name, prof: settings.slot0_profile, mode: settings.slot0_mode},
+                {name: settings.slot1_name, prof: settings.slot1_profile, mode: settings.slot1_mode},
+                {name: settings.slot2_name, prof: settings.slot2_profile, mode: settings.slot2_mode}
             ];
+            const defaultNames = ['DEFAULT', 'HIGHWAY', 'COMFORT'];
             
             for (let i = 0; i < 3; i++) {
                 const btn = document.getElementById('quick-'+i);
+                const label = btn.querySelector('.quick-btn-label');
                 const sub = document.getElementById('quick-sub-'+i);
+                
+                // Update the label with custom name
+                if (label) {
+                    label.textContent = slots[i].name || defaultNames[i];
+                }
+                
                 if (slots[i].prof) {
                     sub.textContent = slots[i].prof;
                     btn.style.opacity = '1';
@@ -2056,11 +2171,16 @@ String WiFiManager::generateAutoPushHTML() {
         }
         
         function saveSlot(slot) {
+            const name = document.getElementById('name-'+slot).value.toUpperCase().substring(0, 20);
+            const colorHex = document.getElementById('color-'+slot).value;
+            const color = hexToRgb565(colorHex);
             const profile = document.getElementById('profile-'+slot).value;
             const mode = document.getElementById('mode-'+slot).value;
             
             const data = new URLSearchParams();
             data.append('slot', slot);
+            data.append('name', name);
+            data.append('color', color);
             data.append('profile', profile);
             data.append('mode', mode);
             
@@ -2073,12 +2193,18 @@ String WiFiManager::generateAutoPushHTML() {
                     showMessage('Slot ' + slot + ' saved!', false);
                     // Update local settings
                     if (slot === 0) {
+                        settings.slot0_name = name;
+                        settings.slot0_color = color;
                         settings.slot0_profile = profile;
                         settings.slot0_mode = parseInt(mode);
                     } else if (slot === 1) {
+                        settings.slot1_name = name;
+                        settings.slot1_color = color;
                         settings.slot1_profile = profile;
                         settings.slot1_mode = parseInt(mode);
                     } else {
+                        settings.slot2_name = name;
+                        settings.slot2_color = color;
                         settings.slot2_profile = profile;
                         settings.slot2_mode = parseInt(mode);
                     }
@@ -2090,8 +2216,14 @@ String WiFiManager::generateAutoPushHTML() {
         }
         
         function pushSlot(slot) {
+            // Get current form values (use these instead of saved settings)
+            const profile = document.getElementById('profile-'+slot).value;
+            const mode = document.getElementById('mode-'+slot).value;
+            
             const data = new URLSearchParams();
             data.append('slot', slot);
+            data.append('profile', profile);
+            data.append('mode', mode);
             
             fetch('/api/autopush/push', {
                 method: 'POST',
@@ -2152,6 +2284,315 @@ String WiFiManager::generateAutoPushHTML() {
         
         // Init
         loadProfiles();
+    </script>
+</body>
+</html>
+)HTML";
+    return html;
+}
+// ============= Display Colors Handlers =============
+
+void WiFiManager::handleDisplayColors() {
+    server.send(200, "text/html", generateDisplayColorsHTML());
+}
+
+void WiFiManager::handleDisplayColorsSave() {
+    uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
+    uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : 0xF800;
+    uint16_t arrow = server.hasArg("arrow") ? server.arg("arrow").toInt() : 0xF800;
+    uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : 0x001F;
+    uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : 0xF800;
+    uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
+    uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
+    
+    settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
+    
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleDisplayColorsReset() {
+    // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green
+    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+String WiFiManager::generateDisplayColorsHTML() {
+    const V1Settings& s = settingsManager.get();
+    
+    String html = R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Colors</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { color: #e94560; margin-bottom: 10px; text-align: center; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 0.9em; }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 { color: #e94560; margin-bottom: 15px; font-size: 1.1em; }
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .nav-links a {
+            color: #e94560;
+            text-decoration: none;
+            padding: 8px 16px;
+            background: #16213e;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .nav-links a:hover { background: #1f2b4a; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .color-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .color-row input[type="color"] {
+            width: 60px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .color-row .color-label {
+            flex: 1;
+            font-size: 1em;
+        }
+        .color-row .color-preview {
+            width: 100px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        .btn-primary {
+            background: #e94560;
+            color: white;
+        }
+        .btn-primary:hover { background: #d63050; }
+        .msg {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .msg.success { background: #0f5132; color: #d1e7dd; }
+        .msg.error { background: #842029; color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Display Colors</h1>
+        <p class="subtitle">Customize the colors shown on your V1 display</p>
+        
+        <div class="nav-links">
+            <a href="/">← Home</a>
+            <a href="/autopush">Auto-Push</a>
+            <a href="/v1settings">V1 Profiles</a>
+            <a href="/settings">Settings</a>
+        </div>
+        
+        <div id="message"></div>
+        
+        <div class="card">
+            <h2>🔢 Counter & Frequency</h2>
+            <div class="form-group">
+                <label>Bogey Counter</label>
+                <div class="color-row">
+                    <input type="color" id="color-bogey" onchange="updatePreview('bogey')">
+                    <div class="color-preview" id="preview-bogey">1.</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Frequency Display</label>
+                <div class="color-row">
+                    <input type="color" id="color-freq" onchange="updatePreview('freq')">
+                    <div class="color-preview" id="preview-freq">35.5</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📡 Band Indicators</h2>
+            <div class="form-group">
+                <label>Laser (L)</label>
+                <div class="color-row">
+                    <input type="color" id="color-bandL" onchange="updatePreview('bandL')">
+                    <div class="color-preview" id="preview-bandL">L</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Ka Band</label>
+                <div class="color-row">
+                    <input type="color" id="color-bandKa" onchange="updatePreview('bandKa')">
+                    <div class="color-preview" id="preview-bandKa">Ka</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>K Band</label>
+                <div class="color-row">
+                    <input type="color" id="color-bandK" onchange="updatePreview('bandK')">
+                    <div class="color-preview" id="preview-bandK">K</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>X Band</label>
+                <div class="color-row">
+                    <input type="color" id="color-bandX" onchange="updatePreview('bandX')">
+                    <div class="color-preview" id="preview-bandX">X</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>➡️ Direction Arrows</h2>
+            <div class="form-group">
+                <label>Arrow Color</label>
+                <div class="color-row">
+                    <input type="color" id="color-arrow" onchange="updatePreview('arrow')">
+                    <div class="color-preview" id="preview-arrow">▲▼</div>
+                </div>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" onclick="saveColors()">Save Colors</button>
+        <button class="btn" style="background:#555;margin-top:10px;" onclick="resetDefaults()">Reset to Default Colors</button>
+    </div>
+    
+    <script>
+        const colors = {
+            bogey: )HTML" + String(s.colorBogey) + R"HTML(,
+            freq: )HTML" + String(s.colorFrequency) + R"HTML(,
+            arrow: )HTML" + String(s.colorArrow) + R"HTML(,
+            bandL: )HTML" + String(s.colorBandL) + R"HTML(,
+            bandKa: )HTML" + String(s.colorBandKa) + R"HTML(,
+            bandK: )HTML" + String(s.colorBandK) + R"HTML(,
+            bandX: )HTML" + String(s.colorBandX) + R"HTML(
+        };
+        
+        // Convert RGB565 to HTML hex
+        function rgb565ToHex(rgb565) {
+            const r = ((rgb565 >> 11) & 0x1F) << 3;
+            const g = ((rgb565 >> 5) & 0x3F) << 2;
+            const b = (rgb565 & 0x1F) << 3;
+            return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+        }
+        
+        // Convert HTML hex to RGB565
+        function hexToRgb565(hex) {
+            const r = parseInt(hex.substr(1,2), 16) >> 3;
+            const g = parseInt(hex.substr(3,2), 16) >> 2;
+            const b = parseInt(hex.substr(5,2), 16) >> 3;
+            return (r << 11) | (g << 5) | b;
+        }
+        
+        function updatePreview(id) {
+            const input = document.getElementById('color-' + id);
+            const preview = document.getElementById('preview-' + id);
+            preview.style.color = input.value;
+            colors[id] = hexToRgb565(input.value);
+        }
+        
+        function loadColors() {
+            for (const [key, value] of Object.entries(colors)) {
+                const hex = rgb565ToHex(value);
+                document.getElementById('color-' + key).value = hex;
+                document.getElementById('preview-' + key).style.color = hex;
+            }
+        }
+        
+        function showMessage(msg, isError) {
+            const el = document.getElementById('message');
+            el.innerHTML = '<div class="msg '+(isError?'error':'success')+'">'+msg+'</div>';
+            setTimeout(() => el.innerHTML = '', 3000);
+        }
+        
+        function saveColors() {
+            const data = new URLSearchParams();
+            data.append('bogey', colors.bogey);
+            data.append('freq', colors.freq);
+            data.append('arrow', colors.arrow);
+            data.append('bandL', colors.bandL);
+            data.append('bandKa', colors.bandKa);
+            data.append('bandK', colors.bandK);
+            data.append('bandX', colors.bandX);
+            
+            fetch('/api/displaycolors', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: data
+            }).then(r=>r.json()).then(d => {
+                if (d.success) {
+                    showMessage('Colors saved! Display will update on next alert.', false);
+                } else {
+                    showMessage('Error: '+(d.error||'Unknown'), true);
+                }
+            }).catch(e => showMessage('Error: '+e, true));
+        }
+        
+        function resetDefaults() {
+            if (!confirm('Reset all display colors to defaults?')) return;
+            fetch('/api/displaycolors/reset', {method:'POST'})
+            .then(r=>r.json()).then(d => {
+                if (d.success) {
+                    colors.bogey = 0xF800;
+                    colors.freq = 0xF800;
+                    colors.arrow = 0xF800;
+                    colors.bandL = 0x001F;
+                    colors.bandKa = 0xF800;
+                    colors.bandK = 0x001F;
+                    colors.bandX = 0x07E0;
+                    loadColors();
+                    showMessage('Colors reset to defaults!', false);
+                } else {
+                    showMessage('Error: '+(d.error||'Unknown'), true);
+                }
+            }).catch(e => showMessage('Error: '+e, true));
+        }
+        
+        // Init
+        loadColors();
     </script>
 </body>
 </html>

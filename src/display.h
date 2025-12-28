@@ -70,6 +70,9 @@ public:
     // Color theme helpers
     void updateColorTheme();  // Update colors from settings
     const ColorPalette& getCurrentPalette() const { return currentPalette; }
+    
+    // Profile indicator
+    void drawProfileIndicator(int slot);  // 0=Default, 1=Highway, 2=Comfort
 
 private:
     // Display driver (Arduino_GFX)
@@ -108,6 +111,7 @@ private:
     Band pickDominantBand(uint8_t bandMask);
 
     bool bluetoothConnected = false;
+    int currentProfileSlot = 0;  // Track current profile for display
 };
 
 // Global display instance (defined in main.cpp)

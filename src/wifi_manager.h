@@ -74,6 +74,9 @@ private:
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
     void handleAutoPushPushNow();
+    void handleDisplayColors();
+    void handleDisplayColorsSave();
+    void handleDisplayColorsReset();
     void handleNotFound();
     
     // HTML generation
@@ -82,6 +85,7 @@ private:
     String generateV1SettingsHTML();
     String generateAutoPushHTML();
     String generateAutoPushSettingsJSON();
+    String generateDisplayColorsHTML();
     String generateProfileOptions(const String& selected);
 };
 
