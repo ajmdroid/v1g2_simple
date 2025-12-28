@@ -76,9 +76,9 @@ bool TouchHandler::isTouched() {
 }
 
 bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
-    // Check for debounce
+    // Check for debounce (handles millis() rollover at 49 days)
     unsigned long now = millis();
-    if (now - lastTouchTime < touchDebounceMs) {
+    if ((long)(now - lastTouchTime) < (long)touchDebounceMs) {
         return false;  // Still in debounce period
     }
     

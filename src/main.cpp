@@ -89,7 +89,16 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         pkt.length = length;
         pkt.charUUID = charUUID;
         // Non-blocking send to queue - if queue is full, drop the packet
-        xQueueSendFromISR(bleDataQueue, &pkt, nullptr);
+        BaseType_t result = xQueueSendFromISR(bleDataQueue, &pkt, nullptr);
+        if (result != pdTRUE) {
+            // Queue full - data dropped (logged for debugging)
+            static unsigned long lastQueueFullLog = 0;
+            unsigned long now = millis();
+            if (now - lastQueueFullLog > 1000) {
+                Serial.println("WARNING: BLE queue full, dropping packets!");
+                lastQueueFullLog = now;
+            }
+        }
     }
 }
 
@@ -424,10 +433,14 @@ void setup() {
     // Add extra delay to ensure panel is fully cleared before enabling backlight
     delay(200);
 
-    // Show RDF boot splash (backlight will be enabled after splash is drawn)
-    display.showBootSplash();
-    delay(4000);
-    // After splash, show scanning screen until connected
+    // Show boot splash only on true power-on (not crash reboots)
+    esp_reset_reason_t resetReason = esp_reset_reason();
+    if (resetReason == ESP_RST_POWERON) {
+        // True cold boot - show splash
+        display.showBootSplash();
+        delay(4000);
+    }
+    // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
     
     // Initialize settings first to get active profile slot

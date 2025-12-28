@@ -181,15 +181,18 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    // Add new chunk, checking for overflow
-    if (chunkCount < MAX_ALERTS) {
-        std::array<uint8_t, 7> chunk{};
-        size_t copyLen = std::min<size_t>(7, length);
-        for (size_t i = 0; i < copyLen; ++i) {
-            chunk[i] = payload[i];
-        }
-        alertChunks[chunkCount++] = chunk;
+    // Add new chunk with strict bounds checking to prevent overflow
+    if (chunkCount >= MAX_ALERTS) {
+        Serial.printf("WARNING: Alert chunk overflow, dropping data (max=%d)\n", MAX_ALERTS);
+        return false;
     }
+    
+    std::array<uint8_t, 7> chunk{};
+    size_t copyLen = std::min<size_t>(7, length);
+    for (size_t i = 0; i < copyLen; ++i) {
+        chunk[i] = payload[i];
+    }
+    alertChunks[chunkCount++] = chunk;
 
     // Wait until we've received the full set of alert table rows
     if (chunkCount < receivedAlertCount) {

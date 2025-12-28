@@ -133,9 +133,13 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     proxyEnabled = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
     
-    // Create mutexes for thread-safe BLE operations (mirroring Kenny's approach)
-    bleMutex = xSemaphoreCreateMutex();
-    bleNotifyMutex = xSemaphoreCreateMutex();
+    // Create mutexes for thread-safe BLE operations (only once)
+    if (!bleMutex) {
+        bleMutex = xSemaphoreCreateMutex();
+    }
+    if (!bleNotifyMutex) {
+        bleNotifyMutex = xSemaphoreCreateMutex();
+    }
     
     if (!bleMutex || !bleNotifyMutex) {
         Serial.println("ERROR: Failed to create BLE mutexes");
@@ -161,6 +165,11 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
+    
+    // Delete existing callback handlers to prevent memory leaks on restart
+    if (pScanCallbacks) {
+        delete pScanCallbacks;
+    }
     pScanCallbacks = new ScanCallbacks(this);
     pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
@@ -300,6 +309,10 @@ bool V1BLEClient::connectToServer() {
             break;
         }
 
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
+        // Create client callbacks if not already created (prevents leak on reconnection)
         if (!pClientCallbacks) {
             pClientCallbacks = new ClientCallbacks();
         }
