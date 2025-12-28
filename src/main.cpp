@@ -63,7 +63,7 @@ const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
 static bool localMuteOverride = false;
 static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
-const unsigned long LOCAL_MUTE_TIMEOUT_MS = 300;  // Clear override 300ms after alert ends
+const unsigned long LOCAL_MUTE_TIMEOUT_MS = 500;  // Clear override 500ms after alert ends
 
 // Track muted alert to detect stronger signals
 static uint8_t mutedAlertStrength = 0;
@@ -297,13 +297,13 @@ void processBLEData() {
                         Serial.printf("Stronger signal on different band: %d -> %d\n", mutedAlertStrength, currentStrength);
                     }
 
-                    // Check if it's a different frequency (for same band, >100 MHz difference)
+                    // Check if it's a different frequency (for same band, >15 MHz difference)
                     // Only applies to radar bands (laser freq is always 0)
                     if (priority.band == mutedAlertBand && priority.frequency > 0 && mutedAlertFreq > 0) {
                         uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
                                            (priority.frequency - mutedAlertFreq) : 
                                            (mutedAlertFreq - priority.frequency);
-                        if (freqDiff > 100) {  // More than 100 MHz different
+                        if (freqDiff > 15) {  // More than 15 MHz different
                             differentAlert = true;
                             Serial.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
                                         mutedAlertFreq, priority.frequency, freqDiff);
@@ -337,7 +337,22 @@ void processBLEData() {
                               alertCount,
                               state.activeBands);
             } else {
-                // No alerts - update display with just state info
+                // No alerts - clear mute override only after timeout has passed
+                if (localMuteActive) {
+                    unsigned long timeSinceMute = millis() - localMuteTimestamp;
+                    if (timeSinceMute >= LOCAL_MUTE_TIMEOUT_MS) {
+                        Serial.println("Alert cleared - clearing local mute override and sending unmute to V1");
+                        localMuteActive = false;
+                        localMuteOverride = false;
+                        state.muted = false;
+                        mutedAlertStrength = 0;
+                        mutedAlertBand = BAND_NONE;
+                        mutedAlertFreq = 0;
+                        // Send unmute command to V1
+                        bleClient.setMute(false);
+                    }
+                }
+                
                 static unsigned long lastStateLog = 0;
                 if (millis() - lastStateLog > 2000) {
                     Serial.printf("DisplayState update: bands=0x%02X arrows=0x%02X bars=%d mute=%d\n",

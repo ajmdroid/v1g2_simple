@@ -39,7 +39,7 @@ namespace ColorThemes {
         .colorK = 0x001F,  // Blue
         .colorX = 0x07E0,  // Green
         .colorGray = 0x1082, // Dark gray (resting)
-        .colorMuted = 0x5AEB, // Darker grey (muted)
+        .colorMuted = 0x3186, // Dark grey (muted) - ~18% brightness
         .colorLaser = 0x001F, // Blue
         .colorArrow = 0xF800, // Red
         .colorSignalBar = 0xF800 // Red
