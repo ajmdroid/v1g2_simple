@@ -59,6 +59,17 @@ unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
 const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
 
+// Local mute override - takes immediate effect on tap before V1 confirms
+static bool localMuteOverride = false;
+static bool localMuteActive = false;
+static unsigned long localMuteTimestamp = 0;
+const unsigned long LOCAL_MUTE_TIMEOUT_MS = 300;  // Clear override 300ms after alert ends
+
+// Track muted alert to detect stronger signals
+static uint8_t mutedAlertStrength = 0;
+static Band mutedAlertBand = BAND_NONE;
+static uint32_t mutedAlertFreq = 0;
+
 
 // Buffer for accumulating BLE data in main loop context
 static std::vector<uint8_t> rxBuffer;
@@ -212,18 +223,113 @@ void processBLEData() {
         }
 
         if (parser.parse(packet.data(), packet.size())) {
+            DisplayState state = parser.getDisplayState();
+
+            // Apply local mute override FIRST before any other logic
+            if (localMuteActive) {
+                // While alerts are active, ALWAYS apply override (no timeout)
+                // Timeout only applies when no alerts (waiting for V1 response)
+                if (parser.hasAlerts()) {
+                    // Force muted state while alert is active
+                    state.muted = localMuteOverride;
+                } else {
+                    // No alerts - check timeout
+                    unsigned long now = millis();
+                    if (now - localMuteTimestamp < LOCAL_MUTE_TIMEOUT_MS) {
+                        state.muted = localMuteOverride;
+                    } else {
+                        // Timeout and no alerts - clear override
+                        Serial.println("Local mute override timed out (no alerts)");
+                        localMuteActive = false;
+                        localMuteOverride = false;
+                        mutedAlertStrength = 0;
+                        mutedAlertBand = BAND_NONE;
+                    }
+                }
+            }
+            
             // Throttle display updates to prevent crashes
             unsigned long now = millis();
             if (now - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
-                continue; // Skip this draw, let data accumulate
+                continue; // Skip this draw
             }
             lastDisplayDraw = now;
-            
-            DisplayState state = parser.getDisplayState();
+
+            // Clear local override ONLY when alerts are definitively gone
+            if (localMuteActive && !parser.hasAlerts()) {
+                Serial.println("Alert cleared - clearing local mute override");
+                localMuteActive = false;
+                localMuteOverride = false;
+                state.muted = false;
+                mutedAlertStrength = 0;
+                mutedAlertBand = BAND_NONE;
+                mutedAlertFreq = 0;
+            }
 
             if (parser.hasAlerts()) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAllAlerts().size();
+                uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
+
+                // Auto-unmute logic: new stronger signal or different band
+                if (localMuteActive && localMuteOverride) {
+                    bool strongerSignal = false;
+                    bool differentAlert = false;
+                    bool higherPriorityBand = false;
+
+                    // Check if it's a different band first
+                    if (priority.band != mutedAlertBand && priority.band != BAND_NONE) {
+                        differentAlert = true;
+                        Serial.printf("Different band detected: %d -> %d\n", mutedAlertBand, priority.band);
+                    }
+
+                    // Check for higher priority band (Ka > K > X, Laser is special)
+                    // If muted K and Ka shows up (even weak) -> unmute
+                    // If muted X and K or Ka shows up -> unmute
+                    if (mutedAlertBand == BAND_K && priority.band == BAND_KA) {
+                        higherPriorityBand = true;
+                        Serial.println("Higher priority band: K muted, Ka detected");
+                    } else if (mutedAlertBand == BAND_X && (priority.band == BAND_KA || priority.band == BAND_K)) {
+                        higherPriorityBand = true;
+                        Serial.printf("Higher priority band: X muted, %s detected\n", 
+                                    priority.band == BAND_KA ? "Ka" : "K");
+                    } else if (mutedAlertBand == BAND_LASER && priority.band != BAND_LASER && priority.band != BAND_NONE) {
+                        higherPriorityBand = true;
+                        Serial.printf("Radar band after Laser: %d\n", priority.band);
+                    }
+
+                    // Only check stronger signal if band changed - same band getting stronger is not a new threat
+                    // (e.g., sweeping laser or approaching radar should stay muted)
+                    if (priority.band != mutedAlertBand && currentStrength >= mutedAlertStrength + 2) {
+                        strongerSignal = true;
+                        Serial.printf("Stronger signal on different band: %d -> %d\n", mutedAlertStrength, currentStrength);
+                    }
+
+                    // Check if it's a different frequency (for same band, >100 MHz difference)
+                    // Only applies to radar bands (laser freq is always 0)
+                    if (priority.band == mutedAlertBand && priority.frequency > 0 && mutedAlertFreq > 0) {
+                        uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
+                                           (priority.frequency - mutedAlertFreq) : 
+                                           (mutedAlertFreq - priority.frequency);
+                        if (freqDiff > 100) {  // More than 100 MHz different
+                            differentAlert = true;
+                            Serial.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
+                                        mutedAlertFreq, priority.frequency, freqDiff);
+                        }
+                    }
+
+                    // Auto-unmute for stronger, different, or higher priority alert
+                    if (strongerSignal || differentAlert || higherPriorityBand) {
+                        Serial.println("Auto-unmuting for new/stronger/priority alert");
+                        localMuteActive = false;
+                        localMuteOverride = false;
+                        state.muted = false;
+                        mutedAlertStrength = 0;
+                        mutedAlertBand = BAND_NONE;
+                        mutedAlertFreq = 0;
+                    }
+                }
+
                 display.update(priority, state, alertCount);
                 alertLogger.logAlert(priority, state, alertCount);
 
@@ -397,6 +503,26 @@ void loop() {
         DisplayState state = parser.getDisplayState();
         bool currentMuted = state.muted;
         bool newMuted = !currentMuted;  // Toggle the mute state
+        
+        // Apply local override immediately for instant visual feedback
+        localMuteOverride = newMuted;
+        localMuteActive = true;
+        localMuteTimestamp = millis();
+        
+        // Store current alert details for detecting stronger signals
+        if (newMuted && parser.hasAlerts()) {
+            AlertData priority = parser.getPriorityAlert();
+            mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
+            mutedAlertBand = priority.band;
+            mutedAlertFreq = priority.frequency;
+            Serial.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
+                        mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
+        } else if (!newMuted) {
+            // Unmuting - clear stored alert
+            mutedAlertStrength = 0;
+            mutedAlertBand = BAND_NONE;
+            mutedAlertFreq = 0;
+        }
         
         Serial.printf("Current mute state: %s -> Sending: %s\n", 
                       currentMuted ? "MUTED" : "UNMUTED",

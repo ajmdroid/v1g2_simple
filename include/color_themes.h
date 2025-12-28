@@ -23,7 +23,8 @@ struct ColorPalette {
     uint16_t colorKA;       // K/Ka band (red)
     uint16_t colorK;        // K band (blue)
     uint16_t colorX;        // X band (green)
-    uint16_t colorGray;     // Muted/inactive (gray)
+    uint16_t colorGray;     // Resting/inactive (dark gray)
+    uint16_t colorMuted;    // Muted alert (distinct grey)
     uint16_t colorLaser;    // Laser indicator (blue)
     uint16_t colorArrow;    // Arrow indicators (red)
     uint16_t colorSignalBar;// Signal bar fill (red)
@@ -37,7 +38,8 @@ namespace ColorThemes {
         .colorKA = 0xF800, // Red
         .colorK = 0x001F,  // Blue
         .colorX = 0x07E0,  // Green
-        .colorGray = 0x1082, // Dark gray
+        .colorGray = 0x1082, // Dark gray (resting)
+        .colorMuted = 0x5AEB, // Darker grey (muted)
         .colorLaser = 0x001F, // Blue
         .colorArrow = 0xF800, // Red
         .colorSignalBar = 0xF800 // Red
@@ -50,7 +52,8 @@ namespace ColorThemes {
         .colorKA = 0xF800, // Bright Red
         .colorK = 0x001F,  // Bright Blue
         .colorX = 0x07E0,  // Bright Green
-        .colorGray = 0x4208, // Medium gray (more visible)
+        .colorGray = 0x4208, // Medium gray (resting)
+        .colorMuted = 0x739C, // Darker muted grey
         .colorLaser = 0xF81F, // Magenta (highly visible)
         .colorArrow = 0xFFC0, // Bright Yellow
         .colorSignalBar = 0xFFC0 // Bright Yellow
@@ -63,7 +66,8 @@ namespace ColorThemes {
         .colorKA = 0x8000, // Dark red
         .colorK = 0x0010,  // Dark blue
         .colorX = 0x0400,  // Dark green
-        .colorGray = 0x2104, // Very dark gray
+        .colorGray = 0x2104, // Very dark gray (resting)
+        .colorMuted = 0x39E7, // Darker muted grey for stealth
         .colorLaser = 0x0010, // Dark blue
         .colorArrow = 0x8000, // Dark red
         .colorSignalBar = 0x8000 // Dark red

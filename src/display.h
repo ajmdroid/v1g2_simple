@@ -88,11 +88,11 @@ private:
     void drawBandLabel(Band band, bool muted);
     void drawArrows(Direction arrows);
     void drawSignalBars(uint8_t bars);
-    void drawFrequency(uint32_t freqMHz, bool isLaser = false);
+    void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
     void drawV1TechLogo();
     void drawStatusText(const char* text, uint16_t color);
-    void drawDirectionArrow(Direction dir);
-    void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA);
+    void drawDirectionArrow(Direction dir, bool muted);
+    void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
     void drawMuteBadge(bool muted);
     void drawBaseFrame();

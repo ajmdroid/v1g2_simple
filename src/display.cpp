@@ -70,6 +70,7 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_K getColorPalette().colorK
 #define PALETTE_X getColorPalette().colorX
 #define PALETTE_GRAY getColorPalette().colorGray
+#define PALETTE_MUTED getColorPalette().colorMuted
 #define PALETTE_LASER getColorPalette().colorLaser
 #define PALETTE_ARROW getColorPalette().colorArrow
 #define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
@@ -614,14 +615,47 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     } else if (!bluetoothConnected) {
         color = PALETTE_GRAY;
     } else {
-        color = muted ? PALETTE_GRAY : PALETTE_KA;
+        color = muted ? PALETTE_MUTED : PALETTE_KA;
     }
     drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
 }
 
 void V1Display::drawMuteIcon(bool muted) {
-    // Temporarily disabled mute icon
-    (void)muted;
+    // Draw centered badge above frequency display
+#if defined(DISPLAY_WAVESHARE_349)
+    const float freqScale = 2.2f; 
+#else
+    const float freqScale = 1.7f;
+#endif
+    SegMetrics mFreq = segMetrics(freqScale);
+
+    // Frequency Y position (from drawFrequency)
+    int freqY = SCREEN_HEIGHT - mFreq.digitH - 8;
+    const int rightMargin = 120;
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    
+    // Badge dimensions (50% larger than original)
+    int w = 108;  // 72 * 1.5
+    int h = 30;   // 20 * 1.5
+    int x = (maxWidth - w) / 2;
+    int y = freqY - h - 12; // Position above frequency with spacing
+    
+    if (muted) {
+        // Draw badge with muted styling
+        uint16_t outline = PALETTE_MUTED;
+        uint16_t fill = PALETTE_MUTED;
+        
+        FILL_ROUND_RECT(x, y, w, h, 6, fill);
+        DRAW_ROUND_RECT(x, y, w, h, 6, outline);
+        
+        GFX_setTextDatum(MC_DATUM);
+        TFT_CALL(setTextSize)(2);  // 50% larger text
+        TFT_CALL(setTextColor)(PALETTE_BG, fill);
+        GFX_drawString(tft, "MUTED", x + w / 2, y + h / 2 + 1);
+    } else {
+        // Clear the badge area when not muted
+        FILL_RECT(x, y, w, h, PALETTE_BG);
+    }
 }
 
 void V1Display::drawBluetoothIcon(bool connected) {
@@ -669,8 +703,8 @@ void V1Display::drawMuteBadge(bool muted) {
     int w = 72;
     int h = 20;
 
-    uint16_t outline = muted ? PALETTE_GRAY : TFT_DARKGREY;
-    uint16_t fill = muted ? PALETTE_GRAY : PALETTE_BG;
+    uint16_t outline = muted ? PALETTE_MUTED : TFT_DARKGREY;
+    uint16_t fill = muted ? PALETTE_MUTED : PALETTE_BG;
 
     FILL_ROUND_RECT(x, y, w, h, 4, fill);
     DRAW_ROUND_RECT(x, y, w, h, 4, outline);
@@ -715,11 +749,11 @@ void V1Display::showResting() {
     drawBandIndicators(0, false);
     
     // Signal bars all empty
-    drawVerticalSignalBars(0, 0, BAND_KA);
+    drawVerticalSignalBars(0, 0, BAND_KA, false);
     
     // Direction arrows all dimmed
     Serial.println("Drawing arrows...");
-    drawDirectionArrow(DIR_NONE);
+    drawDirectionArrow(DIR_NONE, false);
     
     // Frequency display showing dashes
     drawFrequency(0, false);
@@ -824,7 +858,7 @@ void V1Display::drawBandLabel(Band band, bool muted) {
     const char* label = (band == BAND_NONE) ? "--" : bandToString(band);
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);
-    TFT_CALL(setTextColor)(muted ? PALETTE_GRAY : PALETTE_ARROW, PALETTE_BG);
+    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED : PALETTE_ARROW, PALETTE_BG);
     GFX_drawString(tft, label, 10, SCREEN_HEIGHT / 2 - 26);
 }
 
@@ -853,7 +887,7 @@ void V1Display::update(const DisplayState& state) {
         
         // Check if laser is active from display state
         bool isLaser = (state.activeBands & BAND_LASER) != 0;
-        drawFrequency(0, isLaser);
+        drawFrequency(0, isLaser, state.muted);
         
         // Determine primary band for signal bar coloring
         Band primaryBand = BAND_KA; // default
@@ -862,8 +896,8 @@ void V1Display::update(const DisplayState& state) {
         else if (state.activeBands & BAND_K) primaryBand = BAND_K;
         else if (state.activeBands & BAND_X) primaryBand = BAND_X;
         
-        drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand);
-        drawDirectionArrow(state.arrows);
+        drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, state.muted);
+        drawDirectionArrow(state.arrows, state.muted);
         drawMuteIcon(state.muted);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -885,10 +919,10 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
 
     uint8_t bandMask = alert.band;
     drawTopCounter('1', mutedFlag, true); // bogey counter shows 1 during alert
-    drawFrequency(alert.frequency, alert.band == BAND_LASER);
+    drawFrequency(alert.frequency, alert.band == BAND_LASER, mutedFlag);
     drawBandIndicators(bandMask, mutedFlag);
-    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band);
-    drawDirectionArrow(alert.direction);
+    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, mutedFlag);
+    drawDirectionArrow(alert.direction, mutedFlag);
     drawMuteIcon(mutedFlag);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -923,16 +957,16 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     drawTopCounter(countChar, state.muted, true);
     
     // Frequency from priority alert
-    drawFrequency(alert.frequency, alert.band == BAND_LASER);
+    drawFrequency(alert.frequency, alert.band == BAND_LASER, state.muted);
     
     // Use bands from display state for the indicators
     drawBandIndicators(bandMask, state.muted);
     
     // Signal bars from priority alert
-    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band);
+    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, state.muted);
     
     // Direction from display state (shows all active arrows)
-    drawDirectionArrow(state.arrows);
+    drawDirectionArrow(state.arrows, state.muted);
     
     drawMuteIcon(state.muted);
 
@@ -992,7 +1026,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
     TFT_CALL(setTextSize)(textSize);
     for (int i = 0; i < 4; ++i) {
         bool active = (bandMask & cells[i].mask) != 0;
-        uint16_t col = active ? (muted ? PALETTE_GRAY : cells[i].color) : TFT_DARKGREY;
+        uint16_t col = active ? (muted ? PALETTE_MUTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
     }
@@ -1053,7 +1087,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
     }
 }
 
-void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser) {
+void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f; // Larger for wider screen
 #else
@@ -1075,7 +1109,8 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser) {
         
         // Clear area before drawing
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-        draw14SegmentText(laserStr, x, y, scale, PALETTE_LASER, PALETTE_BG);
+        // Use muted grey for LASER when muted; otherwise laser blue
+        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED : PALETTE_LASER, PALETTE_BG);
         return;
     }
 
@@ -1096,12 +1131,13 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser) {
     
     // Clear area before drawing
     FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    drawSevenSegmentText(freqStr, x, y, scale, hasFreq ? PALETTE_KA : PALETTE_GRAY, PALETTE_BG);
+    uint16_t freqColor = muted ? PALETTE_MUTED : (hasFreq ? PALETTE_KA : PALETTE_GRAY);
+    drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
 
 // Draw large direction arrow (t4s3 style)
-void V1Display::drawDirectionArrow(Direction dir) {
+void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     // Stylized stacked arrows sized/positioned to match the real V1 display
     int cx = SCREEN_WIDTH - 70;           // right anchor
     int cy = SCREEN_HEIGHT / 2;           // vertically centered
@@ -1138,7 +1174,7 @@ void V1Display::drawDirectionArrow(Direction dir) {
     // Bottom arrow center: below side arrow with gap  
     int bottomArrowCenterY = cy + sideBarH/2 + gap + bottomH/2;
 
-    uint16_t onCol = PALETTE_ARROW;
+    uint16_t onCol = muted ? PALETTE_MUTED : PALETTE_ARROW;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions
@@ -1187,7 +1223,7 @@ void V1Display::drawDirectionArrow(Direction dir) {
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
-void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band) {
+void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band, bool muted) {
     const int barCount = 6;
 
     // Use the stronger side so rear-only alerts still light bars
@@ -1233,7 +1269,9 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         // Note: Waveshare display uses BGR byte order, so swap red/blue
         uint16_t fillColor;
         if (!lit) {
-            fillColor = 0x1082; // very dark grey (matches PALETTE_GRAY)
+            fillColor = 0x1082; // very dark grey (resting/off)
+        } else if (muted) {
+            fillColor = PALETTE_MUTED; // muted grey for lit bars
         } else if (i < 2) {
             fillColor = 0x07E0; // green (same in RGB and BGR)
         } else if (i < 4) {
