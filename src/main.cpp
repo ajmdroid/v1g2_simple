@@ -678,7 +678,7 @@ void loop() {
         if (bleClient.isConnected()) {
             DisplayState state = parser.getDisplayState();
             if (parser.hasAlerts()) {
-                Serial.printf("Active alerts: %d\n", parser.getAllAlerts().size());
+                Serial.printf("Active alerts: %d\n", parser.getAlertCount());
             }
         }
     }
