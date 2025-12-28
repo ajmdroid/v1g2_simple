@@ -22,7 +22,6 @@
  */
 
 #include <Arduino.h>
-#include <FS.h>
 #include "ble_client.h"
 #include "packet_parser.h"
 #include "display.h"
@@ -32,7 +31,6 @@
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "../include/config.h"
-#include <lvgl.h>
 #include <vector>
 #include <algorithm>
 #include <freertos/FreeRTOS.h>
@@ -642,11 +640,9 @@ void loop() {
         bool isConnected = bleClient.isConnected();
         
         if (isConnected && !wasConnected) {
-            display.setBluetoothConnected(true);
             display.showResting(); // stay on resting view until data arrives
             Serial.println("V1 connected!");
         } else if (!isConnected && wasConnected) {
-            display.setBluetoothConnected(false);
             display.clear();  // Clear alert/element data from display
             display.showDisconnected();
             Serial.println("V1 disconnected!");

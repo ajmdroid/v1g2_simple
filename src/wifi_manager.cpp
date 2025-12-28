@@ -39,7 +39,7 @@ String htmlEscape(const String& in) {
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), lastReconnectAttempt(0) {
+WiFiManager::WiFiManager() : server(80), apActive(false) {
 }
 
 bool WiFiManager::begin() {
@@ -90,38 +90,6 @@ void WiFiManager::setupAP() {
     Serial.printf("AP IP address: %s\n", ip.toString().c_str());
 }
 
-void WiFiManager::setupSTA() {
-    const V1Settings& settings = settingsManager.get();
-    
-    if (settings.ssid.length() == 0) {
-        Serial.println("No WiFi SSID configured");
-        return;
-    }
-    
-    Serial.printf("Connecting to WiFi: %s\n", settings.ssid.c_str());
-    
-    if (WiFi.getMode() != WIFI_AP_STA) {
-        WiFi.mode(WIFI_STA);
-    }
-    
-    WiFi.begin(settings.ssid.c_str(), settings.password.c_str());
-    
-    // Wait for connection (with timeout)
-    int timeout = 20; // 10 seconds
-    while (WiFi.status() != WL_CONNECTED && timeout > 0) {
-        delay(500);
-        Serial.print(".");
-        timeout--;
-    }
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        staConnected = true;
-        Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
-    } else {
-        Serial.println("\nFailed to connect to WiFi");
-    }
-}
-
 void WiFiManager::setupWebServer() {
     server.on("/", HTTP_GET, [this]() { handleSettings(); });  // Root redirects to settings
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
@@ -168,12 +136,11 @@ void WiFiManager::stop() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     apActive = false;
-    staConnected = false;
     Serial.println("WiFi stopped");
 }
 
 bool WiFiManager::isConnected() const {
-    return staConnected;
+    return false;  // STA mode disabled
 }
 
 bool WiFiManager::isAPActive() const {
@@ -181,10 +148,7 @@ bool WiFiManager::isAPActive() const {
 }
 
 String WiFiManager::getIPAddress() const {
-    if (staConnected) {
-        return WiFi.localIP().toString();
-    }
-    return "";
+    return "";  // STA mode disabled
 }
 
 String WiFiManager::getAPIPAddress() const {
@@ -196,9 +160,9 @@ String WiFiManager::getAPIPAddress() const {
 
 void WiFiManager::handleStatus() {
     String json = "{";
-    json += "\"connected\":" + String(staConnected ? "true" : "false") + ",";
+    json += "\"connected\":false,";  // STA mode disabled
     json += "\"ap_active\":" + String(apActive ? "true" : "false") + ",";
-    json += "\"ip\":\"" + getIPAddress() + "\",";
+    json += "\"ip\":\"\",";  // STA mode disabled
     json += "\"ap_ip\":\"" + getAPIPAddress() + "\"";
     
     if (getStatusJson) {

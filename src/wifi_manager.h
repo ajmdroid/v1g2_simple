@@ -41,8 +41,6 @@ public:
 private:
     WebServer server;
     bool apActive;
-    bool staConnected;
-    unsigned long lastReconnectAttempt;
     
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
@@ -50,7 +48,6 @@ private:
     
     // Setup functions
     void setupAP();
-    void setupSTA();
     void setupWebServer();
     
     // Web handlers

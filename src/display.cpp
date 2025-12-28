@@ -6,13 +6,9 @@
 #include "display.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
-#include "boot_logo.h" // Include the boot logo header
-#include "wolf_logo.h" // Wolf splash screen logo
-#include "rdf_logo.h"  // RDF splash screen
-#include "v1_tech.h"   // V1 Tech logo
+#include "rdf_logo.h"  // RDF splash screen (only logo actually used)
 #include "settings.h"
 #include <esp_heap_caps.h>
-#include <cctype>
 
 // Helper macro to handle pointer vs object access for tft
 // Arduino_GFX uses pointer (tft->), TFT_eSPI uses object (tft.)
@@ -403,11 +399,6 @@ void V1Display::setBrightness(uint8_t level) {
 #endif
 }
 
-void V1Display::setBluetoothConnected(bool connected) {
-    bluetoothConnected = connected;
-    // Status tracked for potential future UI indicator
-}
-
 void V1Display::clear() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->fillScreen(PALETTE_BG);
@@ -611,14 +602,12 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
         buf[1] = '.';
     }
     
-    // Force digits to custom bogey color; only grey when explicitly not digits and BT is down
+    // Use bogey color for digits, muted color if muted, otherwise bogey color
     const V1Settings& s = settingsManager.get();
     bool isDigit = (symbol >= '0' && symbol <= '9');
     uint16_t color;
     if (isDigit) {
         color = s.colorBogey;
-    } else if (!bluetoothConnected) {
-        color = PALETTE_GRAY;
     } else {
         color = muted ? PALETTE_MUTED : s.colorBogey;
     }
@@ -682,13 +671,9 @@ void V1Display::drawProfileIndicator(int slot) {
             name = s.slot1Name.length() > 0 ? s.slot1Name.c_str() : "HIGHWAY"; 
             color = s.slot1Color;
             break;
-        case 2: 
+        default:  // case 2
             name = s.slot2Name.length() > 0 ? s.slot2Name.c_str() : "COMFORT"; 
             color = s.slot2Color;
-            break;
-        default: 
-            name = "DEFAULT"; 
-            color = 0x780F;
             break;
     }
     
@@ -732,45 +717,6 @@ void V1Display::drawProfileIndicator(int slot) {
     // Draw the profile name centered over the dot
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_drawString(tft, name, x, y);
-}
-
-void V1Display::drawBluetoothIcon(bool connected) {
-    // Bluetooth icon position - top right corner
-    const int x = 302;  // Base X position
-    const int y = 12;   // Base Y position
-    const int size = 12; // Icon height
-    
-    // Clear the area first
-    FILL_RECT(x - 6, y - 2, 14, size + 4, PALETTE_BG);
-    
-    if (!connected) {
-        return;
-    }
-    
-    uint16_t col = PALETTE_K; // Blue
-    
-    // Draw Bluetooth "B" rune symbol:
-    //    /|\
-    //   < | 
-    //    \|/
-    int midX = x;
-    int topY = y;
-    int midY = y + size / 2;
-    int botY = y + size;
-    int wingX = 5;  // How far the wings extend
-    
-    // Vertical center line
-    DRAW_LINE(midX, topY, midX, botY, col);
-    
-    // Top right diagonal (going down-right from top)
-    DRAW_LINE(midX, topY, midX + wingX, topY + size/4, col);
-    // Top right to center (going down-left)
-    DRAW_LINE(midX + wingX, topY + size/4, midX - wingX, midY, col);
-    
-    // Bottom right diagonal (going up-right from bottom)
-    DRAW_LINE(midX, botY, midX + wingX, botY - size/4, col);
-    // Bottom right to center (going up-left)
-    DRAW_LINE(midX + wingX, botY - size/4, midX - wingX, midY, col);
 }
 
 void V1Display::showConnecting() {
@@ -844,10 +790,8 @@ void V1Display::showDemo() {
     demoAlert.isValid = true;
 
     // Draw the alert
-    bluetoothConnected = true;
     update(demoAlert, false); // keep colors bright on demo (will draw bogie 1 internally)
     lastState.signalBars = 1; // keep internal state consistent with the demo counter
-    bluetoothConnected = false; // reset for real connection flow
 }
 
 void V1Display::showBootSplash() {
@@ -884,27 +828,11 @@ void V1Display::showBootSplash() {
     Serial.println("Backlight ON (post-splash, inverted)");
 }
 
-void V1Display::drawBitmapLogo() {
-    // Intentionally empty: black screen on boot to prevent flash artifacts
-}
-
-void V1Display::showLogo() {
-    clear();
-}
-
-
 void V1Display::drawStatusText(const char* text, uint16_t color) {
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
     GFX_drawString(tft, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-}
-
-void V1Display::drawTopHeader() {
-    GFX_setTextDatum(TC_DATUM);
-    TFT_CALL(setTextSize)(1);
-    TFT_CALL(setTextColor)(PALETTE_KA, PALETTE_BG);
-    GFX_drawString(tft, "ADV LOGIC", SCREEN_WIDTH / 2, 10);
 }
 
 Band V1Display::pickDominantBand(uint8_t bandMask) {
@@ -924,7 +852,6 @@ void V1Display::drawBandLabel(Band band, bool muted) {
 }
 
 void V1Display::update(const DisplayState& state) {
-    static bool lastBt = false;
     static bool firstUpdate = true;
 
     bool stateChanged =
@@ -934,8 +861,7 @@ void V1Display::update(const DisplayState& state) {
         state.signalBars != lastState.signalBars ||
         state.muted != lastState.muted ||
         state.modeChar != lastState.modeChar ||
-        state.hasMode != lastState.hasMode ||
-        bluetoothConnected != lastBt;
+        state.hasMode != lastState.hasMode;
 
     if (stateChanged) {
         firstUpdate = false;
@@ -966,7 +892,6 @@ void V1Display::update(const DisplayState& state) {
 #endif
 
         lastState = state;
-        lastBt = bluetoothConnected;
     }
 }
 
@@ -1097,38 +1022,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
         uint16_t col = active ? (muted ? PALETTE_MUTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
-    }
-}
-
-void V1Display::drawArrows(Direction arrows) {
-    TFT_CALL(setTextSize)(4);
-    
-    int centerX = SCREEN_WIDTH / 2;
-    
-    // Front arrow (↑)
-    if (arrows & DIR_FRONT) {
-        TFT_CALL(setTextColor)(PALETTE_ARROW, PALETTE_BG);
-        GFX_drawString(tft, "^", centerX - 40, ARROW_Y);
-    } else {
-        FILL_RECT(centerX - 50, ARROW_Y - 15, 30, 30, PALETTE_BG);
-    }
-    
-    // Side arrows (←  →)
-    if (arrows & DIR_SIDE) {
-        TFT_CALL(setTextColor)(PALETTE_ARROW, PALETTE_BG);
-        GFX_drawString(tft, "<", centerX - 20, ARROW_Y);
-        GFX_drawString(tft, ">", centerX + 20, ARROW_Y);
-    } else {
-        FILL_RECT(centerX - 30, ARROW_Y - 15, 20, 30, PALETTE_BG);
-        FILL_RECT(centerX + 10, ARROW_Y - 15, 20, 30, PALETTE_BG);
-    }
-    
-    // Rear arrow (↓)
-    if (arrows & DIR_REAR) {
-        TFT_CALL(setTextColor)(PALETTE_ARROW, PALETTE_BG);
-        GFX_drawString(tft, "v", centerX + 40, ARROW_Y);
-    } else {
-        FILL_RECT(centerX + 30, ARROW_Y - 15, 30, 30, PALETTE_BG);
     }
 }
 
