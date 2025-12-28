@@ -5,7 +5,7 @@ A customizable touchscreen display for the Valentine1 Gen2 radar detector. Built
 **What You Get:**
 - 🔵 **Wireless Connection**: Connects to your V1 via Bluetooth LE
 - 📊 **Real-time Alerts**: Shows radar bands (Ka, K, X, Laser), direction, and signal strength
-- 🎨 **Custom Themes**: Multiple color schemes (Standard, Dark, RDF, Classic)
+- 🎨 **Custom Themes**: Multiple color schemes (Standard, High Contrast, Stealth)
 - 👆 **Touch Control**: Tap screen to mute/unmute
 - 📱 **WiFi Setup**: Web interface for all settings - no code editing needed
 - 🎯 **Auto-Push Profiles**: 3 quick-access profile slots (Default, Highway, Passenger Comfort)
@@ -14,9 +14,6 @@ A customizable touchscreen display for the Valentine1 Gen2 radar detector. Built
 
 **⚠️ Disclaimer:**  
 This is a personal project I built for myself. There is NO WARRANTY of any kind. Use at your own risk. I have ZERO liability for anything that happens. If you break your V1, your ESP32, or somehow cause the apocalypse, that's on you. Seriously. No refunds, no guarantees, no support obligations. It works for me. Your mileage may vary.
-
-**📝 Maintenance Note:**  
-I'll do my best to keep this README and the project updated, but I have a life and other stuff going on too. 😄 If something's out of date, PRs are welcome!
 
 ---
 
@@ -230,10 +227,10 @@ Access via `http://192.168.35.5` (or your configured IP):
 
 ### Color Themes
 
-Choose from 3 built-in themes:
+Choose from 3 built-in themes (matches firmware):
 - **Standard**: Classic red/amber warnings
-- **Dark**: Subtle blue/purple scheme  
-- **RDF**: RadarDetector.net forum inspired
+- **High Contrast**: Bright palette for visibility
+- **Stealth**: Muted, low-light friendly
 
 Change via web interface: Settings → Color Theme
 
@@ -246,7 +243,7 @@ Set up 3 profiles for different driving scenarios:
 3. **Passenger Comfort** (👥): Quieter settings with passengers
 
 **How to use:**
-1. **First, create profiles** in the V1 Profile Manager (`/v1settings`) - you need saved profiles before you can use auto-push
+1. **Create profiles first** in the V1 Profile Manager (`/v1settings`)
 2. Go to `/autopush` in the web interface
 3. Configure each slot with a saved profile and mode
 4. Click a **Quick-Push** button to activate and send to V1
@@ -434,15 +431,12 @@ This project would not exist without:
 - **Hardware**: [Waveshare ESP32-S3-Touch-LCD-3.49 on Amazon](https://www.amazon.com/dp/B0FQM41PGX)
 - **Kenny's Project**: [V1G2-T4S3](https://github.com/kennygarreau/v1g2-t4s3)
 - **Valentine Research**: [valentineresearch.com](https://www.valentineresearch.com/)
-- **Documentation**: See `docs/` folder for detailed guides
 
 ---
 
 ## 📸 Gallery
 
-📹 **Demo Video:** [Watch on YouTube](https://youtu.be/VSK_c7XiQjQ)
-
-*Photos coming soon - drop your own setup pics in the issues!*
+Add your own photos/screenshots of the display in action.
 
 ---
 
