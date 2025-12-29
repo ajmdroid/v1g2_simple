@@ -9,6 +9,7 @@
 #include "alert_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
+#include "time_manager.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
@@ -36,7 +37,7 @@ String htmlEscape(const String& in) {
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false) {
+WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), lastStaRetry(0), timeInitialized(false) {
 }
 
 bool WiFiManager::begin() {
@@ -49,11 +50,13 @@ bool WiFiManager::begin() {
     
     Serial.println("Starting WiFi...");
 
-    // Only support AP mode for now; ignore other modes to avoid unstable STA flows
-    if (settings.wifiMode != V1_WIFI_AP) {
-        Serial.println("WiFiManager: forcing AP mode (STA/dual disabled)");
-    }
+    // Always start with AP for user access
     setupAP();
+    
+    // If home WiFi is configured and timesync enabled, connect in background
+    if (settings.enableTimesync && settings.staSSID.length() > 0) {
+        setupSTA();
+    }
     
     setupWebServer();
     server.begin();
@@ -70,9 +73,8 @@ void WiFiManager::setupAP() {
     
     Serial.printf("Starting AP: %s\n", apSSID.c_str());
     
-    if (WiFi.getMode() != WIFI_AP_STA) {
-        WiFi.mode(WIFI_AP);
-    }
+    // Set to AP+STA mode if we'll be connecting to WiFi, otherwise just AP
+    WiFi.mode(WIFI_AP_STA);
     
     // Configure custom AP IP address
     IPAddress apIP(192, 168, 35, 5);
@@ -87,11 +89,84 @@ void WiFiManager::setupAP() {
     Serial.printf("AP IP address: %s\n", ip.toString().c_str());
 }
 
+void WiFiManager::setupSTA() {
+    const V1Settings& settings = settingsManager.get();
+    
+    if (settings.staSSID.length() == 0) {
+        Serial.println("No STA SSID configured, skipping");
+        return;
+    }
+    
+    Serial.printf("Connecting to WiFi: %s\n", settings.staSSID.c_str());
+    WiFi.begin(settings.staSSID.c_str(), settings.staPassword.c_str());
+    
+    // Non-blocking connection - will check status in process()
+    lastStaRetry = millis();
+}
+
+void WiFiManager::checkSTAConnection() {
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!staConnected) {
+            staConnected = true;
+            Serial.println("STA connected to WiFi!");
+            Serial.printf("  IP: %s\n", WiFi.localIP().toString().c_str());
+            
+            // Initialize NTP time sync
+            if (!timeInitialized) {
+                initializeTime();
+            }
+        }
+    } else {
+        if (staConnected) {
+            Serial.println("STA disconnected from WiFi");
+            staConnected = false;
+        }
+        
+        // Retry connection every 30 seconds if disconnected
+        if (millis() - lastStaRetry > 30000) {
+            const V1Settings& settings = settingsManager.get();
+            if (settings.enableTimesync && settings.staSSID.length() > 0) {
+                Serial.println("Retrying WiFi connection...");
+                WiFi.begin(settings.staSSID.c_str(), settings.staPassword.c_str());
+                lastStaRetry = millis();
+            }
+        }
+    }
+}
+
+void WiFiManager::initializeTime() {
+    Serial.println("Initializing NTP time sync...");
+    // Configure NTP with pool servers and timezone offset
+    // GMT offset in seconds (0 for UTC, adjust as needed)
+    // Daylight offset in seconds (3600 for 1 hour DST, 0 for none)
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    
+    // Wait briefly for time to sync
+    struct tm timeinfo;
+    int retries = 0;
+    while (!getLocalTime(&timeinfo) && retries < 10) {
+        delay(500);
+        retries++;
+    }
+    
+    if (retries < 10) {
+        Serial.println("Time synchronized via NTP!");
+        Serial.printf("  Current time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        timeInitialized = true;
+    } else {
+        Serial.println("Failed to sync time via NTP");
+    }
+}
+
 void WiFiManager::setupWebServer() {
     server.on("/", HTTP_GET, [this]() { handleSettings(); });  // Root redirects to settings
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
     server.on("/settings", HTTP_GET, [this]() { handleSettings(); });
     server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });
+    server.on("/time", HTTP_GET, [this]() { handleTimeSettings(); });
+    server.on("/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });
     server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
     server.on("/mute", HTTP_POST, [this]() { handleMute(); });
     server.on("/logs", HTTP_GET, [this]() { handleLogs(); });
@@ -125,7 +200,11 @@ void WiFiManager::setupWebServer() {
 void WiFiManager::process() {
     server.handleClient();
     
-    // STA/dual modes are disabled; skip reconnection logic
+    // Check STA connection status if timesync is enabled
+    const V1Settings& settings = settingsManager.get();
+    if (settings.enableTimesync && settings.staSSID.length() > 0) {
+        checkSTAConnection();
+    }
 }
 
 void WiFiManager::stop() {
@@ -133,6 +212,7 @@ void WiFiManager::stop() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     apActive = false;
+    staConnected = false;
     Serial.println("WiFi stopped");
 }
 
@@ -283,6 +363,41 @@ void WiFiManager::handleMute() {
     String json = "{\"success\":" + String(success ? "true" : "false") + 
                   ",\"muted\":" + String(muted ? "true" : "false") + "}";
     server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleTimeSettings() {
+    server.send(200, "text/html", generateTimeSettingsHTML());
+}
+
+void WiFiManager::handleTimeSettingsSave() {
+    bool changed = false;
+    
+    // Update home WiFi credentials for time sync
+    if (server.hasArg("staSSID")) {
+        String staSSID = server.arg("staSSID");
+        String staPass = server.arg("staPassword");
+        bool enableTime = server.hasArg("enableTimesync");
+        
+        settingsManager.setTimeSync(staSSID, staPass, enableTime);
+        changed = true;
+        
+        Serial.printf("Time sync settings updated: SSID=%s, Enabled=%s\n", 
+                      staSSID.c_str(), enableTime ? "yes" : "no");
+    }
+    
+    // Manual time setting
+    if (server.hasArg("timestamp")) {
+        time_t timestamp = (time_t)server.arg("timestamp").toInt();
+        if (timestamp > 1609459200) {  // Valid if after 2021-01-01
+            timeManager.setTime(timestamp);
+            Serial.printf("Time set manually to: %ld\n", timestamp);
+        }
+    }
+    
+    String response = changed ? 
+        "Settings saved! <a href='/time'>Back to Time Settings</a>" :
+        "No changes made. <a href='/time'>Back to Time Settings</a>";
+    server.send(200, "text/html", response);
 }
 
 void WiFiManager::handleLogs() {
@@ -669,6 +784,12 @@ String WiFiManager::generateSettingsHTML() {
         <h1>V1 Display Settings</h1>
         
         )HTML" + saved + R"HTML(
+        
+        <div class="card">
+            <h2>Time Settings</h2>
+            <p class="muted">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
+            <a class="btn btn-full" href="/time" style="display:block; text-decoration:none; text-align:center;">⏰ Open Time Settings</a>
+        </div>
         
         <div class="card">
             <h2>V1 Settings</h2>
@@ -2672,3 +2793,163 @@ String WiFiManager::generateDisplayColorsHTML() {
 )HTML";
     return html;
 }
+
+String WiFiManager::generateTimeSettingsHTML() {
+    const V1Settings& settings = settingsManager.get();
+    String currentTime = timeManager.isTimeValid() ? timeManager.getTimestamp() : "Not Set";
+    String checkedTime = settings.enableTimesync ? "checked" : "";
+    
+    String html = R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Settings - V1 Display</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 { color: white; margin-bottom: 20px; font-size: 28px; }
+        h2 { color: #333; margin-bottom: 16px; font-size: 20px; border-bottom: 2px solid #667eea; padding-bottom: 8px; }
+        label { display: block; margin: 16px 0 8px; color: #555; font-weight: 500; }
+        input[type="text"], input[type="password"], input[type="datetime-local"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus { outline: none; border-color: #667eea; }
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            margin: 16px 0;
+        }
+        .checkbox-row input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        .checkbox-row label {
+            margin: 0;
+            cursor: pointer;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-top: 12px;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4); }
+        button:active { transform: translateY(0); }
+        .nav { margin-bottom: 20px; }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+        .nav a:hover { background: rgba(255,255,255,0.3); }
+        .info { background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 16px 0; color: #1565c0; }
+        .current-time { font-size: 18px; font-weight: bold; color: #667eea; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⏰ Time Settings</h1>
+        
+        <div class="nav">
+            <a href="/settings">← Back to Settings</a>
+            <a href="/status">Status</a>
+        </div>
+        
+        <div class="card">
+            <h2>Current Time</h2>
+            <div class="current-time">)HTML" + currentTime + R"HTML(</div>
+            <div class="info">
+                Time is used for alert timestamps and logging. Configure NTP sync below or set manually.
+            </div>
+        </div>
+        
+        <form action="/time" method="POST">
+            <div class="card">
+                <h2>Automatic Time Sync (NTP)</h2>
+                
+                <div class="info">
+                    Connect to your home WiFi to automatically sync time via NTP. The device will run in dual mode: 
+                    AP for your connection + STA for internet access.
+                </div>
+                
+                <div class="checkbox-row">
+                    <input type="checkbox" id="enableTimesync" name="enableTimesync" )HTML" + checkedTime + R"HTML(>
+                    <label for="enableTimesync">Enable automatic time sync</label>
+                </div>
+                
+                <label for="staSSID">Home WiFi SSID</label>
+                <input type="text" id="staSSID" name="staSSID" value=")HTML" + htmlEscape(settings.staSSID) + R"HTML(" placeholder="Your WiFi network name">
+                
+                <label for="staPassword">Home WiFi Password</label>
+                <input type="password" id="staPassword" name="staPassword" value=")HTML" + htmlEscape(settings.staPassword) + R"HTML(" placeholder="Your WiFi password">
+                
+                <button type="submit">Save NTP Settings</button>
+            </div>
+        </form>
+        
+        <div class="card">
+            <h2>Manual Time Setting</h2>
+            <div class="info">
+                Set time manually if you don't want to connect to WiFi. Your device will use this time.
+            </div>
+            
+            <button onclick="setTimeNow()">Set Time from This Device</button>
+        </div>
+    </div>
+    
+    <script>
+        function setTimeNow() {
+            const now = Math.floor(Date.now() / 1000);
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/time';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'timestamp';
+            input.value = now;
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</body>
+</html>
+)HTML";
+    
+    return html;
+}
+

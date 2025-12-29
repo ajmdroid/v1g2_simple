@@ -54,10 +54,13 @@ struct V1Settings {
     // WiFi settings
     bool enableWifi;
     WiFiModeSetting wifiMode;
-    String ssid;
-    String password;
-    String apSSID;
-    String apPassword;
+    String ssid;             // Station mode SSID (for connecting to home WiFi)
+    String password;         // Station mode password
+    String apSSID;           // AP mode SSID (device hotspot name)
+    String apPassword;       // AP mode password
+    String staSSID;          // Home WiFi SSID for NTP time sync
+    String staPassword;      // Home WiFi password for NTP time sync
+    bool enableTimesync;     // Enable automatic time sync via NTP
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -106,6 +109,9 @@ struct V1Settings {
         password(""),
         apSSID("V1-Display"),
         apPassword("valentine1"),
+        staSSID(""),
+        staPassword(""),
+        enableTimesync(false),
         proxyBLE(true),
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
@@ -167,6 +173,7 @@ public:
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     void setLastV1Address(const String& addr);
+    void setTimeSync(const String& staSSID, const String& staPassword, bool enabled);
     
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;

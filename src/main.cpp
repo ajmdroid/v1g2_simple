@@ -28,6 +28,7 @@
 #include "wifi_manager.h"
 #include "settings.h"
 #include "alert_logger.h"
+#include "time_manager.h"
 #include "alert_db.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
@@ -528,6 +529,11 @@ void setup() {
     // Mount SD card for alert logging (non-fatal if missing)
     alertLogger.begin();
     
+    // Initialize time manager (load saved time from SD card)
+    if (alertLogger.isReady()) {
+        timeManager.begin(alertLogger.getFilesystem());
+    }
+    
     // Initialize SQLite alert database (uses same SD card)
     if (alertLogger.isReady()) {
         if (alertDB.begin()) {
@@ -795,6 +801,9 @@ void loop() {
 
     // Process WiFi/web server
     wifiManager.process();
+    
+    // Process time manager (periodic saves)
+    timeManager.process();
     
     // Update display periodically
     unsigned long now = millis();

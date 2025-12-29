@@ -388,7 +388,9 @@ bool V1BLEClient::connectToServer() {
     if (!connectedOk) {
         Serial.println("Failed to connect after attempt");
         // Keep pClient for next time, but ensure it's disconnected
-        pClient->disconnect();
+        if (pClient->isConnected()) {
+            pClient->disconnect();
+        }
         
         {
             SemaphoreGuard lock(bleMutex);

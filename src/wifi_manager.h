@@ -41,6 +41,9 @@ public:
 private:
     WebServer server;
     bool apActive;
+    bool staConnected;
+    unsigned long lastStaRetry;
+    bool timeInitialized;
     
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
@@ -48,12 +51,17 @@ private:
     
     // Setup functions
     void setupAP();
+    void setupSTA();
+    void checkSTAConnection();
     void setupWebServer();
+    void initializeTime();
     
     // Web handlers
     void handleStatus();
     void handleSettings();
     void handleSettingsSave();
+    void handleTimeSettings();
+    void handleTimeSettingsSave();
     void handleDarkMode();
     void handleMute();
     void handleLogs();
@@ -78,6 +86,7 @@ private:
     
     // HTML generation
     String generateSettingsHTML();
+    String generateTimeSettingsHTML();
     String generateLogsHTML();
     String generateV1SettingsHTML();
     String generateAutoPushHTML();

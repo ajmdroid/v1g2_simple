@@ -22,6 +22,9 @@ void SettingsManager::load() {
     settings.password = preferences.getString("password", "");
     settings.apSSID = preferences.getString("apSSID", "V1-Display");
     settings.apPassword = preferences.getString("apPassword", "valentine1");
+    settings.staSSID = preferences.getString("staSSID", "");
+    settings.staPassword = preferences.getString("staPassword", "");
+    settings.enableTimesync = preferences.getBool("enableTime", false);
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1C-LE-S3");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
@@ -92,6 +95,9 @@ void SettingsManager::save() {
     written += preferences.putString("password", settings.password);
     written += preferences.putString("apSSID", settings.apSSID);
     written += preferences.putString("apPassword", settings.apPassword);
+    written += preferences.putString("staSSID", settings.staSSID);
+    written += preferences.putString("staPassword", settings.staPassword);
+    written += preferences.putBool("enableTime", settings.enableTimesync);
     written += preferences.putBool("proxyBLE", settings.proxyBLE);
     written += preferences.putString("proxyName", settings.proxyName);
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
@@ -297,4 +303,12 @@ void SettingsManager::setLastV1Address(const String& addr) {
         save();
         Serial.printf("Saved new V1 address: %s\n", addr.c_str());
     }
+}
+
+void SettingsManager::setTimeSync(const String& staSSID, const String& staPassword, bool enabled) {
+    settings.staSSID = staSSID;
+    settings.staPassword = staPassword;
+    settings.enableTimesync = enabled;
+    save();
+    Serial.printf("Time sync settings updated: SSID=%s, Enabled=%s\n", staSSID.c_str(), enabled ? "yes" : "no");
 }
