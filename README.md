@@ -403,12 +403,12 @@ If you see something that could be better, PRs are welcome. If you want to take 
 
 This project would not exist without:
 
-**🌟 @kennega (Kenny Garreau) - [V1G2-T4S3 Project](https://github.com/kennygarreau/v1g2-t4s3) | [RDF Thread](https://www.rdforum.org/threads/144841/) 🌟**
-- Found his RDF post and fell down the rabbit hole
-- Primary inspiration and reference for BLE protocol implementation
+**🌟 [Kenny Garreau's V1G2-T4S3 Project](https://github.com/kennygarreau/v1g2-t4s3) 🌟**
+- Primary inspiration and reference
+- BLE protocol implementation guidance
 - Display logic and UI design concepts
-- This project is essentially a port/adaptation of Kenny's excellent work to the Waveshare display
-- **Seriously, go star Kenny's repo and check out his RDF thread - his work made this possible**
+- This project is essentially a port/adaptation of Kenny's excellent work
+- **Seriously, go star Kenny's repo - his work made this possible**
 
 **Valentine Research:**
 - [ESP library reference](https://github.com/valentineresearch)
@@ -431,12 +431,13 @@ This project would not exist without:
 - **Hardware**: [Waveshare ESP32-S3-Touch-LCD-3.49 on Amazon](https://www.amazon.com/dp/B0FQM41PGX)
 - **Kenny's Project**: [V1G2-T4S3](https://github.com/kennygarreau/v1g2-t4s3)
 - **Valentine Research**: [valentineresearch.com](https://www.valentineresearch.com/)
+- **Documentation**: See `docs/` folder for detailed guides
 
 ---
 
 ## 📸 Gallery
 
-Add your own photos/screenshots of the display in action.
+[Add photos/screenshots of your display in action]
 
 ---
 
