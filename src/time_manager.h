@@ -46,6 +46,7 @@ private:
     fs::FS* fs;
     unsigned long lastSaveTime;
     bool timeLoaded;
+    bool initialized;  // Track if begin() has been called
     static const unsigned long SAVE_INTERVAL = 600000; // 10 minutes
     static const char* TIME_FILE;
 };

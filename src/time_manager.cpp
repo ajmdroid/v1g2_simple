@@ -10,11 +10,12 @@ const char* TimeManager::TIME_FILE = "/last_time.txt";
 // Global instance
 TimeManager timeManager;
 
-TimeManager::TimeManager() : fs(nullptr), lastSaveTime(0), timeLoaded(false) {
+TimeManager::TimeManager() : fs(nullptr), lastSaveTime(0), timeLoaded(false), initialized(false) {
 }
 
 void TimeManager::begin(fs::FS* filesystem) {
     fs = filesystem;
+    initialized = true;  // Mark as initialized
     
     // Try to load saved time
     if (fs && !timeLoaded) {
@@ -89,6 +90,9 @@ bool TimeManager::saveTimeToSD() {
 }
 
 void TimeManager::setTime(time_t timestamp) {
+    if (!initialized) {
+        return;  // Not initialized yet
+    }
     if (timestamp < 1609459200) {  // Validate timestamp
         Serial.printf("[TimeManager] Invalid timestamp rejected: %ld\n", timestamp);
         return;
@@ -112,13 +116,16 @@ time_t TimeManager::getTime() const {
 }
 
 bool TimeManager::isTimeValid() const {
+    if (!initialized) {
+        return false;  // Not initialized yet
+    }
     time_t now = getTime();
     // Valid if after 2021-01-01 00:00:00 UTC (1609459200)
     return now >= 1609459200;
 }
 
 String TimeManager::getTimestamp() const {
-    if (!isTimeValid()) {
+    if (!initialized || !isTimeValid()) {
         return "N/A";
     }
     
@@ -135,7 +142,7 @@ String TimeManager::getTimestamp() const {
 }
 
 String TimeManager::getTimestampISO() const {
-    if (!isTimeValid()) {
+    if (!initialized || !isTimeValid()) {
         return "N/A";
     }
     
@@ -153,7 +160,7 @@ String TimeManager::getTimestampISO() const {
 }
 
 bool TimeManager::getLocalTime(struct tm* timeinfo) const {
-    if (!timeinfo) {
+    if (!initialized || !timeinfo) {
         return false;
     }
     
@@ -167,6 +174,10 @@ bool TimeManager::getLocalTime(struct tm* timeinfo) const {
 }
 
 void TimeManager::process() {
+    if (!initialized) {
+        return;  // Not initialized yet
+    }
+    
     // Save time periodically if valid and enough time has passed
     if (fs && isTimeValid() && (millis() - lastSaveTime > SAVE_INTERVAL || lastSaveTime == 0)) {
         saveTimeToSD();
