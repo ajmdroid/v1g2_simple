@@ -226,12 +226,6 @@ void processBLEData() {
         std::vector<uint8_t> packet(s, e + 1);
         rxBuffer.erase(rxBuffer.begin(), e + 1);
 
-        Serial.print("RX: ");
-        for (uint8_t b : packet) {
-            Serial.printf("%02X ", b);
-        }
-        Serial.println();
-
         lastRxMillis = millis();
 
         // Check for user bytes response (0x12) - V1 settings pull
