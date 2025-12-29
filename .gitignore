@@ -17,6 +17,7 @@
 # Temporary/development files
 PROGRESS.md
 RDF_POST.md
+RDF_POST_*.txt
 *.tmp
 
 # Large files (schematics, datasheets)
