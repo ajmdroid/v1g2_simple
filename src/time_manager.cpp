@@ -64,11 +64,13 @@ bool TimeManager::loadTimeFromSD() {
 
 bool TimeManager::saveTimeToSD() {
     if (!fs) {
+        Serial.println("[TimeManager] No filesystem available");
         return false;
     }
     
     time_t now = getTime();
     if (!isTimeValid()) {
+        Serial.println("[TimeManager] Time not valid for saving");
         return false;
     }
     
@@ -82,18 +84,24 @@ bool TimeManager::saveTimeToSD() {
     file.close();
     
     lastSaveTime = millis();
+    Serial.printf("[TimeManager] Saved time to SD: %ld\n", now);
     return true;
 }
 
 void TimeManager::setTime(time_t timestamp) {
+    if (timestamp < 1609459200) {  // Validate timestamp
+        Serial.printf("[TimeManager] Invalid timestamp rejected: %ld\n", timestamp);
+        return;
+    }
+    
     struct timeval tv;
     tv.tv_sec = timestamp;
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
     
-    Serial.printf("[TimeManager] Time set manually: %ld (%s)\n", timestamp, getTimestamp().c_str());
+    Serial.printf("[TimeManager] Time set manually: %ld\n", timestamp);
     
-    // Save to SD immediately
+    // Save to SD immediately (if available)
     if (fs) {
         saveTimeToSD();
     }

@@ -793,23 +793,31 @@ String WiFiManager::generateSettingsHTML() {
             <p class="muted" style="margin-bottom: 10px;">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
             )HTML";
     
-    // Add time status indicator
-    if (timeManager.isTimeValid()) {
-        String timeStr = timeManager.getTimestampISO();
-        const V1Settings& s = settingsManager.get();
-        String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
-        html += R"HTML(
-            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
-                <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
-                <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
-            </div>
-        )HTML";
-    } else {
-        html += R"HTML(
+    // Add time status indicator (wrap in try-catch to prevent crashes)
+    try {
+        if (timeManager.isTimeValid()) {
+            String timeStr = timeManager.getTimestampISO();
+            const V1Settings& s = settingsManager.get();
+            String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
+            
+            if (timeStr.length() > 0 && timeStr != "N/A") {
+                html += R"HTML(
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
+                    <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
+                    <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
+                </div>
+                )HTML";
+            }
+        } else {
+            html += R"HTML(
             <div style="background: rgba(255,100,100,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
                 <div>⚠️ Time Not Set</div>
             </div>
-        )HTML";
+            )HTML";
+        }
+    } catch (...) {
+        // Silently fail if time display causes issues
+        Serial.println("Warning: Time display failed in settings page");
     }
     
     html += R"HTML(
