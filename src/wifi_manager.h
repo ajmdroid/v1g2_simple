@@ -12,6 +12,14 @@
 #include <WebServer.h>
 #include "settings.h"
 
+// Constants
+constexpr unsigned long STA_CONNECTION_RETRY_INTERVAL_MS = 3000;
+constexpr unsigned long STA_CONNECTION_TIMEOUT_MS = 5000;
+constexpr int NTP_SYNC_RETRY_COUNT = 10;
+constexpr unsigned long NTP_SYNC_RETRY_DELAY_MS = 500;
+
+#include <WiFiMulti.h>
+
 class WiFiManager {
 public:
     WiFiManager();
@@ -40,10 +48,14 @@ public:
 
 private:
     WebServer server;
+    WiFiMulti wifiMulti;
     bool apActive;
     bool staConnected;
+    bool staEnabledByConfig;  // Track if STA was enabled (by config or auto-enable)
+    bool natEnabled;
     unsigned long lastStaRetry;
     bool timeInitialized;
+    String connectedSSID;
     
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
@@ -52,9 +64,11 @@ private:
     // Setup functions
     void setupAP();
     void setupSTA();
+    int populateStaNetworks();
     void checkSTAConnection();
     void setupWebServer();
     void initializeTime();
+    void enableNAT();
     
     // Web handlers
     void handleStatus();

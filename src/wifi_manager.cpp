@@ -14,30 +14,33 @@
 #include "../include/color_themes.h"
 #include <algorithm>
 #include <ArduinoJson.h>
+#include "esp_netif.h"
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
 
-String htmlEscape(const String& in) {
-    String out;
-    out.reserve(in.length() + 8);
-    for (size_t i = 0; i < in.length(); ++i) {
-        char c = in.charAt(i);
+// HTML entity encoding for safe HTML generation
+static String htmlEscape(const String& input) {
+    String output;
+    output.reserve(input.length() + 20);  // Reserve extra space for escape sequences
+    for (size_t i = 0; i < input.length(); i++) {
+        char c = input.charAt(i);
         switch (c) {
-            case '&':  out += "&amp;";  break;
-            case '<':  out += "&lt;";   break;
-            case '>':  out += "&gt;";   break;
-            case '\"': out += "&quot;"; break;
-            case '\'': out += "&#39;";  break;
-            default:   out += c;        break;
+            case '&':  output += "&amp;";  break;
+            case '<':  output += "&lt;";   break;
+            case '>':  output += "&gt;";   break;
+            case '"':  output += "&quot;"; break;
+            case '\'': output += "&#39;";  break;
+            default:   output += c;        break;
         }
     }
-    return out;
+    return output;
 }
+
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), lastStaRetry(0), timeInitialized(false) {
+WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false) {
 }
 
 bool WiFiManager::begin() {
@@ -50,12 +53,39 @@ bool WiFiManager::begin() {
     
     Serial.println("Starting WiFi...");
 
-    // Always start with AP for user access
-    setupAP();
+    bool wantAP = settings.wifiMode == V1_WIFI_AP || settings.wifiMode == V1_WIFI_APSTA;
+    bool wantSTA = settings.wifiMode == V1_WIFI_STA || settings.wifiMode == V1_WIFI_APSTA;
+    staEnabledByConfig = wantSTA;  // Track if STA is enabled by config
+
+    // If networks are configured but STA is disabled, auto-enable STA alongside AP
+    int networksConfigured = 0;
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        if (settings.wifiNetworks[i].isValid()) networksConfigured++;
+    }
+    if (networksConfigured == 0 && settings.staSSID.length() > 0) networksConfigured++;
+    if (!wantSTA && networksConfigured > 0) {
+        Serial.println("[WiFi] STA disabled but networks configured; enabling AP+STA for connectivity");
+        wantSTA = true;
+        wantAP = true;
+        staEnabledByConfig = true;
+    }
+
+    if (wantAP && wantSTA) {
+        WiFi.mode(WIFI_AP_STA);
+    } else if (wantAP) {
+        WiFi.mode(WIFI_AP);
+    } else {
+        WiFi.mode(WIFI_STA);
+    }
+
+    if (wantAP) {
+        setupAP();
+    }
     
-    // If home WiFi is configured and timesync enabled, connect in background
-    if (settings.enableTimesync && settings.staSSID.length() > 0) {
+    if (wantSTA) {
         setupSTA();
+    } else {
+        Serial.println("[WiFi] STA mode disabled in settings");
     }
     
     setupWebServer();
@@ -67,69 +97,137 @@ bool WiFiManager::begin() {
 
 void WiFiManager::setupAP() {
     const V1Settings& settings = settingsManager.get();
+    bool wantSTA = settings.wifiMode == V1_WIFI_APSTA;
     
     String apSSID = settings.apSSID.length() > 0 ? settings.apSSID : "V1-Display";
     String apPass = settings.apPassword.length() >= 8 ? settings.apPassword : "valentine1";
     
     Serial.printf("Starting AP: %s\n", apSSID.c_str());
     
-    // Set to AP+STA mode if we'll be connecting to WiFi, otherwise just AP
-    WiFi.mode(WIFI_AP_STA);
+    // Ensure correct mode for AP operation
+    WiFi.mode(wantSTA ? WIFI_AP_STA : WIFI_AP);
     
-    // Configure custom AP IP address
-    IPAddress apIP(192, 168, 35, 5);
-    IPAddress gateway(192, 168, 35, 1);
+    // Configure AP IP BEFORE starting softAP
+    IPAddress apIP(192, 168, 35, 5);      // AP IP address for web UI access
+    IPAddress gateway(192, 168, 35, 5);   // Gateway = AP IP so clients route through us
     IPAddress subnet(255, 255, 255, 0);
-    WiFi.softAPConfig(apIP, gateway, subnet);
     
-    WiFi.softAP(apSSID.c_str(), apPass.c_str());
+    // Configure IP address first (must be before softAP)
+    // Note: softAPConfig args are (local_ip, gateway, subnet, dhcp_lease_start, dns_server)
+    // We must provide dhcp_lease_start if we want to provide dns_server
+    IPAddress dhcpStart(192, 168, 35, 100);
+    
+    // Use the upstream DNS if available, otherwise fallback to Google
+    IPAddress dns = WiFi.dnsIP(0);
+    if (dns == IPAddress(0,0,0,0)) dns = IPAddress(8,8,8,8);
+    
+    if (!WiFi.softAPConfig(apIP, gateway, subnet, dhcpStart, dns)) {
+        Serial.println("[WiFi] softAPConfig failed!");
+    }
+    
+    // Now start the AP
+    if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
+        Serial.println("[WiFi] softAP failed!");
+    }
+    
     apActive = true;
     
     IPAddress ip = WiFi.softAPIP();
     Serial.printf("AP IP address: %s\n", ip.toString().c_str());
+    Serial.printf("AP Gateway: %s\n", gateway.toString().c_str());
+    Serial.printf("AP Subnet: %s\n", subnet.toString().c_str());
+    
+    // Ensure DHCP server is properly configured for AP
+    // Get AP network interface and verify DHCP
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap_netif) {
+        // Note: WiFi.softAPConfig already configured DHCP with DNS
+        // We just verify it's running
+        esp_netif_dhcp_status_t status;
+        esp_netif_dhcps_get_status(ap_netif, &status);
+        if (status == ESP_NETIF_DHCP_STOPPED) {
+             esp_netif_dhcps_start(ap_netif);
+             Serial.println("[WiFi] AP DHCP server started (was stopped)");
+        } else {
+             Serial.println("[WiFi] AP DHCP server is running");
+        }
+    } else {
+        Serial.println("[WiFi] WARNING: Could not get AP netif for DHCP");
+    }
 }
 
 void WiFiManager::setupSTA() {
-    const V1Settings& settings = settingsManager.get();
-    
-    if (settings.staSSID.length() == 0) {
-        Serial.println("No STA SSID configured, skipping");
+    Serial.println("[WiFi] Setting up STA mode...");
+    int networksAdded = populateStaNetworks();
+    if (networksAdded == 0) {
+        Serial.println("[WiFi] No networks configured for STA");
         return;
     }
-    
-    Serial.printf("Connecting to WiFi: %s\n", settings.staSSID.c_str());
-    WiFi.begin(settings.staSSID.c_str(), settings.staPassword.c_str());
-    
-    // Non-blocking connection - will check status in process()
-    lastStaRetry = millis();
+    Serial.printf("[WiFi] Added %d network(s) to WiFiMulti\n", networksAdded);
+}
+
+int WiFiManager::populateStaNetworks() {
+    wifiMulti = WiFiMulti();  // Reset network list before re-populating
+    const V1Settings& settings = settingsManager.get();
+    int networksAdded = 0;
+
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        if (settings.wifiNetworks[i].isValid()) {
+            wifiMulti.addAP(settings.wifiNetworks[i].ssid.c_str(), 
+                          settings.wifiNetworks[i].password.c_str());
+            Serial.printf("[WiFi] Added network %d: %s\n", i, settings.wifiNetworks[i].ssid.c_str());
+            networksAdded++;
+        }
+    }
+
+    if (networksAdded == 0 && settings.staSSID.length() > 0) {
+        wifiMulti.addAP(settings.staSSID.c_str(), settings.staPassword.c_str());
+        Serial.printf("[WiFi] Added legacy network: %s\n", settings.staSSID.c_str());
+        networksAdded++;
+    }
+
+    return networksAdded;
 }
 
 void WiFiManager::checkSTAConnection() {
-    if (WiFi.status() == WL_CONNECTED) {
+    
+    if (!staEnabledByConfig) {
+        if (staConnected) {
+            staConnected = false;
+            natEnabled = false;
+            connectedSSID = "";
+        }
+        return;
+    }
+    
+    // Try connecting every STA_CONNECTION_RETRY_INTERVAL_MS
+    if (millis() - lastStaRetry < STA_CONNECTION_RETRY_INTERVAL_MS) {
+        return;
+    }
+    lastStaRetry = millis();
+
+    if (wifiMulti.run(STA_CONNECTION_TIMEOUT_MS) == WL_CONNECTED) {
         if (!staConnected) {
             staConnected = true;
-            Serial.println("STA connected to WiFi!");
-            Serial.printf("  IP: %s\n", WiFi.localIP().toString().c_str());
+            connectedSSID = WiFi.SSID();
+            Serial.println("\n=== WiFi Connected ===");
+            Serial.printf("SSID: %s\n", connectedSSID.c_str());
+            Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+            Serial.printf("Signal: %d dBm\n", WiFi.RSSI());
             
-            // Initialize NTP time sync
+            if (apActive) {
+                enableNAT();
+            }
+            
             if (!timeInitialized) {
                 initializeTime();
             }
         }
     } else {
         if (staConnected) {
-            Serial.println("STA disconnected from WiFi");
+            Serial.println("[WiFi] Disconnected");
             staConnected = false;
-        }
-        
-        // Retry connection every 30 seconds if disconnected
-        if (millis() - lastStaRetry > 30000) {
-            const V1Settings& settings = settingsManager.get();
-            if (settings.enableTimesync && settings.staSSID.length() > 0) {
-                Serial.println("Retrying WiFi connection...");
-                WiFi.begin(settings.staSSID.c_str(), settings.staPassword.c_str());
-                lastStaRetry = millis();
-            }
+            connectedSSID = "";
         }
     }
 }
@@ -143,12 +241,12 @@ void WiFiManager::initializeTime() {
     // Wait briefly for time to sync
     struct tm timeinfo;
     int retries = 0;
-    while (!getLocalTime(&timeinfo) && retries < 10) {
-        delay(500);
+    while (!getLocalTime(&timeinfo) && retries < NTP_SYNC_RETRY_COUNT) {
+        delay(NTP_SYNC_RETRY_DELAY_MS);
         retries++;
     }
     
-    if (retries < 10) {
+    if (retries < NTP_SYNC_RETRY_COUNT) {
         Serial.println("Time synchronized via NTP!");
         Serial.printf("  Current time (UTC): %04d-%02d-%02dT%02d:%02d:%02dZ\n",
                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
@@ -162,6 +260,36 @@ void WiFiManager::initializeTime() {
     } else {
         Serial.println("Failed to sync time via NTP");
     }
+}
+
+void WiFiManager::enableNAT() {
+    // NAT setup: Forward traffic from AP clients through STA connection
+    
+    if (natEnabled) {
+        return;  // Already enabled
+    }
+    
+    Serial.println("[WiFi] Enabling NAT/NAPT...");
+
+    // 1. Enable NAPT on AP interface (The LAN interface)
+    // This tells LwIP to perform NAT on packets arriving on this interface
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap_netif) {
+        esp_err_t err = esp_netif_napt_enable(ap_netif);
+        if (err == ESP_OK) {
+            Serial.println("[WiFi] NAPT enabled on AP interface (LAN)");
+        } else {
+            Serial.printf("[WiFi] Failed to enable NAPT on AP: %d\n", err);
+        }
+    }
+
+    // 2. Ensure IP Forwarding is enabled (should be by build flag)
+    // The build flag CONFIG_LWIP_IP_FORWARD=1 handles this.
+    
+    natEnabled = true;
+    Serial.printf("[WiFi] NAT: Enabled - STA IP: %s, AP IP: %s\n", 
+                  WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
+    Serial.println("[WiFi] NAT: Clients should now have internet access");
 }
 
 void WiFiManager::setupWebServer() {
@@ -204,9 +332,7 @@ void WiFiManager::setupWebServer() {
 void WiFiManager::process() {
     server.handleClient();
     
-    // Check STA connection status if timesync is enabled
-    const V1Settings& settings = settingsManager.get();
-    if (settings.enableTimesync && settings.staSSID.length() > 0) {
+    if (staEnabledByConfig) {
         checkSTAConnection();
     }
 }
@@ -221,7 +347,7 @@ void WiFiManager::stop() {
 }
 
 bool WiFiManager::isConnected() const {
-    return false;  // STA mode disabled
+    return staConnected;
 }
 
 bool WiFiManager::isAPActive() const {
@@ -229,7 +355,10 @@ bool WiFiManager::isAPActive() const {
 }
 
 String WiFiManager::getIPAddress() const {
-    return "";  // STA mode disabled
+    if (staConnected) {
+        return WiFi.localIP().toString();
+    }
+    return "";
 }
 
 String WiFiManager::getAPIPAddress() const {
@@ -241,9 +370,9 @@ String WiFiManager::getAPIPAddress() const {
 
 void WiFiManager::handleStatus() {
     String json = "{";
-    json += "\"connected\":false,";  // STA mode disabled
+    json += "\"connected\":" + String(staConnected ? "true" : "false") + ",";
     json += "\"ap_active\":" + String(apActive ? "true" : "false") + ",";
-    json += "\"ip\":\"\",";  // STA mode disabled
+    json += "\"ip\":\"" + getIPAddress() + "\",";
     json += "\"ap_ip\":\"" + getAPIPAddress() + "\"";
     
     if (getStatusJson) {
@@ -266,19 +395,29 @@ void WiFiManager::handleSettingsSave() {
     bool wifiChanged = false;
     const V1Settings& currentSettings = settingsManager.get();
 
-    // Although STA is disabled, we still process the args to keep them saved
     if (server.hasArg("ssid")) {
         String ssid = server.arg("ssid");
         String pass = server.arg("password");
+        
+        // Preserve existing password if placeholder sent
+        if (pass == "********") {
+            pass = currentSettings.password;
+        }
         if (ssid != currentSettings.ssid || pass != currentSettings.password) {
             wifiChanged = true;
         }
-        settingsManager.updateWiFiCredentials(ssid, pass);
+        settingsManager.updatePrimaryWiFi(ssid, pass);
     }
     
     if (server.hasArg("ap_ssid")) {
         String apSsid = server.arg("ap_ssid");
         String apPass = server.arg("ap_password");
+        
+        // If password is placeholder, keep existing password
+        if (apPass == "********") {
+            apPass = currentSettings.apPassword;
+        }
+        
         if (apSsid.length() == 0 || apPass.length() < 8) {
             server.send(400, "text/plain", "AP SSID required and password must be at least 8 characters");
             return;
@@ -289,8 +428,12 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.updateAPCredentials(apSsid, apPass);
     }
     
-    // Force AP mode regardless of submitted value
+    // WiFi mode (AP, STA, AP+STA)
     WiFiModeSetting mode = V1_WIFI_AP;
+    if (server.hasArg("wifi_mode")) {
+        mode = static_cast<WiFiModeSetting>(server.arg("wifi_mode").toInt());
+        mode = static_cast<WiFiModeSetting>(std::max(0, std::min(3, (int)mode)));
+    }
     if (mode != currentSettings.wifiMode) {
         wifiChanged = true;
     }
@@ -375,18 +518,43 @@ void WiFiManager::handleTimeSettings() {
 
 void WiFiManager::handleTimeSettingsSave() {
     bool changed = false;
+    const V1Settings& settings = settingsManager.get();
     
-    // Update home WiFi credentials for time sync
-    if (server.hasArg("staSSID")) {
-        String staSSID = server.arg("staSSID");
-        String staPass = server.arg("staPassword");
-        bool enableTime = server.hasArg("enableTimesync");
-        
-        settingsManager.setTimeSync(staSSID, staPass, enableTime);
+    // Update timesync enabled flag
+    bool enableTime = server.hasArg("enableTimesync");
+    if (settings.enableTimesync != enableTime) {
+        settingsManager.updateTimesync(enableTime);
         changed = true;
+    }
+    
+    // Update multiple WiFi networks
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        String ssidKey = "wifi" + String(i) + "ssid";
+        String pwdKey = "wifi" + String(i) + "pwd";
         
-        Serial.printf("Time sync settings updated: SSID=%s, Enabled=%s\n", 
-                      staSSID.c_str(), enableTime ? "yes" : "no");
+        if (server.hasArg(ssidKey.c_str())) {
+            String newSSID = server.arg(ssidKey.c_str());
+            String newPwd = server.arg(pwdKey.c_str());
+            
+            // If password is placeholder, keep existing password  
+            if (newPwd == "********") {
+                newPwd = settings.wifiNetworks[i].password;
+            }
+            
+            if (settings.wifiNetworks[i].ssid != newSSID || settings.wifiNetworks[i].password != newPwd) {
+                settingsManager.updateWiFiNetwork(i, newSSID, newPwd);
+                changed = true;
+                Serial.printf("WiFi network %d updated: %s\n", i+1, newSSID.c_str());
+            }
+        }
+    }
+    
+    // Keep legacy fields in sync with network[0] for backward compat
+    if (settingsManager.get().wifiNetworks[0].isValid()) {
+        settingsManager.updateStaSSID(
+            settingsManager.get().wifiNetworks[0].ssid, 
+            settingsManager.get().wifiNetworks[0].password
+        );
     }
     
     // Manual time setting
@@ -395,6 +563,27 @@ void WiFiManager::handleTimeSettingsSave() {
         if (timestamp > 1609459200) {  // Valid if after 2021-01-01
             timeManager.setTime(timestamp);
             Serial.printf("Time set manually to: %ld\n", timestamp);
+        }
+    }
+    
+    if (changed) {
+        settingsManager.save();
+        Serial.printf("WiFi settings saved. Timesync: %s\n", enableTime ? "enabled" : "disabled");
+        
+        int networksAdded = populateStaNetworks();
+        if (networksAdded > 0) {
+            if (!staEnabledByConfig) {
+                staEnabledByConfig = true;
+                Serial.println("[WiFi] STA mode auto-enabled after configuring networks");
+            }
+            Serial.printf("[WiFi] STA network list refreshed (%d entries)\n", networksAdded);
+            if (staConnected) {
+                WiFi.disconnect(true);
+                staConnected = false;
+                connectedSSID = "";
+                natEnabled = false;
+            }
+            lastStaRetry = 0;  // Trigger immediate retry with new credentials
         }
     }
     
@@ -658,7 +847,10 @@ String WiFiManager::generateProfileOptions(const String& selected) {
 String WiFiManager::generateSettingsHTML() {
     const V1Settings& settings = settingsManager.get();
     String apSsidEsc = htmlEscape(settings.apSSID);
-    String apPassEsc = htmlEscape(settings.apPassword);
+    // Don't echo back password for security - show placeholder if set
+    String apPassEsc = settings.apPassword.length() > 0 ? "********" : "";
+    String staSsidEsc = htmlEscape(settings.ssid);
+    String staPassEsc = settings.password.length() > 0 ? "********" : "";
     
     Serial.println("=== generateSettingsHTML() ===");
     Serial.printf("  brightness: %d\n", settings.brightness);
@@ -793,31 +985,24 @@ String WiFiManager::generateSettingsHTML() {
             <p class="muted" style="margin-bottom: 10px;">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
             )HTML";
     
-    // Add time status indicator (wrap in try-catch to prevent crashes)
-    try {
-        if (timeManager.isTimeValid()) {
-            String timeStr = timeManager.getTimestampISO();
-            const V1Settings& s = settingsManager.get();
-            String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
-            
-            if (timeStr.length() > 0 && timeStr != "N/A") {
-                html += R"HTML(
-                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
-                    <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
-                    <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
-                </div>
-                )HTML";
-            }
-        } else {
-            html += R"HTML(
+    // Show actual time status
+    if (timeManager.isTimeValid()) {
+        String timeStr = timeManager.getTimestampISO();
+        const V1Settings& s = settingsManager.get();
+        String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
+        
+        html += R"HTML(
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
+                <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
+                <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
+            </div>
+            )HTML";
+    } else {
+        html += R"HTML(
             <div style="background: rgba(255,100,100,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
                 <div>⚠️ Time Not Set</div>
             </div>
             )HTML";
-        }
-    } catch (...) {
-        // Silently fail if time display causes issues
-        Serial.println("Warning: Time display failed in settings page");
     }
     
     html += R"HTML(
@@ -838,16 +1023,32 @@ String WiFiManager::generateSettingsHTML() {
         
         <form method="POST" action="/settings">
             
-            <div class="card">
-                <h2>Access Point Settings</h2>
-                <div class="form-group">
-                    <label>AP Network Name</label>
-                    <input type="text" name="ap_ssid" value=")HTML" + apSsidEsc + R"HTML(">
-                </div>
-                <div class="form-group">
+        <div class="card">
+            <h2>WiFi Mode & Access Point</h2>
+            <div class="form-group">
+                <label>WiFi Mode</label>
+                <select name="wifi_mode">
+                    <option value="2" )HTML" + String(settings.wifiMode == V1_WIFI_AP ? "selected" : "") + R"HTML(>Access Point Only</option>
+                    <option value="1" )HTML" + String(settings.wifiMode == V1_WIFI_STA ? "selected" : "") + R"HTML(>Station Only</option>
+                    <option value="3" )HTML" + String(settings.wifiMode == V1_WIFI_APSTA ? "selected" : "") + R"HTML(>AP + Station (NAT passthrough)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>AP Network Name</label>
+                <input type="text" name="ap_ssid" value=")HTML" + apSsidEsc + R"HTML(">
+            </div>
+            <div class="form-group">
                     <label>AP Password (min 8 chars)</label>
                     <input type="password" name="ap_password" value=")HTML" + apPassEsc + R"HTML(">
                 </div>
+            <div class="form-group">
+                <label>Upstream WiFi (STA) SSID</label>
+                <input type="text" name="ssid" value=")HTML" + staSsidEsc + R"HTML(" placeholder="Home/Hotspot SSID">
+            </div>
+            <div class="form-group">
+                <label>Upstream WiFi Password</label>
+                <input type="password" name="password" value=")HTML" + staPassEsc + R"HTML(" placeholder="Password">
+            </div>
             </div>
             
             <div class="card">
@@ -2978,25 +3179,36 @@ String WiFiManager::generateTimeSettingsHTML() {
         
         <form action="/time" method="POST">
             <div class="card">
-                <h2>Automatic Time Sync (NTP)</h2>
+                <h2>WiFi Networks for Internet/NTP</h2>
                 
                 <div class="info">
-                    Connect to your home WiFi to automatically sync time via NTP. The device will run in dual mode: 
-                    AP for your connection + STA for internet access.
+                    Add up to 3 WiFi networks (home, car hotspot, etc). The device will automatically connect to whichever is available with the strongest signal.
                 </div>
                 
                 <div class="checkbox-row">
                     <input type="checkbox" id="enableTimesync" name="enableTimesync" )HTML" + checkedTime + R"HTML(>
-                    <label for="enableTimesync">Enable automatic time sync</label>
+                    <label for="enableTimesync">Enable WiFi STA mode (for NTP sync &amp; NAT routing)</label>
                 </div>
                 
-                <label for="staSSID">Home WiFi SSID</label>
-                <input type="text" id="staSSID" name="staSSID" value=")HTML" + htmlEscape(settings.staSSID) + R"HTML(" placeholder="Your WiFi network name">
+                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 1</h3>
+                <label for="wifi0ssid">SSID</label>
+                <input type="text" id="wifi0ssid" name="wifi0ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[0].ssid) + R"HTML(" placeholder="e.g., Home WiFi">
+                <label for="wifi0pwd">Password</label>
+                <input type="password" id="wifi0pwd" name="wifi0pwd" value=")HTML" + (settings.wifiNetworks[0].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
                 
-                <label for="staPassword">Home WiFi Password</label>
-                <input type="password" id="staPassword" name="staPassword" value=")HTML" + htmlEscape(settings.staPassword) + R"HTML(" placeholder="Your WiFi password">
+                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 2</h3>
+                <label for="wifi1ssid">SSID</label>
+                <input type="text" id="wifi1ssid" name="wifi1ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[1].ssid) + R"HTML(" placeholder="e.g., Car WiFi Hotspot">
+                <label for="wifi1pwd">Password</label>
+                <input type="password" id="wifi1pwd" name="wifi1pwd" value=")HTML" + (settings.wifiNetworks[1].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
                 
-                <button type="submit">Save NTP Settings</button>
+                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 3</h3>
+                <label for="wifi2ssid">SSID</label>
+                <input type="text" id="wifi2ssid" name="wifi2ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[2].ssid) + R"HTML(" placeholder="e.g., Phone Hotspot">
+                <label for="wifi2pwd">Password</label>
+                <input type="password" id="wifi2pwd" name="wifi2pwd" value=")HTML" + (settings.wifiNetworks[2].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
+                
+                <button type="submit">Save WiFi Settings</button>
             </div>
         </form>
         
@@ -3033,4 +3245,3 @@ String WiFiManager::generateTimeSettingsHTML() {
     
     return html;
 }
-
