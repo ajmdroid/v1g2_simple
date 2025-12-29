@@ -7,6 +7,24 @@
 // Global instance
 SettingsManager settingsManager;
 
+// Simple XOR obfuscation key (not cryptographically secure, but deters casual reading)
+static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
+static const int SETTINGS_VERSION = 2;  // Increment when changing password encoding
+
+// Obfuscate a string using XOR (same function for encode/decode)
+static String xorObfuscate(const String& input) {
+    if (input.length() == 0) return input;
+    
+    String output;
+    output.reserve(input.length());
+    size_t keyLen = strlen(XOR_KEY);
+    
+    for (size_t i = 0; i < input.length(); i++) {
+        output += (char)(input[i] ^ XOR_KEY[i % keyLen]);
+    }
+    return output;
+}
+
 SettingsManager::SettingsManager() {}
 
 void SettingsManager::begin() {
@@ -16,15 +34,59 @@ void SettingsManager::begin() {
 void SettingsManager::load() {
     preferences.begin("v1settings", true);  // Read-only mode
     
+    // Check settings version for migration
+    int storedVersion = preferences.getInt("settingsVer", 1);
+    
     settings.enableWifi = preferences.getBool("enableWifi", true);
     settings.wifiMode = static_cast<WiFiModeSetting>(preferences.getInt("wifiMode", V1_WIFI_AP));
     settings.ssid = preferences.getString("ssid", "");
-    settings.password = preferences.getString("password", "");
+    
+    // Handle password storage - version 1 was plain text, version 2+ is obfuscated
+    String storedPwd = preferences.getString("password", "");
+    String storedApPwd = preferences.getString("apPassword", "");
+    String storedStaPwd = preferences.getString("staPassword", "");
+    
+    if (storedVersion >= 2) {
+        // Passwords are obfuscated - decode them
+        settings.password = storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
+        settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "valentine1";
+        settings.staPassword = storedStaPwd.length() > 0 ? xorObfuscate(storedStaPwd) : "";
+    } else {
+        // Version 1 - passwords stored in plain text, use as-is
+        settings.password = storedPwd;
+        settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "valentine1";
+        settings.staPassword = storedStaPwd;
+        Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
+    }
+    
     settings.apSSID = preferences.getString("apSSID", "V1-Display");
-    settings.apPassword = preferences.getString("apPassword", "valentine1");
     settings.staSSID = preferences.getString("staSSID", "");
-    settings.staPassword = preferences.getString("staPassword", "");
     settings.enableTimesync = preferences.getBool("enableTime", false);
+    
+    // Load multiple WiFi networks
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        String ssidKey = "wifiSSID" + String(i);
+        String pwdKey = "wifiPwd" + String(i);
+        String storedNetPwd = preferences.getString(pwdKey.c_str(), "");
+        settings.wifiNetworks[i].ssid = preferences.getString(ssidKey.c_str(), "");
+        if (storedVersion >= 2) {
+            settings.wifiNetworks[i].password = storedNetPwd.length() > 0 ? xorObfuscate(storedNetPwd) : "";
+        } else {
+            settings.wifiNetworks[i].password = storedNetPwd;
+        }
+        Serial.printf("[Settings] Network[%d]: SSID='%s' (len=%d), PWD len=%d\n", 
+                      i, settings.wifiNetworks[i].ssid.c_str(), 
+                      settings.wifiNetworks[i].ssid.length(),
+                      settings.wifiNetworks[i].password.length());
+    }
+    
+    // Migrate legacy staSSID to wifiNetworks[0] if empty
+    if (!settings.wifiNetworks[0].isValid() && settings.staSSID.length() > 0) {
+        settings.wifiNetworks[0].ssid = settings.staSSID;
+        settings.wifiNetworks[0].password = settings.staPassword;
+        Serial.println("[Settings] Migrated legacy staSSID to wifiNetworks[0]");
+    }
+    
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1C-LE-S3");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
@@ -69,6 +131,14 @@ void SettingsManager::load() {
     Serial.printf("  WiFi mode: %d\n", settings.wifiMode);
     Serial.printf("  SSID: %s\n", settings.ssid.c_str());
     Serial.printf("  AP SSID: %s\n", settings.apSSID.c_str());
+    // Note: Passwords not logged for security
+    Serial.printf("  STA SSID: %s\n", settings.staSSID.c_str());
+    int validNetworks = 0;
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        if (settings.wifiNetworks[i].isValid()) validNetworks++;
+    }
+    Serial.printf("  WiFi networks: %d configured\n", validNetworks);
+    Serial.printf("  Timesync: %s\n", settings.enableTimesync ? "yes" : "no");
     Serial.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
     Serial.printf("  Proxy name: %s\n", settings.proxyName.c_str());
     Serial.printf("  Brightness: %d\n", settings.brightness);
@@ -89,14 +159,26 @@ void SettingsManager::save() {
     }
     
     size_t written = 0;
+    // Store settings version for migration handling
+    written += preferences.putInt("settingsVer", SETTINGS_VERSION);
     written += preferences.putBool("enableWifi", settings.enableWifi);
     written += preferences.putInt("wifiMode", settings.wifiMode);
     written += preferences.putString("ssid", settings.ssid);
-    written += preferences.putString("password", settings.password);
+    // Obfuscate passwords before storing
+    written += preferences.putString("password", xorObfuscate(settings.password));
     written += preferences.putString("apSSID", settings.apSSID);
-    written += preferences.putString("apPassword", settings.apPassword);
+    written += preferences.putString("apPassword", xorObfuscate(settings.apPassword));
     written += preferences.putString("staSSID", settings.staSSID);
-    written += preferences.putString("staPassword", settings.staPassword);
+    written += preferences.putString("staPassword", xorObfuscate(settings.staPassword));
+    
+    // Save multiple WiFi networks
+    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
+        String ssidKey = "wifiSSID" + String(i);
+        String pwdKey = "wifiPwd" + String(i);
+        written += preferences.putString(ssidKey.c_str(), settings.wifiNetworks[i].ssid);
+        written += preferences.putString(pwdKey.c_str(), xorObfuscate(settings.wifiNetworks[i].password));
+    }
+    
     written += preferences.putBool("enableTime", settings.enableTimesync);
     written += preferences.putBool("proxyBLE", settings.proxyBLE);
     written += preferences.putString("proxyName", settings.proxyName);

@@ -40,6 +40,19 @@ enum V1Mode {
     V1_MODE_ADVANCED_LOGIC = 0x03 // Advanced Logic
 };
 
+// WiFi network credential
+struct WiFiNetwork {
+    String ssid;
+    String password;
+    
+    WiFiNetwork() : ssid(""), password("") {}
+    WiFiNetwork(const String& s, const String& p) : ssid(s), password(p) {}
+    bool isValid() const { return ssid.length() > 0; }
+};
+
+// Maximum number of saved WiFi networks
+#define MAX_WIFI_NETWORKS 3
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -58,8 +71,9 @@ struct V1Settings {
     String password;         // Station mode password
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
-    String staSSID;          // Home WiFi SSID for NTP time sync
-    String staPassword;      // Home WiFi password for NTP time sync
+    String staSSID;          // Home WiFi SSID for NTP time sync (legacy - use wifiNetworks)
+    String staPassword;      // Home WiFi password for NTP time sync (legacy - use wifiNetworks)
+    WiFiNetwork wifiNetworks[MAX_WIFI_NETWORKS];  // Multiple WiFi networks for auto-switching
     bool enableTimesync;     // Enable automatic time sync via NTP
     
     // BLE proxy settings
@@ -188,6 +202,25 @@ public:
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
+    void updatePrimaryWiFi(const String& ssid, const String& password) {
+        settings.ssid = ssid;
+        settings.password = password;
+        settings.staSSID = ssid;
+        settings.staPassword = password;
+        settings.wifiNetworks[0].ssid = ssid;
+        settings.wifiNetworks[0].password = password;
+    }
+    void updateWiFiNetwork(int index, const String& ssid, const String& password) {
+        if (index >= 0 && index < MAX_WIFI_NETWORKS) {
+            settings.wifiNetworks[index].ssid = ssid;
+            settings.wifiNetworks[index].password = password;
+        }
+    }
+    void updateTimesync(bool enabled) { settings.enableTimesync = enabled; }
+    void updateStaSSID(const String& ssid, const String& password) { 
+        settings.staSSID = ssid; 
+        settings.staPassword = password; 
+    }
     
     // Save all settings to flash
     void save();
