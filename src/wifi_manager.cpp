@@ -136,10 +136,13 @@ void WiFiManager::checkSTAConnection() {
 
 void WiFiManager::initializeTime() {
     Serial.println("Initializing NTP time sync...");
-    // Configure NTP with pool servers and timezone offset
-    // GMT offset in seconds (0 for UTC, adjust as needed)
-    // Daylight offset in seconds (3600 for 1 hour DST, 0 for none)
+    // Configure NTP with UTC timezone (0 offset, 0 DST)
+    // All times stored and displayed in UTC
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    
+    // Set timezone to UTC explicitly
+    setenv("TZ", "UTC0", 1);
+    tzset();
     
     // Wait briefly for time to sync
     struct tm timeinfo;
@@ -151,10 +154,13 @@ void WiFiManager::initializeTime() {
     
     if (retries < 10) {
         Serial.println("Time synchronized via NTP!");
-        Serial.printf("  Current time: %04d-%02d-%02d %02d:%02d:%02d\n",
+        Serial.printf("  Current time (UTC): %04d-%02d-%02dT%02d:%02d:%02dZ\n",
                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         timeInitialized = true;
+        
+        // Save to SD card immediately after sync
+        timeManager.saveTimeToSD();
     } else {
         Serial.println("Failed to sync time via NTP");
     }
@@ -782,12 +788,33 @@ String WiFiManager::generateSettingsHTML() {
 <body>
     <div class="container">
         <h1>V1 Display Settings</h1>
-        
         )HTML" + saved + R"HTML(
         
         <div class="card">
             <h2>Time Settings</h2>
-            <p class="muted">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
+            <p class="muted" style="margin-bottom: 10px;">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
+            )HTML";
+    
+    // Add time status indicator
+    if (timeManager.isTimeValid()) {
+        String timeStr = timeManager.getTimestampISO();
+        const V1Settings& s = settingsManager.get();
+        String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
+        html += R"HTML(
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
+                <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
+                <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
+            </div>
+        )HTML";
+    } else {
+        html += R"HTML(
+            <div style="background: rgba(255,100,100,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
+                <div>⚠️ Time Not Set</div>
+            </div>
+        )HTML";
+    }
+    
+    html += R"HTML(
             <a class="btn btn-full" href="/time" style="display:block; text-decoration:none; text-align:center;">⏰ Open Time Settings</a>
         </div>
         
@@ -2796,8 +2823,58 @@ String WiFiManager::generateDisplayColorsHTML() {
 
 String WiFiManager::generateTimeSettingsHTML() {
     const V1Settings& settings = settingsManager.get();
-    String currentTime = timeManager.isTimeValid() ? timeManager.getTimestamp() : "Not Set";
+    String currentTime = timeManager.isTimeValid() ? timeManager.getTimestampISO() : "Not Set";
     String checkedTime = settings.enableTimesync ? "checked" : "";
+    
+    // Get theme-specific CSS
+    String themeCSS;
+    switch (settings.colorTheme) {
+        case THEME_HIGH_CONTRAST:
+            themeCSS = R"CSS(
+                body { background: #000; color: #fff; }
+                h1 { color: #ffff00; }
+                .card { background: #1a1a1a; border: 2px solid #ffff00; }
+                .card h2 { color: #ffff00; border-bottom-color: #ffff00; }
+                label { color: #ccc; }
+                input, select { background: #2a2a2a; color: #fff; border: 1px solid #555; }
+                input:focus, select:focus { border-color: #ffff00; }
+                button { background: #ffff00; color: #000; }
+                button:hover { background: #ffee00; }
+                .info { background: #2a2a00; color: #ffff00; border: 1px solid #555500; }
+                .time-display { color: #ffff00; }
+            )CSS";
+            break;
+        case THEME_STEALTH:
+            themeCSS = R"CSS(
+                body { background: #0a0a0a; color: #666; }
+                h1 { color: #444; }
+                .card { background: #111; border: 1px solid #222; }
+                .card h2 { color: #555; border-bottom-color: #333; }
+                label { color: #444; }
+                input, select { background: #151515; color: #666; border: 1px solid #222; }
+                input:focus, select:focus { border-color: #444; }
+                button { background: #333; color: #666; }
+                button:hover { background: #444; }
+                .info { background: #0f0f0f; color: #555; border: 1px solid #222; }
+                .time-display { color: #888; }
+            )CSS";
+            break;
+        default: // THEME_STANDARD
+            themeCSS = R"CSS(
+                body { background: #1a1a2e; color: #eee; }
+                h1 { color: #e94560; }
+                .card { background: #16213e; }
+                .card h2 { color: #e94560; border-bottom-color: #e94560; }
+                label { color: #888; }
+                input, select { background: #0f3460; color: #eee; border: 1px solid #0f3460; }
+                input:focus, select:focus { border-color: #e94560; }
+                button { background: #e94560; color: #fff; }
+                button:hover { background: #d63050; }
+                .info { background: #0f3460; color: #9aa7bd; border: 1px solid #1a4a7a; }
+                .time-display { color: #e94560; }
+            )CSS";
+            break;
+    }
     
     String html = R"HTML(
 <!DOCTYPE html>
@@ -2810,30 +2887,27 @@ String WiFiManager::generateTimeSettingsHTML() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
             line-height: 1.6;
+            min-height: 100vh;
         }
         .container { max-width: 600px; margin: 0 auto; }
         .card {
-            background: white;
             border-radius: 12px;
             padding: 24px;
             margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
-        h1 { color: white; margin-bottom: 20px; font-size: 28px; }
-        h2 { color: #333; margin-bottom: 16px; font-size: 20px; border-bottom: 2px solid #667eea; padding-bottom: 8px; }
-        label { display: block; margin: 16px 0 8px; color: #555; font-weight: 500; }
-        input[type="text"], input[type="password"], input[type="datetime-local"] {
+        h1 { margin-bottom: 20px; font-size: 28px; }
+        h2 { margin-bottom: 16px; font-size: 20px; border-bottom: 2px solid; padding-bottom: 8px; }
+        label { display: block; margin: 16px 0 8px; font-weight: 500; }
+        input[type="text"], input[type="password"], select {
             width: 100%;
             padding: 12px;
-            border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 16px;
-            transition: border-color 0.3s;
+            border: 1px solid;
         }
-        input:focus { outline: none; border-color: #667eea; }
+        input:focus, select:focus { outline: none; }
         .checkbox-row {
             display: flex;
             align-items: center;
@@ -2849,33 +2923,34 @@ String WiFiManager::generateTimeSettingsHTML() {
             cursor: pointer;
         }
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
             border: none;
             padding: 14px 28px;
             border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
             width: 100%;
             margin-top: 12px;
         }
-        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4); }
-        button:active { transform: translateY(0); }
+        button:hover { opacity: 0.9; }
+        button:active { transform: scale(0.98); }
         .nav { margin-bottom: 20px; }
         .nav a {
-            color: white;
             text-decoration: none;
             margin-right: 15px;
             padding: 8px 16px;
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.1);
             border-radius: 6px;
-            transition: background 0.3s;
+            display: inline-block;
         }
-        .nav a:hover { background: rgba(255,255,255,0.3); }
-        .info { background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 16px 0; color: #1565c0; }
-        .current-time { font-size: 18px; font-weight: bold; color: #667eea; margin-bottom: 12px; }
+        .nav a:hover { background: rgba(255,255,255,0.15); }
+        .info { padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 0.95em; }
+        .time-display { font-size: 18px; font-weight: bold; margin-bottom: 12px; font-family: monospace; }
+        .info { padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 0.95em; }
+        .time-display { font-size: 18px; font-weight: bold; margin-bottom: 12px; font-family: monospace; }
+        
+        /* Theme-specific colors */
+        )HTML" + themeCSS + R"HTML(
     </style>
 </head>
 <body>
@@ -2888,10 +2963,10 @@ String WiFiManager::generateTimeSettingsHTML() {
         </div>
         
         <div class="card">
-            <h2>Current Time</h2>
-            <div class="current-time">)HTML" + currentTime + R"HTML(</div>
+            <h2>Current Time (UTC)</h2>
+            <div class="time-display">)HTML" + currentTime + R"HTML(</div>
             <div class="info">
-                Time is used for alert timestamps and logging. Configure NTP sync below or set manually.
+                All times displayed and stored in UTC. Configure NTP sync or set manually for accurate timestamps.
             </div>
         </div>
         

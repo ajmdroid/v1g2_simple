@@ -123,10 +123,13 @@ String TimeManager::getTimestamp() const {
 }
 
 String TimeManager::getTimestampISO() const {
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
+    time_t now = getTime();
+    if (!isTimeValid()) {
         return "N/A";
     }
+    
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);  // Use gmtime_r for UTC
     
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02dZ",
@@ -141,8 +144,8 @@ bool TimeManager::getLocalTime(struct tm* timeinfo) const {
         return false;
     }
     
-    // Convert to local time
-    localtime_r(&now, timeinfo);
+    // Use UTC (gmtime) instead of local time
+    gmtime_r(&now, timeinfo);
     return true;
 }
 
