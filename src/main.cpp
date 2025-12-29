@@ -529,10 +529,8 @@ void setup() {
     // Mount SD card for alert logging (non-fatal if missing)
     alertLogger.begin();
     
-    // Initialize time manager (load saved time from SD card)
-    if (alertLogger.isReady()) {
-        timeManager.begin(alertLogger.getFilesystem());
-    }
+    // Initialize time manager (NTP-only, no SD card dependency)
+    timeManager.begin(alertLogger.isReady() ? alertLogger.getFilesystem() : nullptr);
     
     // Initialize SQLite alert database (uses same SD card)
     if (alertLogger.isReady()) {

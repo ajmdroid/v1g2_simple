@@ -1,11 +1,10 @@
 /**
  * Time Manager implementation
+ * Simplified version without SD card persistence - relies on NTP only
  */
 
 #include "time_manager.h"
 #include <sys/time.h>
-
-const char* TimeManager::TIME_FILE = "/last_time.txt";
 
 // Global instance
 TimeManager timeManager;
@@ -14,86 +13,26 @@ TimeManager::TimeManager() : fs(nullptr), lastSaveTime(0), timeLoaded(false), in
 }
 
 void TimeManager::begin(fs::FS* filesystem) {
-    fs = filesystem;
-    initialized = true;  // Mark as initialized
-    
-    // Try to load saved time
-    if (fs && !timeLoaded) {
-        if (loadTimeFromSD()) {
-            Serial.println("[TimeManager] Loaded time from SD card");
-        } else {
-            Serial.println("[TimeManager] No saved time found");
-        }
-    }
+    fs = filesystem;  // Keep reference but don't use for time storage
+    initialized = true;
+    Serial.println("[TimeManager] Initialized (NTP-only mode)");
 }
 
 bool TimeManager::loadTimeFromSD() {
-    if (!fs) {
-        return false;
-    }
-    
-    File file = fs->open(TIME_FILE, FILE_READ);
-    if (!file) {
-        return false;
-    }
-    
-    String line = file.readStringUntil('\n');
-    file.close();
-    
-    line.trim();
-    if (line.length() == 0) {
-        return false;
-    }
-    
-    // Parse Unix timestamp
-    time_t timestamp = (time_t)line.toInt();
-    if (timestamp < 1609459200) {  // Before 2021-01-01
-        Serial.println("[TimeManager] Saved time too old, ignoring");
-        return false;
-    }
-    
-    // Set system time
-    struct timeval tv;
-    tv.tv_sec = timestamp;
-    tv.tv_usec = 0;
-    settimeofday(&tv, NULL);
-    
-    timeLoaded = true;
-    Serial.printf("[TimeManager] Set time from SD: %ld (%s)\n", timestamp, getTimestamp().c_str());
-    return true;
+    // No longer used - time comes from NTP only
+    return false;
 }
 
 bool TimeManager::saveTimeToSD() {
-    if (!fs) {
-        Serial.println("[TimeManager] No filesystem available");
-        return false;
-    }
-    
-    time_t now = getTime();
-    if (!isTimeValid()) {
-        Serial.println("[TimeManager] Time not valid for saving");
-        return false;
-    }
-    
-    File file = fs->open(TIME_FILE, FILE_WRITE);
-    if (!file) {
-        Serial.println("[TimeManager] Failed to open time file for writing");
-        return false;
-    }
-    
-    file.printf("%ld\n", now);
-    file.close();
-    
-    lastSaveTime = millis();
-    Serial.printf("[TimeManager] Saved time to SD: %ld\n", now);
-    return true;
+    // No longer used - time comes from NTP only
+    return false;
 }
 
 void TimeManager::setTime(time_t timestamp) {
     if (!initialized) {
-        return;  // Not initialized yet
+        return;
     }
-    if (timestamp < 1609459200) {  // Validate timestamp
+    if (timestamp < 1609459200) {  // Validate timestamp (after 2021-01-01)
         Serial.printf("[TimeManager] Invalid timestamp rejected: %ld\n", timestamp);
         return;
     }
@@ -103,12 +42,8 @@ void TimeManager::setTime(time_t timestamp) {
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
     
-    Serial.printf("[TimeManager] Time set manually: %ld\n", timestamp);
-    
-    // Save to SD immediately (if available)
-    if (fs) {
-        saveTimeToSD();
-    }
+    timeLoaded = true;
+    Serial.printf("[TimeManager] Time set: %ld\n", timestamp);
 }
 
 time_t TimeManager::getTime() const {
@@ -117,7 +52,7 @@ time_t TimeManager::getTime() const {
 
 bool TimeManager::isTimeValid() const {
     if (!initialized) {
-        return false;  // Not initialized yet
+        return false;
     }
     time_t now = getTime();
     // Valid if after 2021-01-01 00:00:00 UTC (1609459200)
@@ -174,12 +109,5 @@ bool TimeManager::getLocalTime(struct tm* timeinfo) const {
 }
 
 void TimeManager::process() {
-    if (!initialized) {
-        return;  // Not initialized yet
-    }
-    
-    // Save time periodically if valid and enough time has passed
-    if (fs && isTimeValid() && (millis() - lastSaveTime > SAVE_INTERVAL || lastSaveTime == 0)) {
-        saveTimeToSD();
-    }
+    // Nothing to do - no periodic saving needed
 }
