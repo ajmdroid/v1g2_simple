@@ -54,6 +54,7 @@ void SettingsManager::load() {
     settings.slot1_highway.mode = static_cast<V1Mode>(preferences.getInt("slot1mode", V1_MODE_UNKNOWN));
     settings.slot2_comfort.profileName = preferences.getString("slot2prof", "");
     settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
+    settings.lastV1Address = preferences.getString("lastV1Addr", "");
     
     preferences.end();
     
@@ -120,6 +121,7 @@ void SettingsManager::save() {
     written += preferences.putInt("slot1mode", settings.slot1_highway.mode);
     written += preferences.putString("slot2prof", settings.slot2_comfort.profileName);
     written += preferences.putInt("slot2mode", settings.slot2_comfort.mode);
+    written += preferences.putString("lastV1Addr", settings.lastV1Address);
     
     preferences.end();
     
@@ -284,4 +286,12 @@ void SettingsManager::resetToDefaults() {
     settings = V1Settings();  // Reset to defaults
     save();
     Serial.println("Settings reset to defaults");
+}
+
+void SettingsManager::setLastV1Address(const String& addr) {
+    if (addr != settings.lastV1Address) {
+        settings.lastV1Address = addr;
+        save();
+        Serial.printf("Saved new V1 address: %s\n", addr.c_str());
+    }
 }

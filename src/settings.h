@@ -96,6 +96,8 @@ struct V1Settings {
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
     
+    String lastV1Address;  // Last known V1 BLE address for fast reconnect
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -132,7 +134,8 @@ struct V1Settings {
         slot2MuteVolume(0xFF),
         slot0_default(),
         slot1_highway(),
-        slot2_comfort() {}
+        slot2_comfort(),
+        lastV1Address("") {}
 };
 
 class SettingsManager {
@@ -163,6 +166,7 @@ public:
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
+    void setLastV1Address(const String& addr);
     
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;

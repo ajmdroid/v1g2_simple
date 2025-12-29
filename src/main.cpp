@@ -437,7 +437,7 @@ void setup() {
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
     
-    // Initialize settings first to get active profile slot
+// Initialize settings first to get active profile slot and last V1 address
     settingsManager.begin();
     
     // Show the current profile indicator
@@ -520,11 +520,38 @@ void setup() {
     Serial.printf("Starting BLE (proxy: %s, name: %s)\n", 
                   bleSettings.proxyBLE ? "enabled" : "disabled",
                   bleSettings.proxyName.c_str());
-    
-    if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
+
+    // Initialize BLE stack first (required before any BLE operations)
+    if (!bleClient.initBLE(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
         Serial.println("BLE initialization failed!");
         display.showDisconnected();
         while (1) delay(1000);
+    }
+
+    // Set the last known V1 address for fast reconnect
+    bool fastReconnectAttempted = false;
+    if (bleSettings.lastV1Address.length() > 0) {
+        Serial.printf("[FastReconnect] Last known V1 address: %s\n", bleSettings.lastV1Address.c_str());
+        bleClient.setTargetAddress(NimBLEAddress(std::string(bleSettings.lastV1Address.c_str()), BLE_ADDR_PUBLIC));
+        
+        // Attempt fast reconnect
+        fastReconnectAttempted = true;
+        if (bleClient.fastReconnect()) {
+            Serial.println("Fast reconnect successful!");
+        } else {
+            Serial.println("Fast reconnect failed, starting general scan.");
+            fastReconnectAttempted = false;  // Will trigger begin() below
+        }
+    }
+    
+    // If fast reconnect wasn't attempted or failed, start normal scanning
+    if (!fastReconnectAttempted) {
+        Serial.println("Starting BLE scan for V1...");
+        if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
+            Serial.println("BLE scan failed to start!");
+            display.showDisconnected();
+            while (1) delay(1000);
+        }
     }
     
     // Register data callback
@@ -658,15 +685,17 @@ void loop() {
         static bool wasConnected = false;
         bool isConnected = bleClient.isConnected();
         
-        if (isConnected && !wasConnected) {
-            display.showResting(); // stay on resting view until data arrives
-            Serial.println("V1 connected!");
-        } else if (!isConnected && wasConnected) {
-            display.showScanning();
-            Serial.println("V1 disconnected - Scanning...");
+        // Only trigger state changes on actual transitions
+        if (isConnected != wasConnected) {
+            if (isConnected) {
+                display.showResting(); // stay on resting view until data arrives
+                Serial.println("V1 connected!");
+            } else {
+                display.showScanning();
+                Serial.println("V1 disconnected - Scanning...");
+            }
+            wasConnected = isConnected;
         }
-        
-        wasConnected = isConnected;
 
         // If connected but not seeing traffic, re-request alert data periodically
         static unsigned long lastReq = 0;
