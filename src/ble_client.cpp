@@ -317,7 +317,8 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = false;
-        instancePtr->pClient = nullptr;
+        // Do NOT clear pClient - we reuse it to prevent memory leaks
+        // instancePtr->pClient = nullptr; 
         instancePtr->pRemoteService = nullptr;
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
@@ -334,33 +335,43 @@ bool V1BLEClient::connectToServer() {
     Serial.printf("Attempting to connect to %s (type=%d)...\n", addrStr.c_str(), addrType);
     
     // Brief pause for scan to stop
-    delay(50);
+    delay(100);
 
     bool connectedOk = false;
-    int attempts = 3;
+    // Try just once with a longer timeout - if it's there, we'll find it.
+    // If not, we shouldn't waste time retrying blindly.
+    int attempts = 1; 
+    
+    // Reuse existing client if available to prevent leaks
+    if (!pClient) {
+        pClient = NimBLEDevice::createClient();
+    }
+    
+    if (!pClient) {
+        // If we still don't have a client, we can't proceed.
+        Serial.println("Failed to create client - device reboot may be required");
+        return false;
+    }
+
+    // Create client callbacks if not already created
+    if (!pClientCallbacks) {
+        pClientCallbacks = new ClientCallbacks();
+    }
+    pClient->setClientCallbacks(pClientCallbacks);
+    pClient->setConnectionParams(12, 12, 0, 51);
+    // Give it plenty of time to find the advertisement (6s)
+    // If it connects earlier, it will return immediately.
+    pClient->setConnectTimeout(6); 
+
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         Serial.printf("Connect attempt %d/%d\n", attempt, attempts);
         
-        // Always create a fresh client for V1 to avoid stale params
-        pClient = NimBLEDevice::createClient();
-        if (!pClient) {
-            Serial.println("Failed to create client");
-            break;
-        }
-
-        // Create client callbacks if not already created (prevents leak on reconnection)
-        if (!pClientCallbacks) {
-            pClientCallbacks = new ClientCallbacks();
-        }
-        pClient->setClientCallbacks(pClientCallbacks);
-        pClient->setConnectionParams(12, 12, 0, 51);
-        pClient->setConnectTimeout(10); // 10 second timeout
-
         if (hasTargetDevice) {
             Serial.println("Calling pClient->connect(targetDevice)...");
             connectedOk = pClient->connect(targetDevice, false);
             if (!connectedOk) {
                 Serial.printf("connect(targetDevice) failed (error: %d); retrying with targetAddress\n", pClient->getLastError());
+                // Fallback to address if device object fails
                 connectedOk = pClient->connect(targetAddress, false);
             }
         } else {
@@ -369,27 +380,24 @@ bool V1BLEClient::connectToServer() {
         }
 
         if (!connectedOk) {
-            Serial.printf("connect attempts failed (error: %d)\n", pClient->getLastError());
-            NimBLEDevice::deleteClient(pClient);
-            pClient = nullptr;
-            delay(50);  // Brief pause before retry
+            Serial.printf("connect attempt failed (error: %d)\n", pClient->getLastError());
+            // Do NOT set pClient to nullptr here - keep it for reuse!
         }
     }
 
     if (!connectedOk) {
-        int lastErr = pClient ? pClient->getLastError() : -1;
-        Serial.printf("Failed to connect (error: %d)\n", lastErr);
-        if (pClient) {
-            NimBLEDevice::deleteClient(pClient);
-        }
-        pClient = nullptr;
+        Serial.println("Failed to connect after attempt");
+        // Keep pClient for next time, but ensure it's disconnected
+        pClient->disconnect();
+        
         {
             SemaphoreGuard lock(bleMutex);
             shouldConnect = false;
             hasTargetDevice = false;
             targetDevice = NimBLEAdvertisedDevice(); // clear stale copy
         }
-        NimBLEDevice::getScan()->start(SCAN_DURATION, false, false);
+        // Don't restart scan here - let the caller decide (fastReconnect vs process)
+        // But process() will restart it anyway if we return false
         return false;
     }
     
@@ -956,6 +964,13 @@ void V1BLEClient::startScanning() {
 bool V1BLEClient::isScanning() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     return pScan && pScan->isScanning();
+}
+
+NimBLEAddress V1BLEClient::getConnectedAddress() const {
+    if (pClient && pClient->isConnected()) {
+        return pClient->getPeerAddress();
+    }
+    return NimBLEAddress();  // Default constructor for empty address
 }
 
 void V1BLEClient::disconnect() {

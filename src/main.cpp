@@ -108,6 +108,46 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
 // Handles auto-push of default profile and mode
 void onV1Connected() {
     const V1Settings& s = settingsManager.get();
+    int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
+    if (activeSlotIndex != s.activeSlot) {
+        Serial.printf("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
+                      s.activeSlot, activeSlotIndex);
+    }
+    
+    // Save this V1's address to SD card cache if not already present
+    if (alertLogger.isReady()) {
+        String connectedAddr = bleClient.getConnectedAddress().toString().c_str();
+        if (connectedAddr.length() == 17) {
+            fs::FS* fs = alertLogger.getFilesystem();
+            
+            // Check if address already exists
+            bool addressExists = false;
+            File file = fs->open("/known_v1.txt", FILE_READ);
+            if (file) {
+                while (file.available()) {
+                    String line = file.readStringUntil('\n');
+                    line.trim();
+                    if (line == connectedAddr) {
+                        addressExists = true;
+                        break;
+                    }
+                }
+                file.close();
+            }
+            
+            // Append if new
+            if (!addressExists) {
+                File file = fs->open("/known_v1.txt", FILE_APPEND);
+                if (file) {
+                    file.println(connectedAddr);
+                    file.close();
+                    Serial.printf("[V1Cache] Added new V1 address: %s\n", connectedAddr.c_str());
+                } else {
+                    Serial.println("[V1Cache] Failed to open known_v1.txt for writing");
+                }
+            }
+        }
+    }
     
     if (!s.autoPushEnabled) {
         Serial.println("[AutoPush] Disabled, skipping");
@@ -118,7 +158,7 @@ void onV1Connected() {
     AutoPushSlot activeSlot = settingsManager.getActiveSlot();
     const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
     Serial.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n", 
-                  slotNames[s.activeSlot], s.activeSlot);
+                  slotNames[activeSlotIndex], activeSlotIndex);
     
     // Small delay to ensure V1 is ready
     delay(500);
@@ -161,8 +201,8 @@ void onV1Connected() {
     }
     
     // Set volumes if configured (not 0xFF = no change)
-    uint8_t mainVol = settingsManager.getSlotVolume(s.activeSlot);
-    uint8_t muteVol = settingsManager.getSlotMuteVolume(s.activeSlot);
+    uint8_t mainVol = settingsManager.getSlotVolume(activeSlotIndex);
+    uint8_t muteVol = settingsManager.getSlotMuteVolume(activeSlotIndex);
     
     if (mainVol != 0xFF || muteVol != 0xFF) {
         delay(100);
@@ -358,6 +398,11 @@ void processBLEData() {
                         mutedAlertStrength = 0;
                         mutedAlertBand = BAND_NONE;
                         mutedAlertFreq = 0;
+                        if (bleClient.setMute(false)) {
+                            unmuteSentTimestamp = millis();
+                        } else {
+                            Serial.println("Auto-unmute failed to send MUTE_OFF");
+                        }
                     }
                 }
 
@@ -439,6 +484,17 @@ void setup() {
     Serial.println("Firmware: " FIRMWARE_VERSION);
     Serial.print("Board: ");
     Serial.println(DISPLAY_NAME);
+    
+    // Check reset reason - if firmware flash, clear BLE bonds
+    esp_reset_reason_t resetReason = esp_reset_reason();
+    Serial.printf("Reset reason: %d ", resetReason);
+    if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
+        Serial.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
+    } else if (resetReason == ESP_RST_POWERON) {
+        Serial.println("(Power-on)");
+    } else {
+        Serial.printf("(Other: %d)\n", resetReason);
+    }
     Serial.println("===================================\n");
     
     // Initialize display
@@ -450,8 +506,7 @@ void setup() {
     // Add extra delay to ensure panel is fully cleared before enabling backlight
     delay(200);
 
-    // Show boot splash only on true power-on (not crash reboots)
-    esp_reset_reason_t resetReason = esp_reset_reason();
+    // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
         // True cold boot - show splash
         display.showBootSplash();
@@ -486,6 +541,43 @@ void setup() {
     // Initialize V1 profile manager (uses alert logger's filesystem)
     if (alertLogger.isReady()) {
         v1ProfileManager.begin(alertLogger.getFilesystem());
+    }
+    
+    // Load known V1 addresses from SD card for fast reconnect
+    std::vector<std::string> knownV1Addresses;
+    bool skipFastReconnect = false;
+    
+    // After firmware flash, delete cache and skip fast reconnect to force fresh connection
+    if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
+        Serial.println("[V1Cache] Firmware flash detected - clearing V1 cache for fresh connection");
+        if (alertLogger.isReady()) {
+            fs::FS* fs = alertLogger.getFilesystem();
+            if (fs->exists("/known_v1.txt")) {
+                fs->remove("/known_v1.txt");
+                Serial.println("[V1Cache] Deleted known_v1.txt");
+            }
+        }
+        skipFastReconnect = true;
+    }
+    
+    if (!skipFastReconnect && alertLogger.isReady()) {
+        fs::FS* fs = alertLogger.getFilesystem();
+        File file = fs->open("/known_v1.txt", FILE_READ);
+        if (file) {
+            Serial.println("[V1Cache] Loading known V1 addresses from SD...");
+            while (file.available()) {
+                String line = file.readStringUntil('\n');
+                line.trim();
+                if (line.length() == 17 && line.indexOf(':') > 0) {  // MAC format: aa:bb:cc:dd:ee:ff
+                    knownV1Addresses.push_back(line.c_str());
+                    Serial.printf("[V1Cache]   - %s\n", line.c_str());
+                }
+            }
+            file.close();
+            Serial.printf("[V1Cache] Loaded %d known V1 address(es)\n", knownV1Addresses.size());
+        } else {
+            Serial.println("[V1Cache] No known_v1.txt found (will be created on first connection)");
+        }
     }
     
     Serial.println("==============================");
@@ -550,26 +642,32 @@ void setup() {
         display.showDisconnected();
         while (1) delay(1000);
     }
-
-    // Set the last known V1 address for fast reconnect
+    
+    // Try fast reconnect with each known V1 address from SD card (skip after firmware flash)
     bool fastReconnectAttempted = false;
-    if (bleSettings.lastV1Address.length() > 0) {
-        Serial.printf("[FastReconnect] Last known V1 address: %s\n", bleSettings.lastV1Address.c_str());
-        bleClient.setTargetAddress(NimBLEAddress(std::string(bleSettings.lastV1Address.c_str()), BLE_ADDR_PUBLIC));
-        
-        // Attempt fast reconnect
-        fastReconnectAttempted = true;
-        if (bleClient.fastReconnect()) {
-            Serial.println("Fast reconnect successful!");
-        } else {
-            Serial.println("Fast reconnect failed, starting general scan.");
-            fastReconnectAttempted = false;  // Will trigger begin() below
+    if (!skipFastReconnect) {
+        for (const auto& addr : knownV1Addresses) {
+            Serial.printf("[FastReconnect] Trying %s...\n", addr.c_str());
+            bleClient.setTargetAddress(NimBLEAddress(addr, BLE_ADDR_PUBLIC));
+            
+            if (bleClient.fastReconnect()) {
+                Serial.printf("[FastReconnect] Connected to %s!\n", addr.c_str());
+                fastReconnectAttempted = true;
+                break;
+            } else {
+                Serial.printf("[FastReconnect] Failed for %s, trying next...\n", addr.c_str());
+            }
         }
+    } else {
+        Serial.println("[FastReconnect] Skipped after firmware flash");
     }
     
-    // If fast reconnect wasn't attempted or failed, start normal scanning
-    if (!fastReconnectAttempted) {
-        Serial.println("Starting BLE scan for V1...");
+    // If fast reconnect worked, skip normal scan
+    if (fastReconnectAttempted && bleClient.isConnected()) {
+        Serial.println("[FastReconnect] Success - skipping scan");
+    } else {
+        // All cached addresses failed, start normal scanning
+        Serial.println("[FastReconnect] All known addresses failed, starting general scan for V1...");
         if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
             Serial.println("BLE scan failed to start!");
             display.showDisconnected();

@@ -36,6 +36,9 @@ void SettingsManager::load() {
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
+    if (settings.activeSlot < 0 || settings.activeSlot > 2) {
+        settings.activeSlot = 0;
+    }
     settings.slot0Name = preferences.getString("slot0name", "DEFAULT");
     settings.slot1Name = preferences.getString("slot1name", "HIGHWAY");
     settings.slot2Name = preferences.getString("slot2name", "COMFORT");

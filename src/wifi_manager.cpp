@@ -17,7 +17,6 @@
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
 
-namespace {
 String htmlEscape(const String& in) {
     String out;
     out.reserve(in.length() + 8);
@@ -34,8 +33,6 @@ String htmlEscape(const String& in) {
     }
     return out;
 }
-} // namespace
-
 // Global instance
 WiFiManager wifiManager;
 
@@ -355,6 +352,10 @@ void WiFiManager::handleV1ProfileSave() {
     }
     
     String body = server.arg("plain");
+    if (body.length() > 4096) {
+        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
+        return;
+    }
     Serial.printf("[V1Settings] Save request body: %s\n", body.c_str());
     
     JsonDocument doc;
@@ -376,12 +377,19 @@ void WiFiManager::handleV1ProfileSave() {
     profile.displayOn = doc["displayOn"] | true;  // Default to on
     
     // Parse settings from JSON
-    JsonObject settings = doc["settings"];
-    if (!settings.isNull()) {
-        v1ProfileManager.jsonToSettings(body, profile.settings);
+    JsonObject settingsObj = doc["settings"];
+    if (!settingsObj.isNull()) {
+        if (!v1ProfileManager.jsonToSettings(settingsObj, profile.settings)) {
+            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
+            return;
+        }
     } else {
         // Direct settings in root
-        v1ProfileManager.jsonToSettings(body, profile.settings);
+        JsonObject rootObj = doc.as<JsonObject>();
+        if (!v1ProfileManager.jsonToSettings(rootObj, profile.settings)) {
+            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
+            return;
+        }
     }
     
     if (v1ProfileManager.saveProfile(profile)) {
@@ -398,6 +406,10 @@ void WiFiManager::handleV1ProfileDelete() {
     }
     
     String body = server.arg("plain");
+    if (body.length() > 2048) {
+        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
+        return;
+    }
     JsonDocument doc;
     deserializeJson(doc, body);
     
@@ -454,6 +466,10 @@ void WiFiManager::handleV1SettingsPush() {
     
     String body = server.arg("plain");
     Serial.printf("[V1Settings] Push request: %s\n", body.c_str());
+    if (body.length() > 4096) {
+        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
+        return;
+    }
     
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
@@ -473,9 +489,13 @@ void WiFiManager::handleV1SettingsPush() {
         }
         Serial.println("[V1Settings] Using raw bytes from request");
     } else {
-        // Parse from individual settings
+        // Parse from individual settings (already deserialized)
         V1UserSettings settings;
-        if (!v1ProfileManager.jsonToSettings(body, settings)) {
+        JsonObject settingsObj = doc["settings"].as<JsonObject>();
+        if (settingsObj.isNull()) {
+            settingsObj = doc.as<JsonObject>();
+        }
+        if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
             server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
             return;
         }
