@@ -3,7 +3,7 @@
  * With BLE Server proxy support for JBV1 app
  * 
  * Architecture:
- * - NimBLE 2.2.3 for stable dual-role operation
+ * - NimBLE 2.3.7 tuned for stable dual-role operation
  * - Client connects to V1 (V1G* device names)
  * - Server advertises as V1C-LE-S3 for JBV1
  * - FreeRTOS task manages advertising timing
@@ -163,6 +163,10 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
         // Do NOT start advertising here - wait for V1 connection
     }
     
+    // Set up security and pairing
+    NimBLEDevice::setSecurityAuth(true, true, true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+    
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
     
@@ -275,6 +279,17 @@ void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
 
 void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
     Serial.printf("Disconnected from V1 (reason: %d)\n", reason);
+    
+    // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
+    // to ensure a clean reconnect next time.
+    if (reason != 0 && reason != BLE_HS_ETIMEOUT) { // 0 is normal disconnect
+        NimBLEAddress addr = pClient->getPeerAddress();
+        if (NimBLEDevice::isBonded(addr)) {
+            Serial.printf("Unexpected disconnect. Deleting bond for %s\n", addr.toString().c_str());
+            NimBLEDevice::deleteBond(addr);
+        }
+    }
+
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = false;
