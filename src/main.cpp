@@ -62,7 +62,9 @@ const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
 static bool localMuteOverride = false;
 static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
-const unsigned long LOCAL_MUTE_TIMEOUT_MS = 800;  // Clear override 800ms after alert ends
+static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
+const unsigned long LOCAL_MUTE_TIMEOUT_MS = 2000;  // Clear override 2s after alert ends
+const unsigned long UNMUTE_GRACE_MS = 1000;  // Force unmuted state for 1s after sending unmute command
 
 // Track muted alert to detect stronger signals
 static uint8_t mutedAlertStrength = 0;
@@ -249,27 +251,41 @@ void processBLEData() {
             // Cache alert status to avoid repeated calls
             bool hasAlerts = parser.hasAlerts();
 
-            // Apply local mute override FIRST before any other logic
+            // Apply local mute override IMMEDIATELY - lock it in before any logic
+            if (localMuteActive && localMuteOverride) {
+                state.muted = true;
+            }
+            
+            // If we recently sent unmute command, force unmuted until V1 catches up
+            if (unmuteSentTimestamp > 0) {
+                unsigned long timeSinceUnmute = millis() - unmuteSentTimestamp;
+                if (timeSinceUnmute < UNMUTE_GRACE_MS) {
+                    state.muted = false;  // Override V1's lagging muted state
+                } else {
+                    unmuteSentTimestamp = 0;  // Grace period expired, trust V1 again
+                }
+            }
+
+            // Handle timeout logic separately
             if (localMuteActive) {
-                // While alerts are active, ALWAYS apply override (no timeout)
+                // While alerts are active, ALWAYS keep override (no timeout)
                 // Timeout only applies when no alerts (waiting for V1 response)
                 if (hasAlerts) {
-                    // Force muted state while alert is active
-                    state.muted = localMuteOverride;
                     // Reset timestamp so we get fresh timeout window when alert goes away
                     localMuteTimestamp = millis();
                 } else {
                     // No alerts - check timeout
                     unsigned long now = millis();
-                    if (now - localMuteTimestamp < LOCAL_MUTE_TIMEOUT_MS) {
-                        state.muted = localMuteOverride;
-                    } else {
-                        // Timeout and no alerts - clear override
-                        Serial.println("Local mute override timed out (no alerts)");
+                    if (now - localMuteTimestamp >= LOCAL_MUTE_TIMEOUT_MS) {
+                        // Timeout and no alerts - clear override and send unmute
+                        Serial.println("Local mute override timed out (no alerts) - sending unmute to V1");
                         localMuteActive = false;
                         localMuteOverride = false;
                         mutedAlertStrength = 0;
                         mutedAlertBand = BAND_NONE;
+                        state.muted = false;  // Clear muted state on timeout
+                        bleClient.setMute(false);
+                        unmuteSentTimestamp = millis();  // Track when we sent unmute
                     }
                 }
             }
@@ -363,6 +379,12 @@ void processBLEData() {
             } else {
                 // No alerts - clear mute override only after timeout has passed
                 if (localMuteActive) {
+                    // Don't timeout if V1 still shows active bands - alert might return
+                    if (state.activeBands != BAND_NONE) {
+                        // V1 display still shows bands, keep mute active and skip update
+                        continue;
+                    }
+                    
                     unsigned long timeSinceMute = millis() - localMuteTimestamp;
                     if (timeSinceMute >= LOCAL_MUTE_TIMEOUT_MS) {
                         Serial.println("Alert cleared - clearing local mute override and sending unmute to V1");
@@ -373,6 +395,7 @@ void processBLEData() {
                         mutedAlertFreq = 0;
                         // Send unmute command to V1
                         bleClient.setMute(false);
+                        unmuteSentTimestamp = millis();  // Track when we sent unmute
                     } else {
                         // Still waiting for timeout - skip display update to avoid color flash
                         continue;
