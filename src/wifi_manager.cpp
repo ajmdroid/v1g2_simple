@@ -140,10 +140,6 @@ void WiFiManager::initializeTime() {
     // All times stored and displayed in UTC
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     
-    // Set timezone to UTC explicitly
-    setenv("TZ", "UTC0", 1);
-    tzset();
-    
     // Wait briefly for time to sync
     struct tm timeinfo;
     int retries = 0;
@@ -159,8 +155,10 @@ void WiFiManager::initializeTime() {
                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         timeInitialized = true;
         
-        // Save to SD card immediately after sync
-        timeManager.saveTimeToSD();
+        // Save to SD card immediately after sync (if SD is ready)
+        if (alertLogger.isReady()) {
+            timeManager.saveTimeToSD();
+        }
     } else {
         Serial.println("Failed to sync time via NTP");
     }

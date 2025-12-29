@@ -110,6 +110,10 @@ bool TimeManager::isTimeValid() const {
 }
 
 String TimeManager::getTimestamp() const {
+    if (!isTimeValid()) {
+        return "N/A";
+    }
+    
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
         return "N/A";
@@ -123,13 +127,15 @@ String TimeManager::getTimestamp() const {
 }
 
 String TimeManager::getTimestampISO() const {
-    time_t now = getTime();
     if (!isTimeValid()) {
         return "N/A";
     }
     
+    time_t now = getTime();
     struct tm timeinfo;
-    gmtime_r(&now, &timeinfo);  // Use gmtime_r for UTC
+    if (gmtime_r(&now, &timeinfo) == NULL) {
+        return "N/A";
+    }
     
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02dZ",
@@ -139,14 +145,17 @@ String TimeManager::getTimestampISO() const {
 }
 
 bool TimeManager::getLocalTime(struct tm* timeinfo) const {
+    if (!timeinfo) {
+        return false;
+    }
+    
     time_t now = getTime();
     if (!isTimeValid()) {
         return false;
     }
     
     // Use UTC (gmtime) instead of local time
-    gmtime_r(&now, timeinfo);
-    return true;
+    return gmtime_r(&now, timeinfo) != NULL;
 }
 
 void TimeManager::process() {
