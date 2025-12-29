@@ -3,17 +3,38 @@
 A customizable touchscreen display for the Valentine1 Gen2 radar detector. Built for the [Waveshare ESP32-S3-Touch-LCD-3.49](https://www.amazon.com/dp/B0FQM41PGX) - an affordable, bright AMOLED display that turns your V1 into a modern tech setup.
 
 **What You Get:**
-- 🔵 **Wireless Connection**: Connects to your V1 via Bluetooth LE
+- 🔵 **Wireless Connection**: Connects to your V1 via Bluetooth LE with fast reconnection
 - 📊 **Real-time Alerts**: Shows radar bands (Ka, K, X, Laser), direction, and signal strength
 - 🎨 **Custom Themes**: Multiple color schemes (Standard, High Contrast, Stealth)
 - 👆 **Touch Control**: Tap screen to mute/unmute
 - 📱 **WiFi Setup**: Web interface for all settings - no code editing needed
+- 🌐 **Multi-Network WiFi**: Auto-switch between up to 3 saved networks with encrypted credentials
+- 🔄 **Internet Passthrough**: Built-in NAT/NAPT router - share your WiFi connection via AP mode
 - 🎯 **Auto-Push Profiles**: 3 quick-access profile slots (Default, Highway, Passenger Comfort)
 - 💾 **Alert Logging**: SD card logging with web-based replay
 - 🔧 **V1 Profile Manager**: Create, edit, and push settings to your V1
+- 🔒 **Security Hardened**: XSS protection, password obfuscation, secure web interface
 
 **⚠️ Disclaimer:**  
 This is a personal project I built for myself. There is NO WARRANTY of any kind. Use at your own risk. I have ZERO liability for anything that happens. If you break your V1, your ESP32, or somehow cause the apocalypse, that's on you. Seriously. No refunds, no guarantees, no support obligations. It works for me. Your mileage may vary.
+
+---
+
+## 🆕 Recent Updates
+
+**Latest (Dec 2025):**
+- ✅ **WiFi NAT/NAPT Router**: Internet passthrough in AP+STA mode
+- ✅ **Multi-Network WiFi**: Auto-switch between up to 3 saved networks
+- ✅ **Security Hardening**: Fixed XSS vulnerability, added HTML entity encoding
+- ✅ **Password Obfuscation**: Encrypted WiFi credential storage
+- ✅ **Time Management**: NTP sync with automatic timezone handling
+- ✅ **Fast BLE Reconnection**: Aggressive scanning for quicker V1 connection
+
+**Previous:**
+- Touch-to-mute functionality
+- Alert database with web replay
+- Auto-push profile system
+- BLE proxy for JBV1 app compatibility
 
 ---
 
@@ -267,6 +288,26 @@ With a microSD card inserted:
 - Access logs via web interface (`/alerts`)
 - Format: FAT32 (not exFAT)
 
+### WiFi Networking
+
+**Multi-Network Support:**
+- Store up to 3 WiFi networks
+- Automatic failover between saved networks
+- Password obfuscation for credential security
+- Configure via web interface Settings page
+
+**Internet Passthrough (NAT/NAPT Router):**
+- Connect display to home/phone WiFi (Station mode)
+- Enable AP mode simultaneously
+- Display acts as router - shares internet to JBV1 app
+- Built-in NAT/NAPT forwarding
+- Useful for using JBV1 app while display is connected to external WiFi
+
+**WiFi Modes:**
+- **AP Only**: Display creates WiFi network (no internet)
+- **Station Only**: Display connects to your WiFi
+- **AP + Station**: Router mode with internet passthrough
+
 ---
 
 ## 🛠️ Customization
@@ -314,7 +355,20 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
 
 **Can't find V1-Display network:**
 - Wait 30 seconds after boot
-- Check WiFi mode is "AP" or "APSTA" in settings
+- Check WiFi mode is "AP" or "AP+STA" in settings
+- Power cycle the display
+
+**Can't connect to saved WiFi network:**
+- Verify network is in range and password is correct
+- Multi-network will try all 3 saved networks in order
+- Check serial monitor for connection attempts
+- Remove and re-add network if issues persist
+
+**Internet passthrough not working:**
+- Ensure display is connected to WiFi with internet (Station mode)
+- AP mode must also be enabled (AP+STA mode)
+- NAT is enabled automatically when both modes active
+- Devices connected to V1-Display AP should get internet access
 - Power cycle the display
 
 **Can't access web interface:**
