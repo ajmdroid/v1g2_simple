@@ -740,10 +740,9 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
-    // Battery icon position - to the right of the direction arrows
-    // Arrows are centered at SCREEN_WIDTH - 70, so position battery to the right
-    const int battX = SCREEN_WIDTH - 36;  // Left edge of battery icon
-    const int battY = 14;
+    // Battery icon position - bottom left, below bogey counter
+    const int battX = 12;   // Align with bogey counter left edge
+    const int battY = 42;   // Below bogey counter (counter is ~10-36px tall)
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
     const int capW = 3;     // Positive terminal cap width
