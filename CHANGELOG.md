@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Direction arrows scaled up ~22% with shallower angles to match V1
 - Splash screen reduced from 4s to 2s
 - Web UI GitHub link updated to this repo
+- Bogey counter scaled to match frequency counter size (2.2x)
 
 ### Fixed
 - Band label pixelation (was using scaled 10pt, now native 24pt)
