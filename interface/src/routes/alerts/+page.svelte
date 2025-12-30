@@ -61,10 +61,6 @@
 		return date.toLocaleDateString();
 	}
 	
-	$effect(() => {
-		// Reactive filtered list
-	});
-	
 	let filteredAlerts = $derived(
 		filter === 'all' ? alerts : alerts.filter(a => a.band === filter)
 	);

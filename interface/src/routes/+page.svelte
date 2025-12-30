@@ -60,14 +60,6 @@
 		if (rssi >= -70) return 'text-warning';
 		return 'text-error';
 	}
-	
-	async function sendCommand(cmd) {
-		try {
-			await fetch(`/${cmd}`, { method: 'POST' });
-		} catch (e) {
-			console.error('Command failed:', e);
-		}
-	}
 </script>
 
 <div class="space-y-6">
