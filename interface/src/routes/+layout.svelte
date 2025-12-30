@@ -21,6 +21,8 @@
 					<li><a href="/colors">Colors</a></li>
 					<li><a href="/alerts">Alert Log</a></li>
 					<li><a href="/settings">Settings</a></li>
+					<li><a href="/time">Time</a></li>
+					<li><a href="/seriallog">System Logs</a></li>
 				</ul>
 			</div>
 			<a href="/" class="btn btn-ghost text-xl text-primary">V1 Gen2</a>
@@ -34,6 +36,8 @@
 				<li><a href="/colors" class="hover:text-primary">Colors</a></li>
 				<li><a href="/alerts" class="hover:text-primary">Alerts</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
+				<li><a href="/time" class="hover:text-primary">Time</a></li>
+				<li><a href="/seriallog" class="hover:text-primary">Logs</a></li>
 			</ul>
 		</div>
 		<div class="navbar-end">
