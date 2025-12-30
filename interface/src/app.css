@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for V1 Gen2 Display */
+:root {
+	--v1-cyan: #00d4ff;
+	--v1-red: #ff4444;
+	--v1-orange: #ff6b35;
+	--v1-green: #00ff88;
+	--v1-yellow: #ffcc00;
+}
+
+/* Smooth scrolling */
+html {
+	scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--fallback-b2, oklch(var(--b2)));
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--fallback-bc, oklch(var(--bc) / 0.3));
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--fallback-bc, oklch(var(--bc) / 0.5));
+}

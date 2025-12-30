@@ -101,6 +101,9 @@ private:
     void handleDisplayColorsReset();
     void handleNotFound();
     
+    // LittleFS file serving (new UI)
+    bool serveLittleFSFile(const char* path, const char* contentType);
+    
     // HTML generation (legacy string-based)
     String generateStyleSheet();
     String generateTopNav(const String& activePath);

@@ -83,6 +83,17 @@ bool splitCsvFixed(const String& line, String parts[], size_t expected) {
 }
 } // namespace
 
+// Helper to serve files from LittleFS
+bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
+    File file = LittleFS.open(path, "r");
+    if (!file) {
+        return false;
+    }
+    server.streamFile(file, contentType);
+    file.close();
+    return true;
+}
+
 // Global instance
 WiFiManager wifiManager;
 
@@ -354,19 +365,37 @@ void WiFiManager::setupWebServer() {
         }
     }
     
-    // New UI served from LittleFS (test endpoint)
-    server.on("/ui", HTTP_GET, [this]() {
-        File file = LittleFS.open("/index.html", "r");
-        if (!file) {
-            server.send(404, "text/plain", "LittleFS: index.html not found");
-            return;
+    // New UI served from LittleFS
+    // Serve index.html for /ui and SPA routes
+    server.on("/ui", HTTP_GET, [this]() { serveLittleFSFile("/index.html", "text/html"); });
+    
+    // Serve static assets from _app directory
+    server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
+    server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
+    
+    // Catch-all for _app/immutable/* files
+    server.onNotFound([this]() {
+        String uri = server.uri();
+        
+        // Serve _app files from LittleFS
+        if (uri.startsWith("/_app/")) {
+            String contentType = "application/octet-stream";
+            if (uri.endsWith(".js")) contentType = "application/javascript";
+            else if (uri.endsWith(".css")) contentType = "text/css";
+            else if (uri.endsWith(".json")) contentType = "application/json";
+            
+            if (serveLittleFSFile(uri.c_str(), contentType.c_str())) {
+                return;
+            }
         }
-        server.streamFile(file, "text/html");
-        file.close();
+        
+        // Fall through to original not found handler
+        handleNotFound();
     });
     
     server.on("/", HTTP_GET, [this]() { handleSettings(); });  // Root redirects to settings
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
+    server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });  // API version for new UI
     server.on("/settings", HTTP_GET, [this]() { handleSettings(); });
     server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });
     server.on("/time", HTTP_GET, [this]() { handleTimeSettings(); });
@@ -1214,6 +1243,10 @@ void WiFiManager::handleV1SettingsPush() {
 
 void WiFiManager::handleNotFound() {
     server.send(404, "text/plain", "Not found");
+}
+
+bool WiFiManager::serveLittleFSFile(const char* path, const char* contentType) {
+    return serveLittleFSFileHelper(server, path, contentType);
 }
 
 String WiFiManager::generateStyleSheet() {

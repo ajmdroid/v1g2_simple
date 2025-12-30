@@ -1,43 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V1 Gen2 Display</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #00d4ff;
-        }
-        .status {
-            background: #16213e;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>V1 Gen2 Display</h1>
-        <div class="status">
-            <p>LittleFS Test Page</p>
-            <p>If you see this, the filesystem is working!</p>
-            <p id="time"></p>
-        </div>
-    </div>
-    <script>
-        document.getElementById('time').textContent = 'Loaded: ' + new Date().toLocaleString();
-    </script>
-</body>
+<!doctype html>
+<html lang="en" data-theme="v1dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#0f0f1a" />
+		<meta name="description" content="V1 Gen2 Display Configuration" />
+		<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>" />
+		
+		<link rel="modulepreload" href="/_app/immutable/entry/start.Bl2FUJFO.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/DmPAZZPU.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/3QlmZnHB.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/dam9Bk7g.js">
+		<link rel="modulepreload" href="/_app/immutable/entry/app.CvgI10G5.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/BPGE2kEC.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/_fC9Mge7.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/Br8_PJsR.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/D9LqhyVH.js">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_1ujz3rt = {
+						base: ""
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/_app/immutable/entry/start.Bl2FUJFO.js"),
+						import("/_app/immutable/entry/app.CvgI10G5.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
 </html>
