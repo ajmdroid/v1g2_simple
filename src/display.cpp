@@ -58,7 +58,7 @@ inline const ColorPalette& getColorPalette() {
     if (g_displayInstance) {
         return g_displayInstance->getCurrentPalette();
     }
-    return ColorThemes::STANDARD;
+    return ColorThemes::STANDARD();
 }
 
 // Color macros that use the current theme palette
@@ -233,7 +233,7 @@ uint16_t get14SegPattern(char c) {
 
 V1Display::V1Display() {
     // Initialize with standard theme by default
-    currentPalette = ColorThemes::STANDARD;
+    currentPalette = ColorThemes::STANDARD();
     // Set global instance for color palette access
     g_displayInstance = this;
 }
