@@ -69,6 +69,9 @@ public:
     
     // Get status string for display
     String getStatusString();
+    
+    // Debug: simulate battery for testing UI (set voltage in mV, 0 to disable)
+    void simulateBattery(uint16_t voltageMV);
 
 private:
     bool initialized;
@@ -82,6 +85,9 @@ private:
     uint16_t cachedVoltage;
     uint8_t cachedPercent;
     unsigned long lastUpdateMs;
+    
+    // Debug simulation
+    uint16_t simulatedVoltage;
     
     bool initADC();
     bool initTCA9554();

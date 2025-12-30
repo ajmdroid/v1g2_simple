@@ -31,6 +31,7 @@ BatteryManager::BatteryManager()
     , cachedVoltage(0)
     , cachedPercent(0)
     , lastUpdateMs(0)
+    , simulatedVoltage(0)
 {
 }
 
@@ -235,6 +236,11 @@ bool BatteryManager::isOnBattery() const {
 }
 
 bool BatteryManager::hasBattery() const {
+    // Debug simulation mode - if simulatedVoltage is set, use it
+    if (simulatedVoltage > 0) {
+        return true;
+    }
+    
     // Must be initialized with working ADC to detect battery
     if (!initialized || !adc1_handle) {
         return false;
@@ -258,8 +264,26 @@ bool BatteryManager::hasBattery() const {
     return cachedVoltage <= BATTERY_FULL_MV;
 }
 
+void BatteryManager::simulateBattery(uint16_t voltageMV) {
+    simulatedVoltage = voltageMV;
+    if (voltageMV > 0) {
+        // Update cached values to match simulation
+        cachedVoltage = voltageMV;
+        cachedPercent = (uint8_t)((voltageMV - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
+        if (cachedPercent > 100) cachedPercent = 100;
+        Serial.printf("[Battery] SIMULATION: %dmV (%d%%)\n", voltageMV, cachedPercent);
+    } else {
+        Serial.println("[Battery] Simulation disabled");
+    }
+}
+
 void BatteryManager::update() {
     if (!initialized) {
+        return;
+    }
+    
+    // Skip normal updates if in simulation mode
+    if (simulatedVoltage > 0) {
         return;
     }
     
