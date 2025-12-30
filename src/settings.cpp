@@ -100,6 +100,7 @@ void SettingsManager::load() {
     settings.colorBandKa = preferences.getUShort("colorBandKa", 0xF800);
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
+    settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -193,6 +194,7 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBandKa", settings.colorBandKa);
     written += preferences.putUShort("colorBandK", settings.colorBandK);
     written += preferences.putUShort("colorBandX", settings.colorBandX);
+    written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -345,6 +347,11 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
     settings.colorBandKa = bandKa;
     settings.colorBandK = bandK;
     settings.colorBandX = bandX;
+    save();
+}
+
+void SettingsManager::setWiFiIconColor(uint16_t color) {
+    settings.colorWiFiIcon = color;
     save();
 }
 

@@ -9,7 +9,8 @@
 		bandL: 0x001F,   // Blue
 		bandKa: 0xF800,  // Red
 		bandK: 0x001F,   // Blue
-		bandX: 0x07E0    // Green
+		bandX: 0x07E0,   // Green
+		wifiIcon: 0x07FF // Cyan
 	});
 	
 	let loading = $state(true);
@@ -68,6 +69,7 @@
 			params.append('bandKa', colors.bandKa);
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
+			params.append('wifiIcon', colors.wifiIcon);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -101,7 +103,8 @@
 					bandL: 0x001F,
 					bandKa: 0xF800,
 					bandK: 0x001F,
-					bandX: 0x07E0
+					bandX: 0x07E0,
+					wifiIcon: 0x07FF
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -271,6 +274,33 @@
 							style="color: {rgb565ToHex(colors.arrow)}"
 						>▲ ▼</span>
 					</div>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Status Indicators -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">Status Indicators</h2>
+				<div class="form-control">
+					<label class="label">
+						<span class="label-text">WiFi Icon</span>
+					</label>
+					<div class="flex items-center gap-3">
+						<input 
+							type="color" 
+							class="w-12 h-10 cursor-pointer rounded border-0"
+							value={rgb565ToHex(colors.wifiIcon)}
+							onchange={(e) => updateColor('wifiIcon', e.target.value)}
+						/>
+						<span 
+							class="text-2xl font-bold"
+							style="color: {rgb565ToHex(colors.wifiIcon)}"
+						>📶</span>
+					</div>
+					<label class="label">
+						<span class="label-text-alt text-base-content/50">Shown when connected to WiFi</span>
+					</label>
 				</div>
 			</div>
 		</div>

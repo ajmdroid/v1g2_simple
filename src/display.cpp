@@ -803,8 +803,9 @@ void V1Display::drawWiFiIndicator() {
     const int battY = SCREEN_HEIGHT - 14 - 8;  // Battery Y position
     const int wifiY = battY - wifiSize - 6;    // Above battery with 6px gap
     
-    // Icon color - cyan for connected
-    uint16_t wifiColor = 0x07FF;  // Cyan
+    // Get WiFi icon color from settings (default cyan 0x07FF)
+    const V1Settings& s = settingsManager.get();
+    uint16_t wifiColor = s.colorWiFiIcon;
     
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);

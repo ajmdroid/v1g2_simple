@@ -746,7 +746,7 @@ void setup() {
     delay(100);
     
     // Create BLE data queue early - before any BLE operations
-    bleDataQueue = xQueueCreate(32, sizeof(BLEDataPacket));
+    bleDataQueue = xQueueCreate(64, sizeof(BLEDataPacket));  // Increased from 32 to handle web server blocking
     rxBuffer.reserve(1024);
     
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)

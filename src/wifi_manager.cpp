@@ -1674,12 +1674,19 @@ void WiFiManager::handleDisplayColorsSave() {
     
     settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
     
+    // Handle WiFi icon color separately if provided
+    if (server.hasArg("wifiIcon")) {
+        uint16_t wifiIcon = server.arg("wifiIcon").toInt();
+        settingsManager.setWiFiIconColor(wifiIcon);
+    }
+    
     server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WiFiManager::handleDisplayColorsReset() {
-    // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green
+    // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
+    settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     server.send(200, "application/json", "{\"success\":true}");
 }
 
@@ -1693,7 +1700,8 @@ void WiFiManager::handleDisplayColorsApi() {
     json += "\"bandL\":" + String(s.colorBandL) + ",";
     json += "\"bandKa\":" + String(s.colorBandKa) + ",";
     json += "\"bandK\":" + String(s.colorBandK) + ",";
-    json += "\"bandX\":" + String(s.colorBandX);
+    json += "\"bandX\":" + String(s.colorBandX) + ",";
+    json += "\"wifiIcon\":" + String(s.colorWiFiIcon);
     json += "}";
     
     server.send(200, "application/json", json);
