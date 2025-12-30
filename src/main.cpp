@@ -806,7 +806,7 @@ void setup() {
     if (resetReason == ESP_RST_POWERON) {
         // True cold boot - show splash
         display.showBootSplash();
-        delay(4000);
+        delay(2000);
     }
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();

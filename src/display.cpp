@@ -12,6 +12,7 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include <esp_heap_caps.h>
+#include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
 // Helper macro to handle pointer vs object access for tft
 // Arduino_GFX uses pointer (tft->), TFT_eSPI uses object (tft.)
@@ -1178,17 +1179,17 @@ void V1Display::drawBandBadge(Band band) {
 }
 
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
-    // Vertical L/Ka/K/X stack tucked beside the left digit (match reference photo)
+    // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
 #if defined(DISPLAY_WAVESHARE_349)
     const int x = 82;
-    const int textSize = 4;  // Bigger text for larger screen
-    const int spacing = 40;  // More spacing to fill vertical space
-    const int startY = 20;   // Move down to avoid clipping L at top
+    const int textSize = 1;   // No scaling - native 24pt for crisp rendering
+    const int spacing = 43;   // Increased spacing to spread labels vertically
+    const int startY = 55;    // Start position for L (moved down for 24pt)
 #else
     const int x = 82;
-    const int textSize = 3;  // Chunky, readable
-    const int spacing = 32;  // Tighten spacing to sit near the top digit
-    const int startY = 12;   // Slightly lower to avoid clipping
+    const int textSize = 1;   // No scaling
+    const int spacing = 30;   // Tighten spacing
+    const int startY = 30;    // Start position
 #endif
 
     const V1Settings& s = settingsManager.get();
@@ -1203,14 +1204,21 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
         {"X",  BAND_X,    s.colorBandX}
     };
 
-    GFX_setTextDatum(ML_DATUM);
+    // Use 24pt font for crisp band labels (no scaling)
+    TFT_CALL(setFont)(&FreeSansBold24pt7b);
     TFT_CALL(setTextSize)(textSize);
+    GFX_setTextDatum(ML_DATUM);
+    
     for (int i = 0; i < 4; ++i) {
         bool active = (bandMask & cells[i].mask) != 0;
         uint16_t col = active ? (muted ? PALETTE_MUTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
     }
+    
+    // Reset to default font for other text
+    TFT_CALL(setFont)(NULL);
+    TFT_CALL(setTextSize)(1);
 }
 
 void V1Display::drawSignalBars(uint8_t bars) {
