@@ -300,8 +300,121 @@ void onV1Connected() {
     startAutoPush(activeSlotIndex);
 }
 
+#ifdef REPLAY_MODE
+// ============================
+// Packet Replay for UI Testing
+// ============================
+
+// Sample V1 packets for testing (captured from real device)
+// Format: 0xAA <dest> <origin> <packetID> <len> <payload...> <checksum> 0xAB
+
+// Alert packet: Ka 33.800 GHz, front, strength 5
+const uint8_t REPLAY_PACKET_KA_ALERT[] = {
+    0xAA, 0x04, 0x0A, 0x43, 0x0C,  // Header: alert data, 12 bytes payload
+    0x04, 0x01, 0x05, 0x00,        // Band=Ka(4), direction=front(1), frontStrength=5, rearStrength=0
+    0x00, 0xD0, 0x2F, 0x01,        // Frequency: 33.800 GHz (0x012FD000 = 19980288 in 100kHz units)
+    0x00, 0x00, 0x00, 0x01,        // Count=1, flags
+    0xE8, 0xAB                     // Checksum, end
+};
+
+// Display data packet: Ka active, 3 signal bars, muted
+const uint8_t REPLAY_PACKET_DISPLAY_MUTED[] = {
+    0xAA, 0x04, 0x0A, 0x31, 0x08,  // Header: display data, 8 bytes payload
+    0x04, 0x01, 0x03, 0x01,        // activeBands=Ka(4), arrows=front(1), signalBars=3, muted=1
+    0x00, 0x00, 0x00, 0x00,        // Padding
+    0x00, 0x00, 0x00, 0x00,
+    0x8A, 0xAB                     // Checksum, end
+};
+
+// Display data: X band active, not muted
+const uint8_t REPLAY_PACKET_DISPLAY_X[] = {
+    0xAA, 0x04, 0x0A, 0x31, 0x08,
+    0x01, 0x01, 0x04, 0x00,        // X band, front, 4 bars, not muted
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x7E, 0xAB
+};
+
+// Alert: K band 24.150 GHz, rear, strength 3
+const uint8_t REPLAY_PACKET_K_ALERT[] = {
+    0xAA, 0x04, 0x0A, 0x43, 0x0C,
+    0x02, 0x02, 0x00, 0x03,        // Band=K(2), direction=rear(2), frontStrength=0, rearStrength=3
+    0x00, 0x6C, 0xBE, 0x03,        // Frequency: 24.150 GHz
+    0x00, 0x00, 0x00, 0x02,        // Count=2
+    0xD9, 0xAB
+};
+
+// Laser alert
+const uint8_t REPLAY_PACKET_LASER[] = {
+    0xAA, 0x04, 0x0A, 0x43, 0x0C,
+    0x08, 0x01, 0x08, 0x00,        // Band=Laser(8), direction=front, strength=8
+    0x00, 0x00, 0x00, 0x00,        // No frequency for laser
+    0x00, 0x00, 0x00, 0x01,
+    0xA8, 0xAB
+};
+
+// Clear/no alert
+const uint8_t REPLAY_PACKET_CLEAR[] = {
+    0xAA, 0x04, 0x0A, 0x31, 0x08,
+    0x00, 0x00, 0x00, 0x00,        // No bands, no arrows, no bars, not muted
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x73, 0xAB
+};
+
+struct ReplayPacket {
+    const uint8_t* data;
+    size_t length;
+    unsigned long delayMs;  // Delay before next packet
+};
+
+// Replay sequence: simulate realistic alert scenarios
+const ReplayPacket replaySequence[] = {
+    {REPLAY_PACKET_CLEAR, sizeof(REPLAY_PACKET_CLEAR), 2000},           // Start clear
+    {REPLAY_PACKET_KA_ALERT, sizeof(REPLAY_PACKET_KA_ALERT), 100},     // Ka alert appears
+    {REPLAY_PACKET_DISPLAY_MUTED, sizeof(REPLAY_PACKET_DISPLAY_MUTED), 1000},  // Show muted
+    {REPLAY_PACKET_CLEAR, sizeof(REPLAY_PACKET_CLEAR), 1500},          // Clear
+    {REPLAY_PACKET_DISPLAY_X, sizeof(REPLAY_PACKET_DISPLAY_X), 100},   // X band
+    {REPLAY_PACKET_CLEAR, sizeof(REPLAY_PACKET_CLEAR), 2000},          // Clear
+    {REPLAY_PACKET_K_ALERT, sizeof(REPLAY_PACKET_K_ALERT), 100},       // K rear
+    {REPLAY_PACKET_CLEAR, sizeof(REPLAY_PACKET_CLEAR), 1500},          // Clear
+    {REPLAY_PACKET_LASER, sizeof(REPLAY_PACKET_LASER), 100},           // Laser!
+    {REPLAY_PACKET_CLEAR, sizeof(REPLAY_PACKET_CLEAR), 3000},          // Clear and loop
+};
+
+const size_t REPLAY_SEQUENCE_LENGTH = sizeof(replaySequence) / sizeof(replaySequence[0]);
+
+unsigned long lastReplayTime = 0;
+size_t replayIndex = 0;
+
+void processReplayData() {
+    unsigned long now = millis();
+    
+    // Check if it's time for the next packet
+    if (now - lastReplayTime < replaySequence[replayIndex].delayMs) {
+        return;
+    }
+    
+    // Inject packet into rxBuffer (same as BLE would)
+    const ReplayPacket& pkt = replaySequence[replayIndex];
+    rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+    
+    SerialLog.printf("[REPLAY] Injected packet %d/%d (%d bytes)\n", 
+                     replayIndex + 1, REPLAY_SEQUENCE_LENGTH, pkt.length);
+    
+    // Advance to next packet
+    lastReplayTime = now;
+    replayIndex = (replayIndex + 1) % REPLAY_SEQUENCE_LENGTH;
+}
+#endif // REPLAY_MODE
+
 // Process queued BLE data - called from main loop (safe for SPI)
 void processBLEData() {
+#ifdef REPLAY_MODE
+    // In replay mode, inject test packets instead of reading from BLE
+    processReplayData();
+#else
+    // Normal BLE mode
     BLEDataPacket pkt;
     
     // Process all queued packets
@@ -313,6 +426,7 @@ void processBLEData() {
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
         rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
     }
+#endif
     
     // If no data accumulated, return
     if (rxBuffer.empty()) {
@@ -786,6 +900,7 @@ void setup() {
         
         SerialLog.println("WiFi initialized");
     
+#ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
     const V1Settings& bleSettings = settingsManager.get();
     SerialLog.printf("Starting BLE (proxy: %s, name: %s)\n", 
@@ -836,6 +951,9 @@ void setup() {
     
     // Register V1 connection callback for auto-push
     bleClient.onV1Connected(onV1Connected);
+#else
+    SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
+#endif
     
     // Initialize touch handler (SDA=17, SCL=18, addr=AXS_TOUCH_ADDR for AXS15231B touch, rst=-1 for no reset)
     SerialLog.println("Initializing touch handler...");
@@ -949,10 +1067,13 @@ void loop() {
         }
     }
     
+#ifndef REPLAY_MODE
     // Process BLE events
     bleClient.process();
+#endif
     
     // Process queued BLE data (safe for SPI - runs in main loop context)
+    // In REPLAY_MODE, this injects test packets; otherwise processes BLE queue
     processBLEData();
 
     // Drive auto-push state machine (non-blocking)

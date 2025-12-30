@@ -77,4 +77,8 @@
 #define DISPLAY_UPDATE_MS   100   // Update display every 100ms
 #define STATUS_UPDATE_MS    1000  // Update status indicators every second
 
+// Development/Testing Features
+// Uncomment to enable packet replay mode for UI testing without BLE
+// #define REPLAY_MODE
+
 #endif // CONFIG_H
