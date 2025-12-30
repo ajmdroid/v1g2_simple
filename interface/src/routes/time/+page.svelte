@@ -1,4 +1,6 @@
 <script>
+  import { onMount } from 'svelte';
+  
   let currentTime = $state('Loading...');
   let enableTimesync = $state(false);
   let wifiNetworks = $state([
@@ -95,7 +97,7 @@
     }
   }
 
-  $effect(() => {
+  onMount(() => {
     loadSettings();
   });
 </script>

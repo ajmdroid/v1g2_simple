@@ -1,4 +1,6 @@
 <script>
+  import { onMount } from 'svelte';
+  
   let sdReady = $state(false);
   let logEnabled = $state(false);
   let logSize = $state('0 B');
@@ -104,7 +106,7 @@
     window.location.href = '/serial_log.txt';
   }
 
-  $effect(() => {
+  onMount(() => {
     loadStatus();
   });
 </script>
