@@ -235,17 +235,27 @@ bool BatteryManager::isOnBattery() const {
 }
 
 bool BatteryManager::hasBattery() const {
+    // Must be initialized with working ADC to detect battery
+    if (!initialized || !adc1_handle) {
+        return false;
+    }
+    
+    // Verify with actual voltage - if below minimum, no real battery
+    // This catches cases where GPIO16 floats HIGH but no battery is connected
+    if (cachedVoltage < BATTERY_EMPTY_MV) {
+        return false;
+    }
+    
     // Battery is present if:
-    // 1. We're on battery power (GPIO16 HIGH), OR
+    // 1. We're on battery power (GPIO16 HIGH) AND voltage is valid, OR
     // 2. Voltage is in typical battery range (3.2V - 4.3V) on USB power
-    //    (excludes 0V = no battery, and 4.5V+ = USB bleed-through)
     if (onBattery) {
-        return true;  // If running on battery, battery must be present
+        return true;  // Already verified voltage above
     }
     
     // On USB power: only show battery if voltage looks like a real battery
-    // Not just USB leakage (>4.3V) or floating/zero (<3.2V)
-    return cachedVoltage >= BATTERY_EMPTY_MV && cachedVoltage <= BATTERY_FULL_MV;
+    // Not USB leakage (>4.3V) or floating/zero (<3.2V)
+    return cachedVoltage <= BATTERY_FULL_MV;
 }
 
 void BatteryManager::update() {
