@@ -1,0 +1,1 @@
+import{ab as t,u as o,ac as e,ad as c,a2 as u}from"./PoKKVn1N.js";function f(a){e===null&&t(),c&&e.l!==null?l(e).m.push(a):o(()=>{const n=u(a);if(typeof n=="function")return n})}function l(a){var n=a.l;return n.u??(n.u={a:[],b:[],m:[]})}export{f as o};

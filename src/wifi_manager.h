@@ -107,6 +107,7 @@ private:
     void handleAutoPushActivate();
     void handleAutoPushPushNow();
     void handleDisplayColors();
+    void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
     void handleNotFound();

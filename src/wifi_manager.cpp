@@ -476,6 +476,7 @@ void WiFiManager::setupWebServer() {
     
     // Display Colors routes
     server.on("/displaycolors", HTTP_GET, [this]() { handleDisplayColors(); });
+    server.on("/api/displaycolors", HTTP_GET, [this]() { handleDisplayColorsApi(); });
     server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
     
@@ -3319,6 +3320,22 @@ void WiFiManager::handleDisplayColorsReset() {
     // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleDisplayColorsApi() {
+    const V1Settings& s = settingsManager.get();
+    
+    String json = "{";
+    json += "\"bogey\":" + String(s.colorBogey) + ",";
+    json += "\"freq\":" + String(s.colorFrequency) + ",";
+    json += "\"arrow\":" + String(s.colorArrow) + ",";
+    json += "\"bandL\":" + String(s.colorBandL) + ",";
+    json += "\"bandKa\":" + String(s.colorBandKa) + ",";
+    json += "\"bandK\":" + String(s.colorBandK) + ",";
+    json += "\"bandX\":" + String(s.colorBandX);
+    json += "}";
+    
+    server.send(200, "application/json", json);
 }
 
 String WiFiManager::generateDisplayColorsHTML() {

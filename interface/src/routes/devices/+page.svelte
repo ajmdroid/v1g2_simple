@@ -42,8 +42,9 @@
 	}
 	
 	function getSlotName(slotNum) {
-		if (slotNum === 0) return 'None';
-		const slot = autoPushSlots.find(s => s.slot === slotNum);
+		if (slotNum === 0) return 'None (manual)';
+		// slotNum is 1-3, array is 0-indexed
+		const slot = autoPushSlots[slotNum - 1];
 		return slot?.name || `Slot ${slotNum}`;
 	}
 	
