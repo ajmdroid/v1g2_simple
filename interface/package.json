@@ -2,6 +2,9 @@
   "name": "v1g2-interface",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build && bash ../tools/compress_web_assets.sh",
