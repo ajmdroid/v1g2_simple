@@ -735,6 +735,11 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
+    // Only show battery icon when on battery power
+    if (!batteryManager.isOnBattery()) {
+        return;
+    }
+    
     // Battery icon position - to the right of the direction arrows
     // Arrows are centered at SCREEN_WIDTH - 70, so position battery to the right
     const int battX = SCREEN_WIDTH - 36;  // Left edge of battery icon
