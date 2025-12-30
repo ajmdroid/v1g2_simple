@@ -14,6 +14,17 @@
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
+// Utility: dim a 565 color by a percentage (default 75%) for subtle icons
+static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 75) {
+    uint8_t r = (c >> 11) & 0x1F;
+    uint8_t g = (c >> 5) & 0x3F;
+    uint8_t b = c & 0x1F;
+    r = (r * scalePercent) / 100;
+    g = (g * scalePercent) / 100;
+    b = (b * scalePercent) / 100;
+    return (r << 11) | (g << 5) | b;
+}
+
 // Helper macro to handle pointer vs object access for tft
 // Arduino_GFX uses pointer (tft->), TFT_eSPI uses object (tft.)
 #if defined(DISPLAY_USE_ARDUINO_GFX)
@@ -788,9 +799,11 @@ void V1Display::drawBatteryIndicator() {
     // Clear area
     FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
     
-    // Draw battery outline
-    DRAW_RECT(battX, battY, battW, battH, PALETTE_TEXT);  // Main body
-    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, PALETTE_TEXT);  // Positive cap
+    uint16_t outlineColor = dimColor(PALETTE_TEXT);
+
+    // Draw battery outline (dimmed)
+    DRAW_RECT(battX, battY, battW, battH, outlineColor);  // Main body
+    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, outlineColor);  // Positive cap
     
     // Draw charge sections
     int sectionW = (battW - 2 * padding - (sections - 1)) / sections;  // Width of each section with 1px gap
@@ -800,7 +813,7 @@ void V1Display::drawBatteryIndicator() {
         int sh = battH - 2 * padding;
         
         if (i < filledSections) {
-            FILL_RECT(sx, sy, sectionW, sh, fillColor);
+            FILL_RECT(sx, sy, sectionW, sh, dimColor(fillColor));
         }
     }
 #endif
@@ -851,7 +864,7 @@ void V1Display::drawWiFiIndicator() {
     const int wifiY = battY - wifiSize - 6;    // Above battery with 6px gap
     
     // Get WiFi icon color from settings (default cyan 0x07FF)
-    uint16_t wifiColor = s.colorWiFiIcon;
+    uint16_t wifiColor = dimColor(s.colorWiFiIcon);
     
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
