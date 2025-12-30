@@ -841,9 +841,6 @@ void loop() {
     // Process WiFi/web server
     wifiManager.process();
     
-    // Process time manager (periodic saves)
-    timeManager.process();
-    
     // Update display periodically
     unsigned long now = millis();
     

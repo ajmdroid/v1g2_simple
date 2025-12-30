@@ -261,11 +261,6 @@ void WiFiManager::initializeTime() {
         alertLogger.setTimestampUTC((uint32_t)now);
         alertDB.setTimestampUTC((uint32_t)now);
         SerialLog.printf("[WiFi] Alert timestamps set: %lu\n", (uint32_t)now);
-        
-        // Save to SD card immediately after sync (if SD is ready)
-        if (alertLogger.isReady()) {
-            timeManager.saveTimeToSD();
-        }
     } else {
         SerialLog.println("Failed to sync time via NTP");
     }

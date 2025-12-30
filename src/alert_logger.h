@@ -80,7 +80,6 @@ public:
 
     // Set the UTC timestamp from NTP
     void setTimestampUTC(uint32_t unixTime);
-    bool hasValidTimestamp() const { return hasRTC; }
 
     // Remove the log file and recreate with header
     bool clear();
@@ -103,10 +102,6 @@ private:
     String logPath;
     Snapshot lastSnapshot;
     uint32_t timestampUTC;
-    
-    // UTC timestamp support
-    bool hasRTC = false;
-    uint32_t rtcTimestamp = 0;
 
     bool appendLine(const String& line) const;
     Snapshot makeSnapshot(const AlertData& alert, const DisplayState& state, size_t count) const;

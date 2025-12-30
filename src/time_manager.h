@@ -17,12 +17,6 @@ public:
     // Initialize time manager with optional filesystem
     void begin(fs::FS* filesystem = nullptr);
     
-    // Load last known time from SD card
-    bool loadTimeFromSD();
-    
-    // Save current time to SD card
-    bool saveTimeToSD();
-    
     // Set time manually (Unix timestamp)
     void setTime(time_t timestamp);
     
@@ -39,16 +33,10 @@ public:
     // Get time components
     bool getLocalTime(struct tm* timeinfo) const;
     
-    // Periodic save (call in loop, saves every 10 minutes)
-    void process();
-    
 private:
     fs::FS* fs;
-    unsigned long lastSaveTime;
     bool timeLoaded;
     bool initialized;  // Track if begin() has been called
-    static const unsigned long SAVE_INTERVAL = 600000; // 10 minutes
-    static const char* TIME_FILE;
 };
 
 // Global instance

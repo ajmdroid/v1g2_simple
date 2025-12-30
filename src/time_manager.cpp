@@ -9,23 +9,13 @@
 // Global instance
 TimeManager timeManager;
 
-TimeManager::TimeManager() : fs(nullptr), lastSaveTime(0), timeLoaded(false), initialized(false) {
+TimeManager::TimeManager() : fs(nullptr), timeLoaded(false), initialized(false) {
 }
 
 void TimeManager::begin(fs::FS* filesystem) {
     fs = filesystem;  // Keep reference but don't use for time storage
     initialized = true;
     Serial.println("[TimeManager] Initialized (NTP-only mode)");
-}
-
-bool TimeManager::loadTimeFromSD() {
-    // No longer used - time comes from NTP only
-    return false;
-}
-
-bool TimeManager::saveTimeToSD() {
-    // No longer used - time comes from NTP only
-    return false;
 }
 
 void TimeManager::setTime(time_t timestamp) {
@@ -106,8 +96,4 @@ bool TimeManager::getLocalTime(struct tm* timeinfo) const {
     
     // Use UTC (gmtime) instead of local time
     return gmtime_r(&now, timeinfo) != NULL;
-}
-
-void TimeManager::process() {
-    // Nothing to do - no periodic saving needed
 }

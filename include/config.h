@@ -72,7 +72,6 @@
 #define BAR_HEIGHT          40
 #define BAR_SPACING         5
 #define MAX_SIGNAL_BARS     6
-#define LV_SIGNAL_BAR_COUNT 6 // For LVGL signal bars
 
 // Timing
 #define DISPLAY_UPDATE_MS   100   // Update display every 100ms

@@ -407,7 +407,6 @@ See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
 
 - **NimBLE 2.2.3**: Stable dual-role BLE (client + server)
 - **Arduino_GFX**: Hardware-accelerated display driver
-- **lvgl 8.4.0**: UI graphics library (lightweight config)
 - **Preferences API**: Persistent settings in flash
 - **FreeRTOS**: Task queue for BLE data handling
 
