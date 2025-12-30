@@ -13,15 +13,18 @@ All notable changes to this project will be documented in this file.
 - Web UI toggles to hide WiFi icon and profile indicator after timeout
   - Hide WiFi Icon: shows briefly on connect, then clears
   - Hide Profile Indicator: shows on profile change, then clears
+- README note about `uploadfs` for web UI changes
 
 ### Changed
 - Direction arrows scaled up ~22% with shallower angles to match V1
-- Splash screen reduced from 4s to 2s
+- Splash screen reduced from 4s to 2s, properly centered fullscreen
 - Web UI GitHub link updated to this repo
 - Bogey counter scaled to match frequency counter size (2.2x)
+- Signal bars: larger (56x14px), repositioned for better spacing
 
 ### Fixed
 - Band label pixelation (was using scaled 10pt, now native 24pt)
+- Profile indicator purple line artifact (fixed clear width)
 
 ### Notes
 - Still investigating: radar mute flicker with JBV1 auto-mute
