@@ -101,6 +101,12 @@ void SettingsManager::load() {
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
+    settings.colorBar1 = preferences.getUShort("colorBar1", 0x07E0);
+    settings.colorBar2 = preferences.getUShort("colorBar2", 0x07E0);
+    settings.colorBar3 = preferences.getUShort("colorBar3", 0xFFE0);
+    settings.colorBar4 = preferences.getUShort("colorBar4", 0xFFE0);
+    settings.colorBar5 = preferences.getUShort("colorBar5", 0xF800);
+    settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -195,6 +201,12 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBandK", settings.colorBandK);
     written += preferences.putUShort("colorBandX", settings.colorBandX);
     written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    written += preferences.putUShort("colorBar1", settings.colorBar1);
+    written += preferences.putUShort("colorBar2", settings.colorBar2);
+    written += preferences.putUShort("colorBar3", settings.colorBar3);
+    written += preferences.putUShort("colorBar4", settings.colorBar4);
+    written += preferences.putUShort("colorBar5", settings.colorBar5);
+    written += preferences.putUShort("colorBar6", settings.colorBar6);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -352,6 +364,16 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
 
 void SettingsManager::setWiFiIconColor(uint16_t color) {
     settings.colorWiFiIcon = color;
+    save();
+}
+
+void SettingsManager::setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6) {
+    settings.colorBar1 = bar1;
+    settings.colorBar2 = bar2;
+    settings.colorBar3 = bar3;
+    settings.colorBar4 = bar4;
+    settings.colorBar5 = bar5;
+    settings.colorBar6 = bar6;
     save();
 }
 

@@ -10,7 +10,13 @@
 		bandKa: 0xF800,  // Red
 		bandK: 0x001F,   // Blue
 		bandX: 0x07E0,   // Green
-		wifiIcon: 0x07FF // Cyan
+		wifiIcon: 0x07FF, // Cyan
+		bar1: 0x07E0,    // Green (weakest)
+		bar2: 0x07E0,    // Green
+		bar3: 0xFFE0,    // Yellow
+		bar4: 0xFFE0,    // Yellow
+		bar5: 0xF800,    // Red
+		bar6: 0xF800     // Red (strongest)
 	});
 	
 	let loading = $state(true);
@@ -70,6 +76,12 @@
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
 			params.append('wifiIcon', colors.wifiIcon);
+			params.append('bar1', colors.bar1);
+			params.append('bar2', colors.bar2);
+			params.append('bar3', colors.bar3);
+			params.append('bar4', colors.bar4);
+			params.append('bar5', colors.bar5);
+			params.append('bar6', colors.bar6);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -104,7 +116,13 @@
 					bandKa: 0xF800,
 					bandK: 0x001F,
 					bandX: 0x07E0,
-					wifiIcon: 0x07FF
+					wifiIcon: 0x07FF,
+					bar1: 0x07E0,
+					bar2: 0x07E0,
+					bar3: 0xFFE0,
+					bar4: 0xFFE0,
+					bar5: 0xF800,
+					bar6: 0xF800
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -301,6 +319,46 @@
 					<label class="label">
 						<span class="label-text-alt text-base-content/50">Shown when connected to WiFi</span>
 					</label>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Signal Bars -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">Signal Bars</h2>
+				<p class="text-xs text-base-content/50 mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
+				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
+					{#each [1, 2, 3, 4, 5, 6] as barNum}
+						<div class="form-control">
+							<label class="label py-1">
+								<span class="label-text text-xs">Bar {barNum}</span>
+							</label>
+							<div class="flex flex-col items-center gap-1">
+								<input 
+									type="color" 
+									class="w-10 h-8 cursor-pointer rounded border-0"
+									value={rgb565ToHex(colors[`bar${barNum}`])}
+									onchange={(e) => updateColor(`bar${barNum}`, e.target.value)}
+								/>
+								<div 
+									class="w-8 h-3 rounded"
+									style="background-color: {rgb565ToHex(colors[`bar${barNum}`])}"
+								></div>
+							</div>
+						</div>
+					{/each}
+				</div>
+				<!-- Preview stack -->
+				<div class="flex justify-center mt-3">
+					<div class="flex flex-col-reverse gap-1">
+						{#each [1, 2, 3, 4, 5, 6] as barNum}
+							<div 
+								class="w-12 h-2 rounded"
+								style="background-color: {rgb565ToHex(colors[`bar${barNum}`])}"
+							></div>
+						{/each}
+					</div>
 				</div>
 			</div>
 		</div>

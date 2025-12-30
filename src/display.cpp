@@ -1385,6 +1385,13 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     if (strength > 6) strength = 6;
 
     bool hasSignal = (strength > 0);
+    
+    // Get signal bar colors from settings (one per bar level)
+    const V1Settings& s = settingsManager.get();
+    uint16_t barColors[6] = {
+        s.colorBar1, s.colorBar2, s.colorBar3,
+        s.colorBar4, s.colorBar5, s.colorBar6
+    };
 
 #if defined(DISPLAY_WAVESHARE_349)
     // Scale from Lilygo 320x170 to Waveshare 640x172
@@ -1417,19 +1424,13 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         
         bool lit = hasSignal && (i < strength);
         
-        // Simple color: green for bottom 2, blue for middle 2, red for top 2
-        // Note: Waveshare display uses BGR byte order, so swap red/blue
         uint16_t fillColor;
         if (!lit) {
             fillColor = 0x1082; // very dark grey (resting/off)
         } else if (muted) {
             fillColor = PALETTE_MUTED; // muted grey for lit bars
-        } else if (i < 2) {
-            fillColor = 0x07E0; // green (same in RGB and BGR)
-        } else if (i < 4) {
-            fillColor = 0xF800; // blue (0x001F RGB -> 0xF800 BGR)
         } else {
-            fillColor = 0x001F; // red (0xF800 RGB -> 0x001F BGR)
+            fillColor = barColors[i];  // Use individual bar color
         }
         
         // Draw filled bar

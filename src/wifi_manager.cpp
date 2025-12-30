@@ -1680,6 +1680,18 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setWiFiIconColor(wifiIcon);
     }
     
+    // Handle signal bar colors if provided
+    if (server.hasArg("bar1") || server.hasArg("bar2") || server.hasArg("bar3") ||
+        server.hasArg("bar4") || server.hasArg("bar5") || server.hasArg("bar6")) {
+        uint16_t bar1 = server.hasArg("bar1") ? server.arg("bar1").toInt() : 0x07E0;
+        uint16_t bar2 = server.hasArg("bar2") ? server.arg("bar2").toInt() : 0x07E0;
+        uint16_t bar3 = server.hasArg("bar3") ? server.arg("bar3").toInt() : 0xFFE0;
+        uint16_t bar4 = server.hasArg("bar4") ? server.arg("bar4").toInt() : 0xFFE0;
+        uint16_t bar5 = server.hasArg("bar5") ? server.arg("bar5").toInt() : 0xF800;
+        uint16_t bar6 = server.hasArg("bar6") ? server.arg("bar6").toInt() : 0xF800;
+        settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
+    }
+    
     server.send(200, "application/json", "{\"success\":true}");
 }
 
@@ -1687,6 +1699,8 @@ void WiFiManager::handleDisplayColorsReset() {
     // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
+    // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
+    settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
     server.send(200, "application/json", "{\"success\":true}");
 }
 
@@ -1701,7 +1715,13 @@ void WiFiManager::handleDisplayColorsApi() {
     json += "\"bandKa\":" + String(s.colorBandKa) + ",";
     json += "\"bandK\":" + String(s.colorBandK) + ",";
     json += "\"bandX\":" + String(s.colorBandX) + ",";
-    json += "\"wifiIcon\":" + String(s.colorWiFiIcon);
+    json += "\"wifiIcon\":" + String(s.colorWiFiIcon) + ",";
+    json += "\"bar1\":" + String(s.colorBar1) + ",";
+    json += "\"bar2\":" + String(s.colorBar2) + ",";
+    json += "\"bar3\":" + String(s.colorBar3) + ",";
+    json += "\"bar4\":" + String(s.colorBar4) + ",";
+    json += "\"bar5\":" + String(s.colorBar5) + ",";
+    json += "\"bar6\":" + String(s.colorBar6);
     json += "}";
     
     server.send(200, "application/json", json);

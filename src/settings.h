@@ -94,6 +94,12 @@ struct V1Settings {
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
     uint16_t colorWiFiIcon;      // WiFi indicator icon color
+    uint16_t colorBar1;          // Signal bar 1 (bottom/weakest)
+    uint16_t colorBar2;          // Signal bar 2
+    uint16_t colorBar3;          // Signal bar 3
+    uint16_t colorBar4;          // Signal bar 4
+    uint16_t colorBar5;          // Signal bar 5
+    uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -140,6 +146,12 @@ struct V1Settings {
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
         colorWiFiIcon(0x07FF),   // Cyan (WiFi icon)
+        colorBar1(0x07E0),       // Green (weakest)
+        colorBar2(0x07E0),       // Green
+        colorBar3(0xFFE0),       // Yellow
+        colorBar4(0xFFE0),       // Yellow
+        colorBar5(0xF800),       // Red
+        colorBar6(0xF800),       // Red (strongest)
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -189,6 +201,7 @@ public:
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     void setWiFiIconColor(uint16_t color);
+    void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setLastV1Address(const String& addr);
     void setTimeSync(const String& staSSID, const String& staPassword, bool enabled);
     
