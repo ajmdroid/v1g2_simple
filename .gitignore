@@ -4,11 +4,14 @@
 
 # macOS
 .DS_Store
+__MACOSX/
 
 # Build artifacts
 *.o
 *.bin
 *.elf
+*.zip
+*.log
 
 # IDE
 .idea/
