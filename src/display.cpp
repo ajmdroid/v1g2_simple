@@ -735,9 +735,9 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
-    // Battery icon position - to the right side, before signal meters area
-    // Signal meters start at SCREEN_WIDTH - 120, so put battery before that
-    const int battX = SCREEN_WIDTH - 135;  // Left edge of battery icon
+    // Battery icon position - to the right of the direction arrows
+    // Arrows are centered at SCREEN_WIDTH - 70, so position battery to the right
+    const int battX = SCREEN_WIDTH - 36;  // Left edge of battery icon
     const int battY = 14;
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height

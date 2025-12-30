@@ -49,7 +49,7 @@ TouchHandler touchHandler;
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
 struct BLEDataPacket {
-    uint8_t data[64];  // Max expected packet size
+    uint8_t data[256];  // Max expected packet size
     size_t length;
     uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
 };
@@ -84,6 +84,26 @@ const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 // Buffer for accumulating BLE data in main loop context
 static std::vector<uint8_t> rxBuffer;
 
+enum AutoPushStep {
+    AUTO_PUSH_STEP_IDLE = 0,
+    AUTO_PUSH_STEP_WAIT_READY,
+    AUTO_PUSH_STEP_PROFILE,
+    AUTO_PUSH_STEP_DISPLAY,
+    AUTO_PUSH_STEP_MODE,
+    AUTO_PUSH_STEP_VOLUME,
+};
+
+struct AutoPushState {
+    AutoPushStep step = AUTO_PUSH_STEP_IDLE;
+    unsigned long nextStepAtMs = 0;
+    int slotIndex = 0;
+    AutoPushSlot slot;
+    V1Profile profile;
+    bool profileLoaded = false;
+};
+
+static AutoPushState autoPushState;
+
 
 // Callback for BLE data reception - just queues data, doesn't process
 // This runs in BLE task context, so we avoid SPI operations here
@@ -94,7 +114,7 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         pkt.length = length;
         pkt.charUUID = charUUID;
         // Non-blocking send to queue - if queue is full, drop the packet
-        BaseType_t result = xQueueSendFromISR(bleDataQueue, &pkt, nullptr);
+        BaseType_t result = xQueueSend(bleDataQueue, &pkt, 0);
         if (result != pdTRUE) {
             // Queue full - data dropped (logged for debugging)
             static unsigned long lastQueueFullLog = 0;
@@ -104,6 +124,126 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
                 lastQueueFullLog = now;
             }
         }
+    }
+}
+
+static void startAutoPush(int slotIndex) {
+    static const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
+    int clampedIndex = std::max(0, std::min(2, slotIndex));
+    autoPushState.slotIndex = clampedIndex;
+    autoPushState.slot = settingsManager.getActiveSlot();
+    autoPushState.profileLoaded = false;
+    autoPushState.profile = V1Profile();
+    autoPushState.step = AUTO_PUSH_STEP_WAIT_READY;
+    autoPushState.nextStepAtMs = millis() + 500;
+    SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
+                     slotNames[clampedIndex], clampedIndex);
+}
+
+static void processAutoPush() {
+    if (autoPushState.step == AUTO_PUSH_STEP_IDLE) {
+        return;
+    }
+
+    if (!bleClient.isConnected()) {
+        autoPushState.step = AUTO_PUSH_STEP_IDLE;
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now < autoPushState.nextStepAtMs) {
+        return;
+    }
+
+    switch (autoPushState.step) {
+        case AUTO_PUSH_STEP_WAIT_READY:
+            autoPushState.step = AUTO_PUSH_STEP_PROFILE;
+            autoPushState.nextStepAtMs = now;
+            return;
+
+        case AUTO_PUSH_STEP_PROFILE: {
+            const AutoPushSlot& slot = autoPushState.slot;
+            if (slot.profileName.length() > 0) {
+                SerialLog.printf("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
+                V1Profile profile;
+                if (v1ProfileManager.loadProfile(slot.profileName, profile)) {
+                    autoPushState.profile = profile;
+                    autoPushState.profileLoaded = true;
+                    if (bleClient.writeUserBytes(profile.settings.bytes)) {
+                        SerialLog.println("[AutoPush] Profile settings pushed successfully");
+                    } else {
+                        SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
+                    }
+                } else {
+                    SerialLog.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
+                    autoPushState.profileLoaded = false;
+                }
+            } else {
+                SerialLog.println("[AutoPush] No profile configured for active slot");
+                autoPushState.profileLoaded = false;
+            }
+
+            if (autoPushState.profileLoaded) {
+                autoPushState.step = AUTO_PUSH_STEP_DISPLAY;
+                autoPushState.nextStepAtMs = now + 100;
+            } else {
+                autoPushState.step = AUTO_PUSH_STEP_MODE;
+                autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
+            }
+            return;
+        }
+
+        case AUTO_PUSH_STEP_DISPLAY: {
+            bleClient.setDisplayOn(autoPushState.profile.displayOn);
+            SerialLog.printf("[AutoPush] Display set to: %s\n",
+                             autoPushState.profile.displayOn ? "ON" : "OFF");
+            autoPushState.step = AUTO_PUSH_STEP_MODE;
+            autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
+            return;
+        }
+
+        case AUTO_PUSH_STEP_MODE: {
+            if (autoPushState.slot.mode != V1_MODE_UNKNOWN) {
+                const char* modeName = "Unknown";
+                if (autoPushState.slot.mode == V1_MODE_ALL_BOGEYS) modeName = "All Bogeys";
+                else if (autoPushState.slot.mode == V1_MODE_LOGIC) modeName = "Logic";
+                else if (autoPushState.slot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
+
+                if (bleClient.setMode(static_cast<uint8_t>(autoPushState.slot.mode))) {
+                    SerialLog.printf("[AutoPush] Mode set to: %s\n", modeName);
+                } else {
+                    SerialLog.println("[AutoPush] ERROR: Failed to set mode");
+                }
+            }
+
+            bool volumeChangeNeeded =
+                (settingsManager.getSlotVolume(autoPushState.slotIndex) != 0xFF ||
+                 settingsManager.getSlotMuteVolume(autoPushState.slotIndex) != 0xFF);
+            autoPushState.step = AUTO_PUSH_STEP_VOLUME;
+            autoPushState.nextStepAtMs = now + (volumeChangeNeeded ? 100 : 0);
+            return;
+        }
+
+        case AUTO_PUSH_STEP_VOLUME: {
+            uint8_t mainVol = settingsManager.getSlotVolume(autoPushState.slotIndex);
+            uint8_t muteVol = settingsManager.getSlotMuteVolume(autoPushState.slotIndex);
+            if (mainVol != 0xFF || muteVol != 0xFF) {
+                if (bleClient.setVolume(mainVol, muteVol)) {
+                    SerialLog.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
+                } else {
+                    SerialLog.println("[AutoPush] ERROR: Failed to set volume");
+                }
+            }
+
+            SerialLog.println("[AutoPush] Complete");
+            autoPushState.step = AUTO_PUSH_STEP_IDLE;
+            autoPushState.nextStepAtMs = 0;
+            return;
+        }
+
+        default:
+            autoPushState.step = AUTO_PUSH_STEP_IDLE;
+            return;
     }
 }
 
@@ -156,67 +296,8 @@ void onV1Connected() {
         SerialLog.println("[AutoPush] Disabled, skipping");
         return;
     }
-    
-    // Get the active slot configuration
-    AutoPushSlot activeSlot = settingsManager.getActiveSlot();
-    const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
-    SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n", 
-                  slotNames[activeSlotIndex], activeSlotIndex);
-    
-    // Small delay to ensure V1 is ready
-    delay(500);
-    
-    // Push profile if configured
-    if (activeSlot.profileName.length() > 0) {
-        SerialLog.printf("[AutoPush] Loading profile: %s\n", activeSlot.profileName.c_str());
-        V1Profile profile;
-        if (v1ProfileManager.loadProfile(activeSlot.profileName, profile)) {
-            // Write user bytes to V1
-            if (bleClient.writeUserBytes(profile.settings.bytes)) {
-                SerialLog.println("[AutoPush] Profile settings pushed successfully");
-            } else {
-                SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
-            }
-            
-            // Set display on/off based on profile
-            delay(100);
-            bleClient.setDisplayOn(profile.displayOn);
-            SerialLog.printf("[AutoPush] Display set to: %s\n", profile.displayOn ? "ON" : "OFF");
-        } else {
-            SerialLog.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", activeSlot.profileName.c_str());
-        }
-    } else {
-        SerialLog.println("[AutoPush] No profile configured for active slot");
-    }
-    
-    // Set mode if configured (not UNKNOWN)
-    if (activeSlot.mode != V1_MODE_UNKNOWN) {
-        delay(100);
-        if (bleClient.setMode(static_cast<uint8_t>(activeSlot.mode))) {
-            const char* modeName = "Unknown";
-            if (activeSlot.mode == V1_MODE_ALL_BOGEYS) modeName = "All Bogeys";
-            else if (activeSlot.mode == V1_MODE_LOGIC) modeName = "Logic";
-            else if (activeSlot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
-            SerialLog.printf("[AutoPush] Mode set to: %s\n", modeName);
-        } else {
-            SerialLog.println("[AutoPush] ERROR: Failed to set mode");
-        }
-    }
-    
-    // Set volumes if configured (not 0xFF = no change)
-    uint8_t mainVol = settingsManager.getSlotVolume(activeSlotIndex);
-    uint8_t muteVol = settingsManager.getSlotMuteVolume(activeSlotIndex);
-    
-    if (mainVol != 0xFF || muteVol != 0xFF) {
-        delay(100);
-        if (bleClient.setVolume(mainVol, muteVol)) {
-            SerialLog.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
-        } else {
-            SerialLog.println("[AutoPush] ERROR: Failed to set volume");
-        }
-    }
-    
-    SerialLog.println("[AutoPush] Complete");
+
+    startAutoPush(activeSlotIndex);
 }
 
 // Process queued BLE data - called from main loop (safe for SPI)
@@ -243,33 +324,46 @@ void processBLEData() {
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 256);
     }
 
-    // Discard anything before the first start byte
-    auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
-    if (startIt == rxBuffer.end()) {
-        rxBuffer.clear();
-        return;
-    }
-    if (startIt != rxBuffer.begin()) {
-        rxBuffer.erase(rxBuffer.begin(), startIt);
-    }
+    const size_t MIN_HEADER_SIZE = 6;
+    const size_t MAX_PACKET_SIZE = 512;
 
     while (true) {
-        auto s = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
-        if (s == rxBuffer.end()) {
+        auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
+        if (startIt == rxBuffer.end()) {
             rxBuffer.clear();
             break;
         }
-        auto e = std::find(s + 1, rxBuffer.end(), ESP_PACKET_END);
-        if (e == rxBuffer.end()) {
-            // wait for more data
-            if (s != rxBuffer.begin()) {
-                rxBuffer.erase(rxBuffer.begin(), s);
-            }
+        if (startIt != rxBuffer.begin()) {
+            rxBuffer.erase(rxBuffer.begin(), startIt);
+            continue;
+        }
+        if (rxBuffer.size() < MIN_HEADER_SIZE) {
             break;
         }
 
-        std::vector<uint8_t> packet(s, e + 1);
-        rxBuffer.erase(rxBuffer.begin(), e + 1);
+        uint8_t lenField = rxBuffer[4];
+        if (lenField == 0) {
+            rxBuffer.erase(rxBuffer.begin());
+            continue;
+        }
+
+        size_t packetSize = 6 + lenField;
+        if (packetSize > MAX_PACKET_SIZE) {
+            SerialLog.printf("WARNING: BLE packet too large (%u bytes) - resyncing\n", (unsigned)packetSize);
+            rxBuffer.erase(rxBuffer.begin());
+            continue;
+        }
+        if (rxBuffer.size() < packetSize) {
+            break;
+        }
+        if (rxBuffer[packetSize - 1] != ESP_PACKET_END) {
+            SerialLog.println("WARNING: Packet missing end marker - resyncing");
+            rxBuffer.erase(rxBuffer.begin());
+            continue;
+        }
+
+        std::vector<uint8_t> packet(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
 
         lastRxMillis = millis();
 
@@ -504,6 +598,7 @@ void setup() {
     
     // Create BLE data queue early - before any BLE operations
     bleDataQueue = xQueueCreate(32, sizeof(BLEDataPacket));
+    rxBuffer.reserve(1024);
     
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
@@ -751,8 +846,9 @@ void setup() {
 
 void loop() {
 #if 1  // WiFi and BLE enabled
-    // Process power button for battery-powered operation (long-press to power off)
+    // Process battery manager (updates cached readings at 1Hz, handles power button)
 #if defined(DISPLAY_WAVESHARE_349)
+    batteryManager.update();
     batteryManager.processPowerButton();
 #endif
 
@@ -854,6 +950,9 @@ void loop() {
     
     // Process queued BLE data (safe for SPI - runs in main loop context)
     processBLEData();
+
+    // Drive auto-push state machine (non-blocking)
+    processAutoPush();
 
     // Process WiFi/web server
     wifiManager.process();

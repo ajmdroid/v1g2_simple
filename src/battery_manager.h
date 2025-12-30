@@ -40,14 +40,17 @@ public:
     // Check if running on battery power
     bool isOnBattery() const;
     
-    // Get battery voltage in millivolts
-    uint16_t getVoltageMillivolts();
+    // Update cached battery readings (call in loop, updates at 1Hz)
+    void update();
     
-    // Get battery percentage (0-100)
-    uint8_t getPercentage();
+    // Get cached battery voltage in millivolts (updated at 1Hz)
+    uint16_t getVoltageMillivolts() const;
     
-    // Check if battery is low
-    bool isLow();
+    // Get cached battery percentage (0-100, updated at 1Hz)
+    uint8_t getPercentage() const;
+    
+    // Check if battery is low (uses cached values)
+    bool isLow() const;
     
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();
@@ -71,6 +74,11 @@ private:
     unsigned long lastButtonPress;
     unsigned long buttonPressStart;
     bool buttonWasPressed;
+    
+    // Cached battery state (updated at 1Hz)
+    uint16_t cachedVoltage;
+    uint8_t cachedPercent;
+    unsigned long lastUpdateMs;
     
     bool initADC();
     bool initTCA9554();

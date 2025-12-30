@@ -28,6 +28,9 @@ BatteryManager::BatteryManager()
     , lastButtonPress(0)
     , buttonPressStart(0)
     , buttonWasPressed(false)
+    , cachedVoltage(0)
+    , cachedPercent(0)
+    , lastUpdateMs(0)
 {
 }
 
@@ -53,6 +56,12 @@ bool BatteryManager::begin() {
     }
     
     initialized = true;
+    
+    // Do initial cache update if on battery
+    if (onBattery) {
+        update();
+    }
+    
     Serial.println("[Battery] Battery manager initialized");
     return true;
 }
@@ -190,22 +199,42 @@ bool BatteryManager::isOnBattery() const {
     return onBattery;
 }
 
-uint16_t BatteryManager::getVoltageMillivolts() {
-    return readADCMillivolts();
+void BatteryManager::update() {
+    if (!initialized || !onBattery) {
+        return;
+    }
+    
+    unsigned long now = millis();
+    
+    // Update cached values at 1Hz
+    if (now - lastUpdateMs >= 1000) {
+        uint16_t voltage = readADCMillivolts();
+        cachedVoltage = voltage;
+        
+        // Calculate percentage
+        if (voltage >= BATTERY_FULL_MV) {
+            cachedPercent = 100;
+        } else if (voltage <= BATTERY_EMPTY_MV) {
+            cachedPercent = 0;
+        } else {
+            // Linear interpolation
+            cachedPercent = (uint8_t)((voltage - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
+        }
+        
+        lastUpdateMs = now;
+    }
 }
 
-uint8_t BatteryManager::getPercentage() {
-    uint16_t voltage = getVoltageMillivolts();
-    
-    if (voltage >= BATTERY_FULL_MV) return 100;
-    if (voltage <= BATTERY_EMPTY_MV) return 0;
-    
-    // Linear interpolation
-    return (uint8_t)((voltage - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
+uint16_t BatteryManager::getVoltageMillivolts() const {
+    return cachedVoltage;
 }
 
-bool BatteryManager::isLow() {
-    return getVoltageMillivolts() < BATTERY_WARNING_MV;
+uint8_t BatteryManager::getPercentage() const {
+    return cachedPercent;
+}
+
+bool BatteryManager::isLow() const {
+    return cachedVoltage < BATTERY_WARNING_MV;
 }
 
 bool BatteryManager::latchPowerOn() {
@@ -271,12 +300,13 @@ String BatteryManager::getStatusString() {
 // Stub implementation for non-Waveshare boards
 BatteryManager batteryManager;
 
-BatteryManager::BatteryManager() : initialized(false), onBattery(false), lastVoltage(0) {}
+BatteryManager::BatteryManager() : initialized(false), onBattery(false), lastVoltage(0), cachedVoltage(0), cachedPercent(0), lastUpdateMs(0) {}
 bool BatteryManager::begin() { return false; }
 bool BatteryManager::isOnBattery() const { return false; }
-uint16_t BatteryManager::getVoltageMillivolts() { return 0; }
-uint8_t BatteryManager::getPercentage() { return 0; }
-bool BatteryManager::isLow() { return false; }
+void BatteryManager::update() {}
+uint16_t BatteryManager::getVoltageMillivolts() const { return 0; }
+uint8_t BatteryManager::getPercentage() const { return 0; }
+bool BatteryManager::isLow() const { return false; }
 bool BatteryManager::latchPowerOn() { return false; }
 bool BatteryManager::powerOff() { return false; }
 bool BatteryManager::isPowerButtonPressed() { return false; }
