@@ -730,12 +730,7 @@ void V1Display::drawBatteryIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     extern BatteryManager batteryManager;
     
-    // Don't show if not on battery
-    if (!batteryManager.isOnBattery()) {
-        return;
-    }
-    
-    // Only show battery icon when battery is present
+    // Don't draw anything if no battery is present
     if (!batteryManager.hasBattery()) {
         return;
     }
