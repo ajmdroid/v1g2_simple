@@ -36,3 +36,4 @@ code_review.txt
 # Local reference repos (kept out of version control)
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/
+AUDIT_SUMMARY.md
