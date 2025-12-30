@@ -440,6 +440,7 @@ void WiFiManager::setupWebServer() {
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
     server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });  // API version for new UI
     server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
+    server.on("/api/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Consistent API endpoint
     server.on("/api/alerts", HTTP_GET, [this]() { handleLogsData(); });  // Alias for new UI
     server.on("/api/alerts/clear", HTTP_POST, [this]() { handleLogsClear(); });  // Alias for new UI
     
@@ -448,12 +449,14 @@ void WiFiManager::setupWebServer() {
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });
+    server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Legacy compat
     server.on("/time", HTTP_GET, [this]() { 
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });
+    server.on("/api/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });  // Consistent API endpoint
+    server.on("/api/timesettings", HTTP_GET, [this]() { handleTimeSettingsApi(); });  // Already exists for GET
     server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
     server.on("/mute", HTTP_POST, [this]() { handleMute(); });
     server.on("/logs", HTTP_GET, [this]() { 
@@ -469,7 +472,9 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/serial_log.txt", HTTP_GET, [this]() { handleSerialLog(); });
-    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });
+    server.on("/api/seriallog", HTTP_GET, [this]() { handleSerialLog(); });  // Consistent API endpoint
+    server.on("/api/seriallog/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Consistent naming
+    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Legacy compat
 
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
