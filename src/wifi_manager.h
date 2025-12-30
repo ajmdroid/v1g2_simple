@@ -81,6 +81,9 @@ private:
     void handleLogs();
     void handleLogsData();
     void handleLogsClear();
+    void handleSerialLog();
+    void handleSerialLogClear();
+    void handleSerialLogPage();
     void handleV1Settings();
     void handleV1ProfilesList();
     void handleV1ProfileGet();
@@ -99,6 +102,9 @@ private:
     void handleNotFound();
     
     // HTML generation
+    String generateStyleSheet();
+    String generateTopNav(const String& activePath);
+    String wrapWithLayout(const String& title, const String& body, const String& activePath);
     String generateSettingsHTML();
     String generateTimeSettingsHTML();
     String generateLogsHTML();

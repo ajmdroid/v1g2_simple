@@ -1,59 +1,55 @@
 # V1 Gen2 Simple Display
 
-A customizable touchscreen display for the Valentine1 Gen2 radar detector. Built for the [Waveshare ESP32-S3-Touch-LCD-3.49](https://www.amazon.com/dp/B0FQM41PGX) - an affordable, bright AMOLED display that turns your V1 into a modern tech setup.
+A configurable touchscreen display for the Valentine1 Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-**What You Get:**
-- 🔵 **Wireless Connection**: Connects to your V1 via Bluetooth LE with fast reconnection
-- 📊 **Real-time Alerts**: Shows radar bands (Ka, K, X, Laser), direction, and signal strength
-- 🎨 **Custom Themes**: Multiple color schemes (Standard, High Contrast, Stealth)
-- 👆 **Touch Control**: Tap screen to mute/unmute
-- 📱 **WiFi Setup**: Web interface for all settings - no code editing needed
-- 🌐 **Multi-Network WiFi**: Auto-switch between up to 3 saved networks with encrypted credentials
-- 🔄 **Internet Passthrough**: Built-in NAT/NAPT router - share your WiFi connection via AP mode
-- 🎯 **Auto-Push Profiles**: 3 quick-access profile slots (Default, Highway, Passenger Comfort)
-- 💾 **Alert Logging**: SD card logging with web-based replay
-- 🔧 **V1 Profile Manager**: Create, edit, and push settings to your V1
-- 🔒 **Security Hardened**: XSS protection, password obfuscation, secure web interface
+Overview:
+- Wireless BLE connection with fast reconnection
+- Real‑time alerts: bands, direction, signal strength
+- Web UI for configuration (no code edits required)
+- Multi‑network WiFi with encrypted credentials
+- Internet passthrough via NAT/NAPT in AP+STA mode
+- Auto‑push profile slots (Default, Highway, Comfort)
+- SD card alert logging with web viewer
+- V1 profile manager (create, edit, push)
+- Security hardened: XSS fix, credential obfuscation
 
-**⚠️ Disclaimer:**  
-This is a personal project I built for myself. There is NO WARRANTY of any kind. Use at your own risk. I have ZERO liability for anything that happens. If you break your V1, your ESP32, or somehow cause the apocalypse, that's on you. Seriously. No refunds, no guarantees, no support obligations. It works for me. Your mileage may vary.
+Disclaimer:
+- This is provided as‑is, with no warranty. Use at your own risk.
 
 ---
 
-## 🆕 Recent Updates
+## Recent Updates
 
-**Latest (Dec 2025):**
-- ✅ **WiFi NAT/NAPT Router**: Internet passthrough in AP+STA mode
-- ✅ **Multi-Network WiFi**: Auto-switch between up to 3 saved networks
-- ✅ **Security Hardening**: Fixed XSS vulnerability, added HTML entity encoding
-- ✅ **Password Obfuscation**: Encrypted WiFi credential storage
-- ✅ **Time Management**: NTP sync with automatic timezone handling
-- ✅ **Fast BLE Reconnection**: Aggressive scanning for quicker V1 connection
+December 2025:
+- WiFi NAT/NAPT router: AP+STA passthrough
+- Multi‑network WiFi (up to 3 networks)
+- Security hardening (XSS fix, HTML escaping)
+- Credential obfuscation for WiFi passwords
+- NTP time sync refactor
+- Faster BLE reconnection
 
-**Previous:**
-- Touch-to-mute functionality
-- Alert database with web replay
-- Auto-push profile system
-- BLE proxy for JBV1 app compatibility
-
----
-
-## 📦 What You Need
-
-**Hardware ($35-40):**
-- [Waveshare ESP32-S3-Touch-LCD-3.49](https://www.amazon.com/dp/B0FQM41PGX) (~$35 on Amazon)
-- USB-C cable (for programming)
-- Valentine1 Gen2 radar detector (with BLE enabled)
-- Optional: MicroSD card for alert logging (FAT32 formatted)
-
-**Software (Free):**
-- Visual Studio Code
-- PlatformIO extension
-- This code
+Earlier:
+- Touch‑to‑mute
+- Alert database with web viewer
+- Auto‑push profile system
+- BLE proxy compatibility
 
 ---
 
-## 🚀 Installation Guide
+## Requirements
+
+Hardware:
+- Waveshare ESP32‑S3‑Touch‑LCD‑3.49
+- USB‑C cable
+- Valentine1 Gen2 (BLE enabled)
+- Optional: microSD (FAT32) for alert logging
+
+Software:
+- Visual Studio Code + PlatformIO
+
+---
+
+## Installation
 
 ### Step 1: Install Visual Studio Code
 
@@ -78,7 +74,7 @@ Or download from [code.visualstudio.com](https://code.visualstudio.com/) for oth
 
 ---
 
-### Step 2: Install PlatformIO Extension
+### Step 2: Install PlatformIO
 
 1. Open Visual Studio Code
 2. Click the **Extensions** icon in the left sidebar (or press `Ctrl+Shift+X` / `Cmd+Shift+X`)
@@ -110,7 +106,7 @@ code .
 
 ---
 
-### Step 4: Upload to Your Display
+### Step 4: Upload to the Display
 
 1. **Connect your Waveshare display** to your computer with a USB-C cable
 2. **Open the terminal** in VS Code:
@@ -129,11 +125,11 @@ code .
    ======== [SUCCESS] Took X seconds ========
    ```
 
-**That's it!** Your display should boot up with the V1 logo.
+After upload, the display boots to the main UI.
 
 ---
 
-### Troubleshooting Upload Issues
+### Upload Troubleshooting
 
 **"No device found" or "Permission denied":**
 
@@ -162,9 +158,9 @@ code .
 
 ---
 
-## 🎮 Using Your Display
+## Usage
 
-### First Boot - WiFi Setup
+### First Boot and WiFi
 
 When you first power on the display, it creates a WiFi access point:
 
@@ -174,7 +170,7 @@ When you first power on the display, it creates a WiFi access point:
 | **Password** | `valentine1` |
 | **Web Interface** | `http://192.168.35.5` |
 
-> ⚠️ **Security Note:** Change the default WiFi password after setup! Anyone nearby can connect to `V1-Display` with the default password and access your settings. Go to Settings → AP Password to change it.
+Security note: Change the default AP password after setup. Go to Settings → AP Password.
 
 1. **Connect your phone or computer** to the `V1-Display` WiFi network
 2. **Open a browser** and go to `http://192.168.35.5`
@@ -186,82 +182,74 @@ When you first power on the display, it creates a WiFi access point:
 
 ### Main Screen
 
-The display shows real-time alerts from your V1:
+The display shows real-time alerts from your V1 (640×172 AMOLED, landscape orientation):
 
 ```
-┌─────────────────────────────┐
-│  Ka  K  X  LASER    [WiFi] │ ← Band indicators & status
-│                             │
-│        ↑  →  ←             │ ← Direction arrows
-│                             │
-│      ▓▓▓▓▓▓▓▓▓             │ ← Signal strength bars
-│                             │
-│       34.728 GHz           │ ← Frequency display
-│                             │
-│     [MUTED] 👁️            │ ← Mute status, display toggle
-└─────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│    L      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                  ↑   │
+│   Ka                                                       →   │
+│    K               34.728                                  ↓   │
+│    X                                                           │
+│                                                           [1]  │
+└────────────────────────────────────────────────────────────────┘
+  Bands     Signal bars / Frequency (GHz)           Arrows  Slot
 ```
 
-**Touch Controls:**
-- **Tap anywhere** on the screen to **mute/unmute** your V1
+**Layout:**
+- **Left**: Band indicators (L/Ka/K/X) - light up when detected
+- **Center**: Signal strength bars (top), Frequency in GHz (bottom)
+- **Right**: Direction arrows (↑ front, → side, ↓ rear)
+- **Bottom-right**: Active profile slot indicator [1/2/3]
 
-### Web Interface Features
+Touch control: tap anywhere to mute/unmute.
+
+### Web Interface
 
 Access via `http://192.168.35.5` (or your configured IP):
 
-**📊 Home Dashboard**
-- Live V1 connection status
-- Quick access to all settings
+Home:
+- V1 connection status
+- Quick access to settings
 - Alert log viewer
 
-**⚙️ Settings Page**
-- WiFi configuration (AP mode or connect to network)
-- Display brightness (inverted: lower number = brighter)
-- Color theme selection
-- Display mode (full stealth vs resting display)
-- BLE proxy toggle (for JBV1 app)
+Settings:
+- WiFi configuration (AP/STA/AP+STA)
+- Brightness
+- Color theme
+- Display mode
+- BLE proxy toggle
 
-**🎯 Auto-Push Profiles** (`/autopush`)
-- **3 Quick-Access Slots:**
-  - 🏠 **Slot 0**: Default profile
-  - 🏎️ **Slot 1**: Highway profile  
-  - 👥 **Slot 2**: Passenger Comfort profile
-- Each slot stores: V1 profile + operating mode
-- **Quick-Push Buttons**: Tap to activate and push immediately
-- **Auto-Enable**: Automatically push active profile when V1 connects
+Auto‑Push (`/autopush`):
+- Three slots (Default, Highway, Comfort)
+- Profile + mode per slot
+- Quick‑push buttons
+- Auto‑enable on connection
 
-**📁 V1 Profile Manager** (`/v1settings`)
-- Create and edit V1 profiles
-- Adjust all V1 settings (bands, sensitivity, filters)
-- Push profiles to V1 wirelessly
-- Save multiple profiles for different situations
+V1 Profiles (`/v1settings`):
+- Create/edit profiles
+- Configure bands, sensitivity, filters
+- Push to V1
 
-**📜 Alert Logs** (`/alerts`)
-- View logged alerts from SD card
-- Filter by date, band, frequency
-- Replay mode to see historical data
-- Export to CSV
-
+Alert Logs (`/alerts`):
+- View logs from SD
+- Filter by band/frequency
 ---
 
-## 🎨 Features in Detail
+## Features
 
-### Color Themes
+Color Themes:
+- Standard, High Contrast, Stealth, Business (subdued)
+Change via Settings → Color Theme.
 
-Choose from 3 built-in themes (matches firmware):
-- **Standard**: Classic red/amber warnings
-- **High Contrast**: Bright palette for visibility
-- **Stealth**: Muted, low-light friendly
-
-Change via web interface: Settings → Color Theme
-
-### Auto-Push Profile System
+Auto‑Push Profiles:
 
 Set up 3 profiles for different driving scenarios:
 
-1. **Default Profile** (🏠): Your everyday settings
-2. **Highway Profile** (🏎️): Max sensitivity for long trips
-3. **Passenger Comfort** (👥): Quieter settings with passengers
+Slots:
+1. Default (everyday)
+2. Highway (sensitivity)
+3. Comfort (quieter)
 
 **How to use:**
 1. **Create profiles first** in the V1 Profile Manager (`/v1settings`)
@@ -270,7 +258,7 @@ Set up 3 profiles for different driving scenarios:
 4. Click a **Quick-Push** button to activate and send to V1
 5. Enable **Auto-Push** to apply on connection
 
-### Display Modes
+Display Modes:
 
 **Display On (Full Stealth):**
 - Display OFF = Everything black (even with alerts)
@@ -280,7 +268,7 @@ Set up 3 profiles for different driving scenarios:
 - Resting ON = Shows logo when idle
 - Resting OFF = Blank screen until alert
 
-### Alert Logging
+Alert Logging:
 
 With a microSD card inserted:
 - Automatically logs every alert
@@ -288,7 +276,7 @@ With a microSD card inserted:
 - Access logs via web interface (`/alerts`)
 - Format: FAT32 (not exFAT)
 
-### WiFi Networking
+WiFi Networking:
 
 **Multi-Network Support:**
 - Store up to 3 WiFi networks
@@ -303,14 +291,14 @@ With a microSD card inserted:
 - Built-in NAT/NAPT forwarding
 - Useful for using JBV1 app while display is connected to external WiFi
 
-**WiFi Modes:**
-- **AP Only**: Display creates WiFi network (no internet)
-- **Station Only**: Display connects to your WiFi
-- **AP + Station**: Router mode with internet passthrough
+WiFi Modes:
+- AP Only — local network
+- Station Only — upstream
+- AP + Station — router passthrough
 
 ---
 
-## 🛠️ Customization
+## Customization
 
 Don't like something? The code is designed to be hackable:
 
@@ -319,13 +307,17 @@ Don't like something? The code is designed to be hackable:
 **Modify color themes:** Edit `include/color_themes.h`
 **Change web UI:** Edit `src/wifi_manager.cpp`
 
-After changes, run `pio run -e waveshare-349 -t upload` to update your display.
+After changes:
+
+```bash
+pio run -e waveshare-349 -t upload
+```
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### V1 Won't Connect
+### V1 Connection
 
 1. **Check V1 BLE is enabled** (V1 menu: Setup → Bluetooth)
 2. **Ensure V1 isn't connected to JBV1** or another device
@@ -336,7 +328,7 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
    ```
    Look for: `*** FOUND V1: 'V1Gxxxxx'`
 
-### Display Issues
+### Display
 
 **Screen stays black:**
 - Check brightness setting (lower = brighter, 0 = full brightness)
@@ -351,7 +343,7 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
 - Try different color themes in settings
 - Check display isn't in direct sunlight (AMOLED)
 
-### WiFi Issues
+### WiFi
 
 **Can't find V1-Display network:**
 - Wait 30 seconds after boot
@@ -376,7 +368,7 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
 - Try `http://` not `https://`
 - Clear browser cache
 
-### SD Card Issues
+### SD Card
 
 **Logs not saving:**
 - Format card as FAT32 (not exFAT or NTFS)
@@ -386,7 +378,7 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
 
 ---
 
-## 📚 Technical Details
+## Technical Details
 
 ### Hardware
 
@@ -397,7 +389,7 @@ After changes, run `pio run -e waveshare-349 -t upload` to update your display.
 - **SD Card**: SDMMC 1-bit mode (pins: CLK=41, CMD=39, D0=40)
 - **Backlight**: Inverted PWM on GPIO 8 (0=full bright, 255=off)
 
-See [WAVESHARE_349.md](WAVESHARE_349.md) for complete pin mapping.
+See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
 
 ### BLE Protocol
 

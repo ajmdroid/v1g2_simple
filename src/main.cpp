@@ -28,6 +28,7 @@
 #include "wifi_manager.h"
 #include "settings.h"
 #include "alert_logger.h"
+#include "serial_logger.h"
 #include "time_manager.h"
 #include "alert_db.h"
 #include "touch_handler.h"
@@ -98,7 +99,7 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
             static unsigned long lastQueueFullLog = 0;
             unsigned long now = millis();
             if (now - lastQueueFullLog > 1000) {
-                Serial.println("WARNING: BLE queue full, dropping packets!");
+                SerialLog.println("WARNING: BLE queue full, dropping packets!");
                 lastQueueFullLog = now;
             }
         }
@@ -111,7 +112,7 @@ void onV1Connected() {
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     if (activeSlotIndex != s.activeSlot) {
-        Serial.printf("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
+        SerialLog.printf("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                       s.activeSlot, activeSlotIndex);
     }
     
@@ -142,23 +143,23 @@ void onV1Connected() {
                 if (file) {
                     file.println(connectedAddr);
                     file.close();
-                    Serial.printf("[V1Cache] Added new V1 address: %s\n", connectedAddr.c_str());
+                    SerialLog.printf("[V1Cache] Added new V1 address: %s\n", connectedAddr.c_str());
                 } else {
-                    Serial.println("[V1Cache] Failed to open known_v1.txt for writing");
+                    SerialLog.println("[V1Cache] Failed to open known_v1.txt for writing");
                 }
             }
         }
     }
     
     if (!s.autoPushEnabled) {
-        Serial.println("[AutoPush] Disabled, skipping");
+        SerialLog.println("[AutoPush] Disabled, skipping");
         return;
     }
     
     // Get the active slot configuration
     AutoPushSlot activeSlot = settingsManager.getActiveSlot();
     const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
-    Serial.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n", 
+    SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n", 
                   slotNames[activeSlotIndex], activeSlotIndex);
     
     // Small delay to ensure V1 is ready
@@ -166,25 +167,25 @@ void onV1Connected() {
     
     // Push profile if configured
     if (activeSlot.profileName.length() > 0) {
-        Serial.printf("[AutoPush] Loading profile: %s\n", activeSlot.profileName.c_str());
+        SerialLog.printf("[AutoPush] Loading profile: %s\n", activeSlot.profileName.c_str());
         V1Profile profile;
         if (v1ProfileManager.loadProfile(activeSlot.profileName, profile)) {
             // Write user bytes to V1
             if (bleClient.writeUserBytes(profile.settings.bytes)) {
-                Serial.println("[AutoPush] Profile settings pushed successfully");
+                SerialLog.println("[AutoPush] Profile settings pushed successfully");
             } else {
-                Serial.println("[AutoPush] ERROR: Failed to push profile settings");
+                SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
             }
             
             // Set display on/off based on profile
             delay(100);
             bleClient.setDisplayOn(profile.displayOn);
-            Serial.printf("[AutoPush] Display set to: %s\n", profile.displayOn ? "ON" : "OFF");
+            SerialLog.printf("[AutoPush] Display set to: %s\n", profile.displayOn ? "ON" : "OFF");
         } else {
-            Serial.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", activeSlot.profileName.c_str());
+            SerialLog.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", activeSlot.profileName.c_str());
         }
     } else {
-        Serial.println("[AutoPush] No profile configured for active slot");
+        SerialLog.println("[AutoPush] No profile configured for active slot");
     }
     
     // Set mode if configured (not UNKNOWN)
@@ -195,9 +196,9 @@ void onV1Connected() {
             if (activeSlot.mode == V1_MODE_ALL_BOGEYS) modeName = "All Bogeys";
             else if (activeSlot.mode == V1_MODE_LOGIC) modeName = "Logic";
             else if (activeSlot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
-            Serial.printf("[AutoPush] Mode set to: %s\n", modeName);
+            SerialLog.printf("[AutoPush] Mode set to: %s\n", modeName);
         } else {
-            Serial.println("[AutoPush] ERROR: Failed to set mode");
+            SerialLog.println("[AutoPush] ERROR: Failed to set mode");
         }
     }
     
@@ -208,13 +209,13 @@ void onV1Connected() {
     if (mainVol != 0xFF || muteVol != 0xFF) {
         delay(100);
         if (bleClient.setVolume(mainVol, muteVol)) {
-            Serial.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
+            SerialLog.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
         } else {
-            Serial.println("[AutoPush] ERROR: Failed to set volume");
+            SerialLog.println("[AutoPush] ERROR: Failed to set volume");
         }
     }
     
-    Serial.println("[AutoPush] Complete");
+    SerialLog.println("[AutoPush] Complete");
 }
 
 // Process queued BLE data - called from main loop (safe for SPI)
@@ -276,13 +277,13 @@ void processBLEData() {
             // Payload starts at byte 5, length is 6 bytes
             uint8_t userBytes[6];
             memcpy(userBytes, &packet[5], 6);
-            Serial.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
+            SerialLog.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
                 userBytes[0], userBytes[1], userBytes[2], userBytes[3], userBytes[4], userBytes[5]);
-            Serial.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
+            SerialLog.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
                 userBytes[0] & 0x01, (userBytes[0] >> 1) & 0x01, 
                 (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
             v1ProfileManager.setCurrentSettings(userBytes);
-            Serial.println("Received V1 user bytes!");
+            SerialLog.println("Received V1 user bytes!");
             continue;  // Don't pass to parser
         }
 
@@ -292,6 +293,11 @@ void processBLEData() {
             // Cache alert status to avoid repeated calls
             bool hasAlerts = parser.hasAlerts();
 
+            // DEBUG: Log raw V1 mute state vs local state (for flicker debugging)
+            static bool lastLoggedMuted = false;
+            static bool lastV1Muted = false;
+            bool v1MutedRaw = state.muted;  // Capture V1's raw mute state before overrides
+            
             // Apply local mute override IMMEDIATELY - lock it in before any logic
             if (localMuteActive && localMuteOverride) {
                 state.muted = true;
@@ -306,6 +312,16 @@ void processBLEData() {
                     unmuteSentTimestamp = 0;  // Grace period expired, trust V1 again
                 }
             }
+            
+            // DEBUG: Log mute state changes for flicker debugging
+            if (state.muted != lastLoggedMuted || v1MutedRaw != lastV1Muted) {
+                SerialLog.printf("MUTE_STATE: final=%d v1Raw=%d localActive=%d localOverride=%d unmuteGrace=%lu hasAlerts=%d bands=0x%02X\n",
+                    state.muted, v1MutedRaw, localMuteActive, localMuteOverride,
+                    (unmuteSentTimestamp > 0) ? (millis() - unmuteSentTimestamp) : 0,
+                    hasAlerts, state.activeBands);
+                lastLoggedMuted = state.muted;
+                lastV1Muted = v1MutedRaw;
+            }
 
             // Handle timeout logic separately
             if (localMuteActive) {
@@ -319,7 +335,7 @@ void processBLEData() {
                     unsigned long now = millis();
                     if (now - localMuteTimestamp >= LOCAL_MUTE_TIMEOUT_MS) {
                         // Timeout and no alerts - clear override and send unmute
-                        Serial.println("Local mute override timed out (no alerts) - sending unmute to V1");
+                        SerialLog.println("Local mute override timed out (no alerts) - sending unmute to V1");
                         localMuteActive = false;
                         localMuteOverride = false;
                         mutedAlertStrength = 0;
@@ -352,7 +368,7 @@ void processBLEData() {
                     // Check if it's a different band first
                     if (priority.band != mutedAlertBand && priority.band != BAND_NONE) {
                         differentAlert = true;
-                        Serial.printf("Different band detected: %d -> %d\n", mutedAlertBand, priority.band);
+                        SerialLog.printf("Different band detected: %d -> %d\n", mutedAlertBand, priority.band);
                     }
 
                     // Check for higher priority band (Ka > K > X, Laser is special)
@@ -360,21 +376,21 @@ void processBLEData() {
                     // If muted X and K or Ka shows up -> unmute
                     if (mutedAlertBand == BAND_K && priority.band == BAND_KA) {
                         higherPriorityBand = true;
-                        Serial.println("Higher priority band: K muted, Ka detected");
+                        SerialLog.println("Higher priority band: K muted, Ka detected");
                     } else if (mutedAlertBand == BAND_X && (priority.band == BAND_KA || priority.band == BAND_K)) {
                         higherPriorityBand = true;
-                        Serial.printf("Higher priority band: X muted, %s detected\n", 
+                        SerialLog.printf("Higher priority band: X muted, %s detected\n", 
                                     priority.band == BAND_KA ? "Ka" : "K");
                     } else if (mutedAlertBand == BAND_LASER && priority.band != BAND_LASER && priority.band != BAND_NONE) {
                         higherPriorityBand = true;
-                        Serial.printf("Radar band after Laser: %d\n", priority.band);
+                        SerialLog.printf("Radar band after Laser: %d\n", priority.band);
                     }
 
                     // Only check stronger signal if band changed - same band getting stronger is not a new threat
                     // (e.g., sweeping laser or approaching radar should stay muted)
                     if (priority.band != mutedAlertBand && currentStrength >= mutedAlertStrength + 2) {
                         strongerSignal = true;
-                        Serial.printf("Stronger signal on different band: %d -> %d\n", mutedAlertStrength, currentStrength);
+                        SerialLog.printf("Stronger signal on different band: %d -> %d\n", mutedAlertStrength, currentStrength);
                     }
 
                     // Check if it's a different frequency (for same band, >15 MHz difference)
@@ -385,14 +401,14 @@ void processBLEData() {
                                            (mutedAlertFreq - priority.frequency);
                         if (freqDiff > 50) {  // More than 50 MHz different
                             differentAlert = true;
-                            Serial.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
+                            SerialLog.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
                                         mutedAlertFreq, priority.frequency, freqDiff);
                         }
                     }
 
                     // Auto-unmute for stronger, different, or higher priority alert
                     if (strongerSignal || differentAlert || higherPriorityBand) {
-                        Serial.println("Auto-unmuting for new/stronger/priority alert");
+                        SerialLog.println("Auto-unmuting for new/stronger/priority alert");
                         localMuteActive = false;
                         localMuteOverride = false;
                         state.muted = false;
@@ -402,16 +418,29 @@ void processBLEData() {
                         if (bleClient.setMute(false)) {
                             unmuteSentTimestamp = millis();
                         } else {
-                            Serial.println("Auto-unmute failed to send MUTE_OFF");
+                            SerialLog.println("Auto-unmute failed to send MUTE_OFF");
                         }
                     }
                 }
 
+                // DEBUG: Log what we're about to draw (for flicker debugging)
+                SerialLog.printf("DISPLAY_UPDATE: alert band=%s muted=%d freq=%lu strength=%d\n",
+                    priority.band == BAND_KA ? "Ka" : priority.band == BAND_K ? "K" : 
+                    priority.band == BAND_X ? "X" : priority.band == BAND_LASER ? "Laser" : "None",
+                    state.muted, priority.frequency, std::max(priority.frontStrength, priority.rearStrength));
+                
                 display.update(priority, state, alertCount);
+                
+                // Update timestamp before logging (ensures real-time accuracy)
+                time_t now = time(nullptr);
+                if (now > 1609459200) {  // Valid if after 2021-01-01
+                    alertLogger.setTimestampUTC((uint32_t)now);
+                    alertDB.setTimestampUTC((uint32_t)now);
+                }
                 alertLogger.logAlert(priority, state, alertCount);
                 alertDB.logAlert(priority, state, alertCount);  // SQLite logging
 
-                Serial.printf("Alert: %s, Dir: %d, Front: %d, Rear: %d, Freq: %lu MHz, Count: %d, Bands: 0x%02X\n",
+                SerialLog.printf("Alert: %s, Dir: %d, Front: %d, Rear: %d, Freq: %lu MHz, Count: %d, Bands: 0x%02X\n",
                               priority.band == BAND_KA ? "Ka" :
                               priority.band == BAND_K ? "K" :
                               priority.band == BAND_X ? "X" :
@@ -433,7 +462,7 @@ void processBLEData() {
                     
                     unsigned long timeSinceMute = millis() - localMuteTimestamp;
                     if (timeSinceMute >= LOCAL_MUTE_TIMEOUT_MS) {
-                        Serial.println("Alert cleared - clearing local mute override and sending unmute to V1");
+                        SerialLog.println("Alert cleared - clearing local mute override and sending unmute to V1");
                         localMuteActive = false;
                         localMuteOverride = false;
                         mutedAlertStrength = 0;
@@ -450,12 +479,18 @@ void processBLEData() {
                 
                 static unsigned long lastStateLog = 0;
                 if (millis() - lastStateLog > 2000) {
-                    Serial.printf("DisplayState update: bands=0x%02X arrows=0x%02X bars=%d mute=%d\n",
+                    SerialLog.printf("DisplayState update: bands=0x%02X arrows=0x%02X bars=%d mute=%d\n",
                                   state.activeBands, state.arrows, state.signalBars, state.muted);
                     lastStateLog = millis();
                 }
                 display.update(state);
                 alertLogger.updateStateOnClear(state);
+                
+                // Update timestamp before logging (ensures real-time accuracy)
+                time_t now = time(nullptr);
+                if (now > 1609459200) {  // Valid if after 2021-01-01
+                    alertDB.setTimestampUTC((uint32_t)now);
+                }
                 alertDB.logClear();  // SQLite logging
             }
         }
@@ -480,27 +515,27 @@ void setup() {
     Serial.begin(115200);
     delay(500);  // Give serial time to connect
     
-    Serial.println("\n===================================");
-    Serial.println("V1 Gen2 Simple Display");
-    Serial.println("Firmware: " FIRMWARE_VERSION);
-    Serial.print("Board: ");
-    Serial.println(DISPLAY_NAME);
+    SerialLog.println("\n===================================");
+    SerialLog.println("V1 Gen2 Simple Display");
+    SerialLog.println("Firmware: " FIRMWARE_VERSION);
+    SerialLog.print("Board: ");
+    SerialLog.println(DISPLAY_NAME);
     
     // Check reset reason - if firmware flash, clear BLE bonds
     esp_reset_reason_t resetReason = esp_reset_reason();
-    Serial.printf("Reset reason: %d ", resetReason);
+    SerialLog.printf("Reset reason: %d ", resetReason);
     if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
-        Serial.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
+        SerialLog.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
     } else if (resetReason == ESP_RST_POWERON) {
-        Serial.println("(Power-on)");
+        SerialLog.println("(Power-on)");
     } else {
-        Serial.printf("(Other: %d)\n", resetReason);
+        SerialLog.printf("(Other: %d)\n", resetReason);
     }
-    Serial.println("===================================\n");
+    SerialLog.println("===================================\n");
     
     // Initialize display
     if (!display.begin()) {
-        Serial.println("Display initialization failed!");
+        SerialLog.println("Display initialization failed!");
         while (1) delay(1000);
     }
 
@@ -529,16 +564,22 @@ void setup() {
     // Mount SD card for alert logging (non-fatal if missing)
     alertLogger.begin();
     
+    // Initialize serial logger to SD card (for debugging in the field)
+    SerialLog.begin();
+    if (SerialLog.isEnabled()) {
+        SerialLog.println("[Setup] Serial logging to SD enabled");
+    }
+    
     // Initialize time manager (NTP-only, no SD card dependency)
     timeManager.begin(alertLogger.isReady() ? alertLogger.getFilesystem() : nullptr);
     
     // Initialize SQLite alert database (uses same SD card)
     if (alertLogger.isReady()) {
         if (alertDB.begin()) {
-            Serial.printf("[Setup] AlertDB ready - %s\n", alertDB.statusText().c_str());
-            Serial.printf("[Setup] Total alerts in DB: %lu\n", alertDB.getTotalAlerts());
+            SerialLog.printf("[Setup] AlertDB ready - %s\n", alertDB.statusText().c_str());
+            SerialLog.printf("[Setup] Total alerts in DB: %lu\n", alertDB.getTotalAlerts());
         } else {
-            Serial.println("[Setup] AlertDB init failed - using CSV fallback");
+            SerialLog.println("[Setup] AlertDB init failed - using CSV fallback");
         }
     }
     
@@ -553,12 +594,12 @@ void setup() {
     
     // After firmware flash, delete cache and skip fast reconnect to force fresh connection
     if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
-        Serial.println("[V1Cache] Firmware flash detected - clearing V1 cache for fresh connection");
+        SerialLog.println("[V1Cache] Firmware flash detected - clearing V1 cache for fresh connection");
         if (alertLogger.isReady()) {
             fs::FS* fs = alertLogger.getFilesystem();
             if (fs->exists("/known_v1.txt")) {
                 fs->remove("/known_v1.txt");
-                Serial.println("[V1Cache] Deleted known_v1.txt");
+                SerialLog.println("[V1Cache] Deleted known_v1.txt");
             }
         }
         skipFastReconnect = true;
@@ -568,31 +609,31 @@ void setup() {
         fs::FS* fs = alertLogger.getFilesystem();
         File file = fs->open("/known_v1.txt", FILE_READ);
         if (file) {
-            Serial.println("[V1Cache] Loading known V1 addresses from SD...");
+            SerialLog.println("[V1Cache] Loading known V1 addresses from SD...");
             while (file.available()) {
                 String line = file.readStringUntil('\n');
                 line.trim();
                 if (line.length() == 17 && line.indexOf(':') > 0) {  // MAC format: aa:bb:cc:dd:ee:ff
                     knownV1Addresses.push_back(line.c_str());
-                    Serial.printf("[V1Cache]   - %s\n", line.c_str());
+                    SerialLog.printf("[V1Cache]   - %s\n", line.c_str());
                 }
             }
             file.close();
-            Serial.printf("[V1Cache] Loaded %d known V1 address(es)\n", knownV1Addresses.size());
+            SerialLog.printf("[V1Cache] Loaded %d known V1 address(es)\n", knownV1Addresses.size());
         } else {
-            Serial.println("[V1Cache] No known_v1.txt found (will be created on first connection)");
+            SerialLog.println("[V1Cache] No known_v1.txt found (will be created on first connection)");
         }
     }
     
-    Serial.println("==============================");
-    Serial.println("WiFi Configuration:");
-    Serial.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
-    Serial.printf("  wifiMode: %d\n", settingsManager.get().wifiMode);
-    Serial.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
-    Serial.println("==============================");
+    SerialLog.println("==============================");
+    SerialLog.println("WiFi Configuration:");
+    SerialLog.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
+    SerialLog.printf("  wifiMode: %d\n", settingsManager.get().wifiMode);
+    SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
+    SerialLog.println("==============================");
     
     // Initialize WiFi manager
-    Serial.println("Starting WiFi manager...");
+    SerialLog.println("Starting WiFi manager...");
     wifiManager.begin();
         
         // Set up callbacks for web interface
@@ -632,17 +673,17 @@ void setup() {
             return false;
         });
         
-        Serial.println("WiFi initialized");
+        SerialLog.println("WiFi initialized");
     
     // Initialize BLE client with proxy settings from preferences
     const V1Settings& bleSettings = settingsManager.get();
-    Serial.printf("Starting BLE (proxy: %s, name: %s)\n", 
+    SerialLog.printf("Starting BLE (proxy: %s, name: %s)\n", 
                   bleSettings.proxyBLE ? "enabled" : "disabled",
                   bleSettings.proxyName.c_str());
 
     // Initialize BLE stack first (required before any BLE operations)
     if (!bleClient.initBLE(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
-        Serial.println("BLE initialization failed!");
+        SerialLog.println("BLE initialization failed!");
         display.showDisconnected();
         while (1) delay(1000);
     }
@@ -651,29 +692,29 @@ void setup() {
     bool fastReconnectAttempted = false;
     if (!skipFastReconnect) {
         for (const auto& addr : knownV1Addresses) {
-            Serial.printf("[FastReconnect] Trying %s...\n", addr.c_str());
+            SerialLog.printf("[FastReconnect] Trying %s...\n", addr.c_str());
             bleClient.setTargetAddress(NimBLEAddress(addr, BLE_ADDR_PUBLIC));
             
             if (bleClient.fastReconnect()) {
-                Serial.printf("[FastReconnect] Connected to %s!\n", addr.c_str());
+                SerialLog.printf("[FastReconnect] Connected to %s!\n", addr.c_str());
                 fastReconnectAttempted = true;
                 break;
             } else {
-                Serial.printf("[FastReconnect] Failed for %s, trying next...\n", addr.c_str());
+                SerialLog.printf("[FastReconnect] Failed for %s, trying next...\n", addr.c_str());
             }
         }
     } else {
-        Serial.println("[FastReconnect] Skipped after firmware flash");
+        SerialLog.println("[FastReconnect] Skipped after firmware flash");
     }
     
     // If fast reconnect worked, skip normal scan
     if (fastReconnectAttempted && bleClient.isConnected()) {
-        Serial.println("[FastReconnect] Success - skipping scan");
+        SerialLog.println("[FastReconnect] Success - skipping scan");
     } else {
         // All cached addresses failed, start normal scanning
-        Serial.println("[FastReconnect] All known addresses failed, starting general scan for V1...");
+        SerialLog.println("[FastReconnect] All known addresses failed, starting general scan for V1...");
         if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
-            Serial.println("BLE scan failed to start!");
+            SerialLog.println("BLE scan failed to start!");
             display.showDisconnected();
             while (1) delay(1000);
         }
@@ -686,14 +727,14 @@ void setup() {
     bleClient.onV1Connected(onV1Connected);
     
     // Initialize touch handler (SDA=17, SCL=18, addr=AXS_TOUCH_ADDR for AXS15231B touch, rst=-1 for no reset)
-    Serial.println("Initializing touch handler...");
+    SerialLog.println("Initializing touch handler...");
     if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
-        Serial.println("Touch handler initialized successfully");
+        SerialLog.println("Touch handler initialized successfully");
     } else {
-        Serial.println("WARNING: Touch handler failed to initialize - continuing anyway");
+        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
     }
     
-    Serial.println("Setup complete - WiFi and BLE enabled");
+    SerialLog.println("Setup complete - WiFi and BLE enabled");
 }
 
 void loop() {
@@ -716,14 +757,14 @@ void loop() {
             }
             lastTapTime = now;
             
-            Serial.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
+            SerialLog.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
             
             // Check for triple-tap to cycle profiles (ONLY when no active alert)
             if (tapCount >= 3) {
                 tapCount = 0;  // Reset tap count
                 
                 if (hasActiveAlert) {
-                    Serial.println("PROFILE CHANGE BLOCKED: Active alert present - tap to mute instead");
+                    SerialLog.println("PROFILE CHANGE BLOCKED: Active alert present - tap to mute instead");
                 } else {
                     // Cycle to next profile slot: 0 -> 1 -> 2 -> 0
                     const V1Settings& s = settingsManager.get();
@@ -731,14 +772,14 @@ void loop() {
                     settingsManager.setActiveSlot(newSlot);
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
-                    Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
+                    SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
                     
                     // Update display to show new profile
                     display.drawProfileIndicator(newSlot);
                     
                     // If connected to V1 and auto-push is enabled, push the new profile
                     if (bleClient.isConnected() && s.autoPushEnabled) {
-                        Serial.println("Pushing new profile to V1...");
+                        SerialLog.println("Pushing new profile to V1...");
                         onV1Connected();  // Re-use the connection callback to push profile
                     }
                 }
@@ -749,11 +790,11 @@ void loop() {
         unsigned long now = millis();
         if (tapCount > 0 && tapCount < 3 && (now - lastTapTime > TAP_WINDOW_MS)) {
             // Window expired with 1-2 taps - treat as mute toggle (ONLY with active alert)
-            Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
+            SerialLog.printf("Processing %d tap(s) as mute toggle\n", tapCount);
             tapCount = 0;
             
             if (!hasActiveAlert) {
-                Serial.println("MUTE BLOCKED: No active alert to mute");
+                SerialLog.println("MUTE BLOCKED: No active alert to mute");
             } else {
                 // Get current mute state from parser and toggle it
                 DisplayState state = parser.getDisplayState();
@@ -771,7 +812,7 @@ void loop() {
                     mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
                     mutedAlertBand = priority.band;
                     mutedAlertFreq = priority.frequency;
-                    Serial.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
+                    SerialLog.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
                                 mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
                 } else {
                     // Unmuting - clear stored alert
@@ -780,13 +821,13 @@ void loop() {
                     mutedAlertFreq = 0;
                 }
                 
-                Serial.printf("Current mute state: %s -> Sending: %s\n", 
+                SerialLog.printf("Current mute state: %s -> Sending: %s\n", 
                               currentMuted ? "MUTED" : "UNMUTED",
                               newMuted ? "MUTE_ON" : "MUTE_OFF");
                 
                 // Send mute command to V1
                 bool cmdSent = bleClient.setMute(newMuted);
-                Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+                SerialLog.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
             }
         }
     }
@@ -817,10 +858,10 @@ void loop() {
         if (isConnected != wasConnected) {
             if (isConnected) {
                 display.showResting(); // stay on resting view until data arrives
-                Serial.println("V1 connected!");
+                SerialLog.println("V1 connected!");
             } else {
                 display.showScanning();
-                Serial.println("V1 disconnected - Scanning...");
+                SerialLog.println("V1 disconnected - Scanning...");
             }
             wasConnected = isConnected;
         }
@@ -828,7 +869,7 @@ void loop() {
         // If connected but not seeing traffic, re-request alert data periodically
         static unsigned long lastReq = 0;
         if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-            Serial.println("No data recently; re-requesting alert data...");
+            SerialLog.println("No data recently; re-requesting alert data...");
             bleClient.requestAlertData();
             lastReq = now;
         }
@@ -841,7 +882,7 @@ void loop() {
         if (bleClient.isConnected()) {
             DisplayState state = parser.getDisplayState();
             if (parser.hasAlerts()) {
-                Serial.printf("Active alerts: %d\n", parser.getAlertCount());
+                SerialLog.printf("Active alerts: %d\n", parser.getAlertCount());
             }
         }
     }

@@ -7,6 +7,8 @@
 #include "settings.h"
 #include "display.h"
 #include "alert_logger.h"
+#include "alert_db.h"
+#include "serial_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
 #include "time_manager.h"
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <ArduinoJson.h>
 #include "esp_netif.h"
+#include <ESPmDNS.h>
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
@@ -47,11 +50,11 @@ bool WiFiManager::begin() {
     const V1Settings& settings = settingsManager.get();
     
     if (!settings.enableWifi) {
-        Serial.println("WiFi disabled in settings");
+        SerialLog.println("WiFi disabled in settings");
         return false;
     }
     
-    Serial.println("Starting WiFi...");
+    SerialLog.println("Starting WiFi...");
 
     bool wantAP = settings.wifiMode == V1_WIFI_AP || settings.wifiMode == V1_WIFI_APSTA;
     bool wantSTA = settings.wifiMode == V1_WIFI_STA || settings.wifiMode == V1_WIFI_APSTA;
@@ -64,7 +67,7 @@ bool WiFiManager::begin() {
     }
     if (networksConfigured == 0 && settings.staSSID.length() > 0) networksConfigured++;
     if (!wantSTA && networksConfigured > 0) {
-        Serial.println("[WiFi] STA disabled but networks configured; enabling AP+STA for connectivity");
+        SerialLog.println("[WiFi] STA disabled but networks configured; enabling AP+STA for connectivity");
         wantSTA = true;
         wantAP = true;
         staEnabledByConfig = true;
@@ -85,12 +88,12 @@ bool WiFiManager::begin() {
     if (wantSTA) {
         setupSTA();
     } else {
-        Serial.println("[WiFi] STA mode disabled in settings");
+        SerialLog.println("[WiFi] STA mode disabled in settings");
     }
     
     setupWebServer();
     server.begin();
-    Serial.println("Web server started on port 80");
+    SerialLog.println("Web server started on port 80");
     
     return true;
 }
@@ -102,7 +105,7 @@ void WiFiManager::setupAP() {
     String apSSID = settings.apSSID.length() > 0 ? settings.apSSID : "V1-Display";
     String apPass = settings.apPassword.length() >= 8 ? settings.apPassword : "valentine1";
     
-    Serial.printf("Starting AP: %s\n", apSSID.c_str());
+    SerialLog.printf("Starting AP: %s\n", apSSID.c_str());
     
     // Ensure correct mode for AP operation
     WiFi.mode(wantSTA ? WIFI_AP_STA : WIFI_AP);
@@ -122,20 +125,20 @@ void WiFiManager::setupAP() {
     if (dns == IPAddress(0,0,0,0)) dns = IPAddress(8,8,8,8);
     
     if (!WiFi.softAPConfig(apIP, gateway, subnet, dhcpStart, dns)) {
-        Serial.println("[WiFi] softAPConfig failed!");
+        SerialLog.println("[WiFi] softAPConfig failed!");
     }
     
     // Now start the AP
     if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
-        Serial.println("[WiFi] softAP failed!");
+        SerialLog.println("[WiFi] softAP failed!");
     }
     
     apActive = true;
     
     IPAddress ip = WiFi.softAPIP();
-    Serial.printf("AP IP address: %s\n", ip.toString().c_str());
-    Serial.printf("AP Gateway: %s\n", gateway.toString().c_str());
-    Serial.printf("AP Subnet: %s\n", subnet.toString().c_str());
+    SerialLog.printf("AP IP address: %s\n", ip.toString().c_str());
+    SerialLog.printf("AP Gateway: %s\n", gateway.toString().c_str());
+    SerialLog.printf("AP Subnet: %s\n", subnet.toString().c_str());
     
     // Ensure DHCP server is properly configured for AP
     // Get AP network interface and verify DHCP
@@ -147,23 +150,23 @@ void WiFiManager::setupAP() {
         esp_netif_dhcps_get_status(ap_netif, &status);
         if (status == ESP_NETIF_DHCP_STOPPED) {
              esp_netif_dhcps_start(ap_netif);
-             Serial.println("[WiFi] AP DHCP server started (was stopped)");
+             SerialLog.println("[WiFi] AP DHCP server started (was stopped)");
         } else {
-             Serial.println("[WiFi] AP DHCP server is running");
+             SerialLog.println("[WiFi] AP DHCP server is running");
         }
     } else {
-        Serial.println("[WiFi] WARNING: Could not get AP netif for DHCP");
+        SerialLog.println("[WiFi] WARNING: Could not get AP netif for DHCP");
     }
 }
 
 void WiFiManager::setupSTA() {
-    Serial.println("[WiFi] Setting up STA mode...");
+    SerialLog.println("[WiFi] Setting up STA mode...");
     int networksAdded = populateStaNetworks();
     if (networksAdded == 0) {
-        Serial.println("[WiFi] No networks configured for STA");
+        SerialLog.println("[WiFi] No networks configured for STA");
         return;
     }
-    Serial.printf("[WiFi] Added %d network(s) to WiFiMulti\n", networksAdded);
+    SerialLog.printf("[WiFi] Added %d network(s) to WiFiMulti\n", networksAdded);
 }
 
 int WiFiManager::populateStaNetworks() {
@@ -175,14 +178,14 @@ int WiFiManager::populateStaNetworks() {
         if (settings.wifiNetworks[i].isValid()) {
             wifiMulti.addAP(settings.wifiNetworks[i].ssid.c_str(), 
                           settings.wifiNetworks[i].password.c_str());
-            Serial.printf("[WiFi] Added network %d: %s\n", i, settings.wifiNetworks[i].ssid.c_str());
+            SerialLog.printf("[WiFi] Added network %d: %s\n", i, settings.wifiNetworks[i].ssid.c_str());
             networksAdded++;
         }
     }
 
     if (networksAdded == 0 && settings.staSSID.length() > 0) {
         wifiMulti.addAP(settings.staSSID.c_str(), settings.staPassword.c_str());
-        Serial.printf("[WiFi] Added legacy network: %s\n", settings.staSSID.c_str());
+        SerialLog.printf("[WiFi] Added legacy network: %s\n", settings.staSSID.c_str());
         networksAdded++;
     }
 
@@ -210,10 +213,10 @@ void WiFiManager::checkSTAConnection() {
         if (!staConnected) {
             staConnected = true;
             connectedSSID = WiFi.SSID();
-            Serial.println("\n=== WiFi Connected ===");
-            Serial.printf("SSID: %s\n", connectedSSID.c_str());
-            Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-            Serial.printf("Signal: %d dBm\n", WiFi.RSSI());
+            SerialLog.println("\n=== WiFi Connected ===");
+            SerialLog.printf("SSID: %s\n", connectedSSID.c_str());
+            SerialLog.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+            SerialLog.printf("Signal: %d dBm\n", WiFi.RSSI());
             
             if (apActive) {
                 enableNAT();
@@ -225,7 +228,7 @@ void WiFiManager::checkSTAConnection() {
         }
     } else {
         if (staConnected) {
-            Serial.println("[WiFi] Disconnected");
+            SerialLog.println("[WiFi] Disconnected");
             staConnected = false;
             connectedSSID = "";
         }
@@ -233,7 +236,7 @@ void WiFiManager::checkSTAConnection() {
 }
 
 void WiFiManager::initializeTime() {
-    Serial.println("Initializing NTP time sync...");
+    SerialLog.println("Initializing NTP time sync...");
     // Configure NTP with UTC timezone (0 offset, 0 DST)
     // All times stored and displayed in UTC
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -247,18 +250,24 @@ void WiFiManager::initializeTime() {
     }
     
     if (retries < NTP_SYNC_RETRY_COUNT) {
-        Serial.println("Time synchronized via NTP!");
-        Serial.printf("  Current time (UTC): %04d-%02d-%02dT%02d:%02d:%02dZ\n",
+        SerialLog.println("Time synchronized via NTP!");
+        SerialLog.printf("  Current time (UTC): %04d-%02d-%02dT%02d:%02d:%02dZ\n",
                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
         timeInitialized = true;
+        
+        // Update alert loggers with real timestamp
+        time_t now = time(nullptr);
+        alertLogger.setTimestampUTC((uint32_t)now);
+        alertDB.setTimestampUTC((uint32_t)now);
+        SerialLog.printf("[WiFi] Alert timestamps set: %lu\n", (uint32_t)now);
         
         // Save to SD card immediately after sync (if SD is ready)
         if (alertLogger.isReady()) {
             timeManager.saveTimeToSD();
         }
     } else {
-        Serial.println("Failed to sync time via NTP");
+        SerialLog.println("Failed to sync time via NTP");
     }
 }
 
@@ -269,7 +278,7 @@ void WiFiManager::enableNAT() {
         return;  // Already enabled
     }
     
-    Serial.println("[WiFi] Enabling NAT/NAPT...");
+    SerialLog.println("[WiFi] Enabling NAT/NAPT...");
 
     // 1. Enable NAPT on AP interface (The LAN interface)
     // This tells LwIP to perform NAT on packets arriving on this interface
@@ -277,9 +286,9 @@ void WiFiManager::enableNAT() {
     if (ap_netif) {
         esp_err_t err = esp_netif_napt_enable(ap_netif);
         if (err == ESP_OK) {
-            Serial.println("[WiFi] NAPT enabled on AP interface (LAN)");
+            SerialLog.println("[WiFi] NAPT enabled on AP interface (LAN)");
         } else {
-            Serial.printf("[WiFi] Failed to enable NAPT on AP: %d\n", err);
+            SerialLog.printf("[WiFi] Failed to enable NAPT on AP: %d\n", err);
         }
     }
 
@@ -287,9 +296,9 @@ void WiFiManager::enableNAT() {
     // The build flag CONFIG_LWIP_IP_FORWARD=1 handles this.
     
     natEnabled = true;
-    Serial.printf("[WiFi] NAT: Enabled - STA IP: %s, AP IP: %s\n", 
+    SerialLog.printf("[WiFi] NAT: Enabled - STA IP: %s, AP IP: %s\n", 
                   WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
-    Serial.println("[WiFi] NAT: Clients should now have internet access");
+    SerialLog.println("[WiFi] NAT: Clients should now have internet access");
 }
 
 void WiFiManager::setupWebServer() {
@@ -304,6 +313,42 @@ void WiFiManager::setupWebServer() {
     server.on("/logs", HTTP_GET, [this]() { handleLogs(); });
     server.on("/api/logs", HTTP_GET, [this]() { handleLogsData(); });
     server.on("/api/logs/clear", HTTP_POST, [this]() { handleLogsClear(); });
+    
+    // Serial log endpoints for debugging
+    server.on("/seriallog", HTTP_GET, [this]() { handleSerialLogPage(); });
+    server.on("/serial_log.txt", HTTP_GET, [this]() { handleSerialLog(); });
+    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });
+
+    // Lightweight health and captive-portal helpers
+    server.on("/ping", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /ping");
+        server.send(200, "text/plain", "OK");
+    });
+    // Android/ChromeOS captive portal probes
+    server.on("/generate_204", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /generate_204");
+        server.send(204, "text/plain", "");
+    });
+    server.on("/gen_204", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /gen_204");
+        server.send(204, "text/plain", "");
+    });
+    // iOS/macOS captive portal
+    server.on("/hotspot-detect.html", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /hotspot-detect.html");
+        server.sendHeader("Location", "/settings", true);
+        server.send(302, "text/html", "");
+    });
+    // Windows captive portal variants
+    server.on("/fwlink", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /fwlink");
+        server.sendHeader("Location", "/settings", true);
+        server.send(302, "text/html", "");
+    });
+    server.on("/ncsi.txt", HTTP_GET, [this]() {
+        SerialLog.println("[HTTP] GET /ncsi.txt");
+        server.send(200, "text/plain", "Microsoft NCSI");
+    });
     
     // V1 Settings/Profiles routes
     server.on("/v1settings", HTTP_GET, [this]() { handleV1Settings(); });
@@ -343,7 +388,7 @@ void WiFiManager::stop() {
     WiFi.mode(WIFI_OFF);
     apActive = false;
     staConnected = false;
-    Serial.println("WiFi stopped");
+    SerialLog.println("WiFi stopped");
 }
 
 bool WiFiManager::isConnected() const {
@@ -385,11 +430,12 @@ void WiFiManager::handleStatus() {
 }
 
 void WiFiManager::handleSettings() {
+    SerialLog.println("[HTTP] GET /settings");
     server.send(200, "text/html", generateSettingsHTML());
 }
 
 void WiFiManager::handleSettingsSave() {
-    Serial.println("=== handleSettingsSave() called ===");
+    SerialLog.println("=== handleSettingsSave() called ===");
     
     // Track if WiFi settings changed (these require restart)
     bool wifiChanged = false;
@@ -452,14 +498,14 @@ void WiFiManager::handleSettingsSave() {
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
-    Serial.println("--- Calling settingsManager.save() ---");
+    SerialLog.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
     
     // The settingsManager instance is already up-to-date, no need to reload.
     // We can directly apply any changes that need to take immediate effect.
     if (server.hasArg("color_theme")) {
         display.updateColorTheme();
-        Serial.println("Display color theme updated");
+        SerialLog.println("Display color theme updated");
     }
     
     // Redirect with appropriate message
@@ -485,7 +531,7 @@ void WiFiManager::handleDarkMode() {
         success = sendV1Command("display", !darkMode);
     }
     
-    Serial.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
+    SerialLog.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
     
     String json = "{\"success\":" + String(success ? "true" : "false") + 
                   ",\"darkMode\":" + String(darkMode ? "true" : "false") + "}";
@@ -505,7 +551,7 @@ void WiFiManager::handleMute() {
         success = sendV1Command("mute", muted);
     }
     
-    Serial.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
+    SerialLog.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
     
     String json = "{\"success\":" + String(success ? "true" : "false") + 
                   ",\"muted\":" + String(muted ? "true" : "false") + "}";
@@ -513,6 +559,7 @@ void WiFiManager::handleMute() {
 }
 
 void WiFiManager::handleTimeSettings() {
+    SerialLog.println("[HTTP] GET /time");
     server.send(200, "text/html", generateTimeSettingsHTML());
 }
 
@@ -544,7 +591,7 @@ void WiFiManager::handleTimeSettingsSave() {
             if (settings.wifiNetworks[i].ssid != newSSID || settings.wifiNetworks[i].password != newPwd) {
                 settingsManager.updateWiFiNetwork(i, newSSID, newPwd);
                 changed = true;
-                Serial.printf("WiFi network %d updated: %s\n", i+1, newSSID.c_str());
+                SerialLog.printf("WiFi network %d updated: %s\n", i+1, newSSID.c_str());
             }
         }
     }
@@ -562,21 +609,21 @@ void WiFiManager::handleTimeSettingsSave() {
         time_t timestamp = (time_t)server.arg("timestamp").toInt();
         if (timestamp > 1609459200) {  // Valid if after 2021-01-01
             timeManager.setTime(timestamp);
-            Serial.printf("Time set manually to: %ld\n", timestamp);
+            SerialLog.printf("Time set manually to: %ld\n", timestamp);
         }
     }
     
     if (changed) {
         settingsManager.save();
-        Serial.printf("WiFi settings saved. Timesync: %s\n", enableTime ? "enabled" : "disabled");
+        SerialLog.printf("WiFi settings saved. Timesync: %s\n", enableTime ? "enabled" : "disabled");
         
         int networksAdded = populateStaNetworks();
         if (networksAdded > 0) {
             if (!staEnabledByConfig) {
                 staEnabledByConfig = true;
-                Serial.println("[WiFi] STA mode auto-enabled after configuring networks");
+                SerialLog.println("[WiFi] STA mode auto-enabled after configuring networks");
             }
-            Serial.printf("[WiFi] STA network list refreshed (%d entries)\n", networksAdded);
+            SerialLog.printf("[WiFi] STA network list refreshed (%d entries)\n", networksAdded);
             if (staConnected) {
                 WiFi.disconnect(true);
                 staConnected = false;
@@ -594,6 +641,7 @@ void WiFiManager::handleTimeSettingsSave() {
 }
 
 void WiFiManager::handleLogs() {
+    SerialLog.println("[HTTP] GET /logs");
     server.send(200, "text/html", generateLogsHTML());
 }
 
@@ -619,7 +667,162 @@ void WiFiManager::handleLogsClear() {
                 String("{\"success\":") + (cleared ? "true" : "false") + "}");
 }
 
+void WiFiManager::handleSerialLog() {
+    if (!alertLogger.isReady()) {
+        server.send(503, "text/plain", "SD card not mounted");
+        return;
+    }
+    
+    fs::FS* fs = alertLogger.getFilesystem();
+    if (!fs->exists("/serial_log.txt")) {
+        server.send(404, "text/plain", "No serial log file found");
+        return;
+    }
+    
+    File file = fs->open("/serial_log.txt", FILE_READ);
+    if (!file) {
+        server.send(500, "text/plain", "Failed to open serial log");
+        return;
+    }
+    
+    server.streamFile(file, "text/plain");
+    file.close();
+}
+
+void WiFiManager::handleSerialLogClear() {
+    if (!SerialLog.isEnabled()) {
+        server.send(503, "application/json", "{\"error\":\"Serial logging not enabled\"}");
+        return;
+    }
+    
+    bool cleared = SerialLog.clear();
+    server.send(cleared ? 200 : 500,
+                "application/json",
+                String("{\"success\":") + (cleared ? "true" : "false") + "}");
+}
+
+void WiFiManager::handleSerialLogPage() {
+    SerialLog.println("[HTTP] GET /seriallog");
+    
+    bool sdReady = alertLogger.isReady();
+    bool logEnabled = SerialLog.isEnabled();
+    size_t logSize = SerialLog.getLogSize();
+    
+    // Format size for display
+    String sizeStr;
+    if (logSize < 1024) {
+        sizeStr = String(logSize) + " B";
+    } else if (logSize < 1024 * 1024) {
+        sizeStr = String(logSize / 1024.0, 1) + " KB";
+    } else if (logSize < 1024 * 1024 * 1024) {
+        sizeStr = String(logSize / (1024.0 * 1024.0), 1) + " MB";
+    } else {
+        sizeStr = String(logSize / (1024.0 * 1024.0 * 1024.0), 2) + " GB";
+    }
+    
+    String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Serial Log - V1 Display</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { color: #00d4ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+        .card { background: #252540; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .status { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #333; }
+        .status:last-child { border-bottom: none; }
+        .status-label { color: #888; }
+        .status-value { font-weight: 600; }
+        .status-ok { color: #4ade80; }
+        .status-warn { color: #fbbf24; }
+        .status-err { color: #f87171; }
+        .btn { display: inline-block; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; cursor: pointer; border: none; font-size: 16px; margin: 5px; }
+        .btn-primary { background: #00d4ff; color: #000; }
+        .btn-primary:hover { background: #00b8e6; }
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-secondary { background: #444; color: #fff; }
+        .btn-secondary:hover { background: #555; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .actions { text-align: center; margin-top: 20px; }
+        .back { display: inline-block; margin-top: 20px; color: #00d4ff; text-decoration: none; }
+        .note { color: #888; font-size: 14px; margin-top: 15px; padding: 10px; background: #1a1a2e; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Serial Log</h1>
+        <p class="subtitle">Debug output saved to SD card</p>
+        
+        <div class="card">
+            <div class="status">
+                <span class="status-label">SD Card</span>
+                <span class="status-value )rawliteral";
+    html += sdReady ? "status-ok\">Mounted" : "status-err\">Not Available";
+    html += R"rawliteral(</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Logging</span>
+                <span class="status-value )rawliteral";
+    html += logEnabled ? "status-ok\">Enabled" : "status-warn\">Disabled";
+    html += R"rawliteral(</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Log Size</span>
+                <span class="status-value">)rawliteral";
+    html += sizeStr;
+    html += R"rawliteral(</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Max Size</span>
+                <span class="status-value">2 GB</span>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <a href="/serial_log.txt" class="btn btn-primary" download="serial_log.txt">Download Log</a>
+            <button class="btn btn-danger" onclick="clearLog()" )rawliteral";
+    html += logEnabled ? "" : "disabled";
+    html += R"rawliteral(>Clear Log</button>
+        </div>
+        
+        <div class="note">
+            <strong>Note:</strong> Serial log captures all debug output (what you'd see in <code>pio device monitor</code>). 
+            Useful for debugging issues in the field. Log rotates automatically at 2GB.
+        </div>
+        
+        <a href="/" class="back">← Back to Home</a>
+    </div>
+    
+    <script>
+    function clearLog() {
+        if (!confirm('Clear the serial log? This cannot be undone.')) return;
+        fetch('/api/serial_log/clear', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    alert('Log cleared!');
+                    location.reload();
+                } else {
+                    alert('Failed to clear log');
+                }
+            })
+            .catch(e => alert('Error: ' + e));
+    }
+    </script>
+</body>
+</html>
+)rawliteral";
+    
+    server.send(200, "text/html", html);
+}
+
 void WiFiManager::handleV1Settings() {
+    SerialLog.println("[HTTP] GET /v1settings");
     server.send(200, "text/html", generateV1SettingsHTML());
 }
 
@@ -664,7 +867,7 @@ void WiFiManager::handleV1ProfileSave() {
         server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
         return;
     }
-    Serial.printf("[V1Settings] Save request body: %s\n", body.c_str());
+    SerialLog.printf("[V1Settings] Save request body: %s\n", body.c_str());
     
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
@@ -773,7 +976,7 @@ void WiFiManager::handleV1SettingsPush() {
     }
     
     String body = server.arg("plain");
-    Serial.printf("[V1Settings] Push request: %s\n", body.c_str());
+    SerialLog.printf("[V1Settings] Push request: %s\n", body.c_str());
     if (body.length() > 4096) {
         server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
         return;
@@ -795,7 +998,7 @@ void WiFiManager::handleV1SettingsPush() {
         for (int i = 0; i < 6; i++) {
             bytes[i] = bytesArray[i].as<uint8_t>();
         }
-        Serial.println("[V1Settings] Using raw bytes from request");
+        SerialLog.println("[V1Settings] Using raw bytes from request");
     } else {
         // Parse from individual settings (already deserialized)
         V1UserSettings settings;
@@ -808,7 +1011,7 @@ void WiFiManager::handleV1SettingsPush() {
             return;
         }
         memcpy(bytes, settings.bytes, 6);
-        Serial.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
+        SerialLog.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     }
     
@@ -829,6 +1032,236 @@ void WiFiManager::handleNotFound() {
     server.send(404, "text/plain", "Not found");
 }
 
+String WiFiManager::generateStyleSheet() {
+    // Unified Pro Design System - Navy/Slate/Blue palette
+    String css = R"CSS(<style>
+/* === Reset & Base === */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+    background:#0c1520;
+    color:#e2e8f0;
+    line-height:1.5;
+    min-height:100vh;
+}
+
+/* === Layout === */
+.container{max-width:720px;margin:0 auto;padding:20px 16px;}
+
+/* === Navigation === */
+.topnav{
+    display:flex;gap:6px;flex-wrap:wrap;justify-content:center;
+    padding:12px 16px;background:#111b27;border-bottom:1px solid #1e2d3d;
+}
+.topnav a{text-decoration:none;}
+.navbtn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 14px;border-radius:6px;border:none;
+    background:#1e2d3d;color:#94a3b8;
+    font-size:0.875rem;font-weight:500;cursor:pointer;
+    transition:all 0.15s ease;
+}
+.navbtn:hover{background:#263548;color:#e2e8f0;}
+.navbtn.active{background:#3b82f6;color:#fff;}
+.navbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;}
+
+/* === Typography === */
+.page-title{
+    text-align:center;font-size:1.5rem;font-weight:600;
+    color:#f1f5f9;margin:20px 0 24px;
+}
+h2{font-size:1.1rem;font-weight:600;color:#f1f5f9;margin-bottom:12px;}
+h3{font-size:1rem;font-weight:600;color:#e2e8f0;margin-bottom:10px;}
+.muted{color:#64748b;font-size:0.875rem;}
+.subtitle{color:#64748b;font-size:0.9rem;text-align:center;margin-bottom:20px;}
+
+/* === Cards === */
+.card{
+    background:#141f2e;border:1px solid #1e2d3d;
+    border-radius:10px;padding:20px;margin-bottom:16px;
+}
+.card h2{color:#f1f5f9;border-bottom:1px solid #1e2d3d;padding-bottom:10px;margin-bottom:16px;}
+
+/* === Forms === */
+.form-group{margin-bottom:16px;}
+label{display:block;margin-bottom:6px;color:#94a3b8;font-size:0.875rem;font-weight:500;}
+input,select,textarea{
+    width:100%;padding:10px 12px;
+    background:#0c1520;border:1px solid #1e2d3d;border-radius:6px;
+    color:#e2e8f0;font-size:0.95rem;
+    transition:border-color 0.15s,box-shadow 0.15s;
+}
+input:focus,select:focus,textarea:focus{
+    outline:none;border-color:#3b82f6;
+    box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+}
+input::placeholder{color:#475569;}
+input[type="number"]{-moz-appearance:textfield;}
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+
+/* === Buttons === */
+.btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:10px 18px;border:none;border-radius:6px;
+    font-size:0.95rem;font-weight:500;cursor:pointer;
+    transition:all 0.15s ease;text-decoration:none;
+}
+.btn-primary{background:#3b82f6;color:#fff;}
+.btn-primary:hover{background:#2563eb;}
+.btn-secondary{background:#1e2d3d;color:#e2e8f0;}
+.btn-secondary:hover{background:#263548;}
+.btn-success{background:#10b981;color:#fff;}
+.btn-success:hover{background:#059669;}
+.btn-danger,.btn.danger{background:#ef4444;color:#fff;}
+.btn-danger:hover,.btn.danger:hover{background:#dc2626;}
+.btn-full{width:100%;margin-top:8px;}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap;}
+.btn-group .btn{flex:1;min-width:100px;}
+.btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+/* === Messages === */
+.msg{padding:12px 16px;border-radius:6px;margin-bottom:16px;text-align:center;font-weight:500;}
+.msg.success{background:#064e3b;color:#6ee7b7;border:1px solid #10b981;}
+.msg.error{background:#450a0a;color:#fca5a5;border:1px solid #ef4444;}
+.msg.info{background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;}
+
+/* === Tables === */
+table{width:100%;border-collapse:collapse;font-size:0.875rem;}
+thead{background:#111b27;}
+th{padding:10px 8px;text-align:left;color:#94a3b8;font-weight:600;border-bottom:1px solid #1e2d3d;cursor:pointer;}
+th:hover{color:#e2e8f0;}
+th.sort-asc::after{content:' ↑';color:#3b82f6;}
+th.sort-desc::after{content:' ↓';color:#3b82f6;}
+td{padding:10px 8px;border-bottom:1px solid #1e2d3d;color:#cbd5e1;}
+tr:hover{background:#111b27;}
+
+/* === Modal === */
+.modal{
+    display:none;position:fixed;inset:0;
+    background:rgba(0,0,0,0.7);z-index:1000;
+    align-items:center;justify-content:center;padding:16px;
+}
+.modal.show{display:flex;}
+.modal-box{
+    background:#141f2e;border:1px solid #1e2d3d;border-radius:10px;
+    padding:24px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;
+}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.modal-close{background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;padding:0;}
+.modal-close:hover{color:#e2e8f0;}
+.modal-btns{display:flex;gap:10px;margin-top:20px;}
+.modal-btns .btn{flex:1;}
+
+/* === Status Badges === */
+.status{padding:12px;border-radius:6px;margin-bottom:16px;}
+.status.connected{background:#064e3b;border:1px solid #10b981;color:#6ee7b7;}
+.status.disconnected{background:#450a0a;border:1px solid #ef4444;color:#fca5a5;}
+
+/* === Actions Bar === */
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+.actions .btn{flex:none;}
+
+/* === Filters === */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+.filter-btn{
+    padding:6px 12px;border:1px solid #1e2d3d;border-radius:6px;
+    background:#111b27;color:#94a3b8;font-size:0.8rem;cursor:pointer;
+    transition:all 0.15s;
+}
+.filter-btn:hover{border-color:#3b82f6;color:#e2e8f0;}
+.filter-btn.active{background:#3b82f6;color:#fff;border-color:#3b82f6;}
+.filter-btn .count{opacity:0.7;margin-left:4px;}
+
+/* === Stats === */
+.stats{color:#64748b;font-size:0.875rem;margin-bottom:12px;}
+.stats b{color:#e2e8f0;}
+
+/* === Profile List === */
+.profile-list{list-style:none;}
+.profile-item{
+    background:#111b27;padding:12px 16px;margin:6px 0;border-radius:6px;
+    border:1px solid #1e2d3d;display:flex;justify-content:space-between;
+    align-items:center;cursor:pointer;transition:all 0.15s;
+}
+.profile-item:hover{border-color:#3b82f6;background:#141f2e;}
+.profile-item.selected{border-color:#3b82f6;background:#1e3a5f;}
+.profile-name{font-weight:500;color:#e2e8f0;}
+
+/* === Slot Cards (Auto-Push) === */
+.slot-card{border:2px solid #1e2d3d;transition:border-color 0.15s;}
+.slot-card.active{border-color:#3b82f6;background:#111b27;}
+.slot-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.slot-title{display:flex;align-items:center;gap:10px;}
+.slot-icon{
+    width:36px;height:36px;background:#1e2d3d;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;font-size:1.2rem;
+}
+.active-badge{background:#3b82f6;color:#fff;padding:4px 10px;border-radius:12px;font-size:0.75rem;font-weight:600;}
+
+/* === Quick Push Grid === */
+.quick-push{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
+.quick-btn{
+    padding:16px;background:#141f2e;border:1px solid #1e2d3d;border-radius:8px;
+    cursor:pointer;text-align:center;transition:all 0.15s;
+}
+.quick-btn:hover{border-color:#3b82f6;transform:translateY(-1px);}
+.quick-btn h3{color:#e2e8f0;margin-bottom:4px;}
+.quick-btn .quick-profile{color:#64748b;font-size:0.85rem;}
+
+/* === Color Picker Grid === */
+.color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+.color-item{background:#111b27;border:1px solid #1e2d3d;border-radius:8px;padding:12px;text-align:center;}
+.color-item label{margin-bottom:8px;font-size:0.8rem;}
+.color-preview{
+    width:40px;height:40px;border-radius:6px;margin:8px auto;
+    border:2px solid #1e2d3d;
+}
+input[type="color"]{
+    width:100%;height:36px;padding:2px;cursor:pointer;
+    background:#0c1520;border:1px solid #1e2d3d;border-radius:4px;
+}
+
+/* === Toggle Switch === */
+.toggle{
+    width:48px;height:26px;background:#1e2d3d;border-radius:13px;
+    position:relative;cursor:pointer;transition:background 0.2s;
+}
+.toggle.on{background:#3b82f6;}
+.toggle::after{
+    content:'';position:absolute;width:22px;height:22px;
+    background:#fff;border-radius:11px;top:2px;left:2px;
+    transition:left 0.2s;
+}
+.toggle.on::after{left:24px;}
+
+/* === Setting Row === */
+.setting-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 0;border-bottom:1px solid #1e2d3d;
+}
+.setting-row:last-child{border-bottom:none;}
+
+/* === Bytes Display === */
+.bytes-display{
+    font-family:'SF Mono',Monaco,Consolas,monospace;
+    background:#0c1520;padding:10px;border-radius:6px;
+    font-size:0.8rem;color:#94a3b8;word-break:break-all;
+}
+
+/* === Utility === */
+.text-center{text-align:center;}
+.mt-2{margin-top:8px;}
+.mt-4{margin-top:16px;}
+.mb-2{margin-bottom:8px;}
+.mb-4{margin-bottom:16px;}
+.flex{display:flex;}
+.gap-2{gap:8px;}
+.items-center{align-items:center;}
+.justify-between{justify-content:space-between;}
+</style>)CSS";
+    return css;
+}
+
 String WiFiManager::generateProfileOptions(const String& selected) {
     String options;
     auto profiles = v1ProfileManager.listProfiles();
@@ -843,6 +1276,69 @@ String WiFiManager::generateProfileOptions(const String& selected) {
     return options;
 }
 
+String WiFiManager::generateTopNav(const String& activePath) {
+    String nav = "<div class=\"topnav\">\n";
+
+    // Settings (sliders icon)
+    nav += String("<a href=\"/settings\"><button class=\"navbtn") + (activePath == "/settings" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>"
+        "</svg>Settings</button></a>\n";
+
+    // Time (clock icon)
+    nav += String("<a href=\"/time\"><button class=\"navbtn") + (activePath == "/time" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 6v6l4 2\"/>"
+        "</svg>Time</button></a>\n";
+
+    // Logs (file-text icon)
+    nav += String("<a href=\"/logs\"><button class=\"navbtn") + (activePath == "/logs" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/><path d=\"M16 13H8\"/><path d=\"M16 17H8\"/><path d=\"M10 9H8\"/>"
+        "</svg>Logs</button></a>\n";
+
+    // V1 Settings (sliders-horizontal icon)
+    nav += String("<a href=\"/v1settings\"><button class=\"navbtn") + (activePath == "/v1settings" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M21 4H3\"/><path d=\"M21 12H3\"/><path d=\"M21 20H3\"/><circle cx=\"9\" cy=\"4\" r=\"2\"/><circle cx=\"15\" cy=\"12\" r=\"2\"/><circle cx=\"9\" cy=\"20\" r=\"2\"/>"
+        "</svg>V1 Profiles</button></a>\n";
+
+    // Auto-Push (zap icon)
+    nav += String("<a href=\"/autopush\"><button class=\"navbtn") + (activePath == "/autopush" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M13 2L3 14h9l-1 8 10-12h-9l1-8z\"/>"
+        "</svg>Auto-Push</button></a>\n";
+
+    // Display Colors (palette icon)
+    nav += String("<a href=\"/displaycolors\"><button class=\"navbtn") + (activePath == "/displaycolors" ? " active" : "") + "\">"
+        "<svg viewBox=\"0 0 24 24\"><circle cx=\"13.5\" cy=\"6.5\" r=\".5\"/><circle cx=\"17.5\" cy=\"10.5\" r=\".5\"/><circle cx=\"8.5\" cy=\"7.5\" r=\".5\"/><circle cx=\"6.5\" cy=\"12.5\" r=\".5\"/><path d=\"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z\"/>"
+        "</svg>Colors</button></a>\n";
+
+    nav += "</div>";
+    return nav;
+}
+
+String WiFiManager::wrapWithLayout(const String& title, const String& body, const String& activePath) {
+    String html;
+    html += R"HTML(<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>)HTML" + htmlEscape(title) + R"HTML(</title>
+)HTML";
+    html += generateStyleSheet();
+    html += R"HTML(</head>
+<body>
+)HTML";
+    html += generateTopNav(activePath);
+    html += String("<h1 class=\"page-title\">") + htmlEscape(title) + "</h1>";
+    html += "<div class=\"container\">";
+    html += body;
+    html += "</div>";
+    html += R"HTML(
+</body>
+</html>)HTML";
+    return html;
+}
+
+
+
 
 String WiFiManager::generateSettingsHTML() {
     const V1Settings& settings = settingsManager.get();
@@ -851,14 +1347,14 @@ String WiFiManager::generateSettingsHTML() {
     String apPassEsc = settings.apPassword.length() > 0 ? "********" : "";
     String staSsidEsc = htmlEscape(settings.ssid);
     String staPassEsc = settings.password.length() > 0 ? "********" : "";
-    
-    Serial.println("=== generateSettingsHTML() ===");
-    Serial.printf("  brightness: %d\n", settings.brightness);
-    Serial.printf("  wifiMode: %d\n", settings.wifiMode);
-    Serial.printf("  apSSID: %s\n", settings.apSSID.c_str());
-    Serial.printf("  colorTheme: %d (STANDARD=%d, HIGH_CONTRAST=%d, STEALTH=%d)\n", 
+
+    SerialLog.println("=== generateSettingsHTML() ===");
+    SerialLog.printf("  brightness: %d\n", settings.brightness);
+    SerialLog.printf("  wifiMode: %d\n", settings.wifiMode);
+    SerialLog.printf("  apSSID: %s\n", settings.apSSID.c_str());
+    SerialLog.printf("  colorTheme: %d (STANDARD=%d, HIGH_CONTRAST=%d, STEALTH=%d)\n",
                   settings.colorTheme, THEME_STANDARD, THEME_HIGH_CONTRAST, THEME_STEALTH);
-    
+
     String saved = "";
     if (server.hasArg("saved")) {
         if (server.hasArg("wifi")) {
@@ -867,232 +1363,90 @@ String WiFiManager::generateSettingsHTML() {
             saved = "<div class='msg success'>Settings saved!</div>";
         }
     }
-    
-    // Generate theme-specific CSS
-    String themeCSS;
-    switch (settings.colorTheme) {
-        case THEME_HIGH_CONTRAST:
-            themeCSS = R"CSS(
-                body { background: #000; color: #fff; }
-                h1 { color: #ffff00; }
-                .card { background: #1a1a1a; border: 2px solid #ffff00; }
-                .card h2 { color: #ffff00; }
-                label { color: #ccc; }
-                input, select { background: #2a2a2a; color: #fff; border: 1px solid #555; }
-                input:focus, select:focus { outline: 2px solid #ffff00; border-color: #ffff00; }
-                button, .btn { background: #ffff00; color: #000; font-weight: bold; }
-                button:hover, .btn:hover { background: #ffcc00; }
-                .btn-dark { background: #444; color: #fff; }
-                .btn-dark.active { background: #ffff00; color: #000; }
-                .btn-mute { background: #00ccff; color: #000; }
-                .btn-mute.active { background: #ff00ff; color: #fff; }
-                .msg.success { background: #00ff00; color: #000; }
-            )CSS";
-            break;
-        case THEME_STEALTH:
-            themeCSS = R"CSS(
-                body { background: #0a0a0a; color: #666; }
-                h1 { color: #444; }
-                .card { background: #111; border: 1px solid #222; }
-                .card h2 { color: #555; }
-                label { color: #444; }
-                input, select { background: #151515; color: #666; border: 1px solid #222; }
-                input:focus, select:focus { outline: 1px solid #444; border-color: #333; }
-                button, .btn { background: #333; color: #666; }
-                button:hover, .btn:hover { background: #444; }
-                .btn-dark { background: #222; color: #555; }
-                .btn-dark.active { background: #444; color: #888; }
-                .btn-mute { background: #1a2a3a; color: #555; }
-                .btn-mute.active { background: #333; color: #777; }
-                .msg.success { background: #1a3a1a; color: #4a8a4a; }
-            )CSS";
-            break;
-        default: // THEME_STANDARD
-            themeCSS = R"CSS(
-                body { background: #1a1a2e; color: #eee; }
-                h1 { color: #e94560; }
-                .card { background: #16213e; }
-                .card h2 { color: #e94560; }
-                label { color: #888; }
-                input, select { background: #0f3460; color: #eee; }
-                input:focus, select:focus { outline: 2px solid #e94560; }
-                button, .btn { background: #e94560; color: #fff; }
-                button:hover, .btn:hover { background: #d63050; }
-                .btn-dark { background: #333; }
-                .btn-dark.active { background: #e94560; }
-                .btn-mute { background: #0f4c75; }
-                .btn-mute.active { background: #e94560; }
-                .msg.success { background: #3a9104; }
-            )CSS";
-            break;
-    }
-    
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V1 Display Settings</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 600px; margin: 0 auto; }
-        h1 { margin-bottom: 20px; text-align: center; }
-        .card {
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .card h2 { margin-bottom: 15px; font-size: 1.2em; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; }
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-        }
-        button, .btn {
-            padding: 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1em;
-            cursor: pointer;
-        }
-        .btn-full { width: 100%; margin-top: 10px; }
-        .controls { display: flex; gap: 10px; }
-        .controls .btn { flex: 1; }
-        .msg { padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
-        .muted { color: #9aa7bd; font-size: 0.95em; }
-        
-        /* Theme-specific colors */
-        )HTML" + themeCSS + R"HTML(
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>V1 Display Settings</h1>
-        )HTML" + saved + R"HTML(
-        
-        <div class="card">
-            <h2>Time Settings</h2>
-            <p class="muted" style="margin-bottom: 10px;">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>
-            )HTML";
-    
-    // Show actual time status
+
+    String body;
+    body += saved;
+
+    // Time Settings Card
+    body += "<div class=\"card\"><h2>Time Settings</h2>";
+    body += "<p class=\"muted\">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>";
+
     if (timeManager.isTimeValid()) {
         String timeStr = timeManager.getTimestampISO();
         const V1Settings& s = settingsManager.get();
-        String syncStatus = s.enableTimesync ? "🟢 NTP Sync Enabled" : "🟡 Manual Time";
-        
-        html += R"HTML(
-            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
-                <div style="margin-bottom: 4px;">)HTML" + syncStatus + R"HTML(</div>
-                <div style="font-family: monospace; color: #9aa7bd;">)HTML" + timeStr + " UTC" + R"HTML(</div>
-            </div>
-            )HTML";
+        String syncStatus = s.enableTimesync ? "NTP Sync Enabled" : "Manual Time";
+        body += "<div class=\"setting-row\"><span class=\"muted\">" + syncStatus + "</span><span>" + timeStr + " UTC</span></div>";
     } else {
-        html += R"HTML(
-            <div style="background: rgba(255,100,100,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9em;">
-                <div>⚠️ Time Not Set</div>
-            </div>
-            )HTML";
+        body += "<div class=\"msg error\">Time Not Set</div>";
     }
+
+    body += "<a class=\"btn primary\" href=\"/time\">Open Time Settings</a></div>";
+
+    // V1 Settings Card
+    body += "<div class=\"card\"><h2>V1 Settings</h2>";
+    body += "<p class=\"muted\">Pull, edit, and push V1 user settings. Save profiles for quick switching.</p>";
+    body += "<a class=\"btn primary\" href=\"/v1settings\">Open V1 Settings</a></div>";
+
+    // Alert Logs Card  
+    body += "<div class=\"card\"><h2>Alert Logs</h2>";
+    body += "<p class=\"muted\">Alerts are recorded to the SD card. View and clear them from the log page.</p>";
+    body += "<a class=\"btn primary\" href=\"/logs\">Open Alert Log</a></div>";
+
+    // WiFi Settings Form
+    body += "<form method=\"POST\" action=\"/settings\">";
+    body += "<div class=\"card\"><h2>WiFi Mode & Access Point</h2>";
     
-    html += R"HTML(
-            <a class="btn btn-full" href="/time" style="display:block; text-decoration:none; text-align:center;">⏰ Open Time Settings</a>
-        </div>
-        
-        <div class="card">
-            <h2>V1 Settings</h2>
-            <p class="muted">Pull, edit, and push V1 user settings. Save profiles for quick switching.</p>
-            <a class="btn btn-full" href="/v1settings" style="display:block; text-decoration:none; text-align:center;">Open V1 Settings</a>
-        </div>
-        
-        <div class="card">
-            <h2>Alert Logs</h2>
-            <p class="muted">Alerts are recorded to the SD card. View and clear them from the log page.</p>
-            <a class="btn btn-full" href="/logs" style="display:block; text-decoration:none; text-align:center;">Open Alert Log</a>
-        </div>
-        
-        <form method="POST" action="/settings">
-            
-        <div class="card">
-            <h2>WiFi Mode & Access Point</h2>
-            <div class="form-group">
-                <label>WiFi Mode</label>
-                <select name="wifi_mode">
-                    <option value="2" )HTML" + String(settings.wifiMode == V1_WIFI_AP ? "selected" : "") + R"HTML(>Access Point Only</option>
-                    <option value="1" )HTML" + String(settings.wifiMode == V1_WIFI_STA ? "selected" : "") + R"HTML(>Station Only</option>
-                    <option value="3" )HTML" + String(settings.wifiMode == V1_WIFI_APSTA ? "selected" : "") + R"HTML(>AP + Station (NAT passthrough)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>AP Network Name</label>
-                <input type="text" name="ap_ssid" value=")HTML" + apSsidEsc + R"HTML(">
-            </div>
-            <div class="form-group">
-                    <label>AP Password (min 8 chars)</label>
-                    <input type="password" name="ap_password" value=")HTML" + apPassEsc + R"HTML(">
-                </div>
-            <div class="form-group">
-                <label>Upstream WiFi (STA) SSID</label>
-                <input type="text" name="ssid" value=")HTML" + staSsidEsc + R"HTML(" placeholder="Home/Hotspot SSID">
-            </div>
-            <div class="form-group">
-                <label>Upstream WiFi Password</label>
-                <input type="password" name="password" value=")HTML" + staPassEsc + R"HTML(" placeholder="Password">
-            </div>
-            </div>
-            
-            <div class="card">
-                <h2>Display</h2>
-                <div class="form-group">
-                    <label>Brightness (0-255)</label>
-                    <input type="number" name="brightness" min="0" max="255" value=")HTML" + String(settings.brightness) + R"HTML(">
-                </div>
-                <div class="form-group">
-                    <label>Color Theme</label>
-                    <select name="color_theme">
-                        <option value="0")HTML" + String(settings.colorTheme == THEME_STANDARD ? " selected" : "") + R"HTML(">Standard (Red/Pink)</option>
-                        <option value="1")HTML" + String(settings.colorTheme == THEME_HIGH_CONTRAST ? " selected" : "") + R"HTML(">High Contrast (Yellow)</option>
-                        <option value="2")HTML" + String(settings.colorTheme == THEME_STEALTH ? " selected" : "") + R"HTML(">Stealth (Dark Gray)</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="card" style="text-align:center;">
-                <h2>🎯 Quick-Access Profiles</h2>
-                <p style="color:#888;margin-bottom:15px;">Configure 3 quick-access profiles for different driving scenarios</p>
-                <a href="/autopush" style="text-decoration:none;">
-                    <button type="button" class="btn-full" style="background:#3a9104;">Manage Auto-Push Profiles →</button>
-                </a>
-            </div>
-            
-            <div class="card" style="text-align:center;">
-                <h2>🎨 Display Colors</h2>
-                <p style="color:#888;margin-bottom:15px;">Customize bogey, frequency, band, and arrow colors</p>
-                <a href="/displaycolors" style="text-decoration:none;">
-                    <button type="button" class="btn-full" style="background:#9c27b0;">Customize Display Colors →</button>
-                </a>
-            </div>
-            
-            <button type="submit" class="btn-full">Save Settings</button>
-        </form>
-    </div>
-</body>
-</html>
-)HTML";
-    return html;
+    body += "<div class=\"form-group\"><label>WiFi Mode</label>";
+    body += "<select name=\"wifi_mode\">";
+    body += String("<option value=\"2\"") + (settings.wifiMode == V1_WIFI_AP ? " selected" : "") + ">Access Point Only</option>";
+    body += String("<option value=\"1\"") + (settings.wifiMode == V1_WIFI_STA ? " selected" : "") + ">Station Only</option>";
+    body += String("<option value=\"3\"") + (settings.wifiMode == V1_WIFI_APSTA ? " selected" : "") + ">AP + Station (NAT passthrough)</option>";
+    body += "</select></div>";
+
+    body += "<div class=\"form-group\"><label>AP Network Name</label>";
+    body += "<input type=\"text\" name=\"ap_ssid\" value=\"" + apSsidEsc + "\"></div>";
+
+    body += "<div class=\"form-group\"><label>AP Password (min 8 chars)</label>";
+    body += "<input type=\"password\" name=\"ap_password\" value=\"" + apPassEsc + "\"></div>";
+
+    body += "<div class=\"form-group\"><label>Upstream WiFi (STA) SSID</label>";
+    body += "<input type=\"text\" name=\"ssid\" value=\"" + staSsidEsc + "\" placeholder=\"Home/Hotspot SSID\"></div>";
+
+    body += "<div class=\"form-group\"><label>Upstream WiFi Password</label>";
+    body += "<input type=\"password\" name=\"password\" value=\"" + staPassEsc + "\" placeholder=\"Password\"></div>";
+    body += "</div>";
+
+    // Display Settings Card
+    body += "<div class=\"card\"><h2>Display</h2>";
+    body += "<div class=\"form-group\"><label>Brightness (0-255)</label>";
+    body += "<input type=\"number\" name=\"brightness\" min=\"0\" max=\"255\" value=\"" + String(settings.brightness) + "\"></div>";
+    
+    body += "<div class=\"form-group\"><label>Color Theme</label>";
+    body += "<select name=\"color_theme\">";
+    body += String("<option value=\"0\"") + (settings.colorTheme == THEME_STANDARD ? " selected" : "") + ">Standard</option>";
+    body += String("<option value=\"1\"") + (settings.colorTheme == THEME_HIGH_CONTRAST ? " selected" : "") + ">High Contrast</option>";
+    body += String("<option value=\"2\"") + (settings.colorTheme == THEME_STEALTH ? " selected" : "") + ">Stealth</option>";
+    body += String("<option value=\"3\"") + (settings.colorTheme == THEME_BUSINESS ? " selected" : "") + ">Business</option>";
+    body += "</select></div></div>";
+
+    // Quick-Access Profiles Card
+    body += "<div class=\"card\"><h2>Quick-Access Profiles</h2>";
+    body += "<p class=\"muted\">Configure 3 quick-access profiles for different driving scenarios.</p>";
+    body += "<a class=\"btn success\" href=\"/autopush\">Manage Auto-Push Profiles</a></div>";
+
+    // Display Colors Card
+    body += "<div class=\"card\"><h2>Display Colors</h2>";
+    body += "<p class=\"muted\">Customize bogey, frequency, band, and arrow colors.</p>";
+    body += "<a class=\"btn secondary\" href=\"/displaycolors\">Customize Display Colors</a></div>";
+
+    body += "<button type=\"submit\" class=\"btn primary\">Save Settings</button>";
+    body += "</form>";
+
+    return wrapWithLayout("V1 Display Settings", body, "/settings");
 }
 
 String WiFiManager::generateLogsHTML() {
+    const V1Settings& settings = settingsManager.get();
     String statusBox;
     if (alertLogger.isReady()) {
         statusBox = String("<div class='msg success'>") + alertLogger.statusText() + "</div>";
@@ -1100,99 +1454,13 @@ String WiFiManager::generateLogsHTML() {
         statusBox = "<div class='msg error'>SD card not mounted</div>";
     }
 
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V1 Alert Logs</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #10121b;
-            color: #eaeaea;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 { color: #e94560; margin-bottom: 10px; text-align: center; }
-        .card {
-            background: #1a1d2a;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 20px;
-            box-shadow: 0 12px 25px rgba(0,0,0,0.25);
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-        .actions { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-        .btn {
-            padding: 12px 14px;
-            border: none;
-            border-radius: 8px;
-            background: #e94560;
-            color: #fff;
-            font-size: 1em;
-            cursor: pointer;
-        }
-        .btn.secondary { background: #0f4c75; }
-        .btn.danger { background: #7a1d2f; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .msg { padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
-        .msg.success { background: #24572d; }
-        .msg.error { background: #7a1d2f; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; text-align: left; }
-        th { 
-            background: #0f3460; 
-            color: #eaeaea; 
-            position: sticky; 
-            top: 0; 
-            cursor: pointer;
-            user-select: none;
-        }
-        th:hover { background: #1a5a9e; }
-        th.sort-asc::after { content: ' ▲'; font-size: 0.8em; }
-        th.sort-desc::after { content: ' ▼'; font-size: 0.8em; }
-        tr:nth-child(odd) { background: #14182b; }
-        tr:nth-child(even) { background: #111427; }
-        .muted { color: #8fa3c0; }
-        .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-        .filters span { color: #8fa3c0; font-size: 0.9em; }
-        .filter-btn {
-            padding: 8px 14px;
-            border: 2px solid #0f4c75;
-            border-radius: 20px;
-            background: transparent;
-            color: #8fa3c0;
-            font-size: 0.9em;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .filter-btn:hover { border-color: #e94560; color: #eaeaea; }
-        .filter-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
-        .filter-btn .count { font-weight: bold; margin-left: 4px; }
-        .stats { font-size: 0.9em; color: #8fa3c0; margin-bottom: 8px; }
-        .stats b { color: #e94560; }
-        /* Modal styles */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
-        .modal.show { display: flex; }
-        .modal-box { background: #1a1d2a; padding: 24px; border-radius: 12px; max-width: 400px; text-align: center; }
-        .modal-box h3 { color: #e94560; margin-bottom: 12px; }
-        .modal-box p { margin-bottom: 20px; color: #8fa3c0; }
-        .modal-btns { display: flex; gap: 10px; justify-content: center; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Alert Log</h1>
-        )HTML" + statusBox + R"HTML(
+    String body;
+    body += statusBox;
+    body += R"HTML(
         <div class="actions">
-            <button class="btn" onclick="loadLogs()">Refresh</button>
-            <button class="btn danger" onclick="showClearModal()">🗑 Clear All</button>
-            <a href="/settings" style="flex:1; text-decoration:none;"><button class="btn" style="width:100%; background:#333;">Back to Settings</button></a>
+            <button class="btn secondary" onclick="loadLogs()">Refresh</button>
+            <button class="btn danger" onclick="showClearModal()">Clear All</button>
+            <a class="btn secondary" href="/settings">Back to Settings</a>
         </div>
         <div class="filters" id="filters">
             <span>Filter:</span>
@@ -1203,11 +1471,11 @@ String WiFiManager::generateLogsHTML() {
             <table>
                 <thead>
                     <tr>
-                        <th data-col="ms" data-type="num">Time</th>
+                        <th data-col="utc" data-type="num">Time (UTC)</th>
                         <th data-col="event" data-type="str">Event</th>
                         <th data-col="band" data-type="str">Band</th>
                         <th data-col="freq" data-type="num">Freq</th>
-                        <th data-col="direction" data-type="str">Dir</th>
+                        <th data-col="dir" data-type="str">Dir</th>
                         <th data-col="front" data-type="num">Front</th>
                         <th data-col="rear" data-type="num">Rear</th>
                         <th data-col="count" data-type="num">Count</th>
@@ -1217,15 +1485,14 @@ String WiFiManager::generateLogsHTML() {
                 <tbody id="log-body"></tbody>
             </table>
         </div>
-    </div>
     
     <!-- Clear Confirmation Modal -->
     <div class="modal" id="clearModal">
         <div class="modal-box">
-            <h3>⚠️ Clear All Logs?</h3>
+            <h3>Clear All Logs?</h3>
             <p>This will permanently delete all alert log data from the SD card. This action cannot be undone.</p>
             <div class="modal-btns">
-                <button class="btn" style="background:#333;" onclick="hideClearModal()">Cancel</button>
+                <button class="btn secondary" onclick="hideClearModal()">Cancel</button>
                 <button class="btn danger" onclick="confirmClear()">Delete All</button>
             </div>
         </div>
@@ -1238,12 +1505,20 @@ String WiFiManager::generateLogsHTML() {
         const modal = document.getElementById('clearModal');
         let logData = [];
         let filteredData = [];
-        let sortCol = 'ms';
+        let sortCol = 'utc';
         let sortDir = 'desc';
         let activeFilter = 'all';
 
-        function formatTime(ms){
-            const sec = ms/1000;
+        function formatTime(utc, ts){
+            // If we have a real UTC timestamp, show formatted date/time
+            if(utc && utc > 1609459200){
+                const d = new Date(utc * 1000);
+                const pad = n => String(n).padStart(2,'0');
+                return `${d.getUTCMonth()+1}/${d.getUTCDate()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+            }
+            // Fallback to relative time since boot
+            if(!ts || ts <= 0) return '-';
+            const sec = ts/1000;
             if(sec < 60) return sec.toFixed(1) + 's';
             if(sec < 3600) return Math.floor(sec/60) + 'm ' + Math.floor(sec%60) + 's';
             return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
@@ -1296,10 +1571,18 @@ String WiFiManager::generateLogsHTML() {
         function sortData(){
             const type = document.querySelector(`th[data-col="${sortCol}"]`)?.dataset.type || 'str';
             filteredData.sort((a,b) => {
-                let va = a[sortCol], vb = b[sortCol];
+                let va, vb;
+                // Special handling for time column - prefer utc, fallback to ts
+                if(sortCol === 'utc'){
+                    va = a.utc || a.ts || 0;
+                    vb = b.utc || b.ts || 0;
+                } else {
+                    va = a[sortCol];
+                    vb = b[sortCol];
+                }
                 if(type === 'num'){ va = Number(va)||0; vb = Number(vb)||0; }
                 else if(type === 'bool'){ va = va?1:0; vb = vb?1:0; }
-                else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+                else { va = String(va||'').toLowerCase(); vb = String(vb||'').toLowerCase(); }
                 if(va < vb) return sortDir === 'asc' ? -1 : 1;
                 if(va > vb) return sortDir === 'asc' ? 1 : -1;
                 return 0;
@@ -1319,13 +1602,13 @@ String WiFiManager::generateLogsHTML() {
             filteredData.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${formatTime(item.ms)}</td>
+                    <td>${formatTime(item.utc, item.ts)}</td>
                     <td>${item.event}</td>
-                    <td>${item.band}</td>
-                    <td>${item.freq}</td>
-                    <td>${item.direction}</td>
-                    <td>${item.front}</td>
-                    <td>${item.rear}</td>
+                    <td>${item.band || '-'}</td>
+                    <td>${item.freq || '-'}</td>
+                    <td>${item.dir || '-'}</td>
+                    <td>${item.front ?? '-'}</td>
+                    <td>${item.rear ?? '-'}</td>
                     <td>${item.count}</td>
                     <td>${item.muted ? 'Yes' : 'No'}</td>`;
                 bodyEl.appendChild(tr);
@@ -1372,10 +1655,9 @@ String WiFiManager::generateLogsHTML() {
 
         window.onload = loadLogs;
     </script>
-</body>
-</html>
-)HTML";
-    return html;
+    )HTML";
+
+    return wrapWithLayout("Alert Log", body, "/logs");
 }
 
 String WiFiManager::generateV1SettingsHTML() {
@@ -1383,85 +1665,31 @@ String WiFiManager::generateV1SettingsHTML() {
     if (v1ProfileManager.hasCurrentSettings()) {
         currentJson = v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings());
     }
+    const V1Settings& settings = settingsManager.get();
+    String body = R"HTML(
     
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V1 Settings</title>
-    <style>
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a1a;color:#fff;padding:16px;max-width:600px;margin:0 auto;}
-        h1{font-size:1.5rem;margin-bottom:16px;color:#fff;}
-        h2{font-size:1.1rem;margin-bottom:12px;color:#ccc;}
-        .card{background:#252525;border-radius:12px;padding:16px;margin-bottom:16px;}
-        .btn{background:#333;color:#fff;border:none;padding:12px 20px;border-radius:8px;cursor:pointer;font-size:1rem;margin:4px;}
-        .btn:hover{background:#444;}
-        .btn:disabled{opacity:0.5;cursor:not-allowed;}
-        .btn-primary{background:#007aff;}
-        .btn-primary:hover{background:#0056b3;}
-        .btn-danger{background:#ff3b30;}
-        .btn-danger:hover{background:#c0392b;}
-        .btn-success{background:#34c759;}
-        .btn-success:hover{background:#28a745;}
-        .btn-full{width:100%;margin:8px 0;}
-        .status{padding:12px;border-radius:8px;margin-bottom:16px;}
-        .status.connected{background:#1a3a1a;border:1px solid #34c759;}
-        .status.disconnected{background:#3a1a1a;border:1px solid #ff3b30;}
-        .profile-list{list-style:none;}
-        .profile-item{background:#333;padding:12px;margin:8px 0;border-radius:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
-        .profile-item:hover{background:#444;}
-        .profile-item.selected{background:#007aff33;border:1px solid #007aff;}
-        .profile-name{font-weight:bold;}
-        .setting-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333;}
-        .setting-row:last-child{border-bottom:none;}
-        .toggle{width:50px;height:28px;background:#555;border-radius:14px;position:relative;cursor:pointer;transition:background 0.2s;}
-        .toggle.on{background:#34c759;}
-        .toggle::after{content:'';position:absolute;width:24px;height:24px;background:#fff;border-radius:12px;top:2px;left:2px;transition:left 0.2s;}
-        .toggle.on::after{left:24px;}
-        .select-row select{background:#333;color:#fff;border:1px solid #555;padding:8px 12px;border-radius:6px;font-size:1rem;}
-        .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;}
-        .modal.show{display:flex;}
-        .modal-box{background:#252525;border-radius:12px;padding:24px;max-width:90%;max-height:90%;overflow-y:auto;width:500px;}
-        .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
-        .modal-close{background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;}
-        input[type="text"]{background:#333;color:#fff;border:1px solid #555;padding:10px;border-radius:6px;width:100%;font-size:1rem;margin-bottom:12px;}
-        .msg{padding:12px;border-radius:8px;margin-bottom:12px;}
-        .msg.success{background:#1a3a1a;color:#34c759;}
-        .msg.error{background:#3a1a1a;color:#ff3b30;}
-        .back-link{color:#007aff;text-decoration:none;display:inline-block;margin-bottom:16px;}
-        .back-link:hover{text-decoration:underline;}
-        .bytes-display{font-family:monospace;background:#333;padding:8px;border-radius:4px;margin:8px 0;}
-    </style>
-</head>
-<body>
-    <a href="/settings" class="back-link">← Back to Settings</a>
-    <h1>V1 Settings & Profiles</h1>
-    
-    <div id="status" class="status disconnected">
+    <div id="status" class="status-badge disconnected">
         Checking V1 connection...
     </div>
     
     <div class="card">
         <h2>Current V1 Settings</h2>
         <div id="current-settings">
-            <p style="color:#888;">Pull settings from V1 to view</p>
+            <p class="muted">Pull settings from V1 to view</p>
         </div>
-        <button class="btn btn-primary btn-full" onclick="pullSettings()">Pull from V1</button>
+        <button class="btn primary" onclick="pullSettings()">Pull from V1</button>
     </div>
     
     <div class="card">
         <h2>Saved Profiles</h2>
         <ul id="profile-list" class="profile-list">
-            <li style="color:#888;">Loading profiles...</li>
+            <li class="muted">Loading profiles...</li>
         </ul>
-        <div style="margin-top:12px;">
-            <button class="btn btn-primary" onclick="showNewProfileModal()">New Profile</button>
-            <button id="btn-edit" class="btn" onclick="editSelectedProfile()" disabled>Edit</button>
-            <button id="btn-push" class="btn btn-success" onclick="pushSelectedProfile()" disabled>Push to V1</button>
-            <button id="btn-delete" class="btn btn-danger" onclick="deleteSelectedProfile()" disabled>Delete</button>
+        <div class="actions">
+            <button class="btn primary" onclick="showNewProfileModal()">New Profile</button>
+            <button id="btn-edit" class="btn secondary" onclick="editSelectedProfile()" disabled>Edit</button>
+            <button id="btn-push" class="btn success" onclick="pushSelectedProfile()" disabled>Push to V1</button>
+            <button id="btn-delete" class="btn danger" onclick="deleteSelectedProfile()" disabled>Delete</button>
         </div>
     </div>
     
@@ -1470,14 +1698,14 @@ String WiFiManager::generateV1SettingsHTML() {
         <div class="modal-box">
             <div class="modal-header">
                 <h2 id="modal-title">Edit Profile</h2>
-                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+                <button class="modal-close" onclick="closeEditModal()">×</button>
             </div>
             <input type="text" id="profile-name" placeholder="Profile Name">
             <div id="settings-editor"></div>
-            <div style="margin-top:16px;">
-                <button class="btn btn-primary" onclick="saveProfile()">Save</button>
-                <button class="btn" onclick="closeEditModal()">Cancel</button>
-                <button id="btn-push-after-save" class="btn btn-success" onclick="saveAndPush()" style="float:right;">Save & Push to V1</button>
+            <div class="modal-btns">
+                <button class="btn primary" onclick="saveProfile()">Save</button>
+                <button class="btn secondary" onclick="closeEditModal()">Cancel</button>
+                <button id="btn-push-after-save" class="btn success" onclick="saveAndPush()">Save & Push</button>
             </div>
         </div>
     </div>
@@ -1487,13 +1715,13 @@ String WiFiManager::generateV1SettingsHTML() {
         <div class="modal-box">
             <div class="modal-header">
                 <h2>New Profile</h2>
-                <button class="modal-close" onclick="closeNewModal()">&times;</button>
+                <button class="modal-close" onclick="closeNewModal()">×</button>
             </div>
             <input type="text" id="new-profile-name" placeholder="Profile Name">
-            <p style="color:#888;margin-bottom:12px;">Create from:</p>
-            <button class="btn btn-full" onclick="createFromDefaults()">Factory Defaults</button>
-            <button class="btn btn-full" onclick="createFromCurrent()" id="btn-from-current" disabled>Current V1 Settings</button>
-            <button class="btn btn-full" onclick="closeNewModal()">Cancel</button>
+            <p class="muted">Create from:</p>
+            <button class="btn primary" onclick="createFromDefaults()">Factory Defaults</button>
+            <button class="btn secondary" onclick="createFromCurrent()" id="btn-from-current" disabled>Current V1 Settings</button>
+            <button class="btn secondary" onclick="closeNewModal()">Cancel</button>
         </div>
     </div>
     
@@ -1558,7 +1786,7 @@ String WiFiManager::generateV1SettingsHTML() {
         function renderProfiles() {
             const list = document.getElementById('profile-list');
             if(profiles.length === 0){
-                list.innerHTML = '<li style="color:#888;">No saved profiles</li>';
+                list.innerHTML = '<li class="muted">No saved profiles</li>';
                 return;
             }
             list.innerHTML = profiles.map(p => 
@@ -1612,11 +1840,11 @@ String WiFiManager::generateV1SettingsHTML() {
         function renderCurrentSettings() {
             const el = document.getElementById('current-settings');
             if(!currentSettings){
-                el.innerHTML = '<p style="color:#888;">Pull settings from V1 to view</p>';
+                el.innerHTML = '<p class="muted">Pull settings from V1 to view</p>';
                 return;
             }
-            let html = '<div class="bytes-display">Bytes: ' + currentSettings.bytes.map(b=>'0x'+b.toString(16).toUpperCase().padStart(2,'0')).join(' ') + '</div>';
-            html += '<div style="font-size:0.85rem;color:#aaa;max-height:300px;overflow-y:auto;">';
+            let html = '<div class="muted" style="font-family:monospace;font-size:0.85rem;margin-bottom:12px;">Bytes: ' + currentSettings.bytes.map(b=>'0x'+b.toString(16).toUpperCase().padStart(2,'0')).join(' ') + '</div>';
+            html += '<div class="muted" style="max-height:300px;overflow-y:auto;">';
             
             // Group settings by category
             const bands = settingDefs.filter(s=>['xBand','kBand','kaBand','laser','kuBand'].includes(s.key));
@@ -1626,11 +1854,11 @@ String WiFiManager::generateV1SettingsHTML() {
             
             const renderGroup = (title, items) => {
                 if(items.length === 0) return '';
-                let g = '<div style="margin-top:8px;"><strong style="color:#888;">'+title+'</strong>';
+                let g = '<div style="margin-top:8px;"><strong>'+title+'</strong>';
                 items.forEach(s=>{
                     const val = currentSettings[s.key];
                     if(s.type==='toggle'){
-                        g += `<div style="margin-left:8px;">${s.label}: ${val?'✓':'✗'}</div>`;
+                        g += `<div style="margin-left:8px;">${s.label}: ${val?'On':'Off'}</div>`;
                     } else if(s.type==='select'){
                         const opt = s.options.find(o=>o[0]===val);
                         g += `<div style="margin-left:8px;">${s.label}: ${opt?opt[1]:val}</div>`;
@@ -1851,10 +2079,8 @@ String WiFiManager::generateV1SettingsHTML() {
         loadProfiles();
         renderCurrentSettings();
     </script>
-</body>
-</html>
 )HTML";
-    return html;
+    return wrapWithLayout("V1 Settings & Profiles", body, "/v1settings");
 }
 
 
@@ -1888,6 +2114,7 @@ String WiFiManager::generateAutoPushSettingsJSON() {
 }
 
 void WiFiManager::handleAutoPush() {
+    SerialLog.println("[HTTP] GET /autopush");
     server.send(200, "text/html", generateAutoPushHTML());
 }
 
@@ -1926,7 +2153,7 @@ void WiFiManager::handleAutoPushSlotSave() {
     uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
     uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
     
-    Serial.printf("[SaveSlot] Slot %d - volume: %d (was %d), muteVol: %d (was %d)\n", 
+    SerialLog.printf("[SaveSlot] Slot %d - volume: %d (was %d), muteVol: %d (was %d)\n", 
                   slot, vol, existingVol, mute, existingMute);
     
     settingsManager.setSlotVolumes(slot, vol, mute);
@@ -2025,14 +2252,14 @@ void WiFiManager::handleAutoPushPushNow() {
     uint8_t mainVol = settingsManager.getSlotVolume(slot);
     uint8_t muteVol = settingsManager.getSlotMuteVolume(slot);
     
-    Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
+    SerialLog.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
     
     if (mainVol != 0xFF || muteVol != 0xFF) {
         delay(100);
-        Serial.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
+        SerialLog.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
         bleClient.setVolume(mainVol, muteVol);
     } else {
-        Serial.println("[PushNow] Volume: No change");
+        SerialLog.println("[PushNow] Volume: No change");
     }
     
     // Update active slot and refresh display profile indicator
@@ -2044,435 +2271,198 @@ void WiFiManager::handleAutoPushPushNow() {
 
 String WiFiManager::generateAutoPushHTML() {
     const V1Settings& s = settingsManager.get();
+    const V1Settings& settings = settingsManager.get();
     
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto-Push Profiles</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { color: #e94560; margin-bottom: 10px; text-align: center; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 0.9em; }
-        .card {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .card h2 { color: #e94560; margin-bottom: 15px; font-size: 1.2em; }
-        .slot-card {
-            border: 2px solid #333;
-            transition: border-color 0.3s;
-        }
-        .slot-card.active {
-            border-color: #e94560;
-            background: #1a2840;
-        }
-        .slot-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .slot-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .slot-icon {
-            width: 40px;
-            height: 40px;
-            background: #0f3460;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5em;
-        }
-        .active-badge {
-            background: #e94560;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; color: #888; font-size: 0.9em; }
-        select, input {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background: #0f3460;
-            color: #eee;
-            font-size: 1em;
-        }
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-        .btn-primary {
-            background: #e94560;
-            color: white;
-        }
-        .btn-primary:hover { background: #d63050; }
-        .btn-success {
-            background: #3a9104;
-            color: white;
-        }
-        .btn-success:hover { background: #2d7003; }
-        .btn-secondary {
-            background: #333;
-            color: #eee;
-        }
-        .btn-secondary:hover { background: #444; }
-        .msg {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .msg.success { background: #3a9104; color: white; }
-        .msg.error { background: #e94560; color: white; }
-        .quick-push {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .quick-btn {
-            padding: 20px;
-            background: #16213e;
-            border: 2px solid #333;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-        }
-        .quick-btn:hover {
-            border-color: #e94560;
-            transform: translateY(-2px);
-        }
-        .quick-btn.active {
-            border-color: #e94560;
-            background: #1a2840;
-        }
-        .quick-btn-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        .quick-btn-label {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .quick-btn-sub {
-            font-size: 0.85em;
-            color: #888;
-        }
-        .auto-toggle {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 15px;
-            background: #0f3460;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .auto-toggle input[type="checkbox"] {
-            width: auto;
-        }
-        .nav-links {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .nav-links a {
-            flex: 1;
-            padding: 12px;
-            background: #333;
-            color: #eee;
-            text-decoration: none;
-            border-radius: 8px;
-            text-align: center;
-            transition: background 0.3s;
-        }
-        .nav-links a:hover { background: #444; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎯 Auto-Push Profiles</h1>
-        <p class="subtitle">Configure 3 quick-access profiles for different driving scenarios</p>
-        
-        <div class="nav-links">
-            <a href="/">← Home</a>
-            <a href="/v1settings">V1 Profiles</a>
-            <a href="/settings">Settings</a>
-        </div>
-        
-        <div id="message"></div>
-        
-        <div class="card">
-            <h2>Quick Push</h2>
-            <p style="color:#888;font-size:0.9em;margin-bottom:15px;">Click to activate and push a profile immediately</p>
-            <div class="quick-push">
-                <div class="quick-btn" id="quick-0" onclick="quickPush(0)">
-                    <div class="quick-btn-icon">🏠</div>
-                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot0Name) + R"HTML(</div>
-                    <div class="quick-btn-sub" id="quick-sub-0">Not configured</div>
-                </div>
-                <div class="quick-btn" id="quick-1" onclick="quickPush(1)">
-                    <div class="quick-btn-icon">🏎️</div>
-                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot1Name) + R"HTML(</div>
-                    <div class="quick-btn-sub" id="quick-sub-1">Not configured</div>
-                </div>
-                <div class="quick-btn" id="quick-2" onclick="quickPush(2)">
-                    <div class="quick-btn-icon">👥</div>
-                    <div class="quick-btn-label">)HTML" + htmlEscape(s.slot2Name) + R"HTML(</div>
-                    <div class="quick-btn-sub" id="quick-sub-2">Not configured</div>
-                </div>
+    String body = R"HTML(
+    <p class="muted" style="text-align:center; margin-bottom:20px;">Configure 3 quick-access profiles for different driving scenarios</p>
+    
+    <div id="message"></div>
+    
+    <div class="card">
+        <h2>Quick Push</h2>
+        <p class="muted">Click to activate and push a profile immediately</p>
+        <div class="quick-push">
+            <div class="quick-btn" id="quick-0" onclick="quickPush(0)">
+                <div class="quick-btn-icon">1</div>
+                <div class="quick-btn-label">)HTML" + htmlEscape(s.slot0Name) + R"HTML(</div>
+                <div class="quick-btn-sub" id="quick-sub-0">Not configured</div>
             </div>
-            <div class="auto-toggle">
-                <input type="checkbox" id="auto-enable" )HTML" + String(s.autoPushEnabled ? "checked" : "") + R"HTML(>
-                <label for="auto-enable" style="margin:0;flex:1;">Automatically push active profile on V1 connection</label>
+            <div class="quick-btn" id="quick-1" onclick="quickPush(1)">
+                <div class="quick-btn-icon">2</div>
+                <div class="quick-btn-label">)HTML" + htmlEscape(s.slot1Name) + R"HTML(</div>
+                <div class="quick-btn-sub" id="quick-sub-1">Not configured</div>
+            </div>
+            <div class="quick-btn" id="quick-2" onclick="quickPush(2)">
+                <div class="quick-btn-icon">3</div>
+                <div class="quick-btn-label">)HTML" + htmlEscape(s.slot2Name) + R"HTML(</div>
+                <div class="quick-btn-sub" id="quick-sub-2">Not configured</div>
             </div>
         </div>
-        
-        <div class="card slot-card" id="slot-0">
-            <div class="slot-header">
-                <div class="slot-title">
-                    <div class="slot-icon">🏠</div>
-                    <h2 style="margin:0;">Default Profile</h2>
-                </div>
-                <div class="active-badge" id="badge-0" style="display:none;">ACTIVE</div>
-            </div>
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" id="name-0" maxlength="20" placeholder="DEFAULT" style="text-transform:uppercase;">
-            </div>
-            <div class="form-group">
-                <label>Display Color</label>
-                <input type="color" id="color-0" value="#400050">
-            </div>
-            <div class="form-group">
-                <label>Profile</label>
-                <select id="profile-0">
-                    <option value="">-- None --</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mode</label>
-                <select id="mode-0">
-                    <option value="0">No Change</option>
-                    <option value="1">All Bogeys</option>
-                    <option value="2">Logic</option>
-                    <option value="3">Advanced Logic</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>V1 Volume</label>
-                <select id="volume-0">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Off)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mute Volume</label>
-                <select id="muteVol-0">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Silent)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-primary" onclick="saveSlot(0)">Save</button>
-                <button class="btn btn-success" onclick="pushSlot(0)">Push Now</button>
-            </div>
+        <div class="setting-row">
+            <span>Auto-push on V1 connect</span>
+            <div class="toggle )HTML" + String(s.autoPushEnabled ? "on" : "") + R"HTML(" id="auto-toggle" onclick="toggleAutoPush()"></div>
         </div>
-        
-        <div class="card slot-card" id="slot-1">
-            <div class="slot-header">
-                <div class="slot-title">
-                    <div class="slot-icon">🏎️</div>
-                    <h2 style="margin:0;">Highway Profile</h2>
-                </div>
-                <div class="active-badge" id="badge-1" style="display:none;">ACTIVE</div>
-            </div>
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" id="name-1" maxlength="20" placeholder="HIGHWAY" style="text-transform:uppercase;">
-            </div>
-            <div class="form-group">
-                <label>Display Color</label>
-                <input type="color" id="color-1" value="#00fc00">
-            </div>
-            <div class="form-group">
-                <label>Profile</label>
-                <select id="profile-1">
-                    <option value="">-- None --</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mode</label>
-                <select id="mode-1">
-                    <option value="0">No Change</option>
-                    <option value="1">All Bogeys</option>
-                    <option value="2">Logic</option>
-                    <option value="3">Advanced Logic</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>V1 Volume</label>
-                <select id="volume-1">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Off)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mute Volume</label>
-                <select id="muteVol-1">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Silent)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-primary" onclick="saveSlot(1)">Save</button>
-                <button class="btn btn-success" onclick="pushSlot(1)">Push Now</button>
-            </div>
+    </div>
+    
+    <div class="card slot-card" id="slot-0">
+        <div class="slot-header">
+            <h2>Slot 1: Default</h2>
+            <span class="status-badge" id="badge-0" style="display:none;">ACTIVE</span>
         </div>
-        
-        <div class="card slot-card" id="slot-2">
-            <div class="slot-header">
-                <div class="slot-title">
-                    <div class="slot-icon">👥</div>
-                    <h2 style="margin:0;">Passenger Comfort Profile</h2>
-                </div>
-                <div class="active-badge" id="badge-2" style="display:none;">ACTIVE</div>
-            </div>
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" id="name-2" maxlength="20" placeholder="COMFORT" style="text-transform:uppercase;">
-            </div>
-            <div class="form-group">
-                <label>Display Color</label>
-                <input type="color" id="color-2" value="#808080">
-            </div>
-            <div class="form-group">
-                <label>Profile</label>
-                <select id="profile-2">
-                    <option value="">-- None --</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mode</label>
-                <select id="mode-2">
-                    <option value="0">No Change</option>
-                    <option value="1">All Bogeys</option>
-                    <option value="2">Logic</option>
-                    <option value="3">Advanced Logic</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>V1 Volume</label>
-                <select id="volume-2">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Off)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mute Volume</label>
-                <select id="muteVol-2">
-                    <option value="255">No Change</option>
-                    <option value="0">0 (Silent)</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9 (Max)</option>
-                </select>
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-primary" onclick="saveSlot(2)">Save</button>
-                <button class="btn btn-success" onclick="pushSlot(2)">Push Now</button>
-            </div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="name-0" maxlength="20" placeholder="DEFAULT">
+        </div>
+        <div class="form-group">
+            <label>Display Color</label>
+            <input type="color" id="color-0" value="#400050">
+        </div>
+        <div class="form-group">
+            <label>Profile</label>
+            <select id="profile-0"><option value="">-- None --</option></select>
+        </div>
+        <div class="form-group">
+            <label>Mode</label>
+            <select id="mode-0">
+                <option value="0">No Change</option>
+                <option value="1">All Bogeys</option>
+                <option value="2">Logic</option>
+                <option value="3">Advanced Logic</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>V1 Volume</label>
+            <select id="volume-0">
+                <option value="255">No Change</option>
+                <option value="0">0 (Off)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Mute Volume</label>
+            <select id="muteVol-0">
+                <option value="255">No Change</option>
+                <option value="0">0 (Silent)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="actions">
+            <button class="btn primary" onclick="saveSlot(0)">Save</button>
+            <button class="btn success" onclick="pushSlot(0)">Push Now</button>
+        </div>
+    </div>
+    
+    <div class="card slot-card" id="slot-1">
+        <div class="slot-header">
+            <h2>Slot 2: Highway</h2>
+            <span class="status-badge" id="badge-1" style="display:none;">ACTIVE</span>
+        </div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="name-1" maxlength="20" placeholder="HIGHWAY">
+        </div>
+        <div class="form-group">
+            <label>Display Color</label>
+            <input type="color" id="color-1" value="#00fc00">
+        </div>
+        <div class="form-group">
+            <label>Profile</label>
+            <select id="profile-1"><option value="">-- None --</option></select>
+        </div>
+        <div class="form-group">
+            <label>Mode</label>
+            <select id="mode-1">
+                <option value="0">No Change</option>
+                <option value="1">All Bogeys</option>
+                <option value="2">Logic</option>
+                <option value="3">Advanced Logic</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>V1 Volume</label>
+            <select id="volume-1">
+                <option value="255">No Change</option>
+                <option value="0">0 (Off)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Mute Volume</label>
+            <select id="muteVol-1">
+                <option value="255">No Change</option>
+                <option value="0">0 (Silent)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="actions">
+            <button class="btn primary" onclick="saveSlot(1)">Save</button>
+            <button class="btn success" onclick="pushSlot(1)">Push Now</button>
+        </div>
+    </div>
+    
+    <div class="card slot-card" id="slot-2">
+        <div class="slot-header">
+            <h2>Slot 3: Comfort</h2>
+            <span class="status-badge" id="badge-2" style="display:none;">ACTIVE</span>
+        </div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="name-2" maxlength="20" placeholder="COMFORT">
+        </div>
+        <div class="form-group">
+            <label>Display Color</label>
+            <input type="color" id="color-2" value="#808080">
+        </div>
+        <div class="form-group">
+            <label>Profile</label>
+            <select id="profile-2"><option value="">-- None --</option></select>
+        </div>
+        <div class="form-group">
+            <label>Mode</label>
+            <select id="mode-2">
+                <option value="0">No Change</option>
+                <option value="1">All Bogeys</option>
+                <option value="2">Logic</option>
+                <option value="3">Advanced Logic</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>V1 Volume</label>
+            <select id="volume-2">
+                <option value="255">No Change</option>
+                <option value="0">0 (Off)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Mute Volume</label>
+            <select id="muteVol-2">
+                <option value="255">No Change</option>
+                <option value="0">0 (Silent)</option>
+                <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                <option value="7">7</option><option value="8">8</option><option value="9">9 (Max)</option>
+            </select>
+        </div>
+        <div class="actions">
+            <button class="btn primary" onclick="saveSlot(2)">Save</button>
+            <button class="btn success" onclick="pushSlot(2)">Push Now</button>
         </div>
     </div>
     
     <script>
         const settings = )HTML" + generateAutoPushSettingsJSON() + R"HTML(;
         
-        // Convert RGB565 (16-bit) to HTML hex color
         function rgb565ToHex(rgb565) {
             const r = ((rgb565 >> 11) & 0x1F) << 3;
             const g = ((rgb565 >> 5) & 0x3F) << 2;
@@ -2480,7 +2470,6 @@ String WiFiManager::generateAutoPushHTML() {
             return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
         }
         
-        // Convert HTML hex color to RGB565
         function hexToRgb565(hex) {
             const r = parseInt(hex.substr(1,2), 16) >> 3;
             const g = parseInt(hex.substr(3,2), 16) >> 2;
@@ -2511,17 +2500,14 @@ String WiFiManager::generateAutoPushHTML() {
         }
         
         function loadSettings() {
-            // Load slot names
             document.getElementById('name-0').value = settings.slot0_name || 'DEFAULT';
             document.getElementById('name-1').value = settings.slot1_name || 'HIGHWAY';
             document.getElementById('name-2').value = settings.slot2_name || 'COMFORT';
             
-            // Load slot colors (convert RGB565 to HTML hex)
             document.getElementById('color-0').value = rgb565ToHex(settings.slot0_color || 0x400A);
             document.getElementById('color-1').value = rgb565ToHex(settings.slot1_color || 0x07E0);
             document.getElementById('color-2').value = rgb565ToHex(settings.slot2_color || 0x8410);
             
-            // Load slot configurations
             document.getElementById('profile-0').value = settings.slot0_profile || '';
             document.getElementById('mode-0').value = settings.slot0_mode || 0;
             document.getElementById('volume-0').value = settings.slot0_volume !== undefined ? settings.slot0_volume : 255;
@@ -2535,7 +2521,6 @@ String WiFiManager::generateAutoPushHTML() {
             document.getElementById('volume-2').value = settings.slot2_volume !== undefined ? settings.slot2_volume : 255;
             document.getElementById('muteVol-2').value = settings.slot2_muteVol !== undefined ? settings.slot2_muteVol : 255;
             
-            // Update active state
             updateActiveDisplay();
             updateQuickButtons();
         }
@@ -2546,7 +2531,7 @@ String WiFiManager::generateAutoPushHTML() {
                 const badge = document.getElementById('badge-'+i);
                 if (i === settings.activeSlot) {
                     card.classList.add('active');
-                    badge.style.display = 'block';
+                    badge.style.display = 'inline';
                 } else {
                     card.classList.remove('active');
                     badge.style.display = 'none';
@@ -2556,9 +2541,9 @@ String WiFiManager::generateAutoPushHTML() {
         
         function updateQuickButtons() {
             const slots = [
-                {name: settings.slot0_name, prof: settings.slot0_profile, mode: settings.slot0_mode},
-                {name: settings.slot1_name, prof: settings.slot1_profile, mode: settings.slot1_mode},
-                {name: settings.slot2_name, prof: settings.slot2_profile, mode: settings.slot2_mode}
+                {name: settings.slot0_name, prof: settings.slot0_profile},
+                {name: settings.slot1_name, prof: settings.slot1_profile},
+                {name: settings.slot2_name, prof: settings.slot2_profile}
             ];
             const defaultNames = ['DEFAULT', 'HIGHWAY', 'COMFORT'];
             
@@ -2567,25 +2552,39 @@ String WiFiManager::generateAutoPushHTML() {
                 const label = btn.querySelector('.quick-btn-label');
                 const sub = document.getElementById('quick-sub-'+i);
                 
-                // Update the label with custom name
-                if (label) {
-                    label.textContent = slots[i].name || defaultNames[i];
-                }
+                if (label) label.textContent = slots[i].name || defaultNames[i];
                 
                 if (slots[i].prof) {
                     sub.textContent = slots[i].prof;
                     btn.style.opacity = '1';
                 } else {
                     sub.textContent = 'Not configured';
-                    btn.style.opacity = '0.5';
+                    btn.style.opacity = '0.6';
                 }
                 
-                if (i === settings.activeSlot) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
+                btn.classList.toggle('active', i === settings.activeSlot);
             }
+        }
+        
+        function toggleAutoPush() {
+            settings.autoPushEnabled = !settings.autoPushEnabled;
+            document.getElementById('auto-toggle').classList.toggle('on', settings.autoPushEnabled);
+            
+            const data = new URLSearchParams();
+            data.append('slot', settings.activeSlot);
+            data.append('enable', settings.autoPushEnabled ? 'true' : 'false');
+            
+            fetch('/api/autopush/activate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: data
+            }).then(r=>r.json()).then(d => {
+                if (d.success) {
+                    showMessage('Auto-push '+(settings.autoPushEnabled?'enabled':'disabled'), false);
+                } else {
+                    showMessage('Error: '+(d.error||'Unknown'), true);
+                }
+            }).catch(e => showMessage('Error: '+e, true));
         }
         
         function saveSlot(slot) {
@@ -2612,29 +2611,16 @@ String WiFiManager::generateAutoPushHTML() {
                 body: data
             }).then(r=>r.json()).then(d => {
                 if (d.success) {
-                    showMessage('Slot ' + slot + ' saved!', false);
-                    // Update local settings
+                    showMessage('Slot ' + (slot+1) + ' saved!', false);
                     if (slot === 0) {
-                        settings.slot0_name = name;
-                        settings.slot0_color = color;
-                        settings.slot0_profile = profile;
-                        settings.slot0_mode = parseInt(mode);
-                        settings.slot0_volume = parseInt(volume);
-                        settings.slot0_muteVol = parseInt(muteVol);
+                        settings.slot0_name = name; settings.slot0_color = color;
+                        settings.slot0_profile = profile; settings.slot0_mode = parseInt(mode);
                     } else if (slot === 1) {
-                        settings.slot1_name = name;
-                        settings.slot1_color = color;
-                        settings.slot1_profile = profile;
-                        settings.slot1_mode = parseInt(mode);
-                        settings.slot1_volume = parseInt(volume);
-                        settings.slot1_muteVol = parseInt(muteVol);
+                        settings.slot1_name = name; settings.slot1_color = color;
+                        settings.slot1_profile = profile; settings.slot1_mode = parseInt(mode);
                     } else {
-                        settings.slot2_name = name;
-                        settings.slot2_color = color;
-                        settings.slot2_profile = profile;
-                        settings.slot2_mode = parseInt(mode);
-                        settings.slot2_volume = parseInt(volume);
-                        settings.slot2_muteVol = parseInt(muteVol);
+                        settings.slot2_name = name; settings.slot2_color = color;
+                        settings.slot2_profile = profile; settings.slot2_mode = parseInt(mode);
                     }
                     updateQuickButtons();
                 } else {
@@ -2644,7 +2630,6 @@ String WiFiManager::generateAutoPushHTML() {
         }
         
         function pushSlot(slot) {
-            // Get current form values (use these instead of saved settings)
             const profile = document.getElementById('profile-'+slot).value;
             const mode = document.getElementById('mode-'+slot).value;
             
@@ -2658,16 +2643,12 @@ String WiFiManager::generateAutoPushHTML() {
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: data
             }).then(r=>r.json()).then(d => {
-                if (d.success) {
-                    showMessage('Profile pushed to V1!', false);
-                } else {
-                    showMessage('Error: '+(d.error||'Unknown'), true);
-                }
+                if (d.success) showMessage('Profile pushed to V1!', false);
+                else showMessage('Error: '+(d.error||'Unknown'), true);
             }).catch(e => showMessage('Error: '+e, true));
         }
         
         function quickPush(slot) {
-            // Activate this slot and enable auto-push, then push
             const data = new URLSearchParams();
             data.append('slot', slot);
             data.append('enable', 'true');
@@ -2680,10 +2661,9 @@ String WiFiManager::generateAutoPushHTML() {
                 if (d.success) {
                     settings.activeSlot = slot;
                     settings.autoPushEnabled = true;
-                    document.getElementById('auto-enable').checked = true;
+                    document.getElementById('auto-toggle').classList.add('on');
                     updateActiveDisplay();
                     updateQuickButtons();
-                    // Now push
                     pushSlot(slot);
                 } else {
                     showMessage('Error: '+(d.error||'Unknown'), true);
@@ -2691,36 +2671,15 @@ String WiFiManager::generateAutoPushHTML() {
             }).catch(e => showMessage('Error: '+e, true));
         }
         
-        document.getElementById('auto-enable').addEventListener('change', function() {
-            const data = new URLSearchParams();
-            data.append('slot', settings.activeSlot);
-            data.append('enable', this.checked ? 'true' : 'false');
-            
-            fetch('/api/autopush/activate', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: data
-            }).then(r=>r.json()).then(d => {
-                if (d.success) {
-                    settings.autoPushEnabled = this.checked;
-                    showMessage('Auto-push '+(this.checked?'enabled':'disabled'), false);
-                } else {
-                    showMessage('Error: '+(d.error||'Unknown'), true);
-                }
-            }).catch(e => showMessage('Error: '+e, true));
-        });
-        
-        // Init
         loadProfiles();
     </script>
-</body>
-</html>
 )HTML";
-    return html;
+    return wrapWithLayout("Auto-Push Profiles", body, "/autopush");
 }
 // ============= Display Colors Handlers =============
 
 void WiFiManager::handleDisplayColors() {
+    SerialLog.println("[HTTP] GET /displaycolors");
     server.send(200, "text/html", generateDisplayColorsHTML());
 }
 
@@ -2747,132 +2706,22 @@ void WiFiManager::handleDisplayColorsReset() {
 String WiFiManager::generateDisplayColorsHTML() {
     const V1Settings& s = settingsManager.get();
     
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Display Colors</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 600px; margin: 0 auto; }
-        h1 { color: #e94560; margin-bottom: 10px; text-align: center; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 0.9em; }
-        .card {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .card h2 { color: #e94560; margin-bottom: 15px; font-size: 1.1em; }
-        .nav-links {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .nav-links a {
-            color: #e94560;
-            text-decoration: none;
-            padding: 8px 16px;
-            background: #16213e;
-            border-radius: 8px;
-            font-size: 0.9em;
-        }
-        .nav-links a:hover { background: #1f2b4a; }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-        .color-row {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        .color-row input[type="color"] {
-            width: 60px;
-            height: 40px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-        .color-row .color-label {
-            flex: 1;
-            font-size: 1em;
-        }
-        .color-row .color-preview {
-            width: 100px;
-            height: 40px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 1.2em;
-        }
-        .btn {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1em;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            margin-top: 10px;
-        }
-        .btn-primary {
-            background: #e94560;
-            color: white;
-        }
-        .btn-primary:hover { background: #d63050; }
-        .msg {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        .msg.success { background: #0f5132; color: #d1e7dd; }
-        .msg.error { background: #842029; color: #f8d7da; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎨 Display Colors</h1>
-        <p class="subtitle">Customize the colors shown on your V1 display</p>
-        
-        <div class="nav-links">
-            <a href="/">← Home</a>
-            <a href="/autopush">Auto-Push</a>
-            <a href="/v1settings">V1 Profiles</a>
-            <a href="/settings">Settings</a>
-        </div>
-        
-        <div id="message"></div>
-        
-        <div class="card">
-            <h2>🔢 Counter & Frequency</h2>
-            <div class="form-group">
+    String body = R"HTML(
+    <p class="muted" style="text-align:center;margin-bottom:20px;">Customize the colors shown on your V1 display</p>
+    
+    <div id="message"></div>
+    
+    <div class="card">
+        <h2>Counter & Frequency</h2>
+        <div class="color-grid">
+            <div class="color-item">
                 <label>Bogey Counter</label>
                 <div class="color-row">
                     <input type="color" id="color-bogey" onchange="updatePreview('bogey')">
                     <div class="color-preview" id="preview-bogey">1.</div>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="color-item">
                 <label>Frequency Display</label>
                 <div class="color-row">
                     <input type="color" id="color-freq" onchange="updatePreview('freq')">
@@ -2880,31 +2729,33 @@ String WiFiManager::generateDisplayColorsHTML() {
                 </div>
             </div>
         </div>
-        
-        <div class="card">
-            <h2>📡 Band Indicators</h2>
-            <div class="form-group">
+    </div>
+    
+    <div class="card">
+        <h2>Band Indicators</h2>
+        <div class="color-grid">
+            <div class="color-item">
                 <label>Laser (L)</label>
                 <div class="color-row">
                     <input type="color" id="color-bandL" onchange="updatePreview('bandL')">
                     <div class="color-preview" id="preview-bandL">L</div>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="color-item">
                 <label>Ka Band</label>
                 <div class="color-row">
                     <input type="color" id="color-bandKa" onchange="updatePreview('bandKa')">
                     <div class="color-preview" id="preview-bandKa">Ka</div>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="color-item">
                 <label>K Band</label>
                 <div class="color-row">
                     <input type="color" id="color-bandK" onchange="updatePreview('bandK')">
                     <div class="color-preview" id="preview-bandK">K</div>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="color-item">
                 <label>X Band</label>
                 <div class="color-row">
                     <input type="color" id="color-bandX" onchange="updatePreview('bandX')">
@@ -2912,21 +2763,21 @@ String WiFiManager::generateDisplayColorsHTML() {
                 </div>
             </div>
         </div>
-        
-        <div class="card">
-            <h2>➡️ Direction Arrows</h2>
-            <div class="form-group">
-                <label>Arrow Color</label>
-                <div class="color-row">
-                    <input type="color" id="color-arrow" onchange="updatePreview('arrow')">
-                    <div class="color-preview" id="preview-arrow">▲▼</div>
-                </div>
+    </div>
+    
+    <div class="card">
+        <h2>Direction Arrows</h2>
+        <div class="color-item">
+            <label>Arrow Color</label>
+            <div class="color-row">
+                <input type="color" id="color-arrow" onchange="updatePreview('arrow')">
+                <div class="color-preview" id="preview-arrow">▲▼</div>
             </div>
         </div>
-        
-        <button class="btn btn-primary" onclick="saveColors()">Save Colors</button>
-        <button class="btn" style="background:#555;margin-top:10px;" onclick="resetDefaults()">Reset to Default Colors</button>
     </div>
+    
+    <button class="btn primary" onclick="saveColors()">Save Colors</button>
+    <button class="btn secondary" onclick="resetDefaults()">Reset to Defaults</button>
     
     <script>
         const colors = {
@@ -2939,7 +2790,6 @@ String WiFiManager::generateDisplayColorsHTML() {
             bandX: )HTML" + String(s.colorBandX) + R"HTML(
         };
         
-        // Convert RGB565 to HTML hex
         function rgb565ToHex(rgb565) {
             const r = ((rgb565 >> 11) & 0x1F) << 3;
             const g = ((rgb565 >> 5) & 0x3F) << 2;
@@ -2947,7 +2797,6 @@ String WiFiManager::generateDisplayColorsHTML() {
             return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
         }
         
-        // Convert HTML hex to RGB565
         function hexToRgb565(hex) {
             const r = parseInt(hex.substr(1,2), 16) >> 3;
             const g = parseInt(hex.substr(3,2), 16) >> 2;
@@ -2991,11 +2840,8 @@ String WiFiManager::generateDisplayColorsHTML() {
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: data
             }).then(r=>r.json()).then(d => {
-                if (d.success) {
-                    showMessage('Colors saved! Display will update on next alert.', false);
-                } else {
-                    showMessage('Error: '+(d.error||'Unknown'), true);
-                }
+                if (d.success) showMessage('Colors saved! Display will update on next alert.', false);
+                else showMessage('Error: '+(d.error||'Unknown'), true);
             }).catch(e => showMessage('Error: '+e, true));
         }
         
@@ -3004,13 +2850,9 @@ String WiFiManager::generateDisplayColorsHTML() {
             fetch('/api/displaycolors/reset', {method:'POST'})
             .then(r=>r.json()).then(d => {
                 if (d.success) {
-                    colors.bogey = 0xF800;
-                    colors.freq = 0xF800;
-                    colors.arrow = 0xF800;
-                    colors.bandL = 0x001F;
-                    colors.bandKa = 0xF800;
-                    colors.bandK = 0x001F;
-                    colors.bandX = 0x07E0;
+                    colors.bogey = 0xF800; colors.freq = 0xF800; colors.arrow = 0xF800;
+                    colors.bandL = 0x001F; colors.bandKa = 0xF800;
+                    colors.bandK = 0x001F; colors.bandX = 0x07E0;
                     loadColors();
                     showMessage('Colors reset to defaults!', false);
                 } else {
@@ -3019,13 +2861,10 @@ String WiFiManager::generateDisplayColorsHTML() {
             }).catch(e => showMessage('Error: '+e, true));
         }
         
-        // Init
         loadColors();
     </script>
-</body>
-</html>
 )HTML";
-    return html;
+    return wrapWithLayout("Display Colors", body, "/displaycolors");
 }
 
 String WiFiManager::generateTimeSettingsHTML() {
@@ -3033,215 +2872,70 @@ String WiFiManager::generateTimeSettingsHTML() {
     String currentTime = timeManager.isTimeValid() ? timeManager.getTimestampISO() : "Not Set";
     String checkedTime = settings.enableTimesync ? "checked" : "";
     
-    // Get theme-specific CSS
-    String themeCSS;
-    switch (settings.colorTheme) {
-        case THEME_HIGH_CONTRAST:
-            themeCSS = R"CSS(
-                body { background: #000; color: #fff; }
-                h1 { color: #ffff00; }
-                .card { background: #1a1a1a; border: 2px solid #ffff00; }
-                .card h2 { color: #ffff00; border-bottom-color: #ffff00; }
-                label { color: #ccc; }
-                input, select { background: #2a2a2a; color: #fff; border: 1px solid #555; }
-                input:focus, select:focus { border-color: #ffff00; }
-                button { background: #ffff00; color: #000; }
-                button:hover { background: #ffee00; }
-                .info { background: #2a2a00; color: #ffff00; border: 1px solid #555500; }
-                .time-display { color: #ffff00; }
-            )CSS";
-            break;
-        case THEME_STEALTH:
-            themeCSS = R"CSS(
-                body { background: #0a0a0a; color: #666; }
-                h1 { color: #444; }
-                .card { background: #111; border: 1px solid #222; }
-                .card h2 { color: #555; border-bottom-color: #333; }
-                label { color: #444; }
-                input, select { background: #151515; color: #666; border: 1px solid #222; }
-                input:focus, select:focus { border-color: #444; }
-                button { background: #333; color: #666; }
-                button:hover { background: #444; }
-                .info { background: #0f0f0f; color: #555; border: 1px solid #222; }
-                .time-display { color: #888; }
-            )CSS";
-            break;
-        default: // THEME_STANDARD
-            themeCSS = R"CSS(
-                body { background: #1a1a2e; color: #eee; }
-                h1 { color: #e94560; }
-                .card { background: #16213e; }
-                .card h2 { color: #e94560; border-bottom-color: #e94560; }
-                label { color: #888; }
-                input, select { background: #0f3460; color: #eee; border: 1px solid #0f3460; }
-                input:focus, select:focus { border-color: #e94560; }
-                button { background: #e94560; color: #fff; }
-                button:hover { background: #d63050; }
-                .info { background: #0f3460; color: #9aa7bd; border: 1px solid #1a4a7a; }
-                .time-display { color: #e94560; }
-            )CSS";
-            break;
-    }
+    String body;
     
-    String html = R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Time Settings - V1 Display</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            padding: 20px;
-            line-height: 1.6;
-            min-height: 100vh;
-        }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card {
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
-        }
-        h1 { margin-bottom: 20px; font-size: 28px; }
-        h2 { margin-bottom: 16px; font-size: 20px; border-bottom: 2px solid; padding-bottom: 8px; }
-        label { display: block; margin: 16px 0 8px; font-weight: 500; }
-        input[type="text"], input[type="password"], select {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 16px;
-            border: 1px solid;
-        }
-        input:focus, select:focus { outline: none; }
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            margin: 16px 0;
-        }
-        .checkbox-row input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-        }
-        .checkbox-row label {
-            margin: 0;
-            cursor: pointer;
-        }
-        button {
-            border: none;
-            padding: 14px 28px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 12px;
-        }
-        button:hover { opacity: 0.9; }
-        button:active { transform: scale(0.98); }
-        .nav { margin-bottom: 20px; }
-        .nav a {
-            text-decoration: none;
-            margin-right: 15px;
-            padding: 8px 16px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 6px;
-            display: inline-block;
-        }
-        .nav a:hover { background: rgba(255,255,255,0.15); }
-        .info { padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 0.95em; }
-        .time-display { font-size: 18px; font-weight: bold; margin-bottom: 12px; font-family: monospace; }
-        .info { padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 0.95em; }
-        .time-display { font-size: 18px; font-weight: bold; margin-bottom: 12px; font-family: monospace; }
-        
-        /* Theme-specific colors */
-        )HTML" + themeCSS + R"HTML(
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>⏰ Time Settings</h1>
-        
-        <div class="nav">
-            <a href="/settings">← Back to Settings</a>
-            <a href="/status">Status</a>
-        </div>
-        
-        <div class="card">
-            <h2>Current Time (UTC)</h2>
-            <div class="time-display">)HTML" + currentTime + R"HTML(</div>
-            <div class="info">
-                All times displayed and stored in UTC. Configure NTP sync or set manually for accurate timestamps.
-            </div>
-        </div>
-        
-        <form action="/time" method="POST">
-            <div class="card">
-                <h2>WiFi Networks for Internet/NTP</h2>
-                
-                <div class="info">
-                    Add up to 3 WiFi networks (home, car hotspot, etc). The device will automatically connect to whichever is available with the strongest signal.
-                </div>
-                
-                <div class="checkbox-row">
-                    <input type="checkbox" id="enableTimesync" name="enableTimesync" )HTML" + checkedTime + R"HTML(>
-                    <label for="enableTimesync">Enable WiFi STA mode (for NTP sync &amp; NAT routing)</label>
-                </div>
-                
-                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 1</h3>
-                <label for="wifi0ssid">SSID</label>
-                <input type="text" id="wifi0ssid" name="wifi0ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[0].ssid) + R"HTML(" placeholder="e.g., Home WiFi">
-                <label for="wifi0pwd">Password</label>
-                <input type="password" id="wifi0pwd" name="wifi0pwd" value=")HTML" + (settings.wifiNetworks[0].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
-                
-                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 2</h3>
-                <label for="wifi1ssid">SSID</label>
-                <input type="text" id="wifi1ssid" name="wifi1ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[1].ssid) + R"HTML(" placeholder="e.g., Car WiFi Hotspot">
-                <label for="wifi1pwd">Password</label>
-                <input type="password" id="wifi1pwd" name="wifi1pwd" value=")HTML" + (settings.wifiNetworks[1].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
-                
-                <h3 style="margin-top: 20px; font-size: 16px;">WiFi Network 3</h3>
-                <label for="wifi2ssid">SSID</label>
-                <input type="text" id="wifi2ssid" name="wifi2ssid" value=")HTML" + htmlEscape(settings.wifiNetworks[2].ssid) + R"HTML(" placeholder="e.g., Phone Hotspot">
-                <label for="wifi2pwd">Password</label>
-                <input type="password" id="wifi2pwd" name="wifi2pwd" value=")HTML" + (settings.wifiNetworks[2].password.length() > 0 ? String("********") : String("")) + R"HTML(" placeholder="Password">
-                
-                <button type="submit">Save WiFi Settings</button>
-            </div>
-        </form>
-        
-        <div class="card">
-            <h2>Manual Time Setting</h2>
-            <div class="info">
-                Set time manually if you don't want to connect to WiFi. Your device will use this time.
-            </div>
-            
-            <button onclick="setTimeNow()">Set Time from This Device</button>
-        </div>
-    </div>
+    // Current Time Card
+    body += "<div class=\"card\">";
+    body += "<h2>Current Time (UTC)</h2>";
+    body += "<div class=\"setting-row\"><span class=\"muted\">System Time</span><span style=\"font-family:monospace;\">" + currentTime + "</span></div>";
+    body += "<p class=\"muted\">All times displayed and stored in UTC. Configure NTP sync or set manually for accurate timestamps.</p>";
+    body += "</div>";
     
+    // WiFi Networks Form
+    body += "<form action=\"/time\" method=\"POST\">";
+    body += "<div class=\"card\">";
+    body += "<h2>WiFi Networks for Internet/NTP</h2>";
+    body += "<p class=\"muted\">Add up to 3 WiFi networks. The device will automatically connect to whichever is available with the strongest signal.</p>";
+    
+    body += "<div class=\"setting-row\"><span>Enable WiFi STA mode (for NTP sync &amp; NAT routing)</span>";
+    body += "<div class=\"toggle " + String(settings.enableTimesync ? "on" : "") + "\" onclick=\"this.classList.toggle('on');document.getElementById('enableTimesync').checked=this.classList.contains('on');\"></div></div>";
+    body += "<input type=\"checkbox\" id=\"enableTimesync\" name=\"enableTimesync\" " + checkedTime + " style=\"display:none;\">";
+    
+    // WiFi Network 1
+    body += "<div class=\"form-group\"><label>WiFi Network 1 - SSID</label>";
+    body += "<input type=\"text\" name=\"wifi0ssid\" value=\"" + htmlEscape(settings.wifiNetworks[0].ssid) + "\" placeholder=\"e.g., Home WiFi\"></div>";
+    body += "<div class=\"form-group\"><label>Password</label>";
+    body += "<input type=\"password\" name=\"wifi0pwd\" value=\"" + (settings.wifiNetworks[0].password.length() > 0 ? String("********") : String("")) + "\" placeholder=\"Password\"></div>";
+    
+    // WiFi Network 2
+    body += "<div class=\"form-group\"><label>WiFi Network 2 - SSID</label>";
+    body += "<input type=\"text\" name=\"wifi1ssid\" value=\"" + htmlEscape(settings.wifiNetworks[1].ssid) + "\" placeholder=\"e.g., Car WiFi Hotspot\"></div>";
+    body += "<div class=\"form-group\"><label>Password</label>";
+    body += "<input type=\"password\" name=\"wifi1pwd\" value=\"" + (settings.wifiNetworks[1].password.length() > 0 ? String("********") : String("")) + "\" placeholder=\"Password\"></div>";
+    
+    // WiFi Network 3
+    body += "<div class=\"form-group\"><label>WiFi Network 3 - SSID</label>";
+    body += "<input type=\"text\" name=\"wifi2ssid\" value=\"" + htmlEscape(settings.wifiNetworks[2].ssid) + "\" placeholder=\"e.g., Phone Hotspot\"></div>";
+    body += "<div class=\"form-group\"><label>Password</label>";
+    body += "<input type=\"password\" name=\"wifi2pwd\" value=\"" + (settings.wifiNetworks[2].password.length() > 0 ? String("********") : String("")) + "\" placeholder=\"Password\"></div>";
+    
+    body += "<button type=\"submit\" class=\"btn primary\">Save WiFi Settings</button>";
+    body += "</div></form>";
+    
+    // Manual Time Setting Card
+    body += "<div class=\"card\">";
+    body += "<h2>Manual Time Setting</h2>";
+    body += "<p class=\"muted\">Set time manually if you don't want to connect to WiFi. Your device will use this time.</p>";
+    body += "<button class=\"btn secondary\" onclick=\"setTimeNow()\">Set Time from This Device</button>";
+    body += "</div>";
+    
+    body += R"HTML(
     <script>
         function setTimeNow() {
             const now = Math.floor(Date.now() / 1000);
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/time';
-            
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'timestamp';
             input.value = now;
-            
             form.appendChild(input);
             document.body.appendChild(form);
             form.submit();
         }
     </script>
-</body>
-</html>
 )HTML";
     
-    return html;
+    return wrapWithLayout("Time Settings", body, "/time");
 }
