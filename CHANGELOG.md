@@ -85,13 +85,13 @@ All notable changes to this project will be documented in this file.
 - Architecture notes and usage examples added
 
 **Touch Handler Integration**
-- CST816T touch controller with correct I2C address (0x15)
+- AXS15231B integrated touch controller @ I2C address 0x3B
 - Hardware reset support via GPIO 21
 - 50ms debounce logic
 - Tap-to-mute functionality
 
 **NimBLE Stabilization**
-- Downgraded NimBLE-Arduino 2.3.2 → 2.2.3 for dual-role stability
+- NimBLE-Arduino 2.3.7 for dual-role stability
 - Matched Kenny's scan configuration
 - FreeRTOS task for advertising restart
 

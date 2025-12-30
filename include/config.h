@@ -63,7 +63,7 @@
 #define PACKET_ID_RESP_USER_BYTES  0x12  // respUserBytes
 #define PACKET_ID_WRITE_USER_BYTES 0x13  // reqWriteUserBytes
 
-// Display Layout (pixels in landscape 320x170)
+// Display Layout (pixels in landscape 640x172)
 #define BAND_Y              20
 #define BAND_SPACING        80
 #define ARROW_Y             70

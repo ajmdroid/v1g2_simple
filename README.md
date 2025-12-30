@@ -415,7 +415,7 @@ See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
 
 ### Software Architecture
 
-- **NimBLE 2.2.3**: Stable dual-role BLE (client + server)
+- **NimBLE 2.3.7**: Stable dual-role BLE (client + server)
 - **Arduino_GFX**: Hardware-accelerated display driver
 - **Preferences API**: Persistent settings in flash
 - **FreeRTOS**: Task queue for BLE data handling
