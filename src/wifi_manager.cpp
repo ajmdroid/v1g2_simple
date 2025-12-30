@@ -83,12 +83,41 @@ bool splitCsvFixed(const String& line, String parts[], size_t expected) {
 }
 } // namespace
 
-// Helper to serve files from LittleFS
+// Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
+    // Try compressed version first (only if client accepts gzip)
+    String acceptEncoding = server.header("Accept-Encoding");
+    bool clientAcceptsGzip = acceptEncoding.indexOf("gzip") >= 0;
+    
+    if (clientAcceptsGzip) {
+        String gzPath = String(path) + ".gz";
+        if (LittleFS.exists(gzPath.c_str())) {
+            File file = LittleFS.open(gzPath.c_str(), "r");
+            if (file) {
+                size_t fileSize = file.size();
+                server.setContentLength(fileSize);
+                server.sendHeader("Content-Encoding", "gzip");
+                server.sendHeader("Cache-Control", "max-age=86400");
+                server.send(200, contentType, "");
+                
+                // Stream file content
+                uint8_t buf[1024];
+                while (file.available()) {
+                    size_t len = file.read(buf, sizeof(buf));
+                    server.client().write(buf, len);
+                }
+                file.close();
+                return true;
+            }
+        }
+    }
+    
+    // Fall back to uncompressed
     File file = LittleFS.open(path, "r");
     if (!file) {
         return false;
     }
+    server.sendHeader("Cache-Control", "max-age=86400");
     server.streamFile(file, contentType);
     file.close();
     return true;
@@ -146,6 +175,11 @@ bool WiFiManager::begin() {
     }
     
     setupWebServer();
+    
+    // Collect Accept-Encoding header for GZIP support
+    const char* headerKeys[] = {"Accept-Encoding"};
+    server.collectHeaders(headerKeys, 1);
+    
     server.begin();
     SerialLog.println("Web server started on port 80");
     
@@ -505,6 +539,15 @@ void WiFiManager::setupWebServer() {
     server.on("/api/displaycolors", HTTP_GET, [this]() { handleDisplayColorsApi(); });
     server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
+    server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
+        display.showDemo();
+        server.send(200, "application/json", "{\"success\":true}");
+    });
+    server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
+        SerialLog.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
+        display.showScanning();  // Return to normal scanning state
+        server.send(200, "application/json", "{\"success\":true}");
+    });
     
     // Time settings and serial log API routes
     server.on("/api/timesettings", HTTP_GET, [this]() { handleTimeSettingsApi(); });
@@ -1463,6 +1506,34 @@ void WiFiManager::handleV1SettingsPush() {
 }
 
 void WiFiManager::handleNotFound() {
+    String uri = server.uri();
+    
+    // Try to serve HTML pages from LittleFS (SvelteKit pre-rendered pages)
+    if (uri.endsWith(".html") || uri.indexOf('.') == -1) {
+        String path = uri;
+        if (uri.indexOf('.') == -1) {
+            // No extension - try adding .html
+            path = uri + ".html";
+        }
+        if (serveLittleFSFile(path.c_str(), "text/html")) {
+            return;
+        }
+    }
+    
+    // Try to serve static files (js, css, json, etc.)
+    String contentType = "application/octet-stream";
+    if (uri.endsWith(".js")) contentType = "application/javascript";
+    else if (uri.endsWith(".css")) contentType = "text/css";
+    else if (uri.endsWith(".json")) contentType = "application/json";
+    else if (uri.endsWith(".html")) contentType = "text/html";
+    else if (uri.endsWith(".svg")) contentType = "image/svg+xml";
+    else if (uri.endsWith(".png")) contentType = "image/png";
+    else if (uri.endsWith(".ico")) contentType = "image/x-icon";
+    
+    if (serveLittleFSFile(uri.c_str(), contentType.c_str())) {
+        return;
+    }
+    
     server.send(404, "text/plain", "Not found");
 }
 
@@ -1664,6 +1735,12 @@ void WiFiManager::handleAutoPushPushNow() {
 // ============= Display Colors Handlers =============
 
 void WiFiManager::handleDisplayColorsSave() {
+    SerialLog.println("[HTTP] POST /api/displaycolors");
+    SerialLog.printf("[HTTP] Args count: %d\n", server.args());
+    for (int i = 0; i < server.args(); i++) {
+        SerialLog.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
+    }
+    
     uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
     uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : 0xF800;
     uint16_t arrow = server.hasArg("arrow") ? server.arg("arrow").toInt() : 0xF800;
@@ -1671,6 +1748,8 @@ void WiFiManager::handleDisplayColorsSave() {
     uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : 0xF800;
     uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
     uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
+    
+    SerialLog.printf("[HTTP] Saving colors: bogey=%d freq=%d arrow=%d\n", bogey, freq, arrow);
     
     settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
     
@@ -1692,6 +1771,9 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
     }
     
+    // Trigger immediate display preview to show new colors
+    display.showDemo();
+    
     server.send(200, "application/json", "{\"success\":true}");
 }
 
@@ -1701,6 +1783,10 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
+    
+    // Trigger immediate display preview to show reset colors
+    display.showDemo();
+    
     server.send(200, "application/json", "{\"success\":true}");
 }
 

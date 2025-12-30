@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && bash ../tools/compress_web_assets.sh",
     "preview": "vite preview",
-    "deploy": "vite build && node scripts/deploy.js"
+    "deploy": "vite build && bash ../tools/compress_web_assets.sh && node scripts/deploy.js"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",

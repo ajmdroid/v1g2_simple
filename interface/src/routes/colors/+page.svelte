@@ -90,7 +90,12 @@
 			});
 			
 			if (res.ok) {
-				message = { type: 'success', text: 'Colors saved! Display will update on next alert.' };
+				message = { type: 'success', text: 'Colors saved! Previewing on display...' };
+				// Clear preview after 3 seconds
+				setTimeout(() => {
+					fetch('/api/displaycolors/clear', { method: 'POST' })
+						.catch(() => {}); // Ignore errors
+				}, 3000);
 			} else {
 				message = { type: 'error', text: 'Failed to save colors' };
 			}
@@ -98,6 +103,14 @@
 			message = { type: 'error', text: 'Connection error' };
 		} finally {
 			saving = false;
+		}
+	}
+	
+	async function previewColors() {
+		try {
+			await fetch('/api/displaycolors/preview', { method: 'POST' });
+		} catch (e) {
+			// Silent fail for preview
 		}
 	}
 	
@@ -376,13 +389,16 @@
 					💾 Save Colors
 				{/if}
 			</button>
+			<button class="btn btn-secondary" onclick={previewColors}>
+				👁️ Preview
+			</button>
 			<button class="btn btn-outline" onclick={resetDefaults}>
-				🔄 Reset Defaults
+				🔄 Reset
 			</button>
 		</div>
 		
 		<div class="text-xs text-base-content/40 text-center">
-			Colors use RGB565 format for the display. Changes apply on next alert.
+			Colors use RGB565 format. Save triggers a preview on the display.
 		</div>
 	{/if}
 </div>
