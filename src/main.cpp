@@ -1154,6 +1154,13 @@ void loop() {
             bleClient.requestAlertData();
             lastReq = now;
         }
+        
+        // Periodically refresh indicators (WiFi/battery) even when scanning
+        if (!isConnected) {
+            display.drawWiFiIndicator();
+            display.drawBatteryIndicator();
+            display.flush();  // Push canvas changes to physical display
+        }
     }
     
     // Status update (print to serial)

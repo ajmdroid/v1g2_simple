@@ -252,6 +252,12 @@ bool BatteryManager::hasBattery() const {
         return false;
     }
     
+    // If voltage is above 4.0V and we're supposedly on battery, it's likely
+    // USB power with a floating GPIO16 - a real discharging battery won't stay this high
+    if (onBattery && cachedVoltage > 4000) {
+        return false;  // Likely USB power with floating detection pin
+    }
+    
     // Battery is present if:
     // 1. We're on battery power (GPIO16 HIGH) AND voltage is valid, OR
     // 2. Voltage is in typical battery range (3.2V - 4.3V) on USB power

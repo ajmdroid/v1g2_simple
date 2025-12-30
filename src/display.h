@@ -76,6 +76,9 @@ public:
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
+    
+    // Flush canvas to physical display
+    void flush();
 
 private:
     // Display driver (Arduino_GFX)

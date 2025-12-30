@@ -796,54 +796,57 @@ void V1Display::drawWiFiIndicator() {
     }
     
     // WiFi icon position - above battery icon, bottom left
-    const int wifiX = 12;   // Align with battery left edge
-    const int wifiW = 24;   // Match battery width for alignment
-    const int wifiH = 18;   // Height for WiFi arcs
-    const int wifiY = SCREEN_HEIGHT - 14 - 8 - wifiH - 4;  // Above battery (battH=14, gap=8, extra 4px spacing)
+    // Battery is at Y = SCREEN_HEIGHT - 14 - 8 = SCREEN_HEIGHT - 22
+    // Put WiFi icon above that with some spacing
+    const int wifiX = 14;   // Align with battery left edge
+    const int wifiSize = 20; // Overall icon size
+    const int battY = SCREEN_HEIGHT - 14 - 8;  // Battery Y position
+    const int wifiY = battY - wifiSize - 6;    // Above battery with 6px gap
     
-    // Clear area
-    FILL_RECT(wifiX - 2, wifiY - 2, wifiW + 4, wifiH + 4, PALETTE_BG);
-    
-    // Draw WiFi icon (3 arcs + dot at bottom)
-    // Icon color - cyan/teal for connected
+    // Icon color - cyan for connected
     uint16_t wifiColor = 0x07FF;  // Cyan
     
-    // Center point for arcs (bottom center of icon)
-    int cx = wifiX + wifiW / 2;
-    int cy = wifiY + wifiH - 2;
+    // Clear area first
+    FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
     
-    // Draw small dot at bottom (the "source" point)
-    FILL_RECT(cx - 2, cy - 2, 4, 4, wifiColor);
+    // Center point for arcs (bottom center of icon area)
+    int cx = wifiX + wifiSize / 2;
+    int cy = wifiY + wifiSize - 3;
     
-    // Draw arcs from smallest to largest (3 arcs)
-    // Using simple filled rectangles to approximate arcs since Arduino_GFX 
-    // arc functions can be complex. We'll draw quarter-circle-like shapes.
+    // Draw center dot (the WiFi source point)
+    FILL_RECT(cx - 2, cy - 2, 5, 5, wifiColor);
     
-    // Arc 1 (smallest) - radius ~5
-    for (int i = -4; i <= 4; i++) {
-        int offset = abs(i);
-        int height = 5 - offset;
-        if (height > 0) {
-            FILL_RECT(cx + i, cy - 6 - height, 1, 2, wifiColor);
-        }
+    // Draw 3 concentric arcs above the dot
+    // Arc 1 (inner) - small arc
+    for (int angle = -45; angle <= 45; angle += 15) {
+        float rad = angle * 3.14159 / 180.0;
+        int px = cx + (int)(5 * sin(rad));
+        int py = cy - 5 - (int)(5 * cos(rad));
+        FILL_RECT(px, py, 2, 2, wifiColor);
     }
     
-    // Arc 2 (medium) - radius ~9
-    for (int i = -7; i <= 7; i++) {
-        int offset = abs(i);
-        int height = 7 - offset * 7 / 9;
-        if (height > 0) {
-            FILL_RECT(cx + i, cy - 11 - height, 1, 2, wifiColor);
-        }
+    // Arc 2 (middle)
+    for (int angle = -50; angle <= 50; angle += 12) {
+        float rad = angle * 3.14159 / 180.0;
+        int px = cx + (int)(9 * sin(rad));
+        int py = cy - 5 - (int)(9 * cos(rad));
+        FILL_RECT(px, py, 2, 2, wifiColor);
     }
     
-    // Arc 3 (largest) - radius ~13
-    for (int i = -10; i <= 10; i++) {
-        int offset = abs(i);
-        int height = 9 - offset * 9 / 12;
-        if (height > 0) {
-            FILL_RECT(cx + i, cy - 16 - height, 1, 2, wifiColor);
-        }
+    // Arc 3 (outer)
+    for (int angle = -55; angle <= 55; angle += 10) {
+        float rad = angle * 3.14159 / 180.0;
+        int px = cx + (int)(13 * sin(rad));
+        int py = cy - 5 - (int)(13 * cos(rad));
+        FILL_RECT(px, py, 2, 2, wifiColor);
+    }
+#endif
+}
+
+void V1Display::flush() {
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    if (tft) {
+        tft->flush();
     }
 #endif
 }
@@ -851,11 +854,15 @@ void V1Display::drawWiFiIndicator() {
 void V1Display::showConnecting() {
     drawBaseFrame();
     drawStatusText("Scanning for V1...", PALETTE_TEXT);
+    drawWiFiIndicator();  // Show WiFi status while scanning
+    drawBatteryIndicator();
 }
 
 void V1Display::showConnected() {
     drawBaseFrame();
     drawStatusText("Connected!", PALETTE_K);
+    drawWiFiIndicator();
+    drawBatteryIndicator();
     delay(1000);
     drawBaseFrame();
 }
@@ -863,6 +870,8 @@ void V1Display::showConnected() {
 void V1Display::showDisconnected() {
     drawBaseFrame();
     drawStatusText("Disconnected", PALETTE_KA);
+    drawWiFiIndicator();
+    drawBatteryIndicator();
 }
 
 void V1Display::showResting() {
