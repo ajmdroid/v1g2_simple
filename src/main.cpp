@@ -362,16 +362,16 @@ void processBLEData() {
             continue;
         }
 
-        std::vector<uint8_t> packet(rxBuffer.begin(), rxBuffer.begin() + packetSize);
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
-
+        // Parse directly from rxBuffer - no heap allocation
+        const uint8_t* packetPtr = rxBuffer.data();
+        
         lastRxMillis = millis();
 
         // Check for user bytes response (0x12) - V1 settings pull
-        if (packet.size() >= 12 && packet[3] == PACKET_ID_RESP_USER_BYTES) {
+        if (packetSize >= 12 && packetPtr[3] == PACKET_ID_RESP_USER_BYTES) {
             // Payload starts at byte 5, length is 6 bytes
             uint8_t userBytes[6];
-            memcpy(userBytes, &packet[5], 6);
+            memcpy(userBytes, &packetPtr[5], 6);
             SerialLog.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
                 userBytes[0], userBytes[1], userBytes[2], userBytes[3], userBytes[4], userBytes[5]);
             SerialLog.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
@@ -379,10 +379,11 @@ void processBLEData() {
                 (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
             v1ProfileManager.setCurrentSettings(userBytes);
             SerialLog.println("Received V1 user bytes!");
+            rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
             continue;  // Don't pass to parser
         }
 
-        if (parser.parse(packet.data(), packet.size())) {
+        if (parser.parse(packetPtr, packetSize)) {
             DisplayState state = parser.getDisplayState();
 
             // Cache alert status to avoid repeated calls
@@ -589,6 +590,9 @@ void processBLEData() {
                 alertDB.logClear();  // SQLite logging
             }
         }
+        
+        // Remove processed packet from buffer
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
     }
 }
 
