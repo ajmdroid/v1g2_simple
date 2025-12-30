@@ -1,0 +1,31 @@
+name: PlatformIO build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'release/**'
+  pull_request:
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PlatformIO
+        uses: platformio/action@v2
+        with:
+          platformio-version: latest
+
+      - name: Build waveshare-349
+        run: pio run -e waveshare-349
+
+      - name: Run PlatformIO check
+        run: scripts/pio-check.sh
+
+      - name: Print size report
+        run: scripts/pio-size.sh
