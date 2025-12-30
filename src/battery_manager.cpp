@@ -187,10 +187,19 @@ bool BatteryManager::initTCA9554() {
     }
     
     // CRITICAL: Set output HIGH FIRST before configuring as output
-    // This prevents a LOW glitch that would cut power
+    // Preserve other output states by read-modify-write
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
     tca9554Wire.write(TCA9554_OUTPUT_PORT);
-    tca9554Wire.write(0x40);  // Pin 6 HIGH (bit 6 = 1), all others LOW
+    tca9554Wire.endTransmission(false);
+    tca9554Wire.requestFrom(TCA9554_I2C_ADDR, (uint8_t)1);
+    uint8_t current = 0;
+    if (tca9554Wire.available() >= 1) {
+        current = tca9554Wire.read();
+    }
+    current |= (1 << TCA9554_PWR_LATCH_PIN);  // Ensure latch pin HIGH
+    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+    tca9554Wire.write(TCA9554_OUTPUT_PORT);
+    tca9554Wire.write(current);
     error = tca9554Wire.endTransmission();
     
     if (error != 0) {
@@ -324,6 +333,25 @@ void BatteryManager::update() {
     }
     
     unsigned long now = millis();
+
+    // Refresh power source detection periodically to handle USB/battery swaps
+    // Skip while the power button is held (GPIO16 LOW) to avoid misclassifying as USB
+    static unsigned long lastPowerCheckMs = 0;
+    if (now - lastPowerCheckMs >= 1000 && !isPowerButtonPressed()) {
+        const int samples = 5;
+        int highCount = 0;
+        for (int i = 0; i < samples; i++) {
+            if (digitalRead(PWR_BUTTON_GPIO) == HIGH) {
+                highCount++;
+            }
+        }
+        bool detectedBattery = (highCount > samples / 2);
+        if (detectedBattery != onBattery) {
+            onBattery = detectedBattery;
+            Serial.printf("[Battery] Power source changed: %s\n", onBattery ? "BATTERY" : "USB");
+        }
+        lastPowerCheckMs = now;
+    }
     
     // Update cached values at 1Hz
     if (now - lastUpdateMs >= 1000) {
