@@ -55,7 +55,7 @@
 	<!-- Footer -->
 	<footer class="footer footer-center p-4 bg-base-200 text-base-content mt-8">
 		<aside>
-			<p>V1 Gen2 Display • <a href="https://github.com/kennygarreau/v1g2-t4s3" class="link link-primary">GitHub</a></p>
+			<p>V1 Gen2 Display • <a href="https://github.com/ajmdroid/v1g2_simple" class="link link-primary">GitHub</a></p>
 		</aside>
 	</footer>
 </div>
