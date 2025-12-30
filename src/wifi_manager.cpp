@@ -40,6 +40,30 @@ static String htmlEscape(const String& input) {
     return output;
 }
 
+// JSON string escaping
+static String jsonEscape(const String& input) {
+    String output;
+    output.reserve(input.length() + 10);
+    for (size_t i = 0; i < input.length(); i++) {
+        char c = input.charAt(i);
+        switch (c) {
+            case '"':  output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\n': output += "\\n";  break;
+            case '\r': output += "\\r";  break;
+            case '\t': output += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    // Skip other control characters
+                } else {
+                    output += c;
+                }
+                break;
+        }
+    }
+    return output;
+}
+
 // CSV split helper for fixed column count
 namespace {
 bool splitCsvFixed(const String& line, String parts[], size_t expected) {
@@ -748,24 +772,24 @@ void WiFiManager::handleLogsData() {
 
         // Stream one object per row.
         // Emit BOTH new keys (ts, dir) and legacy keys (ms, direction).
-        // Handle empty numeric fields by defaulting to 0
+        // Handle empty numeric fields by defaulting to 0, escape strings for JSON safety
         String obj;
-        obj.reserve(220);
+        obj.reserve(250);
         obj += "{\"ts\":";
         obj += cols[0].length() > 0 ? cols[0] : "0";
         obj += ",\"ms\":";
         obj += cols[0].length() > 0 ? cols[0] : "0";
         obj += ",\"utc\":0";
         obj += ",\"event\":\"";
-        obj += cols[1];
+        obj += jsonEscape(cols[1]);
         obj += "\",\"band\":\"";
-        obj += cols[2];
+        obj += jsonEscape(cols[2]);
         obj += "\",\"freq\":";
         obj += cols[3].length() > 0 ? cols[3] : "0";
         obj += ",\"dir\":\"";
-        obj += cols[4];
+        obj += jsonEscape(cols[4]);
         obj += "\",\"direction\":\"";
-        obj += cols[4];
+        obj += jsonEscape(cols[4]);
         obj += "\",\"front\":";
         obj += cols[5].length() > 0 ? cols[5] : "0";
         obj += ",\"rear\":";
