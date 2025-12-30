@@ -735,8 +735,8 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
-    // Only show battery icon when on battery power
-    if (!batteryManager.isOnBattery()) {
+    // Only show battery icon when battery is present
+    if (!batteryManager.hasBattery()) {
         return;
     }
     

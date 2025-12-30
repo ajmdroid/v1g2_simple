@@ -40,6 +40,9 @@ public:
     // Check if running on battery power
     bool isOnBattery() const;
     
+    // Check if a battery is present (detects battery even when on USB power)
+    bool hasBattery() const;
+    
     // Update cached battery readings (call in loop, updates at 1Hz)
     void update();
     

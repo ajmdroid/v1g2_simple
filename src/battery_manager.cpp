@@ -235,8 +235,14 @@ bool BatteryManager::isOnBattery() const {
     return onBattery;
 }
 
+bool BatteryManager::hasBattery() const {
+    // Battery is present if voltage is in reasonable range (3.0V - 4.5V)
+    // This works even when on USB power with battery connected
+    return cachedVoltage >= 3000 && cachedVoltage <= 4500;
+}
+
 void BatteryManager::update() {
-    if (!initialized || !onBattery) {
+    if (!initialized) {
         return;
     }
     
@@ -339,6 +345,7 @@ BatteryManager batteryManager;
 BatteryManager::BatteryManager() : initialized(false), onBattery(false), lastVoltage(0), cachedVoltage(0), cachedPercent(0), lastUpdateMs(0) {}
 bool BatteryManager::begin() { return false; }
 bool BatteryManager::isOnBattery() const { return false; }
+bool BatteryManager::hasBattery() const { return false; }
 void BatteryManager::update() {}
 uint16_t BatteryManager::getVoltageMillivolts() const { return 0; }
 uint8_t BatteryManager::getPercentage() const { return 0; }
