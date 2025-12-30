@@ -126,7 +126,27 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false) {
+WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false), rateLimitWindowStart(0), rateLimitRequestCount(0) {
+}
+
+// Rate limiting: returns true if request is allowed, false if rate limited
+bool WiFiManager::checkRateLimit() {
+    unsigned long now = millis();
+    
+    // Reset window if expired
+    if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
+        rateLimitWindowStart = now;
+        rateLimitRequestCount = 0;
+    }
+    
+    rateLimitRequestCount++;
+    
+    if (rateLimitRequestCount > RATE_LIMIT_MAX_REQUESTS) {
+        server.send(429, "text/plain", "Too Many Requests");
+        return false;
+    }
+    
+    return true;
 }
 
 bool WiFiManager::begin() {
@@ -653,6 +673,8 @@ void WiFiManager::handleSettingsApi() {
 }
 
 void WiFiManager::handleSettingsSave() {
+    if (!checkRateLimit()) return;
+    
     SerialLog.println("=== handleSettingsSave() called ===");
     
     // Track if WiFi settings changed (these require restart)
@@ -961,6 +983,8 @@ void WiFiManager::handleLogsData() {
 }
 
 void WiFiManager::handleLogsClear() {
+    if (!checkRateLimit()) return;
+    
     if (!alertLogger.isReady()) {
         server.send(503, "application/json", "{\"error\":\"SD card not mounted\"}");
         return;
@@ -995,6 +1019,8 @@ void WiFiManager::handleSerialLog() {
 }
 
 void WiFiManager::handleSerialLogClear() {
+    if (!checkRateLimit()) return;
+    
     if (!SerialLog.isEnabled()) {
         server.send(503, "application/json", "{\"error\":\"Serial logging not enabled\"}");
         return;

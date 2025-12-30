@@ -60,6 +60,13 @@ private:
     bool timeInitialized;
     String connectedSSID;
     
+    // Rate limiting
+    static constexpr int RATE_LIMIT_WINDOW_MS = 1000;  // 1 second window
+    static constexpr int RATE_LIMIT_MAX_REQUESTS = 20; // Max requests per window
+    unsigned long rateLimitWindowStart;
+    int rateLimitRequestCount;
+    bool checkRateLimit();  // Returns true if request allowed, false if rate limited
+    
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
