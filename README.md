@@ -143,13 +143,17 @@ For quick checks and sizing reports, see [`docs/BUILD.md`](docs/BUILD.md). The h
 
 **"No device found" or "Permission denied":**
 
+> **Note:** The Waveshare ESP32-S3 board uses native USB (built into the ESP32-S3 chip), so no external USB-to-serial driver is typically needed. However, some systems may require configuration.
+
 **Windows:**
-- Install [CH340 USB drivers](https://www.wch-ic.com/downloads/CH341SER_EXE.html)
-- Check Device Manager to see if the device shows up
+- The device should appear automatically as a COM port
+- If not detected, check Device Manager for "USB Serial Device"
+- Try installing [ESP32-S3 USB drivers](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/establish-serial-connection.html) if needed
 
 **Mac:**
-- Install [CH340 drivers for macOS](https://github.com/adrianmihalko/ch340g-ch34g-ch34x-mac-os-x-driver)
-- May need to approve in System Preferences → Security & Privacy
+- Usually works out of the box with macOS 10.15+
+- Device appears as `/dev/cu.usbmodem*`
+- If not detected, try a different USB port or cable
 
 **Linux:**
 - Add yourself to the dialout group:
@@ -415,7 +419,7 @@ See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
 
 ### Software Architecture
 
-- **NimBLE 2.2.3**: Stable dual-role BLE (client + server)
+- **NimBLE 2.3.7**: Stable dual-role BLE (client + server)
 - **Arduino_GFX**: Hardware-accelerated display driver
 - **Preferences API**: Persistent settings in flash
 - **FreeRTOS**: Task queue for BLE data handling

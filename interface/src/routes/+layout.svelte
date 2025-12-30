@@ -5,15 +5,15 @@
 
 <div class="min-h-screen bg-base-100">
 	<!-- Navigation -->
-	<div class="navbar bg-base-200 shadow-lg">
+	<nav class="navbar bg-base-200 shadow-lg" aria-label="Main navigation">
 		<div class="navbar-start">
 			<div class="dropdown">
-			<div role="button" class="btn btn-ghost lg:hidden">
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<button type="button" aria-label="Open navigation menu" aria-expanded="false" class="btn btn-ghost lg:hidden">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
 				</svg>
-			</div>
-			<ul class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52">
+			</button>
+			<ul class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52" role="menu">
 					<li><a href="/">Dashboard</a></li>
 					<li><a href="/autopush">Auto-Push</a></li>
 					<li><a href="/profiles">V1 Profiles</a></li>
@@ -42,10 +42,10 @@
 		</div>
 		<div class="navbar-end">
 			<div class="badge badge-outline badge-sm" id="connection-status">
-				<span class="loading loading-dots loading-xs"></span>
+				<span class="loading loading-dots loading-xs" aria-label="Checking connection"></span>
 			</div>
 		</div>
-	</div>
+	</nav>
 
 	<!-- Main Content -->
 	<main class="container mx-auto p-4 max-w-4xl">

@@ -126,7 +126,27 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false) {
+WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false), rateLimitWindowStart(0), rateLimitRequestCount(0) {
+}
+
+// Rate limiting: returns true if request is allowed, false if rate limited
+bool WiFiManager::checkRateLimit() {
+    unsigned long now = millis();
+    
+    // Reset window if expired
+    if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
+        rateLimitWindowStart = now;
+        rateLimitRequestCount = 0;
+    }
+    
+    rateLimitRequestCount++;
+    
+    if (rateLimitRequestCount > RATE_LIMIT_MAX_REQUESTS) {
+        server.send(429, "text/plain", "Too Many Requests");
+        return false;
+    }
+    
+    return true;
 }
 
 bool WiFiManager::begin() {
@@ -440,6 +460,7 @@ void WiFiManager::setupWebServer() {
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
     server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });  // API version for new UI
     server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
+    server.on("/api/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Consistent API endpoint
     server.on("/api/alerts", HTTP_GET, [this]() { handleLogsData(); });  // Alias for new UI
     server.on("/api/alerts/clear", HTTP_POST, [this]() { handleLogsClear(); });  // Alias for new UI
     
@@ -448,12 +469,14 @@ void WiFiManager::setupWebServer() {
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });
+    server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Legacy compat
     server.on("/time", HTTP_GET, [this]() { 
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });
+    server.on("/api/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });  // Consistent API endpoint
+    server.on("/api/timesettings", HTTP_GET, [this]() { handleTimeSettingsApi(); });  // Already exists for GET
     server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
     server.on("/mute", HTTP_POST, [this]() { handleMute(); });
     server.on("/logs", HTTP_GET, [this]() { 
@@ -469,7 +492,9 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/serial_log.txt", HTTP_GET, [this]() { handleSerialLog(); });
-    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });
+    server.on("/api/seriallog", HTTP_GET, [this]() { handleSerialLog(); });  // Consistent API endpoint
+    server.on("/api/seriallog/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Consistent naming
+    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Legacy compat
 
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
@@ -648,6 +673,8 @@ void WiFiManager::handleSettingsApi() {
 }
 
 void WiFiManager::handleSettingsSave() {
+    if (!checkRateLimit()) return;
+    
     SerialLog.println("=== handleSettingsSave() called ===");
     
     // Track if WiFi settings changed (these require restart)
@@ -956,6 +983,8 @@ void WiFiManager::handleLogsData() {
 }
 
 void WiFiManager::handleLogsClear() {
+    if (!checkRateLimit()) return;
+    
     if (!alertLogger.isReady()) {
         server.send(503, "application/json", "{\"error\":\"SD card not mounted\"}");
         return;
@@ -990,6 +1019,8 @@ void WiFiManager::handleSerialLog() {
 }
 
 void WiFiManager::handleSerialLogClear() {
+    if (!checkRateLimit()) return;
+    
     if (!SerialLog.isEnabled()) {
         server.send(503, "application/json", "{\"error\":\"Serial logging not enabled\"}");
         return;

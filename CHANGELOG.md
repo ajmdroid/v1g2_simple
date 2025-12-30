@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
   - Hide WiFi Icon: shows briefly on connect, then clears
   - Hide Profile Indicator: shows on profile change, then clears
 - README note about `uploadfs` for web UI changes
+- API rate limiting (20 req/sec) to prevent DoS
+- ARIA accessibility labels and aria-live regions for screen readers
+- HTML title tag for browser tab display
+- Node.js engines field (>=18.0.0) in package.json
 
 ### Changed
 - Direction arrows scaled up ~22% with shallower angles to match V1
@@ -21,10 +25,30 @@ All notable changes to this project will be documented in this file.
 - Web UI GitHub link updated to this repo
 - Bogey counter scaled to match frequency counter size (2.2x)
 - Signal bars: larger (56x14px), repositioned for better spacing
+- Display throttle reduced from 100ms to 33ms (~30fps)
+- Main loop delay reduced from 10ms to 5ms
+- All PlatformIO library versions pinned for reproducible builds
+- Standardized web API endpoints to /api/ prefix
+- Replaced $effect() with onMount() in Svelte pages (best practice)
 
 ### Fixed
+- **Display lag (~3 seconds)**: Packets weren't being erased from buffer when display was throttled, causing stale packets to re-parse repeatedly
 - Band label pixelation (was using scaled 10pt, now native 24pt)
 - Profile indicator purple line artifact (fixed clear width)
+- USB driver documentation (ESP32-S3 uses native USB, not CH340/CP210x)
+- NimBLE version in docs (2.2.3 → 2.3.7)
+- Touch controller docs (CST816T → AXS15231B @ 0x3B)
+- Config.h display comment (320x170 → 640x172)
+
+### Documentation
+- Added include guards to FreeSansBold24pt7b.h
+- Added deprecation comment to legacy color defines in config.h
+- Added font generation instructions to FreeSansBold24pt7b.h
+- Documented password storage XOR obfuscation trade-offs
+- Documented SQL query safety in alert_db.cpp
+
+### Removed
+- Dead code: unused sendCommand() in dashboard, empty $effect() blocks
 
 ### Notes
 - Still investigating: radar mute flicker with JBV1 auto-mute
@@ -85,13 +109,13 @@ All notable changes to this project will be documented in this file.
 - Architecture notes and usage examples added
 
 **Touch Handler Integration**
-- CST816T touch controller with correct I2C address (0x15)
+- AXS15231B integrated touch controller @ I2C address 0x3B
 - Hardware reset support via GPIO 21
 - 50ms debounce logic
 - Tap-to-mute functionality
 
 **NimBLE Stabilization**
-- Downgraded NimBLE-Arduino 2.3.2 → 2.2.3 for dual-role stability
+- NimBLE-Arduino 2.3.7 for dual-role stability
 - Matched Kenny's scan configuration
 - FreeRTOS task for advertising restart
 

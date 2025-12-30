@@ -1,3 +1,20 @@
+/**
+ * FreeSansBold24pt7b Font for GFX Library
+ * 
+ * This font is used for band labels (X, K, Ka, Laser) on the display.
+ * Generated using Adafruit's fontconvert tool from FreeSans-Bold.ttf
+ * 
+ * To regenerate or create similar fonts:
+ * 1. Install fontconvert from Adafruit GFX Library
+ * 2. Run: fontconvert FreeSans-Bold.ttf 24 > FreeSansBold24pt7b.h
+ * 3. Add include guards as shown below
+ * 
+ * @see https://github.com/adafruit/Adafruit-GFX-Library/tree/master/fontconvert
+ */
+
+#ifndef FREESANSBOLD24PT7B_H
+#define FREESANSBOLD24PT7B_H
+
 const uint8_t FreeSansBold24pt7bBitmaps[] PROGMEM = {
   0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
   0xFF, 0xDF, 0x3E, 0x7C, 0xF9, 0xF3, 0xE7, 0xC7, 0x0E, 0x1C, 0x00, 0x00,
@@ -782,3 +799,5 @@ const GFXfont FreeSansBold24pt7b PROGMEM = {
   0x20, 0x7E, 56 };
 
 // Approx. 8816 bytes
+
+#endif // FREESANSBOLD24PT7B_H

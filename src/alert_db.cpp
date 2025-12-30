@@ -222,7 +222,10 @@ bool AlertDB::logAlert(const AlertData& alert, const DisplayState& state, size_t
     // Determine event type
     const char* event = lastAlert.active ? "ALERT" : "CLEAR";
     
-    // Build SQL
+    // Note: Using snprintf here is safe because all string values come from
+    // internal functions (bandToString, dirToString) that return fixed strings.
+    // No user input reaches this code path. Prepared statements would add
+    // complexity without meaningful security benefit in this embedded context.
     char sql[512];
     snprintf(sql, sizeof(sql),
         "INSERT INTO alerts (timestamp_ms, timestamp_utc, session_id, band, frequency, "

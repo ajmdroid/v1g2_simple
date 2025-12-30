@@ -1,4 +1,6 @@
 <script>
+  import { onMount } from 'svelte';
+  
   let sdReady = $state(false);
   let logEnabled = $state(false);
   let logSize = $state('0 B');
@@ -104,7 +106,7 @@
     window.location.href = '/serial_log.txt';
   }
 
-  $effect(() => {
+  onMount(() => {
     loadStatus();
   });
 </script>
@@ -114,7 +116,7 @@
   <p class="text-base-content/60">Debug output saved to SD card</p>
 
   {#if message}
-    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}">
+    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}" role="status" aria-live="polite">
       {message}
     </div>
   {/if}

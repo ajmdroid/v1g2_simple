@@ -1,5 +1,16 @@
 /**
  * Settings storage implementation
+ * 
+ * SECURITY NOTE: WiFi passwords are stored with XOR obfuscation, NOT encryption.
+ * This is intentional - it prevents casual viewing in hex dumps but is NOT secure
+ * against a determined attacker with physical access to the device.
+ * 
+ * For this use case (a car accessory on a private network), the trade-off is:
+ * - Pro: Simple, no crypto library overhead, recoverable if key changes
+ * - Con: Not suitable for high-security applications
+ * 
+ * If stronger security is needed, consider ESP32 NVS encryption (requires flash
+ * encryption key management) or storing a hash instead of the actual password.
  */
 
 #include "settings.h"
@@ -8,7 +19,8 @@
 // Global instance
 SettingsManager settingsManager;
 
-// Simple XOR obfuscation key (not cryptographically secure, but deters casual reading)
+// XOR obfuscation key - deters casual reading but NOT cryptographically secure
+// See security note above for rationale
 static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
 static const int SETTINGS_VERSION = 2;  // Increment when changing password encoding
 

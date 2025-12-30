@@ -160,9 +160,9 @@
 	</div>
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}">
+		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
-			<button class="btn btn-ghost btn-xs" onclick={() => message = null}>✕</button>
+			<button class="btn btn-ghost btn-xs" onclick={() => message = null} aria-label="Dismiss message">✕</button>
 		</div>
 	{/if}
 	
@@ -183,6 +183,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="Bogey counter color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bogey)}
 								onchange={(e) => updateColor('bogey', e.target.value)}
@@ -200,6 +201,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="Frequency display color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.freq)}
 								onchange={(e) => updateColor('freq', e.target.value)}
@@ -226,6 +228,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="Laser band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bandL)}
 								onchange={(e) => updateColor('bandL', e.target.value)}
@@ -243,6 +246,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="Ka band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bandKa)}
 								onchange={(e) => updateColor('bandKa', e.target.value)}
@@ -260,6 +264,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="K band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bandK)}
 								onchange={(e) => updateColor('bandK', e.target.value)}
@@ -277,6 +282,7 @@
 						<div class="flex items-center gap-3">
 							<input 
 								type="color" 
+								aria-label="X band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bandX)}
 								onchange={(e) => updateColor('bandX', e.target.value)}
@@ -302,6 +308,7 @@
 					<div class="flex items-center gap-3">
 						<input 
 							type="color" 
+							aria-label="Direction arrow color"
 							class="w-12 h-10 cursor-pointer rounded border-0"
 							value={rgb565ToHex(colors.arrow)}
 							onchange={(e) => updateColor('arrow', e.target.value)}
@@ -326,6 +333,7 @@
 					<div class="flex items-center gap-3">
 						<input 
 							type="color" 
+							aria-label="WiFi icon color"
 							class="w-12 h-10 cursor-pointer rounded border-0"
 							value={rgb565ToHex(colors.wifiIcon)}
 							onchange={(e) => updateColor('wifiIcon', e.target.value)}
@@ -386,6 +394,7 @@
 							<div class="flex flex-col items-center gap-1">
 								<input 
 									type="color" 
+									aria-label="Signal bar {barNum} color"
 									class="w-10 h-8 cursor-pointer rounded border-0"
 									value={rgb565ToHex(colors[`bar${barNum}`])}
 									onchange={(e) => updateColor(`bar${barNum}`, e.target.value)}

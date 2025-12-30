@@ -61,10 +61,6 @@
 		return date.toLocaleDateString();
 	}
 	
-	$effect(() => {
-		// Reactive filtered list
-	});
-	
 	let filteredAlerts = $derived(
 		filter === 'all' ? alerts : alerts.filter(a => a.band === filter)
 	);
@@ -107,7 +103,7 @@
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else if error}
-		<div class="alert alert-error">
+		<div class="alert alert-error" role="alert" aria-live="assertive">
 			<span>{error}</span>
 		</div>
 	{:else if filteredAlerts.length === 0}
