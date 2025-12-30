@@ -73,6 +73,9 @@ public:
     
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
+    
+    // WiFi indicator (shows when connected to STA network)
+    void drawWiFiIndicator();
 
 private:
     // Display driver (Arduino_GFX)

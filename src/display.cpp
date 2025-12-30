@@ -10,6 +10,7 @@
 #include "rdf_logo.h"  // RDF splash screen (only logo actually used)
 #include "settings.h"
 #include "battery_manager.h"
+#include "wifi_manager.h"
 #include <esp_heap_caps.h>
 
 // Helper macro to handle pointer vs object access for tft
@@ -722,6 +723,9 @@ void V1Display::drawProfileIndicator(int slot) {
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_drawString(tft, name, x, y);
     
+    // Draw WiFi indicator (if connected to STA network)
+    drawWiFiIndicator();
+    
     // Draw battery indicator after profile name (if on battery)
     drawBatteryIndicator();
 }
@@ -777,6 +781,68 @@ void V1Display::drawBatteryIndicator() {
         
         if (i < filledSections) {
             FILL_RECT(sx, sy, sectionW, sh, fillColor);
+        }
+    }
+#endif
+}
+
+void V1Display::drawWiFiIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    extern WiFiManager wifiManager;
+    
+    // Only show WiFi icon when connected to a STA network (internet/NTP)
+    if (!wifiManager.isConnected()) {
+        return;
+    }
+    
+    // WiFi icon position - above battery icon, bottom left
+    const int wifiX = 12;   // Align with battery left edge
+    const int wifiW = 24;   // Match battery width for alignment
+    const int wifiH = 18;   // Height for WiFi arcs
+    const int wifiY = SCREEN_HEIGHT - 14 - 8 - wifiH - 4;  // Above battery (battH=14, gap=8, extra 4px spacing)
+    
+    // Clear area
+    FILL_RECT(wifiX - 2, wifiY - 2, wifiW + 4, wifiH + 4, PALETTE_BG);
+    
+    // Draw WiFi icon (3 arcs + dot at bottom)
+    // Icon color - cyan/teal for connected
+    uint16_t wifiColor = 0x07FF;  // Cyan
+    
+    // Center point for arcs (bottom center of icon)
+    int cx = wifiX + wifiW / 2;
+    int cy = wifiY + wifiH - 2;
+    
+    // Draw small dot at bottom (the "source" point)
+    FILL_RECT(cx - 2, cy - 2, 4, 4, wifiColor);
+    
+    // Draw arcs from smallest to largest (3 arcs)
+    // Using simple filled rectangles to approximate arcs since Arduino_GFX 
+    // arc functions can be complex. We'll draw quarter-circle-like shapes.
+    
+    // Arc 1 (smallest) - radius ~5
+    for (int i = -4; i <= 4; i++) {
+        int offset = abs(i);
+        int height = 5 - offset;
+        if (height > 0) {
+            FILL_RECT(cx + i, cy - 6 - height, 1, 2, wifiColor);
+        }
+    }
+    
+    // Arc 2 (medium) - radius ~9
+    for (int i = -7; i <= 7; i++) {
+        int offset = abs(i);
+        int height = 7 - offset * 7 / 9;
+        if (height > 0) {
+            FILL_RECT(cx + i, cy - 11 - height, 1, 2, wifiColor);
+        }
+    }
+    
+    // Arc 3 (largest) - radius ~13
+    for (int i = -10; i <= 10; i++) {
+        int offset = abs(i);
+        int height = 9 - offset * 9 / 12;
+        if (height > 0) {
+            FILL_RECT(cx + i, cy - 16 - height, 1, 2, wifiColor);
         }
     }
 #endif
