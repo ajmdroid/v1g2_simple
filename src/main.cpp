@@ -760,12 +760,6 @@ void setup() {
     
     // DEBUG: Simulate battery for testing UI (uncomment to test)
     // batteryManager.simulateBattery(3800);  // 60% battery
-    
-    if (batteryManager.isOnBattery()) {
-        Serial.printf("[Battery] Voltage: %dmV (%d%%)\n", 
-                      batteryManager.getVoltageMillivolts(), 
-                      batteryManager.getPercentage());
-    }
 #endif
     
     // Initialize display
@@ -773,6 +767,19 @@ void setup() {
         SerialLog.println("Display initialization failed!");
         while (1) delay(1000);
     }
+    
+    // Display battery status after display is initialized
+#if defined(DISPLAY_WAVESHARE_349)
+    SerialLog.printf("[Battery] Power source: %s\n", 
+                     batteryManager.isOnBattery() ? "BATTERY" : "USB");
+    SerialLog.printf("[Battery] Icon display: %s\n",
+                     batteryManager.hasBattery() ? "YES" : "NO");
+    if (batteryManager.hasBattery()) {
+        SerialLog.printf("[Battery] Voltage: %dmV (%d%%)\n", 
+                      batteryManager.getVoltageMillivolts(), 
+                      batteryManager.getPercentage());
+    }
+#endif
 
     // Brief delay to ensure panel is fully cleared before enabling backlight
     delay(100);
@@ -994,6 +1001,17 @@ void loop() {
     // Check for critical battery - auto shutdown to prevent damage
     static bool lowBatteryWarningShown = false;
     static unsigned long criticalBatteryTime = 0;
+    static unsigned long lastBatteryDebug = 0;
+    
+    // Debug battery detection every 10 seconds
+    if (millis() - lastBatteryDebug > 10000) {
+        SerialLog.printf("[Battery Debug] isOnBattery=%d, hasBattery=%d, voltage=%dmV, GPIO16=%d\n",
+                         batteryManager.isOnBattery(),
+                         batteryManager.hasBattery(),
+                         batteryManager.getVoltageMillivolts(),
+                         digitalRead(PWR_BUTTON_GPIO));
+        lastBatteryDebug = millis();
+    }
     
     if (batteryManager.isOnBattery() && batteryManager.hasBattery()) {
         if (batteryManager.isCritical()) {

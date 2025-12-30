@@ -285,22 +285,19 @@ bool BatteryManager::hasBattery() const {
         return false;
     }
     
+    // Only show battery icon when actually running on battery power
+    // When on USB, we don't show the battery icon even if physically present
+    if (!onBattery) {
+        return false;
+    }
+    
     // Verify with actual voltage - if below minimum, no real battery
     // This catches cases where GPIO16 floats HIGH but no battery is connected
     if (cachedVoltage < BATTERY_EMPTY_MV) {
         return false;
     }
     
-    // Battery is present if:
-    // 1. We're on battery power (GPIO16 HIGH) AND voltage is valid, OR
-    // 2. Voltage is in typical battery range (3.2V - 4.3V) on USB power
-    if (onBattery) {
-        return true;  // GPIO16 detection confirmed voltage is valid
-    }
-    
-    // On USB power: only show battery if voltage looks like a real battery
-    // Not USB leakage (>4.3V) or floating/zero (<3.2V)
-    return cachedVoltage <= BATTERY_FULL_MV;
+    return true;
 }
 
 void BatteryManager::simulateBattery(uint16_t voltageMV) {
