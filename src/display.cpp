@@ -1309,24 +1309,23 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     cx -= 6;
 #endif
     
-    // Top arrow: proportions from reference SVG (130x100, ratio 1.3:1)
-    // SVG notch: 62px wide (47.7%), 10px tall (10%)
-    const int topW = 100;
-    const int topH = 70;      // Reduced height for less steep angle
-    const int topNotchW = 48;  // 47.7% of width
-    const int topNotchH = 8;   // 10% of height
+    // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
+    // Wider/shallower angle to match V1 reference
+    const int topW = 125;      // Width at base - wider for shallower angle
+    const int topH = 62;       // Height - shorter for less pointy look
+    const int topNotchW = 63;  // Notch width at bottom
+    const int topNotchH = 8;   // Notch height
 
-    // Bottom arrow: proportions from reference SVG (130x60, ratio 2.17:1)
-    // SVG notch: 62px wide (47.7%), 9px tall (15%)
-    const int bottomW = 100;
-    const int bottomH = 36;   // Reduced height
-    const int bottomNotchW = 48;  // 47.7% of width
-    const int bottomNotchH = 7;   // 15% of height
+    // Bottom arrow (REAR): Shorter/squatter triangle pointing down
+    const int bottomW = 125;   // Same width as top - wider
+    const int bottomH = 40;    // Shorter height - flatter arrow
+    const int bottomNotchW = 63;  // Same notch width
+    const int bottomNotchH = 8;   // Notch height
 
     // Calculate positions for equal gaps between arrows
-    // Side arrow bar is 20px tall, centered at cy
-    const int sideBarH = 20;
-    const int gap = 8;  // gap between arrows
+    // Side arrow bar is 22px tall, centered at cy (scaled up from 18)
+    const int sideBarH = 22;
+    const int gap = 13;  // gap between arrows (more visible separation)
     
     // Top arrow center: above side arrow with gap
     int topArrowCenterY = cy - sideBarH/2 - gap - topH/2;
@@ -1346,34 +1345,67 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
 
     auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH) {
         uint16_t fillCol = active ? onCol : offCol;
+        uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
+        
         // Triangle points
-        int ax = cx;
-        int ay = centerY + (down ? triH / 2 : -triH / 2);
-        int bx = cx - triW / 2;
-        int by = centerY + (down ? -triH / 2 : triH / 2);
-        int cxp = cx + triW / 2;
-        int cyp = by;
+        int tipX = cx;
+        int tipY = centerY + (down ? triH / 2 : -triH / 2);
+        int baseLeftX = cx - triW / 2;
+        int baseRightX = cx + triW / 2;
+        int baseY = centerY + (down ? -triH / 2 : triH / 2);
 
-        // Always fill - active gets bright color, inactive gets dark grey fill
-        FILL_TRIANGLE(ax, ay, bx, by, cxp, cyp, fillCol);
+        // Fill the main triangle
+        FILL_TRIANGLE(tipX, tipY, baseLeftX, baseY, baseRightX, baseY, fillCol);
 
-        // Base notch to mirror the printed legend - always filled
-        int notchY = down ? (centerY - triH / 2 - notchH / 2) : (centerY + triH / 2 - notchH / 2);
-        FILL_ROUND_RECT(cx - notchW / 2, notchY, notchW, notchH, 3, fillCol);
+        // Notch cutout at the base (opposite of tip)
+        int notchY = down ? (baseY - notchH) : baseY;
+        FILL_RECT(cx - notchW / 2, notchY, notchW, notchH, fillCol);
+        
+        // Draw outline - triangle edges
+        DRAW_LINE(tipX, tipY, baseLeftX, baseY, outlineCol);
+        DRAW_LINE(tipX, tipY, baseRightX, baseY, outlineCol);
+        // Base line with notch gap
+        DRAW_LINE(baseLeftX, baseY, cx - notchW/2, baseY, outlineCol);
+        DRAW_LINE(cx + notchW/2, baseY, baseRightX, baseY, outlineCol);
+        // Notch outline
+        if (down) {
+            DRAW_LINE(cx - notchW/2, baseY, cx - notchW/2, baseY - notchH, outlineCol);
+            DRAW_LINE(cx - notchW/2, baseY - notchH, cx + notchW/2, baseY - notchH, outlineCol);
+            DRAW_LINE(cx + notchW/2, baseY - notchH, cx + notchW/2, baseY, outlineCol);
+        } else {
+            DRAW_LINE(cx - notchW/2, baseY, cx - notchW/2, baseY + notchH, outlineCol);
+            DRAW_LINE(cx - notchW/2, baseY + notchH, cx + notchW/2, baseY + notchH, outlineCol);
+            DRAW_LINE(cx + notchW/2, baseY + notchH, cx + notchW/2, baseY, outlineCol);
+        }
     };
 
     auto drawSideArrow = [&](bool active) {
         uint16_t fillCol = active ? onCol : offCol;
-        const int barW = maxW - 26;
+        uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
+        const int barW = 66;   // Center bar width
         const int barH = sideBarH;
-        const int headW = 20;
-        const int headH = 14;
+        const int headW = 28;  // Arrow head width - how far it extends
+        const int headH = 22;  // Arrow head height - half-height of the point (taller to fill more)
         const int halfH = barH / 2;
 
-        // Always fill - active gets bright color, inactive gets dark grey fill
-        FILL_ROUND_RECT(cx - barW / 2, cy - halfH, barW, barH, 4, fillCol);
+        // Fill center bar
+        FILL_RECT(cx - barW / 2, cy - halfH, barW, barH, fillCol);
+        
+        // Fill left arrow head
         FILL_TRIANGLE(cx - barW / 2 - headW, cy, cx - barW / 2, cy - headH, cx - barW / 2, cy + headH, fillCol);
+        // Fill right arrow head
         FILL_TRIANGLE(cx + barW / 2 + headW, cy, cx + barW / 2, cy - headH, cx + barW / 2, cy + headH, fillCol);
+        
+        // Outline - top edge
+        DRAW_LINE(cx - barW/2, cy - halfH, cx + barW/2, cy - halfH, outlineCol);
+        // Outline - bottom edge
+        DRAW_LINE(cx - barW/2, cy + halfH, cx + barW/2, cy + halfH, outlineCol);
+        // Outline - left arrow head
+        DRAW_LINE(cx - barW/2, cy - headH, cx - barW/2 - headW, cy, outlineCol);
+        DRAW_LINE(cx - barW/2 - headW, cy, cx - barW/2, cy + headH, outlineCol);
+        // Outline - right arrow head
+        DRAW_LINE(cx + barW/2, cy - headH, cx + barW/2 + headW, cy, outlineCol);
+        DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
     // Up, side, down arrows - using calculated center positions
