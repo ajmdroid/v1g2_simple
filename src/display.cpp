@@ -14,8 +14,8 @@
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
-// Utility: dim a 565 color by a percentage (default 75%) for subtle icons
-static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 75) {
+// Utility: dim a 565 color by a percentage (default 60%) for subtle icons
+static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
     uint8_t r = (c >> 11) & 0x1F;
     uint8_t g = (c >> 5) & 0x3F;
     uint8_t b = c & 0x1F;
