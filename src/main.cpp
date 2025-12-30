@@ -258,12 +258,15 @@ void onV1Connected() {
     }
     
     // Save this V1's address to SD card cache if not already present
+    // Also check for device-specific default profile
+    int deviceDefaultSlot = -1;  // -1 means use global setting
+    
     if (alertLogger.isReady()) {
         String connectedAddr = bleClient.getConnectedAddress().toString().c_str();
         if (connectedAddr.length() == 17) {
             fs::FS* fs = alertLogger.getFilesystem();
             
-            // Check if address already exists
+            // Check if address already exists in known_v1.txt
             bool addressExists = false;
             File file = fs->open("/known_v1.txt", FILE_READ);
             if (file) {
@@ -289,6 +292,25 @@ void onV1Connected() {
                     SerialLog.println("[V1Cache] Failed to open known_v1.txt for writing");
                 }
             }
+            
+            // Check for device-specific default profile in known_v1_profiles.txt
+            File profileFile = fs->open("/known_v1_profiles.txt", FILE_READ);
+            if (profileFile) {
+                while (profileFile.available()) {
+                    String line = profileFile.readStringUntil('\n');
+                    line.trim();
+                    int sep = line.indexOf('|');
+                    if (sep > 0) {
+                        String addr = line.substring(0, sep);
+                        if (addr == connectedAddr) {
+                            deviceDefaultSlot = line.substring(sep + 1).toInt();
+                            SerialLog.printf("[AutoPush] Found device-specific profile: slot %d\n", deviceDefaultSlot);
+                            break;
+                        }
+                    }
+                }
+                profileFile.close();
+            }
         }
     }
     
@@ -297,7 +319,16 @@ void onV1Connected() {
         return;
     }
 
-    startAutoPush(activeSlotIndex);
+    // Use device-specific slot if set (1-3 in file, convert to 0-2 index), otherwise global
+    int slotToUse = activeSlotIndex;
+    if (deviceDefaultSlot >= 1 && deviceDefaultSlot <= 3) {
+        slotToUse = deviceDefaultSlot - 1;  // Convert 1-3 to 0-2 index
+        SerialLog.printf("[AutoPush] Using device-specific slot %d (index %d)\n", deviceDefaultSlot, slotToUse);
+    } else {
+        SerialLog.printf("[AutoPush] Using global active slot %d\n", activeSlotIndex + 1);
+    }
+
+    startAutoPush(slotToUse);
 }
 
 #ifdef REPLAY_MODE
@@ -900,6 +931,14 @@ void setup() {
                 return bleClient.setMute(state);
             }
             return false;
+        });
+        
+        // Set up filesystem callback for V1 device cache
+        wifiManager.setFilesystemCallback([]() -> fs::FS* {
+            if (alertLogger.isReady()) {
+                return alertLogger.getFilesystem();
+            }
+            return nullptr;
         });
         
         SerialLog.println("WiFi initialized");

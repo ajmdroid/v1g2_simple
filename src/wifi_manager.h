@@ -45,6 +45,9 @@ public:
     
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
+    
+    // Callback for filesystem access (SD card)
+    void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
 
 private:
     WebServer server;
@@ -60,6 +63,7 @@ private:
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
+    std::function<fs::FS*()> getFilesystem;
     
     // Setup functions
     void setupAP();
@@ -72,19 +76,15 @@ private:
     
     // Web handlers
     void handleStatus();
-    void handleSettings();
+    void handleSettingsApi();
     void handleSettingsSave();
-    void handleTimeSettings();
     void handleTimeSettingsSave();
     void handleDarkMode();
     void handleMute();
-    void handleLogs();
     void handleLogsData();
     void handleLogsClear();
     void handleSerialLog();
     void handleSerialLogClear();
-    void handleSerialLogPage();
-    void handleV1Settings();
     void handleV1ProfilesList();
     void handleV1ProfileGet();
     void handleV1ProfileSave();
@@ -92,39 +92,25 @@ private:
     void handleV1SettingsPull();
     void handleV1SettingsPush();
     void handleV1CurrentSettings();
-    void handleAutoPush();
+    void handleV1DevicesApi();
+    void handleV1DeviceNameSave();
+    void handleV1DeviceProfileSave();
+    void handleV1DeviceDelete();
+    void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
     void handleAutoPushPushNow();
-    void handleDisplayColors();
+    void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
+    void handleTimeSettingsApi();
+    void handleSerialLogApi();
+    void handleSerialLogToggle();
+    void handleSerialLogContent();
     void handleNotFound();
     
-    // HTML generation (legacy string-based)
-    String generateStyleSheet();
-    String generateTopNav(const String& activePath);
-    String wrapWithLayout(const String& title, const String& body, const String& activePath);
-    String generateSettingsHTML();
-    String generateTimeSettingsHTML();
-    String generateLogsHTML();
-    String generateV1SettingsHTML();
-    String generateAutoPushHTML();
-    String generateAutoPushSettingsJSON();
-    String generateDisplayColorsHTML();
-    String generateProfileOptions(const String& selected);
-    
-    // HTML streaming (heap-efficient)
-    void streamLayoutHeader(const String& title, const String& activePath);
-    void streamLayoutFooter();
-    void streamStyleSheet();
-    void streamTopNav(const String& activePath);
-    void streamSettingsBody();
-    void streamTimeSettingsBody();
-    void streamLogsBody();
-    void streamV1SettingsBody();
-    void streamAutoPushBody();
-    void streamDisplayColorsBody();
+    // LittleFS file serving (new UI)
+    bool serveLittleFSFile(const char* path, const char* contentType);
 };
 
 // Global instance
