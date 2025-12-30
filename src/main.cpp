@@ -52,6 +52,7 @@ struct BLEDataPacket {
     uint8_t data[256];  // Max expected packet size
     size_t length;
     uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
+    uint32_t tsMs;      // Timestamp for latency measurement
 };
 
 unsigned long lastDisplayUpdate = 0;
@@ -59,7 +60,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-const unsigned long DISPLAY_DRAW_MIN_MS = 33;  // Min 33ms between draws (~30fps)
+const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
 
 // Local mute override - takes immediate effect on tap before V1 confirms
 static bool localMuteOverride = false;
@@ -113,16 +114,13 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         memcpy(pkt.data, data, length);
         pkt.length = length;
         pkt.charUUID = charUUID;
+        pkt.tsMs = millis();
         // Non-blocking send to queue - if queue is full, drop the packet
         BaseType_t result = xQueueSend(bleDataQueue, &pkt, 0);
         if (result != pdTRUE) {
-            // Queue full - data dropped (logged for debugging)
-            static unsigned long lastQueueFullLog = 0;
-            unsigned long now = millis();
-            if (now - lastQueueFullLog > 1000) {
-                SerialLog.println("WARNING: BLE queue full, dropping packets!");
-                lastQueueFullLog = now;
-            }
+            BLEDataPacket dropped;
+            xQueueReceive(bleDataQueue, &dropped, 0);  // Drop oldest to make room
+            xQueueSend(bleDataQueue, &pkt, 0);
         }
     }
 }
@@ -447,6 +445,7 @@ void processBLEData() {
 #else
     // Normal BLE mode
     BLEDataPacket pkt;
+    uint32_t latestPktTs = 0;
     
     // Process all queued packets
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
@@ -456,6 +455,7 @@ void processBLEData() {
         
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
         rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+        latestPktTs = pkt.tsMs;
     }
 #endif
     
@@ -511,6 +511,9 @@ void processBLEData() {
         const uint8_t* packetPtr = rxBuffer.data();
         
         lastRxMillis = millis();
+        if (latestPktTs == 0) {
+            latestPktTs = lastRxMillis;
+        }
 
         // Check for user bytes response (0x12) - V1 settings pull
         if (packetSize >= 12 && packetPtr[3] == PACKET_ID_RESP_USER_BYTES) {
@@ -704,6 +707,14 @@ void processBLEData() {
                 
                 display.update(state);
                 alertLogger.updateStateOnClear(state);
+
+                // Lightweight latency instrumentation (logs every 5s)
+                static unsigned long lastLatencyLog = 0;
+                if (now - lastLatencyLog > 5000 && latestPktTs > 0) {
+                    unsigned long latency = now - latestPktTs;
+                    SerialLog.printf("[Perf] BLE->display latency: %lums\n", latency);
+                    lastLatencyLog = now;
+                }
                 
                 // Update timestamp before logging (ensures real-time accuracy)
                 time_t now = time(nullptr);
