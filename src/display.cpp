@@ -740,11 +740,11 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
-    // Battery icon position - bottom left, below bogey counter
+    // Battery icon position - bottom left, aligned with frequency display bottom
     const int battX = 12;   // Align with bogey counter left edge
-    const int battY = 42;   // Below bogey counter (counter is ~10-36px tall)
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
+    const int battY = SCREEN_HEIGHT - battH - 8;  // Bottom aligned with frequency
     const int capW = 3;     // Positive terminal cap width
     const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery
