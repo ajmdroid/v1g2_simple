@@ -18,6 +18,7 @@
 #include <ArduinoJson.h>
 #include "esp_netif.h"
 #include <ESPmDNS.h>
+#include <LittleFS.h>
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
@@ -339,6 +340,31 @@ void WiFiManager::enableNAT() {
 }
 
 void WiFiManager::setupWebServer() {
+    // Initialize LittleFS for serving web UI files
+    if (!LittleFS.begin(true)) {  // true = format if mount fails
+        SerialLog.println("[WiFi] LittleFS mount failed!");
+    } else {
+        SerialLog.println("[WiFi] LittleFS mounted successfully");
+        // List files in LittleFS for debugging
+        File root = LittleFS.open("/");
+        File file = root.openNextFile();
+        while (file) {
+            SerialLog.printf("[WiFi] LittleFS file: %s (%d bytes)\n", file.name(), file.size());
+            file = root.openNextFile();
+        }
+    }
+    
+    // New UI served from LittleFS (test endpoint)
+    server.on("/ui", HTTP_GET, [this]() {
+        File file = LittleFS.open("/index.html", "r");
+        if (!file) {
+            server.send(404, "text/plain", "LittleFS: index.html not found");
+            return;
+        }
+        server.streamFile(file, "text/html");
+        file.close();
+    });
+    
     server.on("/", HTTP_GET, [this]() { handleSettings(); });  // Root redirects to settings
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
     server.on("/settings", HTTP_GET, [this]() { handleSettings(); });
