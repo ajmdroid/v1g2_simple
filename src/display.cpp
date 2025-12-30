@@ -735,8 +735,9 @@ void V1Display::drawProfileIndicator(int slot) {
     int y = 14;
     
     // Clear area for profile name - use fixed wide area to prevent artifacts
-    // Clear from 120 (after band indicators) to maxWidth
-    FILL_RECT(120, y - 2, maxWidth - 120, 28, PALETTE_BG);
+    // Clear from 120 (after band indicators) to before signal bars area
+    int clearEndX = SCREEN_WIDTH - 240;  // Stop before signal bars (at ~412)
+    FILL_RECT(120, y - 2, clearEndX - 120, 28, PALETTE_BG);
     
     // Draw the profile name centered over the dot
     TFT_CALL(setTextColor)(color, PALETTE_BG);

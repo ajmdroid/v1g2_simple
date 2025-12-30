@@ -59,7 +59,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-const unsigned long DISPLAY_DRAW_MIN_MS = 100;  // Min 100ms between draws
+const unsigned long DISPLAY_DRAW_MIN_MS = 33;  // Min 33ms between draws (~30fps)
 
 // Local mute override - takes immediate effect on tap before V1 confirms
 static bool localMuteOverride = false;
@@ -528,7 +528,12 @@ void processBLEData() {
             continue;  // Don't pass to parser
         }
 
-        if (parser.parse(packetPtr, packetSize)) {
+        // ALWAYS erase packet from buffer after attempting to parse
+        // This prevents stale packets from accumulating when display updates are throttled
+        bool parseOk = parser.parse(packetPtr, packetSize);
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+        
+        if (parseOk) {
             DisplayState state = parser.getDisplayState();
 
             // Cache alert status to avoid repeated calls
@@ -554,12 +559,8 @@ void processBLEData() {
                 }
             }
             
-            // DEBUG: Log mute state changes for flicker debugging
+            // Track mute state changes (no logging in hot path)
             if (state.muted != lastLoggedMuted || v1MutedRaw != lastV1Muted) {
-                SerialLog.printf("MUTE_STATE: final=%d v1Raw=%d localActive=%d localOverride=%d unmuteGrace=%lu hasAlerts=%d bands=0x%02X\n",
-                    state.muted, v1MutedRaw, localMuteActive, localMuteOverride,
-                    (unmuteSentTimestamp > 0) ? (millis() - unmuteSentTimestamp) : 0,
-                    hasAlerts, state.activeBands);
                 lastLoggedMuted = state.muted;
                 lastV1Muted = v1MutedRaw;
             }
@@ -664,34 +665,17 @@ void processBLEData() {
                     }
                 }
 
-                // DEBUG: Log what we're about to draw (for flicker debugging)
-                SerialLog.printf("DISPLAY_UPDATE: alert band=%s muted=%d freq=%lu strength=%d\n",
-                    priority.band == BAND_KA ? "Ka" : priority.band == BAND_K ? "K" : 
-                    priority.band == BAND_X ? "X" : priority.band == BAND_LASER ? "Laser" : "None",
-                    state.muted, priority.frequency, std::max(priority.frontStrength, priority.rearStrength));
-                
+                // Update display FIRST for lowest latency
                 display.update(priority, state, alertCount);
                 
-                // Update timestamp before logging (ensures real-time accuracy)
+                // Logging happens after display update (lower priority than visual feedback)
                 time_t now = time(nullptr);
                 if (now > 1609459200) {  // Valid if after 2021-01-01
                     alertLogger.setTimestampUTC((uint32_t)now);
                     alertDB.setTimestampUTC((uint32_t)now);
                 }
                 alertLogger.logAlert(priority, state, alertCount);
-                alertDB.logAlert(priority, state, alertCount);  // SQLite logging
-
-                SerialLog.printf("Alert: %s, Dir: %d, Front: %d, Rear: %d, Freq: %lu MHz, Count: %d, Bands: 0x%02X\n",
-                              priority.band == BAND_KA ? "Ka" :
-                              priority.band == BAND_K ? "K" :
-                              priority.band == BAND_X ? "X" :
-                              priority.band == BAND_LASER ? "Laser" : "None",
-                              priority.direction,
-                              priority.frontStrength,
-                              priority.rearStrength,
-                              priority.frequency,
-                              alertCount,
-                              state.activeBands);
+                alertDB.logAlert(priority, state, alertCount);
             } else {
                 // No alerts - clear mute override only after timeout has passed
                 if (localMuteActive) {
@@ -718,12 +702,6 @@ void processBLEData() {
                     }
                 }
                 
-                static unsigned long lastStateLog = 0;
-                if (millis() - lastStateLog > 2000) {
-                    SerialLog.printf("DisplayState update: bands=0x%02X arrows=0x%02X bars=%d mute=%d\n",
-                                  state.activeBands, state.arrows, state.signalBars, state.muted);
-                    lastStateLog = millis();
-                }
                 display.update(state);
                 alertLogger.updateStateOnClear(state);
                 
@@ -732,12 +710,9 @@ void processBLEData() {
                 if (now > 1609459200) {  // Valid if after 2021-01-01
                     alertDB.setTimestampUTC((uint32_t)now);
                 }
-                alertDB.logClear();  // SQLite logging
+                alertDB.logClear();
             }
         }
-        
-        // Remove processed packet from buffer
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
     }
 }
 
@@ -1177,5 +1152,5 @@ void loop() {
     
 #endif
 
-    delay(10);
+    delay(5);  // Minimal yield for watchdog
 }
