@@ -18,6 +18,7 @@
 PROGRESS.md
 RDF_POST.md
 RDF_POST_*.txt
+CHANGELOG_WIP.md
 *.tmp
 
 # Large files (schematics, datasheets)
