@@ -3102,25 +3102,429 @@ void WiFiManager::streamTimeSettingsBody() {
 }
 
 void WiFiManager::streamLogsBody() {
-    // Use existing generateLogsHTML() body
-    String fullHTML = generateLogsHTML();
-    server.sendContent(fullHTML);
+    const V1Settings& settings = settingsManager.get();
+    String statusBox;
+    if (alertLogger.isReady()) {
+        statusBox = String("<div class='msg success'>") + alertLogger.statusText() + "</div>";
+    } else {
+        statusBox = "<div class='msg error'>SD card not mounted</div>";
+    }
+    
+    server.sendContent(statusBox);
+    server.sendContent_P(PSTR(R"HTML(
+        <div class="actions">
+            <button class="btn secondary" onclick="loadLogs()">Refresh</button>
+            <button class="btn danger" onclick="showClearModal()">Clear All</button>
+            <a class="btn secondary" href="/settings">Back to Settings</a>
+        </div>
+        <div class="filters" id="filters">
+            <span>Filter:</span>
+            <button class="filter-btn active" data-band="all">All</button>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th data-col="utc" data-type="num">Time (UTC)</th>
+                        <th data-col="event" data-type="str">Event</th>
+                        <th data-col="band" data-type="str">Band</th>
+                        <th data-col="freq" data-type="num">Freq</th>
+                        <th data-col="dir" data-type="str">Dir</th>
+                        <th data-col="front" data-type="num">Front</th>
+                        <th data-col="rear" data-type="num">Rear</th>
+                        <th data-col="count" data-type="num">Count</th>
+                        <th data-col="muted" data-type="bool">Muted</th>
+                    </tr>
+                </thead>
+                <tbody id="log-body"></tbody>
+            </table>
+        </div>
+    
+    <!-- Clear Confirmation Modal -->
+    <div class="modal" id="clearModal">
+        <div class="modal-box">
+            <h3>Clear All Logs?</h3>
+            <p>This will permanently delete all alert log data from the SD card. This action cannot be undone.</p>
+            <div class="modal-btns">
+                <button class="btn secondary" onclick="hideClearModal()">Cancel</button>
+                <button class="btn danger" onclick="confirmClear()">Delete All</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const bodyEl = document.getElementById('log-body');
+        const statsEl = document.getElementById('stats');
+        const filtersEl = document.getElementById('filters');
+        const modal = document.getElementById('clearModal');
+        let logData = [];
+        let filteredData = [];
+        let sortCol = 'utc';
+        let sortDir = 'desc';
+        let activeFilter = 'all';
+
+        function formatTime(utc, ts){
+            if(utc && utc > 1609459200){
+                const d = new Date(utc * 1000);
+                const pad = n => String(n).padStart(2,'0');
+                return `${d.getUTCMonth()+1}/${d.getUTCDate()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+            }
+            if(!ts || ts <= 0) return '-';
+            const sec = ts/1000;
+            if(sec < 60) return sec.toFixed(1) + 's';
+            if(sec < 3600) return Math.floor(sec/60) + 'm ' + Math.floor(sec%60) + 's';
+            return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
+        }
+
+        function updateFilters(){
+            const bands = {};
+            logData.forEach(d => { 
+                if(d.band && d.band !== 'NONE') bands[d.band] = (bands[d.band]||0)+1; 
+            });
+            const keys = Object.keys(bands).sort();
+            if(keys.length === 0) return;
+            keys.forEach(k => {
+                const existing = filtersEl.querySelector(`[data-band="${k}"]`);
+                if(existing) {
+                    existing.textContent = `${k} (${bands[k]})`;
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.band = k;
+                btn.textContent = `${k} (${bands[k]})`;
+                btn.onclick = () => { activeFilter = k; applyFilter(); };
+                filtersEl.appendChild(btn);
+            });
+            filtersEl.querySelectorAll('.filter-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.band === activeFilter);
+            });
+        }
+
+        function applyFilter(){
+            if(activeFilter === 'all') filteredData = logData.slice();
+            else filteredData = logData.filter(d => d.band === activeFilter);
+            statsEl.textContent = `Showing ${filteredData.length} of ${logData.length} entries`;
+            filtersEl.querySelectorAll('.filter-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.band === activeFilter);
+            });
+            sortData();
+            renderTable();
+        }
+
+        function sortData(){
+            const type = document.querySelector(`th[data-col="${sortCol}"]`)?.dataset.type || 'str';
+            filteredData.sort((a,b) => {
+                let va = a[sortCol], vb = b[sortCol];
+                if(sortCol === 'utc'){
+                    va = a.utc > 1609459200 ? a.utc : (a.ts||0)/1000;
+                    vb = b.utc > 1609459200 ? b.utc : (b.ts||0)/1000;
+                }
+                if(type === 'num'){ va = Number(va)||0; vb = Number(vb)||0; }
+                else if(type === 'bool'){ va = va?1:0; vb = vb?1:0; }
+                else { va = String(va||'').toLowerCase(); vb = String(vb||'').toLowerCase(); }
+                if(va < vb) return sortDir === 'asc' ? -1 : 1;
+                if(va > vb) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function renderTable(){
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sort-asc','sort-desc');
+                if(th.dataset.col === sortCol) th.classList.add('sort-'+sortDir);
+            });
+            if(!filteredData.length){
+                bodyEl.innerHTML = '<tr><td colspan="9" class="muted">No entries</td></tr>';
+                return;
+            }
+            bodyEl.innerHTML = '';
+            filteredData.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${formatTime(item.utc, item.ts)}</td>
+                    <td>${item.event}</td>
+                    <td>${item.band || '-'}</td>
+                    <td>${item.freq || '-'}</td>
+                    <td>${item.dir || '-'}</td>
+                    <td>${item.front ?? '-'}</td>
+                    <td>${item.rear ?? '-'}</td>
+                    <td>${item.count}</td>
+                    <td>${item.muted ? 'Yes' : 'No'}</td>`;
+                bodyEl.appendChild(tr);
+            });
+        }
+
+        function loadLogs(){
+            bodyEl.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+            fetch('/api/logs').then(r => {
+                if(!r.ok) throw new Error('Failed');
+                return r.json();
+            }).then(data => {
+                logData = Array.isArray(data) ? data : [];
+                updateFilters();
+                applyFilter();
+            }).catch(() => {
+                bodyEl.innerHTML = '<tr><td colspan="9">Error loading logs</td></tr>';
+            });
+        }
+
+        function showClearModal(){ modal.classList.add('show'); }
+        function hideClearModal(){ modal.classList.remove('show'); }
+        
+        function confirmClear(){
+            hideClearModal();
+            fetch('/api/logs/clear',{method:'POST'}).then(r=>r.json()).then(d=>{
+                activeFilter = 'all';
+                loadLogs();
+            }).catch(()=>{});
+        }
+
+        document.querySelectorAll('th[data-col]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.col;
+                if(sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+                else { sortCol = col; sortDir = 'desc'; }
+                sortData();
+                renderTable();
+            });
+        });
+
+        modal.addEventListener('click', (e) => { if(e.target === modal) hideClearModal(); });
+
+        window.onload = loadLogs;
+    </script>
+    )HTML"));
 }
 
 void WiFiManager::streamV1SettingsBody() {
-    // Use existing generateV1SettingsHTML() body
-    String fullHTML = generateV1SettingsHTML();
-    server.sendContent(fullHTML);
+    String currentJson = "null";
+    if (v1ProfileManager.hasCurrentSettings()) {
+        currentJson = v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings());
+    }
+    const V1Settings& settings = settingsManager.get();
+    
+    server.sendContent_P(PSTR(R"HTML(
+    <div id="status" class="status-badge disconnected">
+        Checking V1 connection...
+    </div>
+    
+    <div class="card">
+        <h2>Current V1 Settings</h2>
+        <div id="current-settings">
+            <p class="muted">Pull settings from V1 to view</p>
+        </div>
+        <button class="btn primary" onclick="pullSettings()">Pull from V1</button>
+    </div>
+    
+    <div class="card">
+        <h2>Saved Profiles</h2>
+        <div id="profiles-list"></div>
+        <button class="btn primary" onclick="showSaveModal()">Save Current as Profile</button>
+    </div>
+    
+    <div class="card">
+        <h2>Quick Actions</h2>
+        <div class="actions">
+            <button class="btn secondary" onclick="muteV1()">Mute All</button>
+            <button class="btn secondary" onclick="unmuteV1()">Unmute All</button>
+        </div>
+    </div>
+    
+    <!-- Save Profile Modal -->
+    <div class="modal" id="saveModal">
+        <div class="modal-box">
+            <h3>Save Profile</h3>
+            <label>Profile Name:
+                <input type="text" id="profile-name" placeholder="My V1 Profile">
+            </label>
+            <div class="modal-btns">
+                <button class="btn secondary" onclick="hideSaveModal()">Cancel</button>
+                <button class="btn primary" onclick="confirmSave()">Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentSettings = )HTML"));
+    server.sendContent(currentJson);
+    server.sendContent_P(PSTR(R"HTML(;
+        let profiles = [];
+        const statusEl = document.getElementById('status');
+        const currentEl = document.getElementById('current-settings');
+        const profilesEl = document.getElementById('profiles-list');
+        const modal = document.getElementById('saveModal');
+        const nameInput = document.getElementById('profile-name');
+
+        function checkStatus(){
+            fetch('/api/v1/status').then(r=>r.json()).then(d=>{
+                statusEl.className = 'status-badge ' + (d.connected ? 'connected' : 'disconnected');
+                statusEl.textContent = d.connected ? 'V1 Connected' : 'V1 Disconnected';
+            }).catch(()=>{});
+        }
+
+        function pullSettings(){
+            currentEl.innerHTML = '<p class="muted">Pulling from V1...</p>';
+            fetch('/api/v1settings/pull',{method:'POST'}).then(r=>r.json()).then(d=>{
+                if(d.success){
+                    currentSettings = d.settings;
+                    renderSettings();
+                } else {
+                    currentEl.innerHTML = '<p class="muted">Failed to pull settings</p>';
+                }
+            }).catch(()=>{
+                currentEl.innerHTML = '<p class="muted">Error pulling settings</p>';
+            });
+        }
+
+        function renderSettings(){
+            if(!currentSettings){
+                currentEl.innerHTML = '<p class="muted">No settings loaded</p>';
+                return;
+            }
+            let html = '<table class="settings-table">';
+            for(const [k,v] of Object.entries(currentSettings)){
+                html += `<tr><td>${k}</td><td>${v}</td></tr>`;
+            }
+            html += '</table>';
+            currentEl.innerHTML = html;
+        }
+
+        function loadProfiles(){
+            fetch('/api/v1settings/profiles').then(r=>r.json()).then(d=>{
+                profiles = d;
+                renderProfiles();
+            }).catch(()=>{});
+        }
+
+        function renderProfiles(){
+            if(!profiles.length){
+                profilesEl.innerHTML = '<p class="muted">No saved profiles</p>';
+                return;
+            }
+            let html = '<div class="profiles-grid">';
+            profiles.forEach(p => {
+                html += `<div class="profile-item">
+                    <strong>${p}</strong>
+                    <div>
+                        <button class="btn secondary" onclick="pushProfile('${p}')">Push to V1</button>
+                        <button class="btn danger" onclick="deleteProfile('${p}')">Delete</button>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+            profilesEl.innerHTML = html;
+        }
+
+        function pushProfile(name){
+            fetch(`/api/v1settings/push?profile=${encodeURIComponent(name)}`,{method:'POST'})
+                .then(r=>r.json()).then(d=>{
+                    alert(d.success ? 'Profile pushed to V1!' : 'Failed to push profile');
+                }).catch(()=>{ alert('Error pushing profile'); });
+        }
+
+        function deleteProfile(name){
+            if(!confirm(`Delete profile "${name}"?`)) return;
+            fetch(`/api/v1settings/delete?profile=${encodeURIComponent(name)}`,{method:'POST'})
+                .then(r=>r.json()).then(d=>{
+                    if(d.success) loadProfiles();
+                }).catch(()=>{});
+        }
+
+        function showSaveModal(){
+            if(!currentSettings){
+                alert('Pull settings from V1 first');
+                return;
+            }
+            modal.classList.add('show');
+            nameInput.value = '';
+            nameInput.focus();
+        }
+
+        function hideSaveModal(){ modal.classList.remove('show'); }
+
+        function confirmSave(){
+            const name = nameInput.value.trim();
+            if(!name){
+                alert('Enter a profile name');
+                return;
+            }
+            hideSaveModal();
+            fetch('/api/v1settings/save',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({name:name})
+            }).then(r=>r.json()).then(d=>{
+                if(d.success) loadProfiles();
+                else alert('Failed to save profile');
+            }).catch(()=>{ alert('Error saving profile'); });
+        }
+
+        function muteV1(){
+            fetch('/api/v1/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'mute',state:true})})
+                .then(r=>r.json()).catch(()=>{});
+        }
+
+        function unmuteV1(){
+            fetch('/api/v1/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'mute',state:false})})
+                .then(r=>r.json()).catch(()=>{});
+        }
+
+        modal.addEventListener('click', (e) => { if(e.target === modal) hideSaveModal(); });
+
+        window.onload = () => {
+            checkStatus();
+            loadProfiles();
+            if(currentSettings) renderSettings();
+            setInterval(checkStatus, 5000);
+        };
+    </script>
+    )HTML"));
 }
 
 void WiFiManager::streamAutoPushBody() {
-    // Use existing generateAutoPushHTML() body
+    const V1Settings& s = settingsManager.get();
+    
+    server.sendContent_P(PSTR("<p class=\"muted\" style=\"text-align:center; margin-bottom:20px;\">Configure 3 quick-access profiles for different driving scenarios</p>\n<div id=\"message\"></div>\n"));
+    
+    server.sendContent_P(PSTR("<div class=\"card\"><h2>Quick Push</h2><p class=\"muted\">Click to activate and push a profile immediately</p><div class=\"quick-push\">"));
+    server.sendContent("<div class=\"quick-btn\" id=\"quick-0\" onclick=\"quickPush(0)\"><div class=\"quick-btn-icon\">1</div><div class=\"quick-btn-label\">" + htmlEscape(s.slot0Name) + "</div><div class=\"quick-btn-sub\" id=\"quick-sub-0\">Not configured</div></div>");
+    server.sendContent("<div class=\"quick-btn\" id=\"quick-1\" onclick=\"quickPush(1)\"><div class=\"quick-btn-icon\">2</div><div class=\"quick-btn-label\">" + htmlEscape(s.slot1Name) + "</div><div class=\"quick-btn-sub\" id=\"quick-sub-1\">Not configured</div></div>");
+    server.sendContent("<div class=\"quick-btn\" id=\"quick-2\" onclick=\"quickPush(2)\"><div class=\"quick-btn-icon\">3</div><div class=\"quick-btn-label\">" + htmlEscape(s.slot2Name) + "</div><div class=\"quick-btn-sub\" id=\"quick-sub-2\">Not configured</div></div>");
+    server.sendContent("</div><div class=\"setting-row\"><span>Auto-push on V1 connect</span><div class=\"toggle " + String(s.autoPushEnabled ? "on" : "") + "\" id=\"auto-toggle\" onclick=\"toggleAutoPush()\"></div></div></div>");
+    
+    // Slot cards (0-2)
+    for (int slot = 0; slot < 3; slot++) {
+        String slotName, slotColor;
+        if (slot == 0) { slotName = "Default"; slotColor = "#400050"; }
+        else if (slot == 1) { slotName = "Highway"; slotColor = "#00fc00"; }
+        else { slotName = "Comfort"; slotColor = "#808080"; }
+        
+        String placeholder = slotName.c_str();
+        placeholder.toUpperCase();
+        
+        server.sendContent("<div class=\"card slot-card\" id=\"slot-" + String(slot) + "\"><div class=\"slot-header\"><h2>Slot " + String(slot+1) + ": " + slotName + "</h2>");
+        server.sendContent("<span class=\"status-badge\" id=\"badge-" + String(slot) + "\" style=\"display:none;\">ACTIVE</span></div>");
+        server.sendContent("<div class=\"form-group\"><label>Display Name</label><input type=\"text\" id=\"name-" + String(slot) + "\" maxlength=\"20\" placeholder=\"" + placeholder + "\"></div>");
+        server.sendContent("<div class=\"form-group\"><label>Display Color</label><input type=\"color\" id=\"color-" + String(slot) + "\" value=\"" + slotColor + "\"></div>");
+        server.sendContent("<div class=\"form-group\"><label>Profile</label><select id=\"profile-" + String(slot) + "\"><option value=\"\">-- None --</option></select></div>");
+        server.sendContent_P(PSTR("<div class=\"form-group\"><label>Mode</label><select id=\"mode-"));
+        server.sendContent(String(slot) + "\"><option value=\"0\">No Change</option><option value=\"1\">All Bogeys</option><option value=\"2\">Logic</option><option value=\"3\">Advanced Logic</option></select></div>");
+        server.sendContent_P(PSTR("<div class=\"form-group\"><label>V1 Volume</label><select id=\"volume-"));
+        server.sendContent(String(slot) + "\"><option value=\"255\">No Change</option><option value=\"0\">0 (Off)</option><option value=\"1\">1</option><option value=\"2\">2</option><option value=\"3\">3</option><option value=\"4\">4</option><option value=\"5\">5</option><option value=\"6\">6</option><option value=\"7\">7</option><option value=\"8\">8</option><option value=\"9\">9 (Max)</option></select></div>");
+        server.sendContent_P(PSTR("<div class=\"form-group\"><label>Mute Volume</label><select id=\"muteVol-"));
+        server.sendContent(String(slot) + "\"><option value=\"255\">No Change</option><option value=\"0\">0 (Silent)</option><option value=\"1\">1</option><option value=\"2\">2</option><option value=\"3\">3</option><option value=\"4\">4</option><option value=\"5\">5</option><option value=\"6\">6</option><option value=\"7\">7</option><option value=\"8\">8</option><option value=\"9\">9 (Max)</option></select></div>");
+        server.sendContent("<div class=\"actions\"><button class=\"btn primary\" onclick=\"saveSlot(" + String(slot) + ")\">Save</button><button class=\"btn success\" onclick=\"pushSlot(" + String(slot) + ")\">Push Now</button></div></div>");
+    }
+    
+    // Complete function - just send body from generate function (minus the wrapWithLayout)
     String fullHTML = generateAutoPushHTML();
     server.sendContent(fullHTML);
 }
 
 void WiFiManager::streamDisplayColorsBody() {
-    // Use existing generateDisplayColorsHTML() body
+    // Send body from generate function (minus the wrapWithLayout)
     String fullHTML = generateDisplayColorsHTML();
     server.sendContent(fullHTML);
 }
