@@ -595,7 +595,11 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
 }
 
 void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
+#if defined(DISPLAY_WAVESHARE_349)
+    const float scale = 2.2f;  // Match frequency counter size
+#else
     const float scale = 2.0f;
+#endif
     SegMetrics m = segMetrics(scale);
     int x = 12;
     int y = 10;
