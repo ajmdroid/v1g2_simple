@@ -58,27 +58,36 @@ struct DisplayState {
 
 class PacketParser {
 public:
+    static constexpr size_t MAX_ALERTS = 10;
+
     PacketParser();
     
     // Parse incoming ESP packet
     bool parse(const uint8_t* data, size_t length);
     
     // Get current display state
-    DisplayState getDisplayState() const { return displayState; }
+    const DisplayState& getDisplayState() const { return displayState; }
     
     // Get priority alert (highest strength)
     AlertData getPriorityAlert() const;
     
     // Get all alerts
-    const std::vector<AlertData>& getAllAlerts() const { return alerts; }
+    const std::array<AlertData, MAX_ALERTS>& getAllAlerts() const { return alerts; }
     
+    // Get number of active alerts
+    size_t getAlertCount() const { return alertCount; }
+
     // Check if there are active alerts
-    bool hasAlerts() const { return !alerts.empty(); }
+    // Check both alertCount AND displayState.activeBands to handle timing gaps
+    // between alert data packets and display data packets
+    bool hasAlerts() const { return alertCount > 0 || displayState.activeBands != BAND_NONE; }
 
 private:
     DisplayState displayState;
-    std::vector<AlertData> alerts;
-    std::vector<std::array<uint8_t, 7>> alertChunks;
+    std::array<AlertData, MAX_ALERTS> alerts;
+    size_t alertCount;
+    std::array<std::array<uint8_t, 7>, MAX_ALERTS> alertChunks;
+    size_t chunkCount;
     
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);

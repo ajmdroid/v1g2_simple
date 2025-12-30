@@ -89,6 +89,13 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         return false;
     }
     
+    // Hard cap JSON size to avoid excessive allocation on small devices
+    if (file.size() > 4096) {
+        Serial.printf("[V1Profiles] Profile too large (%u bytes), aborting\n", (unsigned)file.size());
+        file.close();
+        return false;
+    }
+    
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, file);
     file.close();
@@ -112,28 +119,28 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         V1UserSettings& s = profile.settings;
         s.setDefaults();
         
-        if (doc.containsKey("xBand")) s.setXBandEnabled(doc["xBand"]);
-        if (doc.containsKey("kBand")) s.setKBandEnabled(doc["kBand"]);
-        if (doc.containsKey("kaBand")) s.setKaBandEnabled(doc["kaBand"]);
-        if (doc.containsKey("laser")) s.setLaserEnabled(doc["laser"]);
-        if (doc.containsKey("kuBand")) s.setKuBandEnabled(doc["kuBand"]);
-        if (doc.containsKey("euro")) s.setEuroMode(doc["euro"]);
-        if (doc.containsKey("kVerifier")) s.setKVerifier(doc["kVerifier"]);
-        if (doc.containsKey("laserRear")) s.setLaserRear(doc["laserRear"]);
-        if (doc.containsKey("customFreqs")) s.setCustomFreqs(doc["customFreqs"]);
-        if (doc.containsKey("kaAlwaysPriority")) s.setKaAlwaysPriority(doc["kaAlwaysPriority"]);
-        if (doc.containsKey("fastLaserDetect")) s.setFastLaserDetect(doc["fastLaserDetect"]);
-        if (doc.containsKey("kaSensitivity")) s.setKaSensitivity(doc["kaSensitivity"]);
-        if (doc.containsKey("kSensitivity")) s.setKSensitivity(doc["kSensitivity"]);
-        if (doc.containsKey("xSensitivity")) s.setXSensitivity(doc["xSensitivity"]);
-        if (doc.containsKey("autoMute")) s.setAutoMute(doc["autoMute"]);
-        if (doc.containsKey("muteToMuteVolume")) s.setMuteToMuteVolume(doc["muteToMuteVolume"]);
-        if (doc.containsKey("bogeyLockLoud")) s.setBogeyLockLoud(doc["bogeyLockLoud"]);
-        if (doc.containsKey("muteXKRear")) s.setMuteXKRear(doc["muteXKRear"]);
-        if (doc.containsKey("startupSequence")) s.setStartupSequence(doc["startupSequence"]);
-        if (doc.containsKey("restingDisplay")) s.setRestingDisplay(doc["restingDisplay"]);
-        if (doc.containsKey("bsmPlus")) s.setBsmPlus(doc["bsmPlus"]);
-        if (doc.containsKey("mrct")) s.setMrct(doc["mrct"]);
+        if (!doc["xBand"].isNull()) s.setXBandEnabled(doc["xBand"]);
+        if (!doc["kBand"].isNull()) s.setKBandEnabled(doc["kBand"]);
+        if (!doc["kaBand"].isNull()) s.setKaBandEnabled(doc["kaBand"]);
+        if (!doc["laser"].isNull()) s.setLaserEnabled(doc["laser"]);
+        if (!doc["kuBand"].isNull()) s.setKuBandEnabled(doc["kuBand"]);
+        if (!doc["euro"].isNull()) s.setEuroMode(doc["euro"]);
+        if (!doc["kVerifier"].isNull()) s.setKVerifier(doc["kVerifier"]);
+        if (!doc["laserRear"].isNull()) s.setLaserRear(doc["laserRear"]);
+        if (!doc["customFreqs"].isNull()) s.setCustomFreqs(doc["customFreqs"]);
+        if (!doc["kaAlwaysPriority"].isNull()) s.setKaAlwaysPriority(doc["kaAlwaysPriority"]);
+        if (!doc["fastLaserDetect"].isNull()) s.setFastLaserDetect(doc["fastLaserDetect"]);
+        if (!doc["kaSensitivity"].isNull()) s.setKaSensitivity(doc["kaSensitivity"]);
+        if (!doc["kSensitivity"].isNull()) s.setKSensitivity(doc["kSensitivity"]);
+        if (!doc["xSensitivity"].isNull()) s.setXSensitivity(doc["xSensitivity"]);
+        if (!doc["autoMute"].isNull()) s.setAutoMute(doc["autoMute"]);
+        if (!doc["muteToMuteVolume"].isNull()) s.setMuteToMuteVolume(doc["muteToMuteVolume"]);
+        if (!doc["bogeyLockLoud"].isNull()) s.setBogeyLockLoud(doc["bogeyLockLoud"]);
+        if (!doc["muteXKRear"].isNull()) s.setMuteXKRear(doc["muteXKRear"]);
+        if (!doc["startupSequence"].isNull()) s.setStartupSequence(doc["startupSequence"]);
+        if (!doc["restingDisplay"].isNull()) s.setRestingDisplay(doc["restingDisplay"]);
+        if (!doc["bsmPlus"].isNull()) s.setBsmPlus(doc["bsmPlus"]);
+        if (!doc["mrct"].isNull()) s.setMrct(doc["mrct"]);
     }
     
     Serial.printf("[V1Profiles] Loaded profile: %s\n", name.c_str());
@@ -335,6 +342,10 @@ String V1ProfileManager::profileToJson(const V1Profile& profile) const {
 }
 
 bool V1ProfileManager::jsonToSettings(const String& json, V1UserSettings& settings) const {
+    if (json.length() > 4096) {
+        Serial.println("[V1Profiles] JSON too large, rejecting");
+        return false;
+    }
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json);
     if (err) {
@@ -349,6 +360,10 @@ bool V1ProfileManager::jsonToSettings(const String& json, V1UserSettings& settin
         settingsObj = doc.as<JsonObject>();
     }
     
+    return jsonToSettings(settingsObj, settings);
+}
+
+bool V1ProfileManager::jsonToSettings(const JsonObject& settingsObj, V1UserSettings& settings) const {
     // Try raw bytes first (skip if empty to use individual settings)
     JsonArray bytes = settingsObj["bytes"];
     if (bytes && bytes.size() == 6) {
@@ -358,39 +373,45 @@ bool V1ProfileManager::jsonToSettings(const String& json, V1UserSettings& settin
         Serial.println("[V1Profiles] Loaded from raw bytes");
         return true;
     }
-    
+
     // Parse individual settings
     settings.setDefaults();
     Serial.println("[V1Profiles] Parsing individual settings");
+    bool anyField = false;
     
-    if (settingsObj.containsKey("xBand")) settings.setXBandEnabled(settingsObj["xBand"]);
-    if (settingsObj.containsKey("kBand")) settings.setKBandEnabled(settingsObj["kBand"]);
-    if (settingsObj.containsKey("kaBand")) settings.setKaBandEnabled(settingsObj["kaBand"]);
-    if (settingsObj.containsKey("laser")) settings.setLaserEnabled(settingsObj["laser"]);
-    if (settingsObj.containsKey("kuBand")) settings.setKuBandEnabled(settingsObj["kuBand"]);
-    if (settingsObj.containsKey("euro")) settings.setEuroMode(settingsObj["euro"]);
-    if (settingsObj.containsKey("kVerifier")) settings.setKVerifier(settingsObj["kVerifier"]);
-    if (settingsObj.containsKey("laserRear")) settings.setLaserRear(settingsObj["laserRear"]);
-    if (settingsObj.containsKey("customFreqs")) settings.setCustomFreqs(settingsObj["customFreqs"]);
-    if (settingsObj.containsKey("kaAlwaysPriority")) settings.setKaAlwaysPriority(settingsObj["kaAlwaysPriority"]);
-    if (settingsObj.containsKey("fastLaserDetect")) settings.setFastLaserDetect(settingsObj["fastLaserDetect"]);
-    if (settingsObj.containsKey("kaSensitivity")) settings.setKaSensitivity(settingsObj["kaSensitivity"]);
-    if (settingsObj.containsKey("kSensitivity")) settings.setKSensitivity(settingsObj["kSensitivity"]);
-    if (settingsObj.containsKey("xSensitivity")) settings.setXSensitivity(settingsObj["xSensitivity"]);
-    if (settingsObj.containsKey("autoMute")) settings.setAutoMute(settingsObj["autoMute"]);
-    if (settingsObj.containsKey("muteToMuteVolume")) settings.setMuteToMuteVolume(settingsObj["muteToMuteVolume"]);
-    if (settingsObj.containsKey("bogeyLockLoud")) settings.setBogeyLockLoud(settingsObj["bogeyLockLoud"]);
-    if (settingsObj.containsKey("muteXKRear")) settings.setMuteXKRear(settingsObj["muteXKRear"]);
-    if (settingsObj.containsKey("startupSequence")) settings.setStartupSequence(settingsObj["startupSequence"]);
-    if (settingsObj.containsKey("restingDisplay")) settings.setRestingDisplay(settingsObj["restingDisplay"]);
-    if (settingsObj.containsKey("bsmPlus")) settings.setBsmPlus(settingsObj["bsmPlus"]);
-    if (settingsObj.containsKey("mrct")) settings.setMrct(settingsObj["mrct"]);
-    if (settingsObj.containsKey("driveSafe3D")) settings.setDriveSafe3D(settingsObj["driveSafe3D"]);
-    if (settingsObj.containsKey("driveSafe3DHD")) settings.setDriveSafe3DHD(settingsObj["driveSafe3DHD"]);
-    if (settingsObj.containsKey("redflexHalo")) settings.setRedflexHalo(settingsObj["redflexHalo"]);
-    if (settingsObj.containsKey("redflexNK7")) settings.setRedflexNK7(settingsObj["redflexNK7"]);
-    if (settingsObj.containsKey("ekin")) settings.setEkin(settingsObj["ekin"]);
-    if (settingsObj.containsKey("photoVerifier")) settings.setPhotoVerifier(settingsObj["photoVerifier"]);
+    if (!settingsObj["xBand"].isNull()) { settings.setXBandEnabled(settingsObj["xBand"]); anyField = true; }
+    if (!settingsObj["kBand"].isNull()) { settings.setKBandEnabled(settingsObj["kBand"]); anyField = true; }
+    if (!settingsObj["kaBand"].isNull()) { settings.setKaBandEnabled(settingsObj["kaBand"]); anyField = true; }
+    if (!settingsObj["laser"].isNull()) { settings.setLaserEnabled(settingsObj["laser"]); anyField = true; }
+    if (!settingsObj["kuBand"].isNull()) { settings.setKuBandEnabled(settingsObj["kuBand"]); anyField = true; }
+    if (!settingsObj["euro"].isNull()) { settings.setEuroMode(settingsObj["euro"]); anyField = true; }
+    if (!settingsObj["kVerifier"].isNull()) { settings.setKVerifier(settingsObj["kVerifier"]); anyField = true; }
+    if (!settingsObj["laserRear"].isNull()) { settings.setLaserRear(settingsObj["laserRear"]); anyField = true; }
+    if (!settingsObj["customFreqs"].isNull()) { settings.setCustomFreqs(settingsObj["customFreqs"]); anyField = true; }
+    if (!settingsObj["kaAlwaysPriority"].isNull()) { settings.setKaAlwaysPriority(settingsObj["kaAlwaysPriority"]); anyField = true; }
+    if (!settingsObj["fastLaserDetect"].isNull()) { settings.setFastLaserDetect(settingsObj["fastLaserDetect"]); anyField = true; }
+    if (!settingsObj["kaSensitivity"].isNull()) { settings.setKaSensitivity(settingsObj["kaSensitivity"]); anyField = true; }
+    if (!settingsObj["kSensitivity"].isNull()) { settings.setKSensitivity(settingsObj["kSensitivity"]); anyField = true; }
+    if (!settingsObj["xSensitivity"].isNull()) { settings.setXSensitivity(settingsObj["xSensitivity"]); anyField = true; }
+    if (!settingsObj["autoMute"].isNull()) { settings.setAutoMute(settingsObj["autoMute"]); anyField = true; }
+    if (!settingsObj["muteToMuteVolume"].isNull()) { settings.setMuteToMuteVolume(settingsObj["muteToMuteVolume"]); anyField = true; }
+    if (!settingsObj["bogeyLockLoud"].isNull()) { settings.setBogeyLockLoud(settingsObj["bogeyLockLoud"]); anyField = true; }
+    if (!settingsObj["muteXKRear"].isNull()) { settings.setMuteXKRear(settingsObj["muteXKRear"]); anyField = true; }
+    if (!settingsObj["startupSequence"].isNull()) { settings.setStartupSequence(settingsObj["startupSequence"]); anyField = true; }
+    if (!settingsObj["restingDisplay"].isNull()) { settings.setRestingDisplay(settingsObj["restingDisplay"]); anyField = true; }
+    if (!settingsObj["bsmPlus"].isNull()) { settings.setBsmPlus(settingsObj["bsmPlus"]); anyField = true; }
+    if (!settingsObj["mrct"].isNull()) { settings.setMrct(settingsObj["mrct"]); anyField = true; }
+    if (!settingsObj["driveSafe3D"].isNull()) { settings.setDriveSafe3D(settingsObj["driveSafe3D"]); anyField = true; }
+    if (!settingsObj["driveSafe3DHD"].isNull()) { settings.setDriveSafe3DHD(settingsObj["driveSafe3DHD"]); anyField = true; }
+    if (!settingsObj["redflexHalo"].isNull()) { settings.setRedflexHalo(settingsObj["redflexHalo"]); anyField = true; }
+    if (!settingsObj["redflexNK7"].isNull()) { settings.setRedflexNK7(settingsObj["redflexNK7"]); anyField = true; }
+    if (!settingsObj["ekin"].isNull()) { settings.setEkin(settingsObj["ekin"]); anyField = true; }
+    if (!settingsObj["photoVerifier"].isNull()) { settings.setPhotoVerifier(settingsObj["photoVerifier"]); anyField = true; }
+
+    if (!anyField) {
+        Serial.println("[V1Profiles] No settings provided");
+        return false;
+    }
     
     Serial.printf("[V1Profiles] After parse - byte0=%02X byte2=%02X\n", settings.bytes[0], settings.bytes[2]);
     Serial.printf("[V1Profiles]   xBand=%d, restingDisplay=%d, bsmPlus=%d\n", 

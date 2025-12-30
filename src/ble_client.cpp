@@ -3,7 +3,7 @@
  * With BLE Server proxy support for JBV1 app
  * 
  * Architecture:
- * - NimBLE 2.2.3 for stable dual-role operation
+ * - NimBLE 2.3.7 tuned for stable dual-role operation
  * - Client connects to V1 (V1G* device names)
  * - Server advertises as V1C-LE-S3 for JBV1
  * - FreeRTOS task manages advertising timing
@@ -18,6 +18,7 @@
  */
 
 #include "ble_client.h"
+#include "settings.h"
 #include "../include/config.h"
 #include <Arduino.h>
 #include <set>
@@ -80,9 +81,6 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 // Static instance for callbacks
 static V1BLEClient* instancePtr = nullptr;
 
-// Global proxy connection status
-bool proxyClientConnected = false;
-
 V1BLEClient::V1BLEClient() 
     : pClient(nullptr)
     , pRemoteService(nullptr)
@@ -94,6 +92,7 @@ V1BLEClient::V1BLEClient()
     , pProxyWriteChar(nullptr)
     , proxyEnabled(false)
     , proxyServerInitialized(false)
+    , proxyClientConnected(false)
     , proxyName_("V1C-LE-S3")
     , dataCallback(nullptr)
     , connectCallback(nullptr)
@@ -101,19 +100,53 @@ V1BLEClient::V1BLEClient()
     , shouldConnect(false)
     , hasTargetDevice(false)
     , targetAddress()
-    , lastScanStart(0) {
+    , lastScanStart(0)
+    , pScanCallbacks(nullptr)
+    , pClientCallbacks(nullptr)
+    , pProxyServerCallbacks(nullptr)
+    , pProxyWriteCallbacks(nullptr) {
     instancePtr = this;
 }
 
-bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
-    Serial.println("Initializing BLE...");
+V1BLEClient::~V1BLEClient() {
+    // Delete allocated callback handlers to prevent memory leaks
+    if (pScanCallbacks) {
+        delete pScanCallbacks;
+        pScanCallbacks = nullptr;
+    }
+    if (pClientCallbacks) {
+        delete pClientCallbacks;
+        pClientCallbacks = nullptr;
+    }
+    if (pProxyServerCallbacks) {
+        delete pProxyServerCallbacks;
+        pProxyServerCallbacks = nullptr;
+    }
+    if (pProxyWriteCallbacks) {
+        delete pProxyWriteCallbacks;
+        pProxyWriteCallbacks = nullptr;
+    }
+}
+
+// Initialize BLE stack without starting scan - use for fast reconnect
+bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
+    static bool initialized = false;
+    if (initialized) {
+        return true;  // Already initialized
+    }
+    
+    Serial.println("Initializing BLE stack...");
     
     proxyEnabled = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
     
-    // Create mutexes for thread-safe BLE operations (mirroring Kenny's approach)
-    bleMutex = xSemaphoreCreateMutex();
-    bleNotifyMutex = xSemaphoreCreateMutex();
+    // Create mutexes for thread-safe BLE operations (only once)
+    if (!bleMutex) {
+        bleMutex = xSemaphoreCreateMutex();
+    }
+    if (!bleNotifyMutex) {
+        bleNotifyMutex = xSemaphoreCreateMutex();
+    }
     
     if (!bleMutex || !bleNotifyMutex) {
         Serial.println("ERROR: Failed to create BLE mutexes");
@@ -134,12 +167,32 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
         Serial.println("Creating proxy server (advertising delayed until V1 connects)...");
         initProxyServer(proxyName_.c_str());
         proxyServerInitialized = true;
-        // Do NOT start advertising here - wait for V1 connection
+    }
+    
+    // Set up security and pairing
+    NimBLEDevice::setSecurityAuth(true, true, true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+    
+    initialized = true;
+    Serial.println("BLE stack initialized");
+    return true;
+}
+
+bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
+    // Initialize BLE stack first (idempotent)
+    if (!initBLE(enableProxy, proxyName)) {
+        return false;
     }
     
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    pScan->setScanCallbacks(new ScanCallbacks(this));
+    
+    // Delete existing callback handlers to prevent memory leaks on restart
+    if (pScanCallbacks) {
+        delete pScanCallbacks;
+    }
+    pScanCallbacks = new ScanCallbacks(this);
+    pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
     pScan->setInterval(16);   // 10ms interval - very aggressive scanning
     pScan->setWindow(16);     // 10ms window - 100% duty cycle for fastest discovery
@@ -156,12 +209,20 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
 }
 
 bool V1BLEClient::isConnected() {
-    SemaphoreGuard lock(bleMutex);
-    return connected && pClient && pClient->isConnected();
+    // Quick check without mutex - the connected flag is atomic enough for reading
+    // and pClient->isConnected() is thread-safe in NimBLE
+    if (!connected || !pClient) {
+        return false;
+    }
+    return pClient->isConnected();
 }
 
 bool V1BLEClient::isProxyClientConnected() {
     return proxyClientConnected;
+}
+
+void V1BLEClient::setProxyClientConnected(bool connected) {
+    proxyClientConnected = connected;
 }
 
 void V1BLEClient::onDataReceived(DataCallback callback) {
@@ -211,6 +272,9 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
                   name.c_str(), addrStr.c_str(), rssi);
     Serial.printf("========================================\n");
     
+    // Save this address for future fast reconnects
+    settingsManager.setLastV1Address(addrStr.c_str());
+    
     // Stop scanning immediately
     NimBLEDevice::getScan()->stop();
     
@@ -239,10 +303,22 @@ void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
 
 void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
     Serial.printf("Disconnected from V1 (reason: %d)\n", reason);
+    
+    // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
+    // to ensure a clean reconnect next time.
+    if (reason != 0 && reason != BLE_HS_ETIMEOUT) { // 0 is normal disconnect
+        NimBLEAddress addr = pClient->getPeerAddress();
+        if (NimBLEDevice::isBonded(addr)) {
+            Serial.printf("Unexpected disconnect. Deleting bond for %s\n", addr.toString().c_str());
+            NimBLEDevice::deleteBond(addr);
+        }
+    }
+
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = false;
-        instancePtr->pClient = nullptr;
+        // Do NOT clear pClient - we reuse it to prevent memory leaks
+        // instancePtr->pClient = nullptr; 
         instancePtr->pRemoteService = nullptr;
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
@@ -259,29 +335,43 @@ bool V1BLEClient::connectToServer() {
     Serial.printf("Attempting to connect to %s (type=%d)...\n", addrStr.c_str(), addrType);
     
     // Brief pause for scan to stop
-    delay(50);
+    delay(100);
 
     bool connectedOk = false;
-    int attempts = 3;
+    // Try just once with a longer timeout - if it's there, we'll find it.
+    // If not, we shouldn't waste time retrying blindly.
+    int attempts = 1; 
+    
+    // Reuse existing client if available to prevent leaks
+    if (!pClient) {
+        pClient = NimBLEDevice::createClient();
+    }
+    
+    if (!pClient) {
+        // If we still don't have a client, we can't proceed.
+        Serial.println("Failed to create client - device reboot may be required");
+        return false;
+    }
+
+    // Create client callbacks if not already created
+    if (!pClientCallbacks) {
+        pClientCallbacks = new ClientCallbacks();
+    }
+    pClient->setClientCallbacks(pClientCallbacks);
+    pClient->setConnectionParams(12, 12, 0, 51);
+    // Give it plenty of time to find the advertisement (6s)
+    // If it connects earlier, it will return immediately.
+    pClient->setConnectTimeout(6); 
+
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         Serial.printf("Connect attempt %d/%d\n", attempt, attempts);
         
-        // Always create a fresh client for V1 to avoid stale params
-        pClient = NimBLEDevice::createClient();
-        if (!pClient) {
-            Serial.println("Failed to create client");
-            break;
-        }
-
-        pClient->setClientCallbacks(new ClientCallbacks());
-        pClient->setConnectionParams(12, 12, 0, 51);
-        pClient->setConnectTimeout(10); // 10 second timeout
-
         if (hasTargetDevice) {
             Serial.println("Calling pClient->connect(targetDevice)...");
             connectedOk = pClient->connect(targetDevice, false);
             if (!connectedOk) {
                 Serial.printf("connect(targetDevice) failed (error: %d); retrying with targetAddress\n", pClient->getLastError());
+                // Fallback to address if device object fails
                 connectedOk = pClient->connect(targetAddress, false);
             }
         } else {
@@ -290,24 +380,26 @@ bool V1BLEClient::connectToServer() {
         }
 
         if (!connectedOk) {
-            Serial.printf("connect attempts failed (error: %d)\n", pClient->getLastError());
-            NimBLEDevice::deleteClient(pClient);
-            pClient = nullptr;
-            delay(50);  // Brief pause before retry
+            Serial.printf("connect attempt failed (error: %d)\n", pClient->getLastError());
+            // Do NOT set pClient to nullptr here - keep it for reuse!
         }
     }
 
     if (!connectedOk) {
-        Serial.printf("Failed to connect (error: %d)\n", pClient->getLastError());
-        NimBLEDevice::deleteClient(pClient);
-        pClient = nullptr;
+        Serial.println("Failed to connect after attempt");
+        // Keep pClient for next time, but ensure it's disconnected
+        if (pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        
         {
             SemaphoreGuard lock(bleMutex);
             shouldConnect = false;
             hasTargetDevice = false;
             targetDevice = NimBLEAdvertisedDevice(); // clear stale copy
         }
-        NimBLEDevice::getScan()->start(SCAN_DURATION, false, false);
+        // Don't restart scan here - let the caller decide (fastReconnect vs process)
+        // But process() will restart it anyway if we return false
         return false;
     }
     
@@ -509,7 +601,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
 
     // Route proxy notifications (only B2CE alerts)
-    if (instancePtr->proxyEnabled && proxyClientConnected && instancePtr->pProxyNotifyChar) {
+    if (instancePtr->proxyEnabled && instancePtr->proxyClientConnected && instancePtr->pProxyNotifyChar) {
         if (xSemaphoreTake(instancePtr->bleNotifyMutex, pdMS_TO_TICKS(50))) {
             instancePtr->pProxyNotifyChar->setValue(pData, length);
             instancePtr->pProxyNotifyChar->notify();
@@ -876,6 +968,13 @@ bool V1BLEClient::isScanning() {
     return pScan && pScan->isScanning();
 }
 
+NimBLEAddress V1BLEClient::getConnectedAddress() const {
+    if (pClient && pClient->isConnected()) {
+        return pClient->getPeerAddress();
+    }
+    return NimBLEAddress();  // Default constructor for empty address
+}
+
 void V1BLEClient::disconnect() {
     if (pClient && pClient->isConnected()) {
         pClient->disconnect();
@@ -886,17 +985,20 @@ void V1BLEClient::disconnect() {
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
     Serial.println("===== JBV1 PROXY CLIENT CONNECTED =====");
-    proxyClientConnected = true;
+    if (bleClient) {
+        bleClient->setProxyClientConnected(true);
+    }
 }
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
     Serial.printf("===== JBV1 PROXY CLIENT DISCONNECTED (reason: %d) =====\n", reason);
-    proxyClientConnected = false;
-    
-    // Resume advertising if V1 is still connected
-    if (instancePtr && instancePtr->isConnected()) {
-        Serial.println("Resuming proxy advertising...");
-        NimBLEDevice::startAdvertising();
+    if (bleClient) {
+        bleClient->setProxyClientConnected(false);
+        // Resume advertising if V1 is still connected
+        if (bleClient->isConnected()) {
+            Serial.println("Resuming proxy advertising...");
+            NimBLEDevice::startAdvertising();
+        }
     }
 }
 
@@ -952,7 +1054,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     Serial.printf("Creating BLE proxy server as '%s'\n", deviceName);
     
     pServer = NimBLEDevice::createServer();
-    pServer->setCallbacks(new ProxyServerCallbacks());
+    pProxyServerCallbacks = new ProxyServerCallbacks(this);
+    pServer->setCallbacks(pProxyServerCallbacks);
     
     // Ensure server allows connections
     NimBLEDevice::setSecurityAuth(false, false, true);
@@ -972,7 +1075,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
         V1_COMMAND_WRITE_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    pProxyWriteChar->setCallbacks(new ProxyWriteCallbacks(this));
+    pProxyWriteCallbacks = new ProxyWriteCallbacks(this);
+    pProxyWriteChar->setCallbacks(pProxyWriteCallbacks);
     
     pProxyService->start();
     pServer->start();  // Required in NimBLE 2.x to enable connections
@@ -1000,5 +1104,42 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     if (pProxyNotifyChar) {
         pProxyNotifyChar->setValue(data, length);
         pProxyNotifyChar->notify();
+    }
+}
+
+// Attempt a fast reconnect to a known address before scanning
+bool V1BLEClient::fastReconnect() {
+    // Check if we have a previously known address by comparing to a default (zeroed) address
+    if (targetAddress == NimBLEAddress()) {
+        Serial.println("[FastReconnect] No previous V1 address known, skipping.");
+        return false;
+    }
+
+    Serial.printf("[FastReconnect] Attempting direct connection to %s\n", targetAddress.toString().c_str());
+    hasTargetDevice = false; // Ensure we connect by address only
+    
+    // Try to connect directly - connectToServer will handle the connection
+    bool result = connectToServer();
+    
+    // Always clear shouldConnect after fastReconnect completes
+    {
+        SemaphoreGuard lock(bleMutex);
+        shouldConnect = false;
+    }
+    
+    if (result) {
+        Serial.println("[FastReconnect] SUCCESS - Connected to V1!");
+    } else {
+        Serial.println("[FastReconnect] FAILED - Will fall back to scanning");
+    }
+    
+    return result;
+}
+
+void V1BLEClient::setTargetAddress(const NimBLEAddress& address) {
+    // Check if address is valid (not all zeros)
+    if (address != NimBLEAddress()) {
+        targetAddress = address;
+        Serial.printf("[BLE] Set target address for fast reconnect: %s\n", targetAddress.toString().c_str());
     }
 }

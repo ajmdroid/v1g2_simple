@@ -73,10 +73,13 @@ public:
 
     // Record alert transitions (deduplicated internally)
     bool logAlert(const AlertData& alert, const DisplayState& state, size_t alertCount);
-    bool logClear(const DisplayState& state);
+    bool updateStateOnClear(const DisplayState& state);
 
     // Read back recent log entries as JSON (newest order preserved)
     String getRecentJson(size_t maxLines = ALERT_LOG_MAX_RECENT) const;
+
+    // Set the UTC timestamp from NTP
+    void setTimestampUTC(uint32_t unixTime);
 
     // Remove the log file and recreate with header
     bool clear();
@@ -97,7 +100,8 @@ private:
     bool ready;
     bool usingSDMMC;
     String logPath;
-    mutable Snapshot lastSnapshot;
+    Snapshot lastSnapshot;
+    uint32_t timestampUTC;
 
     bool appendLine(const String& line) const;
     Snapshot makeSnapshot(const AlertData& alert, const DisplayState& state, size_t count) const;

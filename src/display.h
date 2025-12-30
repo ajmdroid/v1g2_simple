@@ -44,17 +44,14 @@ public:
     void showConnected();
     void showDisconnected();
     void showResting(); // idle/rest screen
+    void showScanning(); // scanning screen (like resting but with SCAN text)
 
     // Demo mode
     void showDemo();
     void showBootSplash();
     
-    // Show V1 Gen2 logo
-    void showLogo();
-    
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
-    void setBluetoothConnected(bool connected);
     
     // Get canvas for direct access (testing)
     Arduino_Canvas* getCanvas() { return tft; }
@@ -92,10 +89,8 @@ private:
     // Drawing helpers
     void drawBandIndicators(uint8_t bandMask, bool muted);
     void drawBandLabel(Band band, bool muted);
-    void drawArrows(Direction arrows);
     void drawSignalBars(uint8_t bars);
     void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
-    void drawV1TechLogo();
     void drawStatusText(const char* text, uint16_t color);
     void drawDirectionArrow(Direction dir, bool muted);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
@@ -108,12 +103,8 @@ private:
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     void draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     int draw14SegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
-    void drawBitmapLogo(); // New function declaration
-    void drawTopHeader();
-    void drawBluetoothIcon(bool connected);
     Band pickDominantBand(uint8_t bandMask);
 
-    bool bluetoothConnected = false;
     int currentProfileSlot = 0;  // Track current profile for display
 };
 

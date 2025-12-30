@@ -40,6 +40,19 @@ enum V1Mode {
     V1_MODE_ADVANCED_LOGIC = 0x03 // Advanced Logic
 };
 
+// WiFi network credential
+struct WiFiNetwork {
+    String ssid;
+    String password;
+    
+    WiFiNetwork() : ssid(""), password("") {}
+    WiFiNetwork(const String& s, const String& p) : ssid(s), password(p) {}
+    bool isValid() const { return ssid.length() > 0; }
+};
+
+// Maximum number of saved WiFi networks
+#define MAX_WIFI_NETWORKS 3
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -54,10 +67,14 @@ struct V1Settings {
     // WiFi settings
     bool enableWifi;
     WiFiModeSetting wifiMode;
-    String ssid;
-    String password;
-    String apSSID;
-    String apPassword;
+    String ssid;             // Station mode SSID (for connecting to home WiFi)
+    String password;         // Station mode password
+    String apSSID;           // AP mode SSID (device hotspot name)
+    String apPassword;       // AP mode password
+    String staSSID;          // Home WiFi SSID for NTP time sync (legacy - use wifiNetworks)
+    String staPassword;      // Home WiFi password for NTP time sync (legacy - use wifiNetworks)
+    WiFiNetwork wifiNetworks[MAX_WIFI_NETWORKS];  // Multiple WiFi networks for auto-switching
+    bool enableTimesync;     // Enable automatic time sync via NTP
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -96,6 +113,8 @@ struct V1Settings {
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
     
+    String lastV1Address;  // Last known V1 BLE address for fast reconnect
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -104,6 +123,9 @@ struct V1Settings {
         password(""),
         apSSID("V1-Display"),
         apPassword("valentine1"),
+        staSSID(""),
+        staPassword(""),
+        enableTimesync(false),
         proxyBLE(true),
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
@@ -132,7 +154,8 @@ struct V1Settings {
         slot2MuteVolume(0xFF),
         slot0_default(),
         slot1_highway(),
-        slot2_comfort() {}
+        slot2_comfort(),
+        lastV1Address("") {}
 };
 
 class SettingsManager {
@@ -163,9 +186,11 @@ public:
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
+    void setLastV1Address(const String& addr);
+    void setTimeSync(const String& staSSID, const String& staPassword, bool enabled);
     
     // Get active slot configuration
-    AutoPushSlot getActiveSlot() const;
+    const AutoPushSlot& getActiveSlot() const;
     
     // Get slot volume settings (returns 0xFF for "no change")
     uint8_t getSlotVolume(int slotNum) const;
@@ -177,6 +202,25 @@ public:
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
+    void updatePrimaryWiFi(const String& ssid, const String& password) {
+        settings.ssid = ssid;
+        settings.password = password;
+        settings.staSSID = ssid;
+        settings.staPassword = password;
+        settings.wifiNetworks[0].ssid = ssid;
+        settings.wifiNetworks[0].password = password;
+    }
+    void updateWiFiNetwork(int index, const String& ssid, const String& password) {
+        if (index >= 0 && index < MAX_WIFI_NETWORKS) {
+            settings.wifiNetworks[index].ssid = ssid;
+            settings.wifiNetworks[index].password = password;
+        }
+    }
+    void updateTimesync(bool enabled) { settings.enableTimesync = enabled; }
+    void updateStaSSID(const String& ssid, const String& password) { 
+        settings.staSSID = ssid; 
+        settings.staPassword = password; 
+    }
     
     // Save all settings to flash
     void save();
