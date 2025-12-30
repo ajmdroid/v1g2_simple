@@ -11,9 +11,10 @@
 
 // Color theme options
 enum ColorTheme {
-    THEME_STANDARD = 0,     // Standard colors (red/blue/green)
+    THEME_STANDARD = 0,      // Standard colors (red/blue/green)
     THEME_HIGH_CONTRAST = 1, // High contrast (bright white/yellow/cyan)
-    THEME_STEALTH = 2       // Dark mode (muted colors on black)
+    THEME_STEALTH = 2,       // Dark mode (muted colors on black)
+    THEME_BUSINESS = 3       // Professional, subdued palette
 };
 
 // Color palette structure
@@ -73,6 +74,20 @@ namespace ColorThemes {
         .colorSignalBar = 0x8000 // Dark red
     };
     
+    // Business theme - professional, subdued blues with amber accents
+    constexpr ColorPalette BUSINESS = {
+        .bg = 0x0841,        // Deep navy
+        .text = 0xE71C,      // Soft off-white
+        .colorKA = 0xFD20,   // Amber
+        .colorK = 0x39BF,    // Steel blue
+        .colorX = 0x07EF,    // Teal
+        .colorGray = 0x4208, // Medium gray
+        .colorMuted = 0x739C, // Muted grey
+        .colorLaser = 0x39BF, // Steel blue
+        .colorArrow = 0xFD20, // Amber
+        .colorSignalBar = 0xFD20 // Amber
+    };
+    
     // Get palette by theme
     inline const ColorPalette& getPalette(ColorTheme theme) {
         switch (theme) {
@@ -80,6 +95,8 @@ namespace ColorThemes {
                 return HIGH_CONTRAST;
             case THEME_STEALTH:
                 return STEALTH;
+            case THEME_BUSINESS:
+                return BUSINESS;
             case THEME_STANDARD:
             default:
                 return STANDARD;
@@ -93,6 +110,8 @@ namespace ColorThemes {
                 return "High Contrast";
             case THEME_STEALTH:
                 return "Stealth";
+            case THEME_BUSINESS:
+                return "Business";
             case THEME_STANDARD:
             default:
                 return "Standard";

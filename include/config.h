@@ -40,7 +40,7 @@
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
 #define SCAN_DURATION           5     // 5-second scan (stops early when V1 found)
-#define RECONNECT_DELAY         200   // 200ms delay between scan attempts
+#define RECONNECT_DELAY         50    // 50ms delay between scan attempts (was 200ms)
 
 // ESP Packet Constants
 #define ESP_PACKET_START        0xAA
@@ -72,7 +72,6 @@
 #define BAR_HEIGHT          40
 #define BAR_SPACING         5
 #define MAX_SIGNAL_BARS     6
-#define LV_SIGNAL_BAR_COUNT 6 // For LVGL signal bars
 
 // Timing
 #define DISPLAY_UPDATE_MS   100   // Update display every 100ms

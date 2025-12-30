@@ -4,6 +4,7 @@
  */
 
 #include "display.h"
+#include "serial_logger.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include "rdf_logo.h"  // RDF splash screen (only logo actually used)
@@ -245,37 +246,37 @@ V1Display::~V1Display() {
 }
 
 bool V1Display::begin() {
-    Serial.println("Display init start...");
-    Serial.print("Board: ");
-    Serial.println(DISPLAY_NAME);
+    SerialLog.println("Display init start...");
+    SerialLog.print("Board: ");
+    SerialLog.println(DISPLAY_NAME);
     
 #if PIN_POWER_ON >= 0
     // Power was held low in setup(); bring it up now
     digitalWrite(PIN_POWER_ON, HIGH);
-    Serial.println("Power ON");
+    SerialLog.println("Power ON");
     delay(200);
 #endif
     
     // Initialize display
-    Serial.println("Calling display init...");
+    SerialLog.println("Calling display init...");
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Arduino_GFX initialization for Waveshare 3.49"
-    Serial.println("Initializing Arduino_GFX for Waveshare 3.49...");
-    Serial.printf("Pins: CS=%d, SCK=%d, D0=%d, D1=%d, D2=%d, D3=%d, RST=%d, BL=%d\n",
+    SerialLog.println("Initializing Arduino_GFX for Waveshare 3.49...");
+    SerialLog.printf("Pins: CS=%d, SCK=%d, D0=%d, D1=%d, D2=%d, D3=%d, RST=%d, BL=%d\n",
                   LCD_CS, LCD_SCLK, LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_RST, LCD_BL);
     
     // Configure backlight pin
-    Serial.println("Configuring backlight...");
+    SerialLog.println("Configuring backlight...");
     // Waveshare 3.49" has INVERTED backlight PWM:
     // 0 = full brightness, 255 = off
     pinMode(LCD_BL, OUTPUT);
     analogWrite(LCD_BL, 255);  // Start with backlight off (inverted: 255=off)
-    Serial.println("Backlight configured, set to 255 (off, inverted)");
+    SerialLog.println("Backlight configured, set to 255 (off, inverted)");
     
     // Manual RST toggle with Waveshare timing BEFORE creating bus
     // This is critical - Waveshare examples do: HIGH(30ms) -> LOW(250ms) -> HIGH(30ms)
-    Serial.println("Manual RST toggle (Waveshare timing)...");
+    SerialLog.println("Manual RST toggle (Waveshare timing)...");
     pinMode(LCD_RST, OUTPUT);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
@@ -283,10 +284,10 @@ bool V1Display::begin() {
     delay(250);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
-    Serial.println("RST toggle complete");
+    SerialLog.println("RST toggle complete");
     
     // Create QSPI bus
-    Serial.println("Creating QSPI bus...");
+    SerialLog.println("Creating QSPI bus...");
     bus = new Arduino_ESP32QSPI(
         LCD_CS,    // CS
         LCD_SCLK,  // SCK
@@ -296,14 +297,14 @@ bool V1Display::begin() {
         LCD_DATA3  // D3
     );
     if (!bus) {
-        Serial.println("ERROR: Failed to create bus!");
+        SerialLog.println("ERROR: Failed to create bus!");
         return false;
     }
-    Serial.println("QSPI bus created");
+    SerialLog.println("QSPI bus created");
     
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
-    Serial.println("Creating AXS15231B panel...");
+    SerialLog.println("Creating AXS15231B panel...");
     gfxPanel = new Arduino_AXS15231B(
         bus,               // bus
         GFX_NOT_DEFINED,   // RST - we already did manual reset
@@ -319,39 +320,39 @@ bool V1Display::begin() {
         sizeof(axs15231b_180640_init_operations)
     );
     if (!gfxPanel) {
-        Serial.println("ERROR: Failed to create panel!");
+        SerialLog.println("ERROR: Failed to create panel!");
         return false;
     }
-    Serial.println("AXS15231B panel created with init_operations");
+    SerialLog.println("AXS15231B panel created with init_operations");
     
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
-    Serial.println("Creating canvas 172x640 with rotation=1 (landscape)...");
+    SerialLog.println("Creating canvas 172x640 with rotation=1 (landscape)...");
     tft = new Arduino_Canvas(172, 640, gfxPanel, 0, 0, 1);
     
     if (!tft) {
-        Serial.println("ERROR: Failed to create canvas!");
+        SerialLog.println("ERROR: Failed to create canvas!");
         return false;
     }
-    Serial.println("Canvas created");
+    SerialLog.println("Canvas created");
     
-    Serial.println("Calling tft->begin()...");
+    SerialLog.println("Calling tft->begin()...");
     if (!tft->begin()) {
-        Serial.println("ERROR: tft->begin() failed!");
+        SerialLog.println("ERROR: tft->begin() failed!");
         return false;
     }
-    Serial.println("tft->begin() succeeded");
-    Serial.printf("Canvas size: width=%d, height=%d\n", tft->width(), tft->height());
+    SerialLog.println("tft->begin() succeeded");
+    SerialLog.printf("Canvas size: width=%d, height=%d\n", tft->width(), tft->height());
     
-    Serial.println("Filling screen with black...");
+    SerialLog.println("Filling screen with black...");
     tft->fillScreen(COLOR_BLACK);
     tft->flush();
-    Serial.println("Screen filled and flushed");
+    SerialLog.println("Screen filled and flushed");
     
     // Turn on backlight (inverted: 0 = full brightness)
-    Serial.println("Turning on backlight (inverted PWM)...");
+    SerialLog.println("Turning on backlight (inverted PWM)...");
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
     delay(100);
-    Serial.println("Backlight ON");
+    SerialLog.println("Backlight ON");
     
 #else
     // TFT_eSPI initialization
@@ -374,11 +375,11 @@ bool V1Display::begin() {
     TFT_CALL(setTextSize)(2);
 #endif
 
-    Serial.println("Display initialized successfully!");
-    Serial.print("Screen: ");
-    Serial.print(SCREEN_WIDTH);
-    Serial.print("x");
-    Serial.println(SCREEN_HEIGHT);
+    SerialLog.println("Display initialized successfully!");
+    SerialLog.print("Screen: ");
+    SerialLog.print(SCREEN_WIDTH);
+    SerialLog.print("x");
+    SerialLog.println(SCREEN_HEIGHT);
     
     // Load color theme from settings
     updateColorTheme();
@@ -739,8 +740,8 @@ void V1Display::showDisconnected() {
 }
 
 void V1Display::showResting() {
-    Serial.println("showResting() called");
-    Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+    SerialLog.println("showResting() called");
+    SerialLog.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -751,14 +752,14 @@ void V1Display::showResting() {
     drawTopCounter('0', false, true);
     
     // Band indicators all dimmed (no active bands)
-    Serial.println("Drawing band indicators...");
+    SerialLog.println("Drawing band indicators...");
     drawBandIndicators(0, false);
     
     // Signal bars all empty
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     
     // Direction arrows all dimmed
-    Serial.println("Drawing arrows...");
+    SerialLog.println("Drawing arrows...");
     drawDirectionArrow(DIR_NONE, false);
     
     // Frequency display showing dashes
@@ -778,11 +779,11 @@ void V1Display::showResting() {
     tft->flush();
 #endif
     
-    Serial.println("showResting() complete");
+    SerialLog.println("showResting() complete");
 }
 
 void V1Display::showScanning() {
-    Serial.println("showScanning() called");
+    SerialLog.println("showScanning() called");
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -876,7 +877,7 @@ void V1Display::showBootSplash() {
 #else
     digitalWrite(TFT_BL, HIGH);
 #endif
-    Serial.println("Backlight ON (post-splash, inverted)");
+    SerialLog.println("Backlight ON (post-splash, inverted)");
 }
 
 void V1Display::drawStatusText(const char* text, uint16_t color) {
@@ -1334,5 +1335,5 @@ void V1Display::updateColorTheme() {
     // Load the current theme from settings and update palette
     ColorTheme theme = settingsManager.get().colorTheme;
     currentPalette = ColorThemes::getPalette(theme);
-    Serial.printf("Color theme updated: %s\n", ColorThemes::getThemeName(theme));
+    SerialLog.printf("Color theme updated: %s\n", ColorThemes::getThemeName(theme));
 }

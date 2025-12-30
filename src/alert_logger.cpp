@@ -334,3 +334,7 @@ bool AlertLogger::clear() {
     lastSnapshot = Snapshot();
     return removed || created;
 }
+
+void AlertLogger::setTimestampUTC(uint32_t unixTime) {
+    timestampUTC = unixTime;
+}

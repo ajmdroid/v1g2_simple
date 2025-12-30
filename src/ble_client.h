@@ -95,6 +95,9 @@ public:
     // Check if currently scanning
     bool isScanning();
     
+    // Get the connected V1's BLE address
+    NimBLEAddress getConnectedAddress() const;
+    
     // Forward data to proxy clients (called when data is received from V1)
     // sourceCharUUID: last 16-bit of source characteristic UUID (0xB2CE, 0xB4E0, etc)
     void forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID);

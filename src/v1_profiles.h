@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <vector>
+#include <ArduinoJson.h>
 
 // V1 Gen2 User Settings (6 bytes)
 // Based on ESP Specification and V19UserSettings from Valentine Research
@@ -128,6 +129,7 @@ public:
     String profileToJson(const V1Profile& profile) const;
     String settingsToJson(const V1UserSettings& settings) const;
     bool jsonToSettings(const String& json, V1UserSettings& settings) const;
+    bool jsonToSettings(const JsonObject& settingsObj, V1UserSettings& settings) const;
     
 private:
     fs::FS* fs;
