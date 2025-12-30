@@ -16,7 +16,9 @@
 		bar3: 0xFFE0,    // Yellow
 		bar4: 0xFFE0,    // Yellow
 		bar5: 0xF800,    // Red
-		bar6: 0xF800     // Red (strongest)
+		bar6: 0xF800,    // Red (strongest)
+		hideWifiIcon: false,
+		hideProfileIndicator: false
 	});
 	
 	let loading = $state(true);
@@ -82,6 +84,8 @@
 			params.append('bar4', colors.bar4);
 			params.append('bar5', colors.bar5);
 			params.append('bar6', colors.bar6);
+			params.append('hideWifiIcon', colors.hideWifiIcon);
+			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -135,7 +139,9 @@
 					bar3: 0xFFE0,
 					bar4: 0xFFE0,
 					bar5: 0xF800,
-					bar6: 0xF800
+					bar6: 0xF800,
+					hideWifiIcon: false,
+					hideProfileIndicator: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -329,8 +335,38 @@
 							style="color: {rgb565ToHex(colors.wifiIcon)}"
 						>📶</span>
 					</div>
-					<label class="label">
-						<span class="label-text-alt text-base-content/50">Shown when connected to WiFi</span>
+				</div>
+				
+				<div class="divider my-2"></div>
+				
+				<!-- Visibility Toggles -->
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide WiFi Icon</span>
+							<p class="text-xs text-base-content/50">Show briefly on connect, then hide</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideWifiIcon}
+							onchange={(e) => colors.hideWifiIcon = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide Profile Indicator</span>
+							<p class="text-xs text-base-content/50">Show on profile change, then hide</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideProfileIndicator}
+							onchange={(e) => colors.hideProfileIndicator = e.target.checked}
+						/>
 					</label>
 				</div>
 			</div>

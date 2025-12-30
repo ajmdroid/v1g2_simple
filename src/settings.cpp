@@ -107,6 +107,8 @@ void SettingsManager::load() {
     settings.colorBar4 = preferences.getUShort("colorBar4", 0xFFE0);
     settings.colorBar5 = preferences.getUShort("colorBar5", 0xF800);
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
+    settings.hideWifiIcon = preferences.getBool("hideWifi", false);
+    settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -207,6 +209,8 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBar4", settings.colorBar4);
     written += preferences.putUShort("colorBar5", settings.colorBar5);
     written += preferences.putUShort("colorBar6", settings.colorBar6);
+    written += preferences.putBool("hideWifi", settings.hideWifiIcon);
+    written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -374,6 +378,16 @@ void SettingsManager::setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t 
     settings.colorBar4 = bar4;
     settings.colorBar5 = bar5;
     settings.colorBar6 = bar6;
+    save();
+}
+
+void SettingsManager::setHideWifiIcon(bool hide) {
+    settings.hideWifiIcon = hide;
+    save();
+}
+
+void SettingsManager::setHideProfileIndicator(bool hide) {
+    settings.hideProfileIndicator = hide;
     save();
 }
 

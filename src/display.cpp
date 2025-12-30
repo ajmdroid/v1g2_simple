@@ -663,11 +663,47 @@ void V1Display::drawMuteIcon(bool muted) {
 }
 
 void V1Display::drawProfileIndicator(int slot) {
-    currentProfileSlot = slot;
-    
     // Get custom slot names and colors from settings
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
+    
+    // Track profile changes for timeout
+    if (slot != lastProfileSlot) {
+        profileChangedTime = millis();
+        lastProfileSlot = slot;
+    }
+    currentProfileSlot = slot;
+    
+    // Calculate clear area dimensions (need these for both showing and hiding)
+#if defined(DISPLAY_WAVESHARE_349)
+    const float freqScale = 2.2f;
+#else
+    const float freqScale = 1.7f;
+#endif
+    SegMetrics mFreq = segMetrics(freqScale);
+    int freqWidth = measureSevenSegmentText("35.500", freqScale);
+    const int rightMargin = 120;
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    int freqX = (maxWidth - freqWidth) / 2;
+    if (freqX < 0) freqX = 0;
+    int dotCenterX = freqX + 2 * mFreq.digitW + 2 * mFreq.spacing + mFreq.dot / 2;
+    
+    // Check if we should hide the profile indicator
+    if (s.hideProfileIndicator) {
+        // Hide after timeout
+        if (millis() - profileChangedTime > HIDE_TIMEOUT_MS) {
+            // Clear the profile name area
+            int y = 14;
+            int clearStart = 120;  // Don't overlap band indicators
+            int clearWidth = maxWidth - clearStart;
+            FILL_RECT(clearStart, y - 2, clearWidth, 28, PALETTE_BG);
+            
+            // Still draw WiFi and battery indicators
+            drawWiFiIndicator();
+            drawBatteryIndicator();
+            return;
+        }
+    }
     
     // Use custom names, fallback to defaults (limited to 20 chars)
     const char* name;
@@ -686,26 +722,6 @@ void V1Display::drawProfileIndicator(int slot) {
             color = s.slot2Color;
             break;
     }
-    
-    // Calculate x position to center over the '.' in the frequency display
-    // Frequency format: "XX.XXX" - dot is after 2 digits
-#if defined(DISPLAY_WAVESHARE_349)
-    const float freqScale = 2.2f;
-#else
-    const float freqScale = 1.7f;
-#endif
-    SegMetrics mFreq = segMetrics(freqScale);
-    
-    // Calculate where frequency starts (same as drawFrequency)
-    int freqWidth = measureSevenSegmentText("35.500", freqScale);
-    const int rightMargin = 120;
-    int maxWidth = SCREEN_WIDTH - rightMargin;
-    int freqX = (maxWidth - freqWidth) / 2;
-    if (freqX < 0) freqX = 0;
-    
-    // Calculate dot center position: after 2 digits + 2 spacings
-    // Each digit is digitW wide, with spacing between
-    int dotCenterX = freqX + 2 * mFreq.digitW + 2 * mFreq.spacing + mFreq.dot / 2;
     
     // Measure the profile name text width
     GFX_setTextDatum(TL_DATUM);  // Top-left
@@ -794,9 +810,36 @@ void V1Display::drawBatteryIndicator() {
 void V1Display::drawWiFiIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     extern WiFiManager wifiManager;
+    extern SettingsManager settingsManager;
+    const V1Settings& s = settingsManager.get();
+    
+    bool isConnected = wifiManager.isConnected();
+    
+    // Track connection state changes for timeout
+    if (isConnected && !wifiWasConnected) {
+        // Just connected - start the display timer
+        wifiConnectedTime = millis();
+        wifiWasConnected = true;
+    } else if (!isConnected) {
+        wifiWasConnected = false;
+    }
+    
+    // Check if we should hide the WiFi icon
+    if (s.hideWifiIcon && isConnected) {
+        // Hide after timeout
+        if (millis() - wifiConnectedTime > HIDE_TIMEOUT_MS) {
+            // Clear the WiFi icon area and return
+            const int wifiX = 14;
+            const int wifiSize = 20;
+            const int battY = SCREEN_HEIGHT - 14 - 8;
+            const int wifiY = battY - wifiSize - 6;
+            FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
+            return;
+        }
+    }
     
     // Only show WiFi icon when connected to a STA network (internet/NTP)
-    if (!wifiManager.isConnected()) {
+    if (!isConnected) {
         return;
     }
     
@@ -809,7 +852,6 @@ void V1Display::drawWiFiIndicator() {
     const int wifiY = battY - wifiSize - 6;    // Above battery with 6px gap
     
     // Get WiFi icon color from settings (default cyan 0x07FF)
-    const V1Settings& s = settingsManager.get();
     uint16_t wifiColor = s.colorWiFiIcon;
     
     // Clear area first

@@ -1771,6 +1771,14 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
     }
     
+    // Handle display visibility settings
+    if (server.hasArg("hideWifiIcon")) {
+        settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
+    }
+    if (server.hasArg("hideProfileIndicator")) {
+        settingsManager.setHideProfileIndicator(server.arg("hideProfileIndicator") == "true" || server.arg("hideProfileIndicator") == "1");
+    }
+    
     // Trigger immediate display preview to show new colors
     display.showDemo();
     
@@ -1807,7 +1815,9 @@ void WiFiManager::handleDisplayColorsApi() {
     json += "\"bar3\":" + String(s.colorBar3) + ",";
     json += "\"bar4\":" + String(s.colorBar4) + ",";
     json += "\"bar5\":" + String(s.colorBar5) + ",";
-    json += "\"bar6\":" + String(s.colorBar6);
+    json += "\"bar6\":" + String(s.colorBar6) + ",";
+    json += "\"hideWifiIcon\":" + String(s.hideWifiIcon ? "true" : "false") + ",";
+    json += "\"hideProfileIndicator\":" + String(s.hideProfileIndicator ? "true" : "false");
     json += "}";
     
     server.send(200, "application/json", json);

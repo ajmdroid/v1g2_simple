@@ -127,6 +127,12 @@ code .
 
 After upload, the display boots to the main UI.
 
+> **Note:** The firmware and web UI are uploaded separately. If you make changes to the web interface (anything in `interface/` or `data/`), you also need to upload the filesystem:
+> ```bash
+> pio run -e waveshare-349 -t uploadfs
+> ```
+> The `upload` command only flashes the firmware code. The `uploadfs` command uploads the web assets (HTML, CSS, JS) stored in LittleFS.
+
 ### Additional build helpers
 
 For quick checks and sizing reports, see [`docs/BUILD.md`](docs/BUILD.md). The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pio run -e waveshare-349 -t size` and `pio check -e waveshare-349` commands respectively.

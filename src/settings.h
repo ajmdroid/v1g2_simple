@@ -101,6 +101,10 @@ struct V1Settings {
     uint16_t colorBar5;          // Signal bar 5
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     
+    // Display visibility settings
+    bool hideWifiIcon;           // Hide WiFi icon after brief display
+    bool hideProfileIndicator;   // Hide profile indicator after brief display
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -152,6 +156,8 @@ struct V1Settings {
         colorBar4(0xFFE0),       // Yellow
         colorBar5(0xF800),       // Red
         colorBar6(0xF800),       // Red (strongest)
+        hideWifiIcon(false),     // Show WiFi icon by default
+        hideProfileIndicator(false), // Show profile indicator by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -202,6 +208,8 @@ public:
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     void setWiFiIconColor(uint16_t color);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
+    void setHideWifiIcon(bool hide);
+    void setHideProfileIndicator(bool hide);
     void setLastV1Address(const String& addr);
     void setTimeSync(const String& staSSID, const String& staPassword, bool enabled);
     

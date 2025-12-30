@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - Band label font: Native 24pt FreeSansBold for cleaner rendering
 - Direction arrow black outlines (matches V1 reference)
 - Custom GFX font generation via Adafruit fontconvert
+- Web UI toggles to hide WiFi icon and profile indicator after timeout
+  - Hide WiFi Icon: shows briefly on connect, then clears
+  - Hide Profile Indicator: shows on profile change, then clears
 
 ### Changed
 - Direction arrows scaled up ~22% with shallower angles to match V1

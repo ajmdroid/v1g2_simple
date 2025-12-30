@@ -112,6 +112,13 @@ private:
     Band pickDominantBand(uint8_t bandMask);
 
     int currentProfileSlot = 0;  // Track current profile for display
+    
+    // Visibility timeout tracking
+    unsigned long wifiConnectedTime = 0;    // When WiFi became connected
+    unsigned long profileChangedTime = 0;   // When profile was last changed
+    bool wifiWasConnected = false;          // Track WiFi connection state changes
+    int lastProfileSlot = -1;               // Track profile changes
+    static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 
 // Global display instance (defined in main.cpp)
