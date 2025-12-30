@@ -101,7 +101,7 @@ private:
     void handleDisplayColorsReset();
     void handleNotFound();
     
-    // HTML generation
+    // HTML generation (legacy string-based)
     String generateStyleSheet();
     String generateTopNav(const String& activePath);
     String wrapWithLayout(const String& title, const String& body, const String& activePath);
@@ -113,6 +113,18 @@ private:
     String generateAutoPushSettingsJSON();
     String generateDisplayColorsHTML();
     String generateProfileOptions(const String& selected);
+    
+    // HTML streaming (heap-efficient)
+    void streamLayoutHeader(const String& title, const String& activePath);
+    void streamLayoutFooter();
+    void streamStyleSheet();
+    void streamTopNav(const String& activePath);
+    void streamSettingsBody();
+    void streamTimeSettingsBody();
+    void streamLogsBody();
+    void streamV1SettingsBody();
+    void streamAutoPushBody();
+    void streamDisplayColorsBody();
 };
 
 // Global instance

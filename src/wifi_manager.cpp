@@ -426,7 +426,13 @@ void WiFiManager::handleStatus() {
 
 void WiFiManager::handleSettings() {
     SerialLog.println("[HTTP] GET /settings");
-    server.send(200, "text/html", generateSettingsHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("V1 Display Settings", "/settings");
+    streamSettingsBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleSettingsSave() {
@@ -555,7 +561,13 @@ void WiFiManager::handleMute() {
 
 void WiFiManager::handleTimeSettings() {
     SerialLog.println("[HTTP] GET /time");
-    server.send(200, "text/html", generateTimeSettingsHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("Time Settings", "/time");
+    streamTimeSettingsBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleTimeSettingsSave() {
@@ -637,7 +649,13 @@ void WiFiManager::handleTimeSettingsSave() {
 
 void WiFiManager::handleLogs() {
     SerialLog.println("[HTTP] GET /logs");
-    server.send(200, "text/html", generateLogsHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("Alert Logs", "/logs");
+    streamLogsBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleLogsData() {
@@ -818,7 +836,13 @@ void WiFiManager::handleSerialLogPage() {
 
 void WiFiManager::handleV1Settings() {
     SerialLog.println("[HTTP] GET /v1settings");
-    server.send(200, "text/html", generateV1SettingsHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("V1 Profiles", "/v1settings");
+    streamV1SettingsBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleV1ProfilesList() {
@@ -2110,7 +2134,13 @@ String WiFiManager::generateAutoPushSettingsJSON() {
 
 void WiFiManager::handleAutoPush() {
     SerialLog.println("[HTTP] GET /autopush");
-    server.send(200, "text/html", generateAutoPushHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("Auto-Push Profiles", "/autopush");
+    streamAutoPushBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleAutoPushSlotSave() {
@@ -2675,7 +2705,13 @@ String WiFiManager::generateAutoPushHTML() {
 
 void WiFiManager::handleDisplayColors() {
     SerialLog.println("[HTTP] GET /displaycolors");
-    server.send(200, "text/html", generateDisplayColorsHTML());
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    
+    // Stream HTML in chunks
+    streamLayoutHeader("Display Colors", "/displaycolors");
+    streamDisplayColorsBody();
+    streamLayoutFooter();
 }
 
 void WiFiManager::handleDisplayColorsSave() {
@@ -2934,3 +2970,158 @@ String WiFiManager::generateTimeSettingsHTML() {
     
     return wrapWithLayout("Time Settings", body, "/time");
 }
+
+// ============================
+// Streaming HTML Implementations
+// ============================
+
+void WiFiManager::streamLayoutHeader(const String& title, const String& activePath) {
+    server.sendContent_P(PSTR("<!DOCTYPE html>\\n<html>\\n<head>\\n"));
+    server.sendContent_P(PSTR("  <meta charset=\\\"UTF-8\\\">\\n"));
+    server.sendContent_P(PSTR("  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n"));
+    server.sendContent("  <title>" + htmlEscape(title) + "</title>\\n");
+    streamStyleSheet();
+    server.sendContent_P(PSTR("</head>\\n<body>\\n"));
+    streamTopNav(activePath);
+    server.sendContent(String("<h1 class=\\\"page-title\\\">") + htmlEscape(title) + "</h1>\\n");
+    server.sendContent_P(PSTR("<div class=\\\"container\\\">\\n"));
+}
+
+void WiFiManager::streamLayoutFooter() {
+    server.sendContent_P(PSTR("</div>\\n</body>\\n</html>"));
+}
+
+void WiFiManager::streamStyleSheet() {
+    // Use existing generateStyleSheet() but stream the result
+    String css = generateStyleSheet();
+    server.sendContent(css);
+}
+
+void WiFiManager::streamTopNav(const String& activePath) {
+    // Use existing generateTopNav() but stream the result
+    String nav = generateTopNav(activePath);
+    server.sendContent(nav);
+}
+
+void WiFiManager::streamSettingsBody() {
+    // Generate settings HTML (unwrapped body only)
+    const V1Settings& settings = settingsManager.get();
+    String apSsidEsc = htmlEscape(settings.apSSID);
+    String apPassEsc = settings.apPassword.length() > 0 ? "********" : "";
+    String staSsidEsc = htmlEscape(settings.ssid);
+    String staPassEsc = settings.password.length() > 0 ? "********" : "";
+
+    // Success message if present
+    if (server.hasArg("saved")) {
+        if (server.hasArg("wifi")) {
+            server.sendContent_P(PSTR("<div class='msg success'>Settings saved! Restart to apply WiFi changes.</div>"));
+        } else {
+            server.sendContent_P(PSTR("<div class='msg success'>Settings saved!</div>"));
+        }
+    }
+
+    // Time Settings Card
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>Time Settings</h2>"));
+    server.sendContent_P(PSTR("<p class=\\\"muted\\\">Configure automatic time sync via NTP or set time manually for accurate timestamps.</p>"));
+    
+    if (timeManager.isTimeValid()) {
+        String timeStr = timeManager.getTimestampISO();
+        const V1Settings& s = settingsManager.get();
+        String syncStatus = s.enableTimesync ? "NTP Sync Enabled" : "Manual Time";
+        server.sendContent("<div class=\\\"setting-row\\\"><span class=\\\"muted\\\">" + syncStatus + "</span><span>" + timeStr + " UTC</span></div>");
+    } else {
+        server.sendContent_P(PSTR("<div class=\\\"msg error\\\">Time Not Set</div>"));
+    }
+    server.sendContent_P(PSTR("<a class=\\\"btn primary\\\" href=\\\"/time\\\">Open Time Settings</a></div>"));
+
+    // V1 Settings Card
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>V1 Settings</h2>"));
+    server.sendContent_P(PSTR("<p class=\\\"muted\\\">Pull, edit, and push V1 user settings. Save profiles for quick switching.</p>"));
+    server.sendContent_P(PSTR("<a class=\\\"btn primary\\\" href=\\\"/v1settings\\\">Open V1 Settings</a></div>"));
+
+    // Alert Logs Card  
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>Alert Logs</h2>"));
+    server.sendContent_P(PSTR("<p class=\\\"muted\\\">Alerts are recorded to the SD card. View and clear them from the log page.</p>"));
+    server.sendContent_P(PSTR("<a class=\\\"btn primary\\\" href=\\\"/logs\\\">Open Alert Log</a></div>"));
+
+    // WiFi Settings Form
+    server.sendContent_P(PSTR("<form method=\\\"POST\\\" action=\\\"/settings\\\">"));
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>WiFi Mode & Access Point</h2>"));
+    
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>WiFi Mode</label>"));
+    server.sendContent_P(PSTR("<select name=\\\"wifi_mode\\\">"));
+    server.sendContent(String("<option value=\\\"2\\\"") + (settings.wifiMode == V1_WIFI_AP ? " selected" : "") + ">Access Point Only</option>");
+    server.sendContent(String("<option value=\\\"1\\\"") + (settings.wifiMode == V1_WIFI_STA ? " selected" : "") + ">Station Only</option>");
+    server.sendContent(String("<option value=\\\"3\\\"") + (settings.wifiMode == V1_WIFI_APSTA ? " selected" : "") + ">AP + Station (NAT passthrough)</option>");
+    server.sendContent_P(PSTR("</select></div>"));
+
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>AP Network Name</label>"));
+    server.sendContent("<input type=\\\"text\\\" name=\\\"ap_ssid\\\" value=\\\"" + apSsidEsc + "\\\"></div>");
+
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>AP Password (min 8 chars)</label>"));
+    server.sendContent("<input type=\\\"password\\\" name=\\\"ap_password\\\" value=\\\"" + apPassEsc + "\\\"></div>");
+
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>Upstream WiFi (STA) SSID</label>"));
+    server.sendContent("<input type=\\\"text\\\" name=\\\"ssid\\\" value=\\\"" + staSsidEsc + "\\\" placeholder=\\\"Home/Hotspot SSID\\\"></div>");
+
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>Upstream WiFi Password</label>"));
+    server.sendContent("<input type=\\\"password\\\" name=\\\"password\\\" value=\\\"" + staPassEsc + "\\\" placeholder=\\\"Password\\\"></div>");
+    server.sendContent_P(PSTR("</div>"));
+
+    // Display Settings Card
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>Display</h2>"));
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>Brightness (0-255)</label>"));
+    server.sendContent("<input type=\\\"number\\\" name=\\\"brightness\\\" min=\\\"0\\\" max=\\\"255\\\" value=\\\"" + String(settings.brightness) + "\\\"></div>");
+    
+    server.sendContent_P(PSTR("<div class=\\\"form-group\\\"><label>Color Theme</label>"));
+    server.sendContent_P(PSTR("<select name=\\\"color_theme\\\">"));
+    server.sendContent(String("<option value=\\\"0\\\"") + (settings.colorTheme == THEME_STANDARD ? " selected" : "") + ">Standard</option>");
+    server.sendContent(String("<option value=\\\"1\\\"") + (settings.colorTheme == THEME_HIGH_CONTRAST ? " selected" : "") + ">High Contrast</option>");
+    server.sendContent(String("<option value=\\\"2\\\"") + (settings.colorTheme == THEME_STEALTH ? " selected" : "") + ">Stealth</option>");
+    server.sendContent(String("<option value=\\\"3\\\"") + (settings.colorTheme == THEME_BUSINESS ? " selected" : "") + ">Business</option>");
+    server.sendContent_P(PSTR("</select></div></div>"));
+
+    // Quick-Access Profiles Card
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>Quick-Access Profiles</h2>"));
+    server.sendContent_P(PSTR("<p class=\\\"muted\\\">Configure 3 quick-access profiles for different driving scenarios.</p>"));
+    server.sendContent_P(PSTR("<a class=\\\"btn success\\\" href=\\\"/autopush\\\">Manage Auto-Push Profiles</a></div>"));
+
+    // Display Colors Card
+    server.sendContent_P(PSTR("<div class=\\\"card\\\"><h2>Display Colors</h2>"));
+    server.sendContent_P(PSTR("<p class=\\\"muted\\\">Customize bogey, frequency, band, and arrow colors.</p>"));
+    server.sendContent_P(PSTR("<a class=\\\"btn secondary\\\" href=\\\"/displaycolors\\\">Customize Display Colors</a></div>"));
+
+    server.sendContent_P(PSTR("<button type=\\\"submit\\\" class=\\\"btn primary\\\">Save Settings</button>"));
+    server.sendContent_P(PSTR("</form>"));
+}
+
+void WiFiManager::streamTimeSettingsBody() {
+    // Use existing generateTimeSettingsHTML() body
+    String fullHTML = generateTimeSettingsHTML();
+    server.sendContent(fullHTML);
+}
+
+void WiFiManager::streamLogsBody() {
+    // Use existing generateLogsHTML() body
+    String fullHTML = generateLogsHTML();
+    server.sendContent(fullHTML);
+}
+
+void WiFiManager::streamV1SettingsBody() {
+    // Use existing generateV1SettingsHTML() body
+    String fullHTML = generateV1SettingsHTML();
+    server.sendContent(fullHTML);
+}
+
+void WiFiManager::streamAutoPushBody() {
+    // Use existing generateAutoPushHTML() body
+    String fullHTML = generateAutoPushHTML();
+    server.sendContent(fullHTML);
+}
+
+void WiFiManager::streamDisplayColorsBody() {
+    // Use existing generateDisplayColorsHTML() body
+    String fullHTML = generateDisplayColorsHTML();
+    server.sendContent(fullHTML);
+}
+
