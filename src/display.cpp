@@ -1033,17 +1033,16 @@ void V1Display::showBootSplash() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
-    // Draw the RDF logo centered with slight offsets to match panel framing
-    const int logoX = (SCREEN_WIDTH - RDF_LOGO_WIDTH) / 2 - 5;
-    const int logoY = (SCREEN_HEIGHT - RDF_LOGO_HEIGHT) / 2;
-    const int yOffset = -7;
+    // Draw the RDF logo fullscreen (logo is exactly 640x172, same as display)
+    const int logoX = 0;
+    const int logoY = 0;
     
     for (int y = 0; y < RDF_LOGO_HEIGHT; y++) {
         for (int x = 0; x < RDF_LOGO_WIDTH; x++) {
             uint16_t pixel = pgm_read_word(&rdf_logo_rgb565[y * RDF_LOGO_WIDTH + x]);
             // Skip near-black pixels to keep black background transparent
             if (pixel > 0x0841) {
-                TFT_CALL(drawPixel)(logoX + x, logoY + y + yOffset, pixel);
+                TFT_CALL(drawPixel)(logoX + x, logoY + y, pixel);
             }
         }
     }
@@ -1482,8 +1481,8 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #if defined(DISPLAY_WAVESHARE_349)
     // Scale from Lilygo 320x170 to Waveshare 640x172
     // Width is 2x, height is similar - make bars wider but keep height similar
-    const int barWidth = 52;   // 26 * 2 scaled for wider screen
-    const int barHeight = 12;  // Similar to original
+    const int barWidth = 56;   // 26 * 2 scaled for wider screen
+    const int barHeight = 14;  // Similar to original
     const int barSpacing = 12; // More spacing to fill vertical space
 #else
     const int barWidth = 26;
@@ -1494,7 +1493,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 
     // Place bars to the right of the band stack and vertically centered
 #if defined(DISPLAY_WAVESHARE_349)
-    int startX = SCREEN_WIDTH - 210;  // Further from arrows on wider screen
+    int startX = SCREEN_WIDTH - 228;  // Further from arrows on wider screen
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
