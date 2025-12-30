@@ -3,6 +3,8 @@
  */
 
 #include "battery_manager.h"
+#include "display.h"
+#include "settings.h"
 #include <Wire.h>
 #include <esp_adc/adc_oneshot.h>
 #include <esp_adc/adc_cali.h>
@@ -11,6 +13,10 @@
 
 // Only compile for Waveshare 3.49 board
 #if defined(DISPLAY_WAVESHARE_349)
+
+// External references for graceful shutdown
+extern V1Display display;
+extern SettingsManager settingsManager;
 
 BatteryManager batteryManager;
 
@@ -323,7 +329,11 @@ uint8_t BatteryManager::getPercentage() const {
 }
 
 bool BatteryManager::isLow() const {
-    return cachedVoltage < BATTERY_WARNING_MV;
+    return cachedVoltage < BATTERY_WARNING_MV && cachedVoltage > 0;
+}
+
+bool BatteryManager::isCritical() const {
+    return cachedVoltage < BATTERY_CRITICAL_MV && cachedVoltage > 0;
 }
 
 bool BatteryManager::latchPowerOn() {
@@ -337,6 +347,27 @@ bool BatteryManager::powerOff() {
         return false;
     }
     
+    Serial.println("[Battery] Initiating graceful shutdown...");
+    
+    // Step 1: Save settings to ensure state is preserved
+    Serial.println("[Battery] Saving settings...");
+    settingsManager.save();
+    
+    // Step 2: Show shutdown screen
+    Serial.println("[Battery] Showing shutdown screen...");
+    display.showShutdown();
+    
+    // Step 3: Brief delay for user feedback
+    delay(1000);
+    
+    // Step 4: Fade backlight (optional smooth transition)
+    Serial.println("[Battery] Fading backlight...");
+    for (int i = 0; i <= 255; i += 5) {
+        analogWrite(LCD_BL, i);  // Inverted: 255 = off
+        delay(10);
+    }
+    
+    // Step 5: Cut power
     Serial.println("[Battery] Powering OFF...");
     delay(100);  // Let serial flush
     return setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);

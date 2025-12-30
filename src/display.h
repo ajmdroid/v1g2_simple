@@ -49,6 +49,8 @@ public:
     // Demo mode
     void showDemo();
     void showBootSplash();
+    void showShutdown();       // Shutdown screen with goodbye message
+    void showLowBattery();     // Critical low battery warning
     
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
