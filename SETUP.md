@@ -102,8 +102,10 @@ Connect to this network and open the URL to configure WiFi and display settings.
 ---
 
 ## Troubleshooting
-- If the device is not detected, try a different USB cable or port.
-- On Windows, you may need to install the "CP210x USB to UART Bridge VCP Drivers" from Silicon Labs.
+- If the device is not detected, try a different USB cable or port (some cables are charge-only).
+- The Waveshare ESP32-S3 uses **native USB** (built into the ESP32-S3 chip), so external USB-to-serial drivers are typically not needed.
+- On Windows, the device should appear automatically as a COM port in Device Manager.
+- On macOS, the device appears as `/dev/cu.usbmodem*` (no drivers needed on macOS 10.15+).
 - On Linux, you may need to add your user to the `dialout` group:
   ```sh
   sudo usermod -aG dialout $USER
