@@ -734,11 +734,9 @@ void V1Display::drawProfileIndicator(int slot) {
     
     int y = 14;
     
-    // Clear area for profile name only - don't overlap counter/band indicators
-    // Clear from x position to maxWidth, not from 0
-    int clearWidth = nameWidth + 10;
-    if (x + clearWidth > maxWidth) clearWidth = maxWidth - x;
-    FILL_RECT(x - 5, y - 2, clearWidth + 10, 28, PALETTE_BG);
+    // Clear area for profile name - use fixed wide area to prevent artifacts
+    // Clear from 120 (after band indicators) to maxWidth
+    FILL_RECT(120, y - 2, maxWidth - 120, 28, PALETTE_BG);
     
     // Draw the profile name centered over the dot
     TFT_CALL(setTextColor)(color, PALETTE_BG);
