@@ -19,10 +19,12 @@ __MACOSX/
 
 # Temporary/development files
 PROGRESS.md
-RDF_POST.md
-RDF_POST_*.txt
+RDF_POST*
 CHANGELOG_WIP.md
+code_review.txt
 *.tmp
+*~
+*.bak
 
 # Large files (schematics, datasheets)
 *.pdf
