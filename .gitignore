@@ -26,6 +26,13 @@ code_review.txt
 *~
 *.bak
 
+# Web UI build/cache (Svelte/Vite)
+/interface/node_modules/
+/interface/.svelte-kit/
+/interface/build/
+/interface/.vite/
+/interface/.DS_Store
+
 # Large files (schematics, datasheets)
 *.pdf
 
