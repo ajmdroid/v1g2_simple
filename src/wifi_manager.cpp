@@ -40,6 +40,24 @@ static String htmlEscape(const String& input) {
     return output;
 }
 
+// CSV split helper for fixed column count
+namespace {
+bool splitCsvFixed(const String& line, String parts[], size_t expected) {
+    int start = 0;
+    size_t idx = 0;
+    while (idx < expected) {
+        int sep = line.indexOf(',', start);
+        if (sep == -1) {
+            parts[idx++] = line.substring(start);
+            break;
+        }
+        parts[idx++] = line.substring(start, sep);
+        start = sep + 1;
+    }
+    return idx == expected;
+}
+} // namespace
+
 // Global instance
 WiFiManager wifiManager;
 
@@ -664,8 +682,104 @@ void WiFiManager::handleLogsData() {
         return;
     }
 
-    String json = alertLogger.getRecentJson();
-    server.send(200, "application/json", json);
+    // Optional: support /api/logs?n=50
+    size_t maxLines = ALERT_LOG_MAX_RECENT;
+    if (server.hasArg("n")) {
+        int n = server.arg("n").toInt();
+        if (n > 0) {
+            if (n > 500) n = 500; // hard cap to protect RAM/CPU
+            maxLines = (size_t)n;
+        }
+    }
+
+    fs::FS* fs = alertLogger.getFilesystem();
+    if (!fs) {
+        server.send(500, "application/json", "{\"error\":\"filesystem unavailable\"}");
+        return;
+    }
+
+    File file = fs->open(ALERT_LOG_PATH, FILE_READ);
+    if (!file) {
+        server.send(500, "application/json", "{\"error\":\"failed to open log\"}");
+        return;
+    }
+
+    // Pass 1: count valid data lines
+    size_t total = 0;
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0 || line.startsWith("ms,")) continue; // skip header/blank
+        total++;
+    }
+    file.close();
+
+    size_t startIndex = 0;
+    if (total > maxLines) startIndex = total - maxLines;
+
+    // Pass 2: stream JSON array of last N lines
+    file = fs->open(ALERT_LOG_PATH, FILE_READ);
+    if (!file) {
+        server.send(500, "application/json", "{\"error\":\"failed to open log\"}");
+        return;
+    }
+
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "application/json", "");
+    server.sendContent("[");
+
+    bool first = true;
+    size_t idx = 0;
+
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0 || line.startsWith("ms,")) continue;
+
+        if (idx++ < startIndex) continue;
+
+        // CSV columns expected (9):
+        // 0=ms,1=event,2=band,3=freq,4=dir,5=front,6=rear,7=count,8=muted
+        String cols[9];
+        if (!splitCsvFixed(line, cols, 9)) continue;
+
+        if (!first) server.sendContent(",");
+        first = false;
+
+        // Stream one object per row.
+        // Emit BOTH new keys (ts, dir) and legacy keys (ms, direction).
+        String obj;
+        obj.reserve(220);
+        obj += "{\"ts\":";
+        obj += cols[0];
+        obj += ",\"ms\":";
+        obj += cols[0];
+        obj += ",\"utc\":0";
+        obj += ",\"event\":\"";
+        obj += cols[1];
+        obj += "\",\"band\":\"";
+        obj += cols[2];
+        obj += "\",\"freq\":";
+        obj += cols[3];
+        obj += ",\"dir\":\"";
+        obj += cols[4];
+        obj += "\",\"direction\":\"";
+        obj += cols[4];
+        obj += "\",\"front\":";
+        obj += cols[5];
+        obj += ",\"rear\":";
+        obj += cols[6];
+        obj += ",\"count\":";
+        obj += cols[7];
+        obj += ",\"muted\":";
+        obj += ((cols[8] == "1" || cols[8] == "true") ? "true" : "false");
+        obj += "}";
+
+        server.sendContent(obj);
+    }
+
+    file.close();
+    server.sendContent("]");
 }
 
 void WiFiManager::handleLogsClear() {
@@ -3259,14 +3373,27 @@ void WiFiManager::streamLogsBody() {
         function loadLogs(){
             bodyEl.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
             fetch('/api/logs').then(r => {
-                if(!r.ok) throw new Error('Failed');
-                return r.json();
-            }).then(data => {
+                if(!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            }).then(text => {
+                console.log('Raw response:', text);
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch(e) {
+                    console.error('JSON parse error:', e, 'Raw:', text);
+                    throw new Error('Invalid JSON: ' + e.message);
+                }
+                if(data.error) {
+                    bodyEl.innerHTML = '<tr><td colspan="9">' + data.error + '</td></tr>';
+                    return;
+                }
                 logData = Array.isArray(data) ? data : [];
                 updateFilters();
                 applyFilter();
-            }).catch(() => {
-                bodyEl.innerHTML = '<tr><td colspan="9">Error loading logs</td></tr>';
+            }).catch(e => {
+                console.error('Load error:', e);
+                bodyEl.innerHTML = '<tr><td colspan="9">Error: ' + e.message + '</td></tr>';
             });
         }
 
