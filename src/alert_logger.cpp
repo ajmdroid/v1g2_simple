@@ -294,15 +294,16 @@ String AlertLogger::getRecentJson(size_t maxLines) const {
         }
         first = false;
 
-        json += "{\"ms\":";
+        json += "{\"ts\":";
         json += cols[0];
+        json += ",\"utc\":0";  // UTC timestamp (0 = not set, show relative time)
         json += ",\"event\":\"";
         json += cols[1];
         json += "\",\"band\":\"";
         json += cols[2];
-        json += "\",\"freq\":";
+        json += "\",\"freq\":\"";
         json += cols[3];
-        json += ",\"direction\":\"";
+        json += "\",\"dir\":\"";
         json += cols[4];
         json += "\",\"front\":";
         json += cols[5];
