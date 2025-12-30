@@ -20,6 +20,11 @@
 // Default Brightness
 #define DEFAULT_BRIGHTNESS  200   // 0-255
 
+// ============================================================================
+// LEGACY COLOR DEFINES - DEPRECATED
+// These are kept for backward compatibility but are superseded by color_themes.h
+// New code should use ColorThemes::STANDARD(), etc. via getColorPalette()
+// ============================================================================
 // Display Colors (RGB565) - use standard RGB values
 // RGB565 format: RRRRR GGGGGG BBBBB (5 bits red, 6 bits green, 5 bits blue)
 #define COLOR_BG            0x0000  // Black
