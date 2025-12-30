@@ -91,11 +91,10 @@ bool BatteryManager::begin() {
     
     initialized = true;
     
-    // Do initial cache update if on battery
-    if (onBattery) {
-        update();
-        Serial.printf("[Battery] Cached state: %dmV, %d%%\n", cachedVoltage, cachedPercent);
-    }
+    // Do initial cache update to populate voltage reading
+    update();
+    Serial.printf("[Battery] Cached state: %dmV, %d%%, hasBattery=%d\n", 
+                  cachedVoltage, cachedPercent, hasBattery());
     
     Serial.printf("[Battery] Battery manager initialized - Mode: %s\n", 
                   onBattery ? "BATTERY" : "USB");
@@ -236,9 +235,17 @@ bool BatteryManager::isOnBattery() const {
 }
 
 bool BatteryManager::hasBattery() const {
-    // Battery is present if voltage is in reasonable range (3.0V - 4.5V)
-    // This works even when on USB power with battery connected
-    return cachedVoltage >= 3000 && cachedVoltage <= 4500;
+    // Battery is present if:
+    // 1. We're on battery power (GPIO16 HIGH), OR
+    // 2. Voltage is in typical battery range (3.2V - 4.3V) on USB power
+    //    (excludes 0V = no battery, and 4.5V+ = USB bleed-through)
+    if (onBattery) {
+        return true;  // If running on battery, battery must be present
+    }
+    
+    // On USB power: only show battery if voltage looks like a real battery
+    // Not just USB leakage (>4.3V) or floating/zero (<3.2V)
+    return cachedVoltage >= BATTERY_EMPTY_MV && cachedVoltage <= BATTERY_FULL_MV;
 }
 
 void BatteryManager::update() {
