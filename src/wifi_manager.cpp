@@ -272,6 +272,12 @@ void WiFiManager::checkSTAConnection() {
             SerialLog.printf("IP: %s\n", WiFi.localIP().toString().c_str());
             SerialLog.printf("Signal: %d dBm\n", WiFi.RSSI());
             
+            // Start mDNS so device is accessible as v1g2.local from network
+            if (MDNS.begin("v1g2")) {
+                MDNS.addService("http", "tcp", 80);
+                SerialLog.println("mDNS: http://v1g2.local");
+            }
+            
             if (apActive) {
                 enableNAT();
             }
@@ -396,6 +402,9 @@ void WiFiManager::setupWebServer() {
     server.on("/", HTTP_GET, [this]() { handleSettings(); });  // Root redirects to settings
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
     server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });  // API version for new UI
+    server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
+    server.on("/api/alerts", HTTP_GET, [this]() { handleLogsData(); });  // Alias for new UI
+    server.on("/api/alerts/clear", HTTP_POST, [this]() { handleLogsClear(); });  // Alias for new UI
     server.on("/settings", HTTP_GET, [this]() { handleSettings(); });
     server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });
     server.on("/time", HTTP_GET, [this]() { handleTimeSettings(); });
@@ -454,16 +463,23 @@ void WiFiManager::setupWebServer() {
     
     // Auto-Push routes
     server.on("/autopush", HTTP_GET, [this]() { handleAutoPush(); });
+    server.on("/api/autopush/slots", HTTP_GET, [this]() { handleAutoPushSlotsApi(); });
     server.on("/api/autopush/slot", HTTP_POST, [this]() { handleAutoPushSlotSave(); });
     server.on("/api/autopush/activate", HTTP_POST, [this]() { handleAutoPushActivate(); });
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
+    
+    // V1 Device Cache routes (fast reconnect)
+    server.on("/api/v1/devices", HTTP_GET, [this]() { handleV1DevicesApi(); });
+    server.on("/api/v1/devices/name", HTTP_POST, [this]() { handleV1DeviceNameSave(); });
+    server.on("/api/v1/devices/profile", HTTP_POST, [this]() { handleV1DeviceProfileSave(); });
+    server.on("/api/v1/devices/delete", HTTP_POST, [this]() { handleV1DeviceDelete(); });
     
     // Display Colors routes
     server.on("/displaycolors", HTTP_GET, [this]() { handleDisplayColors(); });
     server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
     
-    server.onNotFound([this]() { handleNotFound(); });
+    // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
 void WiFiManager::process() {
@@ -506,16 +522,50 @@ String WiFiManager::getAPIPAddress() const {
 }
 
 void WiFiManager::handleStatus() {
+    const V1Settings& settings = settingsManager.get();
+    
     String json = "{";
-    json += "\"connected\":" + String(staConnected ? "true" : "false") + ",";
+    json += "\"wifi\":{";
+    json += "\"sta_connected\":" + String(staConnected ? "true" : "false") + ",";
     json += "\"ap_active\":" + String(apActive ? "true" : "false") + ",";
-    json += "\"ip\":\"" + getIPAddress() + "\",";
-    json += "\"ap_ip\":\"" + getAPIPAddress() + "\"";
+    json += "\"sta_ip\":\"" + getIPAddress() + "\",";
+    json += "\"ap_ip\":\"" + getAPIPAddress() + "\",";
+    json += "\"ssid\":\"" + connectedSSID + "\",";
+    json += "\"rssi\":" + String(staConnected ? WiFi.RSSI() : 0);
+    json += "},";
+    
+    // Device info
+    json += "\"device\":{";
+    json += "\"uptime\":" + String(millis() / 1000) + ",";
+    json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
+    json += "\"hostname\":\"v1g2\"";
+    json += "}";
     
     if (getStatusJson) {
         json += "," + getStatusJson();
     }
     
+    // Add alert info if callback is set
+    if (getAlertJson) {
+        json += ",\"alert\":" + getAlertJson();
+    }
+    
+    json += "}";
+    
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleSettingsApi() {
+    const V1Settings& settings = settingsManager.get();
+    
+    String json = "{";
+    json += "\"ssid\":\"" + settings.ssid + "\",";
+    json += "\"password\":\"********\",";  // Don't send actual password
+    json += "\"ap_ssid\":\"" + settings.apSSID + "\",";
+    json += "\"ap_password\":\"********\",";  // Don't send actual password
+    json += "\"wifi_mode\":" + String(settings.wifiMode) + ",";
+    json += "\"proxy_ble\":" + String(settings.proxyBLE ? "true" : "false") + ",";
+    json += "\"proxy_name\":\"" + settings.proxyName + "\"";
     json += "}";
     
     server.send(200, "application/json", json);
@@ -1160,6 +1210,308 @@ void WiFiManager::handleV1CurrentSettings() {
     json += v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings());
     json += "}";
     server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleV1DevicesApi() {
+    if (!getFilesystem) {
+        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
+        return;
+    }
+    
+    fs::FS* fs = getFilesystem();
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
+        return;
+    }
+    
+    // Pre-load profiles into a map for efficient lookup
+    std::vector<std::pair<String, int>> profileMap;
+    File profileFile = fs->open("/known_v1_profiles.txt", FILE_READ);
+    if (profileFile) {
+        while (profileFile.available()) {
+            String line = profileFile.readStringUntil('\n');
+            line.trim();
+            int sep = line.indexOf('|');
+            if (sep > 0) {
+                String addr = line.substring(0, sep);
+                int profile = line.substring(sep + 1).toInt();
+                profileMap.push_back({addr, profile});
+            }
+        }
+        profileFile.close();
+    }
+    
+    String json = "{\"devices\":[";
+    
+    // Read known_v1.txt for addresses
+    File addrFile = fs->open("/known_v1.txt", FILE_READ);
+    if (addrFile) {
+        bool first = true;
+        while (addrFile.available()) {
+            String addr = addrFile.readStringUntil('\n');
+            addr.trim();
+            if (addr.length() == 17) {  // Valid MAC address format
+                if (!first) json += ",";
+                first = false;
+                
+                // Look for custom name in known_v1_names.txt
+                String name = "";
+                File nameFile = fs->open("/known_v1_names.txt", FILE_READ);
+                if (nameFile) {
+                    while (nameFile.available()) {
+                        String line = nameFile.readStringUntil('\n');
+                        line.trim();
+                        int sep = line.indexOf('|');
+                        if (sep > 0) {
+                            String lineAddr = line.substring(0, sep);
+                            if (lineAddr == addr) {
+                                name = line.substring(sep + 1);
+                                break;
+                            }
+                        }
+                    }
+                    nameFile.close();
+                }
+                
+                // Look for default profile
+                int defaultProfile = 0;
+                for (const auto& pm : profileMap) {
+                    if (pm.first == addr) {
+                        defaultProfile = pm.second;
+                        break;
+                    }
+                }
+                
+                json += "{\"address\":\"" + addr + "\",\"name\":\"" + name + "\",\"defaultProfile\":" + String(defaultProfile) + "}";
+            }
+        }
+        addrFile.close();
+    }
+    
+    json += "]}";
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleV1DeviceNameSave() {
+    if (!getFilesystem) {
+        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
+        return;
+    }
+    
+    if (!server.hasArg("address") || !server.hasArg("name")) {
+        server.send(400, "application/json", "{\"error\":\"Missing address or name\"}");
+        return;
+    }
+    
+    String address = server.arg("address");
+    String name = server.arg("name");
+    
+    fs::FS* fs = getFilesystem();
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
+        return;
+    }
+    
+    // Read existing names, update or add the new one
+    std::vector<String> lines;
+    bool found = false;
+    
+    File readFile = fs->open("/known_v1_names.txt", FILE_READ);
+    if (readFile) {
+        while (readFile.available()) {
+            String line = readFile.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0) {
+                int sep = line.indexOf('|');
+                if (sep > 0 && line.substring(0, sep) == address) {
+                    // Update existing entry
+                    if (name.length() > 0) {
+                        lines.push_back(address + "|" + name);
+                    }
+                    // If name is empty, we skip adding it (delete)
+                    found = true;
+                } else {
+                    lines.push_back(line);
+                }
+            }
+        }
+        readFile.close();
+    }
+    
+    // Add new entry if not found and name is not empty
+    if (!found && name.length() > 0) {
+        lines.push_back(address + "|" + name);
+    }
+    
+    // Write back
+    File writeFile = fs->open("/known_v1_names.txt", FILE_WRITE);
+    if (writeFile) {
+        for (const auto& line : lines) {
+            writeFile.println(line);
+        }
+        writeFile.close();
+        server.send(200, "application/json", "{\"success\":true}");
+    } else {
+        server.send(500, "application/json", "{\"error\":\"Failed to write file\"}");
+    }
+}
+
+void WiFiManager::handleV1DeviceDelete() {
+    if (!getFilesystem) {
+        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
+        return;
+    }
+    
+    if (!server.hasArg("address")) {
+        server.send(400, "application/json", "{\"error\":\"Missing address\"}");
+        return;
+    }
+    
+    String address = server.arg("address");
+    
+    fs::FS* fs = getFilesystem();
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
+        return;
+    }
+    
+    // Remove from known_v1.txt
+    std::vector<String> addresses;
+    File readFile = fs->open("/known_v1.txt", FILE_READ);
+    if (readFile) {
+        while (readFile.available()) {
+            String line = readFile.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0 && line != address) {
+                addresses.push_back(line);
+            }
+        }
+        readFile.close();
+    }
+    
+    File writeFile = fs->open("/known_v1.txt", FILE_WRITE);
+    if (writeFile) {
+        for (const auto& addr : addresses) {
+            writeFile.println(addr);
+        }
+        writeFile.close();
+    }
+    
+    // Also remove from names file
+    std::vector<String> names;
+    readFile = fs->open("/known_v1_names.txt", FILE_READ);
+    if (readFile) {
+        while (readFile.available()) {
+            String line = readFile.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0) {
+                int sep = line.indexOf('|');
+                if (sep > 0 && line.substring(0, sep) != address) {
+                    names.push_back(line);
+                }
+            }
+        }
+        readFile.close();
+    }
+    
+    writeFile = fs->open("/known_v1_names.txt", FILE_WRITE);
+    if (writeFile) {
+        for (const auto& n : names) {
+            writeFile.println(n);
+        }
+        writeFile.close();
+    }
+    
+    // Also remove from profiles file
+    std::vector<String> profiles;
+    readFile = fs->open("/known_v1_profiles.txt", FILE_READ);
+    if (readFile) {
+        while (readFile.available()) {
+            String line = readFile.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0) {
+                int sep = line.indexOf('|');
+                if (sep > 0 && line.substring(0, sep) != address) {
+                    profiles.push_back(line);
+                }
+            }
+        }
+        readFile.close();
+    }
+    
+    writeFile = fs->open("/known_v1_profiles.txt", FILE_WRITE);
+    if (writeFile) {
+        for (const auto& p : profiles) {
+            writeFile.println(p);
+        }
+        writeFile.close();
+    }
+    
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleV1DeviceProfileSave() {
+    if (!getFilesystem) {
+        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
+        return;
+    }
+    
+    if (!server.hasArg("address") || !server.hasArg("profile")) {
+        server.send(400, "application/json", "{\"error\":\"Missing address or profile\"}");
+        return;
+    }
+    
+    String address = server.arg("address");
+    int profile = server.arg("profile").toInt();
+    
+    fs::FS* fs = getFilesystem();
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
+        return;
+    }
+    
+    // Read existing profiles, update or add the new one
+    std::vector<String> lines;
+    bool found = false;
+    
+    File readFile = fs->open("/known_v1_profiles.txt", FILE_READ);
+    if (readFile) {
+        while (readFile.available()) {
+            String line = readFile.readStringUntil('\n');
+            line.trim();
+            if (line.length() > 0) {
+                int sep = line.indexOf('|');
+                if (sep > 0 && line.substring(0, sep) == address) {
+                    // Update existing entry
+                    if (profile > 0) {
+                        lines.push_back(address + "|" + String(profile));
+                    }
+                    // If profile is 0, we skip adding it (delete/none)
+                    found = true;
+                } else {
+                    lines.push_back(line);
+                }
+            }
+        }
+        readFile.close();
+    }
+    
+    // Add new entry if not found and profile is not 0
+    if (!found && profile > 0) {
+        lines.push_back(address + "|" + String(profile));
+    }
+    
+    // Write back
+    File writeFile = fs->open("/known_v1_profiles.txt", FILE_WRITE);
+    if (writeFile) {
+        for (const auto& line : lines) {
+            writeFile.println(line);
+        }
+        writeFile.close();
+        server.send(200, "application/json", "{\"success\":true}");
+    } else {
+        server.send(500, "application/json", "{\"error\":\"Failed to write file\"}");
+    }
 }
 
 void WiFiManager::handleV1SettingsPull() {
@@ -2339,6 +2691,43 @@ void WiFiManager::handleAutoPush() {
     streamLayoutHeader("Auto-Push Profiles", "/autopush");
     streamAutoPushBody();
     streamLayoutFooter();
+}
+
+void WiFiManager::handleAutoPushSlotsApi() {
+    const V1Settings& s = settingsManager.get();
+    
+    String json = "{";
+    json += "\"enabled\":" + String(s.autoPushEnabled ? "true" : "false") + ",";
+    json += "\"activeSlot\":" + String(s.activeSlot) + ",";
+    json += "\"slots\":[";
+    
+    // Slot 0
+    json += "{\"name\":\"" + s.slot0Name + "\",";
+    json += "\"profile\":\"" + s.slot0_default.profileName + "\",";
+    json += "\"mode\":" + String(s.slot0_default.mode) + ",";
+    json += "\"color\":" + String(s.slot0Color) + ",";
+    json += "\"volume\":" + String(s.slot0Volume) + ",";
+    json += "\"muteVolume\":" + String(s.slot0MuteVolume) + "},";
+    
+    // Slot 1
+    json += "{\"name\":\"" + s.slot1Name + "\",";
+    json += "\"profile\":\"" + s.slot1_highway.profileName + "\",";
+    json += "\"mode\":" + String(s.slot1_highway.mode) + ",";
+    json += "\"color\":" + String(s.slot1Color) + ",";
+    json += "\"volume\":" + String(s.slot1Volume) + ",";
+    json += "\"muteVolume\":" + String(s.slot1MuteVolume) + "},";
+    
+    // Slot 2
+    json += "{\"name\":\"" + s.slot2Name + "\",";
+    json += "\"profile\":\"" + s.slot2_comfort.profileName + "\",";
+    json += "\"mode\":" + String(s.slot2_comfort.mode) + ",";
+    json += "\"color\":" + String(s.slot2Color) + ",";
+    json += "\"volume\":" + String(s.slot2Volume) + ",";
+    json += "\"muteVolume\":" + String(s.slot2MuteVolume) + "}";
+    
+    json += "]}";
+    
+    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleAutoPushSlotSave() {

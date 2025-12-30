@@ -45,6 +45,9 @@ public:
     
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
+    
+    // Callback for filesystem access (SD card)
+    void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
 
 private:
     WebServer server;
@@ -60,6 +63,7 @@ private:
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
+    std::function<fs::FS*()> getFilesystem;
     
     // Setup functions
     void setupAP();
@@ -72,6 +76,7 @@ private:
     
     // Web handlers
     void handleStatus();
+    void handleSettingsApi();
     void handleSettings();
     void handleSettingsSave();
     void handleTimeSettings();
@@ -92,7 +97,12 @@ private:
     void handleV1SettingsPull();
     void handleV1SettingsPush();
     void handleV1CurrentSettings();
+    void handleV1DevicesApi();
+    void handleV1DeviceNameSave();
+    void handleV1DeviceProfileSave();
+    void handleV1DeviceDelete();
     void handleAutoPush();
+    void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
     void handleAutoPushPushNow();

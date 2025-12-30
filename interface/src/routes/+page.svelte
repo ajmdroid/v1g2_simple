@@ -2,19 +2,30 @@
 	import { onMount } from 'svelte';
 	
 	let status = $state({
-		connected: false,
-		bleConnected: false,
-		rssi: 0,
-		uptime: 0,
-		freeHeap: 0
+		wifi: {
+			sta_connected: false,
+			ap_active: false,
+			sta_ip: '',
+			ap_ip: '',
+			ssid: '',
+			rssi: 0
+		},
+		device: {
+			uptime: 0,
+			heap_free: 0,
+			hostname: 'v1g2'
+		},
+		v1_connected: false,
+		alert: null
 	});
 	
 	let loading = $state(true);
+	let error = $state(null);
 	
 	onMount(async () => {
 		await fetchStatus();
-		// Poll status every 5 seconds
-		const interval = setInterval(fetchStatus, 5000);
+		// Poll status every 2 seconds for responsive alerts
+		const interval = setInterval(fetchStatus, 2000);
 		return () => clearInterval(interval);
 	});
 	
@@ -23,94 +34,152 @@
 			const res = await fetch('/api/status');
 			if (res.ok) {
 				const data = await res.json();
-				status = { ...status, ...data, connected: true };
+				status = data;
+				error = null;
+			} else {
+				error = 'API error';
 			}
 		} catch (e) {
-			status.connected = false;
+			error = 'Connection lost';
 		} finally {
 			loading = false;
 		}
 	}
 	
 	function formatUptime(seconds) {
-		const h = Math.floor(seconds / 3600);
+		const d = Math.floor(seconds / 86400);
+		const h = Math.floor((seconds % 86400) / 3600);
 		const m = Math.floor((seconds % 3600) / 60);
-		const s = seconds % 60;
-		return `${h}h ${m}m ${s}s`;
+		if (d > 0) return `${d}d ${h}h ${m}m`;
+		if (h > 0) return `${h}h ${m}m`;
+		return `${m}m`;
+	}
+	
+	function getRssiClass(rssi) {
+		if (rssi >= -50) return 'text-success';
+		if (rssi >= -70) return 'text-warning';
+		return 'text-error';
+	}
+	
+	async function sendCommand(cmd) {
+		try {
+			await fetch(`/${cmd}`, { method: 'POST' });
+		} catch (e) {
+			console.error('Command failed:', e);
+		}
 	}
 </script>
 
 <div class="space-y-6">
+	<!-- Alert Banner (shown when active) -->
+	{#if status.alert?.active}
+		<div class="alert alert-warning shadow-lg animate-pulse">
+			<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+			</svg>
+			<div>
+				<span class="font-bold text-2xl">{status.alert.band}</span>
+				<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
+				<span class="ml-4">Strength: {status.alert.strength}/8</span>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Header -->
-	<div class="hero bg-base-200 rounded-box p-6">
+	<div class="hero bg-base-200 rounded-box p-4">
 		<div class="hero-content text-center">
 			<div>
-				<h1 class="text-4xl font-bold text-primary">V1 Gen2 Display</h1>
-				<p class="py-4 text-base-content/70">Valentine One Radar Detector Interface</p>
+				<h1 class="text-3xl font-bold text-primary">V1 Gen2 Display</h1>
+				<p class="text-sm text-base-content/70">
+					{#if status.wifi.sta_connected}
+						{status.wifi.ssid} • {status.wifi.sta_ip}
+					{:else}
+						AP Mode • {status.wifi.ap_ip}
+					{/if}
+				</p>
 			</div>
 		</div>
 	</div>
 
 	<!-- Status Cards -->
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-		<!-- Connection Status -->
+	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+		<!-- V1 Connection -->
 		<div class="card bg-base-200 shadow-xl">
-			<div class="card-body">
-				<h2 class="card-title">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-					</svg>
-					WiFi Status
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">
+					<span class="text-xl">📡</span>
+					Valentine One
 				</h2>
 				{#if loading}
-					<span class="loading loading-spinner loading-md"></span>
+					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
-					<div class="stat-value text-lg {status.connected ? 'text-success' : 'text-error'}">
-						{status.connected ? 'Connected' : 'Disconnected'}
+					<div class="text-xl font-bold {status.v1_connected ? 'text-success' : 'text-warning'}">
+						{status.v1_connected ? 'Connected' : 'Scanning...'}
 					</div>
-					{#if status.rssi}
-						<div class="stat-desc">Signal: {status.rssi} dBm</div>
+					<div class="text-xs text-base-content/60">Bluetooth LE</div>
+				{/if}
+			</div>
+		</div>
+
+		<!-- WiFi Status -->
+		<div class="card bg-base-200 shadow-xl">
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">
+					<span class="text-xl">📶</span>
+					WiFi
+				</h2>
+				{#if loading}
+					<span class="loading loading-spinner loading-sm"></span>
+				{:else}
+					<div class="text-xl font-bold {status.wifi.sta_connected ? 'text-success' : 'text-info'}">
+						{status.wifi.sta_connected ? 'Online' : 'AP Only'}
+					</div>
+					{#if status.wifi.sta_connected}
+						<div class="text-xs {getRssiClass(status.wifi.rssi)}">
+							{status.wifi.rssi} dBm
+						</div>
 					{/if}
 				{/if}
 			</div>
 		</div>
 
-		<!-- BLE Status -->
+		<!-- Uptime -->
 		<div class="card bg-base-200 shadow-xl">
-			<div class="card-body">
-				<h2 class="card-title">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-					</svg>
-					V1 Connection
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">
+					<span class="text-xl">⏱️</span>
+					Uptime
 				</h2>
 				{#if loading}
-					<span class="loading loading-spinner loading-md"></span>
+					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
-					<div class="stat-value text-lg {status.bleConnected ? 'text-success' : 'text-warning'}">
-						{status.bleConnected ? 'Connected' : 'Searching...'}
+					<div class="text-xl font-bold">
+						{formatUptime(status.device?.uptime || 0)}
 					</div>
-					<div class="stat-desc">Bluetooth LE</div>
+					<div class="text-xs text-base-content/60">
+						{Math.round((status.device?.heap_free || 0) / 1024)} KB free
+					</div>
 				{/if}
 			</div>
 		</div>
 
-		<!-- System Info -->
+		<!-- Alert Status -->
 		<div class="card bg-base-200 shadow-xl">
-			<div class="card-body">
-				<h2 class="card-title">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-					</svg>
-					System
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">
+					<span class="text-xl">🚨</span>
+					Alerts
 				</h2>
 				{#if loading}
-					<span class="loading loading-spinner loading-md"></span>
-				{:else}
-					<div class="text-sm space-y-1">
-						<div>Uptime: {formatUptime(status.uptime || 0)}</div>
-						<div>Free RAM: {Math.round((status.freeHeap || 0) / 1024)} KB</div>
+					<span class="loading loading-spinner loading-sm"></span>
+				{:else if status.alert?.active}
+					<div class="text-xl font-bold text-warning">
+						{status.alert.band}
 					</div>
+					<div class="text-xs">{status.alert.frequency} MHz</div>
+				{:else}
+					<div class="text-xl font-bold text-success">Clear</div>
+					<div class="text-xs text-base-content/60">No threats</div>
 				{/if}
 			</div>
 		</div>
@@ -118,30 +187,23 @@
 
 	<!-- Quick Actions -->
 	<div class="card bg-base-200 shadow-xl">
-		<div class="card-body">
-			<h2 class="card-title">Quick Actions</h2>
+		<div class="card-body p-4">
+			<h2 class="card-title text-sm mb-2">Quick Actions</h2>
 			<div class="flex flex-wrap gap-2">
-				<a href="/settings" class="btn btn-primary btn-sm">WiFi Settings</a>
-				<a href="/logs" class="btn btn-secondary btn-sm">View Logs</a>
-				<a href="/profiles" class="btn btn-accent btn-sm">V1 Profiles</a>
-				<button class="btn btn-outline btn-sm" onclick={() => document.getElementById('mute-modal').showModal()}>
-					Mute V1
-				</button>
+				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
+				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
+				<a href="/devices" class="btn btn-secondary btn-sm">📡 Saved V1s</a>
+				<a href="/alerts" class="btn btn-outline btn-sm">📋 Alerts</a>
 			</div>
 		</div>
 	</div>
-</div>
 
-<!-- Mute Modal -->
-<dialog id="mute-modal" class="modal">
-	<div class="modal-box">
-		<h3 class="font-bold text-lg">Mute Valentine One</h3>
-		<p class="py-4">Send mute command to the V1?</p>
-		<div class="modal-action">
-			<form method="dialog">
-				<button class="btn btn-ghost">Cancel</button>
-				<button class="btn btn-primary" onclick={() => fetch('/mute', {method: 'POST'})}>Mute</button>
-			</form>
+	<!-- Error Toast -->
+	{#if error}
+		<div class="toast toast-end">
+			<div class="alert alert-error">
+				<span>{error}</span>
+			</div>
 		</div>
-	</div>
-</dialog>
+	{/if}
+</div>

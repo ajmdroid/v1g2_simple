@@ -902,6 +902,14 @@ void setup() {
             return false;
         });
         
+        // Set up filesystem callback for V1 device cache
+        wifiManager.setFilesystemCallback([]() -> fs::FS* {
+            if (alertLogger.isReady()) {
+                return alertLogger.getFilesystem();
+            }
+            return nullptr;
+        });
+        
         SerialLog.println("WiFi initialized");
     
 #ifndef REPLAY_MODE

@@ -15,9 +15,11 @@
 			</div>
 			<ul class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52">
 					<li><a href="/">Dashboard</a></li>
-					<li><a href="/settings">Settings</a></li>
-					<li><a href="/logs">Logs</a></li>
+					<li><a href="/autopush">Auto-Push</a></li>
 					<li><a href="/profiles">V1 Profiles</a></li>
+					<li><a href="/devices">Saved V1s</a></li>
+					<li><a href="/alerts">Alert Log</a></li>
+					<li><a href="/settings">Settings</a></li>
 				</ul>
 			</div>
 			<a href="/" class="btn btn-ghost text-xl text-primary">V1 Gen2</a>
@@ -25,9 +27,11 @@
 		<div class="navbar-center hidden lg:flex">
 			<ul class="menu menu-horizontal px-1">
 				<li><a href="/" class="hover:text-primary">Dashboard</a></li>
+				<li><a href="/autopush" class="hover:text-primary">Auto-Push</a></li>
+				<li><a href="/profiles" class="hover:text-primary">Profiles</a></li>
+				<li><a href="/devices" class="hover:text-primary">Saved V1s</a></li>
+				<li><a href="/alerts" class="hover:text-primary">Alerts</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
-				<li><a href="/logs" class="hover:text-primary">Logs</a></li>
-				<li><a href="/profiles" class="hover:text-primary">V1 Profiles</a></li>
 			</ul>
 		</div>
 		<div class="navbar-end">
@@ -45,7 +49,7 @@
 	<!-- Footer -->
 	<footer class="footer footer-center p-4 bg-base-200 text-base-content mt-8">
 		<aside>
-			<p>V1 Gen2 Display • <a href="https://github.com/kennygarreau/v1g2_simple" class="link link-primary">GitHub</a></p>
+			<p>V1 Gen2 Display • <a href="https://github.com/kennygarreau/v1g2-t4s3" class="link link-primary">GitHub</a></p>
 		</aside>
 	</footer>
 </div>
