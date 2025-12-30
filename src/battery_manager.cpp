@@ -44,8 +44,22 @@ BatteryManager::BatteryManager()
 bool BatteryManager::begin() {
     Serial.println("[Battery] Initializing battery manager...");
     
-    // Determine if we're on battery power with debouncing
-    // GPIO16 is HIGH when on battery, LOW when on USB
+    // CRITICAL: Initialize TCA9554 and latch power FIRST, before anything else
+    // This MUST happen immediately on ANY boot to handle button-press boot scenarios
+    // During button boot, GPIO16 is LOW (button pressed) but we still need the latch
+    Serial.println("[Battery] Initializing power latch (required for battery operation)...");
+    if (!initTCA9554()) {
+        Serial.println("[Battery] WARNING: TCA9554 init failed - power latch unavailable");
+    } else {
+        if (latchPowerOn()) {
+            Serial.println("[Battery] Power latch engaged - device will stay on after button release");
+        } else {
+            Serial.println("[Battery] WARNING: Power latch verification failed!");
+        }
+    }
+    
+    // Now determine if we're on battery power with debouncing
+    // GPIO16 is HIGH when on battery, LOW when on USB (or button pressed)
     // Use INPUT (no pullup) to avoid biasing the reading if pin is driven externally
     pinMode(PWR_BUTTON_GPIO, INPUT);
     
@@ -88,12 +102,10 @@ bool BatteryManager::begin() {
         }
     }
     
-    // Initialize TCA9554 for power control
-    if (!initTCA9554()) {
-        Serial.println("[Battery] WARNING: TCA9554 init failed, power control disabled");
-    } else if (onBattery) {
-        // If on battery, latch power on immediately
-        latchPowerOn();
+    // TCA9554 already initialized if on battery (done early)
+    // Just log the final status
+    if (onBattery && !initialized) {
+        Serial.println("[Battery] Power latch already set (early init)");
     }
     
     initialized = true;
@@ -156,16 +168,37 @@ bool BatteryManager::initTCA9554() {
     // Initialize I2C for TCA9554 on port 1 (separate from touch)
     tca9554Wire.begin(TCA9554_SDA_GPIO, TCA9554_SCL_GPIO, 100000);
     
-    // Check if TCA9554 responds
-    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
-    uint8_t error = tca9554Wire.endTransmission();
+    // Brief delay for I2C bus to stabilize
+    delay(10);
+    
+    // Check if TCA9554 responds with retries
+    uint8_t error = 1;
+    for (int retry = 0; retry < 5; retry++) {
+        tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+        error = tca9554Wire.endTransmission();
+        if (error == 0) break;
+        Serial.printf("[Battery] TCA9554 probe attempt %d failed\n", retry + 1);
+        delay(5);
+    }
     
     if (error != 0) {
-        Serial.printf("[Battery] TCA9554 not found at 0x%02X (error: %d)\n", TCA9554_I2C_ADDR, error);
+        Serial.printf("[Battery] TCA9554 not found at 0x%02X after retries\n", TCA9554_I2C_ADDR);
         return false;
     }
     
-    // Configure pin 6 as output (set bit 6 to 0 in config register)
+    // CRITICAL: Set output HIGH FIRST before configuring as output
+    // This prevents a LOW glitch that would cut power
+    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+    tca9554Wire.write(TCA9554_OUTPUT_PORT);
+    tca9554Wire.write(0x40);  // Pin 6 HIGH (bit 6 = 1), all others LOW
+    error = tca9554Wire.endTransmission();
+    
+    if (error != 0) {
+        Serial.printf("[Battery] TCA9554 output set failed: %d\n", error);
+        return false;
+    }
+    
+    // Now configure pin 6 as output (output is already HIGH)
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
     tca9554Wire.write(TCA9554_CONFIG_PORT);
     tca9554Wire.write(0xBF);  // All inputs except pin 6 (bit 6 = 0 = output)
@@ -176,7 +209,7 @@ bool BatteryManager::initTCA9554() {
         return false;
     }
     
-    Serial.println("[Battery] TCA9554 initialized for power control");
+    Serial.println("[Battery] TCA9554 initialized - power latch engaged");
     return true;
 }
 
@@ -258,17 +291,11 @@ bool BatteryManager::hasBattery() const {
         return false;
     }
     
-    // If voltage is above 4.0V and we're supposedly on battery, it's likely
-    // USB power with a floating GPIO16 - a real discharging battery won't stay this high
-    if (onBattery && cachedVoltage > 4000) {
-        return false;  // Likely USB power with floating detection pin
-    }
-    
     // Battery is present if:
     // 1. We're on battery power (GPIO16 HIGH) AND voltage is valid, OR
     // 2. Voltage is in typical battery range (3.2V - 4.3V) on USB power
     if (onBattery) {
-        return true;  // Already verified voltage above
+        return true;  // GPIO16 detection confirmed voltage is valid
     }
     
     // On USB power: only show battery if voltage looks like a real battery
@@ -337,8 +364,32 @@ bool BatteryManager::isCritical() const {
 }
 
 bool BatteryManager::latchPowerOn() {
-    Serial.println("[Battery] Latching power ON");
-    return setTCA9554Pin(TCA9554_PWR_LATCH_PIN, true);
+    // Verify the latch is HIGH (should already be set by initTCA9554)
+    Serial.println("[Battery] Verifying power latch is ON");
+    
+    // Read current output state
+    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+    tca9554Wire.write(TCA9554_OUTPUT_PORT);
+    tca9554Wire.endTransmission(false);
+    tca9554Wire.requestFrom(TCA9554_I2C_ADDR, (uint8_t)1);
+    
+    if (tca9554Wire.available() < 1) {
+        Serial.println("[Battery] Failed to read power latch state");
+        return false;
+    }
+    
+    uint8_t current = tca9554Wire.read();
+    bool latchHigh = (current & (1 << TCA9554_PWR_LATCH_PIN)) != 0;
+    
+    Serial.printf("[Battery] Power latch pin 6 is %s (0x%02X)\n", 
+                  latchHigh ? "HIGH" : "LOW", current);
+    
+    if (!latchHigh) {
+        Serial.println("[Battery] WARNING: Latch is LOW - forcing HIGH!");
+        return setTCA9554Pin(TCA9554_PWR_LATCH_PIN, true);
+    }
+    
+    return true;
 }
 
 bool BatteryManager::powerOff() {
