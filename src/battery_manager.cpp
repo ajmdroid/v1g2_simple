@@ -37,14 +37,48 @@ BatteryManager::BatteryManager()
 bool BatteryManager::begin() {
     Serial.println("[Battery] Initializing battery manager...");
     
-    // Check if we're on battery power (GPIO16 is HIGH when on battery)
-    pinMode(PWR_BUTTON_GPIO, INPUT_PULLUP);
-    onBattery = digitalRead(PWR_BUTTON_GPIO) == HIGH;
-    Serial.printf("[Battery] Running on %s power\n", onBattery ? "BATTERY" : "USB");
+    // Determine if we're on battery power with debouncing
+    // GPIO16 is HIGH when on battery, LOW when on USB
+    // Use INPUT (no pullup) to avoid biasing the reading if pin is driven externally
+    pinMode(PWR_BUTTON_GPIO, INPUT);
+    
+    // Sample GPIO16 multiple times to debounce
+    const int samples = 10;
+    int highCount = 0;
+    
+    Serial.println("[Battery] Sampling power source detection...");
+    for (int i = 0; i < samples; i++) {
+        if (digitalRead(PWR_BUTTON_GPIO) == HIGH) {
+            highCount++;
+        }
+        delay(5);  // 5ms between samples = 50ms total
+    }
+    
+    // Majority vote
+    onBattery = (highCount > samples / 2);
+    
+    Serial.printf("[Battery] Power detection: GPIO16 samples=%d/%d (HIGH), decision=%s\n",
+                  highCount, samples, onBattery ? "BATTERY" : "USB");
     
     // Initialize ADC for battery voltage reading
     if (!initADC()) {
         Serial.println("[Battery] WARNING: ADC init failed, voltage monitoring disabled");
+    }
+    
+    // Read initial voltage for diagnostics
+    uint16_t initialVoltage = 0;
+    if (adc1_handle) {
+        initialVoltage = readADCMillivolts();
+        Serial.printf("[Battery] Initial voltage reading: %dmV\n", initialVoltage);
+        
+        // Sanity check: if we think we're on USB but voltage looks like battery
+        if (!onBattery && initialVoltage > BATTERY_EMPTY_MV && initialVoltage < BATTERY_FULL_MV + 500) {
+            Serial.printf("[Battery] WARNING: USB mode but battery voltage detected (%dmV)\n", initialVoltage);
+        }
+        // Sanity check: if we think we're on battery but voltage is too low or zero
+        if (onBattery && initialVoltage < BATTERY_EMPTY_MV) {
+            Serial.printf("[Battery] WARNING: Battery mode but voltage too low (%dmV)\n", initialVoltage);
+        }
     }
     
     // Initialize TCA9554 for power control
@@ -60,9 +94,11 @@ bool BatteryManager::begin() {
     // Do initial cache update if on battery
     if (onBattery) {
         update();
+        Serial.printf("[Battery] Cached state: %dmV, %d%%\n", cachedVoltage, cachedPercent);
     }
     
-    Serial.println("[Battery] Battery manager initialized");
+    Serial.printf("[Battery] Battery manager initialized - Mode: %s\n", 
+                  onBattery ? "BATTERY" : "USB");
     return true;
 }
 
