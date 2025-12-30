@@ -79,7 +79,7 @@
 	<h1 class="text-2xl font-bold">Settings</h1>
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}">
+		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}

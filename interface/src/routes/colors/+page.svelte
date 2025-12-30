@@ -160,9 +160,9 @@
 	</div>
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}">
+		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
-			<button class="btn btn-ghost btn-xs" onclick={() => message = null}>✕</button>
+			<button class="btn btn-ghost btn-xs" onclick={() => message = null} aria-label="Dismiss message">✕</button>
 		</div>
 	{/if}
 	

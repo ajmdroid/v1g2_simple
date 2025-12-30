@@ -106,7 +106,7 @@
   <h1 class="text-2xl font-bold text-cyan-400">Time Settings</h1>
 
   {#if message}
-    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}">
+    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}" role="status" aria-live="polite">
       {message}
     </div>
   {/if}

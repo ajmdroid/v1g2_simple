@@ -116,7 +116,7 @@
   <p class="text-base-content/60">Debug output saved to SD card</p>
 
   {#if message}
-    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}">
+    <div class="alert {messageType === 'success' ? 'alert-success' : 'alert-error'}" role="status" aria-live="polite">
       {message}
     </div>
   {/if}
