@@ -748,29 +748,30 @@ void WiFiManager::handleLogsData() {
 
         // Stream one object per row.
         // Emit BOTH new keys (ts, dir) and legacy keys (ms, direction).
+        // Handle empty numeric fields by defaulting to 0
         String obj;
         obj.reserve(220);
         obj += "{\"ts\":";
-        obj += cols[0];
+        obj += cols[0].length() > 0 ? cols[0] : "0";
         obj += ",\"ms\":";
-        obj += cols[0];
+        obj += cols[0].length() > 0 ? cols[0] : "0";
         obj += ",\"utc\":0";
         obj += ",\"event\":\"";
         obj += cols[1];
         obj += "\",\"band\":\"";
         obj += cols[2];
         obj += "\",\"freq\":";
-        obj += cols[3];
+        obj += cols[3].length() > 0 ? cols[3] : "0";
         obj += ",\"dir\":\"";
         obj += cols[4];
         obj += "\",\"direction\":\"";
         obj += cols[4];
         obj += "\",\"front\":";
-        obj += cols[5];
+        obj += cols[5].length() > 0 ? cols[5] : "0";
         obj += ",\"rear\":";
-        obj += cols[6];
+        obj += cols[6].length() > 0 ? cols[6] : "0";
         obj += ",\"count\":";
-        obj += cols[7];
+        obj += cols[7].length() > 0 ? cols[7] : "0";
         obj += ",\"muted\":";
         obj += ((cols[8] == "1" || cols[8] == "true") ? "true" : "false");
         obj += "}";
