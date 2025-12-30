@@ -28,7 +28,8 @@
 // Battery voltage thresholds (mV)
 #define BATTERY_FULL_MV         4200
 #define BATTERY_EMPTY_MV        3200
-#define BATTERY_WARNING_MV      3400
+#define BATTERY_WARNING_MV      3400  // Low battery warning (yellow)
+#define BATTERY_CRITICAL_MV     3250  // Critical - auto shutdown soon
 
 class BatteryManager {
 public:
@@ -54,6 +55,9 @@ public:
     
     // Check if battery is low (uses cached values)
     bool isLow() const;
+    
+    // Check if battery is critically low (should shutdown soon)
+    bool isCritical() const;
     
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();

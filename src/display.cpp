@@ -1061,6 +1061,60 @@ void V1Display::showBootSplash() {
     SerialLog.println("Backlight ON (post-splash, inverted)");
 }
 
+void V1Display::showShutdown() {
+    // Clear screen
+    TFT_CALL(fillScreen)(PALETTE_BG);
+    
+    // Draw "GOODBYE" message centered
+    GFX_setTextDatum(MC_DATUM);
+    TFT_CALL(setTextSize)(3);
+    TFT_CALL(setTextColor)(PALETTE_TEXT, PALETTE_BG);
+    GFX_drawString(tft, "GOODBYE", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
+    
+    // Draw smaller "Powering off..." below
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(PALETTE_GRAY, PALETTE_BG);
+    GFX_drawString(tft, "Powering off...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
+    
+    // Flush to display
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    tft->flush();
+#endif
+}
+
+void V1Display::showLowBattery() {
+    // Clear screen
+    TFT_CALL(fillScreen)(PALETTE_BG);
+    
+    // Draw large battery outline in center
+    const int battW = 120;
+    const int battH = 60;
+    const int battX = (SCREEN_WIDTH - battW) / 2;
+    const int battY = (SCREEN_HEIGHT - battH) / 2 - 20;
+    const int capW = 12;
+    const int capH = 24;
+    
+    // Draw battery outline in red
+    uint16_t redColor = 0xF800;
+    DRAW_RECT(battX, battY, battW, battH, redColor);
+    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, redColor);
+    
+    // Draw single bar (low)
+    const int padding = 8;
+    FILL_RECT(battX + padding, battY + padding, 20, battH - 2 * padding, redColor);
+    
+    // Draw "LOW BATTERY" text below
+    GFX_setTextDatum(MC_DATUM);
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(redColor, PALETTE_BG);
+    GFX_drawString(tft, "LOW BATTERY", SCREEN_WIDTH / 2, battY + battH + 30);
+    
+    // Flush to display
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    tft->flush();
+#endif
+}
+
 void V1Display::drawStatusText(const char* text, uint16_t color) {
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_setTextDatum(MC_DATUM);

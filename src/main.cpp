@@ -733,7 +733,7 @@ void setup() {
 #endif
 
     Serial.begin(115200);
-    delay(500);  // Give serial time to connect
+    delay(200);  // Reduced from 500ms - brief delay for serial init
     
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
@@ -774,14 +774,14 @@ void setup() {
         while (1) delay(1000);
     }
 
-    // Add extra delay to ensure panel is fully cleared before enabling backlight
-    delay(200);
+    // Brief delay to ensure panel is fully cleared before enabling backlight
+    delay(100);
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
-        // True cold boot - show splash
+        // True cold boot - show splash (shorter duration for faster boot)
         display.showBootSplash();
-        delay(2000);
+        delay(1500);  // Reduced from 2000ms
     }
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
@@ -990,6 +990,27 @@ void loop() {
 #if defined(DISPLAY_WAVESHARE_349)
     batteryManager.update();
     batteryManager.processPowerButton();
+    
+    // Check for critical battery - auto shutdown to prevent damage
+    static bool lowBatteryWarningShown = false;
+    static unsigned long criticalBatteryTime = 0;
+    
+    if (batteryManager.isOnBattery() && batteryManager.hasBattery()) {
+        if (batteryManager.isCritical()) {
+            // Show warning once, then shutdown after 5 seconds
+            if (!lowBatteryWarningShown) {
+                Serial.println("[Battery] CRITICAL - showing low battery warning");
+                display.showLowBattery();
+                lowBatteryWarningShown = true;
+                criticalBatteryTime = millis();
+            } else if (millis() - criticalBatteryTime > 5000) {
+                Serial.println("[Battery] CRITICAL - auto shutdown to protect battery");
+                batteryManager.powerOff();
+            }
+        } else {
+            lowBatteryWarningShown = false;  // Reset if voltage recovers
+        }
+    }
 #endif
 
     // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
