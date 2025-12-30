@@ -4,9 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## Unreleased (v1.0.9)
+## Unreleased
+
+_No unreleased changes yet._
+
+---
+
+## v1.0.9-rc1 (2025-12-30)
 
 ### Added
+- Graceful shutdown path with low-battery warning and boot latch fixes (ESP32-S3 power domain)
+- Runtime power-source refresh so USB/battery swaps update the UI mid-session
 - Band label font: Native 24pt FreeSansBold for cleaner rendering
 - Direction arrow black outlines (matches V1 reference)
 - Custom GFX font generation via Adafruit fontconvert
@@ -20,6 +28,9 @@ All notable changes to this project will be documented in this file.
 - Node.js engines field (>=18.0.0) in package.json
 
 ### Changed
+- BLE->display pipeline: latest-wins queueing and 20ms draw throttle to cut perceived latency
+- Status icons dimmed to ~60% brightness for less visual distraction
+- Repo hygiene: ignore SvelteKit build caches, node_modules, and other web UI artifacts
 - Direction arrows scaled up ~22% with shallower angles to match V1
 - Splash screen reduced from 4s to 2s, properly centered fullscreen
 - Web UI GitHub link updated to this repo
@@ -32,6 +43,9 @@ All notable changes to this project will be documented in this file.
 - Replaced $effect() with onMount() in Svelte pages (best practice)
 
 ### Fixed
+- Power button shutdown regression (skip power-source resample during long-press)
+- Preserve existing TCA9554 outputs when asserting latch high
+- Battery icon and state reporting refine USB vs battery detection edge cases
 - **Display lag (~3 seconds)**: Packets weren't being erased from buffer when display was throttled, causing stale packets to re-parse repeatedly
 - Band label pixelation (was using scaled 10pt, now native 24pt)
 - Profile indicator purple line artifact (fixed clear width)
@@ -74,6 +88,22 @@ All notable changes to this project will be documented in this file.
 ---
 
 ## Development Log
+
+### December 30, 2025 - Power & Latency Stabilization
+
+**Power Management**
+- Graceful shutdown with low-battery warning and preserved TCA9554 outputs during latch assert
+- Power button debounce fix: skip power-source resample while long-pressing to avoid shutdown regression
+- Faster boot power-on latch across all boot paths
+
+**BLE → Display Path**
+- Latest-wins packet queue and 20ms draw throttle to reduce perceived latency
+- Battery/WiFi icon brightness reduced to ~60% for lower distraction
+
+**Maintenance**
+- Ignore SvelteKit build caches, node_modules, and macOS artifacts
+
+---
 
 ### December 30, 2025 - Display Polish & UI Updates
 
