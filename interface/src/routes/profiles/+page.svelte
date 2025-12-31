@@ -69,14 +69,24 @@
 			return;
 		}
 		
+		if (!currentProfile || !currentProfile.settings) {
+			message = { type: 'error', text: 'No settings to save' };
+			return;
+		}
+		
 		try {
-			const formData = new FormData();
-			formData.append('name', saveName.trim());
-			formData.append('description', saveDescription.trim());
+			const payload = {
+				name: saveName.trim(),
+				description: saveDescription.trim(),
+				settings: currentProfile.settings
+			};
 			
 			const res = await fetch('/api/v1/profile', {
 				method: 'POST',
-				body: formData
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(payload)
 			});
 			
 			if (res.ok) {
@@ -84,7 +94,8 @@
 				showSaveDialog = false;
 				await fetchProfiles();
 			} else {
-				message = { type: 'error', text: 'Failed to save profile' };
+				const error = await res.text();
+				message = { type: 'error', text: `Failed to save: ${error}` };
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
@@ -108,55 +119,32 @@
 		
 		message = { type: 'info', text: 'Pushing edited settings to V1...' };
 		
-		// Create a temporary profile with the edited settings
 		try {
-			// First save as temp profile
-			const formData = new FormData();
-			formData.append('name', '__temp_edit__');
-			formData.append('description', 'Temporary edit');
+			// Push edited settings directly to V1
+			const payload = {
+				settings: editedSettings
+			};
 			
-			// Store current settings in currentProfile before modifying
-			const originalSettings = currentProfile.settings;
-			currentProfile.settings = editedSettings;
-			
-			const saveRes = await fetch('/api/v1/profile', {
+			const res = await fetch('/api/v1/push', {
 				method: 'POST',
-				body: formData
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(payload)
 			});
 			
-			if (!saveRes.ok) {
-				currentProfile.settings = originalSettings;
-				message = { type: 'error', text: 'Failed to save edited settings' };
-				return;
-			}
-			
-			// Now push temp profile to V1
-			const pushData = new FormData();
-			pushData.append('name', '__temp_edit__');
-			const pushRes = await fetch('/api/v1/push', {
-				method: 'POST',
-				body: pushData
-			});
-			
-			// Delete temp profile
-			const delData = new FormData();
-			delData.append('name', '__temp_edit__');
-			await fetch('/api/v1/profile/delete', {
-				method: 'POST',
-				body: delData
-			});
-			
-			if (pushRes.ok) {
+			if (res.ok) {
 				message = { type: 'success', text: 'Settings pushed to V1' };
+				currentProfile.settings = editedSettings;
 				editingSettings = false;
 				editedSettings = null;
 				await fetchCurrentSettings();
 			} else {
-				currentProfile.settings = originalSettings;
-				message = { type: 'error', text: 'Failed to push settings to V1' };
+				const error = await res.text();
+				message = { type: 'error', text: `Failed to push: ${error}` };
 			}
 		} catch (e) {
-			message = { type: 'error', text: 'Connection error' };
+			message = { type: 'error', text: `Connection error: ${e.message}` };
 		}
 	}
 	
