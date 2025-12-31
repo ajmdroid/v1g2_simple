@@ -1033,15 +1033,23 @@ void WiFiManager::handleSerialLogClear() {
 }
 
 void WiFiManager::handleV1ProfilesList() {
-    std::vector<String> profiles = v1ProfileManager.listProfiles();
+    std::vector<String> profileNames = v1ProfileManager.listProfiles();
     
-    String json = "[";
-    for (size_t i = 0; i < profiles.size(); i++) {
-        if (i > 0) json += ",";
-        json += "\"" + profiles[i] + "\"";
+    JsonDocument doc;
+    JsonArray array = doc["profiles"].to<JsonArray>();
+    
+    for (const String& name : profileNames) {
+        V1Profile profile;
+        if (v1ProfileManager.loadProfile(name, profile)) {
+            JsonObject obj = array.add<JsonObject>();
+            obj["name"] = profile.name;
+            obj["description"] = profile.description;
+            obj["displayOn"] = profile.displayOn;
+        }
     }
-    json += "]";
     
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -1091,6 +1099,7 @@ void WiFiManager::handleV1ProfileSave() {
     
     V1Profile profile;
     profile.name = name;
+    profile.description = doc["description"] | "";
     profile.displayOn = doc["displayOn"] | true;  // Default to on
     
     // Parse settings from JSON

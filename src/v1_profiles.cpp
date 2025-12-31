@@ -106,6 +106,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     }
     
     profile.name = name;
+    profile.description = doc["description"] | "";
     profile.displayOn = doc["displayOn"] | true;  // Default to on
     
     // Parse settings bytes
@@ -162,14 +163,17 @@ bool V1ProfileManager::saveProfile(const V1Profile& profile) {
     JsonDocument doc;
     const V1UserSettings& s = profile.settings;
     
+    // Store metadata
+    doc["name"] = profile.name;
+    doc["description"] = profile.description;
+    doc["displayOn"] = profile.displayOn;
+    
     // Store raw bytes for exact restoration
     JsonArray bytes = doc["bytes"].to<JsonArray>();
     for (int i = 0; i < 6; i++) {
         bytes.add(s.bytes[i]);
     }
-    
-    // Store display setting (not part of user bytes)
-    doc["displayOn"] = profile.displayOn;
+
     
     // Also store human-readable settings
     doc["xBand"] = s.xBandEnabled();

@@ -98,12 +98,13 @@ struct V1UserSettings {
 // Profile with name and settings
 struct V1Profile {
     String name;
+    String description;
     V1UserSettings settings;
     bool displayOn;  // V1 main display on/off (dark mode)
     
-    V1Profile() : name("Default"), displayOn(true) {}
-    V1Profile(const String& n) : name(n), displayOn(true) {}
-    V1Profile(const String& n, const V1UserSettings& s) : name(n), settings(s), displayOn(true) {}
+    V1Profile() : name("Default"), description(""), displayOn(true) {}
+    V1Profile(const String& n) : name(n), description(""), displayOn(true) {}
+    V1Profile(const String& n, const V1UserSettings& s) : name(n), description(""), settings(s), displayOn(true) {}
 };
 
 class V1ProfileManager {
