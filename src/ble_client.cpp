@@ -177,11 +177,11 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScanCallbacks = new ScanCallbacks(this);
     pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
-    pScan->setInterval(16);   // 10ms interval - very aggressive scanning
-    pScan->setWindow(16);     // 10ms window - 100% duty cycle for fastest discovery
+    pScan->setInterval(100);  // 62.5ms interval - relaxed scanning (Kenny's setting)
+    pScan->setWindow(75);     // 47ms window - 75% duty cycle
     pScan->setMaxResults(0);  // Unlimited results
     pScan->setDuplicateFilter(false);  // Don't filter duplicates - we want to see everything
-    Serial.println("Scan configured: interval=16 (10ms), window=16 (10ms), active=true, 100% duty, 10s duration");
+    Serial.println("Scan configured: interval=100 (62.5ms), window=75 (47ms), active=true, 75% duty, 10s duration");
     
     Serial.println("Scanning for V1 Gen2...");
     lastScanStart = millis();
@@ -351,8 +351,8 @@ bool V1BLEClient::connectToServer() {
     }
     pClient->setClientCallbacks(pClientCallbacks);
     // Use relaxed connection parameters for V1 Gen2's older BLE stack
-    // min/max interval: 24 (30ms), latency: 0, timeout: 200 (2000ms)
-    pClient->setConnectionParams(24, 48, 0, 200);
+    // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 400 (4000ms)
+    pClient->setConnectionParams(40, 80, 0, 400);
     // Give it plenty of time to connect (10s)
     pClient->setConnectTimeout(10); 
 
