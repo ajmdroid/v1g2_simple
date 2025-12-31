@@ -1144,12 +1144,16 @@ void WiFiManager::handleV1ProfileDelete() {
 }
 
 void WiFiManager::handleV1CurrentSettings() {
+    String json = "{";
+    json += "\"connected\":" + String(bleClient.isConnected() ? "true" : "false");
+    
     if (!v1ProfileManager.hasCurrentSettings()) {
-        server.send(200, "application/json", "{\"available\":false}");
+        json += ",\"available\":false}";
+        server.send(200, "application/json", json);
         return;
     }
     
-    String json = "{\"available\":true,\"settings\":";
+    json += ",\"available\":true,\"settings\":";
     json += v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings());
     json += "}";
     server.send(200, "application/json", json);
