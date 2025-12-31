@@ -1860,6 +1860,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideProfileIndicator")) {
         settingsManager.setHideProfileIndicator(server.arg("hideProfileIndicator") == "true" || server.arg("hideProfileIndicator") == "1");
     }
+
+    // Persist all color/visibility changes
+    settingsManager.save();
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
