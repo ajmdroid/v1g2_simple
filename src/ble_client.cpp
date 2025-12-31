@@ -162,11 +162,21 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     NimBLEDevice::setMTU(185);
     
     // Create proxy server early (required before BLE stack starts client operations)
-    // but DON'T start advertising until V1 connection is established
     if (proxyEnabled) {
-        Serial.println("Creating proxy server (advertising delayed until V1 connects)...");
+        Serial.println("Creating proxy server (advertising ready)...");
         initProxyServer(proxyName_.c_str());
         proxyServerInitialized = true;
+
+        // Prepare advertising payload right away so a proxy is discoverable even before V1 connects
+        NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+        NimBLEAdvertisementData advData;
+        NimBLEAdvertisementData scanRespData;
+        advData.setCompleteServices(pProxyService->getUUID());
+        advData.setAppearance(0x0C80);
+        scanRespData.setName(proxyName_.c_str());
+        pAdvertising->setAdvertisementData(advData);
+        pAdvertising->setScanResponseData(scanRespData);
+        startProxyAdvertising();
     }
     
     // Set up security and pairing
