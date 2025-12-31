@@ -301,6 +301,7 @@ String V1ProfileManager::settingsToJson(const V1UserSettings& s) const {
 String V1ProfileManager::profileToJson(const V1Profile& profile) const {
     JsonDocument doc;
     doc["name"] = profile.name;
+    doc["description"] = profile.description;
     doc["displayOn"] = profile.displayOn;
     
     JsonObject settings = doc["settings"].to<JsonObject>();

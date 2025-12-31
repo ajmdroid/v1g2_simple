@@ -11,6 +11,7 @@
 	let saveDescription = $state('');
 	let editingSettings = $state(false);
 	let editedSettings = $state(null);
+	let editDescription = $state('');
 	
 	onMount(async () => {
 		await fetchProfiles();
@@ -105,13 +106,72 @@
 	function startEditing() {
 		if (currentProfile && currentProfile.settings) {
 			editedSettings = { ...currentProfile.settings };
+			editDescription = currentProfile.description || '';
 			editingSettings = true;
 		}
 	}
 	
 	function cancelEditing() {
 		editedSettings = null;
+		editDescription = '';
 		editingSettings = false;
+	}
+
+	async function editProfile(name) {
+		message = { type: 'info', text: `Loading ${name}...` };
+		try {
+			const res = await fetch(`/api/v1/profile?name=${encodeURIComponent(name)}`);
+			if (res.ok) {
+				const data = await res.json();
+				currentProfile = data;
+				editedSettings = { ...data.settings };
+				editDescription = data.description || '';
+				editingSettings = true;
+				message = { type: 'info', text: `Editing ${name}` };
+			} else {
+				const error = await res.text();
+				message = { type: 'error', text: `Failed to load: ${error}` };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+
+	async function saveEditedProfile() {
+		if (!editedSettings || !currentProfile || !currentProfile.name) {
+			message = { type: 'error', text: 'No profile loaded to save' };
+			return;
+		}
+
+		message = { type: 'info', text: `Saving ${currentProfile.name}...` };
+		try {
+			const payload = {
+				name: currentProfile.name,
+				description: editDescription.trim(),
+				settings: editedSettings
+			};
+
+			const res = await fetch('/api/v1/profile', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(payload)
+			});
+
+			if (res.ok) {
+				message = { type: 'success', text: `Profile "${currentProfile.name}" saved` };
+				editingSettings = false;
+				editedSettings = null;
+				await fetchProfiles();
+				await fetchCurrentSettings();
+			} else {
+				const error = await res.text();
+				message = { type: 'error', text: `Failed to save: ${error}` };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
 	}
 	
 	async function saveEdits() {
@@ -248,7 +308,24 @@
 	<div class="card bg-base-200">
 		<div class="card-body">
 			<h2 class="card-title">📡 Current V1 Settings</h2>
-			{#if !v1Connected}
+			{#if editingSettings && currentProfile?.name}
+				<div class="alert alert-info text-sm">
+					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
+				</div>
+				<div class="form-control max-w-md">
+					<label class="label" for="edit-description">
+						<span class="label-text">Description</span>
+					</label>
+					<input
+						id="edit-description"
+						type="text"
+						placeholder="Update description"
+						class="input input-bordered input-sm"
+						bind:value={editDescription}
+					/>
+				</div>
+			{/if}
+			{#if (!v1Connected) && !editingSettings}
 				<p class="text-warning">Connect to V1 to view/edit settings</p>
 			{:else if currentProfile && currentProfile.settings}
 				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
@@ -411,6 +488,11 @@
 					<button class="btn btn-success btn-sm" onclick={saveEdits}>
 						✅ Push to V1
 					</button>
+					{#if currentProfile?.name}
+						<button class="btn btn-primary btn-sm" onclick={saveEditedProfile}>
+							💾 Save Profile
+						</button>
+					{/if}
 				{:else}
 					<button class="btn btn-primary btn-sm" onclick={pullFromV1} disabled={!v1Connected}>
 						⬇️ Pull from V1
@@ -450,6 +532,12 @@
 								</div>
 							</div>
 							<div class="flex gap-2">
+								<button 
+									class="btn btn-secondary btn-xs"
+									onclick={() => editProfile(profile.name)}
+								>
+									✏️ Edit
+								</button>
 								<button 
 									class="btn btn-primary btn-xs" 
 									onclick={() => pushToV1(profile.name)}
