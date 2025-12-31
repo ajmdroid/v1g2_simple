@@ -749,6 +749,15 @@ void WiFiManager::handleSettingsSave() {
         theme = std::max(0, std::min(theme, 2));  // Clamp to valid theme range
         settingsManager.updateColorTheme(static_cast<ColorTheme>(theme));
     }
+
+    // BLE proxy settings
+    if (server.hasArg("proxy_ble")) {
+        bool proxyEnabled = server.arg("proxy_ble") == "true" || server.arg("proxy_ble") == "1";
+        settingsManager.setProxyBLE(proxyEnabled);
+    }
+    if (server.hasArg("proxy_name")) {
+        settingsManager.setProxyName(server.arg("proxy_name"));
+    }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     SerialLog.println("--- Calling settingsManager.save() ---");

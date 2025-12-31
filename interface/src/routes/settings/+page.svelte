@@ -6,7 +6,9 @@
 		password: '',
 		ap_ssid: '',
 		ap_password: '',
-		wifi_mode: 2
+		wifi_mode: 2,
+		proxy_ble: true,
+		proxy_name: 'V1C-LE-S3'
 	});
 	
 	let loading = $state(true);
@@ -42,6 +44,8 @@
 			formData.append('ap_ssid', settings.ap_ssid);
 			formData.append('ap_password', settings.ap_password);
 			formData.append('wifi_mode', settings.wifi_mode);
+			formData.append('proxy_ble', settings.proxy_ble);
+			formData.append('proxy_name', settings.proxy_name);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -183,6 +187,31 @@
 						<span class="label-text">AP + Station (recommended)</span>
 						<input type="radio" name="wifi_mode" class="radio" value={2} bind:group={settings.wifi_mode} />
 					</label>
+				</div>
+			</div>
+		</div>
+
+		<!-- BLE Proxy -->
+		<div class="card bg-base-200">
+			<div class="card-body space-y-4">
+				<h2 class="card-title">🟦 Bluetooth Proxy</h2>
+				<p class="text-sm text-base-content/60">Relay V1 data to apps like JBV1.</p>
+				<label class="label cursor-pointer">
+					<span class="label-text">Enable Proxy</span>
+					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
+				</label>
+				<div class="form-control">
+					<label class="label" for="proxy-name">
+						<span class="label-text">Proxy Name</span>
+					</label>
+					<input
+						id="proxy-name"
+						type="text"
+						class="input input-bordered"
+						bind:value={settings.proxy_name}
+						placeholder="V1C-LE-S3"
+						disabled={!settings.proxy_ble}
+					/>
 				</div>
 			</div>
 		</div>
