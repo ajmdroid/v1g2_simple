@@ -358,9 +358,8 @@ void WiFiManager::initializeTime() {
     if (timeManager.syncNTP()) {
         timeInitialized = true;
         
-        // Update alert loggers with real timestamp
+        // Update alert DB with real timestamp
         time_t now = timeManager.now();
-        alertLogger.setTimestampUTC((uint32_t)now);
         alertDB.setTimestampUTC((uint32_t)now);
         SerialLog.printf("[WiFi] Alert timestamps set: %lu\n", (uint32_t)now);
     }
@@ -848,8 +847,7 @@ void WiFiManager::handleTimeSettingsSave() {
         time_t timestamp = (time_t)server.arg("timestamp").toInt();
         if (timestamp > 1609459200) {  // Valid if after 2021-01-01
             timeManager.setTime(timestamp);
-            // Update alert loggers immediately so new alerts get correct timestamp
-            alertLogger.setTimestampUTC((uint32_t)timestamp);
+            // Update alert DB immediately so new alerts get correct timestamp
             alertDB.setTimestampUTC((uint32_t)timestamp);
             SerialLog.printf("Time set manually to: %ld\n", timestamp);
         }
@@ -883,124 +881,36 @@ void WiFiManager::handleTimeSettingsSave() {
 }
 
 void WiFiManager::handleLogsData() {
-    if (!alertLogger.isReady()) {
-        server.send(503, "application/json", "{\"error\":\"SD card not mounted\"}");
+    // Use SQLite database for alerts - it has proper UTC timestamps
+    if (!alertDB.isReady()) {
+        server.send(503, "application/json", "{\"error\":\"Alert database not ready\"}");
         return;
     }
 
-    // Optional: support /api/logs?n=50
-    size_t maxLines = ALERT_LOG_MAX_RECENT;
+    // Optional: support /api/alerts?n=50
+    size_t maxRows = ALERT_LOG_MAX_RECENT;
     if (server.hasArg("n")) {
         int n = server.arg("n").toInt();
         if (n > 0) {
             if (n > 500) n = 500; // hard cap to protect RAM/CPU
-            maxLines = (size_t)n;
+            maxRows = (size_t)n;
         }
     }
 
-    fs::FS* fs = alertLogger.getFilesystem();
-    if (!fs) {
-        server.send(500, "application/json", "{\"error\":\"filesystem unavailable\"}");
-        return;
-    }
-
-    File file = fs->open(ALERT_LOG_PATH, FILE_READ);
-    if (!file) {
-        server.send(500, "application/json", "{\"error\":\"failed to open log\"}");
-        return;
-    }
-
-    // Pass 1: count valid data lines
-    size_t total = 0;
-    while (file.available()) {
-        String line = file.readStringUntil('\n');
-        line.trim();
-        if (line.length() == 0 || line.startsWith("ms,")) continue; // skip header/blank
-        total++;
-    }
-    file.close();
-
-    size_t startIndex = 0;
-    if (total > maxLines) startIndex = total - maxLines;
-
-    // Pass 2: stream JSON array of last N lines
-    file = fs->open(ALERT_LOG_PATH, FILE_READ);
-    if (!file) {
-        server.send(500, "application/json", "{\"error\":\"failed to open log\"}");
-        return;
-    }
-
-    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-    server.send(200, "application/json", "");
-    server.sendContent("[");
-
-    bool first = true;
-    size_t idx = 0;
-
-    while (file.available()) {
-        String line = file.readStringUntil('\n');
-        line.trim();
-        if (line.length() == 0 || line.startsWith("ms,")) continue;
-
-        if (idx++ < startIndex) continue;
-
-        // CSV columns expected (9):
-        // 0=ms,1=event,2=band,3=freq,4=dir,5=front,6=rear,7=count,8=muted
-        String cols[9];
-        if (!splitCsvFixed(line, cols, 9)) continue;
-
-        if (!first) server.sendContent(",");
-        first = false;
-
-        // Stream one object per row.
-        // Emit BOTH new keys (ts, dir) and legacy keys (ms, direction).
-        // Handle empty numeric fields by defaulting to 0, escape strings for JSON safety
-        String obj;
-        obj.reserve(250);
-        obj += "{\"ts\":";
-        obj += cols[0].length() > 0 ? cols[0] : "0";
-        obj += ",\"ms\":";
-        obj += cols[0].length() > 0 ? cols[0] : "0";
-        obj += ",\"utc\":0";
-        obj += ",\"event\":\"";
-        obj += jsonEscape(cols[1]);
-        obj += "\",\"band\":\"";
-        obj += jsonEscape(cols[2]);
-        obj += "\",\"freq\":";
-        obj += cols[3].length() > 0 ? cols[3] : "0";
-        obj += ",\"dir\":\"";
-        obj += jsonEscape(cols[4]);
-        obj += "\",\"direction\":\"";
-        obj += jsonEscape(cols[4]);
-        obj += "\",\"front\":";
-        obj += cols[5].length() > 0 ? cols[5] : "0";
-        obj += ",\"rear\":";
-        obj += cols[6].length() > 0 ? cols[6] : "0";
-        obj += ",\"count\":";
-        obj += cols[7].length() > 0 ? cols[7] : "0";
-        obj += ",\"muted\":";
-        obj += ((cols[8] == "1" || cols[8] == "true") ? "true" : "false");
-        obj += "}";
-
-        server.sendContent(obj);
-    }
-
-    file.close();
-    server.sendContent("]");
+    // Get alerts from SQLite (includes proper utc timestamps)
+    String json = alertDB.getRecentJson(maxRows);
+    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleLogsClear() {
     if (!checkRateLimit()) return;
     
-    if (!alertLogger.isReady()) {
-        server.send(503, "application/json", "{\"error\":\"SD card not mounted\"}");
-        return;
-    }
-
-    bool cleared = alertLogger.clear();
-    server.send(cleared ? 200 : 500,
+    // Clear SQLite database
+    bool success = alertDB.clearAll();
+    
+    server.send(success ? 200 : 500,
                 "application/json",
-                String("{\"success\":") + (cleared ? "true" : "false") + "}");
+                String("{\"success\":") + (success ? "true" : "false") + "}");
 }
 
 void WiFiManager::handleSerialLog() {

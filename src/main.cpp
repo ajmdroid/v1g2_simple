@@ -768,10 +768,8 @@ void processBLEData() {
                 // Use timeManager for reliable timestamps (returns 0 if time not set)
                 if (timeManager.isTimeValid()) {
                     time_t currentTime = timeManager.now();
-                    alertLogger.setTimestampUTC((uint32_t)currentTime);
                     alertDB.setTimestampUTC((uint32_t)currentTime);
                 }
-                alertLogger.logAlert(priority, state, alertCount);
                 alertDB.logAlert(priority, state, alertCount);
             } else {
                 // No alerts - clear mute override only after timeout has passed
@@ -800,7 +798,6 @@ void processBLEData() {
                 }
                 
                 display.update(state);
-                alertLogger.updateStateOnClear(state);
 
                 // Lightweight latency instrumentation (logs every 5s)
                 static unsigned long lastLatencyLog = 0;

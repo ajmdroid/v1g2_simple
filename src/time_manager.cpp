@@ -85,15 +85,25 @@ bool TimeManager::syncNTP() {
     
     Serial.println("[TimeManager] Starting NTP sync...");
     
-    // Configure NTP servers
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    // Check WiFi status
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[TimeManager] NTP sync skipped - WiFi not connected");
+        return false;
+    }
     
-    // Wait for time to sync
+    // Configure NTP servers
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+    
+    // Wait for time to sync (longer timeout for network latency)
     struct tm timeinfo;
     int retries = 0;
+    Serial.printf("[TimeManager] Waiting for NTP (max %d retries)...\n", NTP_SYNC_TIMEOUT_RETRIES);
     while (!::getLocalTime(&timeinfo, 100) && retries < NTP_SYNC_TIMEOUT_RETRIES) {
         delay(NTP_SYNC_RETRY_DELAY_MS);
         retries++;
+        if (retries % 10 == 0) {
+            Serial.printf("[TimeManager] NTP retry %d/%d...\n", retries, NTP_SYNC_TIMEOUT_RETRIES);
+        }
     }
     
     if (retries < NTP_SYNC_TIMEOUT_RETRIES) {

@@ -65,8 +65,8 @@ private:
     // NTP re-sync tracking
     unsigned long lastNTPSyncMs;
     static const unsigned long NTP_RESYNC_INTERVAL_MS = 3600000;  // 1 hour
-    static const int NTP_SYNC_TIMEOUT_RETRIES = 10;
-    static const int NTP_SYNC_RETRY_DELAY_MS = 100;
+    static const int NTP_SYNC_TIMEOUT_RETRIES = 50;       // More retries
+    static const int NTP_SYNC_RETRY_DELAY_MS = 200;       // Longer delay between retries
 };
 
 // Global instance
