@@ -102,9 +102,9 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     if (arrow.side)  displayState.arrows = static_cast<Direction>(displayState.arrows | DIR_SIDE);
     if (arrow.rear)  displayState.arrows = static_cast<Direction>(displayState.arrows | DIR_REAR);
 
-    if (alertCount == 0) {
-        displayState.muted = arrow.mute;
-    }
+    // Always trust display packet's mute flag - V1 logic mute shows here
+    // even when individual alert entries don't have mute bit set
+    displayState.muted = arrow.mute;
     
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
@@ -229,7 +229,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
     }
 
-    displayState.muted = anyMuted;
+    // Combine alert mute bits with display packet's mute flag
+    // V1 logic mute shows in display packet even if alert entries don't have mute bit
+    displayState.muted = displayState.muted || anyMuted;
 
     if (alertCount > 0) {
         AlertData priority = getPriorityAlert();
