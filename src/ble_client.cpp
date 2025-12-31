@@ -27,23 +27,40 @@
 
 // Task to restart advertising after delay (Kenny's approach for NimBLE 2.x)
 static void restartAdvertisingTask(void* param) {
-    vTaskDelay(pdMS_TO_TICKS(150));
+    vTaskDelay(pdMS_TO_TICKS(200));  // Slightly longer delay for dual-role stability
     Serial.println("Task: Starting advertising...");
-    if (NimBLEDevice::startAdvertising()) {
+    
+    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+    if (!pAdv) {
+        Serial.println("Task: getAdvertising() returned null!");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    // Retry advertising start up to 3 times
+    bool started = false;
+    for (int i = 0; i < 3 && !started; i++) {
+        if (i > 0) {
+            Serial.printf("Task: Retry %d...\n", i);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        started = NimBLEDevice::startAdvertising();
+    }
+    
+    if (started) {
         Serial.println("Task: Advertising started successfully");
     } else {
-        Serial.println("Task: Advertising start failed");
+        Serial.println("Task: Advertising start failed after retries");
     }
     
     // Verify after short delay
-    vTaskDelay(pdMS_TO_TICKS(100));
-    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-    if (pAdv && pAdv->isAdvertising()) {
+    vTaskDelay(pdMS_TO_TICKS(150));
+    if (pAdv->isAdvertising()) {
         Serial.println("✓ Task: Proxy is now advertising!");
         NimBLEAddress addr = NimBLEDevice::getAddress();
         Serial.printf("  Address: %s\n", addr.toString().c_str());
     } else {
-        Serial.println("✗ Task: Advertising still not active!");
+        Serial.println("✗ Task: Advertising still not active - may need device restart");
     }
     
     vTaskDelete(NULL);
