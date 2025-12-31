@@ -16,6 +16,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: interface/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: interface
+
+      - name: Build web UI
+        run: npm run build
+        working-directory: interface
+
+      - name: Sync web build to data/
+        run: |
+          rsync -av --delete interface/build/ data/
+
+      - name: Upload web assets artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: data/
+
       - name: Set up PlatformIO
         uses: platformio/action@v2
         with:
