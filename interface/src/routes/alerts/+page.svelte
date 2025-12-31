@@ -50,6 +50,13 @@
 		}
 	}
 	
+	function formatFrequency(freq, band) {
+		if (!freq || band === 'LASER') return '0 MHz';
+		// Frequency is in MHz (e.g., 24172), display as XX.XXX GHz
+		const ghz = freq / 1000;
+		return ghz.toFixed(3) + ' GHz';
+	}
+	
 	function formatTime(timestamp) {
 		if (!timestamp) return '';
 		const date = new Date(timestamp * 1000);
@@ -72,8 +79,8 @@
 		let direction = 2; // side/default
 		if (dirStr === 'F' || dirStr === 'FRONT' || dirStr === '0') direction = 0;
 		else if (dirStr === 'R' || dirStr === 'REAR' || dirStr === '1') direction = 1;
-		const tsMs = Number(raw.ts || raw.ms || 0);
-		const timestamp = Math.floor(tsMs / 1000);
+		// Prefer UTC timestamp (unix seconds), fallback to ts (millis since boot)
+		const timestamp = raw.utc ? Number(raw.utc) : Math.floor(Number(raw.ts || 0) / 1000);
 
 		return {
 			band,
@@ -157,10 +164,10 @@
 							<td>
 								<span class="badge {getBandClass(alert.band)}">{alert.band}</span>
 							</td>
-							<td>{alert.frequency} MHz</td>
+							<td>{formatFrequency(alert.frequency, alert.band)}</td>
 							<td>
 								<div class="flex items-center gap-1">
-									{#each Array(8) as _, i}
+									{#each Array(6) as _, i}
 										<div class="w-2 h-4 rounded {i < alert.strength ? 'bg-primary' : 'bg-base-300'}"></div>
 									{/each}
 								</div>
