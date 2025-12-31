@@ -354,33 +354,15 @@ void WiFiManager::checkSTAConnection() {
 }
 
 void WiFiManager::initializeTime() {
-    SerialLog.println("Initializing NTP time sync...");
-    // Configure NTP with UTC timezone (0 offset, 0 DST)
-    // All times stored and displayed in UTC
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-    
-    // Wait briefly for time to sync
-    struct tm timeinfo;
-    int retries = 0;
-    while (!getLocalTime(&timeinfo) && retries < NTP_SYNC_RETRY_COUNT) {
-        delay(NTP_SYNC_RETRY_DELAY_MS);
-        retries++;
-    }
-    
-    if (retries < NTP_SYNC_RETRY_COUNT) {
-        SerialLog.println("Time synchronized via NTP!");
-        SerialLog.printf("  Current time (UTC): %04d-%02d-%02dT%02d:%02d:%02dZ\n",
-                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    // Use centralized timeManager for NTP sync
+    if (timeManager.syncNTP()) {
         timeInitialized = true;
         
         // Update alert loggers with real timestamp
-        time_t now = time(nullptr);
+        time_t now = timeManager.now();
         alertLogger.setTimestampUTC((uint32_t)now);
         alertDB.setTimestampUTC((uint32_t)now);
         SerialLog.printf("[WiFi] Alert timestamps set: %lu\n", (uint32_t)now);
-    } else {
-        SerialLog.println("Failed to sync time via NTP");
     }
 }
 

@@ -765,10 +765,11 @@ void processBLEData() {
                 display.update(priority, state, alertCount);
                 
                 // Logging happens after display update (lower priority than visual feedback)
-                time_t now = time(nullptr);
-                if (now > 1609459200) {  // Valid if after 2021-01-01
-                    alertLogger.setTimestampUTC((uint32_t)now);
-                    alertDB.setTimestampUTC((uint32_t)now);
+                // Use timeManager for reliable timestamps (returns 0 if time not set)
+                if (timeManager.isTimeValid()) {
+                    time_t currentTime = timeManager.now();
+                    alertLogger.setTimestampUTC((uint32_t)currentTime);
+                    alertDB.setTimestampUTC((uint32_t)currentTime);
                 }
                 alertLogger.logAlert(priority, state, alertCount);
                 alertDB.logAlert(priority, state, alertCount);
@@ -803,16 +804,17 @@ void processBLEData() {
 
                 // Lightweight latency instrumentation (logs every 5s)
                 static unsigned long lastLatencyLog = 0;
-                if (now - lastLatencyLog > 5000 && latestPktTs > 0) {
-                    unsigned long latency = now - latestPktTs;
+                unsigned long nowMs = millis();
+                if (nowMs - lastLatencyLog > 5000 && latestPktTs > 0) {
+                    unsigned long latency = nowMs - latestPktTs;
                     SerialLog.printf("[Perf] BLE->display latency: %lums\n", latency);
-                    lastLatencyLog = now;
+                    lastLatencyLog = nowMs;
                 }
                 
                 // Update timestamp before logging (ensures real-time accuracy)
-                time_t now = time(nullptr);
-                if (now > 1609459200) {  // Valid if after 2021-01-01
-                    alertDB.setTimestampUTC((uint32_t)now);
+                if (timeManager.isTimeValid()) {
+                    time_t currentTime = timeManager.now();
+                    alertDB.setTimestampUTC((uint32_t)currentTime);
                 }
                 alertDB.logClear();
             }
@@ -1239,6 +1241,9 @@ void loop() {
 
     // Process WiFi/web server
     wifiManager.process();
+    
+    // Update time manager (handles periodic NTP re-sync)
+    timeManager.update();
     
     // Update display periodically
     unsigned long now = millis();
