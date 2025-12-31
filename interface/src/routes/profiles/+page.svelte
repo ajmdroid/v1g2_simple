@@ -113,13 +113,50 @@
 			<h2 class="card-title">📡 Current V1 Settings</h2>
 			{#if !v1Connected}
 				<p class="text-warning">Connect to V1 to view/edit settings</p>
-			{:else if currentProfile}
-				<div class="grid grid-cols-2 gap-2 text-sm">
-					<div>Ka Enabled: {currentProfile.ka ? '✅' : '❌'}</div>
-					<div>K Enabled: {currentProfile.k ? '✅' : '❌'}</div>
-					<div>X Enabled: {currentProfile.x ? '✅' : '❌'}</div>
-					<div>Laser Enabled: {currentProfile.laser ? '✅' : '❌'}</div>
+			{:else if currentProfile && currentProfile.settings}
+				<div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+					<!-- Band Enables -->
+					<div class="col-span-2 md:col-span-3 font-bold text-base">Band Detection</div>
+					<div>Ka Band: {currentProfile.settings.ka ? '✅' : '❌'}</div>
+					<div>K Band: {currentProfile.settings.k ? '✅' : '❌'}</div>
+					<div>X Band: {currentProfile.settings.x ? '✅' : '❌'}</div>
+					<div>Laser: {currentProfile.settings.laser ? '✅' : '❌'}</div>
+					<div>Ku Band: {currentProfile.settings.ku ? '✅' : '❌'}</div>
+					
+					<!-- Sensitivities -->
+					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Sensitivity</div>
+					<div>Ka: {currentProfile.settings.kaSensitivity === 3 ? 'Full' : currentProfile.settings.kaSensitivity === 2 ? 'Original' : 'Relaxed'}</div>
+					<div>K: {currentProfile.settings.kSensitivity === 3 ? 'Original' : currentProfile.settings.kSensitivity === 2 ? 'Full' : 'Relaxed'}</div>
+					<div>X: {currentProfile.settings.xSensitivity === 3 ? 'Original' : currentProfile.settings.xSensitivity === 2 ? 'Full' : 'Relaxed'}</div>
+					
+					<!-- Features -->
+					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Features</div>
+					<div>Auto Mute: {currentProfile.settings.autoMute === 3 ? 'Off' : currentProfile.settings.autoMute === 2 ? 'Advanced' : 'On'}</div>
+					<div>K Verifier (TMF): {currentProfile.settings.kVerifier ? '✅' : '❌'}</div>
+					<div>Fast Laser: {currentProfile.settings.fastLaserDetect ? '✅' : '❌'}</div>
+					<div>Laser Rear: {currentProfile.settings.laserRear ? '✅' : '❌'}</div>
+					<div>Euro Mode: {currentProfile.settings.euroMode ? '✅' : '❌'}</div>
+					<div>MRCT: {currentProfile.settings.mrct ? '✅' : '❌'}</div>
+					
+					<!-- Display -->
+					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Display</div>
+					<div>Startup Sequence: {currentProfile.settings.startupSequence ? '✅' : '❌'}</div>
+					<div>Resting Display: {currentProfile.settings.restingDisplay ? '✅' : '❌'}</div>
+					<div>Bogey Lock Loud: {currentProfile.settings.bogeyLockLoud ? '✅' : '❌'}</div>
+					
+					<!-- Advanced -->
+					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Advanced</div>
+					<div>Mute X/K Rear: {currentProfile.settings.muteXKRear ? '✅' : '❌'}</div>
+					<div>Ka Always Priority: {currentProfile.settings.kaAlwaysPriority ? '✅' : '❌'}</div>
+					<div>Mute to Mute Vol: {currentProfile.settings.muteToMuteVolume ? '✅' : '❌'}</div>
+					<div>Custom Freqs: {currentProfile.settings.customFreqs ? '✅' : '❌'}</div>
+					<div>BSM Plus: {currentProfile.settings.bsmPlus ? '✅' : '❌'}</div>
+					<div>Drive Safe 3D: {currentProfile.settings.driveSafe3D ? '✅' : '❌'}</div>
+					<div>Drive Safe 3D HD: {currentProfile.settings.driveSafe3DHD ? '✅' : '❌'}</div>
+					<div>Redflex Halo: {currentProfile.settings.redflexHalo ? '✅' : '❌'}</div>
 				</div>
+			{:else}
+				<p class="text-base-content/60">No settings available. Pull from V1 to view.</p>
 			{/if}
 			<div class="card-actions justify-end">
 				<button class="btn btn-primary btn-sm" onclick={pullFromV1} disabled={!v1Connected}>
