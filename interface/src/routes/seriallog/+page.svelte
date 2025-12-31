@@ -83,7 +83,7 @@
     clearing = true;
     message = '';
     try {
-      const res = await fetch('/api/serial_log/clear', { method: 'POST' });
+      const res = await fetch('/api/seriallog/clear', { method: 'POST' });
       const data = await res.json();
       
       if (data.success) {

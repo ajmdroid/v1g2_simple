@@ -496,7 +496,6 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/serial_log.txt", HTTP_GET, [this]() { handleSerialLog(); });
-    server.on("/api/seriallog", HTTP_GET, [this]() { handleSerialLog(); });  // Consistent API endpoint
     server.on("/api/seriallog/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Consistent naming
     server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Legacy compat
 

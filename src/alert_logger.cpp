@@ -2,6 +2,7 @@
 #include <SD.h>
 #include <SD_MMC.h>
 #include <SPI.h>
+#include <LittleFS.h>
 #include <vector>
 
 AlertLogger alertLogger;
@@ -47,7 +48,7 @@ bool AlertLogger::begin() {
             Serial.println("AlertLogger: ERROR - Failed to set SD_MMC pins!");
             Serial.println("  Likely cause: Pin conflict with TFT parallel interface");
             Serial.println("  Solution: These pins can't be used for both SD and display");
-            return false;
+            // Keep going so we can fall back to SPI or LittleFS
         }
         
         // Try mounting with 1-bit mode (true), no format on fail
@@ -85,6 +86,20 @@ bool AlertLogger::begin() {
     }
 #endif
 
+    // Fallback to LittleFS if no SD card is available
+    if (!ready) {
+        Serial.println("AlertLogger: SD not available, using LittleFS fallback");
+        if (LittleFS.begin(true)) {
+            fs = &LittleFS;
+            ready = true;
+            logPath = "/alerts.csv";  // Keep same path for compatibility
+            Serial.println("AlertLogger: LittleFS mounted for alert logging");
+        } else {
+            Serial.println("AlertLogger: LittleFS mount failed, logging disabled");
+            return false;
+        }
+    }
+
     if (!ready) {
         Serial.println("AlertLogger: SD not available, logging disabled");
         return false;
@@ -105,6 +120,9 @@ bool AlertLogger::begin() {
 String AlertLogger::statusText() const {
     if (!ready) {
         return "SD not mounted";
+    }
+    if (fs == &LittleFS) {
+        return "LittleFS mounted";
     }
     return usingSDMMC ? "SD_MMC mounted" : "SPI SD mounted";
 }
