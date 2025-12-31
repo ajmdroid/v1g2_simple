@@ -866,6 +866,9 @@ void WiFiManager::handleTimeSettingsSave() {
         time_t timestamp = (time_t)server.arg("timestamp").toInt();
         if (timestamp > 1609459200) {  // Valid if after 2021-01-01
             timeManager.setTime(timestamp);
+            // Update alert loggers immediately so new alerts get correct timestamp
+            alertLogger.setTimestampUTC((uint32_t)timestamp);
+            alertDB.setTimestampUTC((uint32_t)timestamp);
             SerialLog.printf("Time set manually to: %ld\n", timestamp);
         }
     }
