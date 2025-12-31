@@ -200,10 +200,11 @@
 							<!-- Edit Mode -->
 							<div class="grid grid-cols-2 gap-3 mt-3">
 								<div class="form-control">
-									<label class="label py-1">
+									<!-- provide stable ids for accessibility -->
+									<label class="label py-1" for={`slot-${i}-profile`}>
 										<span class="label-text text-xs">Profile</span>
 									</label>
-									<select class="select select-bordered select-sm" bind:value={slot.profile}>
+									<select id={`slot-${i}-profile`} class="select select-bordered select-sm" bind:value={slot.profile}>
 										<option value="">-- None --</option>
 										{#each profiles as p}
 											<option value={p.name}>{p.name}</option>
@@ -211,10 +212,10 @@
 									</select>
 								</div>
 								<div class="form-control">
-									<label class="label py-1">
+									<label class="label py-1" for={`slot-${i}-mode`}>
 										<span class="label-text text-xs">V1 Mode</span>
 									</label>
-									<select class="select select-bordered select-sm" bind:value={slot.mode}>
+									<select id={`slot-${i}-mode`} class="select select-bordered select-sm" bind:value={slot.mode}>
 										<option value={0}>Don't Change</option>
 										<option value={1}>All Bogeys</option>
 										<option value={2}>Logic</option>
@@ -222,10 +223,11 @@
 									</select>
 								</div>
 								<div class="form-control">
-									<label class="label py-1">
+									<label class="label py-1" for={`slot-${i}-volume`}>
 										<span class="label-text text-xs">Volume (0-9)</span>
 									</label>
 									<input 
+										id={`slot-${i}-volume`}
 										type="number" 
 										class="input input-bordered input-sm" 
 										min="0" max="9"
@@ -233,10 +235,11 @@
 									/>
 								</div>
 								<div class="form-control">
-									<label class="label py-1">
+									<label class="label py-1" for={`slot-${i}-mute`}>
 										<span class="label-text text-xs">Mute Volume (0-9)</span>
 									</label>
 									<input 
+										id={`slot-${i}-mute`}
 										type="number" 
 										class="input input-bordered input-sm" 
 										min="0" max="9"

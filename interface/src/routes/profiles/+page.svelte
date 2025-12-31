@@ -9,9 +9,11 @@
 	let showSaveDialog = $state(false);
 	let saveName = $state('');
 	let saveDescription = $state('');
+	let saveDarkMode = $state(false);
 	let editingSettings = $state(false);
 	let editedSettings = $state(null);
 	let editDescription = $state('');
+	let editDarkMode = $state(false);
 
 	function fromApiSettings(api = {}) {
 		return {
@@ -148,6 +150,7 @@
 			const payload = {
 				name: saveName.trim(),
 				description: saveDescription.trim(),
+				displayOn: !saveDarkMode,
 				settings: toApiSettings(currentProfile.settings)
 			};
 			
@@ -176,6 +179,7 @@
 		if (currentProfile && currentProfile.settings) {
 			editedSettings = { ...currentProfile.settings };
 			editDescription = currentProfile.description || '';
+			editDarkMode = currentProfile.displayOn === false;
 			editingSettings = true;
 		}
 	}
@@ -183,6 +187,7 @@
 	function cancelEditing() {
 		editedSettings = null;
 		editDescription = '';
+		editDarkMode = false;
 		editingSettings = false;
 	}
 
@@ -198,6 +203,7 @@
 				};
 				editedSettings = { ...currentProfile.settings };
 				editDescription = data.description || '';
+				editDarkMode = data.displayOn === false;
 				editingSettings = true;
 				message = { type: 'info', text: `Editing ${name}` };
 			} else {
@@ -220,6 +226,7 @@
 			const payload = {
 				name: currentProfile.name,
 				description: editDescription.trim(),
+				displayOn: !editDarkMode,
 				settings: toApiSettings(editedSettings)
 			};
 
@@ -254,6 +261,7 @@
 		try {
 			// Push edited settings directly to V1
 			const payload = {
+				displayOn: !editDarkMode,
 				settings: toApiSettings(editedSettings)
 			};
 			
@@ -367,6 +375,10 @@
 							bind:value={saveDescription}
 						/>
 					</div>
+					<label class="label cursor-pointer justify-start gap-3">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={saveDarkMode} />
+						<span class="label-text">Dark mode (turn off V1 display)</span>
+					</label>
 				</div>
 				<div class="modal-action">
 					<button class="btn btn-ghost" onclick={() => showSaveDialog = false}>Cancel</button>
@@ -396,6 +408,10 @@
 						bind:value={editDescription}
 					/>
 				</div>
+				<label class="label cursor-pointer max-w-md justify-start gap-3">
+					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={editDarkMode} />
+					<span class="label-text">Dark mode (turn off V1 display)</span>
+				</label>
 			{/if}
 			{#if (!v1Connected) && !editingSettings}
 				<p class="text-warning">Connect to V1 to view/edit settings</p>
@@ -599,8 +615,9 @@
 						<div class="flex justify-between items-center p-3 bg-base-300 rounded-lg">
 							<div>
 								<div class="font-medium">{profile.name}</div>
-								<div class="text-xs text-base-content/60">
-									{profile.description || 'No description'}
+								<div class="text-xs text-base-content/60 space-y-0.5">
+									<div>{profile.description || 'No description'}</div>
+									<div>Display: {profile.displayOn === false ? 'Off (Dark)' : 'On'}</div>
 								</div>
 							</div>
 							<div class="flex gap-2">

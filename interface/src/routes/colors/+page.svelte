@@ -177,11 +177,12 @@
 				<h2 class="card-title text-lg">Counter & Frequency</h2>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="bogey-color">
 							<span class="label-text">Bogey Counter</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="bogey-color"
 								type="color" 
 								aria-label="Bogey counter color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -195,11 +196,12 @@
 						</div>
 					</div>
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="freq-color">
 							<span class="label-text">Frequency Display</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="freq-color"
 								type="color" 
 								aria-label="Frequency display color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -222,11 +224,12 @@
 				<h2 class="card-title text-lg">Band Indicators</h2>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="bandL-color">
 							<span class="label-text">Laser (L)</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="bandL-color"
 								type="color" 
 								aria-label="Laser band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -240,11 +243,12 @@
 						</div>
 					</div>
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="bandKa-color">
 							<span class="label-text">Ka Band</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="bandKa-color"
 								type="color" 
 								aria-label="Ka band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -258,11 +262,12 @@
 						</div>
 					</div>
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="bandK-color">
 							<span class="label-text">K Band</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="bandK-color"
 								type="color" 
 								aria-label="K band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -276,11 +281,12 @@
 						</div>
 					</div>
 					<div class="form-control">
-						<label class="label">
+						<label class="label" for="bandX-color">
 							<span class="label-text">X Band</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
+								id="bandX-color"
 								type="color" 
 								aria-label="X band color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
@@ -302,11 +308,12 @@
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Direction Arrows</h2>
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="arrow-color">
 						<span class="label-text">Arrow Color</span>
 					</label>
 					<div class="flex items-center gap-3">
 						<input 
+							id="arrow-color"
 							type="color" 
 							aria-label="Direction arrow color"
 							class="w-12 h-10 cursor-pointer rounded border-0"
@@ -327,11 +334,12 @@
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Status Indicators</h2>
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="wifiIcon-color">
 						<span class="label-text">WiFi Icon</span>
 					</label>
 					<div class="flex items-center gap-3">
 						<input 
+							id="wifiIcon-color"
 							type="color" 
 							aria-label="WiFi icon color"
 							class="w-12 h-10 cursor-pointer rounded border-0"
@@ -387,12 +395,14 @@
 				<p class="text-xs text-base-content/50 mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
 				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
 					{#each [1, 2, 3, 4, 5, 6] as barNum}
+						{@const barId = `bar-${barNum}-color`}
 						<div class="form-control">
-							<label class="label py-1">
+							<label class="label py-1" for={barId}>
 								<span class="label-text text-xs">Bar {barNum}</span>
 							</label>
 							<div class="flex flex-col items-center gap-1">
 								<input 
+									id={barId}
 									type="color" 
 									aria-label="Signal bar {barNum} color"
 									class="w-10 h-8 cursor-pointer rounded border-0"

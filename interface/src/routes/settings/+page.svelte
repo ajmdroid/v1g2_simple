@@ -96,22 +96,24 @@
 				<p class="text-sm text-base-content/60">Connect to your home/car WiFi network</p>
 				
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="wifi-ssid">
 						<span class="label-text">Network Name (SSID)</span>
 					</label>
 					<input 
+						id="wifi-ssid"
 						type="text" 
 						class="input input-bordered" 
 						bind:value={settings.ssid}
 						placeholder="Your WiFi network"
 					/>
 				</div>
-				
+
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="wifi-password">
 						<span class="label-text">Password</span>
 					</label>
 					<input 
+						id="wifi-password"
 						type="password" 
 						class="input input-bordered" 
 						bind:value={settings.password}
@@ -132,22 +134,24 @@
 				<p class="text-sm text-base-content/60">The WiFi network this device broadcasts</p>
 				
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="ap-ssid">
 						<span class="label-text">AP Name</span>
 					</label>
 					<input 
+						id="ap-ssid"
 						type="text" 
 						class="input input-bordered" 
 						bind:value={settings.ap_ssid}
 						placeholder="V1G2-Display"
 					/>
 				</div>
-				
+
 				<div class="form-control">
-					<label class="label">
+					<label class="label" for="ap-password">
 						<span class="label-text">AP Password</span>
 					</label>
 					<input 
+						id="ap-password"
 						type="password" 
 						class="input input-bordered" 
 						bind:value={settings.ap_password}
