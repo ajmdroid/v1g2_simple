@@ -16,7 +16,8 @@
 			const res = await fetch('/api/alerts');
 			if (res.ok) {
 				const data = await res.json();
-				alerts = data.alerts || [];
+				const raw = Array.isArray(data) ? data : (data.alerts || []);
+				alerts = raw.map(a => normalizeAlert(a));
 				error = null;
 			} else {
 				error = 'Failed to load alerts';
@@ -59,6 +60,28 @@
 		if (!timestamp) return '';
 		const date = new Date(timestamp * 1000);
 		return date.toLocaleDateString();
+	}
+
+	function normalizeAlert(raw) {
+		const band = raw.band || raw.Band || '';
+		const freq = Number(raw.freq || raw.frequency || 0);
+		const front = Number(raw.front || raw.frontStrength || 0);
+		const rear = Number(raw.rear || raw.rearStrength || 0);
+		const strength = Math.max(front, rear);
+		const dirStr = (raw.dir || raw.direction || '').toString().toUpperCase();
+		let direction = 2; // side/default
+		if (dirStr === 'F' || dirStr === 'FRONT' || dirStr === '0') direction = 0;
+		else if (dirStr === 'R' || dirStr === 'REAR' || dirStr === '1') direction = 1;
+		const tsMs = Number(raw.ts || raw.ms || 0);
+		const timestamp = Math.floor(tsMs / 1000);
+
+		return {
+			band,
+			frequency: freq,
+			strength,
+			direction,
+			timestamp
+		};
 	}
 	
 	let filteredAlerts = $derived(
