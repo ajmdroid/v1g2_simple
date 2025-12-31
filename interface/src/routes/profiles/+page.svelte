@@ -151,17 +151,19 @@
 	async function pushToV1(profileName) {
 		message = { type: 'info', text: `Pushing ${profileName} to V1...` };
 		try {
-			const formData = new FormData();
-			formData.append('name', profileName);
 			const res = await fetch('/api/v1/push', { 
 				method: 'POST',
-				body: formData
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ name: profileName })
 			});
 			if (res.ok) {
 				message = { type: 'success', text: `${profileName} pushed to V1` };
 				await fetchCurrentSettings();
 			} else {
-				message = { type: 'error', text: 'Failed to push profile' };
+				const error = await res.text();
+				message = { type: 'error', text: `Failed to push: ${error}` };
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
@@ -172,11 +174,12 @@
 		if (!confirm(`Delete profile "${name}"?`)) return;
 		
 		try {
-			const formData = new FormData();
-			formData.append('name', name);
 			const res = await fetch('/api/v1/profile/delete', { 
 				method: 'POST',
-				body: formData 
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ name })
 			});
 			if (res.ok) {
 				profiles = profiles.filter(p => p.name !== name);

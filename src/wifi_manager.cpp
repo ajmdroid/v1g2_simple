@@ -1503,16 +1503,37 @@ void WiFiManager::handleV1SettingsPush() {
     }
     
     uint8_t bytes[6];
+    bool displayOn = true;
     
-    // Check for bytes array first
-    JsonArray bytesArray = doc["bytes"];
-    if (bytesArray && bytesArray.size() == 6) {
+    // Check if pushing a profile by name
+    String profileName = doc["name"] | "";
+    if (!profileName.isEmpty()) {
+        // Load profile from database
+        V1Profile profile;
+        if (!v1ProfileManager.loadProfile(profileName, profile)) {
+            server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
+            return;
+        }
+        memcpy(bytes, profile.settings.bytes, 6);
+        displayOn = profile.displayOn;
+        SerialLog.printf("[V1Settings] Pushing profile '%s': %02X %02X %02X %02X %02X %02X\n",
+            profileName.c_str(), bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+    } 
+    // Check for bytes array
+    else if (doc["bytes"].is<JsonArray>()) {
+        JsonArray bytesArray = doc["bytes"];
+        if (bytesArray.size() != 6) {
+            server.send(400, "application/json", "{\"error\":\"Invalid bytes array\"}");
+            return;
+        }
         for (int i = 0; i < 6; i++) {
             bytes[i] = bytesArray[i].as<uint8_t>();
         }
+        displayOn = doc["displayOn"] | true;
         SerialLog.println("[V1Settings] Using raw bytes from request");
-    } else {
-        // Parse from individual settings (already deserialized)
+    } 
+    // Parse from individual settings
+    else {
         V1UserSettings settings;
         JsonObject settingsObj = doc["settings"].as<JsonObject>();
         if (settingsObj.isNull()) {
@@ -1523,12 +1544,10 @@ void WiFiManager::handleV1SettingsPush() {
             return;
         }
         memcpy(bytes, settings.bytes, 6);
+        displayOn = doc["displayOn"] | true;
         SerialLog.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     }
-    
-    // Get displayOn setting (defaults to true if not specified)
-    bool displayOn = doc["displayOn"] | true;
     
     bool success = bleClient.writeUserBytes(bytes);
     if (success) {
