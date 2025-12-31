@@ -635,7 +635,7 @@ void processBLEData() {
             // Cache alert status to avoid repeated calls
             bool hasAlerts = parser.hasAlerts();
 
-            // DEBUG: Log raw V1 mute state vs local state (for flicker debugging)
+            // Track V1 mute state for local override logic
             static bool lastLoggedMuted = false;
             static bool lastV1Muted = false;
             bool v1MutedRaw = state.muted;  // Capture V1's raw mute state before overrides
@@ -1096,7 +1096,6 @@ void setup() {
 }
 
 void loop() {
-#if 1  // WiFi and BLE enabled
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
         driveColorPreview();
@@ -1114,17 +1113,6 @@ void loop() {
     // Check for critical battery - auto shutdown to prevent damage
     static bool lowBatteryWarningShown = false;
     static unsigned long criticalBatteryTime = 0;
-    static unsigned long lastBatteryDebug = 0;
-    
-    // Debug battery detection every 10 seconds
-    if (millis() - lastBatteryDebug > 10000) {
-        SerialLog.printf("[Battery Debug] isOnBattery=%d, hasBattery=%d, voltage=%dmV, GPIO16=%d\n",
-                         batteryManager.isOnBattery(),
-                         batteryManager.hasBattery(),
-                         batteryManager.getVoltageMillivolts(),
-                         digitalRead(PWR_BUTTON_GPIO));
-        lastBatteryDebug = millis();
-    }
     
     if (batteryManager.isOnBattery() && batteryManager.hasBattery()) {
         if (batteryManager.isCritical()) {
@@ -1302,8 +1290,6 @@ void loop() {
             }
         }
     }
-    
-#endif
 
     delay(5);  // Minimal yield for watchdog
 }

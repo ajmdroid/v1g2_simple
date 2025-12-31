@@ -19,6 +19,7 @@ __MACOSX/
 
 # Temporary/development files
 PROGRESS.md
+TODO.md
 RDF_POST*
 CHANGELOG_WIP.md
 code_review.txt

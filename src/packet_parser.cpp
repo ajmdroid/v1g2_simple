@@ -73,14 +73,6 @@ bool PacketParser::validatePacket(const uint8_t* data, size_t length) {
     return true; // checksum intentionally not enforced; V1G2 can chunk packets
 }
 
-uint8_t PacketParser::calculateChecksum(const uint8_t* data, size_t length) {
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < length; i++) {
-        checksum += data[i];
-    }
-    return checksum;
-}
-
 bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // Expected payload >= 8 bytes (matches v1g2-t4s3 parsing window)
     if (!payload || length < 8) {

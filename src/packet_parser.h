@@ -93,7 +93,6 @@ private:
     bool parseDisplayData(const uint8_t* payload, size_t length);
     bool parseAlertData(const uint8_t* payload, size_t length);
     bool validatePacket(const uint8_t* data, size_t length);
-    uint8_t calculateChecksum(const uint8_t* data, size_t length);
     
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
