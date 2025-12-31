@@ -6,6 +6,11 @@
 	let loading = $state(true);
 	let v1Connected = $state(false);
 	let message = $state(null);
+	let showSaveDialog = $state(false);
+	let saveName = $state('');
+	let saveDescription = $state('');
+	let editingSettings = $state(false);
+	let editedSettings = $state(null);
 	
 	onMount(async () => {
 		await fetchProfiles();
@@ -46,8 +51,109 @@
 			if (res.ok) {
 				message = { type: 'success', text: 'Settings pulled from V1' };
 				await fetchCurrentSettings();
+				// Show save dialog after successful pull
+				showSaveDialog = true;
+				saveName = '';
+				saveDescription = '';
 			} else {
 				message = { type: 'error', text: 'Failed to pull settings' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
+	async function saveCurrentProfile() {
+		if (!saveName.trim()) {
+			message = { type: 'error', text: 'Profile name required' };
+			return;
+		}
+		
+		try {
+			const formData = new FormData();
+			formData.append('name', saveName.trim());
+			formData.append('description', saveDescription.trim());
+			
+			const res = await fetch('/api/v1/profile', {
+				method: 'POST',
+				body: formData
+			});
+			
+			if (res.ok) {
+				message = { type: 'success', text: `Profile "${saveName}" saved` };
+				showSaveDialog = false;
+				await fetchProfiles();
+			} else {
+				message = { type: 'error', text: 'Failed to save profile' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
+	function startEditing() {
+		if (currentProfile && currentProfile.settings) {
+			editedSettings = { ...currentProfile.settings };
+			editingSettings = true;
+		}
+	}
+	
+	function cancelEditing() {
+		editedSettings = null;
+		editingSettings = false;
+	}
+	
+	async function saveEdits() {
+		if (!editedSettings) return;
+		
+		message = { type: 'info', text: 'Pushing edited settings to V1...' };
+		
+		// Create a temporary profile with the edited settings
+		try {
+			// First save as temp profile
+			const formData = new FormData();
+			formData.append('name', '__temp_edit__');
+			formData.append('description', 'Temporary edit');
+			
+			// Store current settings in currentProfile before modifying
+			const originalSettings = currentProfile.settings;
+			currentProfile.settings = editedSettings;
+			
+			const saveRes = await fetch('/api/v1/profile', {
+				method: 'POST',
+				body: formData
+			});
+			
+			if (!saveRes.ok) {
+				currentProfile.settings = originalSettings;
+				message = { type: 'error', text: 'Failed to save edited settings' };
+				return;
+			}
+			
+			// Now push temp profile to V1
+			const pushData = new FormData();
+			pushData.append('name', '__temp_edit__');
+			const pushRes = await fetch('/api/v1/push', {
+				method: 'POST',
+				body: pushData
+			});
+			
+			// Delete temp profile
+			const delData = new FormData();
+			delData.append('name', '__temp_edit__');
+			await fetch('/api/v1/profile/delete', {
+				method: 'POST',
+				body: delData
+			});
+			
+			if (pushRes.ok) {
+				message = { type: 'success', text: 'Settings pushed to V1' };
+				editingSettings = false;
+				editedSettings = null;
+				await fetchCurrentSettings();
+			} else {
+				currentProfile.settings = originalSettings;
+				message = { type: 'error', text: 'Failed to push settings to V1' };
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
@@ -65,6 +171,7 @@
 			});
 			if (res.ok) {
 				message = { type: 'success', text: `${profileName} pushed to V1` };
+				await fetchCurrentSettings();
 			} else {
 				message = { type: 'error', text: 'Failed to push profile' };
 			}
@@ -107,6 +214,45 @@
 		</div>
 	{/if}
 	
+	<!-- Save Profile Dialog -->
+	{#if showSaveDialog}
+		<div class="modal modal-open">
+			<div class="modal-box">
+				<h3 class="font-bold text-lg">💾 Save Profile</h3>
+				<div class="py-4 space-y-4">
+					<div class="form-control">
+						<label class="label" for="profile-name">
+							<span class="label-text">Profile Name</span>
+						</label>
+						<input 
+							id="profile-name"
+							type="text" 
+							placeholder="e.g., Highway, City, Custom" 
+							class="input input-bordered w-full" 
+							bind:value={saveName}
+						/>
+					</div>
+					<div class="form-control">
+						<label class="label" for="profile-description">
+							<span class="label-text">Description (optional)</span>
+						</label>
+						<input 
+							id="profile-description"
+							type="text" 
+							placeholder="e.g., Max sensitivity for open roads" 
+							class="input input-bordered w-full" 
+							bind:value={saveDescription}
+						/>
+					</div>
+				</div>
+				<div class="modal-action">
+					<button class="btn btn-ghost" onclick={() => showSaveDialog = false}>Cancel</button>
+					<button class="btn btn-primary" onclick={saveCurrentProfile}>Save</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Current V1 Settings -->
 	<div class="card bg-base-200">
 		<div class="card-body">
@@ -114,54 +260,179 @@
 			{#if !v1Connected}
 				<p class="text-warning">Connect to V1 to view/edit settings</p>
 			{:else if currentProfile && currentProfile.settings}
+				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
 				<div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
 					<!-- Band Enables -->
 					<div class="col-span-2 md:col-span-3 font-bold text-base">Band Detection</div>
-					<div>Ka Band: {currentProfile.settings.ka ? '✅' : '❌'}</div>
-					<div>K Band: {currentProfile.settings.k ? '✅' : '❌'}</div>
-					<div>X Band: {currentProfile.settings.x ? '✅' : '❌'}</div>
-					<div>Laser: {currentProfile.settings.laser ? '✅' : '❌'}</div>
-					<div>Ku Band: {currentProfile.settings.ku ? '✅' : '❌'}</div>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.ka} disabled={!editingSettings} />
+						<span>Ka Band</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.k} disabled={!editingSettings} />
+						<span>K Band</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.x} disabled={!editingSettings} />
+						<span>X Band</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.laser} disabled={!editingSettings} />
+						<span>Laser</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.ku} disabled={!editingSettings} />
+						<span>Ku Band</span>
+					</label>
 					
 					<!-- Sensitivities -->
 					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Sensitivity</div>
-					<div>Ka: {currentProfile.settings.kaSensitivity === 3 ? 'Full' : currentProfile.settings.kaSensitivity === 2 ? 'Original' : 'Relaxed'}</div>
-					<div>K: {currentProfile.settings.kSensitivity === 3 ? 'Original' : currentProfile.settings.kSensitivity === 2 ? 'Full' : 'Relaxed'}</div>
-					<div>X: {currentProfile.settings.xSensitivity === 3 ? 'Original' : currentProfile.settings.xSensitivity === 2 ? 'Full' : 'Relaxed'}</div>
+					<div class="flex items-center gap-2">
+						<span class="min-w-12">Ka:</span>
+						{#if editingSettings}
+							<select class="select select-bordered select-xs" bind:value={settings.kaSensitivity}>
+								<option value={1}>Relaxed</option>
+								<option value={2}>Original</option>
+								<option value={3}>Full</option>
+							</select>
+						{:else}
+							<span>{settings.kaSensitivity === 3 ? 'Full' : settings.kaSensitivity === 2 ? 'Original' : 'Relaxed'}</span>
+						{/if}
+					</div>
+					<div class="flex items-center gap-2">
+						<span class="min-w-12">K:</span>
+						{#if editingSettings}
+							<select class="select select-bordered select-xs" bind:value={settings.kSensitivity}>
+								<option value={1}>Relaxed</option>
+								<option value={2}>Full</option>
+								<option value={3}>Original</option>
+							</select>
+						{:else}
+							<span>{settings.kSensitivity === 3 ? 'Original' : settings.kSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
+						{/if}
+					</div>
+					<div class="flex items-center gap-2">
+						<span class="min-w-12">X:</span>
+						{#if editingSettings}
+							<select class="select select-bordered select-xs" bind:value={settings.xSensitivity}>
+								<option value={1}>Relaxed</option>
+								<option value={2}>Full</option>
+								<option value={3}>Original</option>
+							</select>
+						{:else}
+							<span>{settings.xSensitivity === 3 ? 'Original' : settings.xSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
+						{/if}
+					</div>
 					
 					<!-- Features -->
 					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Features</div>
-					<div>Auto Mute: {currentProfile.settings.autoMute === 3 ? 'Off' : currentProfile.settings.autoMute === 2 ? 'Advanced' : 'On'}</div>
-					<div>K Verifier (TMF): {currentProfile.settings.kVerifier ? '✅' : '❌'}</div>
-					<div>Fast Laser: {currentProfile.settings.fastLaserDetect ? '✅' : '❌'}</div>
-					<div>Laser Rear: {currentProfile.settings.laserRear ? '✅' : '❌'}</div>
-					<div>Euro Mode: {currentProfile.settings.euroMode ? '✅' : '❌'}</div>
-					<div>MRCT: {currentProfile.settings.mrct ? '✅' : '❌'}</div>
+					<div class="flex items-center gap-2">
+						<span class="min-w-24">Auto Mute:</span>
+						{#if editingSettings}
+							<select class="select select-bordered select-xs" bind:value={settings.autoMute}>
+								<option value={1}>On</option>
+								<option value={2}>Advanced</option>
+								<option value={3}>Off</option>
+							</select>
+						{:else}
+							<span>{settings.autoMute === 3 ? 'Off' : settings.autoMute === 2 ? 'Advanced' : 'On'}</span>
+						{/if}
+					</div>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.kVerifier} disabled={!editingSettings} />
+						<span>K Verifier (TMF)</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.fastLaserDetect} disabled={!editingSettings} />
+						<span>Fast Laser</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.laserRear} disabled={!editingSettings} />
+						<span>Laser Rear</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.euroMode} disabled={!editingSettings} />
+						<span>Euro Mode</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.mrct} disabled={!editingSettings} />
+						<span>MRCT</span>
+					</label>
 					
 					<!-- Display -->
 					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Display</div>
-					<div>Startup Sequence: {currentProfile.settings.startupSequence ? '✅' : '❌'}</div>
-					<div>Resting Display: {currentProfile.settings.restingDisplay ? '✅' : '❌'}</div>
-					<div>Bogey Lock Loud: {currentProfile.settings.bogeyLockLoud ? '✅' : '❌'}</div>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.startupSequence} disabled={!editingSettings} />
+						<span>Startup Sequence</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
+						<span>Resting Display</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
+						<span>Bogey Lock Loud</span>
+					</label>
 					
 					<!-- Advanced -->
 					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Advanced</div>
-					<div>Mute X/K Rear: {currentProfile.settings.muteXKRear ? '✅' : '❌'}</div>
-					<div>Ka Always Priority: {currentProfile.settings.kaAlwaysPriority ? '✅' : '❌'}</div>
-					<div>Mute to Mute Vol: {currentProfile.settings.muteToMuteVolume ? '✅' : '❌'}</div>
-					<div>Custom Freqs: {currentProfile.settings.customFreqs ? '✅' : '❌'}</div>
-					<div>BSM Plus: {currentProfile.settings.bsmPlus ? '✅' : '❌'}</div>
-					<div>Drive Safe 3D: {currentProfile.settings.driveSafe3D ? '✅' : '❌'}</div>
-					<div>Drive Safe 3D HD: {currentProfile.settings.driveSafe3DHD ? '✅' : '❌'}</div>
-					<div>Redflex Halo: {currentProfile.settings.redflexHalo ? '✅' : '❌'}</div>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.muteXKRear} disabled={!editingSettings} />
+						<span>Mute X/K Rear</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.kaAlwaysPriority} disabled={!editingSettings} />
+						<span>Ka Always Priority</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.muteToMuteVolume} disabled={!editingSettings} />
+						<span>Mute to Mute Vol</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.customFreqs} disabled={!editingSettings} />
+						<span>Custom Freqs</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.bsmPlus} disabled={!editingSettings} />
+						<span>BSM Plus</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.driveSafe3D} disabled={!editingSettings} />
+						<span>Drive Safe 3D</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.driveSafe3DHD} disabled={!editingSettings} />
+						<span>Drive Safe 3D HD</span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.redflexHalo} disabled={!editingSettings} />
+						<span>Redflex Halo</span>
+					</label>
 				</div>
 			{:else}
 				<p class="text-base-content/60">No settings available. Pull from V1 to view.</p>
 			{/if}
-			<div class="card-actions justify-end">
-				<button class="btn btn-primary btn-sm" onclick={pullFromV1} disabled={!v1Connected}>
-					⬇️ Pull from V1
-				</button>
+			<div class="card-actions justify-end gap-2">
+				{#if editingSettings}
+					<button class="btn btn-ghost btn-sm" onclick={cancelEditing}>
+						Cancel
+					</button>
+					<button class="btn btn-success btn-sm" onclick={saveEdits}>
+						✅ Push to V1
+					</button>
+				{:else}
+					<button class="btn btn-primary btn-sm" onclick={pullFromV1} disabled={!v1Connected}>
+						⬇️ Pull from V1
+					</button>
+					{#if currentProfile && currentProfile.settings}
+						<button class="btn btn-secondary btn-sm" onclick={startEditing} disabled={!v1Connected}>
+							✏️ Edit
+						</button>
+						<button class="btn btn-success btn-sm" onclick={() => showSaveDialog = true}>
+							💾 Save
+						</button>
+					{/if}
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -211,7 +482,9 @@
 	
 	<!-- Info -->
 	<div class="text-sm text-base-content/50">
-		<p><strong>Pull:</strong> Read current V1 settings and save as a profile</p>
-		<p><strong>Push:</strong> Send saved profile settings to your V1</p>
+		<p><strong>Pull:</strong> Read current V1 settings (shows in Current V1 Settings)</p>
+		<p><strong>Edit:</strong> Modify settings and push directly to V1</p>
+		<p><strong>Save:</strong> Store current V1 settings as a named profile</p>
+		<p><strong>Push:</strong> Send a saved profile to your V1</p>
 	</div>
 </div>
