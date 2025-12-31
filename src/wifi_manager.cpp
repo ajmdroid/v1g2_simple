@@ -1034,6 +1034,7 @@ void WiFiManager::handleSerialLogClear() {
 
 void WiFiManager::handleV1ProfilesList() {
     std::vector<String> profileNames = v1ProfileManager.listProfiles();
+    SerialLog.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
     
     JsonDocument doc;
     JsonArray array = doc["profiles"].to<JsonArray>();
@@ -1045,6 +1046,7 @@ void WiFiManager::handleV1ProfilesList() {
             obj["name"] = profile.name;
             obj["description"] = profile.description;
             obj["displayOn"] = profile.displayOn;
+            SerialLog.printf("[V1Profiles]   - %s: %s\n", profile.name.c_str(), profile.description.c_str());
         }
     }
     
@@ -1119,8 +1121,10 @@ void WiFiManager::handleV1ProfileSave() {
     }
     
     if (v1ProfileManager.saveProfile(profile)) {
+        SerialLog.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
         server.send(200, "application/json", "{\"success\":true}");
     } else {
+        SerialLog.printf("[V1Profiles] Failed to save profile '%s'\n", profile.name.c_str());
         server.send(500, "application/json", "{\"error\":\"Failed to save profile\"}");
     }
 }
@@ -1560,10 +1564,12 @@ void WiFiManager::handleV1SettingsPush() {
     
     bool success = bleClient.writeUserBytes(bytes);
     if (success) {
+        SerialLog.printf("[V1Settings] Successfully pushed settings to V1\n");
         // Also set display on/off
         bleClient.setDisplayOn(displayOn);
         server.send(200, "application/json", "{\"success\":true}");
     } else {
+        SerialLog.printf("[V1Settings] Failed to write settings to V1 via BLE\n");
         server.send(500, "application/json", "{\"error\":\"Failed to write settings\"}");
     }
 }
