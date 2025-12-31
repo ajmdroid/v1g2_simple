@@ -443,6 +443,9 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
         }
     } else if (c == '-') {
         segments[6] = true; // Middle bar only
+    } else if (c == '=') {
+        // Three horizontal bars for laser alert (top, middle, bottom)
+        segments[0] = segments[6] = segments[3] = true;
     } else if (c == 'A' || c == 'a') {
         // A = all but bottom segment
         segments[0] = segments[1] = segments[2] = segments[4] = segments[5] = segments[6] = true;
@@ -1245,10 +1248,10 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     // Use activeBands from display state (all detected bands), not just priority alert band
     uint8_t bandMask = state.activeBands;
     
-    // Show 'L' for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
+    // Show '=' (3 horizontal bars) for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
     char countChar;
     if (alert.band == BAND_LASER) {
-        countChar = 'L';
+        countChar = '=';  // 3 horizontal bars like official V1
     } else {
         countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
     }
