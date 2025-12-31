@@ -7,7 +7,7 @@
 #include "serial_logger.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
-#include "rdf_logo.h"  // RDF splash screen (only logo actually used)
+#include "v1simple_logo.h"  // Splash screen image (640x172)
 #include "settings.h"
 #include "battery_manager.h"
 #include "wifi_manager.h"
@@ -1045,17 +1045,14 @@ void V1Display::showBootSplash() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
-    // Draw the RDF logo fullscreen (logo is exactly 640x172, same as display)
+    // Draw the V1 Simple logo fullscreen (exactly 640x172, same as display)
     const int logoX = 0;
     const int logoY = 0;
     
-    for (int y = 0; y < RDF_LOGO_HEIGHT; y++) {
-        for (int x = 0; x < RDF_LOGO_WIDTH; x++) {
-            uint16_t pixel = pgm_read_word(&rdf_logo_rgb565[y * RDF_LOGO_WIDTH + x]);
-            // Skip near-black pixels to keep black background transparent
-            if (pixel > 0x0841) {
-                TFT_CALL(drawPixel)(logoX + x, logoY + y, pixel);
-            }
+    for (int y = 0; y < V1SIMPLE_LOGO_HEIGHT; y++) {
+        for (int x = 0; x < V1SIMPLE_LOGO_WIDTH; x++) {
+            uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[y * V1SIMPLE_LOGO_WIDTH + x]);
+            TFT_CALL(drawPixel)(logoX + x, logoY + y, pixel);
         }
     }
 
