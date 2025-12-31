@@ -122,19 +122,15 @@ private:
     
     class ProxyServerCallbacks : public NimBLEServerCallbacks {
     public:
-        ProxyServerCallbacks(V1BLEClient* client) : bleClient(client) {}
+        ProxyServerCallbacks() {}
         void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override;
         void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override;
-    private:
-        V1BLEClient* bleClient;
     };
     
     class ProxyWriteCallbacks : public NimBLECharacteristicCallbacks {
     public:
-        ProxyWriteCallbacks(V1BLEClient* client) : bleClient(client) {}
+        ProxyWriteCallbacks() {}
         void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override;
-    private:
-        V1BLEClient* bleClient;
     };
 
     NimBLEClient* pClient;

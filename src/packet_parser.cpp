@@ -57,6 +57,19 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
             return parseDisplayData(payload, payloadLen);
         case PACKET_ID_ALERT_DATA:
             return parseAlertData(payload, payloadLen);
+        
+        // ACK responses from V1 to our commands - silently ignore
+        case PACKET_ID_WRITE_USER_BYTES:    // 0x13 - ACK for profile write
+        case PACKET_ID_TURN_OFF_DISPLAY:    // 0x32 - ACK for display off
+        case PACKET_ID_TURN_ON_DISPLAY:     // 0x33 - ACK for display on
+        case PACKET_ID_MUTE_ON:             // 0x34 - ACK for mute on
+        case PACKET_ID_MUTE_OFF:            // 0x35 - ACK for mute off
+        case 0x36:                          // ACK for mode change (reqChangeMode)
+        case PACKET_ID_REQ_WRITE_VOLUME:    // 0x39 - ACK for volume change
+        case PACKET_ID_VERSION:             // 0x01 - Version response
+        case PACKET_ID_RESP_USER_BYTES:     // 0x12 - User bytes response
+            return true;  // Acknowledged, no further processing needed
+            
         default:
             Serial.printf("Unknown packet ID: 0x%02X (len=%u)\n", packetId, (unsigned)length);
             return false;

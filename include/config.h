@@ -44,8 +44,8 @@
 #define V1_DISPLAY_DATA_UUID    "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E"  // V1 out, client in (notify)
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
-#define SCAN_DURATION           5     // 5-second scan (stops early when V1 found)
-#define RECONNECT_DELAY         50    // 50ms delay between scan attempts (was 200ms)
+#define SCAN_DURATION           10    // 10-second scan (stops early when V1 found)
+#define RECONNECT_DELAY         100   // 100ms delay between scan attempts
 
 // ESP Packet Constants
 #define ESP_PACKET_START        0xAA

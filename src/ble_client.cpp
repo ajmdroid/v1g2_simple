@@ -25,44 +25,10 @@
 #include <string>
 #include <cstdlib>
 
-// Task to restart advertising after delay (Kenny's approach for NimBLE 2.x)
+// Task to restart advertising after delay (Kenny's v1g2-t4s3 approach for NimBLE 2.x)
 static void restartAdvertisingTask(void* param) {
-    vTaskDelay(pdMS_TO_TICKS(200));  // Slightly longer delay for dual-role stability
-    Serial.println("Task: Starting advertising...");
-    
-    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-    if (!pAdv) {
-        Serial.println("Task: getAdvertising() returned null!");
-        vTaskDelete(NULL);
-        return;
-    }
-    
-    // Retry advertising start up to 3 times
-    bool started = false;
-    for (int i = 0; i < 3 && !started; i++) {
-        if (i > 0) {
-            Serial.printf("Task: Retry %d...\n", i);
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        started = NimBLEDevice::startAdvertising();
-    }
-    
-    if (started) {
-        Serial.println("Task: Advertising started successfully");
-    } else {
-        Serial.println("Task: Advertising start failed after retries");
-    }
-    
-    // Verify after short delay
     vTaskDelay(pdMS_TO_TICKS(150));
-    if (pAdv->isAdvertising()) {
-        Serial.println("✓ Task: Proxy is now advertising!");
-        NimBLEAddress addr = NimBLEDevice::getAddress();
-        Serial.printf("  Address: %s\n", addr.toString().c_str());
-    } else {
-        Serial.println("✗ Task: Advertising still not active - may need device restart");
-    }
-    
+    NimBLEDevice::startAdvertising();
     vTaskDelete(NULL);
 }
 
@@ -183,16 +149,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         Serial.println("Creating proxy server (advertising will start after V1 connects)...");
         initProxyServer(proxyName_.c_str());
         proxyServerInitialized = true;
-
-        // Prepare advertising payload now, but don't start advertising until V1 is connected
-        NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-        NimBLEAdvertisementData advData;
-        NimBLEAdvertisementData scanRespData;
-        advData.setCompleteServices(pProxyService->getUUID());
-        advData.setAppearance(0x0C80);
-        scanRespData.setName(proxyName_.c_str());
-        pAdvertising->setAdvertisementData(advData);
-        pAdvertising->setScanResponseData(scanRespData);
+        // Advertising data configured in initProxyServer, will start after V1 connects
     }
     
     // Set up security and pairing
@@ -224,7 +181,7 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setWindow(16);     // 10ms window - 100% duty cycle for fastest discovery
     pScan->setMaxResults(0);  // Unlimited results
     pScan->setDuplicateFilter(false);  // Don't filter duplicates - we want to see everything
-    Serial.println("Scan configured: interval=16 (10ms), window=16 (10ms), active=true, 100% duty");
+    Serial.println("Scan configured: interval=16 (10ms), window=16 (10ms), active=true, 100% duty, 10s duration");
     
     Serial.println("Scanning for V1 Gen2...");
     lastScanStart = millis();
@@ -348,9 +305,9 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         instancePtr->pRemoteService = nullptr;
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
-        // Keep proxy advertising running so clients can reconnect
-        if (instancePtr->proxyEnabled && instancePtr->proxyServerInitialized) {
-            NimBLEDevice::startAdvertising();
+        // Stop proxy advertising when V1 disconnects (Kenny's approach)
+        if (instancePtr->proxyEnabled) {
+            NimBLEDevice::stopAdvertising();
         }
     }
 }
@@ -360,13 +317,22 @@ bool V1BLEClient::connectToServer() {
     int addrType = hasTargetDevice ? targetDevice.getAddressType() : targetAddress.getType();
     Serial.printf("Attempting to connect to %s (type=%d)...\n", addrStr.c_str(), addrType);
     
-    // Brief pause for scan to stop
-    delay(100);
+    // Clear any stale bonding info that might interfere with connection
+    // V1 Gen2 can get into weird states if old pairing info lingers
+    if (NimBLEDevice::isBonded(targetAddress)) {
+        Serial.printf("Deleting stale bond for %s\n", addrStr.c_str());
+        NimBLEDevice::deleteBond(targetAddress);
+        delay(200);  // Pause after bond deletion
+    }
+    
+    // Longer pause for scan to fully stop and radio to settle
+    // V1 Gen2 needs significant time between being scanned and accepting connections
+    Serial.println("Waiting for V1 to be ready...");
+    delay(500);
 
     bool connectedOk = false;
-    // Try just once with a longer timeout - if it's there, we'll find it.
-    // If not, we shouldn't waste time retrying blindly.
-    int attempts = 1; 
+    // Try up to 3 times - V1 can be slow to respond
+    int attempts = 3; 
     
     // Reuse existing client if available to prevent leaks
     if (!pClient) {
@@ -384,35 +350,40 @@ bool V1BLEClient::connectToServer() {
         pClientCallbacks = new ClientCallbacks();
     }
     pClient->setClientCallbacks(pClientCallbacks);
-    pClient->setConnectionParams(12, 12, 0, 51);
-    // Give it plenty of time to find the advertisement (6s)
-    // If it connects earlier, it will return immediately.
-    pClient->setConnectTimeout(6); 
+    // Use relaxed connection parameters for V1 Gen2's older BLE stack
+    // min/max interval: 24 (30ms), latency: 0, timeout: 200 (2000ms)
+    pClient->setConnectionParams(24, 48, 0, 200);
+    // Give it plenty of time to connect (10s)
+    pClient->setConnectTimeout(10); 
 
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         Serial.printf("Connect attempt %d/%d\n", attempt, attempts);
         
-        if (hasTargetDevice) {
+        // First attempt: try with device object (has more info)
+        // Second attempt: address only (cleaner, less state)
+        if (hasTargetDevice && attempt == 1) {
             Serial.println("Calling pClient->connect(targetDevice)...");
             connectedOk = pClient->connect(targetDevice, false);
-            if (!connectedOk) {
-                Serial.printf("connect(targetDevice) failed (error: %d); retrying with targetAddress\n", pClient->getLastError());
-                // Fallback to address if device object fails
-                connectedOk = pClient->connect(targetAddress, false);
-            }
         } else {
             Serial.println("Calling pClient->connect(targetAddress)...");
             connectedOk = pClient->connect(targetAddress, false);
         }
 
         if (!connectedOk) {
-            Serial.printf("connect attempt failed (error: %d)\n", pClient->getLastError());
-            // Do NOT set pClient to nullptr here - keep it for reuse!
+            int err = pClient->getLastError();
+            Serial.printf("Connect attempt %d failed (error: %d)\n", attempt, err);
+            
+            if (attempt < attempts) {
+                // Wait before retry - give V1 time to recover
+                // V1 Gen2 needs significant cooldown after failed connection
+                Serial.println("Waiting 1s before retry...");
+                delay(1000);
+            }
         }
     }
 
     if (!connectedOk) {
-        Serial.println("Failed to connect after attempt");
+        Serial.println("Failed to connect after all attempts");
         // Keep pClient for next time, but ensure it's disconnected
         if (pClient->isConnected()) {
             pClient->disconnect();
@@ -577,28 +548,13 @@ bool V1BLEClient::setupCharacteristics() {
         connected = true;
     }
     
-    // Now that V1 is connected, start proxy advertising if enabled
-    // Server was created in begin(), now we can advertise
+    // Now that V1 is connected, start proxy advertising if enabled (Kenny's onProxyReady approach)
     if (proxyEnabled && proxyServerInitialized) {
-        Serial.println("V1 connected! Starting proxy advertising...");
-        
-        // Configure advertising data
-        NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-        
-        NimBLEAdvertisementData advData;
-        NimBLEAdvertisementData scanRespData;
-        advData.setCompleteServices(pProxyService->getUUID());
-        advData.setAppearance(0x0C80);
-        scanRespData.setName(proxyName_.c_str());
-        pAdvertising->setAdvertisementData(advData);
-        pAdvertising->setScanResponseData(scanRespData);
-        
-        // Start advertising with delay for NimBLE 2.x compatibility
         startProxyAdvertising();
     }
     
     // Request alert data from V1 - brief delay for MTU negotiation
-    delay(100);  // Reduced delay - MTU should settle quickly
+    delay(100);
     
     if (!requestAlertData()) {
         Serial.println("Failed to request alert data (non-critical)");
@@ -606,7 +562,6 @@ bool V1BLEClient::setupCharacteristics() {
     
     // Notify user callback that V1 connection is fully established
     if (connectCallback) {
-        Serial.println("Calling V1 connection callback...");
         connectCallback();
     }
 
@@ -626,13 +581,11 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         charId = 0xB2CE; // sensible fallback
     }
 
-    // Route proxy notifications (only B2CE alerts)
-    if (instancePtr->proxyEnabled && instancePtr->proxyClientConnected && instancePtr->pProxyNotifyChar) {
-        if (xSemaphoreTake(instancePtr->bleNotifyMutex, pdMS_TO_TICKS(50))) {
-            instancePtr->pProxyNotifyChar->setValue(pData, length);
-            instancePtr->pProxyNotifyChar->notify();
-            xSemaphoreGive(instancePtr->bleNotifyMutex);
-        }
+    // Forward to proxy - simplified like Kenny's notifyDisplayCallbackv2
+    // Just check if the characteristic exists, don't use mutexes in callback
+    if (instancePtr->pProxyNotifyChar) {
+        instancePtr->pProxyNotifyChar->setValue(pData, length);
+        instancePtr->pProxyNotifyChar->notify();
     }
     
     // Also call user callback for display processing (default to B2CE)
@@ -1010,77 +963,54 @@ void V1BLEClient::disconnect() {
 // ==================== BLE Proxy Server Functions ====================
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
-    Serial.println("===== JBV1 PROXY CLIENT CONNECTED =====");
-    if (bleClient) {
-        bleClient->setProxyClientConnected(true);
+    // Keep callback minimal like Kenny's MyServerCallbacks::onConnect
+    Serial.println("JBV1 proxy client connected");
+    if (instancePtr) {
+        instancePtr->proxyClientConnected = true;
     }
 }
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
-    Serial.printf("===== JBV1 PROXY CLIENT DISCONNECTED (reason: %d) =====\n", reason);
-    if (bleClient) {
-        bleClient->setProxyClientConnected(false);
-        // Resume advertising if V1 is still connected
-        if (bleClient->isConnected()) {
-            Serial.println("Resuming proxy advertising...");
+    // Keep callback minimal like Kenny's MyServerCallbacks::onDisconnect
+    Serial.println("JBV1 proxy client disconnected, restart advertising");
+    if (instancePtr) {
+        instancePtr->proxyClientConnected = false;
+        if (instancePtr->connected) {
             NimBLEDevice::startAdvertising();
         }
     }
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
-    // Forward commands from JBV1 to V1
-    if (!pCharacteristic || !bleClient) {
-        Serial.println("ProxyWrite: null pCharacteristic or bleClient");
+    // Forward commands from JBV1 to V1 - use instancePtr like Kenny's approach
+    if (!pCharacteristic || !instancePtr) {
         return;
     }
     
-    if (!bleClient->isConnected()) {
-        Serial.println("ProxyWrite: V1 not connected");
+    if (!instancePtr->connected) {
         return;
     }
     
-    // Get the raw data pointer and length directly to avoid std::string issues
+    // Get the raw data pointer and length directly
     NimBLEAttValue attrValue = pCharacteristic->getValue();
     const uint8_t* rawData = attrValue.data();
     size_t rawLen = attrValue.size();
     
-    if (rawLen == 0 || !rawData) {
-        Serial.println("ProxyWrite: empty data");
+    if (rawLen == 0 || !rawData || rawLen > 32) {
         return;
     }
     
-    // Sanity check on size before processing
-    if (rawLen > 32) {
-        Serial.printf("ProxyWrite: data too large (%u bytes), rejecting\n", (unsigned)rawLen);
-        return;
-    }
-    
-    // Log the command from JBV1
-    char hexBuf[128];
-    int pos = snprintf(hexBuf, sizeof(hexBuf), "JBV1→V1: len=%u bytes: ", (unsigned)rawLen);
-    for (size_t i = 0; i < rawLen && pos < 120; i++) {
-        pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, "%02X ", rawData[i]);
-    }
-    Serial.println(hexBuf);
-    
-    // Copy to a safe buffer
+    // Copy to a safe buffer and forward to V1
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
-    
-    // Forward all commands to V1 (no version spoofing)
-    if (!bleClient->sendCommand(cmdBuf, rawLen)) {
-        Serial.println("ProxyWrite: sendCommand failed!");
-    } else {
-        Serial.println("ProxyWrite: command forwarded OK");
-    }
+    instancePtr->sendCommand(cmdBuf, rawLen);
 }
 
 void V1BLEClient::initProxyServer(const char* deviceName) {
     Serial.printf("Creating BLE proxy server as '%s'\n", deviceName);
     
     pServer = NimBLEDevice::createServer();
-    pProxyServerCallbacks = new ProxyServerCallbacks(this);
+    pProxyServerCallbacks = new ProxyServerCallbacks();  // Use instancePtr internally
     pServer->setCallbacks(pProxyServerCallbacks);
     
     // Ensure server allows connections
@@ -1101,12 +1031,28 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
         V1_COMMAND_WRITE_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    pProxyWriteCallbacks = new ProxyWriteCallbacks(this);
+    pProxyWriteCallbacks = new ProxyWriteCallbacks();  // Use instancePtr internally
     pProxyWriteChar->setCallbacks(pProxyWriteCallbacks);
     
     pProxyService->start();
     pServer->start();  // Required in NimBLE 2.x to enable connections
     Serial.println("Proxy service created with 2 characteristics (notify + write)");
+    
+    // Configure advertising data now (Kenny's approach)
+    NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+    NimBLEAdvertisementData advData;
+    NimBLEAdvertisementData scanRespData;
+    advData.setCompleteServices(pProxyService->getUUID());
+    advData.setAppearance(0x0C80);
+    scanRespData.setName(deviceName);
+    pAdvertising->setAdvertisementData(advData);
+    pAdvertising->setScanResponseData(scanRespData);
+    
+    // Start advertising, then stop if V1 not connected yet (Kenny's approach)
+    pAdvertising->start();
+    if (!connected) {
+        NimBLEDevice::stopAdvertising();
+    }
 }
 
 void V1BLEClient::startProxyAdvertising() {
@@ -1115,10 +1061,14 @@ void V1BLEClient::startProxyAdvertising() {
         return;
     }
     
-    // Advertising data already configured in begin()
-    // Just restart advertising using task with delay (Kenny's approach)
-    Serial.println("Creating advertising restart task...");
-    xTaskCreate(restartAdvertisingTask, "adv_restart", 2048, NULL, 1, NULL);
+    // Kenny's onProxyReady() approach: check if already advertising, use task + direct call
+    if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
+        xTaskCreate(restartAdvertisingTask, "adv_restart", 2048, NULL, 1, NULL);
+        
+        if (NimBLEDevice::startAdvertising()) {
+            Serial.println("Advertising started after V1 connection");
+        }
+    }
 }
 
 void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {

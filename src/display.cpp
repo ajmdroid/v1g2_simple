@@ -680,14 +680,13 @@ void V1Display::drawProfileIndicator(int slot) {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
-    // Track profile changes for timeout window
+    // Track current slot
     if (slot != lastProfileSlot) {
-        profileChangedTime = millis();
         lastProfileSlot = slot;
     }
     currentProfileSlot = slot;
 
-    // If user explicitly hides the indicator, honor it regardless of alerts
+    // If user explicitly hides the indicator via web UI, don't show it
     if (s.hideProfileIndicator) {
         int y = 14;
         int clearStart = 120;  // Don't overlap band indicators
@@ -697,11 +696,6 @@ void V1Display::drawProfileIndicator(int slot) {
         drawWiFiIndicator();
         drawBatteryIndicator();
         return;
-    }
-
-    // Keep the indicator visible whenever an alert is active
-    if (profileHoldDueToAlert) {
-        profileChangedTime = millis();  // refresh timer during alerts
     }
 
     // Dimensions for clearing/profile centering
@@ -717,20 +711,6 @@ void V1Display::drawProfileIndicator(int slot) {
     int freqX = (maxWidth - freqWidth) / 2;
     if (freqX < 0) freqX = 0;
     int dotCenterX = freqX + 2 * mFreq.digitW + 2 * mFreq.spacing + mFreq.dot / 2;
-
-    // Auto-hide after timeout when not held by an alert
-    if (!profileHoldDueToAlert) {
-        if (millis() - profileChangedTime > HIDE_TIMEOUT_MS) {
-            int y = 14;
-            int clearStart = 120;  // Don't overlap band indicators
-            int clearWidth = maxWidth - clearStart;
-            FILL_RECT(clearStart, y - 2, clearWidth, 28, PALETTE_BG);
-
-            drawWiFiIndicator();
-            drawBatteryIndicator();
-            return;
-        }
-    }
 
     // Use custom names, fallback to defaults (limited to 20 chars)
     const char* name;

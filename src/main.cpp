@@ -223,6 +223,9 @@ static void startAutoPush(int slotIndex) {
     autoPushState.nextStepAtMs = millis() + 500;
     SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
                      slotNames[clampedIndex], clampedIndex);
+    
+    // Show the profile indicator on display when auto-push starts
+    display.drawProfileIndicator(clampedIndex);
 }
 
 static void processAutoPush() {
@@ -404,13 +407,13 @@ void onV1Connected() {
         return;
     }
 
-    // Use device-specific slot if set (1-3 in file, convert to 0-2 index), otherwise global
+    // Use device-specific slot if set (1-3 in file = slots 0-2), otherwise global activeSlot
     int slotToUse = activeSlotIndex;
     if (deviceDefaultSlot >= 1 && deviceDefaultSlot <= 3) {
-        slotToUse = deviceDefaultSlot - 1;  // Convert 1-3 to 0-2 index
-        SerialLog.printf("[AutoPush] Using device-specific slot %d (index %d)\n", deviceDefaultSlot, slotToUse);
+        slotToUse = deviceDefaultSlot - 1;  // Convert 1-3 file value to 0-2 index
+        SerialLog.printf("[AutoPush] Device-specific override: file value %d -> slot index %d\n", deviceDefaultSlot, slotToUse);
     } else {
-        SerialLog.printf("[AutoPush] Using global active slot %d\n", activeSlotIndex + 1);
+        SerialLog.printf("[AutoPush] Using global activeSlot: %d\n", slotToUse);
     }
 
     startAutoPush(slotToUse);
@@ -798,15 +801,6 @@ void processBLEData() {
                 }
                 
                 display.update(state);
-
-                // Lightweight latency instrumentation (logs every 5s)
-                static unsigned long lastLatencyLog = 0;
-                unsigned long nowMs = millis();
-                if (nowMs - lastLatencyLog > 5000 && latestPktTs > 0) {
-                    unsigned long latency = nowMs - latestPktTs;
-                    SerialLog.printf("[Perf] BLE->display latency: %lums\n", latency);
-                    lastLatencyLog = nowMs;
-                }
                 
                 // Update timestamp before logging (ensures real-time accuracy)
                 if (timeManager.isTimeValid()) {
@@ -1028,6 +1022,14 @@ void setup() {
         
         SerialLog.println("WiFi initialized");
     
+    // Initialize touch handler early - before BLE to avoid interleaved logs
+    SerialLog.println("Initializing touch handler...");
+    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
+        SerialLog.println("Touch handler initialized successfully");
+    } else {
+        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
+    }
+
 #ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
     const V1Settings& bleSettings = settingsManager.get();
@@ -1082,14 +1084,6 @@ void setup() {
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
-    
-    // Initialize touch handler (SDA=17, SCL=18, addr=AXS_TOUCH_ADDR for AXS15231B touch, rst=-1 for no reset)
-    SerialLog.println("Initializing touch handler...");
-    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
-        SerialLog.println("Touch handler initialized successfully");
-    } else {
-        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
-    }
     
     SerialLog.println("Setup complete - WiFi and BLE enabled");
 }
@@ -1170,9 +1164,10 @@ void loop() {
                     display.drawProfileIndicator(newSlot);
                     
                     // If connected to V1 and auto-push is enabled, push the new profile
+                    // Note: Use startAutoPush directly to avoid device-specific override
                     if (bleClient.isConnected() && s.autoPushEnabled) {
                         SerialLog.println("Pushing new profile to V1...");
-                        onV1Connected();  // Re-use the connection callback to push profile
+                        startAutoPush(newSlot);
                     }
                 }
             }
