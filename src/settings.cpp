@@ -411,6 +411,14 @@ const AutoPushSlot& SettingsManager::getActiveSlot() const {
     }
 }
 
+const AutoPushSlot& SettingsManager::getSlot(int slotNum) const {
+    switch (slotNum) {
+        case 1: return settings.slot1_highway;
+        case 2: return settings.slot2_comfort;
+        default: return settings.slot0_default;
+    }
+}
+
 uint8_t SettingsManager::getSlotVolume(int slotNum) const {
     switch (slotNum) {
         case 0: return settings.slot0Volume;

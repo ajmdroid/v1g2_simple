@@ -86,6 +86,8 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_ARROW getColorPalette().colorArrow
 #define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
 
+static bool profileHoldDueToAlert = false;  // Pin profile indicator while any alert/band is active
+
 // ============================================================================
 // Cross-platform text drawing helpers
 // TFT_eSPI has setTextDatum() and drawString() 
@@ -677,15 +679,32 @@ void V1Display::drawProfileIndicator(int slot) {
     // Get custom slot names and colors from settings
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
-    
-    // Track profile changes for timeout
+
+    // Track profile changes for timeout window
     if (slot != lastProfileSlot) {
         profileChangedTime = millis();
         lastProfileSlot = slot;
     }
     currentProfileSlot = slot;
-    
-    // Calculate clear area dimensions (need these for both showing and hiding)
+
+    // If user explicitly hides the indicator, honor it regardless of alerts
+    if (s.hideProfileIndicator) {
+        int y = 14;
+        int clearStart = 120;  // Don't overlap band indicators
+        int clearWidth = SCREEN_WIDTH - clearStart - 240;  // stop before signal bars
+        FILL_RECT(clearStart, y - 2, clearWidth, 28, PALETTE_BG);
+
+        drawWiFiIndicator();
+        drawBatteryIndicator();
+        return;
+    }
+
+    // Keep the indicator visible whenever an alert is active
+    if (profileHoldDueToAlert) {
+        profileChangedTime = millis();  // refresh timer during alerts
+    }
+
+    // Dimensions for clearing/profile centering
 #if defined(DISPLAY_WAVESHARE_349)
     const float freqScale = 2.2f;
 #else
@@ -698,65 +717,61 @@ void V1Display::drawProfileIndicator(int slot) {
     int freqX = (maxWidth - freqWidth) / 2;
     if (freqX < 0) freqX = 0;
     int dotCenterX = freqX + 2 * mFreq.digitW + 2 * mFreq.spacing + mFreq.dot / 2;
-    
-    // Check if we should hide the profile indicator
-    if (s.hideProfileIndicator) {
-        // Hide after timeout
+
+    // Auto-hide after timeout when not held by an alert
+    if (!profileHoldDueToAlert) {
         if (millis() - profileChangedTime > HIDE_TIMEOUT_MS) {
-            // Clear the profile name area
             int y = 14;
             int clearStart = 120;  // Don't overlap band indicators
             int clearWidth = maxWidth - clearStart;
             FILL_RECT(clearStart, y - 2, clearWidth, 28, PALETTE_BG);
-            
-            // Still draw WiFi and battery indicators
+
             drawWiFiIndicator();
             drawBatteryIndicator();
             return;
         }
     }
-    
+
     // Use custom names, fallback to defaults (limited to 20 chars)
     const char* name;
     uint16_t color;
     switch (slot % 3) {
-        case 0: 
-            name = s.slot0Name.length() > 0 ? s.slot0Name.c_str() : "DEFAULT"; 
+        case 0:
+            name = s.slot0Name.length() > 0 ? s.slot0Name.c_str() : "DEFAULT";
             color = s.slot0Color;
             break;
-        case 1: 
-            name = s.slot1Name.length() > 0 ? s.slot1Name.c_str() : "HIGHWAY"; 
+        case 1:
+            name = s.slot1Name.length() > 0 ? s.slot1Name.c_str() : "HIGHWAY";
             color = s.slot1Color;
             break;
         default:  // case 2
-            name = s.slot2Name.length() > 0 ? s.slot2Name.c_str() : "COMFORT"; 
+            name = s.slot2Name.length() > 0 ? s.slot2Name.c_str() : "COMFORT";
             color = s.slot2Color;
             break;
     }
-    
+
     // Measure the profile name text width
     GFX_setTextDatum(TL_DATUM);  // Top-left
     TFT_CALL(setTextSize)(2);    // Larger text for readability
     int16_t nameWidth = strlen(name) * 12;  // Approximate: size 2 = ~12px per char
-    
+
     // Center the name over the dot position
     int x = dotCenterX - nameWidth / 2;
     if (x < 120) x = 120;  // Don't overlap with band indicators on left (L/Ka/K/X)
-    
+
     int y = 14;
-    
+
     // Clear area for profile name - use fixed wide area to prevent artifacts
-    // Clear from 120 (after band indicators) to before signal bars area
     int clearEndX = SCREEN_WIDTH - 240;  // Stop before signal bars (at ~412)
     FILL_RECT(120, y - 2, clearEndX - 120, 28, PALETTE_BG);
-    
+
     // Draw the profile name centered over the dot
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_drawString(tft, name, x, y);
-    
+
     // Draw WiFi indicator (if connected to STA network)
     drawWiFiIndicator();
-    
+
     // Draw battery indicator after profile name (if on battery)
     drawBatteryIndicator();
 }
@@ -937,6 +952,7 @@ void V1Display::showDisconnected() {
 void V1Display::showResting() {
     SerialLog.println("showResting() called");
     SerialLog.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+    profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -979,6 +995,7 @@ void V1Display::showResting() {
 
 void V1Display::showScanning() {
     SerialLog.println("showScanning() called");
+    profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -1045,14 +1062,24 @@ void V1Display::showBootSplash() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
-    // Draw the V1 Simple logo fullscreen (exactly 640x172, same as display)
-    const int logoX = 0;
-    const int logoY = 0;
-    
-    for (int y = 0; y < V1SIMPLE_LOGO_HEIGHT; y++) {
-        for (int x = 0; x < V1SIMPLE_LOGO_WIDTH; x++) {
-            uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[y * V1SIMPLE_LOGO_WIDTH + x]);
-            TFT_CALL(drawPixel)(logoX + x, logoY + y, pixel);
+    // Draw the V1 Simple logo scaled up (75% larger) and center-cropped to the screen
+    const float scale = 1.75f;  // 75% larger than native
+    const float scaledW = V1SIMPLE_LOGO_WIDTH * scale;
+    const float scaledH = V1SIMPLE_LOGO_HEIGHT * scale;
+    const float offsetX = (SCREEN_WIDTH - scaledW) / 2.0f;
+    const float offsetY = (SCREEN_HEIGHT - scaledH) / 2.0f;
+
+    for (int dy = 0; dy < SCREEN_HEIGHT; dy++) {
+        for (int dx = 0; dx < SCREEN_WIDTH; dx++) {
+            // Map destination pixel back to source coordinates
+            float srcXf = (dx - offsetX) / scale;
+            float srcYf = (dy - offsetY) / scale;
+            int sx = static_cast<int>(srcXf);
+            int sy = static_cast<int>(srcYf);
+            if (sx >= 0 && sx < V1SIMPLE_LOGO_WIDTH && sy >= 0 && sy < V1SIMPLE_LOGO_HEIGHT) {
+                uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
+                TFT_CALL(drawPixel)(dx, dy, pixel);
+            }
         }
     }
 
@@ -1182,6 +1209,7 @@ void V1Display::update(const DisplayState& state) {
         drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, state.muted);
         drawDirectionArrow(state.arrows, state.muted);
         drawMuteIcon(state.muted);
+        profileHoldDueToAlert = (state.activeBands != BAND_NONE);
         drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1207,6 +1235,8 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
     drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, mutedFlag);
     drawDirectionArrow(alert.direction, mutedFlag);
     drawMuteIcon(mutedFlag);
+    profileHoldDueToAlert = (bandMask != BAND_NONE);
+    drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();  // Push canvas to display
@@ -1257,6 +1287,7 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     drawDirectionArrow(state.arrows, state.muted);
     
     drawMuteIcon(state.muted);
+    profileHoldDueToAlert = (bandMask != BAND_NONE);
     drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)

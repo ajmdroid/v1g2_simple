@@ -22,6 +22,10 @@
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
+// Preview hold helper to keep color demo visible briefly
+extern void requestColorPreviewHold(uint32_t durationMs);
+extern bool isColorPreviewRunning();
+extern void cancelColorPreview();
 
 // HTML entity encoding for safe HTML generation
 static String htmlEscape(const String& input) {
@@ -565,13 +569,23 @@ void WiFiManager::setupWebServer() {
     server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
     server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
-        display.showDemo();
-        server.send(200, "application/json", "{\"success\":true}");
+        if (isColorPreviewRunning()) {
+            SerialLog.println("[HTTP] POST /api/displaycolors/preview - toggling off");
+            cancelColorPreview();
+            display.showResting();
+            server.send(200, "application/json", "{\"success\":true,\"active\":false}");
+        } else {
+            SerialLog.println("[HTTP] POST /api/displaycolors/preview - starting");
+            display.showDemo();
+            requestColorPreviewHold(2200);
+            server.send(200, "application/json", "{\"success\":true,\"active\":true}");
+        }
     });
     server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
         SerialLog.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
-        display.showScanning();  // Return to normal scanning state
-        server.send(200, "application/json", "{\"success\":true}");
+        cancelColorPreview();
+        display.showResting();  // Return to normal scanning state
+        server.send(200, "application/json", "{\"success\":true,\"active\":false}");
     });
     
     // Time settings and serial log API routes
@@ -1850,6 +1864,7 @@ void WiFiManager::handleDisplayColorsSave() {
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
+    requestColorPreviewHold(2200);  // Hold ~2.2s and cycle bands during preview
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1863,6 +1878,7 @@ void WiFiManager::handleDisplayColorsReset() {
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
+    requestColorPreviewHold(2200);
     
     server.send(200, "application/json", "{\"success\":true}");
 }

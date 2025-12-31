@@ -215,6 +215,7 @@ public:
     
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;
+    const AutoPushSlot& getSlot(int slotNum) const;
     
     // Get slot volume settings (returns 0xFF for "no change")
     uint8_t getSlotVolume(int slotNum) const;

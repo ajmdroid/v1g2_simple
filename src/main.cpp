@@ -62,6 +62,93 @@ unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
 const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
 
+// Color preview state machine to keep demo visible and cycle bands
+static bool colorPreviewActive = false;
+static unsigned long colorPreviewStartMs = 0;
+static unsigned long colorPreviewDurationMs = 0;
+static int colorPreviewStep = 0;
+static bool colorPreviewEnded = false;
+
+struct ColorPreviewStep {
+    unsigned long offsetMs;
+    Band band;
+    uint8_t bars;
+    Direction dir;
+    uint32_t freqMHz;
+};
+
+// Sequence: X, K, Ka, Laser with arrow cycle (front, side, rear, front+rear)
+static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
+    {300, BAND_X, 3, DIR_FRONT, 10525},
+    {700, BAND_K, 5, DIR_SIDE, 24150},
+    {1100, BAND_KA, 6, DIR_REAR, 35500},
+    {1500, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0}
+};
+static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
+
+void requestColorPreviewHold(uint32_t durationMs) {
+    colorPreviewActive = true;
+    colorPreviewStartMs = millis();
+    colorPreviewDurationMs = durationMs;
+    colorPreviewStep = 0;
+    colorPreviewEnded = false;
+}
+
+bool isColorPreviewRunning() {
+    return colorPreviewActive;
+}
+
+void cancelColorPreview() {
+    if (colorPreviewActive) {
+        colorPreviewActive = false;
+        colorPreviewEnded = true;  // Restore resting view on next loop
+    }
+}
+
+static inline bool isColorPreviewActive() {
+    if (!colorPreviewActive) return false;
+    unsigned long now = millis();
+    if (now - colorPreviewStartMs >= colorPreviewDurationMs) {
+        colorPreviewActive = false;
+        colorPreviewEnded = true;
+        return false;
+    }
+    return true;
+}
+
+static void driveColorPreview() {
+    if (!colorPreviewActive) return;
+
+    unsigned long now = millis();
+    unsigned long elapsed = now - colorPreviewStartMs;
+
+    // Advance through band samples while within duration
+    while (colorPreviewStep < COLOR_PREVIEW_STEP_COUNT && elapsed >= COLOR_PREVIEW_STEPS[colorPreviewStep].offsetMs) {
+        const auto& step = COLOR_PREVIEW_STEPS[colorPreviewStep];
+        AlertData previewAlert{};
+        previewAlert.band = step.band;
+        previewAlert.direction = step.dir;
+        previewAlert.frontStrength = step.bars;
+        previewAlert.rearStrength = 0;
+        previewAlert.frequency = step.freqMHz;
+        previewAlert.isValid = true;
+
+        DisplayState previewState{};
+        previewState.activeBands = step.band;
+        previewState.arrows = step.dir;
+        previewState.signalBars = step.bars;
+        previewState.muted = false;
+
+        display.update(previewAlert, previewState, 1);
+        colorPreviewStep++;
+    }
+
+    if (elapsed >= colorPreviewDurationMs) {
+        colorPreviewActive = false;
+        colorPreviewEnded = true;
+    }
+}
+
 // Local mute override - takes immediate effect on tap before V1 confirms
 static bool localMuteOverride = false;
 static bool localMuteActive = false;
@@ -129,7 +216,7 @@ static void startAutoPush(int slotIndex) {
     static const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
     int clampedIndex = std::max(0, std::min(2, slotIndex));
     autoPushState.slotIndex = clampedIndex;
-    autoPushState.slot = settingsManager.getActiveSlot();
+    autoPushState.slot = settingsManager.getSlot(clampedIndex);
     autoPushState.profileLoaded = false;
     autoPushState.profile = V1Profile();
     autoPushState.step = AUTO_PUSH_STEP_WAIT_READY;
@@ -444,6 +531,9 @@ void processBLEData() {
     processReplayData();
 #else
     // Normal BLE mode
+    if (colorPreviewActive) {
+        return;  // Hold preview on-screen; skip live data
+    }
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
     
@@ -537,6 +627,9 @@ void processBLEData() {
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
         
         if (parseOk) {
+            if (isColorPreviewActive()) {
+                continue;  // Keep preview on-screen briefly
+            }
             DisplayState state = parser.getDisplayState();
 
             // Cache alert status to avoid repeated calls
@@ -1004,6 +1097,15 @@ void setup() {
 
 void loop() {
 #if 1  // WiFi and BLE enabled
+    // Drive color preview (band cycle) first; skip other updates if active
+    if (colorPreviewActive) {
+        driveColorPreview();
+    } else if (colorPreviewEnded) {
+        // Preview finished - restore resting UI so it doesn't stick
+        colorPreviewEnded = false;
+        display.showResting();
+    }
+
     // Process battery manager (updates cached readings at 1Hz, handles power button)
 #if defined(DISPLAY_WAVESHARE_349)
     batteryManager.update();
@@ -1155,36 +1257,37 @@ void loop() {
     
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
-        
-        // Check connection status
-        static bool wasConnected = false;
-        bool isConnected = bleClient.isConnected();
-        
-        // Only trigger state changes on actual transitions
-        if (isConnected != wasConnected) {
-            if (isConnected) {
-                display.showResting(); // stay on resting view until data arrives
-                SerialLog.println("V1 connected!");
-            } else {
-                display.showScanning();
-                SerialLog.println("V1 disconnected - Scanning...");
+        if (!isColorPreviewActive()) {
+            // Check connection status
+            static bool wasConnected = false;
+            bool isConnected = bleClient.isConnected();
+            
+            // Only trigger state changes on actual transitions
+            if (isConnected != wasConnected) {
+                if (isConnected) {
+                    display.showResting(); // stay on resting view until data arrives
+                    SerialLog.println("V1 connected!");
+                } else {
+                    display.showScanning();
+                    SerialLog.println("V1 disconnected - Scanning...");
+                }
+                wasConnected = isConnected;
             }
-            wasConnected = isConnected;
-        }
 
-        // If connected but not seeing traffic, re-request alert data periodically
-        static unsigned long lastReq = 0;
-        if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-            SerialLog.println("No data recently; re-requesting alert data...");
-            bleClient.requestAlertData();
-            lastReq = now;
-        }
-        
-        // Periodically refresh indicators (WiFi/battery) even when scanning
-        if (!isConnected) {
-            display.drawWiFiIndicator();
-            display.drawBatteryIndicator();
-            display.flush();  // Push canvas changes to physical display
+            // If connected but not seeing traffic, re-request alert data periodically
+            static unsigned long lastReq = 0;
+            if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
+                SerialLog.println("No data recently; re-requesting alert data...");
+                bleClient.requestAlertData();
+                lastReq = now;
+            }
+            
+            // Periodically refresh indicators (WiFi/battery) even when scanning
+            if (!isConnected) {
+                display.drawWiFiIndicator();
+                display.drawBatteryIndicator();
+                display.flush();  // Push canvas changes to physical display
+            }
         }
     }
     
