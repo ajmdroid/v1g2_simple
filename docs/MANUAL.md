@@ -1226,8 +1226,6 @@ Based on code analysis:
 2. **No OTA updates:** Firmware must be flashed via USB.
    - Evidence: No OTA code present in wifi_manager.cpp
 
-3. **WiFi STA mode exists but routing is incomplete:** AP+STA mode works for passthrough but standalone STA not fully tested.
-
 ---
 
 ## Known Issues / Risks
