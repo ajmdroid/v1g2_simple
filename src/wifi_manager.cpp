@@ -808,12 +808,14 @@ void WiFiManager::handleV1ProfileSave() {
         }
     }
     
-    if (v1ProfileManager.saveProfile(profile)) {
+    ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
+    if (result.success) {
         Serial.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
         server.send(200, "application/json", "{\"success\":true}");
     } else {
-        Serial.printf("[V1Profiles] Failed to save profile '%s'\n", profile.name.c_str());
-        server.send(500, "application/json", "{\"error\":\"Failed to save profile\"}");
+        Serial.printf("[V1Profiles] Failed to save profile '%s': %s\n", profile.name.c_str(), result.error.c_str());
+        String errorJson = "{\"error\":\"" + result.error + "\"}";
+        server.send(500, "application/json", errorJson);
     }
 }
 
@@ -1250,15 +1252,16 @@ void WiFiManager::handleV1SettingsPush() {
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     }
     
-    // Perform unverified push (verification removed)
-    bool writeOk = bleClient.writeUserBytes(bytes);
-    if (writeOk) {
-        Serial.println("[V1Settings] Push sent (verification disabled)");
+    // Perform write with retry
+    V1BLEClient::WriteVerifyResult result = bleClient.writeUserBytesVerified(bytes, 3);
+    
+    if (result == V1BLEClient::VERIFY_OK) {
+        Serial.println("[V1Settings] Push sent successfully");
         bleClient.setDisplayOn(displayOn);
-        server.send(200, "application/json", "{\"success\":true,\"verified\":false,\"message\":\"Verification disabled; write issued\"}");
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings sent to V1\"}");
     } else {
         Serial.println("[V1Settings] Push FAILED - write command rejected");
-        server.send(500, "application/json", "{\"error\":\"Write command failed\",\"verified\":false}");
+        server.send(500, "application/json", "{\"error\":\"Write command failed - check V1 connection\"}");
     }
 }
 

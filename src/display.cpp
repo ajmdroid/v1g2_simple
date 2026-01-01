@@ -822,14 +822,20 @@ void V1Display::drawWiFiIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // Show WiFi icon when Setup Mode (AP) is active
-    bool isSetupMode = wifiManager.isSetupModeActive();
-    
     // WiFi icon position - above battery icon, bottom left
     const int wifiX = 14;
     const int wifiSize = 20;
     const int battY = SCREEN_HEIGHT - 14 - 8;
     const int wifiY = battY - wifiSize - 6;
+    
+    // Check if user explicitly hides the WiFi icon
+    if (s.hideWifiIcon) {
+        FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
+        return;
+    }
+    
+    // Show WiFi icon when Setup Mode (AP) is active
+    bool isSetupMode = wifiManager.isSetupModeActive();
     
     if (!isSetupMode) {
         // Clear the WiFi icon area when Setup Mode is off
@@ -1015,6 +1021,10 @@ void V1Display::showDemo() {
     // Draw the alert
     update(demoAlert, false); // keep colors bright on demo (will draw bogie 1 internally)
     lastState.signalBars = 1; // keep internal state consistent with the demo counter
+    
+    // Also draw profile indicator and WiFi icon during demo so user can see hide toggle effect
+    drawProfileIndicator(0);  // Show slot 0 profile indicator (unless hidden)
+    drawWiFiIndicator();      // Show WiFi icon (unless hidden)
 }
 
 void V1Display::showBootSplash() {

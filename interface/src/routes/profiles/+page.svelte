@@ -121,10 +121,22 @@
 		try {
 			const res = await fetch('/api/v1/pull', { method: 'POST' });
 			if (res.ok) {
-				message = { type: 'success', text: 'Settings pulled from V1' };
-				await fetchCurrentSettings();
-				// Show save dialog after successful pull
-				showSaveDialog = true;
+				// Wait for BLE response to arrive (async) then fetch updated settings
+				// Poll a few times with delay to catch the async BLE response
+				let attempts = 0;
+				const maxAttempts = 5;
+				const delay = 300; // ms
+				
+				while (attempts < maxAttempts) {
+					await new Promise(r => setTimeout(r, delay));
+					await fetchCurrentSettings();
+					attempts++;
+					if (currentProfile?.settings) break;
+				}
+				
+				message = { type: 'success', text: 'Settings pulled from V1. Review below, then click Save to store as a profile.' };
+				// Don't show save dialog immediately - let user review settings first
+				// User can click "Save" button when ready to name and save the profile
 				saveName = '';
 				saveDescription = '';
 			} else {
@@ -408,162 +420,225 @@
 						bind:value={editDescription}
 					/>
 				</div>
-				<label class="label cursor-pointer max-w-md justify-start gap-3">
-					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={editDarkMode} />
-					<span class="label-text">Dark mode (turn off V1 display)</span>
-				</label>
 			{/if}
 			{#if (!v1Connected) && !editingSettings}
 				<p class="text-warning">Connect to V1 to view/edit settings</p>
 			{:else if currentProfile && currentProfile.settings}
 				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
-				<div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-					<!-- Band Enables -->
-					<div class="col-span-2 md:col-span-3 font-bold text-base">Band Detection</div>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.ka} disabled={!editingSettings} />
-						<span>Ka Band</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.k} disabled={!editingSettings} />
-						<span>K Band</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.x} disabled={!editingSettings} />
-						<span>X Band</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.laser} disabled={!editingSettings} />
-						<span>Laser</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.ku} disabled={!editingSettings} />
-						<span>Ku Band</span>
-					</label>
-					
-					<!-- Sensitivities -->
-					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Sensitivity</div>
-					<div class="flex items-center gap-2">
-						<span class="min-w-12">Ka:</span>
-						{#if editingSettings}
-							<select class="select select-bordered select-xs" bind:value={settings.kaSensitivity}>
-								<option value={1}>Relaxed</option>
-								<option value={2}>Original</option>
-								<option value={3}>Full</option>
-							</select>
-						{:else}
-							<span>{settings.kaSensitivity === 3 ? 'Full' : settings.kaSensitivity === 2 ? 'Original' : 'Relaxed'}</span>
-						{/if}
-					</div>
-					<div class="flex items-center gap-2">
-						<span class="min-w-12">K:</span>
-						{#if editingSettings}
-							<select class="select select-bordered select-xs" bind:value={settings.kSensitivity}>
-								<option value={1}>Relaxed</option>
-								<option value={2}>Full</option>
-								<option value={3}>Original</option>
-							</select>
-						{:else}
-							<span>{settings.kSensitivity === 3 ? 'Original' : settings.kSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
-						{/if}
-					</div>
-					<div class="flex items-center gap-2">
-						<span class="min-w-12">X:</span>
-						{#if editingSettings}
-							<select class="select select-bordered select-xs" bind:value={settings.xSensitivity}>
-								<option value={1}>Relaxed</option>
-								<option value={2}>Full</option>
-								<option value={3}>Original</option>
-							</select>
-						{:else}
-							<span>{settings.xSensitivity === 3 ? 'Original' : settings.xSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
-						{/if}
+				<div class="space-y-3">
+					<!-- Band Detection Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">📡 Band Detection</h3>
+						<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ka} disabled={!editingSettings} />
+								<span>Ka Band</span>
+							</label>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.k} disabled={!editingSettings} />
+								<span>K Band</span>
+							</label>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.x} disabled={!editingSettings} />
+								<span>X Band</span>
+							</label>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ku} disabled={!editingSettings} />
+								<span>Ku Band</span>
+							</label>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.laser} disabled={!editingSettings} />
+								<span>Laser</span>
+							</label>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.euroMode} disabled={!editingSettings} />
+								<span>Euro Mode</span>
+							</label>
+						</div>
 					</div>
 					
-					<!-- Features -->
-					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Features</div>
-					<div class="flex items-center gap-2">
-						<span class="min-w-24">Auto Mute:</span>
-						{#if editingSettings}
-							<select class="select select-bordered select-xs" bind:value={settings.autoMute}>
-								<option value={1}>On</option>
-								<option value={2}>Advanced</option>
-								<option value={3}>Off</option>
-							</select>
-						{:else}
-							<span>{settings.autoMute === 3 ? 'Off' : settings.autoMute === 2 ? 'Advanced' : 'On'}</span>
-						{/if}
+					<!-- Sensitivity Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎚️ Sensitivity</h3>
+						<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+							<div class="flex items-center justify-between">
+								<span>Ka Sensitivity</span>
+								{#if editingSettings}
+									<select class="select select-bordered select-xs w-24" bind:value={settings.kaSensitivity}>
+										<option value={1}>Relaxed</option>
+										<option value={2}>Original</option>
+										<option value={3}>Full</option>
+									</select>
+								{:else}
+									<span class="badge badge-info">{settings.kaSensitivity === 3 ? 'Full' : settings.kaSensitivity === 2 ? 'Original' : 'Relaxed'}</span>
+								{/if}
+							</div>
+							<div class="flex items-center justify-between">
+								<span>K Sensitivity</span>
+								{#if editingSettings}
+									<select class="select select-bordered select-xs w-24" bind:value={settings.kSensitivity}>
+										<option value={1}>Relaxed</option>
+										<option value={2}>Full</option>
+										<option value={3}>Original</option>
+									</select>
+								{:else}
+									<span class="badge badge-info">{settings.kSensitivity === 3 ? 'Original' : settings.kSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
+								{/if}
+							</div>
+							<div class="flex items-center justify-between">
+								<span>X Sensitivity</span>
+								{#if editingSettings}
+									<select class="select select-bordered select-xs w-24" bind:value={settings.xSensitivity}>
+										<option value={1}>Relaxed</option>
+										<option value={2}>Full</option>
+										<option value={3}>Original</option>
+									</select>
+								{:else}
+									<span class="badge badge-info">{settings.xSensitivity === 3 ? 'Original' : settings.xSensitivity === 2 ? 'Full' : 'Relaxed'}</span>
+								{/if}
+							</div>
+						</div>
 					</div>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.kVerifier} disabled={!editingSettings} />
-						<span>K Verifier (TMF)</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.fastLaserDetect} disabled={!editingSettings} />
-						<span>Fast Laser</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.laserRear} disabled={!editingSettings} />
-						<span>Laser Rear</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.euroMode} disabled={!editingSettings} />
-						<span>Euro Mode</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.mrct} disabled={!editingSettings} />
-						<span>MRCT</span>
-					</label>
 					
-					<!-- Display -->
-					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Display</div>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.startupSequence} disabled={!editingSettings} />
-						<span>Startup Sequence</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
-						<span>Resting Display</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
-						<span>Bogey Lock Loud</span>
-					</label>
+					<!-- Audio & Mute Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔇 Audio & Mute</h3>
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+							<div class="flex items-center justify-between">
+								<span>X, K, Ku Automute</span>
+								{#if editingSettings}
+									<select class="select select-bordered select-xs w-28" bind:value={settings.autoMute}>
+										<option value={1}>On</option>
+										<option value={2}>Advanced</option>
+										<option value={3}>Off</option>
+									</select>
+								{:else}
+									<span class="badge badge-info">{settings.autoMute === 3 ? 'Off' : settings.autoMute === 2 ? 'Advanced' : 'On'}</span>
+								{/if}
+							</div>
+							<label class="flex items-center justify-between">
+								<span>Mute to Muted Volume</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.muteToMuteVolume} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>Bogey-Lock Loud</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
+							</label>
+						</div>
+					</div>
 					
-					<!-- Advanced -->
-					<div class="col-span-2 md:col-span-3 font-bold text-base mt-2">Advanced</div>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.muteXKRear} disabled={!editingSettings} />
-						<span>Mute X/K Rear</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.kaAlwaysPriority} disabled={!editingSettings} />
-						<span>Ka Always Priority</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.muteToMuteVolume} disabled={!editingSettings} />
-						<span>Mute to Mute Vol</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.customFreqs} disabled={!editingSettings} />
-						<span>Custom Freqs</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.bsmPlus} disabled={!editingSettings} />
-						<span>BSM Plus</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.driveSafe3D} disabled={!editingSettings} />
-						<span>Drive Safe 3D</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.driveSafe3DHD} disabled={!editingSettings} />
-						<span>Drive Safe 3D HD</span>
-					</label>
-					<label class="flex items-center gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.redflexHalo} disabled={!editingSettings} />
-						<span>Redflex Halo</span>
-					</label>
+					<!-- Laser Options Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔦 Laser Options</h3>
+						<div class="grid grid-cols-2 gap-2 text-sm">
+							<label class="flex items-center justify-between">
+								<span>Rear Laser</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.laserRear} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>Fast Laser Detection</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.fastLaserDetect} disabled={!editingSettings} />
+							</label>
+						</div>
+					</div>
+					
+					<!-- Logic & Filtering Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎯 Logic & Priority</h3>
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+							<label class="flex items-center justify-between">
+								<span>X&K Rear Mute in Logic</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.muteXKRear} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>Ka Always Radar Priority</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.kaAlwaysPriority} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>K-Verifier (TMF)</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.kVerifier} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>BSM Plus</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.bsmPlus} disabled={!editingSettings} />
+							</label>
+						</div>
+					</div>
+					
+					<!-- Display Section -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">📺 V1 Display</h3>
+						<div class="grid grid-cols-2 gap-2 text-sm">
+							<label class="flex items-center justify-between">
+								<span>Startup Sequence</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.startupSequence} disabled={!editingSettings} />
+							</label>
+							<label class="flex items-center justify-between">
+								<span>Resting Display</span>
+								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
+							</label>
+							{#if editingSettings}
+							<label class="flex items-center justify-between col-span-2 pt-2 border-t border-base-100">
+								<span>Dark Mode (turn off V1 display)</span>
+								<input type="checkbox" class="toggle checked:bg-red-500" bind:checked={editDarkMode} />
+							</label>
+							{/if}
+						</div>
+					</div>
+					
+					<!-- Photo Radar Section (Collapsible) -->
+					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
+						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
+							📷 Photo Radar
+						</summary>
+						<div class="collapse-content">
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
+								<label class="flex items-center justify-between">
+									<span>Photo Verifier</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.photoVerifier} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>MRCT</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.mrct} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>DriveSafe™ 3D</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.driveSafe3D} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>DriveSafe™ 3DHD</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.driveSafe3DHD} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>Redflex® Halo</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.redflexHalo} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>Redflex® NK7</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.redflexNK7} disabled={!editingSettings} />
+								</label>
+								<label class="flex items-center justify-between">
+									<span>Ekin</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ekin} disabled={!editingSettings} />
+								</label>
+							</div>
+						</div>
+					</details>
+					
+					<!-- Advanced Section (Collapsible) -->
+					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
+						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
+							⚙️ Advanced
+						</summary>
+						<div class="collapse-content">
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
+								<label class="flex items-center justify-between">
+									<span>Custom Frequencies</span>
+									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.customFreqs} disabled={!editingSettings} />
+								</label>
+							</div>
+						</div>
+					</details>
 				</div>
 			{:else}
 				<p class="text-base-content/60">No settings available. Pull from V1 to view.</p>

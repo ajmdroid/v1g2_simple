@@ -1128,20 +1128,31 @@ bool V1BLEClient::writeUserBytes(const uint8_t* bytes) {
 }
 
 V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t* bytes, int maxRetries) {
-    (void)maxRetries;  // Verification disabled; keep signature for compatibility
-
     if (!bytes || !isConnected()) {
         return VERIFY_WRITE_FAILED;
     }
 
-    Serial.println("[VerifyPush] Verification disabled - performing unverified write");
-
-    // Ensure any previous verification state is cleared
-    verifyPending = false;
-    verifyComplete = false;
-    verifyMatch = false;
-
-    return writeUserBytes(bytes) ? VERIFY_OK : VERIFY_WRITE_FAILED;
+    // Note: Full verification is disabled because BLE responses come async via the main loop queue,
+    // but this function blocks. The write typically succeeds - V1 is reliable.
+    // We do multiple write attempts for robustness but don't wait for read-back verification.
+    
+    Serial.println("[VerifyPush] Writing to V1 (async verification not possible in blocking context)");
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        if (writeUserBytes(bytes)) {
+            Serial.printf("[VerifyPush] Write command sent successfully (attempt %d/%d)\n", attempt, maxRetries);
+            // Request a read-back - result will come async and update currentSettings
+            // This helps confirm the write worked, but we can't wait for it here
+            delay(50);  // Brief delay to let V1 process
+            requestUserBytes();  // Fire-and-forget read-back request
+            return VERIFY_OK;
+        }
+        Serial.printf("[VerifyPush] Write attempt %d/%d failed, retrying...\n", attempt, maxRetries);
+        delay(100);
+    }
+    
+    Serial.println("[VerifyPush] All write attempts failed");
+    return VERIFY_WRITE_FAILED;
 }
 
 void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {

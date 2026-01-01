@@ -107,6 +107,16 @@ struct V1Profile {
     V1Profile(const String& n, const V1UserSettings& s) : name(n), description(""), settings(s), displayOn(true) {}
 };
 
+// Save result with detailed error info
+struct ProfileSaveResult {
+    bool success;
+    String error;  // Empty if success, detailed message if failed
+    
+    ProfileSaveResult() : success(false), error("") {}
+    ProfileSaveResult(bool ok) : success(ok), error("") {}
+    ProfileSaveResult(bool ok, const String& err) : success(ok), error(err) {}
+};
+
 class V1ProfileManager {
 public:
     V1ProfileManager();
@@ -117,9 +127,12 @@ public:
     // Profile CRUD
     std::vector<String> listProfiles() const;
     bool loadProfile(const String& name, V1Profile& profile) const;
-    bool saveProfile(const V1Profile& profile);
+    ProfileSaveResult saveProfile(const V1Profile& profile);
     bool deleteProfile(const String& name);
     bool renameProfile(const String& oldName, const String& newName);
+    
+    // Get last error message
+    const String& getLastError() const { return lastError; }
     
     // Current V1 settings (from last pull)
     bool hasCurrentSettings() const { return currentValid; }
@@ -136,11 +149,13 @@ private:
     fs::FS* fs;
     bool ready;
     String profileDir;
+    mutable String lastError;  // Last error message for detailed reporting
     
     V1UserSettings currentSettings;
     bool currentValid;
     
     String profilePath(const String& name) const;
+    static uint32_t calculateCRC32(const uint8_t* data, size_t length);
 };
 
 // Global instance
