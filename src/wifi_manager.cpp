@@ -591,8 +591,7 @@ void WiFiManager::handleApiProfilePush() {
         return;
     }
     
-    // TODO: Queue profile push to executor task instead of blocking here
-    // For now, return success and let main loop handle it
+    // Profile push is handled by main loop's processAutoPush() state machine
     Serial.println("[API] Profile push requested");
     
     String json = "{";
@@ -602,8 +601,8 @@ void WiFiManager::handleApiProfilePush() {
     
     server.send(200, "application/json", json);
     
-    // Note: Actual push execution should be handled by push_executor
-    // via a queue/flag mechanism, not directly in this handler
+    // Note: Actual push execution is handled by main.cpp's processAutoPush()
+    // via the startAutoPush() mechanism, not directly in this handler
 }
 
 void WiFiManager::handleSettingsApi() {

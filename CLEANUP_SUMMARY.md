@@ -42,12 +42,14 @@ Perform a deep review and thorough cleanup of v1g2_simple to streamline the code
 - `sdkconfig.defaults` - ESP-IDF SDK defaults
 - `.gitignore` - Git ignore rules
 
-#### Source Code (28 .cpp/.h pairs)
-All source files retained - no dead code removal at this stage. Key modules:
+#### Source Code (24 .cpp/.h files)
+Key modules after cleanup:
 - Core: `ble_client`, `packet_parser`, `display`, `touch_handler`, `settings`
-- Features: `battery_manager`, `wifi_manager`, `v1_profiles`, `push_executor`
+- Features: `battery_manager`, `wifi_manager`, `v1_profiles`
 - Utilities: `storage_manager`, `event_ring`, `perf_metrics`
 - Debug/Dev: Battery simulation, performance metrics exports (enabled via flags)
+
+**Removed (Jan 2026):** `push_executor` (dead code, superseded by main.cpp's processAutoPush), `ifi_manager.cpp` (empty file)
 
 #### Include Headers (6 files)
 - `color_themes.h` - Color palette definitions

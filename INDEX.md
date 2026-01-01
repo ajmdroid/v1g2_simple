@@ -38,7 +38,6 @@ Quick navigation guide for the V1 Gen2 Simple Display project.
 ### Features
 - **[src/battery_manager.cpp](src/battery_manager.cpp)** - Power management and battery reporting
 - **[src/v1_profiles.cpp](src/v1_profiles.cpp)** - Auto-push profile system (3 slots)
-- **[src/push_executor.cpp](src/push_executor.cpp)** - Profile push execution
 
 ### Configuration & Storage
 - **[src/settings.cpp](src/settings.cpp)** - NVS-based persistent settings
