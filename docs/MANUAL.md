@@ -1,8 +1,8 @@
 # V1 Gen2 Simple Display - Technical Manual
 
-**Version:** 1.0.0  
+**Version:** 1.1.26  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
-**Generated from source analysis:** January 2026
+**Last Updated:** January 2026
 
 ---
 
@@ -15,11 +15,15 @@
 5. [Bluetooth / Protocol](#e-bluetooth--protocol)
 6. [Display / UI](#f-display--ui)
 7. [Storage](#g-storage)
-8. [Auto-Push System](#h-auto-push-system)
-9. [Configuration & Build Options](#i-configuration--build-options)
-10. [Troubleshooting](#j-troubleshooting)
-11. [Developer Guide](#k-developer-guide)
-12. [Reference](#l-reference)
+8. [Web UI Pages](#g2-web-ui-pages)
+9. [Auto-Push System](#h-auto-push-system)
+10. [Configuration & Build Options](#i-configuration--build-options)
+11. [Troubleshooting](#j-troubleshooting)
+12. [Developer Guide](#k-developer-guide)
+13. [Reference](#l-reference)
+14. [Known Limitations](#known-limitations--todos)
+15. [Known Issues / Risks](#known-issues--risks)
+16. [Pre-Merge Checklist](#pre-merge-checklist)
 
 ---
 
@@ -29,26 +33,31 @@
 
 ```bash
 # 1. Clone repository
-git clone <repo-url>
+git clone https://github.com/ajmdroid/v1g2_simple
 cd v1g2_simple
 
-# 2. Build web interface (requires Node.js)
-cd interface
-npm install
-npm run build
-npm run deploy  # Copies to data/
-cd ..
+# 2. Build and flash everything (recommended)
+./build.sh --all
 
-# 3. Build firmware
-pio run -e waveshare-349
+# This single command:
+# - Builds web interface (npm install + npm run build)
+# - Deploys web assets to data/
+# - Builds firmware
+# - Uploads filesystem (LittleFS)
+# - Uploads firmware
+# - Opens serial monitor
+```
 
-# 4. Flash filesystem (web UI)
-pio run -t uploadfs -e waveshare-349
+**Alternative (manual steps):**
+```bash
+# Build web interface
+cd interface && npm install && npm run build && npm run deploy && cd ..
 
-# 5. Flash firmware
-pio run -t upload -e waveshare-349
+# Build and upload firmware + filesystem
+pio run -e waveshare-349 -t uploadfs
+pio run -e waveshare-349 -t upload
 
-# 6. Monitor serial output
+# Monitor serial output
 pio device monitor -b 115200
 ```
 
@@ -56,9 +65,9 @@ pio device monitor -b 115200
 
 1. Device shows boot splash (if power-on reset)
 2. Screen displays "SCAN" with resting animation
-3. Connect to WiFi AP: `V1-Simple` / password: `setupv1g2`
+3. Connect to WiFi AP: **V1-Display** / password: **valentine1**
 4. Browse to `http://192.168.35.5`
-5. Web UI should load (SvelteKit) or fallback dashboard
+5. Web UI should load (SvelteKit-based interface)
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [build.sh](build.sh#L1-L30), [interface/scripts/deploy.js](interface/scripts/deploy.js#L1-L30)
 
@@ -590,6 +599,105 @@ On boot, if NVS appears empty (fresh flash), restores from SD backup.
 
 ---
 
+## G2. Web UI Pages
+
+The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is in `interface/src/routes/`.
+
+### Page Routes
+
+| Route | File | Purpose |
+|-------|------|---------|
+| `/` | `+page.svelte` | Home - connection status, quick links |
+| `/settings` | `settings/+page.svelte` | WiFi, BLE proxy, display settings |
+| `/colors` | `colors/+page.svelte` | Color customization, theme selection |
+| `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
+| `/profiles` | `profiles/+page.svelte` | V1 profile management |
+| `/devices` | `devices/+page.svelte` | Known V1 devices |
+
+### Settings Page (`/settings`)
+
+Controls:
+- **WiFi Mode:** AP / STA / AP+STA / Off
+- **AP SSID/Password:** Access point credentials
+- **Station Networks:** Up to 3 saved networks for STA mode
+- **BLE Proxy:** Enable/disable JBV1 forwarding
+- **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
+- **Display On/Off:** Master display switch
+- **Brightness:** 0-255 slider
+- **Resting Mode:** Show logo when idle
+
+**Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
+
+### Colors Page (`/colors`)
+
+Controls:
+- **Theme Selection:** Standard, High Contrast, Stealth, Business
+- **Custom Colors:** Per-element RGB565 colors
+  - Bogey counter, Frequency display, Arrows
+  - Band colors (L, Ka, K, X individually)
+  - Signal bar gradient (6 levels)
+  - WiFi icon color
+- **Status Indicators:** Hide WiFi icon, Hide profile indicator, Hide battery icon
+- **Preview Button:** Shows color demo on physical display
+
+**Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
+
+### Auto-Push Page (`/autopush`)
+
+Controls:
+- **Enable Auto-Push:** Toggle for automatic profile push on connection
+- **Active Slot:** Currently selected slot (0, 1, or 2)
+- **Per-Slot Configuration:**
+  - Profile name (from saved profiles)
+  - V1 Mode override (All Bogeys, Logic, Advanced Logic)
+  - Slot display name (e.g., "DEFAULT", "HIGHWAY", "COMFORT")
+  - Slot indicator color
+  - Main volume (0-9, or "No Change")
+  - Mute volume (0-9, or "No Change")
+- **Quick-Push Buttons:** Activate and push a slot immediately
+
+**Source:** [interface/src/routes/autopush/+page.svelte](interface/src/routes/autopush/+page.svelte)
+
+### Profiles Page (`/profiles`)
+
+Controls:
+- **Profile List:** View all saved profiles
+- **Create/Edit:** Full V1 user settings editor
+  - Band enables (X, K, Ka, Laser)
+  - Sensitivity levels per band
+  - Mute behavior, bogey lock
+  - Euro mode, TMF, K filter
+  - Photo system settings
+- **Pull from V1:** Read current V1 settings into new profile
+- **Push to V1:** Send profile to connected V1
+- **Delete:** Remove saved profile
+
+**Source:** [interface/src/routes/profiles/+page.svelte](interface/src/routes/profiles/+page.svelte)
+
+### Devices Page (`/devices`)
+
+Controls:
+- **Known Devices:** List of previously connected V1 units
+- **Friendly Name:** Custom name for each V1
+- **Default Profile:** Auto-push profile for specific V1
+- **Delete:** Remove device from list
+
+**Source:** [interface/src/routes/devices/+page.svelte](interface/src/routes/devices/+page.svelte)
+
+### Adding a New Page
+
+1. Create `interface/src/routes/newpage/+page.svelte`
+2. Add route handler in `wifi_manager.cpp`:
+   ```cpp
+   server.on("/newpage", HTTP_GET, [this]() { 
+       serveLittleFSFile("/newpage.html", "text/html"); 
+   });
+   ```
+3. Add API endpoints if needed
+4. Rebuild: `./build.sh --all`
+
+---
+
 ## H. Auto-Push System
 
 The auto-push system automatically configures the V1 to a saved profile when connection is established. It provides three "slots" for quick profile switching.
@@ -793,11 +901,74 @@ Enable verbose logging by checking serial output for:
 
 ### Web API Endpoints
 
-Test connectivity:
-- `GET /api/status` - JSON with connection state
-- `GET /api/settings` - Current settings
-- `GET /api/profiles` - List profiles
-- `GET /api/debug/events` - Event ring dump
+**Core APIs:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | BLE connection state, V1 info |
+| GET | `/api/settings` | All current settings (JSON) |
+| POST | `/api/settings` | Save settings |
+| POST | `/api/profile/push` | Push profile to V1 |
+| POST | `/darkmode` | Toggle display dark mode |
+| POST | `/mute` | Toggle mute |
+
+**V1 Profile Management:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/profiles` | List all saved profiles |
+| GET | `/api/v1/profile?name=X` | Get specific profile |
+| POST | `/api/v1/profile` | Save/create profile |
+| POST | `/api/v1/profile/delete` | Delete profile |
+| POST | `/api/v1/pull` | Pull current settings from V1 |
+| POST | `/api/v1/push` | Push profile to V1 |
+| GET | `/api/v1/current` | Get V1's current settings |
+
+**Auto-Push System:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/autopush/slots` | Get all 3 slot configurations |
+| POST | `/api/autopush/slot` | Save slot configuration |
+| POST | `/api/autopush/activate` | Activate a slot (0-2) |
+| POST | `/api/autopush/push` | Push active slot now |
+| GET | `/api/autopush/status` | Get auto-push state |
+
+**Display Colors:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/displaycolors` | Get current colors |
+| POST | `/api/displaycolors` | Save custom colors |
+| POST | `/api/displaycolors/reset` | Reset to theme defaults |
+| POST | `/api/displaycolors/preview` | Preview colors on display |
+| POST | `/api/displaycolors/clear` | Clear preview |
+
+**Device Management:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/devices` | List known V1 devices |
+| POST | `/api/v1/devices/name` | Set device friendly name |
+| POST | `/api/v1/devices/profile` | Set default profile for device |
+| POST | `/api/v1/devices/delete` | Remove device |
+
+**Debug/Diagnostics:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/debug/metrics` | Performance metrics |
+| GET | `/api/debug/events` | Event ring buffer |
+| POST | `/api/debug/events/clear` | Clear event buffer |
+| POST | `/api/debug/enable` | Toggle debug features |
+
+**Captive Portal Handlers:**
+- `/generate_204`, `/gen_204` - Android captive portal
+- `/hotspot-detect.html` - iOS captive portal
+- `/fwlink` - Windows captive portal
+- `/ncsi.txt` - Windows NCSI check
+
+**Source:** [src/wifi_manager.cpp](src/wifi_manager.cpp#L270-L434)
 
 ### Event Ring
 
@@ -852,11 +1023,56 @@ v1g2_simple/
 4. **Settings:** Add to `settings.h`/`settings.cpp` if persistent
 5. **Web UI:** Add page in `interface/src/routes/`
 
+### Build Commands
+
+**Primary build script** (`./build.sh`):
+
+```bash
+./build.sh              # Build only (no upload)
+./build.sh -u           # Build and upload firmware
+./build.sh -f           # Build and upload filesystem only
+./build.sh -u -m        # Build, upload firmware, open monitor
+./build.sh --all        # Full build + upload filesystem + firmware + monitor
+./build.sh --clean -a   # Clean build and upload everything
+./build.sh --skip-web   # Skip web interface rebuild
+./build.sh --help       # Show all options
+```
+
+**Manual PlatformIO commands:**
+
+```bash
+pio run -e waveshare-349                  # Build firmware only
+pio run -e waveshare-349 -t upload        # Upload firmware
+pio run -e waveshare-349 -t uploadfs      # Upload web filesystem
+pio device monitor -b 115200              # Serial monitor
+```
+
+**Web interface development:**
+
+```bash
+cd interface
+npm install                               # Install dependencies
+npm run dev                               # Dev server with hot reload
+npm run build                             # Production build
+npm run deploy                            # Copy build/ to data/
+```
+
+**Helper scripts:**
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/pio-size.sh` | Report firmware size |
+| `scripts/pio-check.sh` | Run clang-tidy static analysis |
+| `tools/perf_test.sh` | Performance testing |
+| `tools/parse_metrics.py` | Parse performance logs |
+
+**Source:** [build.sh](build.sh), [scripts/](scripts/)
+
 ### Testing
 
 No automated tests exist. Manual testing procedure:
 
-1. **Build test:** `pio run -e waveshare-349`
+1. **Build test:** `./build.sh` (or `pio run -e waveshare-349`)
 2. **Static analysis:** `./scripts/pio-check.sh` (clang-tidy)
 3. **Size check:** `./scripts/pio-size.sh`
 4. **Functional test:**
@@ -864,7 +1080,9 @@ No automated tests exist. Manual testing procedure:
    - Connect to V1, verify alerts display
    - Test tap-to-mute
    - Test triple-tap profile switch
-   - Test web UI pages
+   - Test all web UI pages
+   - Test auto-push slot cycling
+   - Test color customization
 
 ### Performance-Sensitive Paths
 
@@ -1002,21 +1220,63 @@ struct DisplayState {
 
 Based on code analysis:
 
-1. **No STA mode:** WiFi is AP-only (192.168.35.5). STA code exists but is disabled.
-   - Evidence: `wifi_manager.cpp` only calls `startSetupMode()`, no `connectSTA()`
-   
-2. **No alert logging:** SQLite/alert history code was removed.
-   - Evidence: Comment in `platformio.ini`: "Sqlite3Esp32 removed - alert logging has been fully removed"
-   
-3. **Single-touch only:** Hardware limitation of AXS15231B touch controller.
+1. **Single-touch only:** Hardware limitation of AXS15231B touch controller.
    - Evidence: `touch_handler.h` comment: "Single-touch support (hardware limitation)"
    
-4. **No OTA updates:** Firmware must be flashed via USB.
+2. **No OTA updates:** Firmware must be flashed via USB.
    - Evidence: No OTA code present in wifi_manager.cpp
    
-5. **Profile verification disabled:** Write-and-verify was causing issues.
+3. **Profile verification disabled:** Write-and-verify was causing issues.
    - Evidence: `ble_client.h:109` comment about verification
+
+4. **Battery icon only shows on battery power:** When USB-powered, no battery icon appears.
+   - Evidence: `battery_manager.cpp` logic checks power source
+
+5. **WiFi STA mode exists but routing is incomplete:** AP+STA mode works for passthrough but standalone STA not fully tested.
 
 ---
 
-*Document generated from source code analysis. All file references point to actual source locations.*
+## Known Issues / Risks
+
+**Fragile areas requiring care:**
+
+1. **BLE Queue Overflow:** If BLE data arrives faster than processing, oldest packets dropped.
+   - Location: [src/main.cpp](src/main.cpp#L48-L55) - `bleDataQueue` 64 slots
+   - Mitigation: Throttle display updates, process queue quickly
+
+2. **Display SPI Timing:** Cannot call display functions from BLE callbacks.
+   - Location: All BLE callbacks in `ble_client.cpp`
+   - Mitigation: Always queue data for main loop processing
+
+3. **Password Obfuscation Not Encryption:** XOR obfuscation is NOT cryptographically secure.
+   - Location: [src/settings.cpp](src/settings.cpp#L28-L40)
+   - Risk: Anyone with flash dump can recover passwords
+
+4. **NVS Wear:** Frequent saves could wear flash (100k write cycles).
+   - Mitigation: Settings only save on explicit user action
+
+5. **Battery Voltage Calibration:** ADC readings may vary by hardware unit.
+   - Location: [src/battery_manager.cpp](src/battery_manager.cpp) - `BATTERY_MAX_VOLTAGE = 4.1V`
+
+---
+
+## Pre-Merge Checklist
+
+Before merging any changes:
+
+- [ ] **Build passes:** `./build.sh` completes without errors
+- [ ] **Static analysis clean:** `./scripts/pio-check.sh` shows no new warnings
+- [ ] **Size check:** `./scripts/pio-size.sh` - firmware under 2MB
+- [ ] **Web UI builds:** `cd interface && npm run build` succeeds
+- [ ] **Flash test:** Upload to device, verify boot splash
+- [ ] **BLE connection:** V1 connects and displays alerts
+- [ ] **Touch test:** Tap-to-mute works
+- [ ] **Triple-tap test:** Profile cycling works
+- [ ] **Web UI test:** All pages load at 192.168.35.5
+- [ ] **Settings persist:** Change setting, reboot, verify it persists
+- [ ] **Auto-push test:** Configure slot, disconnect/reconnect V1, verify push
+- [ ] **No serial errors:** Monitor for crash/exception messages
+
+---
+
+*Document generated from source code analysis. Last verified against v1.1.26.*
