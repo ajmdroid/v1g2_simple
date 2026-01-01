@@ -118,8 +118,7 @@ public:
     // Write user settings bytes to V1 (6 bytes)
     bool writeUserBytes(const uint8_t* bytes);
     
-    // Write user settings without verification (legacy API kept for compatibility)
-    // Returns: 0=success, 1=write failed
+    // Write user settings with optional verification (verification disabled - see implementation)
     enum WriteVerifyResult { VERIFY_OK = 0, VERIFY_WRITE_FAILED = 1, VERIFY_TIMEOUT = 2, VERIFY_MISMATCH = 3 };
     WriteVerifyResult writeUserBytesVerified(const uint8_t* bytes, int maxRetries = 2);
     

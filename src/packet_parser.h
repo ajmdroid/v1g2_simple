@@ -31,8 +31,8 @@ enum Direction {
 struct AlertData {
     Band band;
     Direction direction;
-    uint8_t frontStrength;  // 0-8
-    uint8_t rearStrength;   // 0-8
+    uint8_t frontStrength;  // 0-6 (V1 Gen2 uses 6 bars)
+    uint8_t rearStrength;   // 0-6
     uint32_t frequency;     // MHz
     bool isValid;
     
@@ -45,7 +45,7 @@ struct AlertData {
 struct DisplayState {
     uint8_t activeBands;    // Bitmap of active bands
     Direction arrows;       // Bitmap of arrow directions
-    uint8_t signalBars;     // 0-8 signal strength
+    uint8_t signalBars;     // 0-6 signal strength (V1 Gen2)
     bool muted;
     bool systemTest;
     char modeChar;
