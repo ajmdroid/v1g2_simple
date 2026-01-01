@@ -1,6 +1,6 @@
 # Waveshare ESP32-S3-Touch-LCD-3.49 Notes
 
-Lean reference for the hardware quirks used by this project.
+Reference for the hardware quirks used by this project.
 
 ## Pinout (matches `platformio.ini`)
 - Display (QSPI): `CS=9`, `SCLK=10`, `DATA0=11`, `DATA1=12`, `DATA2=13`, `DATA3=14`, `RST=21`, `BL=8`

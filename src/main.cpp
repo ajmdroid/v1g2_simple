@@ -487,6 +487,9 @@ void processBLEData() {
         rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
         latestPktTs = pkt.tsMs;
     }
+    
+    // Process the proxy queue to actually send data to connected apps (JBV1/V1 Companion)
+    bleClient.processProxyQueue();
 #endif
     
     // If no data accumulated, return
