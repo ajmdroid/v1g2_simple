@@ -20,25 +20,6 @@
 // Default Brightness
 #define DEFAULT_BRIGHTNESS  200   // 0-255
 
-// ============================================================================
-// LEGACY COLOR DEFINES - DEPRECATED
-// These are kept for backward compatibility but are superseded by color_themes.h
-// New code should use ColorThemes::STANDARD(), etc. via getColorPalette()
-// ============================================================================
-// Display Colors (RGB565) - use standard RGB values
-// RGB565 format: RRRRR GGGGGG BBBBB (5 bits red, 6 bits green, 5 bits blue)
-#define COLOR_BG            0x0000  // Black
-#define COLOR_TEXT          0xFFFF  // White
-#define COLOR_KA            0xF800  // Red
-#define COLOR_K             0x001F  // Blue
-#define COLOR_X             0x07E0  // Green
-#define COLOR_GRAY          0x1082  // Very dark gray for muted/inactive states
-#define COLOR_LASER         0x001F  // Laser indicator (blue to match reference panel)
-#define COLOR_ARROW_FRONT   0xF800  // Red
-#define COLOR_ARROW_SIDE    0xF800  // Red
-#define COLOR_ARROW_REAR    0xF800  // Red
-#define COLOR_SIGNAL_BAR    0xF800  // Red bars to match T4S3 look
-
 // BLE Configuration
 #define V1_SERVICE_UUID         "92A0AFF4-9E05-11E2-AA59-F23C91AEC05E"
 #define V1_DISPLAY_DATA_UUID    "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E"  // V1 out, client in (notify)
