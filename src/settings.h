@@ -22,6 +22,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <FS.h>
 #include "../include/color_themes.h"
 
 // WiFi mode options (prefixed to avoid conflicts with ESP SDK)
@@ -247,10 +248,15 @@ public:
     
     // Reset to defaults
     void resetToDefaults();
+    
+    // SD card backup/restore for display settings
+    void backupToSD();
+    bool restoreFromSD();
 
 private:
     V1Settings settings;
     Preferences preferences;
+    bool checkNeedsRestore();  // Returns true if NVS appears to be default/empty
 };
 
 // Global settings instance

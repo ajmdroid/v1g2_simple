@@ -14,6 +14,11 @@
  */
 
 #include "settings.h"
+#include "storage_manager.h"
+#include <ArduinoJson.h>
+
+// SD backup file path
+static const char* SETTINGS_BACKUP_PATH = "/v1settings_backup.json";
 
 // Global instance
 SettingsManager settingsManager;
@@ -41,6 +46,14 @@ SettingsManager::SettingsManager() {}
 
 void SettingsManager::begin() {
     load();
+    
+    // Check if NVS was erased (appears default) and backup exists on SD
+    if (checkNeedsRestore()) {
+        Serial.println("[Settings] NVS appears default, checking for SD backup...");
+        if (restoreFromSD()) {
+            Serial.println("[Settings] Restored settings from SD backup!");
+        }
+    }
 }
 
 void SettingsManager::load() {
@@ -246,6 +259,9 @@ void SettingsManager::save() {
     int verifyMode = preferences.getInt("wifiMode", -1);
     preferences.end();
     Serial.printf("  Verify read-back - brightness: %d, wifiMode: %d\n", verifyBrightness, verifyMode);
+    
+    // Backup display settings to SD card (survives reflash)
+    backupToSD();
 }
 
 void SettingsManager::setWiFiEnabled(bool enabled) {
@@ -440,4 +456,170 @@ void SettingsManager::setLastV1Address(const String& addr) {
         save();
         Serial.printf("Saved new V1 address: %s\n", addr.c_str());
     }
+}
+// Check if NVS appears to be in default state (likely erased during reflash)
+bool SettingsManager::checkNeedsRestore() {
+    // If brightness is default (200) AND all colors are default, NVS was likely erased
+    // We check multiple values to reduce false positives
+    return settings.brightness == 200 &&
+           settings.colorBogey == 0xF800 &&
+           settings.colorBandL == 0x001F &&
+           settings.colorBar1 == 0x07E0 &&
+           settings.hideWifiIcon == false &&
+           settings.hideProfileIndicator == false;
+}
+
+// Backup display/color settings to SD card
+void SettingsManager::backupToSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return;  // SD not available, skip silently
+    }
+    
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) return;
+    
+    JsonDocument doc;
+    doc["version"] = 1;
+    doc["timestamp"] = millis();
+    
+    // Display settings
+    doc["brightness"] = settings.brightness;
+    doc["turnOffDisplay"] = settings.turnOffDisplay;
+    doc["colorTheme"] = static_cast<int>(settings.colorTheme);
+    
+    // All colors (RGB565)
+    doc["colorBogey"] = settings.colorBogey;
+    doc["colorFrequency"] = settings.colorFrequency;
+    doc["colorArrow"] = settings.colorArrow;
+    doc["colorBandL"] = settings.colorBandL;
+    doc["colorBandKa"] = settings.colorBandKa;
+    doc["colorBandK"] = settings.colorBandK;
+    doc["colorBandX"] = settings.colorBandX;
+    doc["colorWiFiIcon"] = settings.colorWiFiIcon;
+    doc["colorBar1"] = settings.colorBar1;
+    doc["colorBar2"] = settings.colorBar2;
+    doc["colorBar3"] = settings.colorBar3;
+    doc["colorBar4"] = settings.colorBar4;
+    doc["colorBar5"] = settings.colorBar5;
+    doc["colorBar6"] = settings.colorBar6;
+    
+    // Display toggles
+    doc["hideWifiIcon"] = settings.hideWifiIcon;
+    doc["hideProfileIndicator"] = settings.hideProfileIndicator;
+    
+    // Slot customizations
+    doc["slot0Name"] = settings.slot0Name;
+    doc["slot1Name"] = settings.slot1Name;
+    doc["slot2Name"] = settings.slot2Name;
+    doc["slot0Color"] = settings.slot0Color;
+    doc["slot1Color"] = settings.slot1Color;
+    doc["slot2Color"] = settings.slot2Color;
+    
+    // Write to file
+    File file = fs->open(SETTINGS_BACKUP_PATH, FILE_WRITE);
+    if (!file) {
+        Serial.println("[Settings] Failed to create SD backup file");
+        return;
+    }
+    
+    serializeJson(doc, file);
+    file.flush();
+    file.close();
+    
+    Serial.println("[Settings] Backed up to SD card");
+}
+
+// Restore display/color settings from SD card
+bool SettingsManager::restoreFromSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return false;
+    }
+    
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) return false;
+    
+    if (!fs->exists(SETTINGS_BACKUP_PATH)) {
+        Serial.println("[Settings] No SD backup found");
+        return false;
+    }
+    
+    File file = fs->open(SETTINGS_BACKUP_PATH, FILE_READ);
+    if (!file) {
+        Serial.println("[Settings] Failed to open SD backup");
+        return false;
+    }
+    
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, file);
+    file.close();
+    
+    if (err) {
+        Serial.printf("[Settings] Failed to parse SD backup: %s\n", err.c_str());
+        return false;
+    }
+    
+    // Restore display settings (using is<T>() for ArduinoJson v7 compatibility)
+    if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
+    if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
+    if (doc["colorTheme"].is<int>()) settings.colorTheme = static_cast<ColorTheme>(doc["colorTheme"].as<int>());
+    
+    // Restore all colors
+    if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
+    if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
+    if (doc["colorArrow"].is<int>()) settings.colorArrow = doc["colorArrow"];
+    if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
+    if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
+    if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
+    if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
+    if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
+    if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
+    if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
+    if (doc["colorBar4"].is<int>()) settings.colorBar4 = doc["colorBar4"];
+    if (doc["colorBar5"].is<int>()) settings.colorBar5 = doc["colorBar5"];
+    if (doc["colorBar6"].is<int>()) settings.colorBar6 = doc["colorBar6"];
+    
+    // Restore display toggles
+    if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
+    if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
+    
+    // Restore slot customizations
+    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
+    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = doc["slot1Name"].as<String>();
+    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = doc["slot2Name"].as<String>();
+    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
+    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
+    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
+    
+    // Save restored settings to NVS (without backing up again - avoid loop)
+    preferences.begin("v1settings", false);
+    preferences.putUChar("brightness", settings.brightness);
+    preferences.putBool("displayOff", settings.turnOffDisplay);
+    preferences.putInt("colorTheme", settings.colorTheme);
+    preferences.putUShort("colorBogey", settings.colorBogey);
+    preferences.putUShort("colorFreq", settings.colorFrequency);
+    preferences.putUShort("colorArrow", settings.colorArrow);
+    preferences.putUShort("colorBandL", settings.colorBandL);
+    preferences.putUShort("colorBandKa", settings.colorBandKa);
+    preferences.putUShort("colorBandK", settings.colorBandK);
+    preferences.putUShort("colorBandX", settings.colorBandX);
+    preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    preferences.putUShort("colorBar1", settings.colorBar1);
+    preferences.putUShort("colorBar2", settings.colorBar2);
+    preferences.putUShort("colorBar3", settings.colorBar3);
+    preferences.putUShort("colorBar4", settings.colorBar4);
+    preferences.putUShort("colorBar5", settings.colorBar5);
+    preferences.putUShort("colorBar6", settings.colorBar6);
+    preferences.putBool("hideWifi", settings.hideWifiIcon);
+    preferences.putBool("hideProfile", settings.hideProfileIndicator);
+    preferences.putString("slot0name", settings.slot0Name);
+    preferences.putString("slot1name", settings.slot1Name);
+    preferences.putString("slot2name", settings.slot2Name);
+    preferences.putUShort("slot0color", settings.slot0Color);
+    preferences.putUShort("slot1color", settings.slot1Color);
+    preferences.putUShort("slot2color", settings.slot2Color);
+    preferences.end();
+    
+    Serial.println("[Settings] Restored from SD backup and saved to NVS");
+    return true;
 }
