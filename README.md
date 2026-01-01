@@ -1,5 +1,7 @@
 # V1 Gen2 Simple Display
 
+> ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
+
 A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
 **Version:** 1.1.26
