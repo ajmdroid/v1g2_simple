@@ -37,6 +37,9 @@ docs/ARCHIVE.md
 /interface/.vite/
 /interface/.DS_Store
 
+# Deployed web UI (generated from interface/)
+/data/
+
 # Large files (schematics, datasheets)
 *.pdf
 
