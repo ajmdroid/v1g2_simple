@@ -15,10 +15,11 @@
 5. [Bluetooth / Protocol](#e-bluetooth--protocol)
 6. [Display / UI](#f-display--ui)
 7. [Storage](#g-storage)
-8. [Configuration & Build Options](#h-configuration--build-options)
-9. [Troubleshooting](#i-troubleshooting)
-10. [Developer Guide](#j-developer-guide)
-11. [Reference](#k-reference)
+8. [Auto-Push System](#h-auto-push-system)
+9. [Configuration & Build Options](#i-configuration--build-options)
+10. [Troubleshooting](#j-troubleshooting)
+11. [Developer Guide](#k-developer-guide)
+12. [Reference](#l-reference)
 
 ---
 
@@ -377,17 +378,35 @@ pClient->setConnectTimeout(10);  // 10 second connect timeout
 ### Screen Layout (640×172 Landscape)
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│ [WiFi]  [Profile]                                    [Battery]       │ Status bar (~20px)
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│    [1]     35.500      ◀▶       ██████                              │ Main area
-│   [Ka]                          ██████                              │ - Bogey count
-│  (band)    (7-seg freq)  (arrows)  (signal bars)                    │ - Frequency
-│                                                                      │ - Direction
-│                                                                      │ - Strength
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 1.              HIGHWAY                                                      │
+│ (bogey)       (profile name)                                                 │
+│                                                                              │
+│     L                                  ████                    ▲             │
+│              ┌─────────┐               ████                  (front)         │
+│    Ka        │ MUTED   │   ████        ████               ◀═══════▶         │
+│              └─────────┘   ████        ████                  (side)          │
+│     K                      ████        ████                    ▼             │
+│                            ████        ████                  (rear)          │
+│     X          35.500      ████        ████                                  │
+│             (7-seg freq)  (bars)    (bars x6)              (arrows)          │
+│                                                                              │
+│ [WiFi]                                                                       │
+│ [Batt]                                                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+Layout zones (left to right):
+├─ 0-80px:   Bogey counter (7-seg digit + dot) at top-left
+│            Band stack (L/Ka/K/X) vertical, 24pt font
+│            WiFi icon + Battery icon at bottom-left
+├─ 80-400px: Profile name centered over frequency dot position
+│            "MUTED" badge (when active) above frequency
+│            Frequency display (7-seg "XX.XXX" or "LASER")
+├─ 400-470px: Signal strength bars (6 vertical bars, colored per level)
+└─ 470-640px: Direction arrows (front ▲, side ◀▶, rear ▼)
 ```
+
+**Source:** [src/display.cpp](src/display.cpp#L700-L760) (drawProfileIndicator), [src/display.cpp](src/display.cpp#L1330-L1400) (drawFrequency), [src/display.cpp](src/display.cpp#L1270-L1310) (drawBandIndicators), [src/display.cpp](src/display.cpp#L1506-L1560) (drawVerticalSignalBars), [src/display.cpp](src/display.cpp#L1390-L1500) (drawDirectionArrow)
 
 ### Display States
 
@@ -571,7 +590,104 @@ On boot, if NVS appears empty (fresh flash), restores from SD backup.
 
 ---
 
-## H. Configuration & Build Options
+## H. Auto-Push System
+
+The auto-push system automatically configures the V1 to a saved profile when connection is established. It provides three "slots" for quick profile switching.
+
+### Slot System
+
+| Slot | Default Name | Purpose |
+|------|--------------|---------|
+| 0 | Default | Normal driving conditions |
+| 1 | Highway | High sensitivity for open roads |
+| 2 | Comfort | Reduced sensitivity for urban areas |
+
+Each slot stores:
+- Profile name (references a profile in `/profiles/`)
+- V1 mode override (All Bogeys, Logic, Advanced Logic)
+- Volume settings (main, mute, muted volume)
+
+**Source:** [src/settings.cpp](src/settings.cpp#L100-L150) (slot0prof, slot0mode, etc.)
+
+### Auto-Push State Machine
+
+When auto-push is enabled and V1 connects, the system executes a 5-step sequence:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       Auto-Push State Machine                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   IDLE ──(connection established)──▶ WAIT_READY                        │
+│                                         │                               │
+│                                    (V1 ready)                           │
+│                                         ▼                               │
+│                                      PROFILE                            │
+│                                    (send 6 user bytes)                  │
+│                                         │ 100ms                         │
+│                                         ▼                               │
+│                                      DISPLAY                            │
+│                                    (display on/off)                     │
+│                                         │ 100ms                         │
+│                                         ▼                               │
+│                                       MODE                              │
+│                                    (All/Logic/AdvLogic)                 │
+│                                         │ 100ms                         │
+│                                         ▼                               │
+│                                      VOLUME                             │
+│                                    (main + mute vols)                   │
+│                                         │ 100ms                         │
+│                                         ▼                               │
+│                                       IDLE                              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Timing:** Each step waits 100ms before sending the next command to avoid overwhelming the V1.
+
+**Source:** [src/main.cpp](src/main.cpp#L175-L340) (autoPushState enum, processAutoPush())
+
+### Profile Cycling (Touch Gesture)
+
+**Triple-tap** the screen to cycle through profiles 0→1→2→0...
+
+When a new slot is selected:
+1. Display flashes the new profile name
+2. If auto-push enabled, immediately pushes the new profile's settings to V1
+3. Active slot persisted to NVS
+
+**Source:** [src/main.cpp](src/main.cpp#L730-L780) (handleTouchEvents triple-tap handler)
+
+### Configuration (Web UI)
+
+The `/autopush.html` page allows:
+- Enable/disable auto-push feature
+- Configure each of the 3 slots:
+  - Select profile from saved profiles
+  - Override V1 mode
+  - Set main volume (0-8)
+  - Set mute volume (0-8)
+  - Set muted volume level
+- Default volume settings when no override
+
+### Protocol Commands
+
+Auto-push sends these V1 ESP commands:
+
+| Step | Command | Payload |
+|------|---------|---------|
+| PROFILE | reqWriteUserBytes | 6 bytes from profile |
+| DISPLAY | reqTurnOnMainDisplay / reqTurnOffMainDisplay | - |
+| MODE | reqChangeMode | 1=All, 2=Logic, 3=AdvLogic |
+| VOLUME | reqSetMainVolume | 0-8 |
+| VOLUME | reqSetMuteVolume | 0-8 |
+| VOLUME | reqSetMutedVolume | 0-8 |
+
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L600-L700) (sendUserBytes, sendVolume, etc.)
+
+---
+
+## I. Configuration & Build Options
 
 ### PlatformIO Environment
 
@@ -638,7 +754,7 @@ For UI development without V1 hardware:
 
 ---
 
-## I. Troubleshooting
+## J. Troubleshooting
 
 ### Serial Debug Output
 
@@ -700,7 +816,7 @@ Debug events viewable at `/api/debug/events`:
 
 ---
 
-## J. Developer Guide
+## K. Developer Guide
 
 ### Repository Structure
 
@@ -763,7 +879,7 @@ No automated tests exist. Manual testing procedure:
 
 ---
 
-## K. Reference
+## L. Reference
 
 ### Key Classes
 
