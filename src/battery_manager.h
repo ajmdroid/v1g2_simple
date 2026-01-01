@@ -26,7 +26,7 @@
 #define TCA9554_CONFIG_PORT     0x03
 
 // Battery voltage thresholds (mV)
-#define BATTERY_FULL_MV         4200
+#define BATTERY_FULL_MV         4100  // Measured full charge voltage
 #define BATTERY_EMPTY_MV        3200
 #define BATTERY_WARNING_MV      3400  // Low battery warning (yellow)
 #define BATTERY_CRITICAL_MV     3250  // Critical - auto shutdown soon
