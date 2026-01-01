@@ -18,7 +18,8 @@
 		bar5: 0xF800,    // Red
 		bar6: 0xF800,    // Red (strongest)
 		hideWifiIcon: false,
-		hideProfileIndicator: false
+		hideProfileIndicator: false,
+		hideBatteryIcon: false
 	});
 	
 	let loading = $state(true);
@@ -86,6 +87,7 @@
 			params.append('bar6', colors.bar6);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
+			params.append('hideBatteryIcon', colors.hideBatteryIcon);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -141,7 +143,8 @@
 					bar5: 0xF800,
 					bar6: 0xF800,
 					hideWifiIcon: false,
-					hideProfileIndicator: false
+					hideProfileIndicator: false,
+					hideBatteryIcon: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -382,6 +385,21 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideProfileIndicator}
 							onchange={(e) => colors.hideProfileIndicator = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide Battery Icon</span>
+							<p class="text-xs text-base-content/50">Hide the battery indicator</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideBatteryIcon}
+							onchange={(e) => colors.hideBatteryIcon = e.target.checked}
 						/>
 					</label>
 				</div>

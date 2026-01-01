@@ -1143,9 +1143,16 @@ void V1Display::drawBandLabel(Band band, bool muted) {
 
 void V1Display::update(const DisplayState& state) {
     static bool firstUpdate = true;
+    static bool wasInFlashPeriod = false;
+    
+    // Check if profile flash period just expired (needs redraw to clear)
+    bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
+    bool flashJustExpired = wasInFlashPeriod && !inFlashPeriod;
+    wasInFlashPeriod = inFlashPeriod;
 
     bool stateChanged =
         firstUpdate ||
+        flashJustExpired ||
         state.activeBands != lastState.activeBands ||
         state.arrows != lastState.arrows ||
         state.signalBars != lastState.signalBars ||
