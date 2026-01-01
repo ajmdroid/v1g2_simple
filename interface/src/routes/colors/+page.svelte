@@ -110,11 +110,11 @@
 		}
 	}
 	
-	async function previewColors() {
+	async function testColors() {
 		try {
 			await fetch('/api/displaycolors/preview', { method: 'POST' });
-		} catch (e) {
-			// Silent fail for preview
+		} catch {
+			// Silent fail for test
 		}
 	}
 	
@@ -444,8 +444,8 @@
 					💾 Save Colors
 				{/if}
 			</button>
-			<button class="btn btn-secondary" onclick={previewColors}>
-				👁️ Preview
+			<button class="btn btn-secondary" onclick={testColors}>
+				🧪 Test
 			</button>
 			<button class="btn btn-outline" onclick={resetDefaults}>
 				🔄 Reset
