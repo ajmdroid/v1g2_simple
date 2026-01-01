@@ -27,6 +27,9 @@ code_review.txt
 *~
 *.bak
 
+# Archived docs (keep local, don't track)
+docs/ARCHIVE.md
+
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/
 /interface/.svelte-kit/
