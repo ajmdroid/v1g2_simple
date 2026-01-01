@@ -1220,7 +1220,10 @@ struct DisplayState {
 
 Based on code analysis:
 
-1. **Single-touch only:** Hardware limitation of AXS15231B touch controller.
+1. **Single-touch only (no multi-touch):** The AXS15231B touch controller only detects one finger at a time.
+   - Tap sequences work fine (single, double, triple-tap) — these are timed sequential touches
+   - Long-press/hold gestures work — duration-based detection
+   - What doesn't work: pinch-to-zoom, two-finger swipe, or any gesture requiring simultaneous touch points
    - Evidence: `touch_handler.h` comment: "Single-touch support (hardware limitation)"
    
 2. **No OTA updates:** Firmware must be flashed via USB.

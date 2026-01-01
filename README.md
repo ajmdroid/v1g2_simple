@@ -1,51 +1,42 @@
 # V1 Gen2 Simple Display
 
-A configurable touchscreen display for the Valentine1 Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
+A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-Overview:
+**Version:** 1.1.26
+
+**Features:**
 - Wireless BLE connection with fast reconnection
-- Real‑time alerts: bands, direction, signal strength
+- Real‑time alerts: bands, direction, signal strength, frequency
 - Modern SvelteKit web UI for configuration
 - Customizable colors for all display elements
-- Multi‑network WiFi with encrypted credentials
-- Internet passthrough via NAT/NAPT in AP+STA mode
 - Auto‑push profile slots with volume settings
-- Profile flash indicator on slot change
-- SD card alert logging with web viewer
+- Profile indicator with slot names on display
 - V1 profile manager (create, edit, push)
 - BLE proxy for simultaneous JBV1 app use
-- Security hardened: XSS fix, credential obfuscation
+- 4 color themes (Standard, High Contrast, Stealth, Business)
+- Touch‑to‑mute and triple‑tap profile cycling
 
-Disclaimer:
-- This is provided as‑is, with no warranty. Use at your own risk.
+**Disclaimer:** This is provided as‑is, with no warranty. Use at your own risk.
+
+📖 **For comprehensive documentation, see [docs/MANUAL.md](docs/MANUAL.md)**
 
 ---
 
 ## Recent Updates
 
-**January 2025 (v1.1.x):**
-- Profile flash on slot change (3s visual indicator)
+**January 2026 (v1.1.26):**
 - Hide battery icon option in Colors settings
 - Battery voltage calibration fix (4.1V max)
-- MANUAL.md documentation for all settings
-- Improved profile indicator timing
-- Bug fixes for display redraw logic
+- Comprehensive MANUAL.md technical documentation
+- Profile write verification with retry logic
+- Bug fixes for display redraw and profile indicator
 
-**December 2025:**
-- WiFi NAT/NAPT router: AP+STA passthrough
-- Multi‑network WiFi (up to 3 networks)
-- Security hardening (XSS fix, HTML escaping)
-- Credential obfuscation for WiFi passwords
+**Earlier (v1.1.x):**
 - SvelteKit web interface with daisyUI
 - V1 profile manager (create/edit/push profiles)
 - Per‑slot volume settings (main + mute)
 - Customizable slot names and colors
-- NTP time sync refactor
-- Faster BLE reconnection
-
-**Earlier:**
 - Touch‑to‑mute
-- Alert database with web viewer
 - Auto‑push profile system
 - BLE proxy compatibility
 
@@ -53,13 +44,12 @@ Disclaimer:
 
 ## Requirements
 
-Hardware:
+**Hardware:**
 - Waveshare ESP32‑S3‑Touch‑LCD‑3.49
 - USB‑C cable
-- Valentine1 Gen2 (BLE enabled)
-- Optional: microSD (FAT32) for alert logging
+- Valentine One Gen2 (BLE enabled)
 
-Software:
+**Software:**
 - Visual Studio Code + PlatformIO
 
 ---
@@ -215,15 +205,15 @@ When you first power on the display, it creates a WiFi access point:
 | **Password** | `valentine1` |
 | **Web Interface** | `http://192.168.35.5` |
 
-Security note: Change the default AP password after setup. Go to Settings → AP Password.
+**Security note:** Change the default AP password after setup via Settings → AP Password.
 
 1. **Connect your phone or computer** to the `V1-Display` WiFi network
 2. **Open a browser** and go to `http://192.168.35.5`
 3. **Configure your settings:**
-   - Choose WiFi mode (AP mode or connect to your home WiFi)
    - Set display brightness
    - Enable BLE proxy for JBV1 app compatibility
    - Adjust color theme
+   - Configure auto-push profiles
 
 ### Main Screen
 
@@ -231,40 +221,43 @@ The display shows real-time alerts from your V1 (640×172 AMOLED, landscape orie
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ 📶🔋                                                           │
+│ 1.             HIGHWAY                                         │
+│(bogey)       (profile)                                         │
 │    L      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                  ↑   │
-│   Ka                                                       →   │
+│   Ka                                                       ←→  │
 │    K               34.728                                  ↓   │
 │    X                                                           │
-│                                                           [1]  │
+│ 📶🔋                                                           │
 └────────────────────────────────────────────────────────────────┘
-Status    Bands     Signal bars / Frequency (GHz)     Arrows  Slot
 ```
 
 **Layout:**
-- **Top-left**: Status icons (WiFi signal, battery level) - can be hidden in settings
+- **Top-left**: Bogey counter (7-segment digit)
+- **Top-center**: Active profile name (e.g., "HIGHWAY")
 - **Left**: Band indicators (L/Ka/K/X) - light up when detected
-- **Center**: Signal strength bars (top), Frequency in GHz (bottom)
-- **Right**: Direction arrows (↑ front, → side, ↓ rear)
-- **Bottom-right**: Active profile slot indicator [1/2/3] - flashes for 3s on change
+- **Center**: Signal strength bars and frequency in GHz (7-segment style)
+- **Right**: Direction arrows (↑ front, ←→ side, ↓ rear)
+- **Bottom-left**: WiFi + battery icons (can be hidden in settings)
 
-Touch control: tap anywhere to mute/unmute.
+**Touch Controls:**
+- **Single tap**: Mute/unmute active alert
+- **Triple tap**: Cycle through profile slots (0→1→2→0)
+- **Long press**: Also cycles profiles
 
 ### Web Interface
 
-Access via `http://192.168.35.5` (or your configured IP):
+Access via `http://192.168.35.5`:
 
 **Home** (`/`):
-- V1 connection status and signal strength
+- V1 connection status
 - Quick access to all settings pages
-- System info (firmware version, uptime)
+- System info (firmware version)
 
 **Settings** (`/settings`):
-- WiFi configuration (AP/STA/AP+STA modes)
-- Multi-network support (up to 3 saved networks)
+- WiFi AP name and password
 - BLE proxy toggle for JBV1 app
 - Display on/off and resting mode
-- Brightness control
+- Brightness control (0-255)
 
 **Colors** (`/colors`):
 - Color theme selection (Standard, High Contrast, Stealth, Business)
@@ -285,73 +278,47 @@ Access via `http://192.168.35.5` (or your configured IP):
 - Create and edit V1 profiles
 - Configure bands, sensitivity, filters
 - Push profiles directly to V1
-- Manage multiple profiles
+- Pull current settings from V1
 
 **Devices** (`/devices`):
-- BLE device management
-- Connected device info
-- JBV1 proxy status
+- Known V1 device management
+- Friendly names for devices
 ---
 
 ## Features
 
-Color Themes:
-- Standard, High Contrast, Stealth, Business (subdued)
-Change via Settings → Color Theme.
+**Color Themes:**
+- Standard, High Contrast, Stealth, Business
+- Change via Settings → Color Theme
+- Full per-element color customization available
 
-Auto‑Push Profiles:
+**Auto‑Push Profiles:**
 
-Set up 3 profiles for different driving scenarios:
+Set up 3 profile slots for different driving scenarios:
 
-Slots:
-1. Default (everyday)
-2. Highway (sensitivity)
-3. Comfort (quieter)
+| Slot | Default Name | Purpose |
+|------|--------------|---------|
+| 0 | Default | Everyday driving |
+| 1 | Highway | High sensitivity |
+| 2 | Comfort | Quieter urban driving |
 
 **How to use:**
-1. **Create profiles first** in the V1 Profile Manager (`/v1settings`)
-2. Go to `/autopush` in the web interface
-3. Configure each slot with a saved profile and mode
-4. Click a **Quick-Push** button to activate and send to V1
+1. **Create profiles first** in the V1 Profiles page (`/profiles`)
+2. Go to Auto-Push (`/autopush`) in the web interface
+3. Configure each slot with a saved profile and V1 mode
+4. Set volume overrides if desired
 5. Enable **Auto-Push** to apply on connection
+6. Use **triple-tap** on display to cycle slots
 
-Display Modes:
+**Display Modes:**
 
-**Display On (Full Stealth):**
-- Display OFF = Everything black (even with alerts)
-- Display ON = Normal operation
+- **Display On/Off:** Full stealth mode (screen black even with alerts)
+- **Resting Display:** Shows idle animation or stays blank when no alerts
 
-**Resting Display:**
-- Resting ON = Shows logo when idle
-- Resting OFF = Blank screen until alert
-
-Alert Logging:
-
-With a microSD card inserted:
-- Automatically logs every alert
-- Stores: timestamp, band, frequency, direction, strength
-- Access logs via web interface (`/alerts`)
-- Format: FAT32 (not exFAT)
-
-WiFi Networking:
-
-**Multi-Network Support:**
-- Store up to 3 WiFi networks
-- Automatic failover between saved networks
-- Password obfuscation for credential security
-- Configure via web interface Settings page
-
-**Internet Passthrough (NAT/NAPT Router):**
-- Connect display to home/phone WiFi (Station mode)
-- Enable AP mode simultaneously
-- Display acts as router - shares internet to JBV1 app
-- Built-in NAT/NAPT forwarding
-- Useful for using JBV1 app while display is connected to external WiFi
-
-WiFi Modes:
-- AP Only — local network
-- Station Only — upstream
-- AP + Station — router passthrough
+**BLE Proxy (JBV1 Compatibility):**
+- Device advertises as "V1C-LE-S3" when connected to V1
+- JBV1 or V1 Companion app can connect through display
+- Simultaneous display + app use
 
 ---
 
@@ -409,34 +376,12 @@ Or for firmware-only changes:
 
 **Can't find V1-Display network:**
 - Wait 30 seconds after boot
-- Check WiFi mode is "AP" or "AP+STA" in settings
-- Power cycle the display
-
-**Can't connect to saved WiFi network:**
-- Verify network is in range and password is correct
-- Multi-network will try all 3 saved networks in order
-- Check serial monitor for connection attempts
-- Remove and re-add network if issues persist
-
-**Internet passthrough not working:**
-- Ensure display is connected to WiFi with internet (Station mode)
-- AP mode must also be enabled (AP+STA mode)
-- NAT is enabled automatically when both modes active
-- Devices connected to V1-Display AP should get internet access
 - Power cycle the display
 
 **Can't access web interface:**
-- Verify you're on the correct IP (default: 192.168.35.5)
-- Try `http://` not `https://`
+- Verify you're connected to V1-Display WiFi
+- Use `http://192.168.35.5` (not https)
 - Clear browser cache
-
-### SD Card
-
-**Logs not saving:**
-- Format card as FAT32 (not exFAT or NTFS)
-- Use 32GB or smaller card
-- Check card is fully inserted
-- Try a different brand (SanDisk works well)
 
 ---
 
@@ -445,11 +390,11 @@ Or for firmware-only changes:
 ### Hardware
 
 **Waveshare ESP32-S3-Touch-LCD-3.49:**
-- **CPU**: ESP32-S3 (240MHz, 8MB Flash, 2MB PSRAM)
-- **Display**: 172×640 AMOLED (AXS15231B controller, QSPI interface)
-- **Touch**: AXS15231B integrated capacitive touch (I2C 0x3B)
-- **SD Card**: SDMMC 1-bit mode (pins: CLK=41, CMD=39, D0=40)
-- **Backlight**: Inverted PWM on GPIO 8 (0=full bright, 255=off)
+- **CPU**: ESP32-S3 @ 240MHz, 16MB Flash, 8MB PSRAM
+- **Display**: 640×172 AMOLED (AXS15231B controller, QSPI interface)
+- **Touch**: AXS15231B integrated capacitive touch (single-touch only)
+- **Storage**: LittleFS (internal flash)
+- **Battery**: Optional LiPo via TCA9554 power management
 
 See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
 
@@ -535,10 +480,10 @@ This project would not exist without:
 
 ## 🔗 Links
 
+- **Documentation**: [docs/MANUAL.md](docs/MANUAL.md) - Comprehensive technical manual
 - **Hardware**: [Waveshare ESP32-S3-Touch-LCD-3.49 on Amazon](https://www.amazon.com/dp/B0FQM41PGX)
 - **Kenny's Project**: [V1G2-T4S3](https://github.com/kennygarreau/v1g2-t4s3)
 - **Valentine Research**: [valentineresearch.com](https://www.valentineresearch.com/)
-- **Documentation**: See `docs/` folder for detailed guides
 
 ---
 
@@ -551,8 +496,3 @@ This project would not exist without:
 **Questions?** Open an issue on GitHub. I'll help when I can, but remember - personal project, no guarantees! 😊
 
 **Enjoy your customizable V1 display!** 🎉
-
-- [V1 Gen2 Official Site](https://www.valentine1.com/)
-- [V1 Tech Display](https://www.valentine1.com/v1-detectors/tech-display/)
-- [ESP32-S3 Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/)
-- [PlatformIO Documentation](https://docs.platformio.org/)
