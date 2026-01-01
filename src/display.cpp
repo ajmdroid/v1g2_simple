@@ -85,8 +85,6 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_ARROW getColorPalette().colorArrow
 #define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
 
-static bool profileHoldDueToAlert = false;  // Pin profile indicator while any alert/band is active
-
 // ============================================================================
 // Cross-platform text drawing helpers
 // TFT_eSPI has setTextDatum() and drawString() 
@@ -917,7 +915,6 @@ void V1Display::showDisconnected() {
 void V1Display::showResting() {
     Serial.println("showResting() called");
     Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
-    profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -960,7 +957,6 @@ void V1Display::showResting() {
 
 void V1Display::showScanning() {
     Serial.println("showScanning() called");
-    profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -1165,7 +1161,6 @@ void V1Display::update(const DisplayState& state) {
         drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, state.muted);
         drawDirectionArrow(state.arrows, state.muted);
         drawMuteIcon(state.muted);
-        profileHoldDueToAlert = (state.activeBands != BAND_NONE);
         drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1191,7 +1186,6 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
     drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, mutedFlag);
     drawDirectionArrow(alert.direction, mutedFlag);
     drawMuteIcon(mutedFlag);
-    profileHoldDueToAlert = (bandMask != BAND_NONE);
     drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1243,7 +1237,6 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     drawDirectionArrow(state.arrows, state.muted);
     
     drawMuteIcon(state.muted);
-    profileHoldDueToAlert = (bandMask != BAND_NONE);
     drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
