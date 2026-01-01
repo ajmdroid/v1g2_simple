@@ -4,7 +4,6 @@
  */
 
 #include "display.h"
-#include "serial_logger.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include "v1simple_logo.h"  // Splash screen image (640x172)
@@ -262,37 +261,37 @@ V1Display::~V1Display() {
 }
 
 bool V1Display::begin() {
-    SerialLog.println("Display init start...");
-    SerialLog.print("Board: ");
-    SerialLog.println(DISPLAY_NAME);
+    Serial.println("Display init start...");
+    Serial.print("Board: ");
+    Serial.println(DISPLAY_NAME);
     
 #if PIN_POWER_ON >= 0
     // Power was held low in setup(); bring it up now
     digitalWrite(PIN_POWER_ON, HIGH);
-    SerialLog.println("Power ON");
+    Serial.println("Power ON");
     delay(200);
 #endif
     
     // Initialize display
-    SerialLog.println("Calling display init...");
+    Serial.println("Calling display init...");
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Arduino_GFX initialization for Waveshare 3.49"
-    SerialLog.println("Initializing Arduino_GFX for Waveshare 3.49...");
-    SerialLog.printf("Pins: CS=%d, SCK=%d, D0=%d, D1=%d, D2=%d, D3=%d, RST=%d, BL=%d\n",
+    Serial.println("Initializing Arduino_GFX for Waveshare 3.49...");
+    Serial.printf("Pins: CS=%d, SCK=%d, D0=%d, D1=%d, D2=%d, D3=%d, RST=%d, BL=%d\n",
                   LCD_CS, LCD_SCLK, LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_RST, LCD_BL);
     
     // Configure backlight pin
-    SerialLog.println("Configuring backlight...");
+    Serial.println("Configuring backlight...");
     // Waveshare 3.49" has INVERTED backlight PWM:
     // 0 = full brightness, 255 = off
     pinMode(LCD_BL, OUTPUT);
     analogWrite(LCD_BL, 255);  // Start with backlight off (inverted: 255=off)
-    SerialLog.println("Backlight configured, set to 255 (off, inverted)");
+    Serial.println("Backlight configured, set to 255 (off, inverted)");
     
     // Manual RST toggle with Waveshare timing BEFORE creating bus
     // This is critical - Waveshare examples do: HIGH(30ms) -> LOW(250ms) -> HIGH(30ms)
-    SerialLog.println("Manual RST toggle (Waveshare timing)...");
+    Serial.println("Manual RST toggle (Waveshare timing)...");
     pinMode(LCD_RST, OUTPUT);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
@@ -300,10 +299,10 @@ bool V1Display::begin() {
     delay(250);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
-    SerialLog.println("RST toggle complete");
+    Serial.println("RST toggle complete");
     
     // Create QSPI bus
-    SerialLog.println("Creating QSPI bus...");
+    Serial.println("Creating QSPI bus...");
     bus = new Arduino_ESP32QSPI(
         LCD_CS,    // CS
         LCD_SCLK,  // SCK
@@ -313,14 +312,14 @@ bool V1Display::begin() {
         LCD_DATA3  // D3
     );
     if (!bus) {
-        SerialLog.println("ERROR: Failed to create bus!");
+        Serial.println("ERROR: Failed to create bus!");
         return false;
     }
-    SerialLog.println("QSPI bus created");
+    Serial.println("QSPI bus created");
     
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
-    SerialLog.println("Creating AXS15231B panel...");
+    Serial.println("Creating AXS15231B panel...");
     gfxPanel = new Arduino_AXS15231B(
         bus,               // bus
         GFX_NOT_DEFINED,   // RST - we already did manual reset
@@ -336,39 +335,39 @@ bool V1Display::begin() {
         sizeof(axs15231b_180640_init_operations)
     );
     if (!gfxPanel) {
-        SerialLog.println("ERROR: Failed to create panel!");
+        Serial.println("ERROR: Failed to create panel!");
         return false;
     }
-    SerialLog.println("AXS15231B panel created with init_operations");
+    Serial.println("AXS15231B panel created with init_operations");
     
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
-    SerialLog.println("Creating canvas 172x640 with rotation=1 (landscape)...");
+    Serial.println("Creating canvas 172x640 with rotation=1 (landscape)...");
     tft = new Arduino_Canvas(172, 640, gfxPanel, 0, 0, 1);
     
     if (!tft) {
-        SerialLog.println("ERROR: Failed to create canvas!");
+        Serial.println("ERROR: Failed to create canvas!");
         return false;
     }
-    SerialLog.println("Canvas created");
+    Serial.println("Canvas created");
     
-    SerialLog.println("Calling tft->begin()...");
+    Serial.println("Calling tft->begin()...");
     if (!tft->begin()) {
-        SerialLog.println("ERROR: tft->begin() failed!");
+        Serial.println("ERROR: tft->begin() failed!");
         return false;
     }
-    SerialLog.println("tft->begin() succeeded");
-    SerialLog.printf("Canvas size: width=%d, height=%d\n", tft->width(), tft->height());
+    Serial.println("tft->begin() succeeded");
+    Serial.printf("Canvas size: width=%d, height=%d\n", tft->width(), tft->height());
     
-    SerialLog.println("Filling screen with black...");
+    Serial.println("Filling screen with black...");
     tft->fillScreen(COLOR_BLACK);
     tft->flush();
-    SerialLog.println("Screen filled and flushed");
+    Serial.println("Screen filled and flushed");
     
     // Turn on backlight (inverted: 0 = full brightness)
-    SerialLog.println("Turning on backlight (inverted PWM)...");
+    Serial.println("Turning on backlight (inverted PWM)...");
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
     delay(100);
-    SerialLog.println("Backlight ON");
+    Serial.println("Backlight ON");
     
 #else
     // TFT_eSPI initialization
@@ -391,11 +390,11 @@ bool V1Display::begin() {
     TFT_CALL(setTextSize)(2);
 #endif
 
-    SerialLog.println("Display initialized successfully!");
-    SerialLog.print("Screen: ");
-    SerialLog.print(SCREEN_WIDTH);
-    SerialLog.print("x");
-    SerialLog.println(SCREEN_HEIGHT);
+    Serial.println("Display initialized successfully!");
+    Serial.print("Screen: ");
+    Serial.print(SCREEN_WIDTH);
+    Serial.print("x");
+    Serial.println(SCREEN_HEIGHT);
     
     // Load color theme from settings
     updateColorTheme();
@@ -823,43 +822,20 @@ void V1Display::drawWiFiIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    bool isConnected = wifiManager.isConnected();
-    
-    // Track connection state changes for timeout
-    if (isConnected && !wifiWasConnected) {
-        // Just connected - start the display timer
-        wifiConnectedTime = millis();
-        wifiWasConnected = true;
-    } else if (!isConnected) {
-        wifiWasConnected = false;
-    }
-    
-    // Check if we should hide the WiFi icon
-    if (s.hideWifiIcon && isConnected) {
-        // Hide after timeout
-        if (millis() - wifiConnectedTime > HIDE_TIMEOUT_MS) {
-            // Clear the WiFi icon area and return
-            const int wifiX = 14;
-            const int wifiSize = 20;
-            const int battY = SCREEN_HEIGHT - 14 - 8;
-            const int wifiY = battY - wifiSize - 6;
-            FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
-            return;
-        }
-    }
-    
-    // Only show WiFi icon when connected to a STA network (internet/NTP)
-    if (!isConnected) {
-        return;
-    }
+    // Show WiFi icon when Setup Mode (AP) is active
+    bool isSetupMode = wifiManager.isSetupModeActive();
     
     // WiFi icon position - above battery icon, bottom left
-    // Battery is at Y = SCREEN_HEIGHT - 14 - 8 = SCREEN_HEIGHT - 22
-    // Put WiFi icon above that with some spacing
-    const int wifiX = 14;   // Align with battery left edge
-    const int wifiSize = 20; // Overall icon size
-    const int battY = SCREEN_HEIGHT - 14 - 8;  // Battery Y position
-    const int wifiY = battY - wifiSize - 6;    // Above battery with 6px gap
+    const int wifiX = 14;
+    const int wifiSize = 20;
+    const int battY = SCREEN_HEIGHT - 14 - 8;
+    const int wifiY = battY - wifiSize - 6;
+    
+    if (!isSetupMode) {
+        // Clear the WiFi icon area when Setup Mode is off
+        FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
+        return;
+    }
     
     // Get WiFi icon color from settings (default cyan 0x07FF)
     uint16_t wifiColor = dimColor(s.colorWiFiIcon);
@@ -933,8 +909,8 @@ void V1Display::showDisconnected() {
 }
 
 void V1Display::showResting() {
-    SerialLog.println("showResting() called");
-    SerialLog.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+    Serial.println("showResting() called");
+    Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
@@ -946,14 +922,14 @@ void V1Display::showResting() {
     drawTopCounter('0', false, true);
     
     // Band indicators all dimmed (no active bands)
-    SerialLog.println("Drawing band indicators...");
+    Serial.println("Drawing band indicators...");
     drawBandIndicators(0, false);
     
     // Signal bars all empty
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     
     // Direction arrows all dimmed
-    SerialLog.println("Drawing arrows...");
+    Serial.println("Drawing arrows...");
     drawDirectionArrow(DIR_NONE, false);
     
     // Frequency display showing dashes
@@ -973,11 +949,11 @@ void V1Display::showResting() {
     tft->flush();
 #endif
     
-    SerialLog.println("showResting() complete");
+    Serial.println("showResting() complete");
 }
 
 void V1Display::showScanning() {
-    SerialLog.println("showScanning() called");
+    Serial.println("showScanning() called");
     profileHoldDueToAlert = false;
     
     // Clear and draw the base frame
@@ -1078,7 +1054,7 @@ void V1Display::showBootSplash() {
 #else
     digitalWrite(TFT_BL, HIGH);
 #endif
-    SerialLog.println("Backlight ON (post-splash, inverted)");
+    Serial.println("Backlight ON (post-splash, inverted)");
 }
 
 void V1Display::showShutdown() {
@@ -1634,5 +1610,5 @@ void V1Display::updateColorTheme() {
     // Load the current theme from settings and update palette
     ColorTheme theme = settingsManager.get().colorTheme;
     currentPalette = ColorThemes::getPalette(theme);
-    SerialLog.printf("Color theme updated: %s\n", ColorThemes::getThemeName(theme));
+    Serial.printf("Color theme updated: %s\n", ColorThemes::getThemeName(theme));
 }

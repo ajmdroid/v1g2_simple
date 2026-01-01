@@ -27,16 +27,16 @@
 #include "display.h"
 #include "wifi_manager.h"
 #include "settings.h"
-#include "alert_logger.h"
-#include "serial_logger.h"
-#include "time_manager.h"
-#include "alert_db.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "battery_manager.h"
+#include "storage_manager.h"
 #include "../include/config.h"
+#define SerialLog Serial  // Alias: serial logger removed; use Serial directly
+#include <FS.h>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -345,78 +345,15 @@ void onV1Connected() {
                       s.activeSlot, activeSlotIndex);
     }
     
-    // Save this V1's address to SD card cache if not already present
-    // Also check for device-specific default profile
-    int deviceDefaultSlot = -1;  // -1 means use global setting
-    
-    if (alertLogger.isReady()) {
-        String connectedAddr = bleClient.getConnectedAddress().toString().c_str();
-        if (connectedAddr.length() == 17) {
-            fs::FS* fs = alertLogger.getFilesystem();
-            
-            // Check if address already exists in known_v1.txt
-            bool addressExists = false;
-            File file = fs->open("/known_v1.txt", FILE_READ);
-            if (file) {
-                while (file.available()) {
-                    String line = file.readStringUntil('\n');
-                    line.trim();
-                    if (line == connectedAddr) {
-                        addressExists = true;
-                        break;
-                    }
-                }
-                file.close();
-            }
-            
-            // Append if new
-            if (!addressExists) {
-                File file = fs->open("/known_v1.txt", FILE_APPEND);
-                if (file) {
-                    file.println(connectedAddr);
-                    file.close();
-                    SerialLog.printf("[V1Cache] Added new V1 address: %s\n", connectedAddr.c_str());
-                } else {
-                    SerialLog.println("[V1Cache] Failed to open known_v1.txt for writing");
-                }
-            }
-            
-            // Check for device-specific default profile in known_v1_profiles.txt
-            File profileFile = fs->open("/known_v1_profiles.txt", FILE_READ);
-            if (profileFile) {
-                while (profileFile.available()) {
-                    String line = profileFile.readStringUntil('\n');
-                    line.trim();
-                    int sep = line.indexOf('|');
-                    if (sep > 0) {
-                        String addr = line.substring(0, sep);
-                        if (addr == connectedAddr) {
-                            deviceDefaultSlot = line.substring(sep + 1).toInt();
-                            SerialLog.printf("[AutoPush] Found device-specific profile: slot %d\n", deviceDefaultSlot);
-                            break;
-                        }
-                    }
-                }
-                profileFile.close();
-            }
-        }
-    }
-    
     if (!s.autoPushEnabled) {
         SerialLog.println("[AutoPush] Disabled, skipping");
         return;
     }
 
-    // Use device-specific slot if set (1-3 in file = slots 0-2), otherwise global activeSlot
-    int slotToUse = activeSlotIndex;
-    if (deviceDefaultSlot >= 1 && deviceDefaultSlot <= 3) {
-        slotToUse = deviceDefaultSlot - 1;  // Convert 1-3 file value to 0-2 index
-        SerialLog.printf("[AutoPush] Device-specific override: file value %d -> slot index %d\n", deviceDefaultSlot, slotToUse);
-    } else {
-        SerialLog.printf("[AutoPush] Using global activeSlot: %d\n", slotToUse);
-    }
+    // Use global activeSlot
+    SerialLog.printf("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
 
-    startAutoPush(slotToUse);
+    startAutoPush(activeSlotIndex);
 }
 
 #ifdef REPLAY_MODE
@@ -618,6 +555,7 @@ void processBLEData() {
             SerialLog.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
                 userBytes[0] & 0x01, (userBytes[0] >> 1) & 0x01, 
                 (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
+            bleClient.onUserBytesReceived(userBytes);
             v1ProfileManager.setCurrentSettings(userBytes);
             SerialLog.println("Received V1 user bytes!");
             rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
@@ -767,13 +705,6 @@ void processBLEData() {
                 // Update display FIRST for lowest latency
                 display.update(priority, state, alertCount);
                 
-                // Logging happens after display update (lower priority than visual feedback)
-                // Use timeManager for reliable timestamps (returns 0 if time not set)
-                if (timeManager.isTimeValid()) {
-                    time_t currentTime = timeManager.now();
-                    alertDB.setTimestampUTC((uint32_t)currentTime);
-                }
-                alertDB.logAlert(priority, state, alertCount);
             } else {
                 // No alerts - clear mute override only after timeout has passed
                 if (localMuteActive) {
@@ -801,13 +732,6 @@ void processBLEData() {
                 }
                 
                 display.update(state);
-                
-                // Update timestamp before logging (ensures real-time accuracy)
-                if (timeManager.isTimeValid()) {
-                    time_t currentTime = timeManager.now();
-                    alertDB.setTimestampUTC((uint32_t)currentTime);
-                }
-                alertDB.logClear();
             }
         }
     }
@@ -900,70 +824,15 @@ void setup() {
     
     lastLvTick = millis();
 
-    // Mount SD card for alert logging (non-fatal if missing)
-    alertLogger.begin();
-    
-    // Initialize serial logger to SD card (for debugging in the field)
-    SerialLog.begin();
-    if (SerialLog.isEnabled()) {
-        SerialLog.println("[Setup] Serial logging to SD enabled");
+    // Mount storage (SD if available, else LittleFS) for profiles and settings
+    SerialLog.println("[Setup] Mounting storage...");
+    if (storageManager.begin()) {
+        SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
+        v1ProfileManager.begin(storageManager.getFilesystem());
+    } else {
+        SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
-    
-    // Initialize time manager (NTP-only, no SD card dependency)
-    timeManager.begin(alertLogger.isReady() ? alertLogger.getFilesystem() : nullptr);
-    
-    // Initialize SQLite alert database (uses same SD card)
-    if (alertLogger.isReady()) {
-        if (alertDB.begin()) {
-            SerialLog.printf("[Setup] AlertDB ready - %s\n", alertDB.statusText().c_str());
-            SerialLog.printf("[Setup] Total alerts in DB: %lu\n", alertDB.getTotalAlerts());
-        } else {
-            SerialLog.println("[Setup] AlertDB init failed - using CSV fallback");
-        }
-    }
-    
-    // Initialize V1 profile manager (uses alert logger's filesystem)
-    if (alertLogger.isReady()) {
-        v1ProfileManager.begin(alertLogger.getFilesystem());
-    }
-    
-    // Load known V1 addresses from SD card for fast reconnect
-    std::vector<std::string> knownV1Addresses;
-    bool skipFastReconnect = false;
-    
-    // After firmware flash, delete cache and skip fast reconnect to force fresh connection
-    if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
-        SerialLog.println("[V1Cache] Firmware flash detected - clearing V1 cache for fresh connection");
-        if (alertLogger.isReady()) {
-            fs::FS* fs = alertLogger.getFilesystem();
-            if (fs->exists("/known_v1.txt")) {
-                fs->remove("/known_v1.txt");
-                SerialLog.println("[V1Cache] Deleted known_v1.txt");
-            }
-        }
-        skipFastReconnect = true;
-    }
-    
-    if (!skipFastReconnect && alertLogger.isReady()) {
-        fs::FS* fs = alertLogger.getFilesystem();
-        File file = fs->open("/known_v1.txt", FILE_READ);
-        if (file) {
-            SerialLog.println("[V1Cache] Loading known V1 addresses from SD...");
-            while (file.available()) {
-                String line = file.readStringUntil('\n');
-                line.trim();
-                if (line.length() == 17 && line.indexOf(':') > 0) {  // MAC format: aa:bb:cc:dd:ee:ff
-                    knownV1Addresses.push_back(line.c_str());
-                    SerialLog.printf("[V1Cache]   - %s\n", line.c_str());
-                }
-            }
-            file.close();
-            SerialLog.printf("[V1Cache] Loaded %d known V1 address(es)\n", knownV1Addresses.size());
-        } else {
-            SerialLog.println("[V1Cache] No known_v1.txt found (will be created on first connection)");
-        }
-    }
-    
+
     SerialLog.println("==============================");
     SerialLog.println("WiFi Configuration:");
     SerialLog.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
@@ -1011,13 +880,10 @@ void setup() {
             }
             return false;
         });
-        
-        // Set up filesystem callback for V1 device cache
+
+        // Provide filesystem access for web profile/device APIs
         wifiManager.setFilesystemCallback([]() -> fs::FS* {
-            if (alertLogger.isReady()) {
-                return alertLogger.getFilesystem();
-            }
-            return nullptr;
+            return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
         });
         
         SerialLog.println("WiFi initialized");
@@ -1044,36 +910,12 @@ void setup() {
         while (1) delay(1000);
     }
     
-    // Try fast reconnect with each known V1 address from SD card (skip after firmware flash)
-    bool fastReconnectAttempted = false;
-    if (!skipFastReconnect) {
-        for (const auto& addr : knownV1Addresses) {
-            SerialLog.printf("[FastReconnect] Trying %s...\n", addr.c_str());
-            bleClient.setTargetAddress(NimBLEAddress(addr, BLE_ADDR_PUBLIC));
-            
-            if (bleClient.fastReconnect()) {
-                SerialLog.printf("[FastReconnect] Connected to %s!\n", addr.c_str());
-                fastReconnectAttempted = true;
-                break;
-            } else {
-                SerialLog.printf("[FastReconnect] Failed for %s, trying next...\n", addr.c_str());
-            }
-        }
-    } else {
-        SerialLog.println("[FastReconnect] Skipped after firmware flash");
-    }
-    
-    // If fast reconnect worked, skip normal scan
-    if (fastReconnectAttempted && bleClient.isConnected()) {
-        SerialLog.println("[FastReconnect] Success - skipping scan");
-    } else {
-        // All cached addresses failed, start normal scanning
-        SerialLog.println("[FastReconnect] All known addresses failed, starting general scan for V1...");
-        if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
-            SerialLog.println("BLE scan failed to start!");
-            display.showDisconnected();
-            while (1) delay(1000);
-        }
+    // Start normal scanning
+    SerialLog.println("Starting BLE scan for V1...");
+    if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
+        SerialLog.println("BLE scan failed to start!");
+        display.showDisconnected();
+        while (1) delay(1000);
     }
     
     // Register data callback
@@ -1233,9 +1075,6 @@ void loop() {
 
     // Process WiFi/web server
     wifiManager.process();
-    
-    // Update time manager (handles periodic NTP re-sync)
-    timeManager.update();
     
     // Update display periodically
     unsigned long now = millis();

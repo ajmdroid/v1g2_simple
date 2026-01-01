@@ -10,6 +10,7 @@
 #include <esp_adc/adc_cali.h>
 #include <esp_adc/adc_cali_scheme.h>
 #include <driver/gpio.h>
+#include <esp_sleep.h>
 
 // Only compile for Waveshare 3.49 board
 #if defined(DISPLAY_WAVESHARE_349)
@@ -418,11 +419,8 @@ bool BatteryManager::latchPowerOn() {
 }
 
 bool BatteryManager::powerOff() {
-    if (!onBattery) {
-        Serial.println("[Battery] Cannot power off - not on battery");
-        return false;
-    }
-    
+    // Even if USB is present, attempt a graceful shutdown and drop the latch.
+    // This covers cases where onBattery was mis-detected (e.g., button held during boot).
     Serial.println("[Battery] Initiating graceful shutdown...");
     
     // Step 1: Save settings to ensure state is preserved
@@ -442,11 +440,20 @@ bool BatteryManager::powerOff() {
         analogWrite(LCD_BL, i);  // Inverted: 255 = off
         delay(10);
     }
+
+    // Ensure screen is fully blanked before final power cut / deep sleep
+    display.clear();
+    analogWrite(LCD_BL, 255);  // Backlight off (inverted)
+    pinMode(LCD_BL, OUTPUT);
+    digitalWrite(LCD_BL, HIGH);  // Force off (inverted backlight)
+    delay(50);
     
-    // Step 5: Cut power
+    // Step 5: Cut power and enter deep sleep as a hard stop (covers USB power cases)
     Serial.println("[Battery] Powering OFF...");
-    delay(100);  // Let serial flush
-    return setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);
+    bool latchCut = setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);
+    delay(200);  // Let serial flush and latch settle
+    esp_deep_sleep_start();  // Does not return
+    return latchCut;
 }
 
 bool BatteryManager::isPowerButtonPressed() {
@@ -455,8 +462,11 @@ bool BatteryManager::isPowerButtonPressed() {
 }
 
 bool BatteryManager::processPowerButton() {
-    if (!onBattery) return false;  // Only process when on battery
-    
+    // Allow shutdown as long as a battery is present; onBattery can be wrong if button was held during boot.
+    if (!hasBattery()) return false;
+
+    // Note: GPIO 0 (BOOT pin) cannot be read as GPIO on ESP32 - disabled BOOT+PWR check
+
     bool pressed = isPowerButtonPressed();
     unsigned long now = millis();
     

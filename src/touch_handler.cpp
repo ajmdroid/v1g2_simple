@@ -5,7 +5,6 @@
  */
 
 #include "touch_handler.h"
-#include "serial_logger.h"
 
 // AXS15231B touch read command sequence
 static const uint8_t AXS_TOUCH_READ_CMD[] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0};
@@ -23,7 +22,7 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     i2cAddr = addr;
     rstPin = rst;
     
-    SerialLog.printf("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
+    Serial.printf("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
     
     // Initialize I2C with specified pins
     Wire.begin(sda, scl);
@@ -37,21 +36,21 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     }
     
     // Try to communicate with touch controller
-    SerialLog.println("[Touch] Scanning for device...");
+    Serial.println("[Touch] Scanning for device...");
     Wire.beginTransmission(i2cAddr);
     uint8_t error = Wire.endTransmission();
     
     if (error == 0) {
-        SerialLog.printf("[Touch] Device found at 0x%02X\n", i2cAddr);
+        Serial.printf("[Touch] Device found at 0x%02X\n", i2cAddr);
         
         // Try to read status register
         uint8_t status = readRegister(AXS_REG_STATUS);
-        SerialLog.printf("[Touch] Status register: 0x%02X\n", status);
+        Serial.printf("[Touch] Status register: 0x%02X\n", status);
         
-        SerialLog.printf("[Touch] Controller initialized successfully\n");
+        Serial.printf("[Touch] Controller initialized successfully\n");
         return true;
     } else {
-        SerialLog.printf("[Touch] ERROR: Device not found at 0x%02X (error=%d)\n", i2cAddr, error);
+        Serial.printf("[Touch] ERROR: Device not found at 0x%02X (error=%d)\n", i2cAddr, error);
         return false;
     }
 }
@@ -59,15 +58,15 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
 void TouchHandler::reset() {
     if (rstPin >= 0) {
         pinMode(rstPin, OUTPUT);
-        SerialLog.printf("[Touch] Reset: Setting GPIO%d LOW\n", rstPin);
+        Serial.printf("[Touch] Reset: Setting GPIO%d LOW\n", rstPin);
         digitalWrite(rstPin, LOW);
         delay(30);
-        SerialLog.printf("[Touch] Reset: Setting GPIO%d HIGH\n", rstPin);
+        Serial.printf("[Touch] Reset: Setting GPIO%d HIGH\n", rstPin);
         digitalWrite(rstPin, HIGH);
         delay(50);
-        SerialLog.println("[Touch] Reset complete");
+        Serial.println("[Touch] Reset complete");
     } else {
-        SerialLog.println("[Touch] Reset pin not configured");
+        Serial.println("[Touch] Reset pin not configured");
     }
 }
 
@@ -125,7 +124,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     if (!touchActive) {
         touchActive = true;
         lastTouchTime = now;
-        SerialLog.printf("[Touch] *** TAP DETECTED at (%d, %d) ***\n", x, y);
+        Serial.printf("[Touch] *** TAP DETECTED at (%d, %d) ***\n", x, y);
         return true;  // New touch event
     }
     
@@ -138,7 +137,7 @@ uint8_t TouchHandler::readRegister(uint8_t reg) {
     uint8_t err = Wire.endTransmission(false);  // Send restart
     
     if (err != 0) {
-        SerialLog.printf("[Touch] I2C error writing reg 0x%02X: %d\n", reg, err);
+        Serial.printf("[Touch] I2C error writing reg 0x%02X: %d\n", reg, err);
         return 0;
     }
     
@@ -156,7 +155,7 @@ void TouchHandler::readRegisters(uint8_t reg, uint8_t* buf, size_t len) {
     uint8_t err = Wire.endTransmission(false);  // Send restart
     
     if (err != 0) {
-        SerialLog.printf("[Touch] I2C error writing start reg 0x%02X: %d\n", reg, err);
+        Serial.printf("[Touch] I2C error writing start reg 0x%02X: %d\n", reg, err);
         memset(buf, 0, len);
         return;
     }
@@ -169,6 +168,6 @@ void TouchHandler::readRegisters(uint8_t reg, uint8_t* buf, size_t len) {
     }
     
     if (bytesRead != len) {
-        SerialLog.printf("[Touch] Incomplete read: got %d/%d bytes from reg 0x%02X\n", bytesRead, len, reg);
+        Serial.printf("[Touch] Incomplete read: got %d/%d bytes from reg 0x%02X\n", bytesRead, len, reg);
     }
 }

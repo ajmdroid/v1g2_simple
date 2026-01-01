@@ -185,7 +185,6 @@
 				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
 				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
 				<a href="/devices" class="btn btn-secondary btn-sm">📡 Saved V1s</a>
-				<a href="/alerts" class="btn btn-outline btn-sm">📋 Alerts</a>
 			</div>
 		</div>
 	</div>

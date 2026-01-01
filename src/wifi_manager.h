@@ -1,6 +1,6 @@
 /**
  * WiFi Manager for V1 Gen2 Display
- * Handles WiFi AP/STA modes and web server
+ * AP-only: always-on access point serving the local UI/API
  */
 
 #ifndef WIFI_MANAGER_H
@@ -12,31 +12,30 @@
 #include <WebServer.h>
 #include "settings.h"
 
-// Constants
-constexpr unsigned long STA_CONNECTION_RETRY_INTERVAL_MS = 3000;
-constexpr unsigned long STA_CONNECTION_TIMEOUT_MS = 5000;
-constexpr int NTP_SYNC_RETRY_COUNT = 10;
-constexpr unsigned long NTP_SYNC_RETRY_DELAY_MS = 500;
-
-#include <WiFiMulti.h>
+// Setup Mode state (AP is always on)
+enum SetupModeState {
+    SETUP_MODE_OFF = 0,
+    SETUP_MODE_AP_ON,
+};
 
 class WiFiManager {
 public:
     WiFiManager();
     
-    // Initialize WiFi based on settings
-    bool begin();
+    // AP control (AP-only for configuration)
+    bool startSetupMode();      // Start AP for configuration (idempotent)
+    bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON; }
     
     // Process web server requests (call in loop)
     void process();
     
-    // Stop WiFi
-    void stop();
+    // Legacy compatibility (redirects to Setup Mode)
+    bool begin() { return startSetupMode(); }
     
     // Status
-    bool isConnected() const;
-    bool isAPActive() const;
-    String getIPAddress() const;
+    bool isConnected() const { return false; }  // No STA mode
+    bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON; }
+    String getIPAddress() const { return ""; }  // No STA
     String getAPIPAddress() const;
     
     // Callbacks for alert data (to display on web page)
@@ -48,17 +47,21 @@ public:
     
     // Callback for filesystem access (SD card)
     void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
+    
+    // Callback for push executor status (auto-push)
+    void setPushStatusCallback(std::function<String()> callback) { getPushStatusJson = callback; }
+    
+    // Web activity tracking (for WiFi priority mode)
+    void markUiActivity();  // Call on every HTTP request
+    bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
 
 private:
     WebServer server;
-    WiFiMulti wifiMulti;
-    bool apActive;
-    bool staConnected;
-    bool staEnabledByConfig;  // Track if STA was enabled (by config or auto-enable)
-    bool natEnabled;
-    unsigned long lastStaRetry;
-    bool timeInitialized;
-    String connectedSSID;
+    SetupModeState setupModeState;
+    unsigned long setupModeStartTime;
+    
+    // Web activity tracking for WiFi priority mode
+    unsigned long lastUiActivityMs = 0;
     
     // Rate limiting
     static constexpr int RATE_LIMIT_WINDOW_MS = 1000;  // 1 second window
@@ -71,27 +74,18 @@ private:
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
     std::function<fs::FS*()> getFilesystem;
+    std::function<String()> getPushStatusJson;
     
     // Setup functions
     void setupAP();
-    void setupSTA();
-    int populateStaNetworks();
-    void checkSTAConnection();
     void setupWebServer();
-    void initializeTime();
-    void enableNAT();
     
     // Web handlers
     void handleStatus();
     void handleSettingsApi();
     void handleSettingsSave();
-    void handleTimeSettingsSave();
     void handleDarkMode();
     void handleMute();
-    void handleLogsData();
-    void handleLogsClear();
-    void handleSerialLog();
-    void handleSerialLogClear();
     void handleV1ProfilesList();
     void handleV1ProfileGet();
     void handleV1ProfileSave();
@@ -103,17 +97,24 @@ private:
     void handleV1DeviceNameSave();
     void handleV1DeviceProfileSave();
     void handleV1DeviceDelete();
+    
+    // Failsafe UI and new API endpoints (PHASE A)
+    void handleApiStatus();           // GET /api/status - JSON status
+    void handleApiProfilePush();      // POST /api/profile/push - queue profile push
+    void handleApiWiFiOff();          // POST /api/wifi/off - disable WiFi and reboot
+    void handleFailsafeUI();          // GET / (failsafe) - serve minimal HTML
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
     void handleAutoPushPushNow();
+    void handleAutoPushStatus();
     void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
-    void handleTimeSettingsApi();
-    void handleSerialLogApi();
-    void handleSerialLogToggle();
-    void handleSerialLogContent();
+    void handleDebugMetrics();
+    void handleDebugEvents();
+    void handleDebugEventsClear();
+    void handleDebugEnable();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

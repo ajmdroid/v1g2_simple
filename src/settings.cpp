@@ -14,7 +14,6 @@
  */
 
 #include "settings.h"
-#include "serial_logger.h"
 
 // Global instance
 SettingsManager settingsManager;
@@ -57,24 +56,19 @@ void SettingsManager::load() {
     // Handle password storage - version 1 was plain text, version 2+ is obfuscated
     String storedPwd = preferences.getString("password", "");
     String storedApPwd = preferences.getString("apPassword", "");
-    String storedStaPwd = preferences.getString("staPassword", "");
     
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode them
         settings.password = storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
         settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "valentine1";
-        settings.staPassword = storedStaPwd.length() > 0 ? xorObfuscate(storedStaPwd) : "";
     } else {
         // Version 1 - passwords stored in plain text, use as-is
         settings.password = storedPwd;
         settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "valentine1";
-        settings.staPassword = storedStaPwd;
-        SerialLog.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
+        Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
     
     settings.apSSID = preferences.getString("apSSID", "V1-Display");
-    settings.staSSID = preferences.getString("staSSID", "");
-    settings.enableTimesync = preferences.getBool("enableTime", false);
     
     // Load multiple WiFi networks
     for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
@@ -87,21 +81,23 @@ void SettingsManager::load() {
         } else {
             settings.wifiNetworks[i].password = storedNetPwd;
         }
-        SerialLog.printf("[Settings] Network[%d]: SSID='%s' (len=%d), PWD len=%d\n", 
+        Serial.printf("[Settings] Network[%d]: SSID='%s' (len=%d), PWD len=%d\n", 
                       i, settings.wifiNetworks[i].ssid.c_str(), 
                       settings.wifiNetworks[i].ssid.length(),
                       settings.wifiNetworks[i].password.length());
     }
     
-    // Migrate legacy staSSID to wifiNetworks[0] if empty
-    if (!settings.wifiNetworks[0].isValid() && settings.staSSID.length() > 0) {
-        settings.wifiNetworks[0].ssid = settings.staSSID;
-        settings.wifiNetworks[0].password = settings.staPassword;
-        SerialLog.println("[Settings] Migrated legacy staSSID to wifiNetworks[0]");
+    // Legacy migration: check if there's an old staSSID stored in preferences but wifiNetworks[0] is empty
+    String legacyStaSSID = preferences.getString("staSSID", "");
+    String legacyStaPwd = preferences.getString("staPassword", "");
+    if (!settings.wifiNetworks[0].isValid() && legacyStaSSID.length() > 0) {
+        settings.wifiNetworks[0].ssid = legacyStaSSID;
+        settings.wifiNetworks[0].password = storedVersion >= 2 && legacyStaPwd.length() > 0 ? xorObfuscate(legacyStaPwd) : legacyStaPwd;
+        Serial.println("[Settings] Migrated legacy staSSID to wifiNetworks[0]");
     }
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
-    settings.proxyName = preferences.getString("proxyName", "V1C-LE-S3");
+    settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
     settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
@@ -148,35 +144,33 @@ void SettingsManager::load() {
     
     preferences.end();
     
-    SerialLog.println("Settings loaded:");
-    SerialLog.printf("  WiFi enabled: %s\n", settings.enableWifi ? "yes" : "no");
-    SerialLog.printf("  WiFi mode: %d\n", settings.wifiMode);
-    SerialLog.printf("  SSID: %s\n", settings.ssid.c_str());
-    SerialLog.printf("  AP SSID: %s\n", settings.apSSID.c_str());
+    Serial.println("Settings loaded:");
+    Serial.printf("  WiFi enabled: %s\n", settings.enableWifi ? "yes" : "no");
+    Serial.printf("  WiFi mode: %d\n", settings.wifiMode);
+    Serial.printf("  SSID: %s\n", settings.ssid.c_str());
+    Serial.printf("  AP SSID: %s\n", settings.apSSID.c_str());
     // Note: Passwords not logged for security
-    SerialLog.printf("  STA SSID: %s\n", settings.staSSID.c_str());
     int validNetworks = 0;
     for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
         if (settings.wifiNetworks[i].isValid()) validNetworks++;
     }
-    SerialLog.printf("  WiFi networks: %d configured\n", validNetworks);
-    SerialLog.printf("  Timesync: %s\n", settings.enableTimesync ? "yes" : "no");
-    SerialLog.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
-    SerialLog.printf("  Proxy name: %s\n", settings.proxyName.c_str());
-    SerialLog.printf("  Brightness: %d\n", settings.brightness);
-    SerialLog.printf("  Color theme: %d\n", settings.colorTheme);
-    SerialLog.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
-    SerialLog.printf("  Slot0: %s (mode %d)\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode);
-    SerialLog.printf("  Slot1: %s (mode %d)\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode);
-    SerialLog.printf("  Slot2: %s (mode %d)\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode);
+    Serial.printf("  WiFi networks: %d configured\n", validNetworks);
+    Serial.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
+    Serial.printf("  Proxy name: %s\n", settings.proxyName.c_str());
+    Serial.printf("  Brightness: %d\n", settings.brightness);
+    Serial.printf("  Color theme: %d\n", settings.colorTheme);
+    Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
+    Serial.printf("  Slot0: %s (mode %d)\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode);
+    Serial.printf("  Slot1: %s (mode %d)\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode);
+    Serial.printf("  Slot2: %s (mode %d)\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode);
 }
 
 void SettingsManager::save() {
-    SerialLog.println("=== SettingsManager::save() starting ===");
-    SerialLog.printf("  About to save - brightness: %d, wifiMode: %d\n", settings.brightness, settings.wifiMode);
+    Serial.println("=== SettingsManager::save() starting ===");
+    Serial.printf("  About to save - brightness: %d, wifiMode: %d\n", settings.brightness, settings.wifiMode);
     
     if (!preferences.begin("v1settings", false)) {  // Read-write mode
-        SerialLog.println("ERROR: Failed to open preferences for writing!");
+        Serial.println("ERROR: Failed to open preferences for writing!");
         return;
     }
     
@@ -190,8 +184,6 @@ void SettingsManager::save() {
     written += preferences.putString("password", xorObfuscate(settings.password));
     written += preferences.putString("apSSID", settings.apSSID);
     written += preferences.putString("apPassword", xorObfuscate(settings.apPassword));
-    written += preferences.putString("staSSID", settings.staSSID);
-    written += preferences.putString("staPassword", xorObfuscate(settings.staPassword));
     
     // Save multiple WiFi networks
     for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
@@ -201,7 +193,6 @@ void SettingsManager::save() {
         written += preferences.putString(pwdKey.c_str(), xorObfuscate(settings.wifiNetworks[i].password));
     }
     
-    written += preferences.putBool("enableTime", settings.enableTimesync);
     written += preferences.putBool("proxyBLE", settings.proxyBLE);
     written += preferences.putString("proxyName", settings.proxyName);
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
@@ -247,14 +238,14 @@ void SettingsManager::save() {
     
     preferences.end();
     
-    SerialLog.printf("Settings saved, bytes written: %d\n", written);
+    Serial.printf("Settings saved, bytes written: %d\n", written);
     
     // Verify by re-reading
     preferences.begin("v1settings", true);
     int verifyBrightness = preferences.getUChar("brightness", 0);
     int verifyMode = preferences.getInt("wifiMode", -1);
     preferences.end();
-    SerialLog.printf("  Verify read-back - brightness: %d, wifiMode: %d\n", verifyBrightness, verifyMode);
+    Serial.printf("  Verify read-back - brightness: %d, wifiMode: %d\n", verifyBrightness, verifyMode);
 }
 
 void SettingsManager::setWiFiEnabled(bool enabled) {
@@ -440,21 +431,13 @@ uint8_t SettingsManager::getSlotMuteVolume(int slotNum) const {
 void SettingsManager::resetToDefaults() {
     settings = V1Settings();  // Reset to defaults
     save();
-    SerialLog.println("Settings reset to defaults");
+    Serial.println("Settings reset to defaults");
 }
 
 void SettingsManager::setLastV1Address(const String& addr) {
     if (addr != settings.lastV1Address) {
         settings.lastV1Address = addr;
         save();
-        SerialLog.printf("Saved new V1 address: %s\n", addr.c_str());
+        Serial.printf("Saved new V1 address: %s\n", addr.c_str());
     }
-}
-
-void SettingsManager::setTimeSync(const String& staSSID, const String& staPassword, bool enabled) {
-    settings.staSSID = staSSID;
-    settings.staPassword = staPassword;
-    settings.enableTimesync = enabled;
-    save();
-    SerialLog.printf("Time sync settings updated: SSID=%s, Enabled=%s\n", staSSID.c_str(), enabled ? "yes" : "no");
 }

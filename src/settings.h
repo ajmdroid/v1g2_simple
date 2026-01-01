@@ -71,10 +71,7 @@ struct V1Settings {
     String password;         // Station mode password
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
-    String staSSID;          // Home WiFi SSID for NTP time sync (legacy - use wifiNetworks)
-    String staPassword;      // Home WiFi password for NTP time sync (legacy - use wifiNetworks)
     WiFiNetwork wifiNetworks[MAX_WIFI_NETWORKS];  // Multiple WiFi networks for auto-switching
-    bool enableTimesync;     // Enable automatic time sync via NTP
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -134,9 +131,6 @@ struct V1Settings {
         password(""),
         apSSID("V1-Display"),
         apPassword("valentine1"),
-        staSSID(""),
-        staPassword(""),
-        enableTimesync(false),
         proxyBLE(true),
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
@@ -211,7 +205,6 @@ public:
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setLastV1Address(const String& addr);
-    void setTimeSync(const String& staSSID, const String& staPassword, bool enabled);
     
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;
@@ -230,8 +223,6 @@ public:
     void updatePrimaryWiFi(const String& ssid, const String& password) {
         settings.ssid = ssid;
         settings.password = password;
-        settings.staSSID = ssid;
-        settings.staPassword = password;
         settings.wifiNetworks[0].ssid = ssid;
         settings.wifiNetworks[0].password = password;
     }
@@ -241,10 +232,11 @@ public:
             settings.wifiNetworks[index].password = password;
         }
     }
-    void updateTimesync(bool enabled) { settings.enableTimesync = enabled; }
-    void updateStaSSID(const String& ssid, const String& password) { 
-        settings.staSSID = ssid; 
-        settings.staPassword = password; 
+    void updatePrimaryWiFiFromNetwork0() {
+        if (settings.wifiNetworks[0].isValid()) {
+            settings.ssid = settings.wifiNetworks[0].ssid;
+            settings.password = settings.wifiNetworks[0].password;
+        }
     }
     
     // Save all settings to flash

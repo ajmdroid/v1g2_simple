@@ -71,7 +71,7 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
             return true;  // Acknowledged, no further processing needed
             
         default:
-            Serial.printf("Unknown packet ID: 0x%02X (len=%u)\n", packetId, (unsigned)length);
+            // Unknown packet - silently ignore in hot path
             return false;
     }
 }
@@ -190,7 +190,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     // Add new chunk with strict bounds checking to prevent overflow
     if (chunkCount >= MAX_ALERTS) {
-        Serial.printf("WARNING: Alert chunk overflow, dropping data (max=%d)\n", MAX_ALERTS);
+        // Overflow - silently drop (hot path)
         return false;
     }
     

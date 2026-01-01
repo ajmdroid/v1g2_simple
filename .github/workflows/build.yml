@@ -1,0 +1,176 @@
+name: Build Firmware & Web Interface
+
+on:
+  # Manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+  
+  # Auto-trigger on push to main/master
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'interface/**'
+      - 'platformio.ini'
+      - '.github/workflows/build.yml'
+  
+  # Auto-trigger on pull requests
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: interface/package-lock.json
+    
+    - name: 📦 Install web dependencies
+      working-directory: interface
+      run: npm ci
+    
+    - name: 🎨 Build Svelte web interface
+      working-directory: interface
+      run: |
+        npm run build
+        echo "✅ Web interface built successfully"
+    
+    - name: 📁 Deploy web files to data/ folder
+      working-directory: interface
+      run: |
+        npm run deploy
+        echo "✅ Web files deployed to data/"
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Cache PlatformIO
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.platformio
+          .pio
+        key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-
+    
+    - name: 🔧 Install PlatformIO
+      run: |
+        pip install --upgrade platformio
+        pio --version
+    
+    - name: 🏗️ Build firmware
+      run: |
+        pio run -e waveshare-349
+        echo "✅ Firmware built successfully"
+    
+    - name: 📊 Check build size
+      run: |
+        echo "### Build Size Report" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    
+    - name: 📦 Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        cp .pio/build/waveshare-349/firmware.bin artifacts/
+        cp .pio/build/waveshare-349/bootloader.bin artifacts/
+        cp .pio/build/waveshare-349/partitions.bin artifacts/
+        if [ -f .pio/build/waveshare-349/littlefs.bin ]; then
+          cp .pio/build/waveshare-349/littlefs.bin artifacts/
+        fi
+        
+        # Create version info
+        echo "Build Date: $(date)" > artifacts/BUILD_INFO.txt
+        echo "Commit: ${{ github.sha }}" >> artifacts/BUILD_INFO.txt
+        echo "Branch: ${{ github.ref_name }}" >> artifacts/BUILD_INFO.txt
+        echo "Triggered by: ${{ github.event_name }}" >> artifacts/BUILD_INFO.txt
+        
+        ls -lh artifacts/
+    
+    - name: 📤 Upload firmware artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: firmware-${{ github.sha }}
+        path: artifacts/
+        retention-days: 30
+    
+    - name: 📝 Create release notes
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        echo "## 🎉 Build Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- \`firmware.bin\` - Main firmware binary" >> $GITHUB_STEP_SUMMARY
+        echo "- \`bootloader.bin\` - ESP32-S3 bootloader" >> $GITHUB_STEP_SUMMARY
+        echo "- \`partitions.bin\` - Partition table" >> $GITHUB_STEP_SUMMARY
+        echo "- \`littlefs.bin\` - Filesystem with web interface" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 Flash Instructions" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "# Download artifacts, then:" >> $GITHUB_STEP_SUMMARY
+        echo "esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash \\" >> $GITHUB_STEP_SUMMARY
+        echo "  0x0000 bootloader.bin \\" >> $GITHUB_STEP_SUMMARY
+        echo "  0x8000 partitions.bin \\" >> $GITHUB_STEP_SUMMARY
+        echo "  0x10000 firmware.bin \\" >> $GITHUB_STEP_SUMMARY
+        echo "  0x3D0000 littlefs.bin" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Or use PlatformIO:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "pio run -t upload" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Optional: Create a release when tagged
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: 📥 Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: firmware-${{ github.sha }}
+        path: artifacts/
+    
+    - name: 📦 Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/firmware.bin
+          artifacts/bootloader.bin
+          artifacts/partitions.bin
+          artifacts/littlefs.bin
+          artifacts/BUILD_INFO.txt
+        draft: false
+        prerelease: false
+        generate_release_notes: true

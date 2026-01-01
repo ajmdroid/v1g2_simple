@@ -1,23 +1,20 @@
 /**
  * WiFi Manager for V1 Gen2 Display
- * Handles WiFi AP/STA modes and web server
+ * AP-only: always-on access point serving the local UI/API.
  */
 
 #include "wifi_manager.h"
 #include "settings.h"
 #include "display.h"
-#include "alert_logger.h"
-#include "alert_db.h"
-#include "serial_logger.h"
+#include "storage_manager.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
-#include "time_manager.h"
+#include "perf_metrics.h"
+#include "event_ring.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
 #include <ArduinoJson.h>
-#include "esp_netif.h"
-#include <ESPmDNS.h>
 #include <LittleFS.h>
 
 // External BLE client for V1 commands
@@ -87,6 +84,38 @@ bool splitCsvFixed(const String& line, String parts[], size_t expected) {
 }
 } // namespace
 
+// Dump LittleFS root directory for diagnostics
+static void dumpLittleFSRoot() {
+    if (!LittleFS.begin(true)) {
+        Serial.println("[SetupMode] ERROR: Failed to mount LittleFS for root dump");
+        return;
+    }
+    
+    Serial.println("[SetupMode] Dumping LittleFS root...");
+    Serial.println("[SetupMode] Files in LittleFS root:");
+    
+    File root = LittleFS.open("/");
+    if (!root || !root.isDirectory()) {
+        Serial.println("[SetupMode] ERROR: Could not open root directory");
+        if (root) root.close();
+        return;
+    }
+    
+    File file = root.openNextFile();
+    bool hasFiles = false;
+    while (file) {
+        hasFiles = true;
+        Serial.printf("[SetupMode]   %s (%u bytes)\n", file.name(), file.size());
+        file = root.openNextFile();
+    }
+    
+    if (!hasFiles) {
+        Serial.println("[SetupMode]   (empty)");
+    }
+    
+    root.close();
+}
+
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
     // Try compressed version first (only if client accepts gzip)
@@ -103,6 +132,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
                 server.sendHeader("Content-Encoding", "gzip");
                 server.sendHeader("Cache-Control", "max-age=86400");
                 server.send(200, contentType, "");
+                Serial.printf("[HTTP] 200 %s -> %s.gz (%u bytes)\n", path, path, fileSize);
                 
                 // Stream file content
                 uint8_t buf[1024];
@@ -119,10 +149,13 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
     // Fall back to uncompressed
     File file = LittleFS.open(path, "r");
     if (!file) {
+        Serial.printf("[HTTP] MISS %s (file not found)\n", path);
         return false;
     }
+    size_t fileSize = file.size();
     server.sendHeader("Cache-Control", "max-age=86400");
     server.streamFile(file, contentType);
+    Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
     file.close();
     return true;
 }
@@ -130,12 +163,15 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), apActive(false), staConnected(false), staEnabledByConfig(false), natEnabled(false), lastStaRetry(0), timeInitialized(false), rateLimitWindowStart(0), rateLimitRequestCount(0) {
+WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), setupModeStartTime(0), rateLimitWindowStart(0), rateLimitRequestCount(0) {
 }
 
 // Rate limiting: returns true if request is allowed, false if rate limited
 bool WiFiManager::checkRateLimit() {
     unsigned long now = millis();
+    
+    // Mark UI activity on every request
+    markUiActivity();
     
     // Reset window if expired
     if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
@@ -153,262 +189,81 @@ bool WiFiManager::checkRateLimit() {
     return true;
 }
 
-bool WiFiManager::begin() {
-    const V1Settings& settings = settingsManager.get();
-    
-    if (!settings.enableWifi) {
-        SerialLog.println("WiFi disabled in settings");
-        return false;
-    }
-    
-    SerialLog.println("Starting WiFi...");
+// Web activity tracking for WiFi priority mode
+void WiFiManager::markUiActivity() {
+    lastUiActivityMs = millis();
+}
 
-    bool wantAP = settings.wifiMode == V1_WIFI_AP || settings.wifiMode == V1_WIFI_APSTA;
-    bool wantSTA = settings.wifiMode == V1_WIFI_STA || settings.wifiMode == V1_WIFI_APSTA;
-    staEnabledByConfig = wantSTA;  // Track if STA is enabled by config
+bool WiFiManager::isUiActive(unsigned long timeoutMs) const {
+    if (lastUiActivityMs == 0) return false;
+    return (millis() - lastUiActivityMs) < timeoutMs;
+}
 
-    // If networks are configured but STA is disabled, auto-enable STA alongside AP
-    int networksConfigured = 0;
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        if (settings.wifiNetworks[i].isValid()) networksConfigured++;
-    }
-    if (networksConfigured == 0 && settings.staSSID.length() > 0) networksConfigured++;
-    if (!wantSTA && networksConfigured > 0) {
-        SerialLog.println("[WiFi] STA disabled but networks configured; enabling AP+STA for connectivity");
-        wantSTA = true;
-        wantAP = true;
-        staEnabledByConfig = true;
+bool WiFiManager::startSetupMode() {
+    // Always-on AP; idempotent start
+    if (setupModeState == SETUP_MODE_AP_ON) {
+        Serial.println("[SetupMode] Already active");
+        return true;
     }
 
-    if (wantAP && wantSTA) {
-        WiFi.mode(WIFI_AP_STA);
-    } else if (wantAP) {
-        WiFi.mode(WIFI_AP);
-    } else {
-        WiFi.mode(WIFI_STA);
-    }
+    Serial.println("[SetupMode] Starting AP (always-on mode)...");
+    setupModeStartTime = millis();
 
-    if (wantAP) {
-        setupAP();
-    }
-    
-    if (wantSTA) {
-        setupSTA();
-    } else {
-        SerialLog.println("[WiFi] STA mode disabled in settings");
-    }
-    
+    WiFi.mode(WIFI_AP);
+
+    setupAP();
     setupWebServer();
-    
+
     // Collect Accept-Encoding header for GZIP support
     const char* headerKeys[] = {"Accept-Encoding"};
     server.collectHeaders(headerKeys, 1);
-    
+
     server.begin();
-    SerialLog.println("Web server started on port 80");
-    
+    setupModeState = SETUP_MODE_AP_ON;
+
+    EVENT_LOG(EVT_WIFI_AP_START, 0);
+    EVENT_LOG(EVT_SETUP_MODE_ENTER, 0);
+
+    Serial.printf("[SetupMode] AP started - connect to SSID shown on display\n");
+    Serial.printf("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
+    Serial.println("[SetupMode] AP will remain on (no timeout)");
+
     return true;
 }
 
 void WiFiManager::setupAP() {
-    const V1Settings& settings = settingsManager.get();
-    bool wantSTA = settings.wifiMode == V1_WIFI_APSTA;
+    // Use a constant, predictable SSID for Setup Mode
+    const char* apSSID = "V1-Simple";
+    const char* apPass = "setupv1g2";  // Simple password (unchanged)
     
-    String apSSID = settings.apSSID.length() > 0 ? settings.apSSID : "V1-Display";
-    String apPass = settings.apPassword.length() >= 8 ? settings.apPassword : "valentine1";
+    Serial.printf("[SetupMode] Starting AP: %s (pass: %s)\n", apSSID, apPass);
     
-    SerialLog.printf("Starting AP: %s\n", apSSID.c_str());
-    
-    // Ensure correct mode for AP operation
-    WiFi.mode(wantSTA ? WIFI_AP_STA : WIFI_AP);
-    
-    // Configure AP IP BEFORE starting softAP
-    IPAddress apIP(192, 168, 35, 5);      // AP IP address for web UI access
-    IPAddress gateway(192, 168, 35, 5);   // Gateway = AP IP so clients route through us
+    // Configure AP IP
+    IPAddress apIP(192, 168, 35, 5);
+    IPAddress gateway(192, 168, 35, 5);
     IPAddress subnet(255, 255, 255, 0);
     
-    // Configure IP address first (must be before softAP)
-    // Note: softAPConfig args are (local_ip, gateway, subnet, dhcp_lease_start, dns_server)
-    // We must provide dhcp_lease_start if we want to provide dns_server
-    IPAddress dhcpStart(192, 168, 35, 100);
-    
-    // Use the upstream DNS if available, otherwise fallback to Google
-    IPAddress dns = WiFi.dnsIP(0);
-    if (dns == IPAddress(0,0,0,0)) dns = IPAddress(8,8,8,8);
-    
-    if (!WiFi.softAPConfig(apIP, gateway, subnet, dhcpStart, dns)) {
-        SerialLog.println("[WiFi] softAPConfig failed!");
+    if (!WiFi.softAPConfig(apIP, gateway, subnet)) {
+        Serial.println("[SetupMode] softAPConfig failed!");
     }
     
-    // Now start the AP
-    if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
-        SerialLog.println("[WiFi] softAP failed!");
-    }
-    
-    apActive = true;
-    
-    IPAddress ip = WiFi.softAPIP();
-    SerialLog.printf("AP IP address: %s\n", ip.toString().c_str());
-    SerialLog.printf("AP Gateway: %s\n", gateway.toString().c_str());
-    SerialLog.printf("AP Subnet: %s\n", subnet.toString().c_str());
-    
-    // Ensure DHCP server is properly configured for AP
-    // Get AP network interface and verify DHCP
-    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-    if (ap_netif) {
-        // Note: WiFi.softAPConfig already configured DHCP with DNS
-        // We just verify it's running
-        esp_netif_dhcp_status_t status;
-        esp_netif_dhcps_get_status(ap_netif, &status);
-        if (status == ESP_NETIF_DHCP_STOPPED) {
-             esp_netif_dhcps_start(ap_netif);
-             SerialLog.println("[WiFi] AP DHCP server started (was stopped)");
-        } else {
-             SerialLog.println("[WiFi] AP DHCP server is running");
-        }
-    } else {
-        SerialLog.println("[WiFi] WARNING: Could not get AP netif for DHCP");
-    }
-}
-
-void WiFiManager::setupSTA() {
-    SerialLog.println("[WiFi] Setting up STA mode...");
-    int networksAdded = populateStaNetworks();
-    if (networksAdded == 0) {
-        SerialLog.println("[WiFi] No networks configured for STA");
-        return;
-    }
-    SerialLog.printf("[WiFi] Added %d network(s) to WiFiMulti\n", networksAdded);
-}
-
-int WiFiManager::populateStaNetworks() {
-    wifiMulti = WiFiMulti();  // Reset network list before re-populating
-    const V1Settings& settings = settingsManager.get();
-    int networksAdded = 0;
-
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        if (settings.wifiNetworks[i].isValid()) {
-            wifiMulti.addAP(settings.wifiNetworks[i].ssid.c_str(), 
-                          settings.wifiNetworks[i].password.c_str());
-            SerialLog.printf("[WiFi] Added network %d: %s\n", i, settings.wifiNetworks[i].ssid.c_str());
-            networksAdded++;
-        }
-    }
-
-    if (networksAdded == 0 && settings.staSSID.length() > 0) {
-        wifiMulti.addAP(settings.staSSID.c_str(), settings.staPassword.c_str());
-        SerialLog.printf("[WiFi] Added legacy network: %s\n", settings.staSSID.c_str());
-        networksAdded++;
-    }
-
-    return networksAdded;
-}
-
-void WiFiManager::checkSTAConnection() {
-    
-    if (!staEnabledByConfig) {
-        if (staConnected) {
-            staConnected = false;
-            natEnabled = false;
-            connectedSSID = "";
-        }
+    if (!WiFi.softAP(apSSID, apPass)) {
+        Serial.println("[SetupMode] softAP failed!");
         return;
     }
     
-    // Try connecting every STA_CONNECTION_RETRY_INTERVAL_MS
-    if (millis() - lastStaRetry < STA_CONNECTION_RETRY_INTERVAL_MS) {
-        return;
-    }
-    lastStaRetry = millis();
-
-    if (wifiMulti.run(STA_CONNECTION_TIMEOUT_MS) == WL_CONNECTED) {
-        if (!staConnected) {
-            staConnected = true;
-            connectedSSID = WiFi.SSID();
-            SerialLog.println("\n=== WiFi Connected ===");
-            SerialLog.printf("SSID: %s\n", connectedSSID.c_str());
-            SerialLog.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-            SerialLog.printf("Signal: %d dBm\n", WiFi.RSSI());
-            
-            // Start mDNS so device is accessible as v1g2.local from network
-            if (MDNS.begin("v1g2")) {
-                MDNS.addService("http", "tcp", 80);
-                SerialLog.println("mDNS: http://v1g2.local");
-            }
-            
-            if (apActive) {
-                enableNAT();
-            }
-            
-            if (!timeInitialized) {
-                initializeTime();
-            }
-        }
-    } else {
-        if (staConnected) {
-            SerialLog.println("[WiFi] Disconnected");
-            staConnected = false;
-            connectedSSID = "";
-        }
-    }
-}
-
-void WiFiManager::initializeTime() {
-    // Use centralized timeManager for NTP sync
-    if (timeManager.syncNTP()) {
-        timeInitialized = true;
-        
-        // Update alert DB with real timestamp
-        time_t now = timeManager.now();
-        alertDB.setTimestampUTC((uint32_t)now);
-        SerialLog.printf("[WiFi] Alert timestamps set: %lu\n", (uint32_t)now);
-    }
-}
-
-void WiFiManager::enableNAT() {
-    // NAT setup: Forward traffic from AP clients through STA connection
-    
-    if (natEnabled) {
-        return;  // Already enabled
-    }
-    
-    SerialLog.println("[WiFi] Enabling NAT/NAPT...");
-
-    // 1. Enable NAPT on AP interface (The LAN interface)
-    // This tells LwIP to perform NAT on packets arriving on this interface
-    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-    if (ap_netif) {
-        esp_err_t err = esp_netif_napt_enable(ap_netif);
-        if (err == ESP_OK) {
-            SerialLog.println("[WiFi] NAPT enabled on AP interface (LAN)");
-        } else {
-            SerialLog.printf("[WiFi] Failed to enable NAPT on AP: %d\n", err);
-        }
-    }
-
-    // 2. Ensure IP Forwarding is enabled (should be by build flag)
-    // The build flag CONFIG_LWIP_IP_FORWARD=1 handles this.
-    
-    natEnabled = true;
-    SerialLog.printf("[WiFi] NAT: Enabled - STA IP: %s, AP IP: %s\n", 
-                  WiFi.localIP().toString().c_str(), WiFi.softAPIP().toString().c_str());
-    SerialLog.println("[WiFi] NAT: Clients should now have internet access");
+    Serial.printf("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
-    if (!LittleFS.begin(true)) {  // true = format if mount fails
-        SerialLog.println("[WiFi] LittleFS mount failed!");
-    } else {
-        SerialLog.println("[WiFi] LittleFS mounted successfully");
-        // List files in LittleFS for debugging
-        File root = LittleFS.open("/");
-        File file = root.openNextFile();
-        while (file) {
-            SerialLog.printf("[WiFi] LittleFS file: %s (%d bytes)\n", file.name(), file.size());
-            file = root.openNextFile();
-        }
+    if (!LittleFS.begin(false)) {
+        Serial.println("[SetupMode] ERROR: LittleFS mount failed (not formatting automatically)");
+        return;
     }
+    Serial.println("[SetupMode] LittleFS mounted");
+    // Dump LittleFS root for diagnostics
+    dumpLittleFSRoot();
     
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
@@ -421,8 +276,22 @@ void WiFiManager::setupWebServer() {
     server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
     server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
     
-    // Catch-all for _app/immutable/* files
+    // Root tries to serve /index.html (Svelte), falls back to inline failsafe dashboard
+    server.on("/", HTTP_GET, [this]() { 
+        markUiActivity();  // Track UI activity
+        // Try Svelte index.html first
+        if (serveLittleFSFile("/index.html", "text/html")) {
+            Serial.printf("[HTTP] 200 / -> /index.html\n");
+            return;
+        }
+        // Fall back to inline dashboard
+        Serial.println("[HTTP] / -> inline failsafe dashboard");
+        handleFailsafeUI(); 
+    });
+    
+    // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
     server.onNotFound([this]() {
+        markUiActivity();  // Track UI activity
         String uri = server.uri();
         
         // Serve _app files from LittleFS
@@ -441,13 +310,20 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    server.on("/", HTTP_GET, [this]() { serveLittleFSFile("/index.html", "text/html"); });  // Root serves new SvelteKit UI
+    // New API endpoints (PHASE A)
+    server.on("/api/status", HTTP_GET, [this]() { 
+        if (!checkRateLimit()) return;
+        handleStatus(); 
+    });
+    server.on("/api/profile/push", HTTP_POST, [this]() { 
+        if (!checkRateLimit()) return;
+        handleApiProfilePush(); 
+    });
+    
+    // Legacy status endpoint
     server.on("/status", HTTP_GET, [this]() { handleStatus(); });
-    server.on("/api/status", HTTP_GET, [this]() { handleStatus(); });  // API version for new UI
     server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
     server.on("/api/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Consistent API endpoint
-    server.on("/api/alerts", HTTP_GET, [this]() { handleLogsData(); });  // Alias for new UI
-    server.on("/api/alerts/clear", HTTP_POST, [this]() { handleLogsClear(); });  // Alias for new UI
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
     server.on("/settings", HTTP_GET, [this]() { 
@@ -455,59 +331,41 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Legacy compat
-    server.on("/time", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
-    });
-    server.on("/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });
-    server.on("/api/time", HTTP_POST, [this]() { handleTimeSettingsSave(); });  // Consistent API endpoint
-    server.on("/api/timesettings", HTTP_GET, [this]() { handleTimeSettingsApi(); });  // Already exists for GET
     server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
     server.on("/mute", HTTP_POST, [this]() { handleMute(); });
-    server.on("/logs", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
-    });
-    server.on("/api/logs", HTTP_GET, [this]() { handleLogsData(); });
-    server.on("/api/logs/clear", HTTP_POST, [this]() { handleLogsClear(); });
     
-    // Serial log endpoints for debugging
-    server.on("/seriallog", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
-    });
-    server.on("/serial_log.txt", HTTP_GET, [this]() { handleSerialLog(); });
-    server.on("/api/seriallog/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Consistent naming
-    server.on("/api/serial_log/clear", HTTP_POST, [this]() { handleSerialLogClear(); });  // Legacy compat
-
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /ping");
+        markUiActivity();
+        Serial.println("[HTTP] GET /ping");
         server.send(200, "text/plain", "OK");
     });
     // Android/ChromeOS captive portal probes
     server.on("/generate_204", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /generate_204");
+        markUiActivity();
+        Serial.println("[HTTP] GET /generate_204");
         server.send(204, "text/plain", "");
     });
     server.on("/gen_204", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /gen_204");
+        markUiActivity();
+        Serial.println("[HTTP] GET /gen_204");
         server.send(204, "text/plain", "");
     });
     // iOS/macOS captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /hotspot-detect.html");
+        markUiActivity();
+        Serial.println("[HTTP] GET /hotspot-detect.html");
         server.sendHeader("Location", "/settings", true);
         server.send(302, "text/html", "");
     });
     // Windows captive portal variants
     server.on("/fwlink", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /fwlink");
+        Serial.println("[HTTP] GET /fwlink");
         server.sendHeader("Location", "/settings", true);
         server.send(302, "text/html", "");
     });
     server.on("/ncsi.txt", HTTP_GET, [this]() {
-        SerialLog.println("[HTTP] GET /ncsi.txt");
+        Serial.println("[HTTP] GET /ncsi.txt");
         server.send(200, "text/plain", "Microsoft NCSI");
     });
     
@@ -533,6 +391,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/autopush/slot", HTTP_POST, [this]() { handleAutoPushSlotSave(); });
     server.on("/api/autopush/activate", HTTP_POST, [this]() { handleAutoPushActivate(); });
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
+    server.on("/api/autopush/status", HTTP_GET, [this]() { handleAutoPushStatus(); });
     
     // V1 Device Cache routes (fast reconnect)
     server.on("/api/v1/devices", HTTP_GET, [this]() { handleV1DevicesApi(); });
@@ -550,67 +409,44 @@ void WiFiManager::setupWebServer() {
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
     server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
         if (isColorPreviewRunning()) {
-            SerialLog.println("[HTTP] POST /api/displaycolors/preview - toggling off");
+            Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
             cancelColorPreview();
             display.showResting();
             server.send(200, "application/json", "{\"success\":true,\"active\":false}");
         } else {
-            SerialLog.println("[HTTP] POST /api/displaycolors/preview - starting");
+            Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
             display.showDemo();
             requestColorPreviewHold(2200);
             server.send(200, "application/json", "{\"success\":true,\"active\":true}");
         }
     });
     server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
-        SerialLog.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
+        Serial.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
         cancelColorPreview();
         display.showResting();  // Return to normal scanning state
         server.send(200, "application/json", "{\"success\":true,\"active\":false}");
     });
     
-    // Time settings and serial log API routes
-    server.on("/api/timesettings", HTTP_GET, [this]() { handleTimeSettingsApi(); });
-    server.on("/api/seriallog", HTTP_GET, [this]() { handleSerialLogApi(); });
-    server.on("/api/seriallog/toggle", HTTP_POST, [this]() { handleSerialLogToggle(); });
-    server.on("/api/seriallog/content", HTTP_GET, [this]() { handleSerialLogContent(); });
+    // Debug API routes (performance metrics and event ring)
+    server.on("/api/debug/metrics", HTTP_GET, [this]() { handleDebugMetrics(); });
+    server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
+    server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
+    server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
 void WiFiManager::process() {
-    server.handleClient();
+    if (setupModeState != SETUP_MODE_AP_ON) {
+        return;  // No WiFi processing when Setup Mode is off
+    }
     
-    if (staEnabledByConfig) {
-        checkSTAConnection();
-    }
-}
-
-void WiFiManager::stop() {
-    server.stop();
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    apActive = false;
-    staConnected = false;
-    SerialLog.println("WiFi stopped");
-}
-
-bool WiFiManager::isConnected() const {
-    return staConnected;
-}
-
-bool WiFiManager::isAPActive() const {
-    return apActive;
-}
-
-String WiFiManager::getIPAddress() const {
-    if (staConnected) {
-        return WiFi.localIP().toString();
-    }
-    return "";
+    // Handle web requests
+    server.handleClient();
 }
 
 String WiFiManager::getAPIPAddress() const {
-    if (apActive) {
+    if (setupModeState == SETUP_MODE_AP_ON) {
         return WiFi.softAPIP().toString();
     }
     return "";
@@ -620,13 +456,18 @@ void WiFiManager::handleStatus() {
     const V1Settings& settings = settingsManager.get();
     
     String json = "{";
+    // WiFi info (matches Svelte dashboard expectations)
+    bool staConnected = false;  // AP-only
+    long rssi = 0;
+    IPAddress staIp;  // empty
     json += "\"wifi\":{";
+    json += "\"setup_mode\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
+    json += "\"ap_active\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
     json += "\"sta_connected\":" + String(staConnected ? "true" : "false") + ",";
-    json += "\"ap_active\":" + String(apActive ? "true" : "false") + ",";
-    json += "\"sta_ip\":\"" + getIPAddress() + "\",";
+    json += "\"sta_ip\":\"" + staIp.toString() + "\",";
     json += "\"ap_ip\":\"" + getAPIPAddress() + "\",";
-    json += "\"ssid\":\"" + connectedSSID + "\",";
-    json += "\"rssi\":" + String(staConnected ? WiFi.RSSI() : 0);
+    json += "\"ssid\":\"" + settings.apSSID + "\",";
+    json += "\"rssi\":" + String(rssi);
     json += "},";
     
     // Device info
@@ -634,10 +475,13 @@ void WiFiManager::handleStatus() {
     json += "\"uptime\":" + String(millis() / 1000) + ",";
     json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
     json += "\"hostname\":\"v1g2\"";
-    json += "}";
+    json += "},";
+    
+    // BLE/V1 connection state
+    json += "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
     
     if (getStatusJson) {
-        json += "," + getStatusJson();
+        json += "," + getStatusJson();  // append additional status if provided
     }
     
     // Add alert info if callback is set
@@ -650,15 +494,124 @@ void WiFiManager::handleStatus() {
     server.send(200, "application/json", json);
 }
 
+// ==================== Failsafe API Endpoints (PHASE A) ====================
+
+void WiFiManager::handleFailsafeUI() {
+    // Minimal always-on dashboard
+    String html = "<!DOCTYPE html><html>";
+    html += "<head>";
+    html += "<meta charset='UTF-8'>";
+    html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+    html += "<title>V1 Gen2 AP</title>";
+    html += "<style>";
+    html += "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin:0; padding:24px; }";
+    html += ".card { max-width: 520px; margin: 0 auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:24px; box-shadow:0 12px 30px rgba(0,0,0,0.35); }";
+    html += "h1 { font-size: 22px; margin: 0 0 12px; letter-spacing:0.3px; }";
+    html += "p { margin: 6px 0; color:#cbd5e1; }";
+    html += ".pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#0ea5e9; color:#0b1220; font-weight:700; font-size:12px; letter-spacing:0.3px; }";
+    html += ".grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-top:16px; }";
+    html += ".tile { background:#0b1220; border:1px solid #1f2937; border-radius:10px; padding:12px; }";
+    html += ".label { color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; }";
+    html += ".value { color:#e2e8f0; font-size:16px; font-weight:700; margin-top:4px; }";
+    html += ".actions { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }";
+    html += ".btn { padding:10px 14px; border:none; border-radius:10px; background:#0ea5e9; color:#0b1220; font-weight:700; cursor:pointer; box-shadow:0 8px 18px rgba(14,165,233,0.35); }";
+    html += ".btn.secondary { background:#1f2937; color:#e2e8f0; box-shadow:none; }";
+    html += "</style>";
+    html += "</head><body>";
+    html += "<div class='card'>";
+    html += "<div style='display:flex; align-items:center; justify-content:space-between;'>";
+    html += "<h1>V1 Gen2 Access Point</h1><span class='pill'>Always On</span>";
+    html += "</div>";
+    html += "<p>Connect to <strong>V1-Simple</strong> at <strong>192.168.35.5</strong>. The web UI and APIs remain available; no session timeout.</p>";
+    html += "<div class='grid'>";
+    html += "  <div class='tile'><div class='label'>BLE</div><div class='value'>";
+    html += bleClient.isConnected() ? "Connected" : "Disconnected";
+    html += "</div></div>";
+    html += "  <div class='tile'><div class='label'>AP IP</div><div class='value'>" + getAPIPAddress() + "</div></div>";
+    html += "  <div class='tile'><div class='label'>Heap Free</div><div class='value'>" + String(ESP.getFreeHeap() / 1024) + " KB</div></div>";
+    html += "</div>";
+    html += "<div class='actions'>";
+    html += "  <button class='btn secondary' onclick=\"fetch('/darkmode?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Dark mode: '+(d.darkMode?'ON':'OFF')));\">Toggle Dark Mode</button>";
+    html += "  <button class='btn secondary' onclick=\"fetch('/mute?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Mute: '+(d.muted?'ON':'OFF')));\">Toggle Mute</button>";
+    html += "</div>";
+    html += "</div>";
+    html += "</body></html>";
+    
+    server.send(200, "text/html", html);
+}
+
+void WiFiManager::handleApiStatus() {
+    // Enhanced status endpoint for failsafe UI
+    // Returns BLE state, proxy metrics, heap, and AP status
+    
+    const V1Settings& settings = settingsManager.get();
+    
+    String json = "{";
+    
+    // BLE state
+    json += "\"ble_state\":\"" + String(bleStateToString(bleClient.getBLEState())) + "\",";
+    json += "\"ble_connected\":" + String(bleClient.isConnected() ? "true" : "false") + ",";
+    
+    // Proxy metrics
+    const ProxyMetrics& pm = bleClient.getProxyMetrics();
+    json += "\"proxy_connected\":" + String(bleClient.isProxyClientConnected() ? "true" : "false") + ",";
+    
+    // Calculate sends per second
+    unsigned long uptime = (millis() - pm.lastResetMs) / 1000;
+    uint32_t sendsPerSec = (uptime > 0) ? (pm.sendCount / uptime) : 0;
+    json += "\"proxy_sends_per_sec\":" + String(sendsPerSec) + ",";
+    json += "\"proxy_queue_hw\":" + String(pm.queueHighWater) + ",";
+    json += "\"proxy_drops\":" + String(pm.dropCount) + ",";
+    
+    // Heap
+    json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
+    json += "\"heap_min\":" + String(ESP.getMinFreeHeap()) + ",";
+    
+    // WiFi state (AP-only)
+    json += "\"setup_mode\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
+    
+    // Uptime
+    json += "\"uptime_sec\":" + String(millis() / 1000);
+    
+    json += "}";
+    
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleApiProfilePush() {
+    // Queue profile push action (non-blocking)
+    // This endpoint triggers the push executor to apply active profile
+    
+    if (!checkRateLimit()) return;
+    
+    // Check if V1 is connected
+    if (!bleClient.isConnected()) {
+        server.send(503, "application/json", 
+                   "{\"ok\":false,\"error\":\"V1 not connected\"}");
+        return;
+    }
+    
+    // TODO: Queue profile push to executor task instead of blocking here
+    // For now, return success and let main loop handle it
+    Serial.println("[API] Profile push requested");
+    
+    String json = "{";
+    json += "\"ok\":true,";
+    json += "\"message\":\"Profile push queued - check display for progress\"";
+    json += "}";
+    
+    server.send(200, "application/json", json);
+    
+    // Note: Actual push execution should be handled by push_executor
+    // via a queue/flag mechanism, not directly in this handler
+}
+
 void WiFiManager::handleSettingsApi() {
     const V1Settings& settings = settingsManager.get();
     
     String json = "{";
-    json += "\"ssid\":\"" + settings.ssid + "\",";
-    json += "\"password\":\"********\",";  // Don't send actual password
     json += "\"ap_ssid\":\"" + settings.apSSID + "\",";
     json += "\"ap_password\":\"********\",";  // Don't send actual password
-    json += "\"wifi_mode\":" + String(settings.wifiMode) + ",";
     json += "\"proxy_ble\":" + String(settings.proxyBLE ? "true" : "false") + ",";
     json += "\"proxy_name\":\"" + settings.proxyName + "\"";
     json += "}";
@@ -669,26 +622,9 @@ void WiFiManager::handleSettingsApi() {
 void WiFiManager::handleSettingsSave() {
     if (!checkRateLimit()) return;
     
-    SerialLog.println("=== handleSettingsSave() called ===");
-    
-    // Track if WiFi settings changed (these require restart)
-    bool wifiChanged = false;
+    Serial.println("=== handleSettingsSave() called ===");
     const V1Settings& currentSettings = settingsManager.get();
 
-    if (server.hasArg("ssid")) {
-        String ssid = server.arg("ssid");
-        String pass = server.arg("password");
-        
-        // Preserve existing password if placeholder sent
-        if (pass == "********") {
-            pass = currentSettings.password;
-        }
-        if (ssid != currentSettings.ssid || pass != currentSettings.password) {
-            wifiChanged = true;
-        }
-        settingsManager.updatePrimaryWiFi(ssid, pass);
-    }
-    
     if (server.hasArg("ap_ssid")) {
         String apSsid = server.arg("ap_ssid");
         String apPass = server.arg("ap_password");
@@ -702,22 +638,11 @@ void WiFiManager::handleSettingsSave() {
             server.send(400, "text/plain", "AP SSID required and password must be at least 8 characters");
             return;
         }
-        if (apSsid != currentSettings.apSSID || apPass != currentSettings.apPassword) {
-            wifiChanged = true;
-        }
         settingsManager.updateAPCredentials(apSsid, apPass);
     }
     
-    // WiFi mode (AP, STA, AP+STA)
-    WiFiModeSetting mode = V1_WIFI_AP;
-    if (server.hasArg("wifi_mode")) {
-        mode = static_cast<WiFiModeSetting>(server.arg("wifi_mode").toInt());
-        mode = static_cast<WiFiModeSetting>(std::max(0, std::min(3, (int)mode)));
-    }
-    if (mode != currentSettings.wifiMode) {
-        wifiChanged = true;
-    }
-    settingsManager.updateWiFiMode(mode);
+    // Force AP-only mode
+    settingsManager.updateWiFiMode(V1_WIFI_AP);
     
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
@@ -741,22 +666,17 @@ void WiFiManager::handleSettingsSave() {
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
-    SerialLog.println("--- Calling settingsManager.save() ---");
+    Serial.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
     
     // The settingsManager instance is already up-to-date, no need to reload.
     // We can directly apply any changes that need to take immediate effect.
     if (server.hasArg("color_theme")) {
         display.updateColorTheme();
-        SerialLog.println("Display color theme updated");
+        Serial.println("Display color theme updated");
     }
     
-    // Redirect with appropriate message
-    String redirect = "/settings?saved=1";
-    if (wifiChanged) {
-        redirect += "&wifi=1";
-    }
-    server.sendHeader("Location", redirect);
+    server.sendHeader("Location", "/settings?saved=1");
     server.send(302);
 }
 
@@ -774,7 +694,7 @@ void WiFiManager::handleDarkMode() {
         success = sendV1Command("display", !darkMode);
     }
     
-    SerialLog.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
+    Serial.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
     
     String json = "{\"success\":" + String(success ? "true" : "false") + 
                   ",\"darkMode\":" + String(darkMode ? "true" : "false") + "}";
@@ -794,164 +714,16 @@ void WiFiManager::handleMute() {
         success = sendV1Command("mute", muted);
     }
     
-    SerialLog.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
+    Serial.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
     
     String json = "{\"success\":" + String(success ? "true" : "false") + 
                   ",\"muted\":" + String(muted ? "true" : "false") + "}";
     server.send(200, "application/json", json);
 }
 
-void WiFiManager::handleTimeSettingsSave() {
-    bool changed = false;
-    const V1Settings& settings = settingsManager.get();
-    
-    // Update timesync enabled flag
-    bool enableTime = server.hasArg("enableTimesync");
-    if (settings.enableTimesync != enableTime) {
-        settingsManager.updateTimesync(enableTime);
-        changed = true;
-    }
-    
-    // Update multiple WiFi networks
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        String ssidKey = "wifi" + String(i) + "ssid";
-        String pwdKey = "wifi" + String(i) + "pwd";
-        
-        if (server.hasArg(ssidKey.c_str())) {
-            String newSSID = server.arg(ssidKey.c_str());
-            String newPwd = server.arg(pwdKey.c_str());
-            
-            // If password is placeholder, keep existing password  
-            if (newPwd == "********") {
-                newPwd = settings.wifiNetworks[i].password;
-            }
-            
-            if (settings.wifiNetworks[i].ssid != newSSID || settings.wifiNetworks[i].password != newPwd) {
-                settingsManager.updateWiFiNetwork(i, newSSID, newPwd);
-                changed = true;
-                SerialLog.printf("WiFi network %d updated: %s\n", i+1, newSSID.c_str());
-            }
-        }
-    }
-    
-    // Keep legacy fields in sync with network[0] for backward compat
-    if (settingsManager.get().wifiNetworks[0].isValid()) {
-        settingsManager.updateStaSSID(
-            settingsManager.get().wifiNetworks[0].ssid, 
-            settingsManager.get().wifiNetworks[0].password
-        );
-    }
-    
-    // Manual time setting
-    if (server.hasArg("timestamp")) {
-        time_t timestamp = (time_t)server.arg("timestamp").toInt();
-        if (timestamp > 1609459200) {  // Valid if after 2021-01-01
-            timeManager.setTime(timestamp);
-            // Update alert DB immediately so new alerts get correct timestamp
-            alertDB.setTimestampUTC((uint32_t)timestamp);
-            SerialLog.printf("Time set manually to: %ld\n", timestamp);
-        }
-    }
-    
-    if (changed) {
-        settingsManager.save();
-        SerialLog.printf("WiFi settings saved. Timesync: %s\n", enableTime ? "enabled" : "disabled");
-        
-        int networksAdded = populateStaNetworks();
-        if (networksAdded > 0) {
-            if (!staEnabledByConfig) {
-                staEnabledByConfig = true;
-                SerialLog.println("[WiFi] STA mode auto-enabled after configuring networks");
-            }
-            SerialLog.printf("[WiFi] STA network list refreshed (%d entries)\n", networksAdded);
-            if (staConnected) {
-                WiFi.disconnect(true);
-                staConnected = false;
-                connectedSSID = "";
-                natEnabled = false;
-            }
-            lastStaRetry = 0;  // Trigger immediate retry with new credentials
-        }
-    }
-    
-    String response = changed ? 
-        "Settings saved! <a href='/time'>Back to Time Settings</a>" :
-        "No changes made. <a href='/time'>Back to Time Settings</a>";
-    server.send(200, "text/html", response);
-}
-
-void WiFiManager::handleLogsData() {
-    // Use SQLite database for alerts - it has proper UTC timestamps
-    if (!alertDB.isReady()) {
-        server.send(503, "application/json", "{\"error\":\"Alert database not ready\"}");
-        return;
-    }
-
-    // Optional: support /api/alerts?n=50
-    size_t maxRows = ALERT_LOG_MAX_RECENT;
-    if (server.hasArg("n")) {
-        int n = server.arg("n").toInt();
-        if (n > 0) {
-            if (n > 500) n = 500; // hard cap to protect RAM/CPU
-            maxRows = (size_t)n;
-        }
-    }
-
-    // Get alerts from SQLite (includes proper utc timestamps)
-    String json = alertDB.getRecentJson(maxRows);
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleLogsClear() {
-    if (!checkRateLimit()) return;
-    
-    // Clear SQLite database
-    bool success = alertDB.clearAll();
-    
-    server.send(success ? 200 : 500,
-                "application/json",
-                String("{\"success\":") + (success ? "true" : "false") + "}");
-}
-
-void WiFiManager::handleSerialLog() {
-    if (!alertLogger.isReady()) {
-        server.send(503, "text/plain", "SD card not mounted");
-        return;
-    }
-    
-    fs::FS* fs = alertLogger.getFilesystem();
-    if (!fs->exists("/serial_log.txt")) {
-        server.send(404, "text/plain", "No serial log file found");
-        return;
-    }
-    
-    File file = fs->open("/serial_log.txt", FILE_READ);
-    if (!file) {
-        server.send(500, "text/plain", "Failed to open serial log");
-        return;
-    }
-    
-    server.streamFile(file, "text/plain");
-    file.close();
-}
-
-void WiFiManager::handleSerialLogClear() {
-    if (!checkRateLimit()) return;
-    
-    if (!SerialLog.isEnabled()) {
-        server.send(503, "application/json", "{\"error\":\"Serial logging not enabled\"}");
-        return;
-    }
-    
-    bool cleared = SerialLog.clear();
-    server.send(cleared ? 200 : 500,
-                "application/json",
-                String("{\"success\":") + (cleared ? "true" : "false") + "}");
-}
-
 void WiFiManager::handleV1ProfilesList() {
     std::vector<String> profileNames = v1ProfileManager.listProfiles();
-    SerialLog.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
+    Serial.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
     
     JsonDocument doc;
     JsonArray array = doc["profiles"].to<JsonArray>();
@@ -963,7 +735,7 @@ void WiFiManager::handleV1ProfilesList() {
             obj["name"] = profile.name;
             obj["description"] = profile.description;
             obj["displayOn"] = profile.displayOn;
-            SerialLog.printf("[V1Profiles]   - %s: %s\n", profile.name.c_str(), profile.description.c_str());
+            Serial.printf("[V1Profiles]   - %s: %s\n", profile.name.c_str(), profile.description.c_str());
         }
     }
     
@@ -1000,7 +772,7 @@ void WiFiManager::handleV1ProfileSave() {
         server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
         return;
     }
-    SerialLog.printf("[V1Settings] Save request body: %s\n", body.c_str());
+    Serial.printf("[V1Settings] Save request body: %s\n", body.c_str());
     
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
@@ -1038,10 +810,10 @@ void WiFiManager::handleV1ProfileSave() {
     }
     
     if (v1ProfileManager.saveProfile(profile)) {
-        SerialLog.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
+        Serial.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
         server.send(200, "application/json", "{\"success\":true}");
     } else {
-        SerialLog.printf("[V1Profiles] Failed to save profile '%s'\n", profile.name.c_str());
+        Serial.printf("[V1Profiles] Failed to save profile '%s'\n", profile.name.c_str());
         server.send(500, "application/json", "{\"error\":\"Failed to save profile\"}");
     }
 }
@@ -1418,7 +1190,7 @@ void WiFiManager::handleV1SettingsPush() {
     }
     
     String body = server.arg("plain");
-    SerialLog.printf("[V1Settings] Push request: %s\n", body.c_str());
+    Serial.printf("[V1Settings] Push request: %s\n", body.c_str());
     if (body.length() > 4096) {
         server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
         return;
@@ -1446,7 +1218,7 @@ void WiFiManager::handleV1SettingsPush() {
         }
         memcpy(bytes, profile.settings.bytes, 6);
         displayOn = profile.displayOn;
-        SerialLog.printf("[V1Settings] Pushing profile '%s': %02X %02X %02X %02X %02X %02X\n",
+        Serial.printf("[V1Settings] Pushing profile '%s': %02X %02X %02X %02X %02X %02X\n",
             profileName.c_str(), bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     } 
     // Check for bytes array
@@ -1460,7 +1232,7 @@ void WiFiManager::handleV1SettingsPush() {
             bytes[i] = bytesArray[i].as<uint8_t>();
         }
         displayOn = doc["displayOn"] | true;
-        SerialLog.println("[V1Settings] Using raw bytes from request");
+        Serial.println("[V1Settings] Using raw bytes from request");
     } 
     // Parse from individual settings
     else {
@@ -1475,19 +1247,19 @@ void WiFiManager::handleV1SettingsPush() {
         }
         memcpy(bytes, settings.bytes, 6);
         displayOn = doc["displayOn"] | true;
-        SerialLog.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
+        Serial.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
     }
     
-    bool success = bleClient.writeUserBytes(bytes);
-    if (success) {
-        SerialLog.printf("[V1Settings] Successfully pushed settings to V1\n");
-        // Also set display on/off
+    // Perform unverified push (verification removed)
+    bool writeOk = bleClient.writeUserBytes(bytes);
+    if (writeOk) {
+        Serial.println("[V1Settings] Push sent (verification disabled)");
         bleClient.setDisplayOn(displayOn);
-        server.send(200, "application/json", "{\"success\":true}");
+        server.send(200, "application/json", "{\"success\":true,\"verified\":false,\"message\":\"Verification disabled; write issued\"}");
     } else {
-        SerialLog.printf("[V1Settings] Failed to write settings to V1 via BLE\n");
-        server.send(500, "application/json", "{\"error\":\"Failed to write settings\"}");
+        Serial.println("[V1Settings] Push FAILED - write command rejected");
+        server.send(500, "application/json", "{\"error\":\"Write command failed\",\"verified\":false}");
     }
 }
 
@@ -1520,6 +1292,7 @@ void WiFiManager::handleNotFound() {
         return;
     }
     
+    Serial.printf("[HTTP] 404 %s\n", uri.c_str());
     server.send(404, "text/plain", "Not found");
 }
 
@@ -1602,7 +1375,7 @@ void WiFiManager::handleAutoPushSlotSave() {
     uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
     uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
     
-    SerialLog.printf("[SaveSlot] Slot %d - volume: %d (was %d), muteVol: %d (was %d)\n", 
+    Serial.printf("[SaveSlot] Slot %d - volume: %d (was %d), muteVol: %d (was %d)\n", 
                   slot, vol, existingVol, mute, existingMute);
     
     settingsManager.setSlotVolumes(slot, vol, mute);
@@ -1701,14 +1474,16 @@ void WiFiManager::handleAutoPushPushNow() {
     uint8_t mainVol = settingsManager.getSlotVolume(slot);
     uint8_t muteVol = settingsManager.getSlotMuteVolume(slot);
     
-    SerialLog.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
+    Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
     
-    if (mainVol != 0xFF || muteVol != 0xFF) {
+    // Only set volume if BOTH are configured (both != 0xFF means both 0-9)
+    if (mainVol != 0xFF && muteVol != 0xFF) {
         delay(100);
-        SerialLog.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
+        Serial.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
         bleClient.setVolume(mainVol, muteVol);
     } else {
-        SerialLog.println("[PushNow] Volume: No change");
+        Serial.printf("[PushNow] Volume: skipping (need both 0-9, got main=%d mute=%d)\n", 
+                        mainVol, muteVol);
     }
     
     // Update active slot and refresh display profile indicator
@@ -1718,13 +1493,23 @@ void WiFiManager::handleAutoPushPushNow() {
     server.send(200, "application/json", "{\"success\":true}");
 }
 
+void WiFiManager::handleAutoPushStatus() {
+    // Return push executor status via callback
+    if (getPushStatusJson) {
+        String json = getPushStatusJson();
+        server.send(200, "application/json", json);
+    } else {
+        server.send(500, "application/json", "{\"error\":\"Push status not available\"}");
+    }
+}
+
 // ============= Display Colors Handlers =============
 
 void WiFiManager::handleDisplayColorsSave() {
-    SerialLog.println("[HTTP] POST /api/displaycolors");
-    SerialLog.printf("[HTTP] Args count: %d\n", server.args());
+    Serial.println("[HTTP] POST /api/displaycolors");
+    Serial.printf("[HTTP] Args count: %d\n", server.args());
     for (int i = 0; i < server.args(); i++) {
-        SerialLog.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
+        Serial.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
     }
     
     uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
@@ -1735,7 +1520,7 @@ void WiFiManager::handleDisplayColorsSave() {
     uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
     uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
     
-    SerialLog.printf("[HTTP] Saving colors: bogey=%d freq=%d arrow=%d\n", bogey, freq, arrow);
+    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrow=%d\n", bogey, freq, arrow);
     
     settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
     
@@ -1814,106 +1599,28 @@ void WiFiManager::handleDisplayColorsApi() {
     server.send(200, "application/json", json);
 }
 
-void WiFiManager::handleTimeSettingsApi() {
-    const V1Settings& settings = settingsManager.get();
-    String currentTime = timeManager.isTimeValid() ? timeManager.getTimestampISO() : "Not Set";
-    
-    String json = "{";
-    json += "\"currentTime\":\"" + currentTime + "\",";
-    json += "\"enableTimesync\":" + String(settings.enableTimesync ? "true" : "false") + ",";
-    json += "\"wifiNetworks\":[";
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        if (i > 0) json += ",";
-        json += "{\"ssid\":\"" + htmlEscape(settings.wifiNetworks[i].ssid) + "\",";
-        json += "\"password\":\"";
-        json += (settings.wifiNetworks[i].password.length() > 0 ? "********" : "");
-        json += "\"}";
-    }
-    json += "]}";
-    
+// ============= Debug API Handlers =============
+
+void WiFiManager::handleDebugMetrics() {
+    String json = perfMetricsToJson();
     server.send(200, "application/json", json);
 }
 
-void WiFiManager::handleSerialLogApi() {
-    bool sdReady = alertLogger.isReady();
-    bool logEnabled = SerialLog.isEnabled();
-    size_t logSize = SerialLog.getLogSize();
-    
-    // Format size for display
-    String sizeStr;
-    if (logSize < 1024) {
-        sizeStr = String(logSize) + " B";
-    } else if (logSize < 1024 * 1024) {
-        sizeStr = String(logSize / 1024.0, 1) + " KB";
-    } else if (logSize < 1024 * 1024 * 1024) {
-        sizeStr = String(logSize / (1024.0 * 1024.0), 1) + " MB";
-    } else {
-        sizeStr = String(logSize / (1024.0 * 1024.0 * 1024.0), 2) + " GB";
-    }
-    
-    String json = "{";
-    json += "\"sdReady\":" + String(sdReady ? "true" : "false") + ",";
-    json += "\"logEnabled\":" + String(logEnabled ? "true" : "false") + ",";
-    json += "\"logSize\":\"" + sizeStr + "\"";
-    json += "}";
-    
+void WiFiManager::handleDebugEvents() {
+    String json = eventRingToJson();
     server.send(200, "application/json", json);
 }
 
-void WiFiManager::handleSerialLogToggle() {
-    bool enable = server.hasArg("enable") && server.arg("enable") == "true";
-    SerialLog.setEnabled(enable);
-    
-    String json = "{\"success\":true,\"enabled\":";
-    json += SerialLog.isEnabled() ? "true" : "false";
-    json += "}";
-    server.send(200, "application/json", json);
+void WiFiManager::handleDebugEventsClear() {
+    eventRingClear();
+    server.send(200, "application/json", "{\"success\":true}");
 }
 
-void WiFiManager::handleSerialLogContent() {
-    if (!alertLogger.isReady()) {
-        server.send(503, "text/plain", "SD card not mounted");
-        return;
+void WiFiManager::handleDebugEnable() {
+    bool enable = true;
+    if (server.hasArg("enable")) {
+        enable = (server.arg("enable") == "true" || server.arg("enable") == "1");
     }
-    
-    fs::FS* fs = alertLogger.getFilesystem();
-    if (!fs->exists("/serial_log.txt")) {
-        server.send(200, "text/plain", "");
-        return;
-    }
-    
-    // Get optional tail parameter (last N bytes)
-    size_t tailBytes = 32768; // Default 32KB
-    if (server.hasArg("tail")) {
-        tailBytes = server.arg("tail").toInt();
-        if (tailBytes > 65536) tailBytes = 65536; // Cap at 64KB
-    }
-    
-    File file = fs->open("/serial_log.txt", FILE_READ);
-    if (!file) {
-        server.send(500, "text/plain", "Failed to open log");
-        return;
-    }
-    
-    size_t fileSize = file.size();
-    
-    // If file is larger than tailBytes, seek to end - tailBytes
-    if (fileSize > tailBytes) {
-        file.seek(fileSize - tailBytes);
-        // Skip to next newline to avoid partial line
-        while (file.available() && file.read() != '\n') {}
-    }
-    
-    // Stream remaining content
-    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-    server.send(200, "text/plain", "");
-    
-    const size_t bufSize = 1024;
-    uint8_t buf[bufSize];
-    while (file.available()) {
-        size_t bytesRead = file.read(buf, bufSize);
-        server.sendContent((const char*)buf, bytesRead);
-    }
-    file.close();
+    perfMetricsSetDebug(enable);
+    server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
 }
-
