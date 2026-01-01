@@ -1225,14 +1225,11 @@ Based on code analysis:
    
 2. **No OTA updates:** Firmware must be flashed via USB.
    - Evidence: No OTA code present in wifi_manager.cpp
-   
-3. **Profile verification disabled:** Write-and-verify was causing issues.
-   - Evidence: `ble_client.h:109` comment about verification
 
-4. **Battery icon only shows on battery power:** When USB-powered, no battery icon appears.
+3. **Battery icon only shows on battery power:** When USB-powered, no battery icon appears.
    - Evidence: `battery_manager.cpp` logic checks power source
 
-5. **WiFi STA mode exists but routing is incomplete:** AP+STA mode works for passthrough but standalone STA not fully tested.
+4. **WiFi STA mode exists but routing is incomplete:** AP+STA mode works for passthrough but standalone STA not fully tested.
 
 ---
 
@@ -1260,23 +1257,5 @@ Based on code analysis:
 
 ---
 
-## Pre-Merge Checklist
-
-Before merging any changes:
-
-- [ ] **Build passes:** `./build.sh` completes without errors
-- [ ] **Static analysis clean:** `./scripts/pio-check.sh` shows no new warnings
-- [ ] **Size check:** `./scripts/pio-size.sh` - firmware under 2MB
-- [ ] **Web UI builds:** `cd interface && npm run build` succeeds
-- [ ] **Flash test:** Upload to device, verify boot splash
-- [ ] **BLE connection:** V1 connects and displays alerts
-- [ ] **Touch test:** Tap-to-mute works
-- [ ] **Triple-tap test:** Profile cycling works
-- [ ] **Web UI test:** All pages load at 192.168.35.5
-- [ ] **Settings persist:** Change setting, reboot, verify it persists
-- [ ] **Auto-push test:** Configure slot, disconnect/reconnect V1, verify push
-- [ ] **No serial errors:** Monitor for crash/exception messages
-
----
 
 *Document generated from source code analysis. Last verified against v1.1.26.*
