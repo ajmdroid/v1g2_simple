@@ -1031,24 +1031,11 @@ void V1Display::showBootSplash() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
-    // Draw the V1 Simple logo scaled up (75% larger) and center-cropped to the screen
-    const float scale = 1.75f;  // 75% larger than native
-    const float scaledW = V1SIMPLE_LOGO_WIDTH * scale;
-    const float scaledH = V1SIMPLE_LOGO_HEIGHT * scale;
-    const float offsetX = (SCREEN_WIDTH - scaledW) / 2.0f;
-    const float offsetY = (SCREEN_HEIGHT - scaledH) / 2.0f;
-
-    for (int dy = 0; dy < SCREEN_HEIGHT; dy++) {
-        for (int dx = 0; dx < SCREEN_WIDTH; dx++) {
-            // Map destination pixel back to source coordinates
-            float srcXf = (dx - offsetX) / scale;
-            float srcYf = (dy - offsetY) / scale;
-            int sx = static_cast<int>(srcXf);
-            int sy = static_cast<int>(srcYf);
-            if (sx >= 0 && sx < V1SIMPLE_LOGO_WIDTH && sy >= 0 && sy < V1SIMPLE_LOGO_HEIGHT) {
-                uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
-                TFT_CALL(drawPixel)(dx, dy, pixel);
-            }
+    // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
+    for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
+        for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
+            uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
+            TFT_CALL(drawPixel)(sx, sy, pixel);
         }
     }
 
