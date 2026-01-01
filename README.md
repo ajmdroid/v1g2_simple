@@ -5,12 +5,15 @@ A configurable touchscreen display for the Valentine1 Gen2 radar detector, built
 Overview:
 - Wireless BLE connection with fast reconnection
 - Real‑time alerts: bands, direction, signal strength
-- Web UI for configuration (no code edits required)
+- Modern SvelteKit web UI for configuration
+- Customizable colors for all display elements
 - Multi‑network WiFi with encrypted credentials
 - Internet passthrough via NAT/NAPT in AP+STA mode
-- Auto‑push profile slots (Default, Highway, Comfort)
+- Auto‑push profile slots with volume settings
+- Profile flash indicator on slot change
 - SD card alert logging with web viewer
 - V1 profile manager (create, edit, push)
+- BLE proxy for simultaneous JBV1 app use
 - Security hardened: XSS fix, credential obfuscation
 
 Disclaimer:
@@ -20,15 +23,27 @@ Disclaimer:
 
 ## Recent Updates
 
-December 2025:
+**January 2025 (v1.1.x):**
+- Profile flash on slot change (3s visual indicator)
+- Hide battery icon option in Colors settings
+- Battery voltage calibration fix (4.1V max)
+- MANUAL.md documentation for all settings
+- Improved profile indicator timing
+- Bug fixes for display redraw logic
+
+**December 2025:**
 - WiFi NAT/NAPT router: AP+STA passthrough
 - Multi‑network WiFi (up to 3 networks)
 - Security hardening (XSS fix, HTML escaping)
 - Credential obfuscation for WiFi passwords
+- SvelteKit web interface with daisyUI
+- V1 profile manager (create/edit/push profiles)
+- Per‑slot volume settings (main + mute)
+- Customizable slot names and colors
 - NTP time sync refactor
 - Faster BLE reconnection
 
-Earlier:
+**Earlier:**
 - Touch‑to‑mute
 - Alert database with web viewer
 - Auto‑push profile system
@@ -113,10 +128,13 @@ code .
    - Menu: Terminal → New Terminal
    - Or press: `Ctrl+` ` (backtick) on Windows/Linux, `Cmd+` ` on Mac
 
-3. **Run the upload command:**
+3. **Run the build script:**
    ```bash
-   pio run -e waveshare-349 -t upload
+   # Build and upload everything (recommended for first install)
+   ./build.sh --all
    ```
+
+   This builds the web interface, uploads the filesystem, uploads firmware, and opens the serial monitor.
 
 4. **Wait for it to finish** (first time takes 2-5 minutes to download libraries)
 
@@ -127,15 +145,28 @@ code .
 
 After upload, the display boots to the main UI.
 
-> **Note:** The firmware and web UI are uploaded separately. If you make changes to the web interface (anything in `interface/` or `data/`), you also need to upload the filesystem:
-> ```bash
-> pio run -e waveshare-349 -t uploadfs
-> ```
-> The `upload` command only flashes the firmware code. The `uploadfs` command uploads the web assets (HTML, CSS, JS) stored in LittleFS.
+**Build Script Options:**
+```bash
+./build.sh              # Build only (no upload)
+./build.sh -u           # Build and upload firmware
+./build.sh -f           # Build and upload filesystem only
+./build.sh -u -m        # Build, upload firmware, open monitor
+./build.sh --all        # Full build + upload filesystem + firmware + monitor
+./build.sh --clean -a   # Clean build and upload everything
+./build.sh --skip-web   # Skip web interface rebuild
+./build.sh --help       # Show all options
+```
+
+**Manual PlatformIO commands** (alternative to build.sh):
+```bash
+pio run -e waveshare-349 -t upload      # Upload firmware only
+pio run -e waveshare-349 -t uploadfs    # Upload web filesystem
+pio device monitor                       # Open serial monitor
+```
 
 ### Additional build helpers
 
-For quick checks and sizing reports, see [`docs/BUILD.md`](docs/BUILD.md). The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pio run -e waveshare-349 -t size` and `pio check -e waveshare-349` commands respectively.
+For quick checks and sizing reports, see [docs/BUILD.md](docs/BUILD.md). The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pio run -e waveshare-349 -t size` and `pio check -e waveshare-349` commands respectively.
 
 ---
 
@@ -200,21 +231,22 @@ The display shows real-time alerts from your V1 (640×172 AMOLED, landscape orie
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                                                                │
+│ 📶🔋                                                           │
 │    L      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                  ↑   │
 │   Ka                                                       →   │
 │    K               34.728                                  ↓   │
 │    X                                                           │
 │                                                           [1]  │
 └────────────────────────────────────────────────────────────────┘
-  Bands     Signal bars / Frequency (GHz)           Arrows  Slot
+Status    Bands     Signal bars / Frequency (GHz)     Arrows  Slot
 ```
 
 **Layout:**
+- **Top-left**: Status icons (WiFi signal, battery level) - can be hidden in settings
 - **Left**: Band indicators (L/Ka/K/X) - light up when detected
 - **Center**: Signal strength bars (top), Frequency in GHz (bottom)
 - **Right**: Direction arrows (↑ front, → side, ↓ rear)
-- **Bottom-right**: Active profile slot indicator [1/2/3]
+- **Bottom-right**: Active profile slot indicator [1/2/3] - flashes for 3s on change
 
 Touch control: tap anywhere to mute/unmute.
 
@@ -222,32 +254,43 @@ Touch control: tap anywhere to mute/unmute.
 
 Access via `http://192.168.35.5` (or your configured IP):
 
-Home:
-- V1 connection status
-- Quick access to settings
-- Alert log viewer
+**Home** (`/`):
+- V1 connection status and signal strength
+- Quick access to all settings pages
+- System info (firmware version, uptime)
 
-Settings:
-- WiFi configuration (AP/STA/AP+STA)
-- Brightness
-- Color theme
-- Display mode
-- BLE proxy toggle
+**Settings** (`/settings`):
+- WiFi configuration (AP/STA/AP+STA modes)
+- Multi-network support (up to 3 saved networks)
+- BLE proxy toggle for JBV1 app
+- Display on/off and resting mode
+- Brightness control
 
-Auto‑Push (`/autopush`):
-- Three slots (Default, Highway, Comfort)
-- Profile + mode per slot
-- Quick‑push buttons
-- Auto‑enable on connection
+**Colors** (`/colors`):
+- Color theme selection (Standard, High Contrast, Stealth, Business)
+- Custom colors for all display elements
+- Per-band color customization (L/Ka/K/X)
+- Signal bar gradient colors
+- Hide WiFi/profile/battery indicators
 
-V1 Profiles (`/v1settings`):
-- Create/edit profiles
+**Auto-Push** (`/autopush`):
+- Three configurable slots (Default, Highway, Comfort)
+- Profile + V1 mode per slot
+- Per-slot volume settings (main + mute volume)
+- Custom slot names and colors
+- Quick-push buttons
+- Auto-push on V1 connection
+
+**V1 Profiles** (`/profiles`):
+- Create and edit V1 profiles
 - Configure bands, sensitivity, filters
-- Push to V1
+- Push profiles directly to V1
+- Manage multiple profiles
 
-Alert Logs (`/alerts`):
-- View logs from SD
-- Filter by band/frequency
+**Devices** (`/devices`):
+- BLE device management
+- Connected device info
+- JBV1 proxy status
 ---
 
 ## Features
@@ -319,12 +362,17 @@ Don't like something? The code is designed to be hackable:
 **Change WiFi defaults:** Edit `include/config.h`
 **Adjust signal bar thresholds:** Edit `include/config.h`  
 **Modify color themes:** Edit `include/color_themes.h`
-**Change web UI:** Edit `src/wifi_manager.cpp`
+**Customize web UI:** Edit files in `interface/src/routes/`
 
 After changes:
 
 ```bash
-pio run -e waveshare-349 -t upload
+./build.sh --all
+```
+
+Or for firmware-only changes:
+```bash
+./build.sh -u -m
 ```
 
 ---
