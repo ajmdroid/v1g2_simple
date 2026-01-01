@@ -680,14 +680,18 @@ void V1Display::drawProfileIndicator(int slot) {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
-    // Track current slot
+    // Track current slot and timestamp for flash feature
     if (slot != lastProfileSlot) {
         lastProfileSlot = slot;
+        profileChangedTime = millis();  // Record when profile changed
     }
     currentProfileSlot = slot;
 
-    // If user explicitly hides the indicator via web UI, don't show it
-    if (s.hideProfileIndicator) {
+    // Check if we're in the "flash" period after a profile change
+    bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
+    
+    // If user explicitly hides the indicator via web UI, only show during flash period
+    if (s.hideProfileIndicator && !inFlashPeriod) {
         int y = 14;
         int clearStart = 120;  // Don't overlap band indicators
         int clearWidth = SCREEN_WIDTH - clearStart - 240;  // stop before signal bars
@@ -759,6 +763,8 @@ void V1Display::drawProfileIndicator(int slot) {
 void V1Display::drawBatteryIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     extern BatteryManager batteryManager;
+    extern SettingsManager settingsManager;
+    const V1Settings& s = settingsManager.get();
     
     // Don't draw anything if no battery is present
     if (!batteryManager.hasBattery()) {
@@ -770,6 +776,14 @@ void V1Display::drawBatteryIndicator() {
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
     const int battY = SCREEN_HEIGHT - battH - 8;  // Bottom aligned with frequency
+    
+    // Check if user explicitly hides the battery icon
+    if (s.hideBatteryIcon) {
+        const int capW = 3;
+        FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+        return;
+    }
+    
     const int capW = 3;     // Positive terminal cap width
     const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery

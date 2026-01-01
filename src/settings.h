@@ -102,6 +102,7 @@ struct V1Settings {
     // Display visibility settings
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
+    bool hideBatteryIcon;        // Hide battery icon
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -153,6 +154,7 @@ struct V1Settings {
         colorBar6(0xF800),       // Red (strongest)
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
+        hideBatteryIcon(false),  // Show battery icon by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -205,6 +207,7 @@ public:
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
+    void setHideBatteryIcon(bool hide);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

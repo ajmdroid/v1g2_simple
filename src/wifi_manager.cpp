@@ -1551,6 +1551,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideProfileIndicator")) {
         settingsManager.setHideProfileIndicator(server.arg("hideProfileIndicator") == "true" || server.arg("hideProfileIndicator") == "1");
     }
+    if (server.hasArg("hideBatteryIcon")) {
+        settingsManager.setHideBatteryIcon(server.arg("hideBatteryIcon") == "true" || server.arg("hideBatteryIcon") == "1");
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1595,7 +1598,8 @@ void WiFiManager::handleDisplayColorsApi() {
     json += "\"bar5\":" + String(s.colorBar5) + ",";
     json += "\"bar6\":" + String(s.colorBar6) + ",";
     json += "\"hideWifiIcon\":" + String(s.hideWifiIcon ? "true" : "false") + ",";
-    json += "\"hideProfileIndicator\":" + String(s.hideProfileIndicator ? "true" : "false");
+    json += "\"hideProfileIndicator\":" + String(s.hideProfileIndicator ? "true" : "false") + ",";
+    json += "\"hideBatteryIcon\":" + String(s.hideBatteryIcon ? "true" : "false");
     json += "}";
     
     server.send(200, "application/json", json);
