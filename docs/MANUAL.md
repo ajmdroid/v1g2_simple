@@ -787,7 +787,7 @@ The `/autopush.html` page allows:
   - Override V1 mode
   - Set main volume (0-9, or 255 = "No Change")
   - Set mute volume (0-9, or 255 = "No Change")
-- Default volume: 5 (main), 1 (mute) for all slots
+- Default: 255 (No Change) - V1 keeps its current volume unless you override
 
 ### Protocol Commands
 
@@ -941,7 +941,7 @@ pio run -e waveshare-349 -t uploadfs
 - Mac: `/dev/cu.usbmodem*`
 - Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`
 
-**After erase:** Device boots with factory defaults (WiFi: V1-Display/valentine1, volume: 5/1).
+**After erase:** Device boots with factory defaults (WiFi: V1-Display/valentine1).
 
 ### BLE Connection Debugging
 
