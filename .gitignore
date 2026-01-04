@@ -51,3 +51,6 @@ docs/ARCHIVE.md
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/
 AUDIT_SUMMARY.md
+
+# R8 project (separate, not part of v1g2_simple)
+r8/

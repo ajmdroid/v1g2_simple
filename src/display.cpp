@@ -915,7 +915,26 @@ void V1Display::drawWiFiIndicator() {
 void V1Display::flush() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     if (tft) {
+#ifdef PERF_PROFILING
+        uint32_t flushStart = micros();
+#endif
         tft->flush();
+#ifdef PERF_PROFILING
+        uint32_t flushTime = micros() - flushStart;
+        static uint32_t flushCount = 0;
+        static uint32_t totalFlushUs = 0;
+        static uint32_t maxFlushUs = 0;
+        totalFlushUs += flushTime;
+        if (flushTime > maxFlushUs) maxFlushUs = flushTime;
+        flushCount++;
+        if (flushCount >= 100) {
+            Serial.printf("[PERF] Flush: avg=%lu us, max=%lu us (100 samples)\n", 
+                         totalFlushUs / flushCount, maxFlushUs);
+            flushCount = 0;
+            totalFlushUs = 0;
+            maxFlushUs = 0;
+        }
+#endif
     }
 #endif
 }
@@ -1243,6 +1262,9 @@ void V1Display::update(const AlertData& alert) {
 }
 
 void V1Display::update(const AlertData& alert, const DisplayState& state, int alertCount) {
+#ifdef PERF_PROFILING
+    uint32_t updateStart = micros();
+#endif
     if (!alert.isValid) {
         return;
     }
@@ -1277,8 +1299,29 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
 
+#ifdef PERF_PROFILING
+    uint32_t drawTime = micros() - updateStart;
+#endif
+
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();  // Push canvas to display
+#endif
+
+#ifdef PERF_PROFILING
+    uint32_t totalTime = micros() - updateStart;
+    static uint32_t updateCount = 0;
+    static uint32_t totalDrawUs = 0;
+    static uint32_t totalUpdateUs = 0;
+    totalDrawUs += drawTime;
+    totalUpdateUs += totalTime;
+    updateCount++;
+    if (updateCount >= 50) {
+        Serial.printf("[PERF] Update: draw=%lu us, total=%lu us (50 samples)\n", 
+                     totalDrawUs / updateCount, totalUpdateUs / updateCount);
+        updateCount = 0;
+        totalDrawUs = 0;
+        totalUpdateUs = 0;
+    }
 #endif
 
     lastAlert = alert;

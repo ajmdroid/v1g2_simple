@@ -62,6 +62,55 @@ unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
 const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
 
+// Change detection for display optimization
+struct LastDisplayedData {
+    AlertData alert;
+    uint8_t activeBands;
+    Direction arrows;
+    bool muted;
+    int alertCount;
+    bool valid;
+    
+    bool hasChanged(const AlertData& newAlert, const DisplayState& newState, int newCount) {
+        if (!valid) return true;
+        if (alertCount != newCount) return true;
+        if (activeBands != newState.activeBands) return true;
+        if (arrows != newState.arrows) return true;
+        if (muted != newState.muted) return true;
+        if (alert.band != newAlert.band) return true;
+        if (alert.frequency != newAlert.frequency) return true;
+        if (alert.frontStrength != newAlert.frontStrength) return true;
+        if (alert.rearStrength != newAlert.rearStrength) return true;
+        return false;
+    }
+    
+    void update(const AlertData& newAlert, const DisplayState& newState, int newCount) {
+        alert = newAlert;
+        activeBands = newState.activeBands;
+        arrows = newState.arrows;
+        muted = newState.muted;
+        alertCount = newCount;
+        valid = true;
+    }
+};
+static LastDisplayedData lastDisplayed;
+
+// Performance profiling
+#ifdef PERF_PROFILING
+struct PerfMetrics {
+    uint32_t loopCount = 0;
+    uint32_t bleProcessUs = 0;
+    uint32_t displayUpdateUs = 0;
+    uint32_t wifiProcessUs = 0;
+    uint32_t touchProcessUs = 0;
+    uint32_t totalLoopUs = 0;
+    uint32_t maxLoopUs = 0;
+    uint32_t lastReportMs = 0;
+    uint32_t lastLoopStartUs = 0;
+};
+static PerfMetrics perf;
+#endif
+
 // Color preview state machine to keep demo visible and cycle bands
 static bool colorPreviewActive = false;
 static unsigned long colorPreviewStartMs = 0;
@@ -705,8 +754,19 @@ void processBLEData() {
                     }
                 }
 
-                // Update display FIRST for lowest latency
-                display.update(priority, state, alertCount);
+                // Update display FIRST for lowest latency - but skip if nothing changed
+                if (lastDisplayed.hasChanged(priority, state, alertCount)) {
+                    display.update(priority, state, alertCount);
+                    lastDisplayed.update(priority, state, alertCount);
+#ifdef PERF_PROFILING
+                } else {
+                    static uint32_t skipCount = 0;
+                    skipCount++;
+                    if (skipCount % 100 == 0) {
+                        SerialLog.printf("[PERF] Skipped %lu redundant display updates\n", skipCount);
+                    }
+#endif
+                }
                 
             } else {
                 // No alerts - clear mute override only after timeout has passed
@@ -735,6 +795,7 @@ void processBLEData() {
                 }
                 
                 display.update(state);
+                lastDisplayed.valid = false;  // Invalidate so next alert triggers redraw
             }
         }
     }
@@ -1069,18 +1130,38 @@ void loop() {
     bleClient.process();
 #endif
     
+#ifdef PERF_PROFILING
+    uint32_t bleStartUs = micros();
+#endif
+    
     // Process queued BLE data (safe for SPI - runs in main loop context)
     // In REPLAY_MODE, this injects test packets; otherwise processes BLE queue
     processBLEData();
 
+#ifdef PERF_PROFILING
+    perf.bleProcessUs += micros() - bleStartUs;
+#endif
+
     // Drive auto-push state machine (non-blocking)
     processAutoPush();
 
+#ifdef PERF_PROFILING
+    uint32_t wifiStartUs = micros();
+#endif
+    
     // Process WiFi/web server
     wifiManager.process();
     
+#ifdef PERF_PROFILING
+    perf.wifiProcessUs += micros() - wifiStartUs;
+#endif
+    
     // Update display periodically
     unsigned long now = millis();
+    
+#ifdef PERF_PROFILING
+    uint32_t displayStartUs = micros();
+#endif
     
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
@@ -1118,6 +1199,10 @@ void loop() {
         }
     }
     
+#ifdef PERF_PROFILING
+    perf.displayUpdateUs += micros() - displayStartUs;
+#endif
+    
     // Status update (print to serial)
     if (now - lastStatusUpdate >= STATUS_UPDATE_MS) {
         lastStatusUpdate = now;
@@ -1129,6 +1214,37 @@ void loop() {
             }
         }
     }
+
+#ifdef PERF_PROFILING
+    // Calculate total loop time
+    uint32_t loopEndUs = micros();
+    uint32_t totalUs = loopEndUs - perf.lastLoopStartUs;
+    perf.totalLoopUs += totalUs;
+    if (totalUs > perf.maxLoopUs) perf.maxLoopUs = totalUs;
+    perf.loopCount++;
+    
+    // Report every 5 seconds
+    if (now - perf.lastReportMs >= 5000) {
+        if (perf.loopCount > 0) {
+            SerialLog.println("=== PERF REPORT ===");
+            SerialLog.printf("Loops: %lu (avg %lu us, max %lu us)\n", 
+                perf.loopCount, perf.totalLoopUs / perf.loopCount, perf.maxLoopUs);
+            SerialLog.printf("BLE process: avg %lu us\n", perf.bleProcessUs / perf.loopCount);
+            SerialLog.printf("WiFi process: avg %lu us\n", perf.wifiProcessUs / perf.loopCount);
+            SerialLog.printf("Display update: avg %lu us\n", perf.displayUpdateUs / perf.loopCount);
+            SerialLog.println("===================");
+        }
+        // Reset counters
+        perf.loopCount = 0;
+        perf.bleProcessUs = 0;
+        perf.wifiProcessUs = 0;
+        perf.displayUpdateUs = 0;
+        perf.totalLoopUs = 0;
+        perf.maxLoopUs = 0;
+        perf.lastReportMs = now;
+    }
+    perf.lastLoopStartUs = micros();
+#endif
 
     delay(5);  // Minimal yield for watchdog
 }
