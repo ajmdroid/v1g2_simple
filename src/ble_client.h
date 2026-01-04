@@ -162,6 +162,10 @@ public:
     // sourceCharUUID: last 16-bit of source characteristic UUID (0xB2CE, 0xB4E0, etc)
     void forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
     
+    // Forward data to proxy IMMEDIATELY (called from BLE callback for zero latency)
+    // This is the fast path - sends directly without queuing
+    void forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
+    
     // Process pending proxy notifications (call from main loop after display update)
     // Returns number of packets sent
     int processProxyQueue();

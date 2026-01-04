@@ -527,17 +527,15 @@ void processBLEData() {
     uint32_t latestPktTs = 0;
     
     // Process all queued packets
+    // NOTE: Proxy forwarding now happens IMMEDIATELY in BLE callback (forwardToProxyImmediate)
+    // This queue is only for display processing which needs main loop for SPI safety
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
-        // Forward raw data to proxy clients (JBV1) - done here in main loop to avoid SPI conflicts
-        // Pass the source characteristic UUID so data is forwarded to the correct proxy characteristic
-        bleClient.forwardToProxy(pkt.data, pkt.length, pkt.charUUID);
-        
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
         rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
         latestPktTs = pkt.tsMs;
     }
     
-    // Process the proxy queue to actually send data to connected apps (JBV1/V1 Companion)
+    // Process any remaining queued proxy data (legacy path - mostly unused now)
     bleClient.processProxyQueue();
 #endif
     
@@ -1246,5 +1244,5 @@ void loop() {
     perf.lastLoopStartUs = micros();
 #endif
 
-    delay(5);  // Minimal yield for watchdog
+    yield();  // Yield to other tasks (no delay)
 }
