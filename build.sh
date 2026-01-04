@@ -21,6 +21,8 @@ UPLOAD_FS=false
 UPLOAD_FW=false
 MONITOR=false
 SKIP_WEB=false
+PIO_ENV="waveshare-349"
+UPLOAD_PORT=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -50,6 +52,14 @@ while [[ $# -gt 0 ]]; do
             SKIP_WEB=true
             shift
             ;;
+        --env|-e)
+            PIO_ENV="$2"
+            shift 2
+            ;;
+        --upload-port)
+            UPLOAD_PORT="$2"
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -60,6 +70,9 @@ while [[ $# -gt 0 ]]; do
             echo "  -m, --monitor      Open serial monitor after upload"
             echo "  -a, --all          Upload filesystem, firmware, and monitor"
             echo "  -s, --skip-web     Skip web interface build"
+            echo "  -e, --env ENV      PlatformIO environment (default: waveshare-349)"
+            echo "                     Windows users: use --env waveshare-349-windows"
+            echo "  --upload-port PORT COM port for upload (e.g., COM6)"
             echo "  -h, --help         Show this help"
             echo ""
             echo "Examples:"
@@ -68,6 +81,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -u -m           # Build firmware, upload, and monitor"
             echo "  $0 -f              # Build and upload filesystem only"
             echo "  $0 -s -u           # Skip web build, just build and upload firmware"
+            echo "  $0 --all --env waveshare-349-windows  # Windows build"
             exit 0
             ;;
         *)
@@ -78,6 +92,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Build PIO arguments
+PIO_ARGS="-e $PIO_ENV"
+if [ -n "$UPLOAD_PORT" ]; then
+    PIO_ARGS="$PIO_ARGS --upload-port $UPLOAD_PORT"
+fi
+
 echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         V1G2 Simple Complete Build Script         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════╝${NC}"
@@ -86,7 +106,7 @@ echo ""
 # Step 1: Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}🧹 Cleaning build artifacts...${NC}"
-    pio run -t clean
+    pio run $PIO_ARGS -t clean
     rm -rf interface/build interface/.svelte-kit
     echo -e "${GREEN}✅ Clean complete${NC}"
     echo ""
@@ -132,8 +152,8 @@ else
 fi
 
 # Step 3: Build firmware
-echo -e "${YELLOW}🔧 Building firmware...${NC}"
-pio run
+echo -e "${YELLOW}🔧 Building firmware (env: $PIO_ENV)...${NC}"
+pio run $PIO_ARGS
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Firmware build failed!${NC}"
@@ -144,13 +164,13 @@ echo -e "${GREEN}✅ Firmware built successfully${NC}"
 
 # Show build size
 echo -e "${BLUE}📊 Build size:${NC}"
-pio run -t size | grep -E "RAM:|Flash:" || true
+pio run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
 # Step 4: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
-    pio run -t uploadfs
+    pio run $PIO_ARGS -t uploadfs
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Filesystem upload failed!${NC}"
@@ -164,7 +184,7 @@ fi
 # Step 5: Upload firmware if requested
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
-    pio run -t upload
+    pio run $PIO_ARGS -t upload
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Firmware upload failed!${NC}"

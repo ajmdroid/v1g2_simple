@@ -39,7 +39,8 @@ git clone https://github.com/ajmdroid/v1g2_simple
 cd v1g2_simple
 
 # 2. Build and flash everything (recommended)
-./build.sh --all
+./build.sh --all                                    # Mac/Linux
+./build.sh --all --env waveshare-349-windows        # Windows
 
 # This single command:
 # - Builds web interface (npm install + npm run build)
@@ -50,14 +51,21 @@ cd v1g2_simple
 # - Opens serial monitor
 ```
 
+**Windows users:** See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed setup instructions.
+
 **Alternative (manual steps):**
 ```bash
 # Build web interface
 cd interface && npm install && npm run build && npm run deploy && cd ..
 
 # Build and upload firmware + filesystem
+# Mac/Linux:
 pio run -e waveshare-349 -t uploadfs
 pio run -e waveshare-349 -t upload
+
+# Windows:
+pio run -e waveshare-349-windows -t uploadfs
+pio run -e waveshare-349-windows -t upload
 
 # Monitor serial output
 pio device monitor -b 115200
@@ -92,11 +100,13 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | Component | Specification |
 |-----------|---------------|
 | Board | Waveshare ESP32-S3-Touch-LCD-3.49 |
-| CPU | ESP32-S3 @ 240MHz, 16MB Flash, 8MB PSRAM |
+| CPU | ESP32-S3 @ 240MHz, 8MB or 16MB Flash, 8MB PSRAM |
 | Display | AXS15231B QSPI AMOLED, 640×172 pixels |
 | Touch | Integrated AXS15231B capacitive touch |
 | Storage | LittleFS (internal), SD card (optional) |
 | Battery | Optional LiPo via TCA9554 power management |
+
+**Note:** Some units ship with 8MB flash. The Windows build uses `default_8MB.csv` partitions.
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [include/config.h](include/config.h#L1-L20), [src/battery_manager.h](src/battery_manager.h#L1-L30)
 
@@ -775,10 +785,9 @@ The `/autopush.html` page allows:
 - Configure each of the 3 slots:
   - Select profile from saved profiles
   - Override V1 mode
-  - Set main volume (0-8)
-  - Set mute volume (0-8)
-  - Set muted volume level
-- Default volume settings when no override
+  - Set main volume (0-9, or 255 = "No Change")
+  - Set mute volume (0-9, or 255 = "No Change")
+- Default: 255 (No Change) - V1 keeps its current volume unless you override
 
 ### Protocol Commands
 
@@ -789,9 +798,7 @@ Auto-push sends these V1 ESP commands:
 | PROFILE | reqWriteUserBytes | 6 bytes from profile |
 | DISPLAY | reqTurnOnMainDisplay / reqTurnOffMainDisplay | - |
 | MODE | reqChangeMode | 1=All, 2=Logic, 3=AdvLogic |
-| VOLUME | reqSetMainVolume | 0-8 |
-| VOLUME | reqSetMuteVolume | 0-8 |
-| VOLUME | reqSetMutedVolume | 0-8 |
+| VOLUME | reqSetVolume | main (0-9), mute (0-9) |
 
 **Source:** [src/ble_client.cpp](src/ble_client.cpp#L600-L700) (sendUserBytes, sendVolume, etc.)
 
@@ -799,9 +806,11 @@ Auto-push sends these V1 ESP commands:
 
 ## I. Configuration & Build Options
 
-### PlatformIO Environment
+### PlatformIO Environments
 
-Single environment: `waveshare-349`
+Two environments available:
+- `waveshare-349` - Mac/Linux (GFX 1.6.4, 16MB partitions)
+- `waveshare-349-windows` - Windows (GFX 1.4.9, 8MB partitions)
 
 ```ini
 [env:waveshare-349]
@@ -824,7 +833,20 @@ lib_deps =
 
 board_build.partitions = default_16MB.csv
 board_build.filesystem = littlefs
+
+[env:waveshare-349-windows]
+# Same as above but with:
+lib_deps = 
+    moononournation/GFX Library for Arduino@1.4.9  # ESP32 2.x compatible
+    # ... same other libs
+build_flags = 
+    # ... same flags plus:
+    -D WINDOWS_BUILD=1
+board_build.partitions = default_8MB.csv  # 8MB flash variant
 ```
+
+**Windows users:** Use `--env waveshare-349-windows` with all PlatformIO commands.
+See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 
 **Source:** [platformio.ini](platformio.ini#L1-L50)
 
@@ -889,6 +911,37 @@ Connect at 115200 baud. Key prefixes:
 | Touch not working | I2C init failed | Check serial for "[Touch] ERROR" |
 | Display blank | QSPI init failed | Check pin definitions |
 | Battery icon missing | USB power detected | Normal - only shows on battery |
+| Settings won't reset | NVS persists | Use `esptool.py erase_flash` (see below) |
+
+### Factory Reset (Full Flash Erase)
+
+Settings are stored in NVS (non-volatile storage) and persist across firmware updates. The `pio run -t erase` target only erases firmware, not NVS.
+
+**To fully reset all settings to defaults:**
+
+```bash
+# Windows (Git Bash) - use PlatformIO's Python:
+"$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
+
+# Mac/Linux:
+~/.platformio/packages/tool-esptoolpy/esptool.py --port /dev/cu.usbmodem* erase_flash
+
+# Then re-upload everything (Windows - add PATH first):
+export PATH="$PATH:$HOME/.platformio/penv/Scripts"
+pio run -e waveshare-349-windows -t upload
+pio run -e waveshare-349-windows -t uploadfs
+
+# Mac/Linux:
+pio run -e waveshare-349 -t upload
+pio run -e waveshare-349 -t uploadfs
+```
+
+**Port names:**
+- Windows: `COM4`, `COM5`, etc.
+- Mac: `/dev/cu.usbmodem*`
+- Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`
+
+**After erase:** Device boots with factory defaults (WiFi: V1-Display/valentine1).
 
 ### BLE Connection Debugging
 
@@ -1043,10 +1096,17 @@ v1g2_simple/
 **Manual PlatformIO commands:**
 
 ```bash
+# Mac/Linux:
 pio run -e waveshare-349                  # Build firmware only
 pio run -e waveshare-349 -t upload        # Upload firmware
 pio run -e waveshare-349 -t uploadfs      # Upload web filesystem
-pio device monitor -b 115200              # Serial monitor
+
+# Windows (use waveshare-349-windows environment):
+pio run -e waveshare-349-windows                  # Build firmware only
+pio run -e waveshare-349-windows -t upload        # Upload firmware
+pio run -e waveshare-349-windows -t uploadfs      # Upload web filesystem
+
+pio device monitor -b 115200              # Serial monitor (same for all)
 ```
 
 **Web interface development:**

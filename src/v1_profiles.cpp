@@ -168,7 +168,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     }
     
     // Validate CRC32 if present
-    if (doc.containsKey("crc32")) {
+    if (doc["crc32"].is<uint32_t>()) {
         uint32_t storedCrc = doc["crc32"].as<uint32_t>();
         
         // Calculate CRC of the 6 settings bytes
