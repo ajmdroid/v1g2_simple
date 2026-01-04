@@ -826,6 +826,13 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         charId = 0xB2CE; // sensible fallback
     }
 
+    // LATENCY LOG: Timestamp when we receive alert packets (0x43) from V1
+    #ifdef PERF_PROFILING
+    if (length >= 5 && pData[3] == 0x43) {  // Alert data packet
+        Serial.printf("[V1_RX] %lu alert\n", millis());
+    }
+    #endif
+
     // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to JBV1
     // NimBLE handles thread safety for server notifications
     instancePtr->forwardToProxyImmediate(pData, length, charId);
@@ -1618,6 +1625,14 @@ void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, ui
     if (length == 0 || length > PROXY_PACKET_MAX) {
         return;
     }
+    
+    // LATENCY LOG: Timestamp when we forward alert packets (0x43) to proxy
+    // Compare this with JBV1's receive timestamp via ADB
+    #ifdef PERF_PROFILING
+    if (length >= 5 && data[3] == 0x43) {  // Alert data packet
+        Serial.printf("[PROXY_TX] %lu alert\n", millis());
+    }
+    #endif
     
     // Send notification immediately - NimBLE handles thread safety
     if (pProxyNotifyChar) {
