@@ -79,7 +79,7 @@ pio run -e waveshare-349 --target upload
 pio run -e waveshare-349-windows --target upload
 ```
 
-**Windows users:** See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed Windows setup instructions.
+**Windows users:** See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows setup instructions.
 
 ---
 
@@ -117,7 +117,7 @@ Connect to this network and open the URL to configure WiFi and display settings.
   sudo usermod -aG dialout $USER
   # Then log out and back in
   ```
-- For Waveshare-specific issues, see [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) (Windows) or the main [README.md](README.md)
+- For Waveshare-specific issues, see [WINDOWS_SETUP.md](WINDOWS_SETUP.md) (Windows) or the main [README.md](../README.md)
 
 ---
 

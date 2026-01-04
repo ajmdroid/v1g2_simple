@@ -318,6 +318,22 @@ bool V1Display::begin() {
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
     Serial.println("Creating AXS15231B panel...");
+#ifdef WINDOWS_BUILD
+    // GFX Library 1.4.9 - simpler constructor without init_operations
+    gfxPanel = new Arduino_AXS15231B(
+        bus,               // bus
+        GFX_NOT_DEFINED,   // RST - we already did manual reset
+        0,                 // rotation (0 = no panel rotation)
+        false,             // IPS
+        172,               // width (Waveshare 3.49" is 172 wide)
+        640,               // height
+        0,                 // col_offset1
+        0,                 // row_offset1
+        0,                 // col_offset2
+        0                  // row_offset2
+    );
+#else
+    // GFX Library 1.6.4 - full constructor with init_operations
     gfxPanel = new Arduino_AXS15231B(
         bus,               // bus
         GFX_NOT_DEFINED,   // RST - we already did manual reset
@@ -332,6 +348,7 @@ bool V1Display::begin() {
         axs15231b_180640_init_operations,   // init operations for this panel type
         sizeof(axs15231b_180640_init_operations)
     );
+#endif
     if (!gfxPanel) {
         Serial.println("ERROR: Failed to create panel!");
         return false;

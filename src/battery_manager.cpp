@@ -6,9 +6,16 @@
 #include "display.h"
 #include "settings.h"
 #include <Wire.h>
+#ifdef WINDOWS_BUILD
+// ESP32 Arduino 2.x compatible headers
+#include <driver/adc.h>
+#include <esp_adc_cal.h>
+#else
+// ESP32 Arduino 3.x headers
 #include <esp_adc/adc_oneshot.h>
 #include <esp_adc/adc_cali.h>
 #include <esp_adc/adc_cali_scheme.h>
+#endif
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 
@@ -22,8 +29,12 @@ extern SettingsManager settingsManager;
 BatteryManager batteryManager;
 
 // ADC handles
+#ifdef WINDOWS_BUILD
+static esp_adc_cal_characteristics_t *adc_chars = NULL;
+#else
 static adc_oneshot_unit_handle_t adc1_handle = NULL;
 static adc_cali_handle_t adc_cali_handle = NULL;
+#endif
 
 // I2C for TCA9554 (separate from touch I2C)
 static TwoWire tca9554Wire(1);  // Use I2C port 1
@@ -89,7 +100,11 @@ bool BatteryManager::begin() {
     
     // Read initial voltage for diagnostics
     uint16_t initialVoltage = 0;
+#ifdef WINDOWS_BUILD
+    if (adc_chars) {
+#else
     if (adc1_handle) {
+#endif
         initialVoltage = readADCMillivolts();
         Serial.printf("[Battery] Initial voltage reading: %dmV\n", initialVoltage);
         
@@ -122,6 +137,21 @@ bool BatteryManager::begin() {
 }
 
 bool BatteryManager::initADC() {
+#ifdef WINDOWS_BUILD
+    // Simplified ADC init for ESP32 Arduino 2.x
+    adc1_config_width(ADC_WIDTH_BIT_12);
+    adc1_config_channel_atten(ADC1_CHANNEL_3, ADC_ATTEN_DB_12);
+    
+    // Create calibration characteristics
+    adc_chars = (esp_adc_cal_characteristics_t *)calloc(1, sizeof(esp_adc_cal_characteristics_t));
+    if (adc_chars) {
+        esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 1100, adc_chars);
+    }
+    
+    Serial.println("[Battery] ADC initialized (legacy API)");
+    return true;
+#else
+    // ESP32 Arduino 3.x - oneshot API
     // Create calibration handle
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id = ADC_UNIT_1,
@@ -163,6 +193,7 @@ bool BatteryManager::initADC() {
     
     Serial.println("[Battery] ADC initialized for battery monitoring");
     return true;
+#endif
 }
 
 bool BatteryManager::initTCA9554() {
@@ -192,7 +223,7 @@ bool BatteryManager::initTCA9554() {
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
     tca9554Wire.write(TCA9554_OUTPUT_PORT);
     tca9554Wire.endTransmission(false);
-    tca9554Wire.requestFrom(TCA9554_I2C_ADDR, (uint8_t)1);
+    tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
     uint8_t current = 0;
     if (tca9554Wire.available() >= 1) {
         current = tca9554Wire.read();
@@ -228,7 +259,7 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
     tca9554Wire.write(TCA9554_OUTPUT_PORT);
     tca9554Wire.endTransmission(false);
-    tca9554Wire.requestFrom(TCA9554_I2C_ADDR, (uint8_t)1);
+    tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
     
     if (tca9554Wire.available() < 1) {
         Serial.println("[Battery] Failed to read TCA9554 output port");
@@ -259,6 +290,23 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
 }
 
 uint16_t BatteryManager::readADCMillivolts() {
+#ifdef WINDOWS_BUILD
+    // ESP32 Arduino 2.x - legacy ADC API
+    int raw = adc1_get_raw(ADC1_CHANNEL_3);
+    
+    int voltage_mv = 0;
+    if (adc_chars) {
+        voltage_mv = esp_adc_cal_raw_to_voltage(raw, adc_chars);
+    } else {
+        // Fallback calculation without calibration
+        voltage_mv = (raw * 3300) / 4096;
+    }
+    
+    // Apply voltage divider factor (3:1 ratio on the board)
+    lastVoltage = voltage_mv * 3;
+    return lastVoltage;
+#else
+    // ESP32 Arduino 3.x - oneshot API
     if (!adc1_handle) return 0;
     
     int raw = 0;
@@ -278,6 +326,7 @@ uint16_t BatteryManager::readADCMillivolts() {
     // Apply voltage divider factor (3:1 ratio on the board)
     lastVoltage = voltage_mv * 3;
     return lastVoltage;
+#endif
 }
 
 bool BatteryManager::isOnBattery() const {
@@ -290,10 +339,17 @@ bool BatteryManager::hasBattery() const {
         return true;
     }
     
+    // Must be initialized to detect battery
+#ifdef WINDOWS_BUILD
+    if (!initialized) {
+        return false;
+    }
+#else
     // Must be initialized with working ADC to detect battery
     if (!initialized || !adc1_handle) {
         return false;
     }
+#endif
     
     // Only show battery icon when actually running on battery power
     // When on USB, we don't show the battery icon even if physically present
@@ -397,7 +453,7 @@ bool BatteryManager::latchPowerOn() {
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
     tca9554Wire.write(TCA9554_OUTPUT_PORT);
     tca9554Wire.endTransmission(false);
-    tca9554Wire.requestFrom(TCA9554_I2C_ADDR, (uint8_t)1);
+    tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
     
     if (tca9554Wire.available() < 1) {
         Serial.println("[Battery] Failed to read power latch state");

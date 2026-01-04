@@ -48,11 +48,15 @@ A configurable touchscreen display for the Valentine One Gen2 radar detector, bu
 
 **Hardware:**
 - Waveshare ESP32‑S3‑Touch‑LCD‑3.49
-- USB‑C cable
+- USB‑C cable (must support data, not charge-only)
 - Valentine One Gen2 (BLE enabled)
 
 **Software:**
 - Visual Studio Code + PlatformIO
+- Git (for cloning the repo)
+- Node.js 18+ (for building the web UI)
+
+**Windows users:** See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed step-by-step instructions.
 
 ---
 
@@ -123,8 +127,11 @@ code .
 3. **Run the build script:**
    ```bash
    # Build and upload everything (recommended for first install)
-   ./build.sh --all
+   ./build.sh --all                                    # Mac/Linux
+   ./build.sh --all --env waveshare-349-windows        # Windows
    ```
+
+   **Windows users:** See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed setup.
 
    This builds the web interface, uploads the filesystem, uploads firmware, and opens the serial monitor.
 
@@ -146,19 +153,26 @@ After upload, the display boots to the main UI.
 ./build.sh --all        # Full build + upload filesystem + firmware + monitor
 ./build.sh --clean -a   # Clean build and upload everything
 ./build.sh --skip-web   # Skip web interface rebuild
+./build.sh --env waveshare-349-windows  # Use Windows environment
 ./build.sh --help       # Show all options
 ```
 
 **Manual PlatformIO commands** (alternative to build.sh):
 ```bash
+# Mac/Linux:
 pio run -e waveshare-349 -t upload      # Upload firmware only
 pio run -e waveshare-349 -t uploadfs    # Upload web filesystem
+
+# Windows:
+pio run -e waveshare-349-windows -t upload      # Upload firmware only
+pio run -e waveshare-349-windows -t uploadfs    # Upload web filesystem
+
 pio device monitor                       # Open serial monitor
 ```
 
 ### Additional build helpers
 
-For quick checks and sizing reports, see [docs/BUILD.md](docs/BUILD.md). The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pio run -e waveshare-349 -t size` and `pio check -e waveshare-349` commands respectively.
+The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pio run -e waveshare-349 -t size` and `pio check -e waveshare-349` commands respectively.
 
 ---
 
@@ -374,6 +388,30 @@ Or for firmware-only changes:
 - Try different color themes in settings
 - Check display isn't in direct sunlight (AMOLED)
 
+### Reset to Factory Defaults
+
+Settings are stored in NVS (non-volatile storage) and persist across firmware updates. To fully reset:
+
+**Full flash erase (erases ALL data including saved settings):**
+```bash
+# Windows (Git Bash) - use PlatformIO's Python:
+"$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
+
+# Mac/Linux:
+~/.platformio/packages/tool-esptoolpy/esptool.py --port /dev/cu.usbmodem* erase_flash
+
+# Then re-upload firmware and filesystem (Windows - add PATH first):
+export PATH="$PATH:$HOME/.platformio/penv/Scripts"
+pio run -e waveshare-349-windows -t upload
+pio run -e waveshare-349-windows -t uploadfs
+
+# Mac/Linux:
+pio run -e waveshare-349 -t upload
+pio run -e waveshare-349 -t uploadfs
+```
+
+**Note:** Replace `COM4` with your actual port. Use `pio device list` to find it. (Mac/Linux: `/dev/cu.usbmodem*` or `/dev/ttyACM0`)
+
 ### WiFi
 
 **Can't find V1-Display network:**
@@ -392,13 +430,15 @@ Or for firmware-only changes:
 ### Hardware
 
 **Waveshare ESP32-S3-Touch-LCD-3.49:**
-- **CPU**: ESP32-S3 @ 240MHz, 16MB Flash, 8MB PSRAM
+- **CPU**: ESP32-S3 @ 240MHz, 8-16MB Flash, 8MB PSRAM
 - **Display**: 640×172 AMOLED (AXS15231B controller, QSPI interface)
 - **Touch**: AXS15231B integrated capacitive touch (single-touch only)
 - **Storage**: LittleFS (internal flash)
 - **Battery**: Optional LiPo via TCA9554 power management
 
-See [WAVESHARE_349.md](WAVESHARE_349.md) for pin mapping.
+**Note:** Waveshare advertises 16MB flash, but esptool detects some units as 8MB. The Windows build uses 8MB partitions for compatibility.
+
+Pin mapping is defined in [platformio.ini](platformio.ini) via build flags (LCD_CS, LCD_SCLK, LCD_DATA0-3, LCD_RST, LCD_BL).
 
 ### BLE Protocol
 
@@ -483,6 +523,7 @@ This project would not exist without:
 ## 🔗 Links
 
 - **Documentation**: [docs/MANUAL.md](docs/MANUAL.md) - Comprehensive technical manual
+- **Setup Guides**: [docs/SETUP.md](docs/SETUP.md) (General) | [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) (Windows)
 - **Hardware**: [Waveshare ESP32-S3-Touch-LCD-3.49 on Amazon](https://www.amazon.com/dp/B0FQM41PGX)
 - **Kenny's Project**: [V1G2-T4S3](https://github.com/kennygarreau/v1g2-t4s3)
 - **Valentine Research**: [valentineresearch.com](https://www.valentineresearch.com/)
