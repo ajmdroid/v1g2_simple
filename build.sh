@@ -15,13 +15,22 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Detect Windows and set PIO command accordingly
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$WINDIR" ]]; then
+    PIO_CMD="$HOME/.platformio/penv/Scripts/pio.exe"
+    DEFAULT_ENV="waveshare-349-windows"
+else
+    PIO_CMD="pio"
+    DEFAULT_ENV="waveshare-349"
+fi
+
 # Parse arguments
 CLEAN=false
 UPLOAD_FS=false
 UPLOAD_FW=false
 MONITOR=false
 SKIP_WEB=false
-PIO_ENV="waveshare-349"
+PIO_ENV="$DEFAULT_ENV"
 UPLOAD_PORT=""
 
 while [[ $# -gt 0 ]]; do
@@ -106,7 +115,7 @@ echo ""
 # Step 1: Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}🧹 Cleaning build artifacts...${NC}"
-    pio run $PIO_ARGS -t clean
+    $PIO_CMD run $PIO_ARGS -t clean
     rm -rf interface/build interface/.svelte-kit
     echo -e "${GREEN}✅ Clean complete${NC}"
     echo ""
@@ -153,7 +162,7 @@ fi
 
 # Step 3: Build firmware
 echo -e "${YELLOW}🔧 Building firmware (env: $PIO_ENV)...${NC}"
-pio run $PIO_ARGS
+$PIO_CMD run $PIO_ARGS
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Firmware build failed!${NC}"
@@ -164,13 +173,13 @@ echo -e "${GREEN}✅ Firmware built successfully${NC}"
 
 # Show build size
 echo -e "${BLUE}📊 Build size:${NC}"
-pio run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
+$PIO_CMD run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
 # Step 4: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
-    pio run $PIO_ARGS -t uploadfs
+    $PIO_CMD run $PIO_ARGS -t uploadfs
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Filesystem upload failed!${NC}"
@@ -184,7 +193,7 @@ fi
 # Step 5: Upload firmware if requested
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
-    pio run $PIO_ARGS -t upload
+    $PIO_CMD run $PIO_ARGS -t upload
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Firmware upload failed!${NC}"
@@ -201,7 +210,7 @@ if [ "$MONITOR" = true ]; then
     echo -e "${BLUE}(Press Ctrl+C to exit)${NC}"
     echo ""
     sleep 1
-    pio device monitor
+    $PIO_CMD device monitor
 fi
 
 # Final summary
