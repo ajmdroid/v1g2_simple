@@ -13,11 +13,12 @@ on:
           - release
           - debug
   
-  # Auto-trigger on push to main/master
+  # Auto-trigger on push to main/master/dev
   push:
     branches:
       - main
       - master
+      - dev
     paths:
       - 'src/**'
       - 'include/**'
