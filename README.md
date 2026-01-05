@@ -127,9 +127,10 @@ code .
 3. **Run the build script:**
    ```bash
    # Build and upload everything (recommended for first install)
-   ./build.sh --all                                    # Mac/Linux
-   ./build.sh --all --env waveshare-349-windows        # Windows
+   ./build.sh --all
    ```
+
+   The script auto-detects your OS and uses the correct environment automatically.
 
    **Windows users:** See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed setup.
 
@@ -153,9 +154,10 @@ After upload, the display boots to the main UI.
 ./build.sh --all        # Full build + upload filesystem + firmware + monitor
 ./build.sh --clean -a   # Clean build and upload everything
 ./build.sh --skip-web   # Skip web interface rebuild
-./build.sh --env waveshare-349-windows  # Use Windows environment
 ./build.sh --help       # Show all options
 ```
+
+**Note:** The script auto-detects Windows and uses `waveshare-349-windows` environment automatically.
 
 **Manual PlatformIO commands** (alternative to build.sh):
 ```bash

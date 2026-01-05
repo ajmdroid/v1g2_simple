@@ -39,9 +39,9 @@ git clone https://github.com/ajmdroid/v1g2_simple
 cd v1g2_simple
 
 # 2. Build and flash everything (recommended)
-./build.sh --all                                    # Mac/Linux
-./build.sh --all --env waveshare-349-windows        # Windows
+./build.sh --all
 
+# The script auto-detects your OS and selects the correct environment.
 # This single command:
 # - Builds web interface (npm install + npm run build)
 # - Deploys web assets to data/
