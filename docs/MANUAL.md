@@ -194,7 +194,7 @@ V1 Gen2 (BLE)
 
 **Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to JBV1. Display updates are queued because SPI operations cannot run in BLE callback context.
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate proxy forward), [src/main.cpp](src/main.cpp#L195-L210) (onV1Data callback), [src/main.cpp](src/main.cpp#L467-L540) (processBLEData)
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy forward), [src/main.cpp](src/main.cpp#L195-L210) (onV1Data callback), [src/main.cpp](src/main.cpp#L467-L540) (processBLEData)
 
 ### Threading Model
 
@@ -208,7 +208,7 @@ V1 Gen2 (BLE)
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
 - Proxy forwarding DOES run in BLE callback → zero added latency to JBV1
 
-**Source:** [src/main.cpp](src/main.cpp#L195-L210) (callback queues data), [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate proxy)
+**Source:** [src/main.cpp](src/main.cpp#L195-L210) (callback queues data), [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy)
 
 ### Timing Constraints
 
@@ -372,7 +372,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
 - **Max buffer size:** 512 bytes, trimmed if exceeded
 
-**Source:** [src/main.cpp](src/main.cpp#L48-L55), [src/ble_client.cpp](src/ble_client.cpp#L1675) (forwardToProxyImmediate)
+**Source:** [src/main.cpp](src/main.cpp#L48-L55), [src/ble_client.cpp](src/ble_client.cpp#L1687) (forwardToProxyImmediate)
 
 ### Proxy Mode (JBV1 Compatibility)
 
@@ -384,17 +384,23 @@ When `proxyBLE=true`:
 
 **Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures JBV1 sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate forward in callback), [src/ble_client.cpp](src/ble_client.cpp#L1675) (forwardToProxyImmediate)
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate forward in callback), [src/ble_client.cpp](src/ble_client.cpp#L1687) (forwardToProxyImmediate)
 
 ### Connection Parameters
 
 ```cpp
 // NimBLE connection params: min/max interval, latency, timeout
-pClient->setConnectionParams(40, 80, 0, 400);  // 50-100ms, 0 latency, 4s timeout
+// Optimized for low-latency proxy performance
+pClient->setConnectionParams(12, 24, 0, 400);  // 15-30ms interval, 0 latency, 4s timeout
 pClient->setConnectTimeout(10);  // 10 second connect timeout
+
+// MTU set to maximum for BLE 5.x
+NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 ```
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L560-L565)
+**Note:** The same tight connection parameters (15-30ms) are also applied to the phone/JBV1 side of the proxy connection for optimal latency.
+
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L571) (V1 connection), [src/ble_client.cpp](src/ble_client.cpp#L1481) (phone connection)
 
 ### Backoff on Failure
 
@@ -1168,7 +1174,7 @@ No automated tests exist. Manual testing procedure:
 3. `processBLEData()` - Main loop, target <10ms
 4. `display.update()` + `flush()` - Target <15ms total
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (onV1Data immediate forward), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (onV1Data immediate forward), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)
 
 ---
 
