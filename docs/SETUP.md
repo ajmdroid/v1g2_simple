@@ -89,8 +89,8 @@ After flashing, the display will create a WiFi Access Point:
 
 | Setting | Value |
 |---------|-------|
-| SSID | `V1-Display` |
-| Password | `valentine1` |
+| SSID | `V1-Simple` |
+| Password | `setupv1g2` |
 | Config URL | `http://192.168.35.5` |
 
 Connect to this network and open the URL to configure WiFi and display settings.

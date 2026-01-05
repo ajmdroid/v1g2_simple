@@ -162,6 +162,10 @@ public:
     // sourceCharUUID: last 16-bit of source characteristic UUID (0xB2CE, 0xB4E0, etc)
     void forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
     
+    // PERFORMANCE: Immediate proxy forwarding - zero latency path
+    // Called directly from BLE callback context - no queue, no delay
+    void forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
+    
     // Process pending proxy notifications (call from main loop after display update)
     // Returns number of packets sent
     int processProxyQueue();
@@ -215,11 +219,13 @@ private:
     NimBLERemoteService* pRemoteService;
     NimBLERemoteCharacteristic* pDisplayDataChar;
     NimBLERemoteCharacteristic* pCommandChar;
+    NimBLERemoteCharacteristic* pCommandCharLong;  // B8D2 - for long commands like voltage request
     
     // BLE Server (proxy) objects
     NimBLEServer* pServer;
     NimBLEService* pProxyService;
-    NimBLECharacteristic* pProxyNotifyChar;     // B2CE proxy - main display data
+    NimBLECharacteristic* pProxyNotifyChar;     // B2CE proxy - short display data
+    NimBLECharacteristic* pProxyNotifyLongChar; // B4E0 proxy - long alert/response data
     NimBLECharacteristic* pProxyWriteChar;
     bool proxyEnabled;
     bool proxyServerInitialized;

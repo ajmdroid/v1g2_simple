@@ -79,9 +79,11 @@ V1BLEClient::V1BLEClient()
     , pRemoteService(nullptr)
     , pDisplayDataChar(nullptr)
     , pCommandChar(nullptr)
+    , pCommandCharLong(nullptr)
     , pServer(nullptr)
     , pProxyService(nullptr)
     , pProxyNotifyChar(nullptr)
+    , pProxyNotifyLongChar(nullptr)
     , pProxyWriteChar(nullptr)
     , proxyEnabled(false)
     , proxyServerInitialized(false)
@@ -162,6 +164,7 @@ void V1BLEClient::cleanupConnection() {
     // 3. Clear characteristic references (they become invalid after disconnect)
     pDisplayDataChar = nullptr;
     pCommandChar = nullptr;
+    pCommandCharLong = nullptr;
     pRemoteService = nullptr;
     
     // 4. Clear connection flags
@@ -470,6 +473,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         instancePtr->pRemoteService = nullptr;
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
+        instancePtr->pCommandCharLong = nullptr;
         // Set state to DISCONNECTED - will trigger scan restart in process()
         instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
         Serial.println("[BLE_SM] Connection cleanup complete, will restart scanning...");
@@ -713,6 +717,14 @@ bool V1BLEClient::setupCharacteristics() {
         altCommandChar = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_ALT_UUID);
     }
 
+    // Get LONG write characteristic (B8D2) for commands like voltage request
+    pCommandCharLong = pRemoteService->getCharacteristic("92A0B8D2-9E05-11E2-AA59-F23C91AEC05E");
+    if (pCommandCharLong) {
+        Serial.println("Found B8D2 (LONG write) characteristic");
+    } else {
+        Serial.println("WARNING: B8D2 (LONG write) not found - some commands may fail");
+    }
+
     // Prefer the primary B6D4 characteristic; only fall back to BAD4 if B6D4 is unusable
     if (!pCommandChar || (!pCommandChar->canWrite() && !pCommandChar->canWriteNoResponse())) {
         if (altCommandChar && (altCommandChar->canWrite() || altCommandChar->canWriteNoResponse())) {
@@ -775,6 +787,32 @@ bool V1BLEClient::setupCharacteristics() {
         Serial.println("No CCCD descriptor found on display characteristic");
     }
     
+    // Also subscribe to B4E0 (LONG) characteristic for voltage/response data
+    NimBLERemoteCharacteristic* pDisplayDataLongChar = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
+    if (pDisplayDataLongChar) {
+        if (pDisplayDataLongChar->canNotify()) {
+            if (pDisplayDataLongChar->subscribe(true, notifyCallback, true)) {
+                Serial.println("Subscribed to LONG (B4E0) notifications");
+                // Force CCCD write
+                NimBLERemoteDescriptor* cccdLong = pDisplayDataLongChar->getDescriptor(NimBLEUUID((uint16_t)0x2902));
+                if (cccdLong) {
+                    uint8_t notifOn[] = {0x01, 0x00};
+                    if (cccdLong->writeValue(notifOn, sizeof(notifOn), true)) {
+                        Serial.println("Wrote CCCD to enable LONG notifications");
+                    } else {
+                        Serial.println("Failed to write CCCD for LONG (non-critical)");
+                    }
+                }
+            } else {
+                Serial.println("Failed to subscribe to LONG characteristic (non-critical)");
+            }
+        } else {
+            Serial.println("LONG characteristic cannot notify");
+        }
+    } else {
+        Serial.println("WARNING: B4E0 (LONG) characteristic not found - voltage passthrough will fail");
+    }
+    
     // Try an initial read for sanity
     if (pDisplayDataChar->canRead()) {
         std::string v = pDisplayDataChar->readValue();
@@ -822,14 +860,30 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
     
     uint16_t charId = shortUuid(pChar->getUUID());
+    
     if (charId == 0) {
         charId = 0xB2CE; // sensible fallback
     }
 
-    // NOTE: Proxy forwarding moved to main loop (forwardToProxy called after queue dequeue)
-    // This avoids duplicate forwarding and provides more controlled timing
+    // Check if this is a response packet that should go to B4E0
+    // V1 sends responses on B2CE but some apps expect certain responses on B4E0
+    // Testing: Keep voltage (0x63) on B2CE since Kenny's code receives it there
+    uint16_t routeCharId = charId;
+    if (charId == 0xB2CE && length >= 5) {
+        uint8_t packetId = pData[3];  // Packet ID is at offset 3 in V1 protocol
+        // Route ONLY sweep/alert response packets to B4E0
+        // Keep voltage (0x63), version (0x01), serial (0x03) on B2CE
+        if (packetId == 0x41 ||  // respAlertData
+            packetId == 0x42) {  // respSweepSection
+            routeCharId = 0xB4E0;
+        }
+    }
+
+    // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to JBV1
+    // NimBLE handles thread safety for server notifications
+    instancePtr->forwardToProxyImmediate(pData, length, routeCharId);
     
-    // Call user callback for display processing (default to B2CE)
+    // Call user callback for display processing (queued to main loop for SPI safety)
     if (instancePtr->dataCallback) {
         instancePtr->dataCallback(pData, length, charId);
     }
@@ -1455,9 +1509,19 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     }
     
     // Copy to a safe buffer and forward to V1
+    uint16_t sourceChar = shortUuid(pCharacteristic->getUUID());
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
-    bleClient->sendCommand(cmdBuf, rawLen);
+    
+    // Route to appropriate V1 characteristic based on source
+    // B6D4 (SHORT) -> V1 B6D4
+    // B8D2 (LONG) -> V1 B8D2 (for commands like voltage request)
+    // BAD4 -> V1 B6D4 (fallback)
+    if (sourceChar == 0xB8D2 && bleClient->pCommandCharLong) {
+        bleClient->pCommandCharLong->writeValue(cmdBuf, rawLen, false);
+    } else {
+        bleClient->sendCommand(cmdBuf, rawLen);
+    }
 }
 
 void V1BLEClient::initProxyServer(const char* deviceName) {
@@ -1485,8 +1549,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
     
-    // V1 out LONG - notify
-    NimBLECharacteristic* pNotifyLong = pProxyService->createCharacteristic(
+    // V1 out LONG - notify (stores responses like voltage)
+    pProxyNotifyLongChar = pProxyService->createCharacteristic(
         "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
@@ -1603,6 +1667,37 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     // Track high water mark
     if (proxyQueueCount > proxyMetrics.queueHighWater) {
         proxyMetrics.queueHighWater = proxyQueueCount;
+    }
+}
+
+// PERFORMANCE: Immediate proxy forwarding - zero latency path
+// Called directly from BLE callback context - no queue, no delay
+void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
+    if (!proxyEnabled || !proxyClientConnected) {
+        return;
+    }
+    
+    // Validate packet size
+    if (length == 0 || length > PROXY_PACKET_MAX) {
+        return;
+    }
+    
+    // Route to correct proxy characteristic based on source
+    // B2CE (0xB2CE) -> proxy B2CE (short display data)
+    // B4E0 (0xB4E0) -> proxy B4E0 (long alert/response data - voltage, etc)
+    NimBLECharacteristic* targetChar = nullptr;
+    
+    if (sourceCharUUID == 0xB4E0 && pProxyNotifyLongChar) {
+        targetChar = pProxyNotifyLongChar;
+    } else if (pProxyNotifyChar) {
+        targetChar = pProxyNotifyChar;
+    }
+    
+    // PERF: Use combined notify(data, len) - single BLE operation instead of setValue + notify
+    if (targetChar && targetChar->notify(data, length)) {
+        proxyMetrics.sendCount++;
+    } else if (targetChar) {
+        proxyMetrics.errorCount++;
     }
 }
 

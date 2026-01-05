@@ -73,15 +73,15 @@ void SettingsManager::load() {
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode them
         settings.password = storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
-        settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "valentine1";
+        settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "setupv1g2";
     } else {
         // Version 1 - passwords stored in plain text, use as-is
         settings.password = storedPwd;
-        settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "valentine1";
+        settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "setupv1g2";
         Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
     
-    settings.apSSID = preferences.getString("apSSID", "V1-Display");
+    settings.apSSID = preferences.getString("apSSID", "V1-Simple");
     
     // Load multiple WiFi networks
     for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
