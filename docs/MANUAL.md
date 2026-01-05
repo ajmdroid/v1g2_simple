@@ -2,7 +2,7 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 1.1.26  
+**Version:** 1.2.2  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
@@ -39,9 +39,9 @@ git clone https://github.com/ajmdroid/v1g2_simple
 cd v1g2_simple
 
 # 2. Build and flash everything (recommended)
-./build.sh --all                                    # Mac/Linux
-./build.sh --all --env waveshare-349-windows        # Windows
+./build.sh --all
 
+# The script auto-detects your OS and selects the correct environment.
 # This single command:
 # - Builds web interface (npm install + npm run build)
 # - Deploys web assets to data/
@@ -168,37 +168,47 @@ V1 Gen2 (BLE)
      │
      │ Notify (B2CE characteristic)
      ▼
-┌─────────────┐    Queue (64 slots)    ┌─────────────┐
-│ onV1Data()  │ ──────────────────────▶│processBLE() │
-│ (BLE task)  │    BLEDataPacket       │(main loop)  │
-└─────────────┘                        └──────┬──────┘
-                                              │
-                                   ┌──────────┴──────────┐
-                                   │                     │
-                              ┌────▼────┐          ┌─────▼─────┐
-                              │ Parser  │          │ Proxy Fwd │
-                              │(framing)│          │ (JBV1)    │
-                              └────┬────┘          └───────────┘
-                                   │
-                              ┌────▼────┐
-                              │ Display │
-                              │ update  │
-                              └─────────┘
+┌─────────────────────────────────────────────────────────┐
+│                      onV1Data()                         │
+│                      (BLE task)                         │
+└───────────┬─────────────────────────────┬───────────────┘
+            │                             │
+            │ IMMEDIATE                   │ Queue (64 slots)
+            │ (zero latency)              │ (SPI-safe path)
+            ▼                             ▼
+     ┌─────────────┐               ┌─────────────┐
+     │ Proxy Fwd   │               │processBLE() │
+     │ (JBV1)      │               │(main loop)  │
+     └─────────────┘               └──────┬──────┘
+                                          │
+                                     ┌────▼────┐
+                                     │ Parser  │
+                                     │(framing)│
+                                     └────┬────┘
+                                          │
+                                     ┌────▼────┐
+                                     │ Display │
+                                     │ update  │
+                                     └─────────┘
 ```
 
-**Source:** [src/main.cpp](src/main.cpp#L48-L55) (queue definition), [src/main.cpp](src/main.cpp#L195-L210) (onV1Data callback), [src/main.cpp](src/main.cpp#L467-L540) (processBLEData)
+**Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to JBV1. Display updates are queued because SPI operations cannot run in BLE callback context.
+
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate proxy forward), [src/main.cpp](src/main.cpp#L195-L210) (onV1Data callback), [src/main.cpp](src/main.cpp#L467-L540) (processBLEData)
 
 ### Threading Model
 
 | Context | Description | Critical Operations |
 |---------|-------------|---------------------|
 | **Main loop** | Arduino `loop()` at ~200Hz | Display SPI, touch I2C, WiFi |
-| **BLE task** | NimBLE internal task | Notifications, connection events |
-| **FreeRTOS queue** | `bleDataQueue` (64 × 260 bytes) | Decouples BLE callbacks from SPI |
+| **BLE task** | NimBLE internal task | Notifications, connection events, **proxy forwarding** |
+| **FreeRTOS queue** | `bleDataQueue` (64 × 260 bytes) | Decouples BLE callbacks from SPI (display only) |
 
-**Key constraint:** SPI operations (display) must NOT occur in BLE callbacks.
+**Key constraints:**
+- SPI operations (display) must NOT occur in BLE callbacks → uses queue
+- Proxy forwarding DOES run in BLE callback → zero added latency to JBV1
 
-**Source:** [src/main.cpp](src/main.cpp#L195-L210) (callback queues data), [src/main.cpp](src/main.cpp#L467-L475) (main loop processes)
+**Source:** [src/main.cpp](src/main.cpp#L195-L210) (callback queues data), [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate proxy)
 
 ### Timing Constraints
 
@@ -356,22 +366,25 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 
 ### Queue / Buffering
 
-- **Queue:** 64-slot FreeRTOS queue, each slot 260 bytes
-- **Overflow handling:** Drop oldest packet if full
+- **Queue:** 64-slot FreeRTOS queue, each slot 260 bytes (display path only)
+- **Proxy path:** Bypasses queue entirely - `forwardToProxyImmediate()` sends directly from BLE callback
+- **Overflow handling:** Drop oldest packet if full (only affects display, not proxy)
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
 - **Max buffer size:** 512 bytes, trimmed if exceeded
 
-**Source:** [src/main.cpp](src/main.cpp#L48-L55), [src/main.cpp](src/main.cpp#L195-L210), [src/main.cpp](src/main.cpp#L495-L510)
+**Source:** [src/main.cpp](src/main.cpp#L48-L55), [src/ble_client.cpp](src/ble_client.cpp#L1675) (forwardToProxyImmediate)
 
 ### Proxy Mode (JBV1 Compatibility)
 
 When `proxyBLE=true`:
 1. Device advertises as "V1C-LE-S3" after V1 connects
 2. JBV1/V1 Companion can connect as secondary client
-3. All V1 notifications forwarded via `forwardToProxy()`
+3. All V1 notifications forwarded via `forwardToProxyImmediate()` - **zero added latency**
 4. Commands from JBV1 forwarded to V1
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L260-L280) (initProxyServer), [src/ble_client.h](src/ble_client.h#L150-L160)
+**Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures JBV1 sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
+
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (immediate forward in callback), [src/ble_client.cpp](src/ble_client.cpp#L1675) (forwardToProxyImmediate)
 
 ### Connection Parameters
 
@@ -1150,12 +1163,12 @@ No automated tests exist. Manual testing procedure:
 
 **⚠️ Hot paths - avoid blocking:**
 
-1. `onV1Data()` - BLE callback, must queue quickly
-2. `processBLEData()` - Main loop, target <10ms
-3. `display.update()` + `flush()` - Target <15ms total
-4. `forwardToProxy()` - Proxy forwarding, must not block
+1. `onV1Data()` - BLE callback, forwards to proxy immediately then queues for display
+2. `forwardToProxyImmediate()` - Called in BLE callback, must complete fast (~1ms)
+3. `processBLEData()` - Main loop, target <10ms
+4. `display.update()` + `flush()` - Target <15ms total
 
-**Source:** [src/main.cpp](src/main.cpp#L195-L210) (onV1Data), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L884) (onV1Data immediate forward), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)
 
 ---
 
@@ -1174,7 +1187,8 @@ class V1BLEClient {
     bool setMute(bool muted);
     bool setMode(uint8_t mode);  // 1=AllBogeys, 2=Logic, 3=AdvLogic
     bool writeUserBytes(const uint8_t* bytes);  // Push profile
-    void forwardToProxy(const uint8_t* data, size_t length, uint16_t charUUID);
+    void forwardToProxy(const uint8_t* data, size_t length, uint16_t charUUID);  // Legacy queued path
+    void forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t charUUID);  // Zero-latency path
 };
 ```
 
@@ -1297,8 +1311,9 @@ Based on code analysis:
 
 **Fragile areas requiring care:**
 
-1. **BLE Queue Overflow:** If BLE data arrives faster than processing, oldest packets dropped.
+1. **BLE Queue Overflow:** If BLE data arrives faster than display processing, oldest packets dropped.
    - Location: [src/main.cpp](src/main.cpp#L48-L55) - `bleDataQueue` 64 slots
+   - Impact: Only affects local display; proxy forwarding is unaffected (immediate path)
    - Mitigation: Throttle display updates, process queue quickly
 
 2. **Display SPI Timing:** Cannot call display functions from BLE callbacks.
@@ -1318,4 +1333,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v1.1.26.*
+*Document generated from source code analysis. Last verified against v1.2.2.*

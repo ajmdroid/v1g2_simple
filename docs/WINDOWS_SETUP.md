@@ -114,7 +114,7 @@ This shows all COM ports with device descriptions. Example output:
 ```
 COM4
 ----
-Hardware ID: USB VID:PID=303A:1001 SER=20:6E:F1:9B:D4:80
+Hardware ID: USB VID:PID=303A:1001 SER=XX:XX:XX:XX:XX:XX
 Description: USB Serial Device (COM4)
 ```
 
@@ -131,12 +131,14 @@ Description: USB Serial Device (COM4)
 **Now run the build:**
 1. Open a **new PlatformIO Core CLI** terminal (`Ctrl+Shift+P` → "PlatformIO: New Terminal"). It should now be Git Bash. From the repo root:
    ```bash
-   ./build.sh --all --env waveshare-349-windows
+   ./build.sh --all
    ```
+   
+   **Note:** The script auto-detects Windows and uses the correct environment (`waveshare-349-windows`) and PlatformIO path automatically. No `--env` flag needed!
    
    **If you have multiple USB devices connected**, specify the COM port:
    ```bash
-   ./build.sh --all --env waveshare-349-windows --upload-port COM6
+   ./build.sh --all --upload-port COM6
    ```
    
    **Manual commands (without build.sh):** If the build script has issues, you can run PlatformIO directly:
@@ -199,9 +201,11 @@ Description: USB Serial Device (COM4)
 - **Build hangs downloading libs** → First build fetches dependencies; allow a few minutes. Re-run `./build.sh --all` if interrupted.
 
 ## 10) Re-run After Making Changes
-- Firmware-only change: `./build.sh -u -m --env waveshare-349-windows`
-- Web UI change only: `./build.sh -f -m --env waveshare-349-windows` (skips full firmware rebuild)
-- Clean build: `./build.sh --clean --all --env waveshare-349-windows`
+- Firmware-only change: `./build.sh -u -m`
+- Web UI change only: `./build.sh -f -m` (skips full firmware rebuild)
+- Clean build: `./build.sh --clean --all`
+
+**Note:** The script auto-detects Windows—no need for `--env waveshare-349-windows`.
 
 You now have a repeatable Windows workflow: Git Bash for scripts, PlatformIO CLI for flashing, and Node 18+ for the web UI.
 
