@@ -479,9 +479,8 @@ void processBLEData() {
     
     // Process all queued packets
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
-        // Forward raw data to proxy clients (JBV1) - done here in main loop to avoid SPI conflicts
-        // Pass the source characteristic UUID so data is forwarded to the correct proxy characteristic
-        bleClient.forwardToProxy(pkt.data, pkt.length, pkt.charUUID);
+        // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
+        // for minimal latency. We don't forward again here to avoid duplicate packets.
         
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
         rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);

@@ -214,7 +214,7 @@ void V1BLEClient::hardResetBLEClient() {
             pClientCallbacks = new ClientCallbacks();
         }
         pClient->setClientCallbacks(pClientCallbacks);
-        pClient->setConnectionParams(40, 80, 0, 400);
+        pClient->setConnectionParams(12, 24, 0, 400);
         pClient->setConnectTimeout(10);
         Serial.println("[BLE_SM] New client created successfully");
     } else {
@@ -257,15 +257,16 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     // Kenny's exact initialization pattern:
     // 1. init() with generic name
     // 2. setDeviceName() with the actual advertised name
-    // 3. setPower() - no setOwnAddrType, no setMTU for proxy mode
+    // 3. setPower() and setMTU for better throughput
     if (proxyEnabled) {
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
     } else {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setMTU(185);
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
     }
     
     // Create proxy server early (required before BLE stack starts client operations)
@@ -565,9 +566,9 @@ bool V1BLEClient::connectToServer() {
         pClientCallbacks = new ClientCallbacks();
     }
     pClient->setClientCallbacks(pClientCallbacks);
-    // Use relaxed connection parameters for V1 Gen2's older BLE stack
-    // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 400 (4000ms)
-    pClient->setConnectionParams(40, 80, 0, 400);
+    // Use tighter connection parameters for lower proxy latency
+    // min/max interval: 12-24 (15-30ms), latency: 0, timeout: 400 (4000ms)
+    pClient->setConnectionParams(12, 24, 0, 400);
     // Give it plenty of time to connect (10s)
     pClient->setConnectTimeout(10); 
 
@@ -644,6 +645,7 @@ bool V1BLEClient::connectToServer() {
     // NimBLE 2.x requires explicit service discovery before getService()
     // Try to discover services with a timeout
     Serial.println("[BLE_SM] Discovering services...");
+    Serial.printf("[BLE_SM] V1 connection MTU: %d\n", pClient->getMTU());
     int maxRetries = 3;
     for (int retry = 0; retry < maxRetries; retry++) {
         if (pClient->discoverAttributes()) {
@@ -1469,6 +1471,16 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
     Serial.println("===== JBV1 PROXY CLIENT CONNECTED =====");
+    // Log negotiated MTU with phone/JBV1
+    uint16_t connHandle = connInfo.getConnHandle();
+    Serial.printf("[BLE_SM] Phone/JBV1 connection MTU: %d (handle: %d)\n", 
+                  NimBLEDevice::getMTU(), connHandle);
+    
+    // Request tighter connection parameters for lower latency on phone side
+    // min/max interval: 12-24 (15-30ms), latency: 0, timeout: 400 (4s)
+    pServer->updateConnParams(connHandle, 12, 24, 0, 400);
+    Serial.println("[BLE_SM] Requested tighter connection params for phone");
+    
     if (bleClient) {
         bleClient->proxyClientConnected = true;
     }
