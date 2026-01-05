@@ -4,7 +4,7 @@
 
 A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-**Version:** 1.2.2
+**Version:** 1.3.0
 
 **Features:**
 - Wireless BLE connection with fast reconnection
