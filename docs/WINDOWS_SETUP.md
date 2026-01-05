@@ -114,7 +114,7 @@ This shows all COM ports with device descriptions. Example output:
 ```
 COM4
 ----
-Hardware ID: USB VID:PID=303A:1001 SER=20:6E:F1:9B:D4:80
+Hardware ID: USB VID:PID=303A:1001 SER=XX:XX:XX:XX:XX:XX
 Description: USB Serial Device (COM4)
 ```
 
