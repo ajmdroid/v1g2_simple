@@ -217,15 +217,13 @@ private:
 
     NimBLEClient* pClient;
     NimBLERemoteService* pRemoteService;
-    NimBLERemoteCharacteristic* pDisplayDataChar;  // B2CE - short notify
-    NimBLERemoteCharacteristic* pDisplayDataLongChar;  // B4E0 - long notify (alert data)
+    NimBLERemoteCharacteristic* pDisplayDataChar;
     NimBLERemoteCharacteristic* pCommandChar;
     
     // BLE Server (proxy) objects
     NimBLEServer* pServer;
     NimBLEService* pProxyService;
-    NimBLECharacteristic* pProxyNotifyChar;     // B2CE proxy - short display data
-    NimBLECharacteristic* pProxyNotifyLongChar; // B4E0 proxy - long alert data
+    NimBLECharacteristic* pProxyNotifyChar;     // B2CE proxy - main display data
     NimBLECharacteristic* pProxyWriteChar;
     bool proxyEnabled;
     bool proxyServerInitialized;

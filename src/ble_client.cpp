@@ -78,7 +78,6 @@ V1BLEClient::V1BLEClient()
     : pClient(nullptr)
     , pRemoteService(nullptr)
     , pDisplayDataChar(nullptr)
-    , pDisplayDataLongChar(nullptr)
     , pCommandChar(nullptr)
     , pServer(nullptr)
     , pProxyService(nullptr)
@@ -149,12 +148,8 @@ void V1BLEClient::cleanupConnection() {
     
     // 1. Unsubscribe from notifications if subscribed
     if (pDisplayDataChar && pDisplayDataChar->canNotify()) {
-        Serial.println("[BLE_SM] Unsubscribing from notifications (SHORT)");
+        Serial.println("[BLE_SM] Unsubscribing from notifications");
         pDisplayDataChar->unsubscribe();
-    }
-    if (pDisplayDataLongChar && pDisplayDataLongChar->canNotify()) {
-        Serial.println("[BLE_SM] Unsubscribing from notifications (LONG)");
-        pDisplayDataLongChar->unsubscribe();
     }
     
     // 2. Disconnect if connected
@@ -166,7 +161,6 @@ void V1BLEClient::cleanupConnection() {
     
     // 3. Clear characteristic references (they become invalid after disconnect)
     pDisplayDataChar = nullptr;
-    pDisplayDataLongChar = nullptr;
     pCommandChar = nullptr;
     pRemoteService = nullptr;
     
@@ -779,30 +773,6 @@ bool V1BLEClient::setupCharacteristics() {
         }
     } else {
         Serial.println("No CCCD descriptor found on display characteristic");
-    }
-    
-    // **CRITICAL FIX**: Also subscribe to B4E0 (LONG) characteristic for alert data!
-    // This is where reqStartAlertData responses are sent
-    pDisplayDataLongChar = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
-    if (pDisplayDataLongChar) {
-        Serial.println("Found B4E0 (LONG) characteristic for alert data");
-        if (pDisplayDataLongChar->canNotify()) {
-            bool longSubscribed = pDisplayDataLongChar->subscribe(true, notifyCallback, true);
-            Serial.println(longSubscribed ? "Subscribed to LONG alert data notifications" : "Failed to subscribe to LONG");
-            
-            // Force CCCD write for B4E0
-            NimBLERemoteDescriptor* cccdLong = pDisplayDataLongChar->getDescriptor(NimBLEUUID((uint16_t)0x2902));
-            if (cccdLong) {
-                uint8_t notifOn[] = {0x01, 0x00};
-                if (cccdLong->writeValue(notifOn, sizeof(notifOn), true)) {
-                    Serial.println("Wrote CCCD to enable LONG notifications");
-                } else {
-                    Serial.println("Failed to write CCCD for LONG (non-critical)");
-                }
-            }
-        }
-    } else {
-        Serial.println("WARNING: B4E0 (LONG) characteristic not found - alert latency will be poor!");
     }
     
     // Try an initial read for sanity
@@ -1516,8 +1486,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
     
-    // V1 out LONG - notify (CRITICAL: store reference for forwarding alert data!)
-    pProxyNotifyLongChar = pProxyService->createCharacteristic(
+    // V1 out LONG - notify
+    NimBLECharacteristic* pNotifyLong = pProxyService->createCharacteristic(
         "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
@@ -1649,23 +1619,10 @@ void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, ui
         return;
     }
     
-    // Route to correct proxy characteristic based on source
-    // B2CE (0xB2CE) -> proxy B2CE (short display data)
-    // B4E0 (0xB4E0) -> proxy B4E0 (long alert data)
-    NimBLECharacteristic* targetChar = nullptr;
-    
-    if (sourceCharUUID == 0xB4E0) {
-        // Alert data from LONG characteristic
-        targetChar = pProxyNotifyLongChar;
-    } else {
-        // Display data from SHORT characteristic (default)
-        targetChar = pProxyNotifyChar;
-    }
-    
     // Send notification immediately - NimBLE handles thread safety
-    if (targetChar) {
-        targetChar->setValue(data, length);
-        if (targetChar->notify()) {
+    if (pProxyNotifyChar) {
+        pProxyNotifyChar->setValue(data, length);
+        if (pProxyNotifyChar->notify()) {
             proxyMetrics.sendCount++;
         } else {
             proxyMetrics.errorCount++;
