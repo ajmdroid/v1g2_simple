@@ -2,7 +2,7 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 1.1.26  
+**Version:** 1.2.1  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
@@ -1318,4 +1318,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v1.1.26.*
+*Document generated from source code analysis. Last verified against v1.2.1.*
