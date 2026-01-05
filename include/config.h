@@ -22,7 +22,8 @@
 
 // BLE Configuration
 #define V1_SERVICE_UUID         "92A0AFF4-9E05-11E2-AA59-F23C91AEC05E"
-#define V1_DISPLAY_DATA_UUID    "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E"  // V1 out, client in (notify)
+#define V1_DISPLAY_DATA_UUID    "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E"  // V1 out SHORT (notify) - display data
+#define V1_DISPLAY_DATA_LONG_UUID "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E"  // V1 out LONG (notify) - alert data
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
 #define SCAN_DURATION           10    // 10-second scan (stops early when V1 found)
