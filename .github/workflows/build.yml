@@ -84,26 +84,46 @@ jobs:
         pip install --upgrade platformio
         pio --version
     
-    - name: 🏗️ Build firmware
+    - name: 🏗️ Build firmware (Mac/Linux)
       run: |
         pio run -e waveshare-349
-        echo "✅ Firmware built successfully"
+        echo "✅ Mac/Linux firmware built successfully"
+    
+    - name: 🏗️ Build firmware (Windows)
+      run: |
+        pio run -e waveshare-349-windows
+        echo "✅ Windows firmware built successfully"
     
     - name: 📊 Check build size
       run: |
         echo "### Build Size Report" >> $GITHUB_STEP_SUMMARY
+        echo "#### Mac/Linux (waveshare-349)" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "#### Windows (waveshare-349-windows)" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        pio run -e waveshare-349-windows -t size >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
     
     - name: 📦 Prepare artifacts
       run: |
-        mkdir -p artifacts
-        cp .pio/build/waveshare-349/firmware.bin artifacts/
-        cp .pio/build/waveshare-349/bootloader.bin artifacts/
-        cp .pio/build/waveshare-349/partitions.bin artifacts/
+        mkdir -p artifacts/mac-linux artifacts/windows
+        
+        # Mac/Linux build
+        cp .pio/build/waveshare-349/firmware.bin artifacts/mac-linux/
+        cp .pio/build/waveshare-349/bootloader.bin artifacts/mac-linux/
+        cp .pio/build/waveshare-349/partitions.bin artifacts/mac-linux/
         if [ -f .pio/build/waveshare-349/littlefs.bin ]; then
-          cp .pio/build/waveshare-349/littlefs.bin artifacts/
+          cp .pio/build/waveshare-349/littlefs.bin artifacts/mac-linux/
+        fi
+        
+        # Windows build  
+        cp .pio/build/waveshare-349-windows/firmware.bin artifacts/windows/
+        cp .pio/build/waveshare-349-windows/bootloader.bin artifacts/windows/
+        cp .pio/build/waveshare-349-windows/partitions.bin artifacts/windows/
+        if [ -f .pio/build/waveshare-349-windows/littlefs.bin ]; then
+          cp .pio/build/waveshare-349-windows/littlefs.bin artifacts/windows/
         fi
         
         # Create version info
@@ -112,7 +132,7 @@ jobs:
         echo "Branch: ${{ github.ref_name }}" >> artifacts/BUILD_INFO.txt
         echo "Triggered by: ${{ github.event_name }}" >> artifacts/BUILD_INFO.txt
         
-        ls -lh artifacts/
+        ls -lhR artifacts/
     
     - name: 📤 Upload firmware artifacts
       uses: actions/upload-artifact@v4
