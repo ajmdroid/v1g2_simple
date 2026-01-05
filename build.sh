@@ -210,7 +210,7 @@ if [ "$MONITOR" = true ]; then
     echo -e "${BLUE}(Press Ctrl+C to exit)${NC}"
     echo ""
     sleep 1
-    $PIO_CMD device monitor
+    $PIO_CMD device monitor $PIO_ARGS
 fi
 
 # Final summary
