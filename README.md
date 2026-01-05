@@ -4,7 +4,7 @@
 
 A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-**Version:** 1.2.1
+**Version:** 1.2.2
 
 **Features:**
 - Wireless BLE connection with fast reconnection
@@ -208,6 +208,21 @@ The helper scripts `scripts/pio-size.sh` and `scripts/pio-check.sh` wrap the `pi
 - Try a different USB cable (some are charge-only)
 - Try a different USB port
 - Press and hold the BOOT button on the display while connecting USB
+
+**Finding your port:**
+```bash
+pio device list                          # Show all connected devices with port names
+```
+If auto-detection fails, specify the port manually:
+```bash
+# Windows:
+pio run -e waveshare-349-windows -t upload --upload-port COM4
+
+# Mac/Linux:
+pio run -e waveshare-349 -t upload --upload-port /dev/cu.usbmodem14101
+```
+
+**Windows users:** Make sure to run `pio` commands from a **PlatformIO CLI terminal** (VS Code: `Ctrl+Shift+P` → "PlatformIO: New Terminal"), not a regular terminal, so the `pio` command is on your PATH.
 
 ---
 
