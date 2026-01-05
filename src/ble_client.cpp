@@ -826,11 +826,10 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         charId = 0xB2CE; // sensible fallback
     }
 
-    // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to JBV1
-    // NimBLE handles thread safety for server notifications
-    instancePtr->forwardToProxyImmediate(pData, length, charId);
+    // NOTE: Proxy forwarding moved to main loop (forwardToProxy called after queue dequeue)
+    // This avoids duplicate forwarding and provides more controlled timing
     
-    // Call user callback for display processing (queued to main loop for SPI safety)
+    // Call user callback for display processing (default to B2CE)
     if (instancePtr->dataCallback) {
         instancePtr->dataCallback(pData, length, charId);
     }
@@ -1604,29 +1603,6 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     // Track high water mark
     if (proxyQueueCount > proxyMetrics.queueHighWater) {
         proxyMetrics.queueHighWater = proxyQueueCount;
-    }
-}
-
-// PERFORMANCE: Immediate proxy forwarding - zero latency path
-// Called directly from BLE callback context - no queue, no delay
-void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
-    if (!proxyEnabled || !proxyClientConnected) {
-        return;
-    }
-    
-    // Validate packet size
-    if (length == 0 || length > PROXY_PACKET_MAX) {
-        return;
-    }
-    
-    // Send notification immediately - NimBLE handles thread safety
-    if (pProxyNotifyChar) {
-        pProxyNotifyChar->setValue(data, length);
-        if (pProxyNotifyChar->notify()) {
-            proxyMetrics.sendCount++;
-        } else {
-            proxyMetrics.errorCount++;
-        }
     }
 }
 
