@@ -185,7 +185,7 @@ Description: USB Serial Device (COM4)
 
 ## 8) First-Boot Verification
 1. After flashing, the display should boot and show the idle “SCAN” animation.
-2. On your phone/PC, connect to WiFi SSID **V1-Display**, password **valentine1**.
+2. On your phone/PC, connect to WiFi SSID **V1-Simple**, password **setupv1g2**.
 3. Browse to `http://192.168.35.5`; the web UI should load.
 
 ## 9) Common Windows Pitfalls
@@ -220,7 +220,7 @@ pio run -e waveshare-349-windows -t upload
 pio run -e waveshare-349-windows -t uploadfs
 ```
 
-**Note:** Replace `COM4` with your actual port (use `pio device list` to find it). After erase, the device boots with factory defaults (WiFi: V1-Display/valentine1).
+**Note:** Replace `COM4` with your actual port (use `pio device list` to find it). After erase, the device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
 ## 12) Why Windows Uses a Different Environment
 Windows PlatformIO doesn't fully support the newer Arduino ESP32 3.x framework required by GFX Library 1.6.4. The `waveshare-349-windows` environment uses:

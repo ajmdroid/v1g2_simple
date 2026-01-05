@@ -75,7 +75,7 @@ pio device monitor -b 115200
 
 1. Device shows boot splash (if power-on reset)
 2. Screen displays "SCAN" with resting animation
-3. Connect to WiFi AP: **V1-Display** / password: **valentine1**
+3. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
 4. Browse to `http://192.168.35.5`
 5. Web UI should load (SvelteKit-based interface)
 
@@ -557,8 +557,8 @@ ESP32 Preferences API with namespace `v1settings`:
 |-----|------|---------|-------------|
 | enableWifi | bool | true | WiFi enabled |
 | wifiMode | int | 2 (AP) | V1_WIFI_OFF/STA/AP/APSTA |
-| apSSID | String | "V1-Display" | AP network name |
-| apPassword | String | "valentine1" (obfuscated) | AP password |
+| apSSID | String | "V1-Simple" | AP network name |
+| apPassword | String | "setupv1g2" (obfuscated) | AP password |
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
@@ -941,7 +941,7 @@ pio run -e waveshare-349 -t uploadfs
 - Mac: `/dev/cu.usbmodem*`
 - Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`
 
-**After erase:** Device boots with factory defaults (WiFi: V1-Display/valentine1).
+**After erase:** Device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
 ### BLE Connection Debugging
 

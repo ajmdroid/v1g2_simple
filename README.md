@@ -217,13 +217,13 @@ When you first power on the display, it creates a WiFi access point:
 
 | Setting | Value |
 |---------|-------|
-| **WiFi Name (SSID)** | `V1-Display` |
-| **Password** | `valentine1` |
+| **WiFi Name (SSID)** | `V1-Simple` |
+| **Password** | `setupv1g2` |
 | **Web Interface** | `http://192.168.35.5` |
 
 **Security note:** Change the default AP password after setup via Settings → AP Password.
 
-1. **Connect your phone or computer** to the `V1-Display` WiFi network
+1. **Connect your phone or computer** to the `V1-Simple` WiFi network
 2. **Open a browser** and go to `http://192.168.35.5`
 3. **Configure your settings:**
    - Set display brightness
@@ -414,12 +414,12 @@ pio run -e waveshare-349 -t uploadfs
 
 ### WiFi
 
-**Can't find V1-Display network:**
+**Can't find V1-Simple network:**
 - Wait 30 seconds after boot
 - Power cycle the display
 
 **Can't access web interface:**
-- Verify you're connected to V1-Display WiFi
+- Verify you're connected to V1-Simple WiFi
 - Use `http://192.168.35.5` (not https)
 - Clear browser cache
 
