@@ -60,6 +60,7 @@ static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 #define DRAW_CIRCLE(x, y, r, color) TFT_CALL(drawCircle)(TX(x,y), TY(x,y), (r), (color))
 #define FILL_TRIANGLE(x0, y0, x1, y1, x2, y2, color) TFT_CALL(fillTriangle)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), TX(x2,y2), TY(x2,y2), (color))
 #define DRAW_LINE(x0, y0, x1, y1, color) TFT_CALL(drawLine)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), (color))
+#define DRAW_PIXEL(x, y, color) TFT_CALL(drawPixel)(TX(x,y), TY(x,y), (color))
 #define FILL_SCREEN(color) TFT_CALL(fillScreen)(color)
 
 // Global display instance reference for access to color palette (set by V1Display)
@@ -873,51 +874,72 @@ void V1Display::drawBLEProxyIndicator() {
     const int wifiSize = 20;
     const int wifiY = battY - wifiSize - 6;
 
-    const int boxSize = 26;   // Framed badge size
+    const int iconSize = 20;  // Match WiFi icon size
     const int bleX = 14;
-    const int bleY = wifiY - boxSize - 6;
+    const int bleY = wifiY - iconSize - 6;
 
     // Always clear the area before drawing
-    FILL_RECT(bleX - 3, bleY - 3, boxSize + 6, boxSize + 6, PALETTE_BG);
+    FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
 
     if (!bleProxyEnabled) {
         bleProxyDrawn = false;
         return;
     }
 
-    // Outline to match other subtle indicators
-    uint16_t outlineColor = dimColor(PALETTE_TEXT, 45);
-    DRAW_ROUND_RECT(bleX, bleY, boxSize, boxSize, 5, outlineColor);
-
     // Icon color: blue when advertising/no client, green when JBV1 is attached
-    uint16_t iconColor = bleProxyClientConnected ? dimColor(0x07E0, 80)   // Green
-                                                 : dimColor(0x3B9F, 80);  // Blue
+    uint16_t btColor = bleProxyClientConnected ? dimColor(0x07E0, 85)   // Green
+                                               : dimColor(0x3B9F, 85);  // Blue
 
-    int cx = bleX + boxSize / 2;
-    int top = bleY + 3;
-    int bottom = bleY + boxSize - 4;
-    int mid = (top + bottom) / 2;
-    int arm = boxSize / 2 - 5;
-
-    // Thicker stem for the rune
-    for (int dx = -1; dx <= 1; ++dx) {
-        DRAW_LINE(cx + dx, top, cx + dx, bottom, iconColor);
-    }
-
-    auto drawThickLine = [&](int x0, int y0, int x1, int y1) {
-        for (int dx = -1; dx <= 1; ++dx) {
-            DRAW_LINE(x0 + dx, y0, x1 + dx, y1, iconColor);
-        }
-    };
-
-    // Upper and lower triangles (classic Bluetooth rune)
-    drawThickLine(cx, top, cx + arm, mid - 3);
-    drawThickLine(cx, top, cx - arm, mid);
-    drawThickLine(cx, bottom, cx + arm, mid + 3);
-    drawThickLine(cx, bottom, cx - arm, mid);
-
-    // Carve a small gap to keep the two halves from merging visually
-    FILL_RECT(cx - 1, mid - 2, 3, 5, PALETTE_BG);
+    // Draw Bluetooth rune - the bind rune of ᛒ (Berkanan) and ᚼ (Hagall)
+    // Center point of the icon
+    int cx = bleX + iconSize / 2;
+    int cy = bleY + iconSize / 2;
+    
+    int h = iconSize - 2;      // Total height
+    int top = cy - h / 2;
+    int bot = cy + h / 2;
+    int mid = cy;
+    
+    // Right chevron points - where the arrows reach on the right
+    int rightX = cx + 5;
+    int topChevronY = mid - 4;   // Upper right point
+    int botChevronY = mid + 4;   // Lower right point
+    
+    // Left arrow endpoints
+    int leftX = cx - 5;
+    int topArrowY = mid - 4;     // Upper left point  
+    int botArrowY = mid + 4;     // Lower left point
+    
+    // Vertical center line (thicker for visibility)
+    FILL_RECT(cx - 1, top, 2, h, btColor);
+    
+    // === RIGHT SIDE: Two chevrons forming the "B" ===
+    // Top chevron: top of line → right point → center (draw 3 lines for thickness)
+    DRAW_LINE(cx - 1, top, rightX - 1, topChevronY, btColor);
+    DRAW_LINE(cx, top, rightX, topChevronY, btColor);
+    DRAW_LINE(cx + 1, top, rightX + 1, topChevronY, btColor);
+    DRAW_LINE(rightX - 1, topChevronY, cx - 1, mid, btColor);
+    DRAW_LINE(rightX, topChevronY, cx, mid, btColor);
+    DRAW_LINE(rightX + 1, topChevronY, cx + 1, mid, btColor);
+    
+    // Bottom chevron: center → right point → bottom of line (draw 3 lines for thickness)
+    DRAW_LINE(cx - 1, mid, rightX - 1, botChevronY, btColor);
+    DRAW_LINE(cx, mid, rightX, botChevronY, btColor);
+    DRAW_LINE(cx + 1, mid, rightX + 1, botChevronY, btColor);
+    DRAW_LINE(rightX - 1, botChevronY, cx - 1, bot, btColor);
+    DRAW_LINE(rightX, botChevronY, cx, bot, btColor);
+    DRAW_LINE(rightX + 1, botChevronY, cx + 1, bot, btColor);
+    
+    // === LEFT SIDE: Two arrows forming the "X" through center ===
+    // Upper-left arrow (draw 3 lines for thickness)
+    DRAW_LINE(leftX - 1, topArrowY, cx - 1, mid, btColor);
+    DRAW_LINE(leftX, topArrowY, cx, mid, btColor);
+    DRAW_LINE(leftX + 1, topArrowY, cx + 1, mid, btColor);
+    
+    // Lower-left arrow (draw 3 lines for thickness)
+    DRAW_LINE(leftX - 1, botArrowY, cx - 1, mid, btColor);
+    DRAW_LINE(leftX, botArrowY, cx, mid, btColor);
+    DRAW_LINE(leftX + 1, botArrowY, cx + 1, mid, btColor);
 
     bleProxyDrawn = true;
 #endif
