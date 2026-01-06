@@ -16,10 +16,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Detect Windows and set PIO command accordingly
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$WINDIR" ]]; then
+# Check multiple indicators: OSTYPE, WINDIR, OS env var, or /c/ path exists
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || \
+   [[ -n "$WINDIR" ]] || [[ "$OS" == "Windows_NT" ]] || [[ -d "/c/Windows" ]]; then
+    IS_WINDOWS=true
     PIO_CMD="$HOME/.platformio/penv/Scripts/pio.exe"
     DEFAULT_ENV="waveshare-349-windows"
+    echo -e "${BLUE}🪟 Detected Windows - using waveshare-349-windows${NC}"
 else
+    IS_WINDOWS=false
     PIO_CMD="pio"
     DEFAULT_ENV="waveshare-349"
 fi
