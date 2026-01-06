@@ -1050,14 +1050,16 @@ bool V1BLEClient::setDisplayOn(bool on) {
 
 bool V1BLEClient::setMute(bool muted) {
     uint8_t packetId = muted ? PACKET_ID_MUTE_ON : PACKET_ID_MUTE_OFF;
+    // reqMuteOn/Off has no payload (payload length = 1, no actual payload bytes needed per V1 protocol)
+    // Packet: AA DA E4 34/35 01 [checksum] AB
     uint8_t packet[] = {
-        ESP_PACKET_START,
-        static_cast<uint8_t>(0xD0 + ESP_PACKET_DEST_V1),
-        static_cast<uint8_t>(0xE0 + ESP_PACKET_REMOTE),
-        packetId,
-        0x01,
-        0x00,
-        ESP_PACKET_END
+        ESP_PACKET_START,                               // [0] 0xAA
+        static_cast<uint8_t>(0xD0 + ESP_PACKET_DEST_V1),// [1] 0xDA
+        static_cast<uint8_t>(0xE0 + ESP_PACKET_REMOTE), // [2] 0xE4
+        packetId,                                       // [3] 0x34 or 0x35
+        0x01,                                           // [4] payload length
+        0x00,                                           // [5] checksum placeholder
+        ESP_PACKET_END                                  // [6] 0xAB
     };
 
     uint8_t checksum = 0;
@@ -1066,7 +1068,12 @@ bool V1BLEClient::setMute(bool muted) {
     }
     packet[5] = checksum;
 
-    Serial.printf("Setting V1 mute %s...\n", muted ? "ON" : "OFF");
+    Serial.printf("Setting V1 mute %s, packet: ", muted ? "ON" : "OFF");
+    for (size_t i = 0; i < sizeof(packet); i++) {
+        Serial.printf("%02X ", packet[i]);
+    }
+    Serial.println();
+    
     return sendCommand(packet, sizeof(packet));
 }
 
