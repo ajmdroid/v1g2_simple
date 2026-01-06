@@ -439,11 +439,28 @@ void V1Display::clear() {
 #else
     TFT_CALL(fillScreen)(PALETTE_BG);
 #endif
+    bleProxyDrawn = false;
+}
+
+void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
+#if defined(DISPLAY_WAVESHARE_349)
+    if (bleProxyDrawn &&
+        proxyEnabled == bleProxyEnabled &&
+        clientConnected == bleProxyClientConnected) {
+        return;  // No visual change needed
+    }
+
+    bleProxyEnabled = proxyEnabled;
+    bleProxyClientConnected = clientConnected;
+    drawBLEProxyIndicator();
+    flush();
+#endif
 }
 
 void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
+    bleProxyDrawn = false;  // Force indicator redraw after full clears
 }
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
@@ -775,6 +792,9 @@ void V1Display::drawProfileIndicator(int slot) {
 
     // Draw battery indicator after profile name (if on battery)
     drawBatteryIndicator();
+
+    // Draw BLE proxy indicator using the latest status
+    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
 }
 
 void V1Display::drawBatteryIndicator() {
@@ -842,6 +862,64 @@ void V1Display::drawBatteryIndicator() {
             FILL_RECT(sx, sy, sectionW, sh, dimColor(fillColor));
         }
     }
+#endif
+}
+
+void V1Display::drawBLEProxyIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    // Stack above WiFi indicator to keep the left column compact
+    const int battH = 14;
+    const int battY = SCREEN_HEIGHT - battH - 8;
+    const int wifiSize = 20;
+    const int wifiY = battY - wifiSize - 6;
+
+    const int boxSize = 26;   // Framed badge size
+    const int bleX = 14;
+    const int bleY = wifiY - boxSize - 6;
+
+    // Always clear the area before drawing
+    FILL_RECT(bleX - 3, bleY - 3, boxSize + 6, boxSize + 6, PALETTE_BG);
+
+    if (!bleProxyEnabled) {
+        bleProxyDrawn = false;
+        return;
+    }
+
+    // Outline to match other subtle indicators
+    uint16_t outlineColor = dimColor(PALETTE_TEXT, 45);
+    DRAW_ROUND_RECT(bleX, bleY, boxSize, boxSize, 5, outlineColor);
+
+    // Icon color: blue when advertising/no client, green when JBV1 is attached
+    uint16_t iconColor = bleProxyClientConnected ? dimColor(0x07E0, 80)   // Green
+                                                 : dimColor(0x3B9F, 80);  // Blue
+
+    int cx = bleX + boxSize / 2;
+    int top = bleY + 3;
+    int bottom = bleY + boxSize - 4;
+    int mid = (top + bottom) / 2;
+    int arm = boxSize / 2 - 5;
+
+    // Thicker stem for the rune
+    for (int dx = -1; dx <= 1; ++dx) {
+        DRAW_LINE(cx + dx, top, cx + dx, bottom, iconColor);
+    }
+
+    auto drawThickLine = [&](int x0, int y0, int x1, int y1) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            DRAW_LINE(x0 + dx, y0, x1 + dx, y1, iconColor);
+        }
+    };
+
+    // Upper and lower triangles (classic Bluetooth rune)
+    drawThickLine(cx, top, cx + arm, mid - 3);
+    drawThickLine(cx, top, cx - arm, mid);
+    drawThickLine(cx, bottom, cx + arm, mid + 3);
+    drawThickLine(cx, bottom, cx - arm, mid);
+
+    // Carve a small gap to keep the two halves from merging visually
+    FILL_RECT(cx - 1, mid - 2, 3, 5, PALETTE_BG);
+
+    bleProxyDrawn = true;
 #endif
 }
 

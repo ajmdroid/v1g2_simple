@@ -34,7 +34,7 @@
 #define ESP_PACKET_END          0xAB
 #define ESP_PACKET_ORIGIN_V1    0x0A  // V1 with checksum
 #define ESP_PACKET_DEST_V1      0x0A
-#define ESP_PACKET_REMOTE       0x04  // Third-party device
+#define ESP_PACKET_REMOTE       0x06  // V1connection type (like JBV1) - was 0x04
 
 // Packet IDs
 #define PACKET_ID_DISPLAY_DATA  0x31  // infDisplayData

@@ -257,8 +257,33 @@ static void processAutoPush() {
                 if (v1ProfileManager.loadProfile(slot.profileName, profile)) {
                     autoPushState.profile = profile;
                     autoPushState.profileLoaded = true;
-                    if (bleClient.writeUserBytes(profile.settings.bytes)) {
-                        SerialLog.println("[AutoPush] Profile settings pushed successfully");
+                    
+                    // Apply slot-level Mute to Zero setting to user bytes before pushing
+                    bool slotMuteToZero = settingsManager.getSlotMuteToZero(autoPushState.slotIndex);
+                    SerialLog.printf("[AutoPush] Slot %d MZ setting: %s\n", 
+                                    autoPushState.slotIndex, slotMuteToZero ? "ON" : "OFF");
+                    SerialLog.printf("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
+                    
+                    V1UserSettings modifiedSettings = profile.settings;
+                    if (slotMuteToZero) {
+                        // MZ enabled: clear bit 4 (inverted logic)
+                        modifiedSettings.bytes[0] &= ~0x10;
+                    } else {
+                        // MZ disabled: set bit 4
+                        modifiedSettings.bytes[0] |= 0x10;
+                    }
+                    SerialLog.printf("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
+                                    modifiedSettings.bytes[0], 
+                                    (modifiedSettings.bytes[0] & 0x10) ? 1 : 0,
+                                    (modifiedSettings.bytes[0] & 0x10) ? "OFF" : "ON");
+                    
+                    if (bleClient.writeUserBytes(modifiedSettings.bytes)) {
+                        SerialLog.printf("[AutoPush] Profile settings pushed (MZ=%s)\n", 
+                                        slotMuteToZero ? "ON" : "OFF");
+                        // Request read-back to verify V1 accepted the settings
+                        delay(100);
+                        bleClient.requestUserBytes();
+                        SerialLog.println("[AutoPush] Requested user bytes read-back for verification");
                     } else {
                         SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
                     }
@@ -271,20 +296,19 @@ static void processAutoPush() {
                 autoPushState.profileLoaded = false;
             }
 
-            if (autoPushState.profileLoaded) {
-                autoPushState.step = AUTO_PUSH_STEP_DISPLAY;
-                autoPushState.nextStepAtMs = now + 100;
-            } else {
-                autoPushState.step = AUTO_PUSH_STEP_MODE;
-                autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
-            }
+            // Always proceed to display step to apply slot's dark mode setting
+            autoPushState.step = AUTO_PUSH_STEP_DISPLAY;
+            autoPushState.nextStepAtMs = now + 100;
             return;
         }
 
         case AUTO_PUSH_STEP_DISPLAY: {
-            bleClient.setDisplayOn(autoPushState.profile.displayOn);
-            SerialLog.printf("[AutoPush] Display set to: %s\n",
-                             autoPushState.profile.displayOn ? "ON" : "OFF");
+            // Use slot-level dark mode setting (inverted: darkMode=true means display OFF)
+            bool slotDarkMode = settingsManager.getSlotDarkMode(autoPushState.slotIndex);
+            bool displayOn = !slotDarkMode;  // Dark mode = display off
+            bleClient.setDisplayOn(displayOn);
+            SerialLog.printf("[AutoPush] Display set to: %s (darkMode=%s)\n",
+                             displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
             autoPushState.step = AUTO_PUSH_STEP_MODE;
             autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
             return;
@@ -933,6 +957,9 @@ void setup() {
 }
 
 void loop() {
+    // Update BLE proxy indicator state (always on; color reflects JBV1 client)
+    display.setBLEProxyStatus(bleClient.isProxyEnabled(), bleClient.isProxyClientConnected());
+
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
         driveColorPreview();

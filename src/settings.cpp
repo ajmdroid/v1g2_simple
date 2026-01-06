@@ -148,6 +148,12 @@ void SettingsManager::load() {
     settings.slot0MuteVolume = preferences.getUChar("slot0mute", 0xFF);
     settings.slot1MuteVolume = preferences.getUChar("slot1mute", 0xFF);
     settings.slot2MuteVolume = preferences.getUChar("slot2mute", 0xFF);
+    settings.slot0DarkMode = preferences.getBool("slot0dark", false);
+    settings.slot1DarkMode = preferences.getBool("slot1dark", false);
+    settings.slot2DarkMode = preferences.getBool("slot2dark", false);
+    settings.slot0MuteToZero = preferences.getBool("slot0mz", false);
+    settings.slot1MuteToZero = preferences.getBool("slot1mz", false);
+    settings.slot2MuteToZero = preferences.getBool("slot2mz", false);
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -174,9 +180,9 @@ void SettingsManager::load() {
     Serial.printf("  Brightness: %d\n", settings.brightness);
     Serial.printf("  Color theme: %d\n", settings.colorTheme);
     Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
-    Serial.printf("  Slot0: %s (mode %d)\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode);
-    Serial.printf("  Slot1: %s (mode %d)\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode);
-    Serial.printf("  Slot2: %s (mode %d)\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode);
+    Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no");
+    Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no");
+    Serial.printf("  Slot2: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode, settings.slot2DarkMode ? "yes" : "no", settings.slot2MuteToZero ? "yes" : "no");
 }
 
 void SettingsManager::save() {
@@ -243,6 +249,13 @@ void SettingsManager::save() {
     written += preferences.putUChar("slot0mute", settings.slot0MuteVolume);
     written += preferences.putUChar("slot1mute", settings.slot1MuteVolume);
     written += preferences.putUChar("slot2mute", settings.slot2MuteVolume);
+    written += preferences.putBool("slot0dark", settings.slot0DarkMode);
+    written += preferences.putBool("slot1dark", settings.slot1DarkMode);
+    written += preferences.putBool("slot2dark", settings.slot2DarkMode);
+    written += preferences.putBool("slot0mz", settings.slot0MuteToZero);
+    written += preferences.putBool("slot1mz", settings.slot1MuteToZero);
+    written += preferences.putBool("slot2mz", settings.slot2MuteToZero);
+    Serial.printf("  [Save] slot0: darkMode=%s MZ=%s\n", settings.slot0DarkMode ? "true" : "false", settings.slot0MuteToZero ? "true" : "false");
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -449,6 +462,42 @@ uint8_t SettingsManager::getSlotMuteVolume(int slotNum) const {
         case 2: return settings.slot2MuteVolume;
         default: return 0xFF;
     }
+}
+
+bool SettingsManager::getSlotDarkMode(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0DarkMode;
+        case 1: return settings.slot1DarkMode;
+        case 2: return settings.slot2DarkMode;
+        default: return false;
+    }
+}
+
+bool SettingsManager::getSlotMuteToZero(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0MuteToZero;
+        case 1: return settings.slot1MuteToZero;
+        case 2: return settings.slot2MuteToZero;
+        default: return false;
+    }
+}
+
+void SettingsManager::setSlotDarkMode(int slotNum, bool darkMode) {
+    switch (slotNum) {
+        case 0: settings.slot0DarkMode = darkMode; break;
+        case 1: settings.slot1DarkMode = darkMode; break;
+        case 2: settings.slot2DarkMode = darkMode; break;
+    }
+    save();
+}
+
+void SettingsManager::setSlotMuteToZero(int slotNum, bool mz) {
+    switch (slotNum) {
+        case 0: settings.slot0MuteToZero = mz; break;
+        case 1: settings.slot1MuteToZero = mz; break;
+        case 2: settings.slot2MuteToZero = mz; break;
+    }
+    save();
 }
 
 void SettingsManager::resetToDefaults() {

@@ -119,6 +119,12 @@ struct V1Settings {
     uint8_t slot0MuteVolume;     // V1 mute volume for slot 0 (0-9, 0xFF=no change)
     uint8_t slot1MuteVolume;     // V1 mute volume for slot 1 (0-9, 0xFF=no change)
     uint8_t slot2MuteVolume;     // V1 mute volume for slot 2 (0-9, 0xFF=no change)
+    bool slot0DarkMode;          // V1 display off (dark mode) for slot 0
+    bool slot1DarkMode;          // V1 display off (dark mode) for slot 1
+    bool slot2DarkMode;          // V1 display off (dark mode) for slot 2
+    bool slot0MuteToZero;        // Mute to zero for slot 0
+    bool slot1MuteToZero;        // Mute to zero for slot 1
+    bool slot2MuteToZero;        // Mute to zero for slot 2
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -169,6 +175,12 @@ struct V1Settings {
         slot0MuteVolume(0xFF),
         slot1MuteVolume(0xFF),
         slot2MuteVolume(0xFF),
+        slot0DarkMode(false),
+        slot1DarkMode(false),
+        slot2DarkMode(false),
+        slot0MuteToZero(false),
+        slot1MuteToZero(false),
+        slot2MuteToZero(false),
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
@@ -217,6 +229,12 @@ public:
     // Get slot volume settings (returns 0xFF for "no change")
     uint8_t getSlotVolume(int slotNum) const;
     uint8_t getSlotMuteVolume(int slotNum) const;
+    
+    // Get slot dark mode and MZ settings
+    bool getSlotDarkMode(int slotNum) const;
+    bool getSlotMuteToZero(int slotNum) const;
+    void setSlotDarkMode(int slotNum, bool darkMode);
+    void setSlotMuteToZero(int slotNum, bool mz);
     
     // Batch update methods (don't auto-save, call save() after)
     void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }

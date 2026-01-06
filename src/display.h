@@ -75,6 +75,9 @@ public:
     
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
+
+    // BLE proxy indicator (blue = advertising/no client, green = client connected)
+    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
@@ -100,6 +103,7 @@ private:
     void drawSignalBars(uint8_t bars);
     void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
     void drawStatusText(const char* text, uint16_t color);
+    void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
@@ -120,6 +124,9 @@ private:
     unsigned long profileChangedTime = 0;   // When profile was last changed
     bool wifiWasConnected = false;          // Track WiFi connection state changes
     int lastProfileSlot = -1;               // Track profile changes
+    bool bleProxyEnabled = false;           // BLE proxy enabled flag
+    bool bleProxyClientConnected = false;   // BLE proxy client connection flag
+    bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

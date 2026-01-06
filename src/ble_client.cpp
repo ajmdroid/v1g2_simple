@@ -1531,6 +1531,21 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     uint16_t sourceChar = shortUuid(pCharacteristic->getUUID());
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
+
+    // DEBUG: Log packet ID and key payload bytes
+    if (rawLen >= 5) {
+        uint8_t pid = cmdBuf[3];
+        if (pid == PACKET_ID_WRITE_USER_BYTES && rawLen >= 12) {
+            Serial.printf("[ProxyWrite] JBV1->V1 user bytes (0x13): %02X %02X %02X %02X %02X %02X\n",
+                cmdBuf[5], cmdBuf[6], cmdBuf[7], cmdBuf[8], cmdBuf[9], cmdBuf[10]);
+        } else if (pid == PACKET_ID_REQ_WRITE_VOLUME && rawLen >= 9) {
+            Serial.printf("[ProxyWrite] JBV1->V1 set volume (0x39): main=%d muted=%d\n", cmdBuf[5], cmdBuf[6]);
+        } else if (pid == 0x36 && rawLen >= 7) {
+            Serial.printf("[ProxyWrite] JBV1->V1 set mode (0x36): mode=0x%02X\n", cmdBuf[6]);
+        } else {
+            Serial.printf("[ProxyWrite] JBV1->V1 packet id=0x%02X len=%u (uuid=%04X)\n", pid, (unsigned)rawLen, sourceChar);
+        }
+    }
     
     // Route to appropriate V1 characteristic based on source
     // B6D4 (SHORT) -> V1 B6D4

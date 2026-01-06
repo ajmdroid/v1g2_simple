@@ -108,6 +108,8 @@
 			formData.append('mode', s.mode);
 			formData.append('volume', s.volume);
 			formData.append('muteVol', s.muteVolume);
+			formData.append('darkMode', s.darkMode ? 'true' : 'false');
+			formData.append('muteToZero', s.muteToZero ? 'true' : 'false');
 			
 			const res = await fetch('/api/autopush/slot', {
 				method: 'POST',
@@ -246,6 +248,18 @@
 										bind:value={slot.muteVolume}
 									/>
 								</div>
+								<div class="form-control">
+									<label class="label cursor-pointer justify-start gap-3 py-1">
+										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.darkMode} />
+										<span class="label-text text-xs">Dark Mode (V1 display off)</span>
+									</label>
+								</div>
+								<div class="form-control">
+									<label class="label cursor-pointer justify-start gap-3 py-1">
+										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.muteToZero} />
+										<span class="label-text text-xs">Mute to Zero</span>
+									</label>
+								</div>
 							</div>
 						{:else}
 							<!-- View Mode -->
@@ -256,6 +270,13 @@
 								<div class="font-medium">{modeNames[slot.mode] || '—'}</div>
 								<div class="text-base-content/60">Volume:</div>
 								<div class="font-medium">{slot.volume} / Mute: {slot.muteVolume}</div>
+								<div class="text-base-content/60">Options:</div>
+								<div class="font-medium">
+									{#if slot.darkMode}🌙 Dark{/if}
+									{#if slot.darkMode && slot.muteToZero} · {/if}
+									{#if slot.muteToZero}🔇 MZ{/if}
+									{#if !slot.darkMode && !slot.muteToZero}—{/if}
+								</div>
 							</div>
 						{/if}
 						

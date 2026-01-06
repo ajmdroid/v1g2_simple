@@ -9,11 +9,9 @@
 	let showSaveDialog = $state(false);
 	let saveName = $state('');
 	let saveDescription = $state('');
-	let saveDarkMode = $state(false);
 	let editingSettings = $state(false);
 	let editedSettings = $state(null);
 	let editDescription = $state('');
-	let editDarkMode = $state(false);
 
 	function fromApiSettings(api = {}) {
 		return {
@@ -32,7 +30,6 @@
 			kSensitivity: Number(api.kSensitivity ?? 0),
 			xSensitivity: Number(api.xSensitivity ?? 0),
 			autoMute: Number(api.autoMute ?? 0),
-			muteToMuteVolume: api.muteToMuteVolume ?? false,
 			bogeyLockLoud: api.bogeyLockLoud ?? false,
 			muteXKRear: api.muteXKRear ?? false,
 			startupSequence: api.startupSequence ?? false,
@@ -65,7 +62,6 @@
 			kSensitivity: Number(ui.kSensitivity ?? 0),
 			xSensitivity: Number(ui.xSensitivity ?? 0),
 			autoMute: Number(ui.autoMute ?? 0),
-			muteToMuteVolume: ui.muteToMuteVolume ?? false,
 			bogeyLockLoud: ui.bogeyLockLoud ?? false,
 			muteXKRear: ui.muteXKRear ?? false,
 			startupSequence: ui.startupSequence ?? false,
@@ -162,7 +158,6 @@
 			const payload = {
 				name: saveName.trim(),
 				description: saveDescription.trim(),
-				displayOn: !saveDarkMode,
 				settings: toApiSettings(currentProfile.settings)
 			};
 			
@@ -191,7 +186,6 @@
 		if (currentProfile && currentProfile.settings) {
 			editedSettings = { ...currentProfile.settings };
 			editDescription = currentProfile.description || '';
-			editDarkMode = currentProfile.displayOn === false;
 			editingSettings = true;
 		}
 	}
@@ -199,7 +193,6 @@
 	function cancelEditing() {
 		editedSettings = null;
 		editDescription = '';
-		editDarkMode = false;
 		editingSettings = false;
 	}
 
@@ -215,7 +208,6 @@
 				};
 				editedSettings = { ...currentProfile.settings };
 				editDescription = data.description || '';
-				editDarkMode = data.displayOn === false;
 				editingSettings = true;
 				message = { type: 'info', text: `Editing ${name}` };
 			} else {
@@ -238,7 +230,6 @@
 			const payload = {
 				name: currentProfile.name,
 				description: editDescription.trim(),
-				displayOn: !editDarkMode,
 				settings: toApiSettings(editedSettings)
 			};
 
@@ -273,7 +264,6 @@
 		try {
 			// Push edited settings directly to V1
 			const payload = {
-				displayOn: !editDarkMode,
 				settings: toApiSettings(editedSettings)
 			};
 			
@@ -387,10 +377,6 @@
 							bind:value={saveDescription}
 						/>
 					</div>
-					<label class="label cursor-pointer justify-start gap-3">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={saveDarkMode} />
-						<span class="label-text">Dark mode (turn off V1 display)</span>
-					</label>
 				</div>
 				<div class="modal-action">
 					<button class="btn btn-ghost" onclick={() => showSaveDialog = false}>Cancel</button>
@@ -517,10 +503,6 @@
 								{/if}
 							</div>
 							<label class="flex items-center justify-between">
-								<span>Mute to Muted Volume</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.muteToMuteVolume} disabled={!editingSettings} />
-							</label>
-							<label class="flex items-center justify-between">
 								<span>Bogey-Lock Loud</span>
 								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
 							</label>
@@ -577,12 +559,6 @@
 								<span>Resting Display</span>
 								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
 							</label>
-							{#if editingSettings}
-							<label class="flex items-center justify-between col-span-2 pt-2 border-t border-base-100">
-								<span>Dark Mode (turn off V1 display)</span>
-								<input type="checkbox" class="toggle checked:bg-red-500" bind:checked={editDarkMode} />
-							</label>
-							{/if}
 						</div>
 					</div>
 					
@@ -690,9 +666,8 @@
 						<div class="flex justify-between items-center p-3 bg-base-300 rounded-lg">
 							<div>
 								<div class="font-medium">{profile.name}</div>
-								<div class="text-xs text-base-content/60 space-y-0.5">
-									<div>{profile.description || 'No description'}</div>
-									<div>Display: {profile.displayOn === false ? 'Off (Dark)' : 'On'}</div>
+								<div class="text-xs text-base-content/60">
+									{profile.description || 'No description'}
 								</div>
 							</div>
 							<div class="flex gap-2">

@@ -1319,7 +1319,9 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"mode\":" + String(s.slot0_default.mode) + ",";
     json += "\"color\":" + String(s.slot0Color) + ",";
     json += "\"volume\":" + String(s.slot0Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot0MuteVolume) + "},";
+    json += "\"muteVolume\":" + String(s.slot0MuteVolume) + ",";
+    json += "\"darkMode\":" + String(s.slot0DarkMode ? "true" : "false") + ",";
+    json += "\"muteToZero\":" + String(s.slot0MuteToZero ? "true" : "false") + "},";
     
     // Slot 1
     json += "{\"name\":\"" + s.slot1Name + "\",";
@@ -1327,7 +1329,9 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"mode\":" + String(s.slot1_highway.mode) + ",";
     json += "\"color\":" + String(s.slot1Color) + ",";
     json += "\"volume\":" + String(s.slot1Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot1MuteVolume) + "},";
+    json += "\"muteVolume\":" + String(s.slot1MuteVolume) + ",";
+    json += "\"darkMode\":" + String(s.slot1DarkMode ? "true" : "false") + ",";
+    json += "\"muteToZero\":" + String(s.slot1MuteToZero ? "true" : "false") + "},";
     
     // Slot 2
     json += "{\"name\":\"" + s.slot2Name + "\",";
@@ -1335,7 +1339,9 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"mode\":" + String(s.slot2_comfort.mode) + ",";
     json += "\"color\":" + String(s.slot2Color) + ",";
     json += "\"volume\":" + String(s.slot2Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot2MuteVolume) + "}";
+    json += "\"muteVolume\":" + String(s.slot2MuteVolume) + ",";
+    json += "\"darkMode\":" + String(s.slot2DarkMode ? "true" : "false") + ",";
+    json += "\"muteToZero\":" + String(s.slot2MuteToZero ? "true" : "false") + "}";
     
     json += "]}";
     
@@ -1355,6 +1361,10 @@ void WiFiManager::handleAutoPushSlotSave() {
     int color = server.hasArg("color") ? server.arg("color").toInt() : -1;
     int volume = server.hasArg("volume") ? server.arg("volume").toInt() : -1;
     int muteVol = server.hasArg("muteVol") ? server.arg("muteVol").toInt() : -1;
+    bool hasDarkMode = server.hasArg("darkMode");
+    bool darkMode = hasDarkMode ? (server.arg("darkMode") == "true") : false;
+    bool hasMuteToZero = server.hasArg("muteToZero");
+    bool muteToZero = hasMuteToZero ? (server.arg("muteToZero") == "true") : false;
     
     if (slot < 0 || slot > 2) {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
@@ -1381,6 +1391,19 @@ void WiFiManager::handleAutoPushSlotSave() {
                   slot, vol, existingVol, mute, existingMute);
     
     settingsManager.setSlotVolumes(slot, vol, mute);
+    
+    // Save dark mode and MZ if provided
+    Serial.printf("[SaveSlot] Slot %d - hasDarkMode: %s, darkMode: %s, hasMZ: %s, muteToZero: %s\n",
+                  slot, hasDarkMode ? "yes" : "no", darkMode ? "true" : "false",
+                  hasMuteToZero ? "yes" : "no", muteToZero ? "true" : "false");
+    if (hasDarkMode) {
+        settingsManager.setSlotDarkMode(slot, darkMode);
+        Serial.printf("[SaveSlot] Saved darkMode=%s for slot %d\n", darkMode ? "true" : "false", slot);
+    }
+    if (hasMuteToZero) {
+        settingsManager.setSlotMuteToZero(slot, muteToZero);
+        Serial.printf("[SaveSlot] Saved muteToZero=%s for slot %d\n", muteToZero ? "true" : "false", slot);
+    }
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
     
