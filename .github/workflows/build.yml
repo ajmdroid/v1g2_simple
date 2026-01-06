@@ -195,7 +195,7 @@ jobs:
       shell: bash
       run: |
         chmod +x build.sh
-        ./build.sh --all
+        ./build.sh
         echo "✅ Windows build.sh completed successfully"
 
   # Optional: Create a release when tagged
