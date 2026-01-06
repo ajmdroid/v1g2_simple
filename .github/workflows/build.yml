@@ -168,6 +168,34 @@ jobs:
         echo "pio run -t upload" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
+  # Test build.sh on actual Windows
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Install PlatformIO
+      run: pip install --upgrade platformio
+    
+    - name: 🪟 Test build.sh on Windows
+      shell: bash
+      run: |
+        chmod +x build.sh
+        ./build.sh --all --skip-web
+        echo "✅ Windows build.sh completed successfully"
+
   # Optional: Create a release when tagged
   release:
     if: startsWith(github.ref, 'refs/tags/v')
