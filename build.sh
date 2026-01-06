@@ -20,7 +20,16 @@ cd "$SCRIPT_DIR"
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || \
    [[ -n "$WINDIR" ]] || [[ "$OS" == "Windows_NT" ]] || [[ -d "/c/Windows" ]]; then
     IS_WINDOWS=true
-    PIO_CMD="$HOME/.platformio/penv/Scripts/pio.exe"
+    # Check if pio is in PATH first (e.g., pip install), then fall back to .platformio path
+    if command -v pio &> /dev/null; then
+        PIO_CMD="pio"
+    elif [[ -f "$HOME/.platformio/penv/Scripts/pio.exe" ]]; then
+        PIO_CMD="$HOME/.platformio/penv/Scripts/pio.exe"
+    else
+        echo -e "${RED}❌ PlatformIO not found! Please install it first.${NC}"
+        echo "   Run: pip install platformio"
+        exit 1
+    fi
     DEFAULT_ENV="waveshare-349-windows"
     echo -e "${BLUE}🪟 Detected Windows - using waveshare-349-windows${NC}"
 else
