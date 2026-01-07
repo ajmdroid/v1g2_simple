@@ -25,6 +25,8 @@ on:
       - 'interface/**'
       - 'platformio.ini'
       - '.github/workflows/build.yml'
+      - 'package-lock.json'
+      - 'interface/package-lock.json'
   
   # Auto-trigger on pull requests
   pull_request:
