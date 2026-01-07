@@ -25,6 +25,15 @@
 #include <string>
 #include <cstdlib>
 
+// Helper: calculate V1 packet checksum (sum of bytes)
+static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
+    uint8_t sum = 0;
+    for (size_t i = 0; i < len; ++i) {
+        sum += data[i];
+    }
+    return sum;
+}
+
 // Task to restart advertising after delay (Kenny's v1g2-t4s3 approach for NimBLE 2.x)
 // Only restarts if no client is connected
 static void restartAdvertisingTask(void* param) {
@@ -887,11 +896,7 @@ bool V1BLEClient::requestAlertData() {
         ESP_PACKET_END
     };
 
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 5; ++i) {
-        checksum += packet[i];
-    }
-    packet[5] = checksum;
+    packet[5] = calcV1Checksum(packet, 5);
 
     Serial.println("Requesting alert data from V1...");
     return sendCommand(packet, sizeof(packet));
@@ -908,11 +913,7 @@ bool V1BLEClient::requestVersion() {
         ESP_PACKET_END
     };
 
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 5; ++i) {
-        checksum += packet[i];
-    }
-    packet[5] = checksum;
+    packet[5] = calcV1Checksum(packet, 5);
 
     Serial.println("Requesting version info from V1...");
     return sendCommand(packet, sizeof(packet));
@@ -941,11 +942,7 @@ bool V1BLEClient::setDisplayOn(bool on) {
         };
         
         // Calculate checksum over bytes 0-4 (5 bytes)
-        uint8_t checksum = 0;
-        for (size_t i = 0; i < 5; ++i) {
-            checksum += packet[i];
-        }
-        packet[5] = checksum;
+        packet[5] = calcV1Checksum(packet, 5);
         
         return sendCommand(packet, sizeof(packet));
     } else {
@@ -966,11 +963,7 @@ bool V1BLEClient::setDisplayOn(bool on) {
         };
         
         // Calculate checksum over bytes 0-5 (6 bytes)
-        uint8_t checksum = 0;
-        for (size_t i = 0; i < 6; ++i) {
-            checksum += packet[i];
-        }
-        packet[6] = checksum;
+        packet[6] = calcV1Checksum(packet, 6);
         
         return sendCommand(packet, sizeof(packet));
     }
@@ -990,11 +983,7 @@ bool V1BLEClient::setMute(bool muted) {
         ESP_PACKET_END                                  // [6] 0xAB
     };
 
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 5; ++i) {
-        checksum += packet[i];
-    }
-    packet[5] = checksum;
+    packet[5] = calcV1Checksum(packet, 5);
     
     return sendCommand(packet, sizeof(packet));
 }
@@ -1014,11 +1003,7 @@ bool V1BLEClient::setMode(uint8_t mode) {
     };
     
     // Calculate checksum over bytes 0-5 (6 bytes)
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 6; ++i) {
-        checksum += packet[i];
-    }
-    packet[6] = checksum;
+    packet[6] = calcV1Checksum(packet, 6);
     
     return sendCommand(packet, sizeof(packet));
 }
@@ -1052,11 +1037,7 @@ bool V1BLEClient::setVolume(uint8_t mainVolume, uint8_t mutedVolume) {
     };
     
     // Calculate checksum over bytes 0-7 (8 bytes)
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 8; ++i) {
-        checksum += packet[i];
-    }
-    packet[8] = checksum;
+    packet[8] = calcV1Checksum(packet, 8);
     
     return sendCommand(packet, sizeof(packet));
 }
@@ -1073,11 +1054,7 @@ bool V1BLEClient::requestUserBytes() {
         ESP_PACKET_END
     };
 
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 5; ++i) {
-        checksum += packet[i];
-    }
-    packet[5] = checksum;
+    packet[5] = calcV1Checksum(packet, 5);
 
     Serial.println("Requesting V1 user bytes...");
     return sendCommand(packet, sizeof(packet));
@@ -1097,11 +1074,7 @@ bool V1BLEClient::writeUserBytes(const uint8_t* bytes) {
     packet[4] = 0x07;  // length = 6 bytes + 1
     memcpy(&packet[5], bytes, 6);
     
-    uint8_t checksum = 0;
-    for (size_t i = 0; i < 11; ++i) {
-        checksum += packet[i];
-    }
-    packet[11] = checksum;
+    packet[11] = calcV1Checksum(packet, 11);
     packet[12] = ESP_PACKET_END;
 
     Serial.printf("Writing V1 user bytes: %02X %02X %02X %02X %02X %02X\n",
