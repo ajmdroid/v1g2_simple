@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "storage_manager.h"
 #include <ArduinoJson.h>
+#include <algorithm>
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1settings_backup.json";
@@ -114,14 +115,19 @@ void SettingsManager::load() {
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
     settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
+    settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
-    settings.colorArrow = preferences.getUShort("colorArrow", 0xF800);
+    settings.colorArrowFront = preferences.getUShort("colorArrF", 0xF800);
+    settings.colorArrowSide = preferences.getUShort("colorArrS", 0xF800);
+    settings.colorArrowRear = preferences.getUShort("colorArrR", 0xF800);
     settings.colorBandL = preferences.getUShort("colorBandL", 0x001F);
     settings.colorBandKa = preferences.getUShort("colorBandKa", 0xF800);
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
+    settings.colorBleConnected = preferences.getUShort("colorBleC", 0x07E0);
+    settings.colorBleDisconnected = preferences.getUShort("colorBleD", 0x001F);
     settings.colorBar1 = preferences.getUShort("colorBar1", 0x07E0);
     settings.colorBar2 = preferences.getUShort("colorBar2", 0x07E0);
     settings.colorBar3 = preferences.getUShort("colorBar3", 0xFFE0);
@@ -131,6 +137,8 @@ void SettingsManager::load() {
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
+    settings.hideBleIcon = preferences.getBool("hideBle", false);
+    settings.enableMultiAlert = preferences.getBool("multiAlert", true);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -148,6 +156,15 @@ void SettingsManager::load() {
     settings.slot0MuteVolume = preferences.getUChar("slot0mute", 0xFF);
     settings.slot1MuteVolume = preferences.getUChar("slot1mute", 0xFF);
     settings.slot2MuteVolume = preferences.getUChar("slot2mute", 0xFF);
+    settings.slot0DarkMode = preferences.getBool("slot0dark", false);
+    settings.slot1DarkMode = preferences.getBool("slot1dark", false);
+    settings.slot2DarkMode = preferences.getBool("slot2dark", false);
+    settings.slot0MuteToZero = preferences.getBool("slot0mz", false);
+    settings.slot1MuteToZero = preferences.getBool("slot1mz", false);
+    settings.slot2MuteToZero = preferences.getBool("slot2mz", false);
+    settings.slot0AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot0persist", 0));
+    settings.slot1AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot1persist", 0));
+    settings.slot2AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot2persist", 0));
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -174,9 +191,9 @@ void SettingsManager::load() {
     Serial.printf("  Brightness: %d\n", settings.brightness);
     Serial.printf("  Color theme: %d\n", settings.colorTheme);
     Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
-    Serial.printf("  Slot0: %s (mode %d)\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode);
-    Serial.printf("  Slot1: %s (mode %d)\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode);
-    Serial.printf("  Slot2: %s (mode %d)\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode);
+    Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no", settings.slot0AlertPersist);
+    Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no", settings.slot1AlertPersist);
+    Serial.printf("  Slot2: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode, settings.slot2DarkMode ? "yes" : "no", settings.slot2MuteToZero ? "yes" : "no", settings.slot2AlertPersist);
 }
 
 void SettingsManager::save() {
@@ -212,14 +229,19 @@ void SettingsManager::save() {
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
     written += preferences.putUChar("brightness", settings.brightness);
     written += preferences.putInt("colorTheme", settings.colorTheme);
+    written += preferences.putInt("dispStyle", settings.displayStyle);
     written += preferences.putUShort("colorBogey", settings.colorBogey);
     written += preferences.putUShort("colorFreq", settings.colorFrequency);
-    written += preferences.putUShort("colorArrow", settings.colorArrow);
+    written += preferences.putUShort("colorArrF", settings.colorArrowFront);
+    written += preferences.putUShort("colorArrS", settings.colorArrowSide);
+    written += preferences.putUShort("colorArrR", settings.colorArrowRear);
     written += preferences.putUShort("colorBandL", settings.colorBandL);
     written += preferences.putUShort("colorBandKa", settings.colorBandKa);
     written += preferences.putUShort("colorBandK", settings.colorBandK);
     written += preferences.putUShort("colorBandX", settings.colorBandX);
     written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    written += preferences.putUShort("colorBleC", settings.colorBleConnected);
+    written += preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     written += preferences.putUShort("colorBar1", settings.colorBar1);
     written += preferences.putUShort("colorBar2", settings.colorBar2);
     written += preferences.putUShort("colorBar3", settings.colorBar3);
@@ -229,6 +251,8 @@ void SettingsManager::save() {
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    written += preferences.putBool("hideBle", settings.hideBleIcon);
+    written += preferences.putBool("multiAlert", settings.enableMultiAlert);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -243,6 +267,16 @@ void SettingsManager::save() {
     written += preferences.putUChar("slot0mute", settings.slot0MuteVolume);
     written += preferences.putUChar("slot1mute", settings.slot1MuteVolume);
     written += preferences.putUChar("slot2mute", settings.slot2MuteVolume);
+    written += preferences.putBool("slot0dark", settings.slot0DarkMode);
+    written += preferences.putBool("slot1dark", settings.slot1DarkMode);
+    written += preferences.putBool("slot2dark", settings.slot2DarkMode);
+    written += preferences.putBool("slot0mz", settings.slot0MuteToZero);
+    written += preferences.putBool("slot1mz", settings.slot1MuteToZero);
+    written += preferences.putBool("slot2mz", settings.slot2MuteToZero);
+    written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
+    written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
+    written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
+    Serial.printf("  [Save] slot0: darkMode=%s MZ=%s\n", settings.slot0DarkMode ? "true" : "false", settings.slot0MuteToZero ? "true" : "false");
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -375,11 +409,13 @@ void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVo
     save();
 }
 
-void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
                                         uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX) {
     settings.colorBogey = bogey;
     settings.colorFrequency = freq;
-    settings.colorArrow = arrow;
+    settings.colorArrowFront = arrowFront;
+    settings.colorArrowSide = arrowSide;
+    settings.colorArrowRear = arrowRear;
     settings.colorBandL = bandL;
     settings.colorBandKa = bandKa;
     settings.colorBandK = bandK;
@@ -389,6 +425,12 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
 
 void SettingsManager::setWiFiIconColor(uint16_t color) {
     settings.colorWiFiIcon = color;
+    save();
+}
+
+void SettingsManager::setBleIconColors(uint16_t connected, uint16_t disconnected) {
+    settings.colorBleConnected = connected;
+    settings.colorBleDisconnected = disconnected;
     save();
 }
 
@@ -414,6 +456,16 @@ void SettingsManager::setHideProfileIndicator(bool hide) {
 
 void SettingsManager::setHideBatteryIcon(bool hide) {
     settings.hideBatteryIcon = hide;
+    save();
+}
+
+void SettingsManager::setHideBleIcon(bool hide) {
+    settings.hideBleIcon = hide;
+    save();
+}
+
+void SettingsManager::setEnableMultiAlert(bool enable) {
+    settings.enableMultiAlert = enable;
     save();
 }
 
@@ -449,6 +501,62 @@ uint8_t SettingsManager::getSlotMuteVolume(int slotNum) const {
         case 2: return settings.slot2MuteVolume;
         default: return 0xFF;
     }
+}
+
+bool SettingsManager::getSlotDarkMode(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0DarkMode;
+        case 1: return settings.slot1DarkMode;
+        case 2: return settings.slot2DarkMode;
+        default: return false;
+    }
+}
+
+bool SettingsManager::getSlotMuteToZero(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0MuteToZero;
+        case 1: return settings.slot1MuteToZero;
+        case 2: return settings.slot2MuteToZero;
+        default: return false;
+    }
+}
+
+uint8_t SettingsManager::getSlotAlertPersistSec(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0AlertPersist;
+        case 1: return settings.slot1AlertPersist;
+        case 2: return settings.slot2AlertPersist;
+        default: return 0;
+    }
+}
+
+void SettingsManager::setSlotDarkMode(int slotNum, bool darkMode) {
+    switch (slotNum) {
+        case 0: settings.slot0DarkMode = darkMode; break;
+        case 1: settings.slot1DarkMode = darkMode; break;
+        case 2: settings.slot2DarkMode = darkMode; break;
+    }
+    save();
+}
+
+void SettingsManager::setSlotMuteToZero(int slotNum, bool mz) {
+    switch (slotNum) {
+        case 0: settings.slot0MuteToZero = mz; break;
+        case 1: settings.slot1MuteToZero = mz; break;
+        case 2: settings.slot2MuteToZero = mz; break;
+    }
+    save();
+}
+
+void SettingsManager::setSlotAlertPersistSec(int slotNum, uint8_t seconds) {
+    uint8_t clamped = std::min<uint8_t>(5, seconds);
+    switch (slotNum) {
+        case 0: settings.slot0AlertPersist = clamped; break;
+        case 1: settings.slot1AlertPersist = clamped; break;
+        case 2: settings.slot2AlertPersist = clamped; break;
+        default: return;
+    }
+    save();
 }
 
 void SettingsManager::resetToDefaults() {
@@ -494,16 +602,21 @@ void SettingsManager::backupToSD() {
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["colorTheme"] = static_cast<int>(settings.colorTheme);
+    doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     
     // All colors (RGB565)
     doc["colorBogey"] = settings.colorBogey;
     doc["colorFrequency"] = settings.colorFrequency;
-    doc["colorArrow"] = settings.colorArrow;
+    doc["colorArrowFront"] = settings.colorArrowFront;
+    doc["colorArrowSide"] = settings.colorArrowSide;
+    doc["colorArrowRear"] = settings.colorArrowRear;
     doc["colorBandL"] = settings.colorBandL;
     doc["colorBandKa"] = settings.colorBandKa;
     doc["colorBandK"] = settings.colorBandK;
     doc["colorBandX"] = settings.colorBandX;
     doc["colorWiFiIcon"] = settings.colorWiFiIcon;
+    doc["colorBleConnected"] = settings.colorBleConnected;
+    doc["colorBleDisconnected"] = settings.colorBleDisconnected;
     doc["colorBar1"] = settings.colorBar1;
     doc["colorBar2"] = settings.colorBar2;
     doc["colorBar3"] = settings.colorBar3;
@@ -515,6 +628,7 @@ void SettingsManager::backupToSD() {
     doc["hideWifiIcon"] = settings.hideWifiIcon;
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
+    doc["hideBleIcon"] = settings.hideBleIcon;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -571,16 +685,21 @@ bool SettingsManager::restoreFromSD() {
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
     if (doc["colorTheme"].is<int>()) settings.colorTheme = static_cast<ColorTheme>(doc["colorTheme"].as<int>());
+    if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
     
     // Restore all colors
     if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
     if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
-    if (doc["colorArrow"].is<int>()) settings.colorArrow = doc["colorArrow"];
+    if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
+    if (doc["colorArrowSide"].is<int>()) settings.colorArrowSide = doc["colorArrowSide"];
+    if (doc["colorArrowRear"].is<int>()) settings.colorArrowRear = doc["colorArrowRear"];
     if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
     if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
     if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
     if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
+    if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
     if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
     if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
     if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
@@ -592,6 +711,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
@@ -606,14 +726,19 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
     preferences.putInt("colorTheme", settings.colorTheme);
+    preferences.putInt("dispStyle", settings.displayStyle);
     preferences.putUShort("colorBogey", settings.colorBogey);
     preferences.putUShort("colorFreq", settings.colorFrequency);
-    preferences.putUShort("colorArrow", settings.colorArrow);
+    preferences.putUShort("colorArrF", settings.colorArrowFront);
+    preferences.putUShort("colorArrS", settings.colorArrowSide);
+    preferences.putUShort("colorArrR", settings.colorArrowRear);
     preferences.putUShort("colorBandL", settings.colorBandL);
     preferences.putUShort("colorBandKa", settings.colorBandKa);
     preferences.putUShort("colorBandK", settings.colorBandK);
     preferences.putUShort("colorBandX", settings.colorBandX);
     preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    preferences.putUShort("colorBleC", settings.colorBleConnected);
+    preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     preferences.putUShort("colorBar1", settings.colorBar1);
     preferences.putUShort("colorBar2", settings.colorBar2);
     preferences.putUShort("colorBar3", settings.colorBar3);
@@ -623,6 +748,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);

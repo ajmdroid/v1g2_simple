@@ -21,7 +21,7 @@ struct V1UserSettings {
     bool kBandEnabled() const { return bytes[0] & 0x02; }
     bool kaBandEnabled() const { return bytes[0] & 0x04; }
     bool laserEnabled() const { return bytes[0] & 0x08; }
-    bool muteToMuteVolume() const { return bytes[0] & 0x10; }
+    bool muteToMuteVolume() const { return !(bytes[0] & 0x10); }  // Inverted: bit clear = MZ enabled
     bool bogeyLockLoud() const { return bytes[0] & 0x20; }
     bool muteXKRear() const { return !(bytes[0] & 0x40); }  // Inverted
     bool kuBandEnabled() const { return !(bytes[0] & 0x80); }  // Inverted
@@ -57,7 +57,7 @@ struct V1UserSettings {
     void setKBandEnabled(bool v) { if (v) bytes[0] |= 0x02; else bytes[0] &= ~0x02; }
     void setKaBandEnabled(bool v) { if (v) bytes[0] |= 0x04; else bytes[0] &= ~0x04; }
     void setLaserEnabled(bool v) { if (v) bytes[0] |= 0x08; else bytes[0] &= ~0x08; }
-    void setMuteToMuteVolume(bool v) { if (v) bytes[0] |= 0x10; else bytes[0] &= ~0x10; }
+    void setMuteToMuteVolume(bool v) { if (v) bytes[0] &= ~0x10; else bytes[0] |= 0x10; }  // Inverted
     void setBogeyLockLoud(bool v) { if (v) bytes[0] |= 0x20; else bytes[0] &= ~0x20; }
     void setMuteXKRear(bool v) { if (v) bytes[0] &= ~0x40; else bytes[0] |= 0x40; }  // Inverted
     void setKuBandEnabled(bool v) { if (v) bytes[0] &= ~0x80; else bytes[0] |= 0x80; }  // Inverted
@@ -100,11 +100,13 @@ struct V1Profile {
     String name;
     String description;
     V1UserSettings settings;
-    bool displayOn;  // V1 main display on/off (dark mode)
+    bool displayOn;       // V1 main display on/off (dark mode)
+    uint8_t mainVolume;   // Main volume 0-9 (0xFF = don't change)
+    uint8_t mutedVolume;  // Muted volume 0-9 (0xFF = don't change)
     
-    V1Profile() : name("Default"), description(""), displayOn(true) {}
-    V1Profile(const String& n) : name(n), description(""), displayOn(true) {}
-    V1Profile(const String& n, const V1UserSettings& s) : name(n), description(""), settings(s), displayOn(true) {}
+    V1Profile() : name("Default"), description(""), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
+    V1Profile(const String& n) : name(n), description(""), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
+    V1Profile(const String& n, const V1UserSettings& s) : name(n), description(""), settings(s), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
 };
 
 // Save result with detailed error info

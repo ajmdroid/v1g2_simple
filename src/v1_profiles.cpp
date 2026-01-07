@@ -195,6 +195,8 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     profile.name = name;
     profile.description = doc["description"] | "";
     profile.displayOn = doc["displayOn"] | true;  // Default to on
+    profile.mainVolume = doc["mainVolume"] | 0xFF;  // 0xFF = don't change
+    profile.mutedVolume = doc["mutedVolume"] | 0xFF;  // 0xFF = don't change
     
     // Parse settings bytes
     JsonArray bytes = doc["bytes"];
@@ -261,6 +263,8 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     doc["name"] = profile.name;
     doc["description"] = profile.description;
     doc["displayOn"] = profile.displayOn;
+    doc["mainVolume"] = profile.mainVolume;
+    doc["mutedVolume"] = profile.mutedVolume;
     
     // Store raw bytes for exact restoration
     JsonArray bytes = doc["bytes"].to<JsonArray>();
@@ -447,6 +451,8 @@ String V1ProfileManager::profileToJson(const V1Profile& profile) const {
     doc["name"] = profile.name;
     doc["description"] = profile.description;
     doc["displayOn"] = profile.displayOn;
+    doc["mainVolume"] = profile.mainVolume;
+    doc["mutedVolume"] = profile.mutedVolume;
     
     JsonObject settings = doc["settings"].to<JsonObject>();
     const V1UserSettings& s = profile.settings;

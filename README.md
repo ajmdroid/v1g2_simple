@@ -4,7 +4,7 @@
 
 A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-**Version:** 1.3.0
+**Version:** 1.9.2
 
 **Features:**
 - Wireless BLE connection with fast reconnection
@@ -15,7 +15,6 @@ A configurable touchscreen display for the Valentine One Gen2 radar detector, bu
 - Profile indicator with slot names on display
 - V1 profile manager (create, edit, push)
 - BLE proxy for simultaneous JBV1 app use
-- 4 color themes (Standard, High Contrast, Stealth, Business)
 - Touch‑to‑mute and triple‑tap profile cycling
 
 **Disclaimer:** This is provided as‑is, with no warranty. Use at your own risk.
@@ -26,12 +25,15 @@ A configurable touchscreen display for the Valentine One Gen2 radar detector, bu
 
 ## Recent Updates
 
-**January 2026 (v1.1.26):**
-- Hide battery icon option in Colors settings
-- Battery voltage calibration fix (4.1V max)
-- Comprehensive MANUAL.md technical documentation
-- Profile write verification with retry logic
-- Bug fixes for display redraw and profile indicator
+**January 2026 (v1.3.0):**
+- Multi-alert display with secondary alert cards
+- Modern display style with Montserrat Bold TrueType font
+- Individual arrow colors and BLE icon customization
+- Per-slot Dark Mode and Mute-to-Zero (MZ) settings
+- Hide battery/BLE icon options
+- BOOT button brightness adjustment
+- ArduinoJson refactor for improved performance
+- Code optimizations and dead code cleanup
 
 **Earlier (v1.1.x):**
 - SvelteKit web interface with daisyUI
@@ -296,13 +298,18 @@ Access via `http://192.168.35.5`:
 - Color theme selection (Standard, High Contrast, Stealth, Business)
 - Custom colors for all display elements
 - Per-band color customization (L/Ka/K/X)
+- Individual arrow colors (Front, Side, Rear separately)
+- BLE icon colors (connected/disconnected states)
 - Signal bar gradient colors
-- Hide WiFi/profile/battery indicators
+- Hide WiFi/BLE/profile/battery indicators
 
 **Auto-Push** (`/autopush`):
 - Three configurable slots (Default, Highway, Comfort)
 - Profile + V1 mode per slot
 - Per-slot volume settings (main + mute volume)
+- Per-slot dark mode toggle
+- Per-slot mute-to-zero toggle
+- Per-slot alert persistence (ghost) duration (0-5 seconds)
 - Custom slot names and colors
 - Quick-push buttons
 - Auto-push on V1 connection
@@ -340,8 +347,14 @@ Set up 3 profile slots for different driving scenarios:
 2. Go to Auto-Push (`/autopush`) in the web interface
 3. Configure each slot with a saved profile and V1 mode
 4. Set volume overrides if desired
-5. Enable **Auto-Push** to apply on connection
-6. Use **triple-tap** on display to cycle slots
+5. Optionally enable per-slot dark mode, mute-to-zero, or alert persistence (ghost)
+6. Enable **Auto-Push** to apply on connection
+7. Use **triple-tap** on display to cycle slots
+
+**Per-Slot Options:**
+- **Dark Mode:** Dims display to minimum when enabled for that slot
+- **Mute to Zero:** Full silent mode (no audio) instead of quiet mute
+- **Alert Persistence:** Shows last alert as a ghost (gray) for 0-5 seconds after it clears
 
 **Display Modes:**
 

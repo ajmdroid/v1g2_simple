@@ -50,10 +50,12 @@ struct DisplayState {
     bool systemTest;
     char modeChar;
     bool hasMode;
+    bool displayOn;         // True if main display is ON (not dark)
+    bool hasDisplayOn;      // True if we've seen explicit on/off ack
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), 
                      signalBars(0), muted(false), systemTest(false),
-                     modeChar(0), hasMode(false) {}
+                     modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false) {}
 };
 
 class PacketParser {

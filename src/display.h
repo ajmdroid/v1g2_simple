@@ -3,7 +3,7 @@
  * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 AMOLED, AXS15231B)
  * 
  * Features:
- * - Multiple color themes (Standard/Dark/RDF/Classic)
+ * - Multiple color themes (Standard/HighContrast/Stealth/Business)
  * - Custom 7-segment and 14-segment displays
  * - Live alert visualization with signal bars
  * - Status indicators (WiFi, BLE proxy, mute)
@@ -38,10 +38,10 @@ public:
     void update(const AlertData& alert, bool mutedFlag);
     void update(const AlertData& alert);
     void update(const AlertData& alert, const DisplayState& state, int alertCount);
+    // Multi-alert display: shows priority alert + secondary alert cards
+    void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
     
     // Show connection status
-    void showConnecting();
-    void showConnected();
     void showDisconnected();
     void showResting(); // idle/rest screen
     void showScanning(); // scanning screen (like resting but with SCAN text)
@@ -54,6 +54,11 @@ public:
     
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
+    
+    // Brightness adjustment overlay
+    void showBrightnessSlider(uint8_t currentLevel);  // Show slider overlay
+    void updateBrightnessSlider(uint8_t level);       // Update slider position
+    void hideBrightnessSlider();                      // Hide slider and restore display
     
     // Get canvas for direct access (testing)
     Arduino_Canvas* getCanvas() { return tft; }
@@ -75,6 +80,12 @@ public:
     
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
+
+    // BLE proxy indicator (blue = advertising/no client, green = client connected)
+    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
+    
+    // Enable/disable ghost style (muted palette, no mute badge)
+    void setGhostMode(bool enabled);
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
@@ -99,12 +110,17 @@ private:
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
     void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
+    void drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted);   // 7-segment style
+    void drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted);    // Montserrat Bold font
     void drawStatusText(const char* text, uint16_t color);
+    void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
+    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style
+    void drawTopCounterModern(char symbol, bool muted, bool showDot);        // Montserrat Bold font
     void drawMuteIcon(bool muted);
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
@@ -112,6 +128,10 @@ private:
     void draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     int draw14SegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     Band pickDominantBand(uint8_t bandMask);
+    
+    // Multi-alert card row
+    void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
+    static constexpr int SECONDARY_ROW_HEIGHT = 38;  // Height reserved for secondary alert cards
 
     int currentProfileSlot = 0;  // Track current profile for display
     
@@ -120,6 +140,11 @@ private:
     unsigned long profileChangedTime = 0;   // When profile was last changed
     bool wifiWasConnected = false;          // Track WiFi connection state changes
     int lastProfileSlot = -1;               // Track profile changes
+    bool bleProxyEnabled = false;           // BLE proxy enabled flag
+    bool bleProxyClientConnected = false;   // BLE proxy client connection flag
+    bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
+    bool ghostMode = false;                 // Render muted ghost without mute badge
+    bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

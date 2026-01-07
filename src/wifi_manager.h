@@ -99,9 +99,7 @@ private:
     void handleV1DeviceDelete();
     
     // Failsafe UI and new API endpoints (PHASE A)
-    void handleApiStatus();           // GET /api/status - JSON status
     void handleApiProfilePush();      // POST /api/profile/push - queue profile push
-    void handleApiWiFiOff();          // POST /api/wifi/off - disable WiFi and reboot
     void handleFailsafeUI();          // GET / (failsafe) - serve minimal HTML
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();

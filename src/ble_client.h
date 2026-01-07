@@ -81,6 +81,9 @@ public:
     
     // Check if proxy client (JBV1) is connected
     bool isProxyClientConnected();
+    
+    // Check if BLE proxy is enabled
+    bool isProxyEnabled() const { return proxyEnabled; }
 
     // Set proxy client connection status (for internal callback use)
     void setProxyClientConnected(bool connected);

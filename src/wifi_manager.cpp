@@ -24,66 +24,6 @@ extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
 extern void cancelColorPreview();
 
-// HTML entity encoding for safe HTML generation
-static String htmlEscape(const String& input) {
-    String output;
-    output.reserve(input.length() + 20);  // Reserve extra space for escape sequences
-    for (size_t i = 0; i < input.length(); i++) {
-        char c = input.charAt(i);
-        switch (c) {
-            case '&':  output += "&amp;";  break;
-            case '<':  output += "&lt;";   break;
-            case '>':  output += "&gt;";   break;
-            case '"':  output += "&quot;"; break;
-            case '\'': output += "&#39;";  break;
-            default:   output += c;        break;
-        }
-    }
-    return output;
-}
-
-// JSON string escaping
-static String jsonEscape(const String& input) {
-    String output;
-    output.reserve(input.length() + 10);
-    for (size_t i = 0; i < input.length(); i++) {
-        char c = input.charAt(i);
-        switch (c) {
-            case '"':  output += "\\\""; break;
-            case '\\': output += "\\\\"; break;
-            case '\n': output += "\\n";  break;
-            case '\r': output += "\\r";  break;
-            case '\t': output += "\\t";  break;
-            default:
-                if (c < 0x20) {
-                    // Skip other control characters
-                } else {
-                    output += c;
-                }
-                break;
-        }
-    }
-    return output;
-}
-
-// CSV split helper for fixed column count
-namespace {
-bool splitCsvFixed(const String& line, String parts[], size_t expected) {
-    int start = 0;
-    size_t idx = 0;
-    while (idx < expected) {
-        int sep = line.indexOf(',', start);
-        if (sep == -1) {
-            parts[idx++] = line.substring(start);
-            break;
-        }
-        parts[idx++] = line.substring(start, sep);
-        start = sep + 1;
-    }
-    return idx == expected;
-}
-} // namespace
-
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
@@ -455,42 +395,43 @@ String WiFiManager::getAPIPAddress() const {
 void WiFiManager::handleStatus() {
     const V1Settings& settings = settingsManager.get();
     
-    String json = "{";
+    JsonDocument doc;
+    
     // WiFi info (matches Svelte dashboard expectations)
-    bool staConnected = false;  // AP-only
-    long rssi = 0;
-    IPAddress staIp;  // empty
-    json += "\"wifi\":{";
-    json += "\"setup_mode\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
-    json += "\"ap_active\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
-    json += "\"sta_connected\":" + String(staConnected ? "true" : "false") + ",";
-    json += "\"sta_ip\":\"" + staIp.toString() + "\",";
-    json += "\"ap_ip\":\"" + getAPIPAddress() + "\",";
-    json += "\"ssid\":\"" + settings.apSSID + "\",";
-    json += "\"rssi\":" + String(rssi);
-    json += "},";
+    JsonObject wifi = doc["wifi"].to<JsonObject>();
+    wifi["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
+    wifi["ap_active"] = (setupModeState == SETUP_MODE_AP_ON);
+    wifi["sta_connected"] = false;  // AP-only
+    wifi["sta_ip"] = "";
+    wifi["ap_ip"] = getAPIPAddress();
+    wifi["ssid"] = settings.apSSID;
+    wifi["rssi"] = 0;
     
     // Device info
-    json += "\"device\":{";
-    json += "\"uptime\":" + String(millis() / 1000) + ",";
-    json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
-    json += "\"hostname\":\"v1g2\"";
-    json += "},";
+    JsonObject device = doc["device"].to<JsonObject>();
+    device["uptime"] = millis() / 1000;
+    device["heap_free"] = ESP.getFreeHeap();
+    device["hostname"] = "v1g2";
     
     // BLE/V1 connection state
-    json += "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
+    doc["v1_connected"] = bleClient.isConnected();
     
+    // Append callback data if available (legacy support)
     if (getStatusJson) {
-        json += "," + getStatusJson();  // append additional status if provided
+        JsonDocument statusDoc;
+        deserializeJson(statusDoc, getStatusJson());
+        for (JsonPair kv : statusDoc.as<JsonObject>()) {
+            doc[kv.key()] = kv.value();
+        }
     }
-    
-    // Add alert info if callback is set
     if (getAlertJson) {
-        json += ",\"alert\":" + getAlertJson();
+        JsonDocument alertDoc;
+        deserializeJson(alertDoc, getAlertJson());
+        doc["alert"] = alertDoc;
     }
     
-    json += "}";
-    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -540,44 +481,6 @@ void WiFiManager::handleFailsafeUI() {
     server.send(200, "text/html", html);
 }
 
-void WiFiManager::handleApiStatus() {
-    // Enhanced status endpoint for failsafe UI
-    // Returns BLE state, proxy metrics, heap, and AP status
-    
-    const V1Settings& settings = settingsManager.get();
-    
-    String json = "{";
-    
-    // BLE state
-    json += "\"ble_state\":\"" + String(bleStateToString(bleClient.getBLEState())) + "\",";
-    json += "\"ble_connected\":" + String(bleClient.isConnected() ? "true" : "false") + ",";
-    
-    // Proxy metrics
-    const ProxyMetrics& pm = bleClient.getProxyMetrics();
-    json += "\"proxy_connected\":" + String(bleClient.isProxyClientConnected() ? "true" : "false") + ",";
-    
-    // Calculate sends per second
-    unsigned long uptime = (millis() - pm.lastResetMs) / 1000;
-    uint32_t sendsPerSec = (uptime > 0) ? (pm.sendCount / uptime) : 0;
-    json += "\"proxy_sends_per_sec\":" + String(sendsPerSec) + ",";
-    json += "\"proxy_queue_hw\":" + String(pm.queueHighWater) + ",";
-    json += "\"proxy_drops\":" + String(pm.dropCount) + ",";
-    
-    // Heap
-    json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
-    json += "\"heap_min\":" + String(ESP.getMinFreeHeap()) + ",";
-    
-    // WiFi state (AP-only)
-    json += "\"setup_mode\":" + String(setupModeState == SETUP_MODE_AP_ON ? "true" : "false") + ",";
-    
-    // Uptime
-    json += "\"uptime_sec\":" + String(millis() / 1000);
-    
-    json += "}";
-    
-    server.send(200, "application/json", json);
-}
-
 void WiFiManager::handleApiProfilePush() {
     // Queue profile push action (non-blocking)
     // This endpoint triggers the push executor to apply active profile
@@ -594,11 +497,12 @@ void WiFiManager::handleApiProfilePush() {
     // Profile push is handled by main loop's processAutoPush() state machine
     Serial.println("[API] Profile push requested");
     
-    String json = "{";
-    json += "\"ok\":true,";
-    json += "\"message\":\"Profile push queued - check display for progress\"";
-    json += "}";
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["message"] = "Profile push queued - check display for progress";
     
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
     
     // Note: Actual push execution is handled by main.cpp's processAutoPush()
@@ -608,13 +512,16 @@ void WiFiManager::handleApiProfilePush() {
 void WiFiManager::handleSettingsApi() {
     const V1Settings& settings = settingsManager.get();
     
-    String json = "{";
-    json += "\"ap_ssid\":\"" + settings.apSSID + "\",";
-    json += "\"ap_password\":\"********\",";  // Don't send actual password
-    json += "\"proxy_ble\":" + String(settings.proxyBLE ? "true" : "false") + ",";
-    json += "\"proxy_name\":\"" + settings.proxyName + "\"";
-    json += "}";
+    JsonDocument doc;
+    doc["ap_ssid"] = settings.apSSID;
+    doc["ap_password"] = "********";  // Don't send actual password
+    doc["proxy_ble"] = settings.proxyBLE;
+    doc["proxy_name"] = settings.proxyName;
+    doc["displayStyle"] = static_cast<int>(settings.displayStyle);
+    doc["enableMultiAlert"] = settings.enableMultiAlert;
     
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -663,6 +570,19 @@ void WiFiManager::handleSettingsSave() {
     if (server.hasArg("proxy_name")) {
         settingsManager.setProxyName(server.arg("proxy_name"));
     }
+
+    // Display style setting
+    if (server.hasArg("displayStyle")) {
+        int style = server.arg("displayStyle").toInt();
+        style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
+        settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
+    }
+    
+    // Multi-alert display setting
+    if (server.hasArg("enableMultiAlert")) {
+        bool multiAlert = server.arg("enableMultiAlert") == "true" || server.arg("enableMultiAlert") == "1";
+        settingsManager.setEnableMultiAlert(multiAlert);
+    }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
@@ -695,8 +615,12 @@ void WiFiManager::handleDarkMode() {
     
     Serial.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
     
-    String json = "{\"success\":" + String(success ? "true" : "false") + 
-                  ",\"darkMode\":" + String(darkMode ? "true" : "false") + "}";
+    JsonDocument doc;
+    doc["success"] = success;
+    doc["darkMode"] = darkMode;
+    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -715,8 +639,12 @@ void WiFiManager::handleMute() {
     
     Serial.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
     
-    String json = "{\"success\":" + String(success ? "true" : "false") + 
-                  ",\"muted\":" + String(muted ? "true" : "false") + "}";
+    JsonDocument doc;
+    doc["success"] = success;
+    doc["muted"] = muted;
+    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -847,18 +775,25 @@ void WiFiManager::handleV1ProfileDelete() {
 }
 
 void WiFiManager::handleV1CurrentSettings() {
-    String json = "{";
-    json += "\"connected\":" + String(bleClient.isConnected() ? "true" : "false");
+    JsonDocument doc;
+    doc["connected"] = bleClient.isConnected();
     
     if (!v1ProfileManager.hasCurrentSettings()) {
-        json += ",\"available\":false}";
+        doc["available"] = false;
+        String json;
+        serializeJson(doc, json);
         server.send(200, "application/json", json);
         return;
     }
     
-    json += ",\"available\":true,\"settings\":";
-    json += v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings());
-    json += "}";
+    doc["available"] = true;
+    // Parse existing settings JSON and embed it
+    JsonDocument settingsDoc;
+    deserializeJson(settingsDoc, v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()));
+    doc["settings"] = settingsDoc;
+    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -891,19 +826,16 @@ void WiFiManager::handleV1DevicesApi() {
         profileFile.close();
     }
     
-    String json = "{\"devices\":[";
+    JsonDocument doc;
+    JsonArray devices = doc["devices"].to<JsonArray>();
     
     // Read known_v1.txt for addresses
     File addrFile = fs->open("/known_v1.txt", FILE_READ);
     if (addrFile) {
-        bool first = true;
         while (addrFile.available()) {
             String addr = addrFile.readStringUntil('\n');
             addr.trim();
             if (addr.length() == 17) {  // Valid MAC address format
-                if (!first) json += ",";
-                first = false;
-                
                 // Look for custom name in known_v1_names.txt
                 String name = "";
                 File nameFile = fs->open("/known_v1_names.txt", FILE_READ);
@@ -932,13 +864,17 @@ void WiFiManager::handleV1DevicesApi() {
                     }
                 }
                 
-                json += "{\"address\":\"" + addr + "\",\"name\":\"" + name + "\",\"defaultProfile\":" + String(defaultProfile) + "}";
+                JsonObject device = devices.add<JsonObject>();
+                device["address"] = addr;
+                device["name"] = name;
+                device["defaultProfile"] = defaultProfile;
             }
         }
         addrFile.close();
     }
     
-    json += "]}";
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -1308,37 +1244,50 @@ bool WiFiManager::serveLittleFSFile(const char* path, const char* contentType) {
 void WiFiManager::handleAutoPushSlotsApi() {
     const V1Settings& s = settingsManager.get();
     
-    String json = "{";
-    json += "\"enabled\":" + String(s.autoPushEnabled ? "true" : "false") + ",";
-    json += "\"activeSlot\":" + String(s.activeSlot) + ",";
-    json += "\"slots\":[";
+    JsonDocument doc;
+    doc["enabled"] = s.autoPushEnabled;
+    doc["activeSlot"] = s.activeSlot;
+    
+    JsonArray slots = doc["slots"].to<JsonArray>();
     
     // Slot 0
-    json += "{\"name\":\"" + s.slot0Name + "\",";
-    json += "\"profile\":\"" + s.slot0_default.profileName + "\",";
-    json += "\"mode\":" + String(s.slot0_default.mode) + ",";
-    json += "\"color\":" + String(s.slot0Color) + ",";
-    json += "\"volume\":" + String(s.slot0Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot0MuteVolume) + "},";
+    JsonObject slot0 = slots.add<JsonObject>();
+    slot0["name"] = s.slot0Name;
+    slot0["profile"] = s.slot0_default.profileName;
+    slot0["mode"] = s.slot0_default.mode;
+    slot0["color"] = s.slot0Color;
+    slot0["volume"] = s.slot0Volume;
+    slot0["muteVolume"] = s.slot0MuteVolume;
+    slot0["darkMode"] = s.slot0DarkMode;
+    slot0["muteToZero"] = s.slot0MuteToZero;
+    slot0["alertPersist"] = s.slot0AlertPersist;
     
     // Slot 1
-    json += "{\"name\":\"" + s.slot1Name + "\",";
-    json += "\"profile\":\"" + s.slot1_highway.profileName + "\",";
-    json += "\"mode\":" + String(s.slot1_highway.mode) + ",";
-    json += "\"color\":" + String(s.slot1Color) + ",";
-    json += "\"volume\":" + String(s.slot1Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot1MuteVolume) + "},";
+    JsonObject slot1 = slots.add<JsonObject>();
+    slot1["name"] = s.slot1Name;
+    slot1["profile"] = s.slot1_highway.profileName;
+    slot1["mode"] = s.slot1_highway.mode;
+    slot1["color"] = s.slot1Color;
+    slot1["volume"] = s.slot1Volume;
+    slot1["muteVolume"] = s.slot1MuteVolume;
+    slot1["darkMode"] = s.slot1DarkMode;
+    slot1["muteToZero"] = s.slot1MuteToZero;
+    slot1["alertPersist"] = s.slot1AlertPersist;
     
     // Slot 2
-    json += "{\"name\":\"" + s.slot2Name + "\",";
-    json += "\"profile\":\"" + s.slot2_comfort.profileName + "\",";
-    json += "\"mode\":" + String(s.slot2_comfort.mode) + ",";
-    json += "\"color\":" + String(s.slot2Color) + ",";
-    json += "\"volume\":" + String(s.slot2Volume) + ",";
-    json += "\"muteVolume\":" + String(s.slot2MuteVolume) + "}";
+    JsonObject slot2 = slots.add<JsonObject>();
+    slot2["name"] = s.slot2Name;
+    slot2["profile"] = s.slot2_comfort.profileName;
+    slot2["mode"] = s.slot2_comfort.mode;
+    slot2["color"] = s.slot2Color;
+    slot2["volume"] = s.slot2Volume;
+    slot2["muteVolume"] = s.slot2MuteVolume;
+    slot2["darkMode"] = s.slot2DarkMode;
+    slot2["muteToZero"] = s.slot2MuteToZero;
+    slot2["alertPersist"] = s.slot2AlertPersist;
     
-    json += "]}";
-    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 
@@ -1355,6 +1304,12 @@ void WiFiManager::handleAutoPushSlotSave() {
     int color = server.hasArg("color") ? server.arg("color").toInt() : -1;
     int volume = server.hasArg("volume") ? server.arg("volume").toInt() : -1;
     int muteVol = server.hasArg("muteVol") ? server.arg("muteVol").toInt() : -1;
+    bool hasDarkMode = server.hasArg("darkMode");
+    bool darkMode = hasDarkMode ? (server.arg("darkMode") == "true") : false;
+    bool hasMuteToZero = server.hasArg("muteToZero");
+    bool muteToZero = hasMuteToZero ? (server.arg("muteToZero") == "true") : false;
+    bool hasAlertPersist = server.hasArg("alertPersist");
+    int alertPersist = hasAlertPersist ? server.arg("alertPersist").toInt() : -1;
     
     if (slot < 0 || slot > 2) {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
@@ -1381,6 +1336,26 @@ void WiFiManager::handleAutoPushSlotSave() {
                   slot, vol, existingVol, mute, existingMute);
     
     settingsManager.setSlotVolumes(slot, vol, mute);
+    
+    // Save dark mode and MZ if provided
+    Serial.printf("[SaveSlot] Slot %d - hasDarkMode: %s, darkMode: %s, hasMZ: %s, muteToZero: %s\n",
+                  slot, hasDarkMode ? "yes" : "no", darkMode ? "true" : "false",
+                  hasMuteToZero ? "yes" : "no", muteToZero ? "true" : "false");
+    if (hasDarkMode) {
+        settingsManager.setSlotDarkMode(slot, darkMode);
+        Serial.printf("[SaveSlot] Saved darkMode=%s for slot %d\n", darkMode ? "true" : "false", slot);
+    }
+    if (hasMuteToZero) {
+        settingsManager.setSlotMuteToZero(slot, muteToZero);
+        Serial.printf("[SaveSlot] Saved muteToZero=%s for slot %d\n", muteToZero ? "true" : "false", slot);
+    }
+    
+    // Save alert persistence (seconds, clamped 0-5)
+    if (hasAlertPersist && alertPersist >= 0) {
+        int clamped = std::max(0, std::min(5, alertPersist));
+        settingsManager.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
+        Serial.printf("[SaveSlot] Saved alertPersist=%ds for slot %d\n", clamped, slot);
+    }
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
     
@@ -1516,20 +1491,29 @@ void WiFiManager::handleDisplayColorsSave() {
     
     uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
     uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : 0xF800;
-    uint16_t arrow = server.hasArg("arrow") ? server.arg("arrow").toInt() : 0xF800;
+    uint16_t arrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : 0xF800;
+    uint16_t arrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : 0xF800;
+    uint16_t arrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : 0xF800;
     uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : 0x001F;
     uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : 0xF800;
     uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
     uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
     
-    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrow=%d\n", bogey, freq, arrow);
+    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n", bogey, freq, arrowFront, arrowSide, arrowRear);
     
-    settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
+    settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX);
     
     // Handle WiFi icon color separately if provided
     if (server.hasArg("wifiIcon")) {
         uint16_t wifiIcon = server.arg("wifiIcon").toInt();
         settingsManager.setWiFiIconColor(wifiIcon);
+    }
+    
+    // Handle BLE icon colors if provided
+    if (server.hasArg("bleConnected") || server.hasArg("bleDisconnected")) {
+        uint16_t bleConn = server.hasArg("bleConnected") ? server.arg("bleConnected").toInt() : 0x07E0;
+        uint16_t bleDisc = server.hasArg("bleDisconnected") ? server.arg("bleDisconnected").toInt() : 0x001F;
+        settingsManager.setBleIconColors(bleConn, bleDisc);
     }
     
     // Handle signal bar colors if provided
@@ -1554,6 +1538,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideBatteryIcon")) {
         settingsManager.setHideBatteryIcon(server.arg("hideBatteryIcon") == "true" || server.arg("hideBatteryIcon") == "1");
     }
+    if (server.hasArg("hideBleIcon")) {
+        settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1566,8 +1553,8 @@ void WiFiManager::handleDisplayColorsSave() {
 }
 
 void WiFiManager::handleDisplayColorsReset() {
-    // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
-    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
+    // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
+    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
@@ -1582,26 +1569,32 @@ void WiFiManager::handleDisplayColorsReset() {
 void WiFiManager::handleDisplayColorsApi() {
     const V1Settings& s = settingsManager.get();
     
-    String json = "{";
-    json += "\"bogey\":" + String(s.colorBogey) + ",";
-    json += "\"freq\":" + String(s.colorFrequency) + ",";
-    json += "\"arrow\":" + String(s.colorArrow) + ",";
-    json += "\"bandL\":" + String(s.colorBandL) + ",";
-    json += "\"bandKa\":" + String(s.colorBandKa) + ",";
-    json += "\"bandK\":" + String(s.colorBandK) + ",";
-    json += "\"bandX\":" + String(s.colorBandX) + ",";
-    json += "\"wifiIcon\":" + String(s.colorWiFiIcon) + ",";
-    json += "\"bar1\":" + String(s.colorBar1) + ",";
-    json += "\"bar2\":" + String(s.colorBar2) + ",";
-    json += "\"bar3\":" + String(s.colorBar3) + ",";
-    json += "\"bar4\":" + String(s.colorBar4) + ",";
-    json += "\"bar5\":" + String(s.colorBar5) + ",";
-    json += "\"bar6\":" + String(s.colorBar6) + ",";
-    json += "\"hideWifiIcon\":" + String(s.hideWifiIcon ? "true" : "false") + ",";
-    json += "\"hideProfileIndicator\":" + String(s.hideProfileIndicator ? "true" : "false") + ",";
-    json += "\"hideBatteryIcon\":" + String(s.hideBatteryIcon ? "true" : "false");
-    json += "}";
+    JsonDocument doc;
+    doc["bogey"] = s.colorBogey;
+    doc["freq"] = s.colorFrequency;
+    doc["arrowFront"] = s.colorArrowFront;
+    doc["arrowSide"] = s.colorArrowSide;
+    doc["arrowRear"] = s.colorArrowRear;
+    doc["bandL"] = s.colorBandL;
+    doc["bandKa"] = s.colorBandKa;
+    doc["bandK"] = s.colorBandK;
+    doc["bandX"] = s.colorBandX;
+    doc["wifiIcon"] = s.colorWiFiIcon;
+    doc["bleConnected"] = s.colorBleConnected;
+    doc["bleDisconnected"] = s.colorBleDisconnected;
+    doc["bar1"] = s.colorBar1;
+    doc["bar2"] = s.colorBar2;
+    doc["bar3"] = s.colorBar3;
+    doc["bar4"] = s.colorBar4;
+    doc["bar5"] = s.colorBar5;
+    doc["bar6"] = s.colorBar6;
+    doc["hideWifiIcon"] = s.hideWifiIcon;
+    doc["hideProfileIndicator"] = s.hideProfileIndicator;
+    doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["hideBleIcon"] = s.hideBleIcon;
     
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 

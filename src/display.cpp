@@ -13,6 +13,23 @@
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
+// OpenFontRender for antialiased TrueType rendering
+#include "OpenFontRender.h"
+#include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+
+// Global OpenFontRender instance for Modern style
+static OpenFontRender ofr;
+static bool ofrInitialized = false;
+
+// Multi-alert mode tracking (extern from V1Display class)
+static bool g_multiAlertMode = false;
+static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
+
+// Helper to get effective screen height (reduced when multi-alert cards are shown)
+static inline int getEffectiveScreenHeight() {
+    return g_multiAlertMode ? (SCREEN_HEIGHT - MULTI_ALERT_OFFSET) : SCREEN_HEIGHT;
+}
+
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
 static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
     uint8_t r = (c >> 11) & 0x1F;
@@ -60,6 +77,7 @@ static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 #define DRAW_CIRCLE(x, y, r, color) TFT_CALL(drawCircle)(TX(x,y), TY(x,y), (r), (color))
 #define FILL_TRIANGLE(x0, y0, x1, y1, x2, y2, color) TFT_CALL(fillTriangle)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), TX(x2,y2), TY(x2,y2), (color))
 #define DRAW_LINE(x0, y0, x1, y1, color) TFT_CALL(drawLine)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), (color))
+#define DRAW_PIXEL(x, y, color) TFT_CALL(drawPixel)(TX(x,y), TY(x,y), (color))
 #define FILL_SCREEN(color) TFT_CALL(fillScreen)(color)
 
 // Global display instance reference for access to color palette (set by V1Display)
@@ -411,6 +429,21 @@ bool V1Display::begin() {
     Serial.print("x");
     Serial.println(SCREEN_HEIGHT);
     
+    // Initialize OpenFontRender for antialiased Modern font
+    Serial.println("Initializing OpenFontRender...");
+    Serial.printf("Font data size: %d bytes\n", sizeof(MontserratBold));
+    ofr.setSerial(Serial);  // Enable debug output
+    ofr.showFreeTypeVersion();
+    ofr.setDrawer(*tft);  // Use Arduino_GFX canvas for drawing (dereference pointer)
+    FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
+    if (ftErr) {
+        Serial.printf("ERROR: Failed to load Montserrat font! FT_Error: 0x%02X\n", ftErr);
+        ofrInitialized = false;
+    } else {
+        Serial.println("OpenFontRender initialized with Montserrat Bold");
+        ofrInitialized = true;
+    }
+    
     // Load color theme from settings
     updateColorTheme();
     
@@ -432,6 +465,73 @@ void V1Display::setBrightness(uint8_t level) {
 #endif
 }
 
+// Brightness slider overlay for BOOT button adjustment
+void V1Display::showBrightnessSlider(uint8_t currentLevel) {
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    // Clear screen to dark background
+    tft->fillScreen(0x0000);
+    
+    // Layout: 640x172 landscape
+    // Slider: horizontal bar spanning most of width, centered vertically
+    const int sliderMargin = 40;
+    const int sliderY = 86;  // Centered vertically
+    const int sliderHeight = 12;
+    const int sliderWidth = SCREEN_WIDTH - (sliderMargin * 2);  // 560 pixels
+    const int sliderX = sliderMargin;
+    
+    // Title at top
+    tft->setTextColor(0xFFFF);  // White
+    tft->setTextSize(2);
+    tft->setCursor((SCREEN_WIDTH - 170) / 2, 20);
+    tft->print("BRIGHTNESS");
+    
+    // Draw slider track (dark gray outline)
+    tft->drawRect(sliderX - 2, sliderY - 2, sliderWidth + 4, sliderHeight + 4, 0x4208);  // Dark gray border
+    tft->fillRect(sliderX, sliderY, sliderWidth, sliderHeight, 0x2104);  // Dark gray track
+    
+    // Draw filled portion based on current level
+    // Fill grows from LEFT to RIGHT: left = dim (0%), right = bright (100%)
+    // Level range: 80 (dim) to 255 (bright)
+    int fillWidth = ((currentLevel - 80) * sliderWidth) / 175;  // 0 at 80, full at 255
+    tft->fillRect(sliderX, sliderY, fillWidth, sliderHeight, 0x07E0);  // Green fill from left
+    
+    // Draw thumb/handle at the right edge of fill (moves right as brightness increases)
+    int thumbX = sliderX + fillWidth - 4;
+    if (thumbX < sliderX) thumbX = sliderX;
+    if (thumbX > sliderX + sliderWidth - 4) thumbX = sliderX + sliderWidth - 4;
+    tft->fillRect(thumbX, sliderY - 6, 8, sliderHeight + 12, 0xFFFF);  // White thumb
+    
+    // Show current value as percentage (0% at min 80, 100% at max 255)
+    char valueStr[8];
+    int percent = ((currentLevel - 80) * 100) / 175;
+    snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
+    tft->setTextSize(2);
+    int textWidth = strlen(valueStr) * 12;
+    tft->setCursor((SCREEN_WIDTH - textWidth) / 2, 120);
+    tft->print(valueStr);
+    
+    // Instructions at bottom
+    tft->setTextSize(1);
+    tft->setTextColor(0x8410);  // Gray
+    tft->setCursor((SCREEN_WIDTH - 260) / 2, 150);
+    tft->print("Touch to adjust - BOOT to save");
+    
+    tft->flush();
+#endif
+}
+
+void V1Display::updateBrightnessSlider(uint8_t level) {
+    // Re-render the slider with new level
+    // Also apply the brightness in real-time for visual feedback
+    setBrightness(level);
+    showBrightnessSlider(level);
+}
+
+void V1Display::hideBrightnessSlider() {
+    // Just clear - caller will refresh normal display
+    clear();
+}
+
 void V1Display::clear() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->fillScreen(PALETTE_BG);
@@ -439,11 +539,32 @@ void V1Display::clear() {
 #else
     TFT_CALL(fillScreen)(PALETTE_BG);
 #endif
+    bleProxyDrawn = false;
+}
+
+void V1Display::setGhostMode(bool enabled) {
+    ghostMode = enabled;
+}
+
+void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
+#if defined(DISPLAY_WAVESHARE_349)
+    if (bleProxyDrawn &&
+        proxyEnabled == bleProxyEnabled &&
+        clientConnected == bleProxyClientConnected) {
+        return;  // No visual change needed
+    }
+
+    bleProxyEnabled = proxyEnabled;
+    bleProxyClientConnected = clientConnected;
+    drawBLEProxyIndicator();
+    flush();
+#endif
 }
 
 void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
+    bleProxyDrawn = false;  // Force indicator redraw after full clears
 }
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
@@ -624,7 +745,8 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
     return cursor - x - m.spacing;
 }
 
-void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
+// Classic 7-segment bogey counter (original V1 style)
+void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f;  // Match frequency counter size
 #else
@@ -654,6 +776,117 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
 }
 
+// Modern Montserrat Bold bogey counter
+void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Special case: lowercase 'l' (logic mode) - draw as bottom half of 'L' like V1 display
+    // Render full 'L' then mask off the top half for consistent styling
+    if (symbol == 'l') {
+        const int fontSize = 60;
+        
+        char buf[3] = {'L', 0, 0};
+        if (showDot) {
+            buf[1] = '.';
+        }
+        
+        ofr.setFontSize(fontSize);
+        
+        // Convert RGB565 background to RGB888 for antialiasing blend
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofr.setBackgroundColor(bgR, bgG, bgB);
+        
+        uint16_t color = muted ? PALETTE_MUTED : s.colorBogey;
+        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
+        int textW = bbox.xMax - bbox.xMin;
+        int textH = bbox.yMax - bbox.yMin;
+        
+        int x = 12;
+        int y = textH - 50;  // Same baseline position as other characters
+        
+        // Clear full area first
+        FILL_RECT(x - 2, 0, textW + 8, textH + 8, PALETTE_BG);
+        
+        // Render the full 'L.' 
+        ofr.setCursor(x, y);
+        ofr.printf("%s", buf);
+        
+        // Now mask off the top half by drawing a background rect over it
+        // Top of text starts at screen Y=0 (since y = textH - 50 and text renders upward)
+        int maskHeight = textH / 2;  // Cover top half of the 'L'
+        FILL_RECT(x - 2, 0, textW + 8, maskHeight, PALETTE_BG);
+        
+        return;
+    }
+    
+    // Convert lowercase mode letters to uppercase (font only has uppercase LASER)
+    char upperSymbol = symbol;
+    if (symbol >= 'a' && symbol <= 'z') {
+        upperSymbol = symbol - 32;  // Convert to uppercase
+    }
+    
+    char buf[3] = {upperSymbol, 0, 0};
+    if (showDot) {
+        buf[1] = '.';
+    }
+    
+    // Check if symbol is in the OFR font subset (0-9, -, ., L, A, S, E, R)
+    // Note: '=' (laser 3 bars) is NOT in the font, will use bitmap fallback
+    bool charInOfrFont = (upperSymbol >= '0' && upperSymbol <= '9') || 
+                         upperSymbol == '-' || upperSymbol == '.' ||
+                         upperSymbol == 'L' || upperSymbol == 'A' || upperSymbol == 'S' || 
+                         upperSymbol == 'E' || upperSymbol == 'R';
+    
+    // Fall back to Classic style if OFR not initialized or char not in font
+    if (!ofrInitialized || !charInOfrFont) {
+        // Use Classic 7-segment/14-segment rendering as fallback
+        drawTopCounterClassic(symbol, muted, showDot);
+        return;
+    }
+    
+    // OpenFontRender antialiased rendering - same font as frequency for consistency
+    const int fontSize = 60;  // Proportional to frequency (66)
+    
+    ofr.setFontSize(fontSize);
+    
+    // Convert RGB565 background to RGB888 for antialiasing blend
+    uint8_t bgR = (PALETTE_BG >> 11) << 3;
+    uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+    uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+    ofr.setBackgroundColor(bgR, bgG, bgB);
+    
+    bool isDigit = (symbol >= '0' && symbol <= '9');
+    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED : s.colorBogey);
+    ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+    
+    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
+    int textW = bbox.xMax - bbox.xMin;
+    int textH = bbox.yMax - bbox.yMin;
+    
+    int x = 12;
+    int y = textH - 50;  // Moved up 50 pixels total from baseline
+    
+    // Clear area (text renders above baseline)
+    FILL_RECT(x - 2, y - textH - 2, textW + 8, textH + 8, PALETTE_BG);
+    
+    ofr.setCursor(x, y);
+    ofr.printf("%s", buf);
+}
+
+// Router: calls appropriate bogey counter draw method based on display style
+void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
+    const V1Settings& s = settingsManager.get();
+    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
+        drawTopCounterModern(symbol, muted, showDot);
+    } else {
+        drawTopCounterClassic(symbol, muted, showDot);
+    }
+}
+
 void V1Display::drawMuteIcon(bool muted) {
     // Draw centered badge above frequency display
 #if defined(DISPLAY_WAVESHARE_349)
@@ -663,8 +896,8 @@ void V1Display::drawMuteIcon(bool muted) {
 #endif
     SegMetrics mFreq = segMetrics(freqScale);
 
-    // Frequency Y position (from drawFrequency)
-    int freqY = SCREEN_HEIGHT - mFreq.digitH - 8;
+    // Frequency Y position (from drawFrequency) - use effective height for multi-alert
+    int freqY = getEffectiveScreenHeight() - mFreq.digitH - 8;
     const int rightMargin = 120;
     int maxWidth = SCREEN_WIDTH - rightMargin;
     
@@ -673,6 +906,12 @@ void V1Display::drawMuteIcon(bool muted) {
     int h = 30;   // 20 * 1.5
     int x = (maxWidth - w) / 2;
     int y = freqY - h - 12; // Position above frequency with spacing
+    
+    if (ghostMode) {
+        // Clear badge area and skip text for ghosted alerts
+        FILL_RECT(x - 2, y - 2, w + 4, h + 4, PALETTE_BG);
+        return;
+    }
     
     if (muted) {
         // Draw badge with muted styling
@@ -775,6 +1014,9 @@ void V1Display::drawProfileIndicator(int slot) {
 
     // Draw battery indicator after profile name (if on battery)
     drawBatteryIndicator();
+
+    // Draw BLE proxy indicator using the latest status
+    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
 }
 
 void V1Display::drawBatteryIndicator() {
@@ -792,7 +1034,7 @@ void V1Display::drawBatteryIndicator() {
     const int battX = 12;   // Align with bogey counter left edge
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
-    const int battY = SCREEN_HEIGHT - battH - 8;  // Bottom aligned with frequency
+    const int battY = getEffectiveScreenHeight() - battH - 8;  // Bottom aligned with frequency
     
     // Check if user explicitly hides the battery icon
     if (s.hideBatteryIcon) {
@@ -845,6 +1087,92 @@ void V1Display::drawBatteryIndicator() {
 #endif
 }
 
+void V1Display::drawBLEProxyIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    // Stack above WiFi indicator to keep the left column compact
+    const int battH = 14;
+    const int battY = getEffectiveScreenHeight() - battH - 8;
+    const int wifiSize = 20;
+    const int wifiY = battY - wifiSize - 6;
+
+    const int iconSize = 20;  // Match WiFi icon size
+    const int bleX = 14;
+    const int bleY = wifiY - iconSize - 6;
+
+    // Always clear the area before drawing
+    FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
+
+    if (!bleProxyEnabled) {
+        bleProxyDrawn = false;
+        return;
+    }
+
+    // Check if BLE icon should be hidden
+    const V1Settings& s = settingsManager.get();
+    if (s.hideBleIcon) {
+        bleProxyDrawn = false;
+        return;
+    }
+
+    // Icon color from settings: connected vs disconnected
+    uint16_t btColor = bleProxyClientConnected ? dimColor(s.colorBleConnected, 85)
+                                               : dimColor(s.colorBleDisconnected, 85);
+
+    // Draw Bluetooth rune - the bind rune of ᛒ (Berkanan) and ᚼ (Hagall)
+    // Center point of the icon
+    int cx = bleX + iconSize / 2;
+    int cy = bleY + iconSize / 2;
+    
+    int h = iconSize - 2;      // Total height
+    int top = cy - h / 2;
+    int bot = cy + h / 2;
+    int mid = cy;
+    
+    // Right chevron points - where the arrows reach on the right
+    int rightX = cx + 5;
+    int topChevronY = mid - 4;   // Upper right point
+    int botChevronY = mid + 4;   // Lower right point
+    
+    // Left arrow endpoints
+    int leftX = cx - 5;
+    int topArrowY = mid - 4;     // Upper left point  
+    int botArrowY = mid + 4;     // Lower left point
+    
+    // Vertical center line (thicker for visibility)
+    FILL_RECT(cx - 1, top, 2, h, btColor);
+    
+    // === RIGHT SIDE: Two chevrons forming the "B" ===
+    // Top chevron: top of line → right point → center (draw 3 lines for thickness)
+    DRAW_LINE(cx - 1, top, rightX - 1, topChevronY, btColor);
+    DRAW_LINE(cx, top, rightX, topChevronY, btColor);
+    DRAW_LINE(cx + 1, top, rightX + 1, topChevronY, btColor);
+    DRAW_LINE(rightX - 1, topChevronY, cx - 1, mid, btColor);
+    DRAW_LINE(rightX, topChevronY, cx, mid, btColor);
+    DRAW_LINE(rightX + 1, topChevronY, cx + 1, mid, btColor);
+    
+    // Bottom chevron: center → right point → bottom of line (draw 3 lines for thickness)
+    DRAW_LINE(cx - 1, mid, rightX - 1, botChevronY, btColor);
+    DRAW_LINE(cx, mid, rightX, botChevronY, btColor);
+    DRAW_LINE(cx + 1, mid, rightX + 1, botChevronY, btColor);
+    DRAW_LINE(rightX - 1, botChevronY, cx - 1, bot, btColor);
+    DRAW_LINE(rightX, botChevronY, cx, bot, btColor);
+    DRAW_LINE(rightX + 1, botChevronY, cx + 1, bot, btColor);
+    
+    // === LEFT SIDE: Two arrows forming the "X" through center ===
+    // Upper-left arrow (draw 3 lines for thickness)
+    DRAW_LINE(leftX - 1, topArrowY, cx - 1, mid, btColor);
+    DRAW_LINE(leftX, topArrowY, cx, mid, btColor);
+    DRAW_LINE(leftX + 1, topArrowY, cx + 1, mid, btColor);
+    
+    // Lower-left arrow (draw 3 lines for thickness)
+    DRAW_LINE(leftX - 1, botArrowY, cx - 1, mid, btColor);
+    DRAW_LINE(leftX, botArrowY, cx, mid, btColor);
+    DRAW_LINE(leftX + 1, botArrowY, cx + 1, mid, btColor);
+
+    bleProxyDrawn = true;
+#endif
+}
+
 void V1Display::drawWiFiIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     extern WiFiManager wifiManager;
@@ -854,7 +1182,7 @@ void V1Display::drawWiFiIndicator() {
     // WiFi icon position - above battery icon, bottom left
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int battY = SCREEN_HEIGHT - 14 - 8;
+    const int battY = getEffectiveScreenHeight() - 14 - 8;
     const int wifiY = battY - wifiSize - 6;
     
     // Check if user explicitly hides the WiFi icon
@@ -920,22 +1248,6 @@ void V1Display::flush() {
 #endif
 }
 
-void V1Display::showConnecting() {
-    drawBaseFrame();
-    drawStatusText("Scanning for V1...", PALETTE_TEXT);
-    drawWiFiIndicator();  // Show WiFi status while scanning
-    drawBatteryIndicator();
-}
-
-void V1Display::showConnected() {
-    drawBaseFrame();
-    drawStatusText("Connected!", PALETTE_K);
-    drawWiFiIndicator();
-    drawBatteryIndicator();
-    delay(1000);
-    drawBaseFrame();
-}
-
 void V1Display::showDisconnected() {
     drawBaseFrame();
     drawStatusText("Disconnected", PALETTE_KA);
@@ -987,8 +1299,6 @@ void V1Display::showResting() {
 }
 
 void V1Display::showScanning() {
-    Serial.println("showScanning() called");
-    
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
@@ -1001,28 +1311,49 @@ void V1Display::showScanning() {
     drawMuteIcon(false);
     drawProfileIndicator(currentProfileSlot);
     
-    // Draw "SCAN" in frequency area using 14-segment font
+    const V1Settings& s = settingsManager.get();
+    
+    // Draw "SCAN" in frequency area - match display style
+    if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
+        // Modern style: use Montserrat Bold via OFR
+        const int fontSize = 66;
+        ofr.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofr.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        // Center in frequency area (left of right panel)
+        const int rightMargin = 120;
+        int maxWidth = SCREEN_WIDTH - rightMargin;
+        int x = (maxWidth - textWidth) / 2;
+        int y = getEffectiveScreenHeight() - 72;  // Match frequency positioning
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofr.setCursor(x, y);
+        ofr.printf("%s", text);
+    } else {
+        // Classic style: use 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.2f;
+        const float scale = 2.2f;
 #else
-    const float scale = 1.7f;
+        const float scale = 1.7f;
 #endif
-    SegMetrics m = segMetrics(scale);
-    int y = SCREEN_HEIGHT - m.digitH - 8;
-    
-    const char* text = "SCAN";
-    // Center the text
-    int width = measureSevenSegmentText("00.000", scale); // Use approx width of freq to center similarly
-    const int rightMargin = 120;
-    int maxWidth = SCREEN_WIDTH - rightMargin;
-    int x = (maxWidth - width) / 2;
-    if (x < 0) x = 0;
-    
-    // Clear area before drawing
-    FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    
-    // Draw "SCAN" in red (using Ka band color)
-    draw14SegmentText(text, x, y, scale, PALETTE_KA, PALETTE_BG);
+        SegMetrics m = segMetrics(scale);
+        int y = getEffectiveScreenHeight() - m.digitH - 8;
+        
+        const char* text = "SCAN";
+        int width = measureSevenSegmentText("00.000", scale);
+        const int rightMargin = 120;
+        int maxWidth = SCREEN_WIDTH - rightMargin;
+        int x = (maxWidth - width) / 2;
+        if (x < 0) x = 0;
+        
+        FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+        draw14SegmentText(text, x, y, scale, s.colorBandKa, PALETTE_BG);
+    }
     
     // Reset lastState
     lastState = DisplayState();
@@ -1254,13 +1585,22 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     uint8_t bandMask = state.activeBands;
     
     // Show '=' (3 horizontal bars) for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
+    // In Modern style, skip drawing the useless '=' for laser
+    const V1Settings& settings = settingsManager.get();
     char countChar;
+    bool skipTopCounter = false;
     if (alert.band == BAND_LASER) {
-        countChar = '=';  // 3 horizontal bars like official V1
+        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
+            skipTopCounter = true;  // Don't draw anything for laser in modern
+        } else {
+            countChar = '=';  // 3 horizontal bars like official V1 (classic only)
+        }
     } else {
         countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
     }
-    drawTopCounter(countChar, state.muted, true);
+    if (!skipTopCounter) {
+        drawTopCounter(countChar, state.muted, true);
+    }
     
     // Frequency from priority alert
     drawFrequency(alert.frequency, alert.band == BAND_LASER, state.muted);
@@ -1283,6 +1623,233 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
 
     lastAlert = alert;
     lastState = state;
+}
+
+// Multi-alert update: draws priority alert with secondary alert cards below
+void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
+    if (!priority.isValid) {
+        return;
+    }
+    
+    // Check if multi-alert display is enabled in settings
+    const V1Settings& s = settingsManager.get();
+    
+    // If only 1 alert or multi-alert disabled, use standard display (no cards row)
+    if (alertCount <= 1 || !s.enableMultiAlert) {
+        g_multiAlertMode = false;
+        multiAlertMode = false;
+        update(priority, state, alertCount);
+        return;
+    }
+
+    // Enable multi-alert mode to shift main content up
+    g_multiAlertMode = true;
+    multiAlertMode = true;
+
+    // Always redraw for clean display
+    drawBaseFrame();
+
+    // Use activeBands from display state
+    uint8_t bandMask = state.activeBands;
+    
+    // Bogey counter
+    const V1Settings& settings = settingsManager.get();
+    char countChar;
+    bool skipTopCounter = false;
+    if (priority.band == BAND_LASER) {
+        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
+            skipTopCounter = true;
+        } else {
+            countChar = '=';
+        }
+    } else {
+        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
+    }
+    if (!skipTopCounter) {
+        drawTopCounter(countChar, state.muted, true);
+    }
+    
+    // Main alert display (frequency, bands, arrows, signal bars)
+    drawFrequency(priority.frequency, priority.band == BAND_LASER, state.muted);
+    drawBandIndicators(bandMask, state.muted);
+    drawVerticalSignalBars(priority.frontStrength, priority.rearStrength, priority.band, state.muted);
+    drawDirectionArrow(state.arrows, state.muted);
+    drawMuteIcon(state.muted);
+    drawProfileIndicator(currentProfileSlot);
+    
+    // Draw secondary alert cards at bottom (use ghostMode for muted styling)
+    drawSecondaryAlertCards(allAlerts, alertCount, priority, ghostMode);
+    
+    // Reset multi-alert mode after drawing
+    g_multiAlertMode = false;
+    multiAlertMode = false;
+
+#if defined(DISPLAY_WAVESHARE_349)
+    tft->flush();
+#endif
+
+    lastAlert = priority;
+    lastState = state;
+}
+
+// Draw mini alert cards for secondary (non-priority) alerts
+void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
+#if defined(DISPLAY_WAVESHARE_349)
+    const int cardH = SECONDARY_ROW_HEIGHT;  // Full height, no margin
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Flush to bottom
+    const int maxCards = 3;  // Max secondary cards to show
+    const int cardW = 170;   // Bigger cards
+    const int cardSpacing = 8;
+    const int startX = 10;   // Start closer to left edge
+    static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
+    
+    // Static tracking for grace period - each slot remembers its last alert
+    static struct {
+        AlertData alert{};
+        unsigned long lastSeen = 0;
+    } cardSlots[3];
+    
+    // Helper lambda to match alerts (same band and similar frequency)
+    auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
+        if (a.band != b.band) return false;
+        if (a.frequency > 0 && b.frequency > 0) {
+            uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
+            return diff < 50;
+        }
+        return true;
+    };
+    
+    // Collect current secondary alerts (skip the priority alert)
+    AlertData currentSecondary[maxCards];
+    int currentCount = 0;
+    
+    for (int i = 0; i < alertCount && currentCount < maxCards; i++) {
+        if (alerts[i].frequency == priority.frequency && 
+            alerts[i].band == priority.band &&
+            alerts[i].direction == priority.direction) {
+            continue;
+        }
+        if (alerts[i].isValid && alerts[i].band != BAND_NONE) {
+            currentSecondary[currentCount++] = alerts[i];
+        }
+    }
+    
+    unsigned long now = millis();
+    
+    // Update card slots: refresh lastSeen for alerts still present, keep grace period for dropped ones
+    for (int slot = 0; slot < maxCards; slot++) {
+        bool stillActive = false;
+        
+        // Check if this slot's alert is still in current alerts
+        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE) {
+            for (int c = 0; c < currentCount; c++) {
+                if (alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
+                    stillActive = true;
+                    cardSlots[slot].lastSeen = now;
+                    break;
+                }
+            }
+        }
+        
+        // Clear slot if grace period expired
+        if (!stillActive && cardSlots[slot].lastSeen > 0 && (now - cardSlots[slot].lastSeen) > CARD_GRACE_MS) {
+            cardSlots[slot].alert = AlertData();
+            cardSlots[slot].lastSeen = 0;
+        }
+    }
+    
+    // Assign new alerts to empty slots
+    for (int c = 0; c < currentCount; c++) {
+        bool found = false;
+        for (int slot = 0; slot < maxCards; slot++) {
+            if (cardSlots[slot].alert.isValid && alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
+                // Update existing slot with current data
+                cardSlots[slot].alert = currentSecondary[c];
+                cardSlots[slot].lastSeen = now;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // Find empty slot
+            for (int slot = 0; slot < maxCards; slot++) {
+                if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) {
+                    cardSlots[slot].alert = currentSecondary[c];
+                    cardSlots[slot].lastSeen = now;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Clear the secondary row area
+    FILL_RECT(0, cardY, SCREEN_WIDTH, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    
+    // Draw cards for all valid slots (live or within grace period)
+    int drawnCount = 0;
+    for (int slot = 0; slot < maxCards && drawnCount < maxCards; slot++) {
+        if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) continue;
+        if (cardSlots[slot].lastSeen == 0) continue;
+        
+        const AlertData& alert = cardSlots[slot].alert;
+        bool isGraced = (now - cardSlots[slot].lastSeen) > 0;  // Any age means it's being held
+        bool drawMuted = muted || (isGraced && (now - cardSlots[slot].lastSeen) > 100);  // Grace cards go grey after 100ms
+        
+        int cardX = startX + drawnCount * (cardW + cardSpacing);
+        drawnCount++;
+        
+        // Card background with band color tint (use grey for ghost/grace mode)
+        uint16_t bandCol = drawMuted ? PALETTE_MUTED : getBandColor(alert.band);
+        uint8_t r = ((bandCol >> 11) & 0x1F) * (drawMuted ? 2 : 3) / 10;
+        uint8_t g = ((bandCol >> 5) & 0x3F) * (drawMuted ? 2 : 3) / 10;
+        uint8_t b = (bandCol & 0x1F) * (drawMuted ? 2 : 3) / 10;
+        uint16_t bgCol = (r << 11) | (g << 5) | b;
+        
+        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bandCol);
+        
+        // Draw direction arrow
+        int arrowX = cardX + 18;
+        int arrowCY = cardY + cardH / 2;
+        uint16_t arrowCol = drawMuted ? PALETTE_MUTED : TFT_WHITE;
+        
+        if (alert.direction & DIR_FRONT) {
+            int aw = 14, ah = 16;
+            tft->fillTriangle(arrowX, arrowCY - ah/2, 
+                             arrowX - aw/2, arrowCY + ah/2,
+                             arrowX + aw/2, arrowCY + ah/2, arrowCol);
+        } else if (alert.direction & DIR_REAR) {
+            int aw = 14, ah = 16;
+            tft->fillTriangle(arrowX, arrowCY + ah/2,
+                             arrowX - aw/2, arrowCY - ah/2,
+                             arrowX + aw/2, arrowCY - ah/2, arrowCol);
+        } else if (alert.direction & DIR_SIDE) {
+            FILL_RECT(arrowX - 8, arrowCY - 3, 16, 6, arrowCol);
+        }
+        
+        // Frequency
+        char freqStr[10];
+        if (alert.band == BAND_LASER) {
+            snprintf(freqStr, sizeof(freqStr), "LASER");
+        } else if (alert.frequency > 0) {
+            snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "---");
+        }
+        tft->setTextColor(drawMuted ? PALETTE_MUTED : TFT_WHITE);
+        tft->setTextSize(2);
+        tft->setCursor(cardX + 32, cardY + (cardH - 16) / 2);
+        tft->print(freqStr);
+        
+        // Band label
+        tft->setTextColor(bandCol);
+        tft->setTextSize(2);
+        const char* bandStr = bandToString(alert.band);
+        int bandW = strlen(bandStr) * 12;
+        tft->setCursor(cardX + cardW - bandW - 6, cardY + (cardH - 16) / 2);
+        tft->print(bandStr);
+    }
+#endif
 }
 
 void V1Display::drawBandBadge(Band band) {
@@ -1353,11 +1920,13 @@ void V1Display::drawSignalBars(uint8_t bars) {
     }
     
     int startX = (SCREEN_WIDTH - (MAX_SIGNAL_BARS * (BAR_WIDTH + BAR_SPACING))) / 2;
+    // Adjust Y position for multi-alert mode
+    int barsY = g_multiAlertMode ? (BARS_Y - MULTI_ALERT_OFFSET) : BARS_Y;
     
     for (uint8_t i = 0; i < MAX_SIGNAL_BARS; i++) {
         int x = startX + i * (BAR_WIDTH + BAR_SPACING);
         int height = BAR_HEIGHT * (i + 1) / MAX_SIGNAL_BARS;
-        int y = BARS_Y + (BAR_HEIGHT - height);
+        int y = barsY + (BAR_HEIGHT - height);
         
         if (i < bars) {
             // Draw filled bar
@@ -1370,7 +1939,8 @@ void V1Display::drawSignalBars(uint8_t bars) {
     }
 }
 
-void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
+// Classic 7-segment frequency display (original V1 style)
+void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f; // Larger for wider screen
 #else
@@ -1378,8 +1948,8 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
 #endif
     SegMetrics m = segMetrics(scale);
     
-    // Position frequency at bottom with proper margin
-    int y = SCREEN_HEIGHT - m.digitH - 8;  // More margin from bottom
+    // Position frequency at bottom with proper margin (shifted up in multi-alert mode)
+    int y = getEffectiveScreenHeight() - m.digitH - 8;
     
     if (isLaser) {
         // Draw "LASER" centered with margin for arrows on right - use 14-segment for proper 'R'
@@ -1420,6 +1990,72 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
     drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
+// Modern frequency display - Antialiased with OpenFontRender
+void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if OFR not initialized or resting state (show dim 7-seg dashes)
+    if (!ofrInitialized || (freqMHz == 0 && !isLaser)) {
+        drawFrequencyClassic(freqMHz, isLaser, muted);
+        return;
+    }
+    
+    // OpenFontRender antialiased rendering
+    const int fontSize = 66;  // Larger font size
+    const int rightMargin = 120;  // Match Classic - leave room for arrow stack
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 72;  // Position based on effective height
+    
+    ofr.setFontSize(fontSize);
+    ofr.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency - minimal height to avoid covering band labels
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    FILL_RECT(0, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (isLaser) {
+        uint16_t color = muted ? PALETTE_MUTED : s.colorBandL;
+        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+        
+        ofr.setCursor(x, freqY);
+        ofr.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    uint16_t freqColor = muted ? PALETTE_MUTED : (freqMHz > 0 ? s.colorFrequency : PALETTE_GRAY);
+    ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+    
+    ofr.setCursor(x, freqY);
+    ofr.printf("%s", freqStr);
+}
+
+// Router: calls appropriate frequency draw method based on display style setting
+void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
+        drawFrequencyModern(freqMHz, isLaser, muted);
+    } else {
+        drawFrequencyClassic(freqMHz, isLaser, muted);
+    }
+}
+
 
 // Draw large direction arrow (t4s3 style)
 void V1Display::drawDirectionArrow(Direction dir, bool muted) {
@@ -1431,7 +2067,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     // Position arrows to fit ABOVE frequency display at bottom
     // Frequency starts around y=126, so arrows must end before that
     // Keep overall position, center middle arrow between top and bottom
-    cy = 95;
+    // Shift up when multi-alert mode is active
+    cy = g_multiAlertMode ? 75 : 95;
     cx -= 6;
 #endif
     
@@ -1459,7 +2096,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     int bottomArrowCenterY = cy + sideBarH/2 + gap + bottomH/2;
 
     const V1Settings& s = settingsManager.get();
-    uint16_t onCol = muted ? PALETTE_MUTED : s.colorArrow;
+    // Get individual arrow colors (use muted color if muted)
+    uint16_t frontCol = muted ? PALETTE_MUTED : s.colorArrowFront;
+    uint16_t sideCol = muted ? PALETTE_MUTED : s.colorArrowSide;
+    uint16_t rearCol = muted ? PALETTE_MUTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions
@@ -1469,8 +2109,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     int clearBottom = bottomArrowCenterY + bottomH/2 + 15;
     FILL_RECT(cx - maxW/2 - 10, clearTop, maxW + 24, clearBottom - clearTop, PALETTE_BG);
 
-    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH) {
-        uint16_t fillCol = active ? onCol : offCol;
+    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
+        uint16_t fillCol = active ? activeCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         
         // Triangle points
@@ -1506,7 +2146,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     };
 
     auto drawSideArrow = [&](bool active) {
-        uint16_t fillCol = active ? onCol : offCol;
+        uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = 66;   // Center bar width
         const int barH = sideBarH;
@@ -1534,10 +2174,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Up, side, down arrows - using calculated center positions
-    drawTriangleArrow(topArrowCenterY, false, dir & DIR_FRONT, topW, topH, topNotchW, topNotchH);
+    // Up, side, down arrows - using calculated center positions with individual colors
+    drawTriangleArrow(topArrowCenterY, false, dir & DIR_FRONT, topW, topH, topNotchW, topNotchH, frontCol);
     drawSideArrow(dir & DIR_SIDE);
-    drawTriangleArrow(bottomArrowCenterY, true, dir & DIR_REAR, bottomW, bottomH, bottomNotchW, bottomNotchH);
+    drawTriangleArrow(bottomArrowCenterY, true, dir & DIR_REAR, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
@@ -1578,7 +2218,9 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
-    int startY = (SCREEN_HEIGHT - totalH) / 2;
+    // Use effective height to shift up in multi-alert mode
+    int effectiveH = getEffectiveScreenHeight();
+    int startY = (effectiveH - totalH) / 2;
 
     // Clear area once
     FILL_RECT(startX - 2, startY - 2, barWidth + 4, totalH + 4, PALETTE_BG);
@@ -1628,9 +2270,9 @@ uint16_t V1Display::getBandColor(Band band) {
 uint16_t V1Display::getArrowColor(Direction dir) {
     const V1Settings& s = settingsManager.get();
     switch (dir) {
-        case DIR_FRONT: return s.colorArrow;
-        case DIR_SIDE: return s.colorArrow;
-        case DIR_REAR: return s.colorArrow;
+        case DIR_FRONT: return s.colorArrowFront;
+        case DIR_SIDE: return s.colorArrowSide;
+        case DIR_REAR: return s.colorArrowRear;
         default: return TFT_DARKGREY;
     }
 }

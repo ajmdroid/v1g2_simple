@@ -3,6 +3,7 @@
  */
 
 #include "event_ring.h"
+#include <ArduinoJson.h>
 
 // Global ring buffer (static allocation, no heap)
 Event eventRing[EVENT_RING_SIZE];
@@ -135,29 +136,27 @@ bool eventRingProcessCommand(const String& cmd) {
 }
 
 String eventRingToJson() {
-    String json = "{";
-    json += "\"totalEvents\":" + String(eventRingCount) + ",";
-    json += "\"overflow\":" + String(eventRingHasOverflow() ? "true" : "false") + ",";
-    json += "\"events\":[";
+    JsonDocument doc;
+    doc["totalEvents"] = eventRingCount;
+    doc["overflow"] = eventRingHasOverflow();
+    
+    JsonArray events = doc["events"].to<JsonArray>();
     
     uint32_t count = eventRingCount < EVENT_RING_SIZE ? eventRingCount : EVENT_RING_SIZE;
     uint32_t startIdx = (eventRingHead - count) & (EVENT_RING_SIZE - 1);
     
-    bool first = true;
     for (uint32_t i = 0; i < count; i++) {
         uint32_t idx = (startIdx + i) & (EVENT_RING_SIZE - 1);
         const Event& evt = eventRing[idx];
         if (evt.type != EVT_NONE) {
-            if (!first) json += ",";
-            first = false;
-            json += "{";
-            json += "\"t\":" + String(evt.timestampMs) + ",";
-            json += "\"type\":\"" + String(eventTypeName(evt.type)) + "\",";
-            json += "\"data\":" + String(evt.data);
-            json += "}";
+            JsonObject evtObj = events.add<JsonObject>();
+            evtObj["t"] = evt.timestampMs;
+            evtObj["type"] = eventTypeName(evt.type);
+            evtObj["data"] = evt.data;
         }
     }
     
-    json += "]}";
+    String json;
+    serializeJson(doc, json);
     return json;
 }

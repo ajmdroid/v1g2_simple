@@ -2,6 +2,11 @@
 .pio/
 .vscode/
 
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 __MACOSX/
@@ -51,3 +56,6 @@ docs/ARCHIVE.md
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/
 AUDIT_SUMMARY.md
+
+# Local test captures
+r8/

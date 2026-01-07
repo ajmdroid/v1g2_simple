@@ -3,6 +3,7 @@
  */
 
 #include "perf_metrics.h"
+#include <ArduinoJson.h>
 
 // Global instances
 PerfCounters perfCounters;
@@ -105,39 +106,41 @@ void perfMetricsPrint() {
 }
 
 String perfMetricsToJson() {
-    String json = "{";
-    json += "\"rxPackets\":" + String(perfCounters.rxPackets) + ",";
-    json += "\"rxBytes\":" + String(perfCounters.rxBytes) + ",";
-    json += "\"parseSuccesses\":" + String(perfCounters.parseSuccesses) + ",";
-    json += "\"parseFailures\":" + String(perfCounters.parseFailures) + ",";
-    json += "\"queueDrops\":" + String(perfCounters.queueDrops) + ",";
-    json += "\"queueHighWater\":" + String(perfCounters.queueHighWater) + ",";
-    json += "\"displayUpdates\":" + String(perfCounters.displayUpdates) + ",";
-    json += "\"displaySkips\":" + String(perfCounters.displaySkips) + ",";
-    json += "\"reconnects\":" + String(perfCounters.reconnects) + ",";
-    json += "\"disconnects\":" + String(perfCounters.disconnects) + ",";
+    JsonDocument doc;
+    
+    doc["rxPackets"] = perfCounters.rxPackets;
+    doc["rxBytes"] = perfCounters.rxBytes;
+    doc["parseSuccesses"] = perfCounters.parseSuccesses;
+    doc["parseFailures"] = perfCounters.parseFailures;
+    doc["queueDrops"] = perfCounters.queueDrops;
+    doc["queueHighWater"] = perfCounters.queueHighWater;
+    doc["displayUpdates"] = perfCounters.displayUpdates;
+    doc["displaySkips"] = perfCounters.displaySkips;
+    doc["reconnects"] = perfCounters.reconnects;
+    doc["disconnects"] = perfCounters.disconnects;
     
 #if PERF_METRICS
-    json += "\"monitoringEnabled\":" + String(PERF_MONITORING ? "true" : "false") + ",";
+    doc["monitoringEnabled"] = (bool)PERF_MONITORING;
 #if PERF_MONITORING
     uint32_t minUs = (perfLatency.minUs == UINT32_MAX) ? 0 : perfLatency.minUs;
-    json += "\"latencyMinUs\":" + String(minUs) + ",";
-    json += "\"latencyAvgUs\":" + String(perfLatency.avgUs()) + ",";
-    json += "\"latencyMaxUs\":" + String(perfLatency.maxUs) + ",";
-    json += "\"latencySamples\":" + String(perfLatency.sampleCount) + ",";
-    json += "\"debugEnabled\":" + String(perfDebugEnabled ? "true" : "false");
+    doc["latencyMinUs"] = minUs;
+    doc["latencyAvgUs"] = perfLatency.avgUs();
+    doc["latencyMaxUs"] = perfLatency.maxUs;
+    doc["latencySamples"] = perfLatency.sampleCount;
+    doc["debugEnabled"] = perfDebugEnabled;
 #else
-    json += "\"latencyMinUs\":0,";
-    json += "\"latencyAvgUs\":0,";
-    json += "\"latencyMaxUs\":0,";
-    json += "\"latencySamples\":0,";
-    json += "\"debugEnabled\":false";
+    doc["latencyMinUs"] = 0;
+    doc["latencyAvgUs"] = 0;
+    doc["latencyMaxUs"] = 0;
+    doc["latencySamples"] = 0;
+    doc["debugEnabled"] = false;
 #endif
 #else
-    json += "\"metricsEnabled\":false";
+    doc["metricsEnabled"] = false;
 #endif
     
-    json += "}";
+    String json;
+    serializeJson(doc, json);
     return json;
 }
 

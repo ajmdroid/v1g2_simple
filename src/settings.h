@@ -41,6 +41,12 @@ enum V1Mode {
     V1_MODE_ADVANCED_LOGIC = 0x03 // Advanced Logic
 };
 
+// Display style (font selection)
+enum DisplayStyle {
+    DISPLAY_STYLE_CLASSIC = 0,   // 7-segment style (original V1 look)
+    DISPLAY_STYLE_MODERN = 1     // Montserrat Bold font
+};
+
 // WiFi network credential
 struct WiFiNetwork {
     String ssid;
@@ -82,16 +88,21 @@ struct V1Settings {
     bool turnOffDisplay;
     uint8_t brightness;
     ColorTheme colorTheme;  // Color theme selection
+    DisplayStyle displayStyle;  // Font style: classic 7-segment or modern Montserrat
     
     // Custom display colors (RGB565 format)
     uint16_t colorBogey;         // Bogey counter color
     uint16_t colorFrequency;     // Frequency display color
-    uint16_t colorArrow;         // Direction arrow color
+    uint16_t colorArrowFront;    // Front arrow color
+    uint16_t colorArrowSide;     // Side arrow color
+    uint16_t colorArrowRear;     // Rear arrow color
     uint16_t colorBandL;         // Laser band color
     uint16_t colorBandKa;        // Ka band color
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
     uint16_t colorWiFiIcon;      // WiFi indicator icon color
+    uint16_t colorBleConnected;   // Bluetooth icon when client connected
+    uint16_t colorBleDisconnected; // Bluetooth icon when no client
     uint16_t colorBar1;          // Signal bar 1 (bottom/weakest)
     uint16_t colorBar2;          // Signal bar 2
     uint16_t colorBar3;          // Signal bar 3
@@ -103,6 +114,10 @@ struct V1Settings {
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
+    bool hideBleIcon;            // Hide BLE icon
+    
+    // Multi-alert display setting
+    bool enableMultiAlert;       // Show secondary alert cards when multiple alerts active
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -119,6 +134,15 @@ struct V1Settings {
     uint8_t slot0MuteVolume;     // V1 mute volume for slot 0 (0-9, 0xFF=no change)
     uint8_t slot1MuteVolume;     // V1 mute volume for slot 1 (0-9, 0xFF=no change)
     uint8_t slot2MuteVolume;     // V1 mute volume for slot 2 (0-9, 0xFF=no change)
+    bool slot0DarkMode;          // V1 display off (dark mode) for slot 0
+    bool slot1DarkMode;          // V1 display off (dark mode) for slot 1
+    bool slot2DarkMode;          // V1 display off (dark mode) for slot 2
+    bool slot0MuteToZero;        // Mute to zero for slot 0
+    bool slot1MuteToZero;        // Mute to zero for slot 1
+    bool slot2MuteToZero;        // Mute to zero for slot 2
+    uint8_t slot0AlertPersist;   // Alert persistence (seconds) for slot 0 (0-5s)
+    uint8_t slot1AlertPersist;   // Alert persistence (seconds) for slot 1 (0-5s)
+    uint8_t slot2AlertPersist;   // Alert persistence (seconds) for slot 2 (0-5s)
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -138,14 +162,19 @@ struct V1Settings {
         turnOffDisplay(false),
         brightness(200),
         colorTheme(THEME_STANDARD),
+        displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
         colorBogey(0xF800),      // Red (same as KA)
         colorFrequency(0xF800),  // Red (same as KA)
-        colorArrow(0xF800),      // Red
+        colorArrowFront(0xF800), // Red (front)
+        colorArrowSide(0xF800),  // Red (side)
+        colorArrowRear(0xF800),  // Red (rear)
         colorBandL(0x001F),      // Blue (laser)
         colorBandKa(0xF800),     // Red
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
         colorWiFiIcon(0x07FF),   // Cyan (WiFi icon)
+        colorBleConnected(0x07E0),   // Green (BLE connected)
+        colorBleDisconnected(0x001F), // Blue (BLE disconnected)
         colorBar1(0x07E0),       // Green (weakest)
         colorBar2(0x07E0),       // Green
         colorBar3(0xFFE0),       // Yellow
@@ -155,6 +184,8 @@ struct V1Settings {
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
+        hideBleIcon(false),      // Show BLE icon by default
+        enableMultiAlert(true),  // Enable multi-alert cards by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -169,6 +200,15 @@ struct V1Settings {
         slot0MuteVolume(0xFF),
         slot1MuteVolume(0xFF),
         slot2MuteVolume(0xFF),
+        slot0DarkMode(false),
+        slot1DarkMode(false),
+        slot2DarkMode(false),
+        slot0MuteToZero(false),
+        slot1MuteToZero(false),
+        slot2MuteToZero(false),
+        slot0AlertPersist(0),
+        slot1AlertPersist(0),
+        slot2AlertPersist(0),
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
@@ -201,13 +241,16 @@ public:
     void setSlotName(int slotNum, const String& name);
     void setSlotColor(int slotNum, uint16_t color);
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
-    void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+    void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     void setWiFiIconColor(uint16_t color);
+    void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
+    void setHideBleIcon(bool hide);
+    void setEnableMultiAlert(bool enable);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
@@ -218,12 +261,21 @@ public:
     uint8_t getSlotVolume(int slotNum) const;
     uint8_t getSlotMuteVolume(int slotNum) const;
     
+    // Get slot dark mode and MZ settings
+    bool getSlotDarkMode(int slotNum) const;
+    bool getSlotMuteToZero(int slotNum) const;
+    uint8_t getSlotAlertPersistSec(int slotNum) const;
+    void setSlotDarkMode(int slotNum, bool darkMode);
+    void setSlotMuteToZero(int slotNum, bool mz);
+    void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
+    
     // Batch update methods (don't auto-save, call save() after)
     void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }
     void updateWiFiCredentials(const String& ssid, const String& password) { settings.ssid = ssid; settings.password = password; }
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
+    void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
     void updatePrimaryWiFi(const String& ssid, const String& password) {
         settings.ssid = ssid;
         settings.password = password;
