@@ -86,6 +86,23 @@ static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
 };
 static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
 
+struct PersistedAlert {
+    AlertData alert{};
+    DisplayState state{};
+    int alertCount = 0;
+    bool active = false;
+    unsigned long expiresAt = 0;
+};
+
+static PersistedAlert persistedAlert;
+enum class DisplayMode {
+    IDLE,
+    LIVE,
+    GHOST
+};
+static DisplayMode displayMode = DisplayMode::IDLE;
+static unsigned long ghostExpiresAt = 0;
+
 void requestColorPreviewHold(uint32_t durationMs) {
     colorPreviewActive = true;
     colorPreviewStartMs = millis();
@@ -167,6 +184,12 @@ static unsigned long lastTapTime = 0;
 static int tapCount = 0;
 const unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
 const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
+
+// Brightness adjustment mode (BOOT button triggered)
+static bool brightnessAdjustMode = false;
+static uint8_t brightnessAdjustValue = 200;  // Current slider value
+static unsigned long lastBootButtonPress = 0;
+const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -663,6 +686,17 @@ void processBLEData() {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
+                
+                // Stash for persistence (render muted if used later)
+                persistedAlert.alert = priority;
+                persistedAlert.alert.isValid = true;
+                persistedAlert.state = state;
+                persistedAlert.state.muted = true;  // render ghost in muted palette
+                persistedAlert.alertCount = alertCount;
+                persistedAlert.active = false;
+                persistedAlert.expiresAt = 0;
+                displayMode = DisplayMode::LIVE;
+                ghostExpiresAt = 0;
 
                 // Auto-unmute logic: new stronger signal or different band
                 if (localMuteActive && localMuteOverride) {
@@ -732,6 +766,37 @@ void processBLEData() {
                 display.update(priority, state, alertCount);
                 
             } else {
+                // Enable alert persistence (ghost) if configured for the active slot
+                const V1Settings& cfg = settingsManager.get();
+                uint8_t persistSec = settingsManager.getSlotAlertPersistSec(cfg.activeSlot);
+                unsigned long persistMs = persistSec * 1000UL;
+
+                if (persistMs > 0 && persistedAlert.alert.isValid) {
+                    if (!persistedAlert.active) {
+                        persistedAlert.active = true;
+                        ghostExpiresAt = millis() + persistMs;
+                        persistedAlert.expiresAt = ghostExpiresAt;
+                        displayMode = DisplayMode::GHOST;
+
+                        // Draw ghost once and hold; skip other draws this cycle
+                        display.setGhostMode(true);
+                        display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
+                        display.setGhostMode(false);
+                        lastDisplayDraw = millis();
+                        continue;
+                    } else if (persistedAlert.active && millis() <= persistedAlert.expiresAt) {
+                        displayMode = DisplayMode::GHOST;
+                        continue;  // Keep ghost on screen; avoid resting redraws
+                    } else if (persistedAlert.active && millis() > persistedAlert.expiresAt) {
+                        persistedAlert.active = false;
+                        persistedAlert.expiresAt = 0;
+                        persistedAlert.alert = AlertData();
+                        displayMode = DisplayMode::IDLE;
+                    }
+                } else {
+                    displayMode = DisplayMode::IDLE;
+                }
+
                 // No alerts - clear mute override only after timeout has passed
                 if (localMuteActive) {
                     // Don't timeout if V1 still shows active bands - alert might return
@@ -921,6 +986,14 @@ void setup() {
     } else {
         SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
     }
+    
+    // Initialize BOOT button (GPIO 0) for brightness adjustment
+#if defined(DISPLAY_WAVESHARE_349)
+    pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
+    brightnessAdjustValue = settingsManager.get().brightness;
+    display.setBrightness(brightnessAdjustValue);  // Apply saved brightness
+    SerialLog.printf("[Brightness] Applied saved brightness: %d\n", brightnessAdjustValue);
+#endif
 
 #ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
@@ -994,6 +1067,56 @@ void loop() {
             lowBatteryWarningShown = false;  // Reset if voltage recovers
         }
     }
+    
+    // BOOT button handling for brightness adjustment
+    bool bootPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);  // Active low
+    unsigned long now = millis();
+    
+    if (bootPressed && (now - lastBootButtonPress > BOOT_DEBOUNCE_MS)) {
+        lastBootButtonPress = now;
+        
+        if (!brightnessAdjustMode) {
+            // Enter brightness adjustment mode
+            brightnessAdjustMode = true;
+            brightnessAdjustValue = settingsManager.get().brightness;
+            display.showBrightnessSlider(brightnessAdjustValue);
+            SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
+        } else {
+            // Exit brightness adjustment mode and save
+            brightnessAdjustMode = false;
+            settingsManager.setBrightness(brightnessAdjustValue);
+            settingsManager.save();
+            display.hideBrightnessSlider();
+            display.showResting();  // Return to normal display
+            SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+        }
+    }
+    
+    // If in brightness adjustment mode, handle touch for slider
+    if (brightnessAdjustMode) {
+        int16_t touchX, touchY;
+        if (touchHandler.getTouchPoint(touchX, touchY)) {
+            // Map touch X to brightness (40 to 600 pixels = slider area)
+            // Note: Touch coordinates are inverted relative to display
+            const int sliderX = 40;
+            const int sliderWidth = SCREEN_WIDTH - 80;  // 560 pixels
+            
+            if (touchX >= sliderX && touchX <= sliderX + sliderWidth) {
+                // Touch X is inverted: swipe right = lower X, swipe left = higher X
+                // Map so swipe right = brighter, swipe left = dimmer
+                int newLevel = 255 - (((touchX - sliderX) * 175) / sliderWidth);
+                // Clamp to valid range (minimum 80 ~31% to keep display visible)
+                if (newLevel < 80) newLevel = 80;
+                if (newLevel > 255) newLevel = 255;
+                
+                if (newLevel != brightnessAdjustValue) {
+                    brightnessAdjustValue = newLevel;
+                    display.updateBrightnessSlider(brightnessAdjustValue);
+                }
+            }
+        }
+        return;  // Skip normal loop processing while in brightness mode
+    }
 #endif
 
     // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
@@ -1027,6 +1150,9 @@ void loop() {
                     const V1Settings& s = settingsManager.get();
                     int newSlot = (s.activeSlot + 1) % 3;
                     settingsManager.setActiveSlot(newSlot);
+                    persistedAlert = PersistedAlert();  // Clear any ghost from previous slot
+                    displayMode = DisplayMode::IDLE;
+                    ghostExpiresAt = 0;
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
@@ -1106,40 +1232,62 @@ void loop() {
     wifiManager.process();
     
     // Update display periodically
-    unsigned long now = millis();
+    now = millis();
     
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
         if (!isColorPreviewActive()) {
-            // Check connection status
-            static bool wasConnected = false;
-            bool isConnected = bleClient.isConnected();
-            
-            // Only trigger state changes on actual transitions
-            if (isConnected != wasConnected) {
-                if (isConnected) {
-                    display.showResting(); // stay on resting view until data arrives
-                    SerialLog.println("V1 connected!");
+            bool skipDisplayTick = false;
+            // Handle ghost refresh/expiry centrally to avoid flicker
+            if (displayMode == DisplayMode::GHOST && persistedAlert.active) {
+                if (millis() <= persistedAlert.expiresAt) {
+                    display.setGhostMode(true);
+                    display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
+                    display.setGhostMode(false);
+                    lastDisplayDraw = millis();
+                    // Skip other redraws while ghost is active
+                    skipDisplayTick = true;
                 } else {
-                    display.showScanning();
-                    SerialLog.println("V1 disconnected - Scanning...");
+                    persistedAlert = PersistedAlert();
+                    displayMode = DisplayMode::IDLE;
+                    ghostExpiresAt = 0;
                 }
-                wasConnected = isConnected;
             }
 
-            // If connected but not seeing traffic, re-request alert data periodically
-            static unsigned long lastReq = 0;
-            if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-                SerialLog.println("No data recently; re-requesting alert data...");
-                bleClient.requestAlertData();
-                lastReq = now;
-            }
-            
-            // Periodically refresh indicators (WiFi/battery) even when scanning
-            if (!isConnected) {
-                display.drawWiFiIndicator();
-                display.drawBatteryIndicator();
-                display.flush();  // Push canvas changes to physical display
+            if (!skipDisplayTick) {
+                // Check connection status
+                static bool wasConnected = false;
+                bool isConnected = bleClient.isConnected();
+                
+                // Only trigger state changes on actual transitions
+                if (isConnected != wasConnected) {
+                    if (isConnected) {
+                        display.showResting(); // stay on resting view until data arrives
+                        SerialLog.println("V1 connected!");
+                    } else {
+                        display.showScanning();
+                        SerialLog.println("V1 disconnected - Scanning...");
+                        persistedAlert = PersistedAlert();  // Drop any ghost data on disconnect
+                        displayMode = DisplayMode::IDLE;
+                        ghostExpiresAt = 0;
+                    }
+                    wasConnected = isConnected;
+                }
+
+                // If connected but not seeing traffic, re-request alert data periodically
+                static unsigned long lastReq = 0;
+                if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
+                    SerialLog.println("No data recently; re-requesting alert data...");
+                    bleClient.requestAlertData();
+                    lastReq = now;
+                }
+
+                // Periodically refresh indicators (WiFi/battery) even when scanning
+                if (!isConnected) {
+                    display.drawWiFiIndicator();
+                    display.drawBatteryIndicator();
+                    display.flush();  // Push canvas changes to physical display
+                }
             }
         }
     }

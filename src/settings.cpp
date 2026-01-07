@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "storage_manager.h"
 #include <ArduinoJson.h>
+#include <algorithm>
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1settings_backup.json";
@@ -154,6 +155,9 @@ void SettingsManager::load() {
     settings.slot0MuteToZero = preferences.getBool("slot0mz", false);
     settings.slot1MuteToZero = preferences.getBool("slot1mz", false);
     settings.slot2MuteToZero = preferences.getBool("slot2mz", false);
+    settings.slot0AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot0persist", 0));
+    settings.slot1AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot1persist", 0));
+    settings.slot2AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot2persist", 0));
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -180,9 +184,9 @@ void SettingsManager::load() {
     Serial.printf("  Brightness: %d\n", settings.brightness);
     Serial.printf("  Color theme: %d\n", settings.colorTheme);
     Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
-    Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no");
-    Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no");
-    Serial.printf("  Slot2: %s (mode %d) darkMode=%s MZ=%s\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode, settings.slot2DarkMode ? "yes" : "no", settings.slot2MuteToZero ? "yes" : "no");
+    Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no", settings.slot0AlertPersist);
+    Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no", settings.slot1AlertPersist);
+    Serial.printf("  Slot2: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode, settings.slot2DarkMode ? "yes" : "no", settings.slot2MuteToZero ? "yes" : "no", settings.slot2AlertPersist);
 }
 
 void SettingsManager::save() {
@@ -255,6 +259,9 @@ void SettingsManager::save() {
     written += preferences.putBool("slot0mz", settings.slot0MuteToZero);
     written += preferences.putBool("slot1mz", settings.slot1MuteToZero);
     written += preferences.putBool("slot2mz", settings.slot2MuteToZero);
+    written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
+    written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
+    written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
     Serial.printf("  [Save] slot0: darkMode=%s MZ=%s\n", settings.slot0DarkMode ? "true" : "false", settings.slot0MuteToZero ? "true" : "false");
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
@@ -482,6 +489,15 @@ bool SettingsManager::getSlotMuteToZero(int slotNum) const {
     }
 }
 
+uint8_t SettingsManager::getSlotAlertPersistSec(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0AlertPersist;
+        case 1: return settings.slot1AlertPersist;
+        case 2: return settings.slot2AlertPersist;
+        default: return 0;
+    }
+}
+
 void SettingsManager::setSlotDarkMode(int slotNum, bool darkMode) {
     switch (slotNum) {
         case 0: settings.slot0DarkMode = darkMode; break;
@@ -496,6 +512,17 @@ void SettingsManager::setSlotMuteToZero(int slotNum, bool mz) {
         case 0: settings.slot0MuteToZero = mz; break;
         case 1: settings.slot1MuteToZero = mz; break;
         case 2: settings.slot2MuteToZero = mz; break;
+    }
+    save();
+}
+
+void SettingsManager::setSlotAlertPersistSec(int slotNum, uint8_t seconds) {
+    uint8_t clamped = std::min<uint8_t>(5, seconds);
+    switch (slotNum) {
+        case 0: settings.slot0AlertPersist = clamped; break;
+        case 1: settings.slot1AlertPersist = clamped; break;
+        case 2: settings.slot2AlertPersist = clamped; break;
+        default: return;
     }
     save();
 }

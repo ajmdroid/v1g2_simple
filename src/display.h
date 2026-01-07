@@ -55,6 +55,11 @@ public:
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
     
+    // Brightness adjustment overlay
+    void showBrightnessSlider(uint8_t currentLevel);  // Show slider overlay
+    void updateBrightnessSlider(uint8_t level);       // Update slider position
+    void hideBrightnessSlider();                      // Hide slider and restore display
+    
     // Get canvas for direct access (testing)
     Arduino_Canvas* getCanvas() { return tft; }
     
@@ -78,6 +83,9 @@ public:
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
+    
+    // Enable/disable ghost style (muted palette, no mute badge)
+    void setGhostMode(bool enabled);
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
@@ -127,6 +135,7 @@ private:
     bool bleProxyEnabled = false;           // BLE proxy enabled flag
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
+    bool ghostMode = false;                 // Render muted ghost without mute badge
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

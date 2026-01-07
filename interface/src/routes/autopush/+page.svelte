@@ -31,7 +31,13 @@
 		try {
 			const res = await fetch('/api/autopush/slots');
 			if (res.ok) {
-				data = await res.json();
+				const loaded = await res.json();
+				// Normalize defaults for new fields
+				loaded.slots = (loaded.slots || []).map((s) => ({
+					...s,
+					alertPersist: s.alertPersist ?? 0
+				}));
+				data = loaded;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load slots' };
@@ -99,6 +105,8 @@
 	async function saveSlot(slot) {
 		const s = data.slots[slot];
 		message = { type: 'info', text: 'Saving slot...' };
+		const persist = Math.max(0, Math.min(5, Number(s.alertPersist ?? 0)));
+		s.alertPersist = persist;
 		
 		try {
 			const formData = new FormData();
@@ -110,6 +118,7 @@
 			formData.append('muteVol', s.muteVolume);
 			formData.append('darkMode', s.darkMode ? 'true' : 'false');
 			formData.append('muteToZero', s.muteToZero ? 'true' : 'false');
+			formData.append('alertPersist', persist);
 			
 			const res = await fetch('/api/autopush/slot', {
 				method: 'POST',
@@ -260,6 +269,31 @@
 										<span class="label-text text-xs">Mute to Zero</span>
 									</label>
 								</div>
+								<div class="form-control">
+									<label class="label py-1" for={`slot-${i}-persist`}>
+										<span class="label-text text-xs">Alert persistence (seconds)</span>
+										<span class="label-text-alt text-[10px] text-base-content/60">0 = off, max 5s</span>
+									</label>
+									<div class="flex items-center gap-2">
+										<input
+											id={`slot-${i}-persist`}
+											type="range"
+											min="0"
+											max="5"
+											step="1"
+											class="range range-primary range-xs flex-1"
+											bind:value={slot.alertPersist}
+										/>
+										<input
+											type="number"
+											min="0"
+											max="5"
+											class="input input-bordered input-xs w-16"
+											bind:value={slot.alertPersist}
+										/>
+										<span class="text-xs text-base-content/60">s</span>
+									</div>
+								</div>
 							</div>
 						{:else}
 							<!-- View Mode -->
@@ -277,6 +311,8 @@
 									{#if slot.muteToZero}🔇 MZ{/if}
 									{#if !slot.darkMode && !slot.muteToZero}—{/if}
 								</div>
+								<div class="text-base-content/60">Alert persistence:</div>
+								<div class="font-medium">{slot.alertPersist || 0}s ghost</div>
 							</div>
 						{/if}
 						

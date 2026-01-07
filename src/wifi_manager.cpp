@@ -1321,7 +1321,8 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"volume\":" + String(s.slot0Volume) + ",";
     json += "\"muteVolume\":" + String(s.slot0MuteVolume) + ",";
     json += "\"darkMode\":" + String(s.slot0DarkMode ? "true" : "false") + ",";
-    json += "\"muteToZero\":" + String(s.slot0MuteToZero ? "true" : "false") + "},";
+    json += "\"muteToZero\":" + String(s.slot0MuteToZero ? "true" : "false") + ",";
+    json += "\"alertPersist\":" + String(s.slot0AlertPersist) + "},";
     
     // Slot 1
     json += "{\"name\":\"" + s.slot1Name + "\",";
@@ -1331,7 +1332,8 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"volume\":" + String(s.slot1Volume) + ",";
     json += "\"muteVolume\":" + String(s.slot1MuteVolume) + ",";
     json += "\"darkMode\":" + String(s.slot1DarkMode ? "true" : "false") + ",";
-    json += "\"muteToZero\":" + String(s.slot1MuteToZero ? "true" : "false") + "},";
+    json += "\"muteToZero\":" + String(s.slot1MuteToZero ? "true" : "false") + ",";
+    json += "\"alertPersist\":" + String(s.slot1AlertPersist) + "},";
     
     // Slot 2
     json += "{\"name\":\"" + s.slot2Name + "\",";
@@ -1341,7 +1343,8 @@ void WiFiManager::handleAutoPushSlotsApi() {
     json += "\"volume\":" + String(s.slot2Volume) + ",";
     json += "\"muteVolume\":" + String(s.slot2MuteVolume) + ",";
     json += "\"darkMode\":" + String(s.slot2DarkMode ? "true" : "false") + ",";
-    json += "\"muteToZero\":" + String(s.slot2MuteToZero ? "true" : "false") + "}";
+    json += "\"muteToZero\":" + String(s.slot2MuteToZero ? "true" : "false") + ",";
+    json += "\"alertPersist\":" + String(s.slot2AlertPersist) + "}";
     
     json += "]}";
     
@@ -1365,6 +1368,8 @@ void WiFiManager::handleAutoPushSlotSave() {
     bool darkMode = hasDarkMode ? (server.arg("darkMode") == "true") : false;
     bool hasMuteToZero = server.hasArg("muteToZero");
     bool muteToZero = hasMuteToZero ? (server.arg("muteToZero") == "true") : false;
+    bool hasAlertPersist = server.hasArg("alertPersist");
+    int alertPersist = hasAlertPersist ? server.arg("alertPersist").toInt() : -1;
     
     if (slot < 0 || slot > 2) {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
@@ -1403,6 +1408,13 @@ void WiFiManager::handleAutoPushSlotSave() {
     if (hasMuteToZero) {
         settingsManager.setSlotMuteToZero(slot, muteToZero);
         Serial.printf("[SaveSlot] Saved muteToZero=%s for slot %d\n", muteToZero ? "true" : "false", slot);
+    }
+    
+    // Save alert persistence (seconds, clamped 0-5)
+    if (hasAlertPersist && alertPersist >= 0) {
+        int clamped = std::max(0, std::min(5, alertPersist));
+        settingsManager.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
+        Serial.printf("[SaveSlot] Saved alertPersist=%ds for slot %d\n", clamped, slot);
     }
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));

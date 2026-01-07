@@ -15,6 +15,7 @@
 // Hardware Pins
 #define BATTERY_ADC_CHANNEL     ADC1_CHANNEL_3  // GPIO4
 #define BATTERY_ADC_GPIO        4
+#define BOOT_BUTTON_GPIO        0               // BOOT button for brightness adjustment
 #define PWR_BUTTON_GPIO         16              // Also battery presence detection
 #define TCA9554_SDA_GPIO        47
 #define TCA9554_SCL_GPIO        48

@@ -125,6 +125,9 @@ struct V1Settings {
     bool slot0MuteToZero;        // Mute to zero for slot 0
     bool slot1MuteToZero;        // Mute to zero for slot 1
     bool slot2MuteToZero;        // Mute to zero for slot 2
+    uint8_t slot0AlertPersist;   // Alert persistence (seconds) for slot 0 (0-5s)
+    uint8_t slot1AlertPersist;   // Alert persistence (seconds) for slot 1 (0-5s)
+    uint8_t slot2AlertPersist;   // Alert persistence (seconds) for slot 2 (0-5s)
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -181,6 +184,9 @@ struct V1Settings {
         slot0MuteToZero(false),
         slot1MuteToZero(false),
         slot2MuteToZero(false),
+        slot0AlertPersist(0),
+        slot1AlertPersist(0),
+        slot2AlertPersist(0),
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
@@ -233,8 +239,10 @@ public:
     // Get slot dark mode and MZ settings
     bool getSlotDarkMode(int slotNum) const;
     bool getSlotMuteToZero(int slotNum) const;
+    uint8_t getSlotAlertPersistSec(int slotNum) const;
     void setSlotDarkMode(int slotNum, bool darkMode);
     void setSlotMuteToZero(int slotNum, bool mz);
+    void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
     
     // Batch update methods (don't auto-save, call save() after)
     void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }

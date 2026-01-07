@@ -433,6 +433,73 @@ void V1Display::setBrightness(uint8_t level) {
 #endif
 }
 
+// Brightness slider overlay for BOOT button adjustment
+void V1Display::showBrightnessSlider(uint8_t currentLevel) {
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    // Clear screen to dark background
+    tft->fillScreen(0x0000);
+    
+    // Layout: 640x172 landscape
+    // Slider: horizontal bar spanning most of width, centered vertically
+    const int sliderMargin = 40;
+    const int sliderY = 86;  // Centered vertically
+    const int sliderHeight = 12;
+    const int sliderWidth = SCREEN_WIDTH - (sliderMargin * 2);  // 560 pixels
+    const int sliderX = sliderMargin;
+    
+    // Title at top
+    tft->setTextColor(0xFFFF);  // White
+    tft->setTextSize(2);
+    tft->setCursor((SCREEN_WIDTH - 170) / 2, 20);
+    tft->print("BRIGHTNESS");
+    
+    // Draw slider track (dark gray outline)
+    tft->drawRect(sliderX - 2, sliderY - 2, sliderWidth + 4, sliderHeight + 4, 0x4208);  // Dark gray border
+    tft->fillRect(sliderX, sliderY, sliderWidth, sliderHeight, 0x2104);  // Dark gray track
+    
+    // Draw filled portion based on current level
+    // Fill grows from LEFT to RIGHT: left = dim (0%), right = bright (100%)
+    // Level range: 80 (dim) to 255 (bright)
+    int fillWidth = ((currentLevel - 80) * sliderWidth) / 175;  // 0 at 80, full at 255
+    tft->fillRect(sliderX, sliderY, fillWidth, sliderHeight, 0x07E0);  // Green fill from left
+    
+    // Draw thumb/handle at the right edge of fill (moves right as brightness increases)
+    int thumbX = sliderX + fillWidth - 4;
+    if (thumbX < sliderX) thumbX = sliderX;
+    if (thumbX > sliderX + sliderWidth - 4) thumbX = sliderX + sliderWidth - 4;
+    tft->fillRect(thumbX, sliderY - 6, 8, sliderHeight + 12, 0xFFFF);  // White thumb
+    
+    // Show current value as percentage (0% at min 80, 100% at max 255)
+    char valueStr[8];
+    int percent = ((currentLevel - 80) * 100) / 175;
+    snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
+    tft->setTextSize(2);
+    int textWidth = strlen(valueStr) * 12;
+    tft->setCursor((SCREEN_WIDTH - textWidth) / 2, 120);
+    tft->print(valueStr);
+    
+    // Instructions at bottom
+    tft->setTextSize(1);
+    tft->setTextColor(0x8410);  // Gray
+    tft->setCursor((SCREEN_WIDTH - 260) / 2, 150);
+    tft->print("Touch to adjust - BOOT to save");
+    
+    tft->flush();
+#endif
+}
+
+void V1Display::updateBrightnessSlider(uint8_t level) {
+    // Re-render the slider with new level
+    // Also apply the brightness in real-time for visual feedback
+    setBrightness(level);
+    showBrightnessSlider(level);
+}
+
+void V1Display::hideBrightnessSlider() {
+    // Just clear - caller will refresh normal display
+    clear();
+}
+
 void V1Display::clear() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->fillScreen(PALETTE_BG);
@@ -441,6 +508,10 @@ void V1Display::clear() {
     TFT_CALL(fillScreen)(PALETTE_BG);
 #endif
     bleProxyDrawn = false;
+}
+
+void V1Display::setGhostMode(bool enabled) {
+    ghostMode = enabled;
 }
 
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
@@ -691,6 +762,12 @@ void V1Display::drawMuteIcon(bool muted) {
     int h = 30;   // 20 * 1.5
     int x = (maxWidth - w) / 2;
     int y = freqY - h - 12; // Position above frequency with spacing
+    
+    if (ghostMode) {
+        // Clear badge area and skip text for ghosted alerts
+        FILL_RECT(x - 2, y - 2, w + 4, h + 4, PALETTE_BG);
+        return;
+    }
     
     if (muted) {
         // Draw badge with muted styling
