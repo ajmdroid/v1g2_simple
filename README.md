@@ -25,12 +25,15 @@ A configurable touchscreen display for the Valentine One Gen2 radar detector, bu
 
 ## Recent Updates
 
-**January 2026 (v1.1.26):**
-- Hide battery icon option in Colors settings
-- Battery voltage calibration fix (4.1V max)
-- Comprehensive MANUAL.md technical documentation
-- Profile write verification with retry logic
-- Bug fixes for display redraw and profile indicator
+**January 2026 (v1.3.0):**
+- Multi-alert display with secondary alert cards
+- Modern display style with Montserrat Bold TrueType font
+- Individual arrow colors and BLE icon customization
+- Per-slot Dark Mode and Mute-to-Zero (MZ) settings
+- Hide battery/BLE icon options
+- BOOT button brightness adjustment
+- ArduinoJson refactor for improved performance
+- Code optimizations and dead code cleanup
 
 **Earlier (v1.1.x):**
 - SvelteKit web interface with daisyUI

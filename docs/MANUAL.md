@@ -148,18 +148,18 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | 1315 | Application entry, loop, touch handling |
-| `ble_client.cpp` | 1827 | NimBLE client/server, V1 connection |
-| `display.cpp` | 1829 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | 1684 | WebServer, API endpoints, LittleFS serving |
+| `main.cpp` | 1342 | Application entry, loop, touch handling |
+| `ble_client.cpp` | 1657 | NimBLE client/server, V1 connection |
+| `display.cpp` | 2284 | Arduino_GFX drawing, 7/14-segment digits |
+| `wifi_manager.cpp` | 1625 | WebServer, API endpoints (ArduinoJson), LittleFS |
 | `packet_parser.cpp` | 295 | ESP packet framing and decoding |
-| `settings.cpp` | 750 | Preferences (NVS) storage |
+| `settings.cpp` | 762 | Preferences (NVS) storage |
 | `v1_profiles.cpp` | 576 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | 583 | ADC, TCA9554 I/O expander |
 | `storage_manager.cpp` | 63 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | 173 | AXS15231B I2C touch polling |
-| `event_ring.cpp` | 163 | Debug event logging |
-| `perf_metrics.cpp` | 153 | Latency tracking |
+| `touch_handler.cpp` | 150 | AXS15231B I2C touch polling |
+| `event_ring.cpp` | 162 | Debug event logging (ArduinoJson) |
+| `perf_metrics.cpp` | 156 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -462,6 +462,17 @@ Layout zones (left to right):
 
 **Source:** [src/display.h](src/display.h#L40-L55), [src/display.cpp](src/display.cpp) various show*() methods
 
+### Multi-Alert Display
+
+When multiple alerts are active simultaneously, secondary alerts appear as compact cards below the main alert:
+
+- **Main alert:** Full-size display (frequency, bars, direction)
+- **Secondary alerts:** Compact cards showing band, direction, and signal strength
+- **Toggle:** Configurable via web UI (Settings → Display → Show Multi-Alert)
+- **Keyboard shortcut:** `m` key toggles multi-alert display in web UI
+
+**Source:** [src/display.cpp](src/display.cpp#L1690-L1880) (drawSecondaryAlerts)
+
 ### Color Themes
 
 | Theme | Background | Ka | K | X | Use Case |
@@ -472,6 +483,17 @@ Layout zones (left to right):
 | Business | Navy | Amber | Steel | Teal | Professional |
 
 **Source:** [include/color_themes.h](include/color_themes.h#L1-L120)
+
+### Display Styles
+
+| Style | Font | Description |
+|-------|------|-------------|
+| Retro | 7/14-segment | Classic LED-style segmented digits with ghost segments |
+| Modern | Montserrat Bold | Antialiased TrueType font via OpenFontRender |
+
+Toggle via web UI: **Settings → Display → Display Style**
+
+**Source:** [src/display.cpp](src/display.cpp#L1993-L2050) (drawFrequencyModern), [include/FreeSansBold24pt7b.h](include/FreeSansBold24pt7b.h)
 
 ### 7-Segment Digit Rendering
 
