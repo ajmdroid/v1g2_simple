@@ -22,6 +22,7 @@
  */
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include "ble_client.h"
 #include "packet_parser.h"
 #include "display.h"
@@ -971,24 +972,24 @@ void setup() {
         });
         
         wifiManager.setAlertCallback([]() {
-            String json = "{";
+            JsonDocument doc;
             if (parser.hasAlerts()) {
                 AlertData alert = parser.getPriorityAlert();
-                json += "\"active\":true,";
-                json += "\"band\":\"";
-                if (alert.band == BAND_KA) json += "Ka";
-                else if (alert.band == BAND_K) json += "K";
-                else if (alert.band == BAND_X) json += "X";
-                else if (alert.band == BAND_LASER) json += "LASER";
-                else json += "None";
-                json += "\",";
-                json += "\"strength\":" + String(alert.frontStrength) + ",";
-                json += "\"frequency\":" + String(alert.frequency) + ",";
-                json += "\"direction\":" + String(alert.direction);
+                doc["active"] = true;
+                const char* bandStr = "None";
+                if (alert.band == BAND_KA) bandStr = "Ka";
+                else if (alert.band == BAND_K) bandStr = "K";
+                else if (alert.band == BAND_X) bandStr = "X";
+                else if (alert.band == BAND_LASER) bandStr = "LASER";
+                doc["band"] = bandStr;
+                doc["strength"] = alert.frontStrength;
+                doc["frequency"] = alert.frequency;
+                doc["direction"] = alert.direction;
             } else {
-                json += "\"active\":false";
+                doc["active"] = false;
             }
-            json += "}";
+            String json;
+            serializeJson(doc, json);
             return json;
         });
         

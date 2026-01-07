@@ -331,8 +331,8 @@ void V1BLEClient::onV1Connected(ConnectionCallback callback) {
 }
 
 void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
-    String name = advertisedDevice->getName().c_str();
-    std::string addrStr = advertisedDevice->getAddress().toString();
+    const std::string& name = advertisedDevice->getName();
+    const std::string& addrStr = advertisedDevice->getAddress().toString();
     int rssi = advertisedDevice->getRSSI();
     
     // Ignore our own proxy advertisement to avoid self-connect loops
@@ -353,10 +353,14 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
     // V1 Gen2 advertises as "V1G*" (like "V1G27B7A") or sometimes "V1-*"
-    String nameLower = name;
-    nameLower.toLowerCase();
-    
-    bool isV1 = nameLower.startsWith("v1g") || nameLower.startsWith("v1-");
+    // Case-insensitive check without creating String objects
+    bool isV1 = false;
+    if (name.length() >= 3) {
+        char c0 = name[0] | 0x20;  // lowercase
+        char c1 = name[1] | 0x20;
+        char c2 = name[2] | 0x20;
+        isV1 = (c0 == 'v' && c1 == '1' && (c2 == 'g' || c2 == '-'));
+    }
     
     if (!isV1) {
         // Not a V1 device, keep scanning
