@@ -1631,8 +1631,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    // If only 1 alert, use standard display (no cards row)
-    if (alertCount <= 1) {
+    // Check if multi-alert display is enabled in settings
+    const V1Settings& s = settingsManager.get();
+    
+    // If only 1 alert or multi-alert disabled, use standard display (no cards row)
+    if (alertCount <= 1 || !s.enableMultiAlert) {
         g_multiAlertMode = false;
         multiAlertMode = false;
         update(priority, state, alertCount);

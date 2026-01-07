@@ -553,7 +553,8 @@ void WiFiManager::handleSettingsApi() {
     json += "\"ap_password\":\"********\",";  // Don't send actual password
     json += "\"proxy_ble\":" + String(settings.proxyBLE ? "true" : "false") + ",";
     json += "\"proxy_name\":\"" + settings.proxyName + "\",";
-    json += "\"displayStyle\":" + String(static_cast<int>(settings.displayStyle));
+    json += "\"displayStyle\":" + String(static_cast<int>(settings.displayStyle)) + ",";
+    json += "\"enableMultiAlert\":" + String(settings.enableMultiAlert ? "true" : "false");
     json += "}";
     
     server.send(200, "application/json", json);
@@ -610,6 +611,12 @@ void WiFiManager::handleSettingsSave() {
         int style = server.arg("displayStyle").toInt();
         style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
+    }
+    
+    // Multi-alert display setting
+    if (server.hasArg("enableMultiAlert")) {
+        bool multiAlert = server.arg("enableMultiAlert") == "true" || server.arg("enableMultiAlert") == "1";
+        settingsManager.setEnableMultiAlert(multiAlert);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.

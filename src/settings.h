@@ -116,6 +116,9 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     
+    // Multi-alert display setting
+    bool enableMultiAlert;       // Show secondary alert cards when multiple alerts active
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -182,6 +185,7 @@ struct V1Settings {
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
+        enableMultiAlert(true),  // Enable multi-alert cards by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -246,6 +250,7 @@ public:
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
+    void setEnableMultiAlert(bool enable);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
