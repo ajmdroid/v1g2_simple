@@ -433,14 +433,6 @@ bool V1Display::begin() {
     } else {
         Serial.println("OpenFontRender initialized with Montserrat Bold");
         ofrInitialized = true;
-        
-        // Quick test render at known coordinates
-        ofr.setFontSize(24);
-        ofr.setFontColor(255, 255, 255);  // White
-        ofr.setBackgroundColor(0, 0, 0);  // Black
-        ofr.setCursor(50, 80);
-        ofr.printf("OFR OK");
-        delay(1000);  // Show briefly during boot
     }
     
     // Load color theme from settings
@@ -1245,22 +1237,6 @@ void V1Display::flush() {
         tft->flush();
     }
 #endif
-}
-
-void V1Display::showConnecting() {
-    drawBaseFrame();
-    drawStatusText("Scanning for V1...", PALETTE_TEXT);
-    drawWiFiIndicator();  // Show WiFi status while scanning
-    drawBatteryIndicator();
-}
-
-void V1Display::showConnected() {
-    drawBaseFrame();
-    drawStatusText("Connected!", PALETTE_K);
-    drawWiFiIndicator();
-    drawBatteryIndicator();
-    delay(1000);
-    drawBaseFrame();
 }
 
 void V1Display::showDisconnected() {

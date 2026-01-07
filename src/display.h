@@ -40,8 +40,6 @@ public:
     void update(const AlertData& alert, const DisplayState& state, int alertCount);
     
     // Show connection status
-    void showConnecting();
-    void showConnected();
     void showDisconnected();
     void showResting(); // idle/rest screen
     void showScanning(); // scanning screen (like resting but with SCAN text)
