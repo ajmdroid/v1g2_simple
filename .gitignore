@@ -59,6 +59,3 @@ AUDIT_SUMMARY.md
 
 # Local test captures
 r8/
-
-# Package lock files (not needed for embedded project)
-package-lock.json
