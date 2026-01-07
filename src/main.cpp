@@ -740,41 +740,29 @@ void processBLEData() {
                     // Check if it's a different band first
                     if (priority.band != mutedAlertBand && priority.band != BAND_NONE) {
                         differentAlert = true;
-                        SerialLog.printf("Different band detected: %d -> %d\n", mutedAlertBand, priority.band);
                     }
 
                     // Check for higher priority band (Ka > K > X, Laser is special)
-                    // If muted K and Ka shows up (even weak) -> unmute
-                    // If muted X and K or Ka shows up -> unmute
                     if (mutedAlertBand == BAND_K && priority.band == BAND_KA) {
                         higherPriorityBand = true;
-                        SerialLog.println("Higher priority band: K muted, Ka detected");
                     } else if (mutedAlertBand == BAND_X && (priority.band == BAND_KA || priority.band == BAND_K)) {
                         higherPriorityBand = true;
-                        SerialLog.printf("Higher priority band: X muted, %s detected\n", 
-                                    priority.band == BAND_KA ? "Ka" : "K");
                     } else if (mutedAlertBand == BAND_LASER && priority.band != BAND_LASER && priority.band != BAND_NONE) {
                         higherPriorityBand = true;
-                        SerialLog.printf("Radar band after Laser: %d\n", priority.band);
                     }
 
-                    // Only check stronger signal if band changed - same band getting stronger is not a new threat
-                    // (e.g., sweeping laser or approaching radar should stay muted)
+                    // Only check stronger signal if band changed
                     if (priority.band != mutedAlertBand && currentStrength >= mutedAlertStrength + 2) {
                         strongerSignal = true;
-                        SerialLog.printf("Stronger signal on different band: %d -> %d\n", mutedAlertStrength, currentStrength);
                     }
 
-                    // Check if it's a different frequency (for same band, >15 MHz difference)
-                    // Only applies to radar bands (laser freq is always 0)
+                    // Check if it's a different frequency (for same band, >50 MHz difference)
                     if (priority.band == mutedAlertBand && priority.frequency > 0 && mutedAlertFreq > 0) {
                         uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
                                            (priority.frequency - mutedAlertFreq) : 
                                            (mutedAlertFreq - priority.frequency);
-                        if (freqDiff > 50) {  // More than 50 MHz different
+                        if (freqDiff > 50) {
                             differentAlert = true;
-                            SerialLog.printf("Different frequency: %lu -> %lu (diff: %lu)\n", 
-                                        mutedAlertFreq, priority.frequency, freqDiff);
                         }
                     }
 
@@ -789,8 +777,6 @@ void processBLEData() {
                         mutedAlertFreq = 0;
                         if (bleClient.setMute(false)) {
                             unmuteSentTimestamp = millis();
-                        } else {
-                            SerialLog.println("Auto-unmute failed to send MUTE_OFF");
                         }
                     }
                 }
