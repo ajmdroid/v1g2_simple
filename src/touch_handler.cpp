@@ -148,26 +148,3 @@ uint8_t TouchHandler::readRegister(uint8_t reg) {
     }
     return 0;
 }
-
-void TouchHandler::readRegisters(uint8_t reg, uint8_t* buf, size_t len) {
-    Wire.beginTransmission(i2cAddr);
-    Wire.write(reg);
-    uint8_t err = Wire.endTransmission(false);  // Send restart
-    
-    if (err != 0) {
-        Serial.printf("[Touch] I2C error writing start reg 0x%02X: %d\n", reg, err);
-        memset(buf, 0, len);
-        return;
-    }
-    
-    Wire.requestFrom(i2cAddr, (uint8_t)len);
-    size_t bytesRead = 0;
-    for (size_t i = 0; i < len && Wire.available(); i++) {
-        buf[i] = Wire.read();
-        bytesRead++;
-    }
-    
-    if (bytesRead != len) {
-        Serial.printf("[Touch] Incomplete read: got %d/%d bytes from reg 0x%02X\n", bytesRead, len, reg);
-    }
-}

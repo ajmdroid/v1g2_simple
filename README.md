@@ -15,7 +15,6 @@ A configurable touchscreen display for the Valentine One Gen2 radar detector, bu
 - Profile indicator with slot names on display
 - V1 profile manager (create, edit, push)
 - BLE proxy for simultaneous JBV1 app use
-- 4 color themes (Standard, High Contrast, Stealth, Business)
 - Touch‑to‑mute and triple‑tap profile cycling
 
 **Disclaimer:** This is provided as‑is, with no warranty. Use at your own risk.

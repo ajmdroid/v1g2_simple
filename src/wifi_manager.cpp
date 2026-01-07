@@ -24,66 +24,6 @@ extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
 extern void cancelColorPreview();
 
-// HTML entity encoding for safe HTML generation
-static String htmlEscape(const String& input) {
-    String output;
-    output.reserve(input.length() + 20);  // Reserve extra space for escape sequences
-    for (size_t i = 0; i < input.length(); i++) {
-        char c = input.charAt(i);
-        switch (c) {
-            case '&':  output += "&amp;";  break;
-            case '<':  output += "&lt;";   break;
-            case '>':  output += "&gt;";   break;
-            case '"':  output += "&quot;"; break;
-            case '\'': output += "&#39;";  break;
-            default:   output += c;        break;
-        }
-    }
-    return output;
-}
-
-// JSON string escaping
-static String jsonEscape(const String& input) {
-    String output;
-    output.reserve(input.length() + 10);
-    for (size_t i = 0; i < input.length(); i++) {
-        char c = input.charAt(i);
-        switch (c) {
-            case '"':  output += "\\\""; break;
-            case '\\': output += "\\\\"; break;
-            case '\n': output += "\\n";  break;
-            case '\r': output += "\\r";  break;
-            case '\t': output += "\\t";  break;
-            default:
-                if (c < 0x20) {
-                    // Skip other control characters
-                } else {
-                    output += c;
-                }
-                break;
-        }
-    }
-    return output;
-}
-
-// CSV split helper for fixed column count
-namespace {
-bool splitCsvFixed(const String& line, String parts[], size_t expected) {
-    int start = 0;
-    size_t idx = 0;
-    while (idx < expected) {
-        int sep = line.indexOf(',', start);
-        if (sep == -1) {
-            parts[idx++] = line.substring(start);
-            break;
-        }
-        parts[idx++] = line.substring(start, sep);
-        start = sep + 1;
-    }
-    return idx == expected;
-}
-} // namespace
-
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {

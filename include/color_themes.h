@@ -1,6 +1,6 @@
 /**
  * Color Theme Definitions for V1 Gen2 Display
- * Three themes: Standard, High Contrast, and Stealth
+ * Four themes: Standard, High Contrast, Stealth, and Business
  * RGB565 format: RRRRR GGGGGG BBBBB (5 bits red, 6 bits green, 5 bits blue)
  */
 

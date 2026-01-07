@@ -3,7 +3,7 @@
  * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 AMOLED, AXS15231B)
  * 
  * Features:
- * - Multiple color themes (Standard/Dark/RDF/Classic)
+ * - Multiple color themes (Standard/HighContrast/Stealth/Business)
  * - Custom 7-segment and 14-segment displays
  * - Live alert visualization with signal bars
  * - Status indicators (WiFi, BLE proxy, mute)
