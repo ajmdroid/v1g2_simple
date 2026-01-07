@@ -296,13 +296,18 @@ Access via `http://192.168.35.5`:
 - Color theme selection (Standard, High Contrast, Stealth, Business)
 - Custom colors for all display elements
 - Per-band color customization (L/Ka/K/X)
+- Individual arrow colors (Front, Side, Rear separately)
+- BLE icon colors (connected/disconnected states)
 - Signal bar gradient colors
-- Hide WiFi/profile/battery indicators
+- Hide WiFi/BLE/profile/battery indicators
 
 **Auto-Push** (`/autopush`):
 - Three configurable slots (Default, Highway, Comfort)
 - Profile + V1 mode per slot
 - Per-slot volume settings (main + mute volume)
+- Per-slot dark mode toggle
+- Per-slot mute-to-zero toggle
+- Per-slot alert persistence (ghost) duration (0-5 seconds)
 - Custom slot names and colors
 - Quick-push buttons
 - Auto-push on V1 connection
@@ -340,8 +345,14 @@ Set up 3 profile slots for different driving scenarios:
 2. Go to Auto-Push (`/autopush`) in the web interface
 3. Configure each slot with a saved profile and V1 mode
 4. Set volume overrides if desired
-5. Enable **Auto-Push** to apply on connection
-6. Use **triple-tap** on display to cycle slots
+5. Optionally enable per-slot dark mode, mute-to-zero, or alert persistence (ghost)
+6. Enable **Auto-Push** to apply on connection
+7. Use **triple-tap** on display to cycle slots
+
+**Per-Slot Options:**
+- **Dark Mode:** Dims display to minimum when enabled for that slot
+- **Mute to Zero:** Full silent mode (no audio) instead of quiet mute
+- **Alert Persistence:** Shows last alert as a ghost (gray) for 0-5 seconds after it clears
 
 **Display Modes:**
 

@@ -148,18 +148,18 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | 1135 | Application entry, loop, touch handling |
-| `ble_client.cpp` | 1699 | NimBLE client/server, V1 connection |
-| `display.cpp` | 1605 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | 1629 | WebServer, API endpoints, LittleFS serving |
-| `packet_parser.cpp` | 287 | ESP packet framing and decoding |
-| `settings.cpp` | 625 | Preferences (NVS) storage |
-| `v1_profiles.cpp` | ~300 | Profile JSON on SD/LittleFS |
-| `battery_manager.cpp` | ~500 | ADC, TCA9554 I/O expander |
-| `storage_manager.cpp` | ~100 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | ~100 | AXS15231B I2C touch polling |
-| `event_ring.cpp` | ~120 | Debug event logging |
-| `perf_metrics.cpp` | ~100 | Latency tracking |
+| `main.cpp` | 1315 | Application entry, loop, touch handling |
+| `ble_client.cpp` | 1827 | NimBLE client/server, V1 connection |
+| `display.cpp` | 1829 | Arduino_GFX drawing, 7/14-segment digits |
+| `wifi_manager.cpp` | 1684 | WebServer, API endpoints, LittleFS serving |
+| `packet_parser.cpp` | 295 | ESP packet framing and decoding |
+| `settings.cpp` | 750 | Preferences (NVS) storage |
+| `v1_profiles.cpp` | 576 | Profile JSON on SD/LittleFS |
+| `battery_manager.cpp` | 583 | ADC, TCA9554 I/O expander |
+| `storage_manager.cpp` | 63 | SD/LittleFS mount abstraction |
+| `touch_handler.cpp` | 173 | AXS15231B I2C touch polling |
+| `event_ring.cpp` | 163 | Debug event logging |
+| `perf_metrics.cpp` | 153 | Latency tracking |
 
 ### Data Flow
 
@@ -586,7 +586,21 @@ ESP32 Preferences API with namespace `v1settings`:
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
 | slot0mode | int | 0 | Slot 0 V1 mode |
+| slot0dark | bool | false | Slot 0 dark mode |
+| slot0mz | bool | false | Slot 0 mute-to-zero |
+| slot0persist | uint8 | 0 | Slot 0 alert persistence (0-5 sec) |
 | lastV1Addr | String | "" | Last connected V1 address |
+| hideWifi | bool | false | Hide WiFi icon |
+| hideProf | bool | false | Hide profile indicator |
+| hideBatt | bool | false | Hide battery icon |
+| hideBle | bool | false | Hide BLE icon |
+| colorArrF | uint16 | theme | Front arrow color |
+| colorArrS | uint16 | theme | Side arrow color |
+| colorArrR | uint16 | theme | Rear arrow color |
+| colorBleC | uint16 | 0x07E0 | BLE connected color |
+| colorBleD | uint16 | 0x001F | BLE disconnected color |
+
+*Note: Slot 1 and 2 have analogous keys (slot1dark, slot2persist, etc.)*
 
 **Source:** [src/settings.cpp](src/settings.cpp#L50-L180)
 
@@ -664,11 +678,13 @@ Controls:
 Controls:
 - **Theme Selection:** Standard, High Contrast, Stealth, Business
 - **Custom Colors:** Per-element RGB565 colors
-  - Bogey counter, Frequency display, Arrows
+  - Bogey counter, Frequency display
+  - Individual arrow colors (Front, Side, Rear separately)
   - Band colors (L, Ka, K, X individually)
   - Signal bar gradient (6 levels)
   - WiFi icon color
-- **Status Indicators:** Hide WiFi icon, Hide profile indicator, Hide battery icon
+  - BLE icon colors (Connected, Disconnected states)
+- **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon
 - **Preview Button:** Shows color demo on physical display
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
@@ -685,6 +701,9 @@ Controls:
   - Slot indicator color
   - Main volume (0-9, or "No Change")
   - Mute volume (0-9, or "No Change")
+  - Dark mode (V1 display off when slot active)
+  - Mute to zero (mute completely silences alerts)
+  - Alert persistence / ghost (0-5 seconds, shows last alert in gray after it clears)
 - **Quick-Push Buttons:** Activate and push a slot immediately
 
 **Source:** [interface/src/routes/autopush/+page.svelte](interface/src/routes/autopush/+page.svelte)
@@ -744,7 +763,10 @@ The auto-push system automatically configures the V1 to a saved profile when con
 Each slot stores:
 - Profile name (references a profile in `/profiles/`)
 - V1 mode override (All Bogeys, Logic, Advanced Logic)
-- Volume settings (main, mute, muted volume)
+- Volume settings (main, mute volume)
+- Dark mode setting (turns off V1's display)
+- Mute to zero setting (completely silences muted alerts)
+- Alert persistence duration (0-5 seconds ghost display after alert clears)
 
 **Source:** [src/settings.cpp](src/settings.cpp#L100-L150) (slot0prof, slot0mode, etc.)
 
