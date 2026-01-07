@@ -117,12 +117,16 @@ void SettingsManager::load() {
     settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
-    settings.colorArrow = preferences.getUShort("colorArrow", 0xF800);
+    settings.colorArrowFront = preferences.getUShort("colorArrF", 0xF800);
+    settings.colorArrowSide = preferences.getUShort("colorArrS", 0xF800);
+    settings.colorArrowRear = preferences.getUShort("colorArrR", 0xF800);
     settings.colorBandL = preferences.getUShort("colorBandL", 0x001F);
     settings.colorBandKa = preferences.getUShort("colorBandKa", 0xF800);
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
+    settings.colorBleConnected = preferences.getUShort("colorBleC", 0x07E0);
+    settings.colorBleDisconnected = preferences.getUShort("colorBleD", 0x001F);
     settings.colorBar1 = preferences.getUShort("colorBar1", 0x07E0);
     settings.colorBar2 = preferences.getUShort("colorBar2", 0x07E0);
     settings.colorBar3 = preferences.getUShort("colorBar3", 0xFFE0);
@@ -224,12 +228,16 @@ void SettingsManager::save() {
     written += preferences.putInt("colorTheme", settings.colorTheme);
     written += preferences.putUShort("colorBogey", settings.colorBogey);
     written += preferences.putUShort("colorFreq", settings.colorFrequency);
-    written += preferences.putUShort("colorArrow", settings.colorArrow);
+    written += preferences.putUShort("colorArrF", settings.colorArrowFront);
+    written += preferences.putUShort("colorArrS", settings.colorArrowSide);
+    written += preferences.putUShort("colorArrR", settings.colorArrowRear);
     written += preferences.putUShort("colorBandL", settings.colorBandL);
     written += preferences.putUShort("colorBandKa", settings.colorBandKa);
     written += preferences.putUShort("colorBandK", settings.colorBandK);
     written += preferences.putUShort("colorBandX", settings.colorBandX);
     written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    written += preferences.putUShort("colorBleC", settings.colorBleConnected);
+    written += preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     written += preferences.putUShort("colorBar1", settings.colorBar1);
     written += preferences.putUShort("colorBar2", settings.colorBar2);
     written += preferences.putUShort("colorBar3", settings.colorBar3);
@@ -395,11 +403,13 @@ void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVo
     save();
 }
 
-void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
                                         uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX) {
     settings.colorBogey = bogey;
     settings.colorFrequency = freq;
-    settings.colorArrow = arrow;
+    settings.colorArrowFront = arrowFront;
+    settings.colorArrowSide = arrowSide;
+    settings.colorArrowRear = arrowRear;
     settings.colorBandL = bandL;
     settings.colorBandKa = bandKa;
     settings.colorBandK = bandK;
@@ -409,6 +419,12 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
 
 void SettingsManager::setWiFiIconColor(uint16_t color) {
     settings.colorWiFiIcon = color;
+    save();
+}
+
+void SettingsManager::setBleIconColors(uint16_t connected, uint16_t disconnected) {
+    settings.colorBleConnected = connected;
+    settings.colorBleDisconnected = disconnected;
     save();
 }
 
@@ -574,12 +590,16 @@ void SettingsManager::backupToSD() {
     // All colors (RGB565)
     doc["colorBogey"] = settings.colorBogey;
     doc["colorFrequency"] = settings.colorFrequency;
-    doc["colorArrow"] = settings.colorArrow;
+    doc["colorArrowFront"] = settings.colorArrowFront;
+    doc["colorArrowSide"] = settings.colorArrowSide;
+    doc["colorArrowRear"] = settings.colorArrowRear;
     doc["colorBandL"] = settings.colorBandL;
     doc["colorBandKa"] = settings.colorBandKa;
     doc["colorBandK"] = settings.colorBandK;
     doc["colorBandX"] = settings.colorBandX;
     doc["colorWiFiIcon"] = settings.colorWiFiIcon;
+    doc["colorBleConnected"] = settings.colorBleConnected;
+    doc["colorBleDisconnected"] = settings.colorBleDisconnected;
     doc["colorBar1"] = settings.colorBar1;
     doc["colorBar2"] = settings.colorBar2;
     doc["colorBar3"] = settings.colorBar3;
@@ -651,12 +671,16 @@ bool SettingsManager::restoreFromSD() {
     // Restore all colors
     if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
     if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
-    if (doc["colorArrow"].is<int>()) settings.colorArrow = doc["colorArrow"];
+    if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
+    if (doc["colorArrowSide"].is<int>()) settings.colorArrowSide = doc["colorArrowSide"];
+    if (doc["colorArrowRear"].is<int>()) settings.colorArrowRear = doc["colorArrowRear"];
     if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
     if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
     if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
     if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
+    if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
     if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
     if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
     if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
@@ -684,12 +708,16 @@ bool SettingsManager::restoreFromSD() {
     preferences.putInt("colorTheme", settings.colorTheme);
     preferences.putUShort("colorBogey", settings.colorBogey);
     preferences.putUShort("colorFreq", settings.colorFrequency);
-    preferences.putUShort("colorArrow", settings.colorArrow);
+    preferences.putUShort("colorArrF", settings.colorArrowFront);
+    preferences.putUShort("colorArrS", settings.colorArrowSide);
+    preferences.putUShort("colorArrR", settings.colorArrowRear);
     preferences.putUShort("colorBandL", settings.colorBandL);
     preferences.putUShort("colorBandKa", settings.colorBandKa);
     preferences.putUShort("colorBandK", settings.colorBandK);
     preferences.putUShort("colorBandX", settings.colorBandX);
     preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    preferences.putUShort("colorBleC", settings.colorBleConnected);
+    preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     preferences.putUShort("colorBar1", settings.colorBar1);
     preferences.putUShort("colorBar2", settings.colorBar2);
     preferences.putUShort("colorBar3", settings.colorBar3);

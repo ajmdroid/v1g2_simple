@@ -1551,20 +1551,29 @@ void WiFiManager::handleDisplayColorsSave() {
     
     uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
     uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : 0xF800;
-    uint16_t arrow = server.hasArg("arrow") ? server.arg("arrow").toInt() : 0xF800;
+    uint16_t arrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : 0xF800;
+    uint16_t arrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : 0xF800;
+    uint16_t arrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : 0xF800;
     uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : 0x001F;
     uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : 0xF800;
     uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
     uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
     
-    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrow=%d\n", bogey, freq, arrow);
+    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n", bogey, freq, arrowFront, arrowSide, arrowRear);
     
-    settingsManager.setDisplayColors(bogey, freq, arrow, bandL, bandKa, bandK, bandX);
+    settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX);
     
     // Handle WiFi icon color separately if provided
     if (server.hasArg("wifiIcon")) {
         uint16_t wifiIcon = server.arg("wifiIcon").toInt();
         settingsManager.setWiFiIconColor(wifiIcon);
+    }
+    
+    // Handle BLE icon colors if provided
+    if (server.hasArg("bleConnected") || server.hasArg("bleDisconnected")) {
+        uint16_t bleConn = server.hasArg("bleConnected") ? server.arg("bleConnected").toInt() : 0x07E0;
+        uint16_t bleDisc = server.hasArg("bleDisconnected") ? server.arg("bleDisconnected").toInt() : 0x001F;
+        settingsManager.setBleIconColors(bleConn, bleDisc);
     }
     
     // Handle signal bar colors if provided
@@ -1601,8 +1610,8 @@ void WiFiManager::handleDisplayColorsSave() {
 }
 
 void WiFiManager::handleDisplayColorsReset() {
-    // Reset to default colors: Bogey/Freq/Arrow=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
-    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
+    // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
+    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
@@ -1620,12 +1629,16 @@ void WiFiManager::handleDisplayColorsApi() {
     String json = "{";
     json += "\"bogey\":" + String(s.colorBogey) + ",";
     json += "\"freq\":" + String(s.colorFrequency) + ",";
-    json += "\"arrow\":" + String(s.colorArrow) + ",";
+    json += "\"arrowFront\":" + String(s.colorArrowFront) + ",";
+    json += "\"arrowSide\":" + String(s.colorArrowSide) + ",";
+    json += "\"arrowRear\":" + String(s.colorArrowRear) + ",";
     json += "\"bandL\":" + String(s.colorBandL) + ",";
     json += "\"bandKa\":" + String(s.colorBandKa) + ",";
     json += "\"bandK\":" + String(s.colorBandK) + ",";
     json += "\"bandX\":" + String(s.colorBandX) + ",";
     json += "\"wifiIcon\":" + String(s.colorWiFiIcon) + ",";
+    json += "\"bleConnected\":" + String(s.colorBleConnected) + ",";
+    json += "\"bleDisconnected\":" + String(s.colorBleDisconnected) + ",";
     json += "\"bar1\":" + String(s.colorBar1) + ",";
     json += "\"bar2\":" + String(s.colorBar2) + ",";
     json += "\"bar3\":" + String(s.colorBar3) + ",";

@@ -5,12 +5,16 @@
 	let colors = $state({
 		bogey: 0xF800,   // Red
 		freq: 0xF800,    // Red
-		arrow: 0xF800,   // Red
+		arrowFront: 0xF800,  // Red (front)
+		arrowSide: 0xF800,   // Red (side)
+		arrowRear: 0xF800,   // Red (rear)
 		bandL: 0x001F,   // Blue
 		bandKa: 0xF800,  // Red
 		bandK: 0x001F,   // Blue
 		bandX: 0x07E0,   // Green
 		wifiIcon: 0x07FF, // Cyan
+		bleConnected: 0x07E0,    // Green
+		bleDisconnected: 0x001F, // Blue
 		bar1: 0x07E0,    // Green (weakest)
 		bar2: 0x07E0,    // Green
 		bar3: 0xFFE0,    // Yellow
@@ -73,12 +77,16 @@
 			const params = new URLSearchParams();
 			params.append('bogey', colors.bogey);
 			params.append('freq', colors.freq);
-			params.append('arrow', colors.arrow);
+			params.append('arrowFront', colors.arrowFront);
+			params.append('arrowSide', colors.arrowSide);
+			params.append('arrowRear', colors.arrowRear);
 			params.append('bandL', colors.bandL);
 			params.append('bandKa', colors.bandKa);
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
 			params.append('wifiIcon', colors.wifiIcon);
+			params.append('bleConnected', colors.bleConnected);
+			params.append('bleDisconnected', colors.bleDisconnected);
 			params.append('bar1', colors.bar1);
 			params.append('bar2', colors.bar2);
 			params.append('bar3', colors.bar3);
@@ -130,12 +138,16 @@
 				colors = {
 					bogey: 0xF800,
 					freq: 0xF800,
-					arrow: 0xF800,
+					arrowFront: 0xF800,
+					arrowSide: 0xF800,
+					arrowRear: 0xF800,
 					bandL: 0x001F,
 					bandKa: 0xF800,
 					bandK: 0x001F,
 					bandX: 0x07E0,
 					wifiIcon: 0x07FF,
+					bleConnected: 0x07E0,
+					bleDisconnected: 0x001F,
 					bar1: 0x07E0,
 					bar2: 0x07E0,
 					bar3: 0xFFE0,
@@ -310,23 +322,63 @@
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Direction Arrows</h2>
-				<div class="form-control">
-					<label class="label" for="arrow-color">
-						<span class="label-text">Arrow Color</span>
-					</label>
-					<div class="flex items-center gap-3">
-						<input 
-							id="arrow-color"
-							type="color" 
-							aria-label="Direction arrow color"
-							class="w-12 h-10 cursor-pointer rounded border-0"
-							value={rgb565ToHex(colors.arrow)}
-							onchange={(e) => updateColor('arrow', e.target.value)}
-						/>
-						<span 
-							class="text-2xl font-bold"
-							style="color: {rgb565ToHex(colors.arrow)}"
-						>▲ ▼</span>
+				<div class="grid grid-cols-3 gap-4">
+					<div class="form-control">
+						<label class="label" for="arrow-front-color">
+							<span class="label-text">Front</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="arrow-front-color"
+								type="color" 
+								aria-label="Front arrow color"
+								class="w-10 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.arrowFront)}
+								onchange={(e) => updateColor('arrowFront', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.arrowFront)}"
+							>▲</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="arrow-side-color">
+							<span class="label-text">Side</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="arrow-side-color"
+								type="color" 
+								aria-label="Side arrow color"
+								class="w-10 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.arrowSide)}
+								onchange={(e) => updateColor('arrowSide', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.arrowSide)}"
+							>◀▶</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="arrow-rear-color">
+							<span class="label-text">Rear</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="arrow-rear-color"
+								type="color" 
+								aria-label="Rear arrow color"
+								class="w-10 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.arrowRear)}
+								onchange={(e) => updateColor('arrowRear', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.arrowRear)}"
+							>▼</span>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -353,6 +405,47 @@
 							class="text-2xl font-bold"
 							style="color: {rgb565ToHex(colors.wifiIcon)}"
 						>📶</span>
+					</div>
+				</div>
+				
+				<div class="grid grid-cols-2 gap-4">
+					<div class="form-control">
+						<label class="label" for="bleConnected-color">
+							<span class="label-text">BLE Connected</span>
+						</label>
+						<div class="flex items-center gap-3">
+							<input 
+								id="bleConnected-color"
+								type="color" 
+								aria-label="Bluetooth connected color"
+								class="w-12 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.bleConnected)}
+								onchange={(e) => updateColor('bleConnected', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.bleConnected)}"
+							>🔗</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="bleDisconnected-color">
+							<span class="label-text">BLE Disconnected</span>
+						</label>
+						<div class="flex items-center gap-3">
+							<input 
+								id="bleDisconnected-color"
+								type="color" 
+								aria-label="Bluetooth disconnected color"
+								class="w-12 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.bleDisconnected)}
+								onchange={(e) => updateColor('bleDisconnected', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.bleDisconnected)}"
+							>⛓️</span>
+						</div>
 					</div>
 				</div>
 				

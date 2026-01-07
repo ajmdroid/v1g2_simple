@@ -86,12 +86,16 @@ struct V1Settings {
     // Custom display colors (RGB565 format)
     uint16_t colorBogey;         // Bogey counter color
     uint16_t colorFrequency;     // Frequency display color
-    uint16_t colorArrow;         // Direction arrow color
+    uint16_t colorArrowFront;    // Front arrow color
+    uint16_t colorArrowSide;     // Side arrow color
+    uint16_t colorArrowRear;     // Rear arrow color
     uint16_t colorBandL;         // Laser band color
     uint16_t colorBandKa;        // Ka band color
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
     uint16_t colorWiFiIcon;      // WiFi indicator icon color
+    uint16_t colorBleConnected;   // Bluetooth icon when client connected
+    uint16_t colorBleDisconnected; // Bluetooth icon when no client
     uint16_t colorBar1;          // Signal bar 1 (bottom/weakest)
     uint16_t colorBar2;          // Signal bar 2
     uint16_t colorBar3;          // Signal bar 3
@@ -149,12 +153,16 @@ struct V1Settings {
         colorTheme(THEME_STANDARD),
         colorBogey(0xF800),      // Red (same as KA)
         colorFrequency(0xF800),  // Red (same as KA)
-        colorArrow(0xF800),      // Red
+        colorArrowFront(0xF800), // Red (front)
+        colorArrowSide(0xF800),  // Red (side)
+        colorArrowRear(0xF800),  // Red (rear)
         colorBandL(0x001F),      // Blue (laser)
         colorBandKa(0xF800),     // Red
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
         colorWiFiIcon(0x07FF),   // Cyan (WiFi icon)
+        colorBleConnected(0x07E0),   // Green (BLE connected)
+        colorBleDisconnected(0x001F), // Blue (BLE disconnected)
         colorBar1(0x07E0),       // Green (weakest)
         colorBar2(0x07E0),       // Green
         colorBar3(0xFFE0),       // Yellow
@@ -219,9 +227,10 @@ public:
     void setSlotName(int slotNum, const String& name);
     void setSlotColor(int slotNum, uint16_t color);
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
-    void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrow,
+    void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
     void setWiFiIconColor(uint16_t color);
+    void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);

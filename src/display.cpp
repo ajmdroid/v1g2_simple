@@ -963,9 +963,10 @@ void V1Display::drawBLEProxyIndicator() {
         return;
     }
 
-    // Icon color: blue when advertising/no client, green when JBV1 is attached
-    uint16_t btColor = bleProxyClientConnected ? dimColor(0x07E0, 85)   // Green
-                                               : dimColor(0x3B9F, 85);  // Blue
+    // Icon color from settings: connected vs disconnected
+    const V1Settings& s = settingsManager.get();
+    uint16_t btColor = bleProxyClientConnected ? dimColor(s.colorBleConnected, 85)
+                                               : dimColor(s.colorBleDisconnected, 85);
 
     // Draw Bluetooth rune - the bind rune of ᛒ (Berkanan) and ᚼ (Hagall)
     // Center point of the icon
@@ -1636,7 +1637,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     int bottomArrowCenterY = cy + sideBarH/2 + gap + bottomH/2;
 
     const V1Settings& s = settingsManager.get();
-    uint16_t onCol = muted ? PALETTE_MUTED : s.colorArrow;
+    // Get individual arrow colors (use muted color if muted)
+    uint16_t frontCol = muted ? PALETTE_MUTED : s.colorArrowFront;
+    uint16_t sideCol = muted ? PALETTE_MUTED : s.colorArrowSide;
+    uint16_t rearCol = muted ? PALETTE_MUTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions
@@ -1646,8 +1650,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     int clearBottom = bottomArrowCenterY + bottomH/2 + 15;
     FILL_RECT(cx - maxW/2 - 10, clearTop, maxW + 24, clearBottom - clearTop, PALETTE_BG);
 
-    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH) {
-        uint16_t fillCol = active ? onCol : offCol;
+    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
+        uint16_t fillCol = active ? activeCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         
         // Triangle points
@@ -1683,7 +1687,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     };
 
     auto drawSideArrow = [&](bool active) {
-        uint16_t fillCol = active ? onCol : offCol;
+        uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = 66;   // Center bar width
         const int barH = sideBarH;
@@ -1711,10 +1715,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Up, side, down arrows - using calculated center positions
-    drawTriangleArrow(topArrowCenterY, false, dir & DIR_FRONT, topW, topH, topNotchW, topNotchH);
+    // Up, side, down arrows - using calculated center positions with individual colors
+    drawTriangleArrow(topArrowCenterY, false, dir & DIR_FRONT, topW, topH, topNotchW, topNotchH, frontCol);
     drawSideArrow(dir & DIR_SIDE);
-    drawTriangleArrow(bottomArrowCenterY, true, dir & DIR_REAR, bottomW, bottomH, bottomNotchW, bottomNotchH);
+    drawTriangleArrow(bottomArrowCenterY, true, dir & DIR_REAR, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
@@ -1805,9 +1809,9 @@ uint16_t V1Display::getBandColor(Band band) {
 uint16_t V1Display::getArrowColor(Direction dir) {
     const V1Settings& s = settingsManager.get();
     switch (dir) {
-        case DIR_FRONT: return s.colorArrow;
-        case DIR_SIDE: return s.colorArrow;
-        case DIR_REAR: return s.colorArrow;
+        case DIR_FRONT: return s.colorArrowFront;
+        case DIR_SIDE: return s.colorArrowSide;
+        case DIR_REAR: return s.colorArrowRear;
         default: return TFT_DARKGREY;
     }
 }
