@@ -41,6 +41,12 @@ enum V1Mode {
     V1_MODE_ADVANCED_LOGIC = 0x03 // Advanced Logic
 };
 
+// Display style (font selection)
+enum DisplayStyle {
+    DISPLAY_STYLE_CLASSIC = 0,   // 7-segment style (original V1 look)
+    DISPLAY_STYLE_MODERN = 1     // Montserrat Bold font
+};
+
 // WiFi network credential
 struct WiFiNetwork {
     String ssid;
@@ -82,6 +88,7 @@ struct V1Settings {
     bool turnOffDisplay;
     uint8_t brightness;
     ColorTheme colorTheme;  // Color theme selection
+    DisplayStyle displayStyle;  // Font style: classic 7-segment or modern Montserrat
     
     // Custom display colors (RGB565 format)
     uint16_t colorBogey;         // Bogey counter color
@@ -152,6 +159,7 @@ struct V1Settings {
         turnOffDisplay(false),
         brightness(200),
         colorTheme(THEME_STANDARD),
+        displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
         colorBogey(0xF800),      // Red (same as KA)
         colorFrequency(0xF800),  // Red (same as KA)
         colorArrowFront(0xF800), // Red (front)
@@ -262,6 +270,7 @@ public:
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
+    void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
     void updatePrimaryWiFi(const String& ssid, const String& password) {
         settings.ssid = ssid;
         settings.password = password;

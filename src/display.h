@@ -110,6 +110,8 @@ private:
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
     void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
+    void drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted);   // 7-segment style
+    void drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted);    // Montserrat Bold font
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted);
@@ -117,6 +119,8 @@ private:
     void drawBandBadge(Band band);
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
+    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style
+    void drawTopCounterModern(char symbol, bool muted, bool showDot);        // Montserrat Bold font
     void drawMuteIcon(bool muted);
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);

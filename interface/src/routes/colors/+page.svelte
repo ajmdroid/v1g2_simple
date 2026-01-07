@@ -27,12 +27,13 @@
 		hideBleIcon: false
 	});
 	
+	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
 	
 	onMount(async () => {
-		await fetchColors();
+		await Promise.all([fetchColors(), fetchDisplayStyle()]);
 	});
 	
 	async function fetchColors() {
@@ -47,6 +48,38 @@
 			message = { type: 'error', text: 'Failed to load colors' };
 		} finally {
 			loading = false;
+		}
+	}
+	
+	async function fetchDisplayStyle() {
+		try {
+			const res = await fetch('/api/settings');
+			if (res.ok) {
+				const data = await res.json();
+				displayStyle = data.displayStyle || 0;
+			}
+		} catch (e) {
+			// Ignore - will use default
+		}
+	}
+	
+	async function saveDisplayStyle(event) {
+		const newStyle = parseInt(event.target.value);
+		try {
+			const formData = new FormData();
+			formData.append('displayStyle', newStyle);
+			const res = await fetch('/settings', {
+				method: 'POST',
+				body: formData
+			});
+			if (res.ok) {
+				displayStyle = newStyle;  // Update local state after successful save
+				message = { type: 'success', text: 'Display style updated!' };
+			} else {
+				message = { type: 'error', text: 'Failed to save display style' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Failed to save display style' };
 		}
 	}
 	
@@ -189,6 +222,25 @@
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else}
+		<!-- Display Style -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🖥️ Display Style</h2>
+				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
+				<div class="form-control">
+					<select 
+						id="display-style"
+						class="select select-bordered"
+						value={displayStyle}
+						onchange={saveDisplayStyle}
+					>
+						<option value={0}>Classic (7-Segment)</option>
+						<option value={1}>Modern</option>
+					</select>
+				</div>
+			</div>
+		</div>
+
 		<!-- Counter & Frequency -->
 		<div class="card bg-base-200">
 			<div class="card-body p-4">

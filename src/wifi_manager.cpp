@@ -552,7 +552,8 @@ void WiFiManager::handleSettingsApi() {
     json += "\"ap_ssid\":\"" + settings.apSSID + "\",";
     json += "\"ap_password\":\"********\",";  // Don't send actual password
     json += "\"proxy_ble\":" + String(settings.proxyBLE ? "true" : "false") + ",";
-    json += "\"proxy_name\":\"" + settings.proxyName + "\"";
+    json += "\"proxy_name\":\"" + settings.proxyName + "\",";
+    json += "\"displayStyle\":" + String(static_cast<int>(settings.displayStyle));
     json += "}";
     
     server.send(200, "application/json", json);
@@ -602,6 +603,13 @@ void WiFiManager::handleSettingsSave() {
     }
     if (server.hasArg("proxy_name")) {
         settingsManager.setProxyName(server.arg("proxy_name"));
+    }
+
+    // Display style setting
+    if (server.hasArg("displayStyle")) {
+        int style = server.arg("displayStyle").toInt();
+        style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
+        settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.

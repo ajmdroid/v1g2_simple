@@ -900,6 +900,9 @@ void setup() {
     // Brief delay to ensure panel is fully cleared before enabling backlight
     delay(100);
 
+    // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
+    settingsManager.begin();
+
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
         // True cold boot - show splash (shorter duration for faster boot)
@@ -908,9 +911,6 @@ void setup() {
     }
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
-    
-// Initialize settings first to get active profile slot and last V1 address
-    settingsManager.begin();
     
     // Show the current profile indicator
     display.drawProfileIndicator(settingsManager.get().activeSlot);

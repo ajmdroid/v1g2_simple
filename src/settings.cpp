@@ -115,6 +115,7 @@ void SettingsManager::load() {
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
     settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
+    settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
     settings.colorArrowFront = preferences.getUShort("colorArrF", 0xF800);
@@ -227,6 +228,7 @@ void SettingsManager::save() {
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
     written += preferences.putUChar("brightness", settings.brightness);
     written += preferences.putInt("colorTheme", settings.colorTheme);
+    written += preferences.putInt("dispStyle", settings.displayStyle);
     written += preferences.putUShort("colorBogey", settings.colorBogey);
     written += preferences.putUShort("colorFreq", settings.colorFrequency);
     written += preferences.putUShort("colorArrF", settings.colorArrowFront);
@@ -593,6 +595,7 @@ void SettingsManager::backupToSD() {
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["colorTheme"] = static_cast<int>(settings.colorTheme);
+    doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     
     // All colors (RGB565)
     doc["colorBogey"] = settings.colorBogey;
@@ -675,6 +678,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
     if (doc["colorTheme"].is<int>()) settings.colorTheme = static_cast<ColorTheme>(doc["colorTheme"].as<int>());
+    if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
     
     // Restore all colors
     if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
@@ -715,6 +719,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
     preferences.putInt("colorTheme", settings.colorTheme);
+    preferences.putInt("dispStyle", settings.displayStyle);
     preferences.putUShort("colorBogey", settings.colorBogey);
     preferences.putUShort("colorFreq", settings.colorFrequency);
     preferences.putUShort("colorArrF", settings.colorArrowFront);

@@ -13,6 +13,14 @@
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
+// OpenFontRender for antialiased TrueType rendering
+#include "OpenFontRender.h"
+#include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+
+// Global OpenFontRender instance for Modern style
+static OpenFontRender ofr;
+static bool ofrInitialized = false;
+
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
 static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
     uint8_t r = (c >> 11) & 0x1F;
@@ -412,6 +420,29 @@ bool V1Display::begin() {
     Serial.print("x");
     Serial.println(SCREEN_HEIGHT);
     
+    // Initialize OpenFontRender for antialiased Modern font
+    Serial.println("Initializing OpenFontRender...");
+    Serial.printf("Font data size: %d bytes\n", sizeof(MontserratBold));
+    ofr.setSerial(Serial);  // Enable debug output
+    ofr.showFreeTypeVersion();
+    ofr.setDrawer(*tft);  // Use Arduino_GFX canvas for drawing (dereference pointer)
+    FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
+    if (ftErr) {
+        Serial.printf("ERROR: Failed to load Montserrat font! FT_Error: 0x%02X\n", ftErr);
+        ofrInitialized = false;
+    } else {
+        Serial.println("OpenFontRender initialized with Montserrat Bold");
+        ofrInitialized = true;
+        
+        // Quick test render at known coordinates
+        ofr.setFontSize(24);
+        ofr.setFontColor(255, 255, 255);  // White
+        ofr.setBackgroundColor(0, 0, 0);  // Black
+        ofr.setCursor(50, 80);
+        ofr.printf("OFR OK");
+        delay(1000);  // Show briefly during boot
+    }
+    
     // Load color theme from settings
     updateColorTheme();
     
@@ -713,7 +744,8 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
     return cursor - x - m.spacing;
 }
 
-void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
+// Classic 7-segment bogey counter (original V1 style)
+void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f;  // Match frequency counter size
 #else
@@ -741,6 +773,117 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
         color = muted ? PALETTE_MUTED : s.colorBogey;
     }
     drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+}
+
+// Modern Montserrat Bold bogey counter
+void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Special case: lowercase 'l' (logic mode) - draw as bottom half of 'L' like V1 display
+    // Render full 'L' then mask off the top half for consistent styling
+    if (symbol == 'l') {
+        const int fontSize = 60;
+        
+        char buf[3] = {'L', 0, 0};
+        if (showDot) {
+            buf[1] = '.';
+        }
+        
+        ofr.setFontSize(fontSize);
+        
+        // Convert RGB565 background to RGB888 for antialiasing blend
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofr.setBackgroundColor(bgR, bgG, bgB);
+        
+        uint16_t color = muted ? PALETTE_MUTED : s.colorBogey;
+        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
+        int textW = bbox.xMax - bbox.xMin;
+        int textH = bbox.yMax - bbox.yMin;
+        
+        int x = 12;
+        int y = textH - 50;  // Same baseline position as other characters
+        
+        // Clear full area first
+        FILL_RECT(x - 2, 0, textW + 8, textH + 8, PALETTE_BG);
+        
+        // Render the full 'L.' 
+        ofr.setCursor(x, y);
+        ofr.printf("%s", buf);
+        
+        // Now mask off the top half by drawing a background rect over it
+        // Top of text starts at screen Y=0 (since y = textH - 50 and text renders upward)
+        int maskHeight = textH / 2;  // Cover top half of the 'L'
+        FILL_RECT(x - 2, 0, textW + 8, maskHeight, PALETTE_BG);
+        
+        return;
+    }
+    
+    // Convert lowercase mode letters to uppercase (font only has uppercase LASER)
+    char upperSymbol = symbol;
+    if (symbol >= 'a' && symbol <= 'z') {
+        upperSymbol = symbol - 32;  // Convert to uppercase
+    }
+    
+    char buf[3] = {upperSymbol, 0, 0};
+    if (showDot) {
+        buf[1] = '.';
+    }
+    
+    // Check if symbol is in the OFR font subset (0-9, -, ., L, A, S, E, R)
+    // Note: '=' (laser 3 bars) is NOT in the font, will use bitmap fallback
+    bool charInOfrFont = (upperSymbol >= '0' && upperSymbol <= '9') || 
+                         upperSymbol == '-' || upperSymbol == '.' ||
+                         upperSymbol == 'L' || upperSymbol == 'A' || upperSymbol == 'S' || 
+                         upperSymbol == 'E' || upperSymbol == 'R';
+    
+    // Fall back to Classic style if OFR not initialized or char not in font
+    if (!ofrInitialized || !charInOfrFont) {
+        // Use Classic 7-segment/14-segment rendering as fallback
+        drawTopCounterClassic(symbol, muted, showDot);
+        return;
+    }
+    
+    // OpenFontRender antialiased rendering - same font as frequency for consistency
+    const int fontSize = 60;  // Proportional to frequency (66)
+    
+    ofr.setFontSize(fontSize);
+    
+    // Convert RGB565 background to RGB888 for antialiasing blend
+    uint8_t bgR = (PALETTE_BG >> 11) << 3;
+    uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+    uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+    ofr.setBackgroundColor(bgR, bgG, bgB);
+    
+    bool isDigit = (symbol >= '0' && symbol <= '9');
+    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED : s.colorBogey);
+    ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+    
+    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
+    int textW = bbox.xMax - bbox.xMin;
+    int textH = bbox.yMax - bbox.yMin;
+    
+    int x = 12;
+    int y = textH - 50;  // Moved up 50 pixels total from baseline
+    
+    // Clear area (text renders above baseline)
+    FILL_RECT(x - 2, y - textH - 2, textW + 8, textH + 8, PALETTE_BG);
+    
+    ofr.setCursor(x, y);
+    ofr.printf("%s", buf);
+}
+
+// Router: calls appropriate bogey counter draw method based on display style
+void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
+    const V1Settings& s = settingsManager.get();
+    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
+        drawTopCounterModern(symbol, muted, showDot);
+    } else {
+        drawTopCounterClassic(symbol, muted, showDot);
+    }
 }
 
 void V1Display::drawMuteIcon(bool muted) {
@@ -1171,8 +1314,6 @@ void V1Display::showResting() {
 }
 
 void V1Display::showScanning() {
-    Serial.println("showScanning() called");
-    
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
@@ -1185,28 +1326,49 @@ void V1Display::showScanning() {
     drawMuteIcon(false);
     drawProfileIndicator(currentProfileSlot);
     
-    // Draw "SCAN" in frequency area using 14-segment font
+    const V1Settings& s = settingsManager.get();
+    
+    // Draw "SCAN" in frequency area - match display style
+    if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
+        // Modern style: use Montserrat Bold via OFR
+        const int fontSize = 66;
+        ofr.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofr.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        // Center in frequency area (left of right panel)
+        const int rightMargin = 120;
+        int maxWidth = SCREEN_WIDTH - rightMargin;
+        int x = (maxWidth - textWidth) / 2;
+        int y = SCREEN_HEIGHT - 72;  // Match frequency positioning
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofr.setCursor(x, y);
+        ofr.printf("%s", text);
+    } else {
+        // Classic style: use 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.2f;
+        const float scale = 2.2f;
 #else
-    const float scale = 1.7f;
+        const float scale = 1.7f;
 #endif
-    SegMetrics m = segMetrics(scale);
-    int y = SCREEN_HEIGHT - m.digitH - 8;
-    
-    const char* text = "SCAN";
-    // Center the text
-    int width = measureSevenSegmentText("00.000", scale); // Use approx width of freq to center similarly
-    const int rightMargin = 120;
-    int maxWidth = SCREEN_WIDTH - rightMargin;
-    int x = (maxWidth - width) / 2;
-    if (x < 0) x = 0;
-    
-    // Clear area before drawing
-    FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    
-    // Draw "SCAN" in red (using Ka band color)
-    draw14SegmentText(text, x, y, scale, PALETTE_KA, PALETTE_BG);
+        SegMetrics m = segMetrics(scale);
+        int y = SCREEN_HEIGHT - m.digitH - 8;
+        
+        const char* text = "SCAN";
+        int width = measureSevenSegmentText("00.000", scale);
+        const int rightMargin = 120;
+        int maxWidth = SCREEN_WIDTH - rightMargin;
+        int x = (maxWidth - width) / 2;
+        if (x < 0) x = 0;
+        
+        FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+        draw14SegmentText(text, x, y, scale, s.colorBandKa, PALETTE_BG);
+    }
     
     // Reset lastState
     lastState = DisplayState();
@@ -1438,13 +1600,22 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     uint8_t bandMask = state.activeBands;
     
     // Show '=' (3 horizontal bars) for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
+    // In Modern style, skip drawing the useless '=' for laser
+    const V1Settings& settings = settingsManager.get();
     char countChar;
+    bool skipTopCounter = false;
     if (alert.band == BAND_LASER) {
-        countChar = '=';  // 3 horizontal bars like official V1
+        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
+            skipTopCounter = true;  // Don't draw anything for laser in modern
+        } else {
+            countChar = '=';  // 3 horizontal bars like official V1 (classic only)
+        }
     } else {
         countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
     }
-    drawTopCounter(countChar, state.muted, true);
+    if (!skipTopCounter) {
+        drawTopCounter(countChar, state.muted, true);
+    }
     
     // Frequency from priority alert
     drawFrequency(alert.frequency, alert.band == BAND_LASER, state.muted);
@@ -1554,7 +1725,8 @@ void V1Display::drawSignalBars(uint8_t bars) {
     }
 }
 
-void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
+// Classic 7-segment frequency display (original V1 style)
+void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f; // Larger for wider screen
 #else
@@ -1602,6 +1774,70 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
     FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
     uint16_t freqColor = muted ? PALETTE_MUTED : (hasFreq ? s.colorFrequency : PALETTE_GRAY);
     drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
+}
+
+// Modern frequency display - Antialiased with OpenFontRender
+void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if OFR not initialized or resting state (show dim 7-seg dashes)
+    if (!ofrInitialized || (freqMHz == 0 && !isLaser)) {
+        drawFrequencyClassic(freqMHz, isLaser, muted);
+        return;
+    }
+    
+    // OpenFontRender antialiased rendering
+    const int fontSize = 66;  // Larger font size
+    const int rightMargin = 120;  // Match Classic - leave room for arrow stack
+    
+    ofr.setFontSize(fontSize);
+    ofr.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency - minimal height to avoid covering band labels
+    int maxWidth = SCREEN_WIDTH - rightMargin;
+    FILL_RECT(0, SCREEN_HEIGHT - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (isLaser) {
+        uint16_t color = muted ? PALETTE_MUTED : s.colorBandL;
+        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+        
+        ofr.setCursor(x, SCREEN_HEIGHT - 72);
+        ofr.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    uint16_t freqColor = muted ? PALETTE_MUTED : (freqMHz > 0 ? s.colorFrequency : PALETTE_GRAY);
+    ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+    
+    ofr.setCursor(x, SCREEN_HEIGHT - 72);
+    ofr.printf("%s", freqStr);
+}
+
+// Router: calls appropriate frequency draw method based on display style setting
+void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
+        drawFrequencyModern(freqMHz, isLaser, muted);
+    } else {
+        drawFrequencyClassic(freqMHz, isLaser, muted);
+    }
 }
 
 
