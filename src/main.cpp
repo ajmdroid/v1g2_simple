@@ -788,10 +788,14 @@ void processBLEData() {
                         displayMode = DisplayMode::GHOST;
                         continue;  // Keep ghost on screen; avoid resting redraws
                     } else if (persistedAlert.active && millis() > persistedAlert.expiresAt) {
+                        // Ghost expired - clear and show resting state
                         persistedAlert.active = false;
                         persistedAlert.expiresAt = 0;
                         persistedAlert.alert = AlertData();
                         displayMode = DisplayMode::IDLE;
+                        display.showResting();  // Immediately redraw idle display
+                        lastDisplayDraw = millis();
+                        continue;
                     }
                 } else {
                     displayMode = DisplayMode::IDLE;
@@ -1248,9 +1252,12 @@ void loop() {
                     // Skip other redraws while ghost is active
                     skipDisplayTick = true;
                 } else {
+                    // Ghost expired - clear and redraw resting state
                     persistedAlert = PersistedAlert();
                     displayMode = DisplayMode::IDLE;
                     ghostExpiresAt = 0;
+                    display.showResting();  // Redraw idle display after ghost ends
+                    skipDisplayTick = true;  // Skip further draws this cycle
                 }
             }
 
