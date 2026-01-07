@@ -481,42 +481,6 @@ void WiFiManager::handleFailsafeUI() {
     server.send(200, "text/html", html);
 }
 
-void WiFiManager::handleApiStatus() {
-    // Enhanced status endpoint for failsafe UI
-    // Returns BLE state, proxy metrics, heap, and AP status
-    
-    JsonDocument doc;
-    
-    // BLE state
-    doc["ble_state"] = bleStateToString(bleClient.getBLEState());
-    doc["ble_connected"] = bleClient.isConnected();
-    
-    // Proxy metrics
-    const ProxyMetrics& pm = bleClient.getProxyMetrics();
-    doc["proxy_connected"] = bleClient.isProxyClientConnected();
-    
-    // Calculate sends per second
-    unsigned long uptime = (millis() - pm.lastResetMs) / 1000;
-    uint32_t sendsPerSec = (uptime > 0) ? (pm.sendCount / uptime) : 0;
-    doc["proxy_sends_per_sec"] = sendsPerSec;
-    doc["proxy_queue_hw"] = pm.queueHighWater;
-    doc["proxy_drops"] = pm.dropCount;
-    
-    // Heap
-    doc["heap_free"] = ESP.getFreeHeap();
-    doc["heap_min"] = ESP.getMinFreeHeap();
-    
-    // WiFi state (AP-only)
-    doc["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
-    
-    // Uptime
-    doc["uptime_sec"] = millis() / 1000;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
 void WiFiManager::handleApiProfilePush() {
     // Queue profile push action (non-blocking)
     // This endpoint triggers the push executor to apply active profile
