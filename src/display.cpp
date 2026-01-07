@@ -21,6 +21,15 @@
 static OpenFontRender ofr;
 static bool ofrInitialized = false;
 
+// Multi-alert mode tracking (extern from V1Display class)
+static bool g_multiAlertMode = false;
+static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
+
+// Helper to get effective screen height (reduced when multi-alert cards are shown)
+static inline int getEffectiveScreenHeight() {
+    return g_multiAlertMode ? (SCREEN_HEIGHT - MULTI_ALERT_OFFSET) : SCREEN_HEIGHT;
+}
+
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
 static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
     uint8_t r = (c >> 11) & 0x1F;
@@ -887,8 +896,8 @@ void V1Display::drawMuteIcon(bool muted) {
 #endif
     SegMetrics mFreq = segMetrics(freqScale);
 
-    // Frequency Y position (from drawFrequency)
-    int freqY = SCREEN_HEIGHT - mFreq.digitH - 8;
+    // Frequency Y position (from drawFrequency) - use effective height for multi-alert
+    int freqY = getEffectiveScreenHeight() - mFreq.digitH - 8;
     const int rightMargin = 120;
     int maxWidth = SCREEN_WIDTH - rightMargin;
     
@@ -1025,7 +1034,7 @@ void V1Display::drawBatteryIndicator() {
     const int battX = 12;   // Align with bogey counter left edge
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
-    const int battY = SCREEN_HEIGHT - battH - 8;  // Bottom aligned with frequency
+    const int battY = getEffectiveScreenHeight() - battH - 8;  // Bottom aligned with frequency
     
     // Check if user explicitly hides the battery icon
     if (s.hideBatteryIcon) {
@@ -1082,7 +1091,7 @@ void V1Display::drawBLEProxyIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     // Stack above WiFi indicator to keep the left column compact
     const int battH = 14;
-    const int battY = SCREEN_HEIGHT - battH - 8;
+    const int battY = getEffectiveScreenHeight() - battH - 8;
     const int wifiSize = 20;
     const int wifiY = battY - wifiSize - 6;
 
@@ -1173,7 +1182,7 @@ void V1Display::drawWiFiIndicator() {
     // WiFi icon position - above battery icon, bottom left
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int battY = SCREEN_HEIGHT - 14 - 8;
+    const int battY = getEffectiveScreenHeight() - 14 - 8;
     const int wifiY = battY - wifiSize - 6;
     
     // Check if user explicitly hides the WiFi icon
@@ -1320,7 +1329,7 @@ void V1Display::showScanning() {
         const int rightMargin = 120;
         int maxWidth = SCREEN_WIDTH - rightMargin;
         int x = (maxWidth - textWidth) / 2;
-        int y = SCREEN_HEIGHT - 72;  // Match frequency positioning
+        int y = getEffectiveScreenHeight() - 72;  // Match frequency positioning
         
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofr.setCursor(x, y);
@@ -1333,7 +1342,7 @@ void V1Display::showScanning() {
         const float scale = 1.7f;
 #endif
         SegMetrics m = segMetrics(scale);
-        int y = SCREEN_HEIGHT - m.digitH - 8;
+        int y = getEffectiveScreenHeight() - m.digitH - 8;
         
         const char* text = "SCAN";
         int width = measureSevenSegmentText("00.000", scale);
@@ -1616,6 +1625,230 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     lastState = state;
 }
 
+// Multi-alert update: draws priority alert with secondary alert cards below
+void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
+    if (!priority.isValid) {
+        return;
+    }
+    
+    // If only 1 alert, use standard display (no cards row)
+    if (alertCount <= 1) {
+        g_multiAlertMode = false;
+        multiAlertMode = false;
+        update(priority, state, alertCount);
+        return;
+    }
+
+    // Enable multi-alert mode to shift main content up
+    g_multiAlertMode = true;
+    multiAlertMode = true;
+
+    // Always redraw for clean display
+    drawBaseFrame();
+
+    // Use activeBands from display state
+    uint8_t bandMask = state.activeBands;
+    
+    // Bogey counter
+    const V1Settings& settings = settingsManager.get();
+    char countChar;
+    bool skipTopCounter = false;
+    if (priority.band == BAND_LASER) {
+        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
+            skipTopCounter = true;
+        } else {
+            countChar = '=';
+        }
+    } else {
+        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
+    }
+    if (!skipTopCounter) {
+        drawTopCounter(countChar, state.muted, true);
+    }
+    
+    // Main alert display (frequency, bands, arrows, signal bars)
+    drawFrequency(priority.frequency, priority.band == BAND_LASER, state.muted);
+    drawBandIndicators(bandMask, state.muted);
+    drawVerticalSignalBars(priority.frontStrength, priority.rearStrength, priority.band, state.muted);
+    drawDirectionArrow(state.arrows, state.muted);
+    drawMuteIcon(state.muted);
+    drawProfileIndicator(currentProfileSlot);
+    
+    // Draw secondary alert cards at bottom (use ghostMode for muted styling)
+    drawSecondaryAlertCards(allAlerts, alertCount, priority, ghostMode);
+    
+    // Reset multi-alert mode after drawing
+    g_multiAlertMode = false;
+    multiAlertMode = false;
+
+#if defined(DISPLAY_WAVESHARE_349)
+    tft->flush();
+#endif
+
+    lastAlert = priority;
+    lastState = state;
+}
+
+// Draw mini alert cards for secondary (non-priority) alerts
+void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
+#if defined(DISPLAY_WAVESHARE_349)
+    const int cardH = SECONDARY_ROW_HEIGHT;  // Full height, no margin
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Flush to bottom
+    const int maxCards = 3;  // Max secondary cards to show
+    const int cardW = 170;   // Bigger cards
+    const int cardSpacing = 8;
+    const int startX = 10;   // Start closer to left edge
+    static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
+    
+    // Static tracking for grace period - each slot remembers its last alert
+    static struct {
+        AlertData alert{};
+        unsigned long lastSeen = 0;
+    } cardSlots[3];
+    
+    // Helper lambda to match alerts (same band and similar frequency)
+    auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
+        if (a.band != b.band) return false;
+        if (a.frequency > 0 && b.frequency > 0) {
+            uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
+            return diff < 50;
+        }
+        return true;
+    };
+    
+    // Collect current secondary alerts (skip the priority alert)
+    AlertData currentSecondary[maxCards];
+    int currentCount = 0;
+    
+    for (int i = 0; i < alertCount && currentCount < maxCards; i++) {
+        if (alerts[i].frequency == priority.frequency && 
+            alerts[i].band == priority.band &&
+            alerts[i].direction == priority.direction) {
+            continue;
+        }
+        if (alerts[i].isValid && alerts[i].band != BAND_NONE) {
+            currentSecondary[currentCount++] = alerts[i];
+        }
+    }
+    
+    unsigned long now = millis();
+    
+    // Update card slots: refresh lastSeen for alerts still present, keep grace period for dropped ones
+    for (int slot = 0; slot < maxCards; slot++) {
+        bool stillActive = false;
+        
+        // Check if this slot's alert is still in current alerts
+        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE) {
+            for (int c = 0; c < currentCount; c++) {
+                if (alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
+                    stillActive = true;
+                    cardSlots[slot].lastSeen = now;
+                    break;
+                }
+            }
+        }
+        
+        // Clear slot if grace period expired
+        if (!stillActive && cardSlots[slot].lastSeen > 0 && (now - cardSlots[slot].lastSeen) > CARD_GRACE_MS) {
+            cardSlots[slot].alert = AlertData();
+            cardSlots[slot].lastSeen = 0;
+        }
+    }
+    
+    // Assign new alerts to empty slots
+    for (int c = 0; c < currentCount; c++) {
+        bool found = false;
+        for (int slot = 0; slot < maxCards; slot++) {
+            if (cardSlots[slot].alert.isValid && alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
+                // Update existing slot with current data
+                cardSlots[slot].alert = currentSecondary[c];
+                cardSlots[slot].lastSeen = now;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // Find empty slot
+            for (int slot = 0; slot < maxCards; slot++) {
+                if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) {
+                    cardSlots[slot].alert = currentSecondary[c];
+                    cardSlots[slot].lastSeen = now;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Clear the secondary row area
+    FILL_RECT(0, cardY, SCREEN_WIDTH, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    
+    // Draw cards for all valid slots (live or within grace period)
+    int drawnCount = 0;
+    for (int slot = 0; slot < maxCards && drawnCount < maxCards; slot++) {
+        if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) continue;
+        if (cardSlots[slot].lastSeen == 0) continue;
+        
+        const AlertData& alert = cardSlots[slot].alert;
+        bool isGraced = (now - cardSlots[slot].lastSeen) > 0;  // Any age means it's being held
+        bool drawMuted = muted || (isGraced && (now - cardSlots[slot].lastSeen) > 100);  // Grace cards go grey after 100ms
+        
+        int cardX = startX + drawnCount * (cardW + cardSpacing);
+        drawnCount++;
+        
+        // Card background with band color tint (use grey for ghost/grace mode)
+        uint16_t bandCol = drawMuted ? PALETTE_MUTED : getBandColor(alert.band);
+        uint8_t r = ((bandCol >> 11) & 0x1F) * (drawMuted ? 2 : 3) / 10;
+        uint8_t g = ((bandCol >> 5) & 0x3F) * (drawMuted ? 2 : 3) / 10;
+        uint8_t b = (bandCol & 0x1F) * (drawMuted ? 2 : 3) / 10;
+        uint16_t bgCol = (r << 11) | (g << 5) | b;
+        
+        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bandCol);
+        
+        // Draw direction arrow
+        int arrowX = cardX + 18;
+        int arrowCY = cardY + cardH / 2;
+        uint16_t arrowCol = drawMuted ? PALETTE_MUTED : TFT_WHITE;
+        
+        if (alert.direction & DIR_FRONT) {
+            int aw = 14, ah = 16;
+            tft->fillTriangle(arrowX, arrowCY - ah/2, 
+                             arrowX - aw/2, arrowCY + ah/2,
+                             arrowX + aw/2, arrowCY + ah/2, arrowCol);
+        } else if (alert.direction & DIR_REAR) {
+            int aw = 14, ah = 16;
+            tft->fillTriangle(arrowX, arrowCY + ah/2,
+                             arrowX - aw/2, arrowCY - ah/2,
+                             arrowX + aw/2, arrowCY - ah/2, arrowCol);
+        } else if (alert.direction & DIR_SIDE) {
+            FILL_RECT(arrowX - 8, arrowCY - 3, 16, 6, arrowCol);
+        }
+        
+        // Frequency
+        char freqStr[10];
+        if (alert.band == BAND_LASER) {
+            snprintf(freqStr, sizeof(freqStr), "LASER");
+        } else if (alert.frequency > 0) {
+            snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "---");
+        }
+        tft->setTextColor(drawMuted ? PALETTE_MUTED : TFT_WHITE);
+        tft->setTextSize(2);
+        tft->setCursor(cardX + 32, cardY + (cardH - 16) / 2);
+        tft->print(freqStr);
+        
+        // Band label
+        tft->setTextColor(bandCol);
+        tft->setTextSize(2);
+        const char* bandStr = bandToString(alert.band);
+        int bandW = strlen(bandStr) * 12;
+        tft->setCursor(cardX + cardW - bandW - 6, cardY + (cardH - 16) / 2);
+        tft->print(bandStr);
+    }
+#endif
+}
+
 void V1Display::drawBandBadge(Band band) {
     if (band == BAND_NONE) {
         return;
@@ -1684,11 +1917,13 @@ void V1Display::drawSignalBars(uint8_t bars) {
     }
     
     int startX = (SCREEN_WIDTH - (MAX_SIGNAL_BARS * (BAR_WIDTH + BAR_SPACING))) / 2;
+    // Adjust Y position for multi-alert mode
+    int barsY = g_multiAlertMode ? (BARS_Y - MULTI_ALERT_OFFSET) : BARS_Y;
     
     for (uint8_t i = 0; i < MAX_SIGNAL_BARS; i++) {
         int x = startX + i * (BAR_WIDTH + BAR_SPACING);
         int height = BAR_HEIGHT * (i + 1) / MAX_SIGNAL_BARS;
-        int y = BARS_Y + (BAR_HEIGHT - height);
+        int y = barsY + (BAR_HEIGHT - height);
         
         if (i < bars) {
             // Draw filled bar
@@ -1710,8 +1945,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted)
 #endif
     SegMetrics m = segMetrics(scale);
     
-    // Position frequency at bottom with proper margin
-    int y = SCREEN_HEIGHT - m.digitH - 8;  // More margin from bottom
+    // Position frequency at bottom with proper margin (shifted up in multi-alert mode)
+    int y = getEffectiveScreenHeight() - m.digitH - 8;
     
     if (isLaser) {
         // Draw "LASER" centered with margin for arrows on right - use 14-segment for proper 'R'
@@ -1765,13 +2000,15 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
     // OpenFontRender antialiased rendering
     const int fontSize = 66;  // Larger font size
     const int rightMargin = 120;  // Match Classic - leave room for arrow stack
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 72;  // Position based on effective height
     
     ofr.setFontSize(fontSize);
     ofr.setBackgroundColor(0, 0, 0);  // Black background
     
     // Clear bottom area for frequency - minimal height to avoid covering band labels
     int maxWidth = SCREEN_WIDTH - rightMargin;
-    FILL_RECT(0, SCREEN_HEIGHT - 5, maxWidth, 5, PALETTE_BG);
+    FILL_RECT(0, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
     if (isLaser) {
         uint16_t color = muted ? PALETTE_MUTED : s.colorBandL;
@@ -1782,7 +2019,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
         int textW = bbox.xMax - bbox.xMin;
         int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
         
-        ofr.setCursor(x, SCREEN_HEIGHT - 72);
+        ofr.setCursor(x, freqY);
         ofr.printf("LASER");
         return;
     }
@@ -1802,7 +2039,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
     int textW = bbox.xMax - bbox.xMin;
     int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
     
-    ofr.setCursor(x, SCREEN_HEIGHT - 72);
+    ofr.setCursor(x, freqY);
     ofr.printf("%s", freqStr);
 }
 
@@ -1827,7 +2064,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     // Position arrows to fit ABOVE frequency display at bottom
     // Frequency starts around y=126, so arrows must end before that
     // Keep overall position, center middle arrow between top and bottom
-    cy = 95;
+    // Shift up when multi-alert mode is active
+    cy = g_multiAlertMode ? 75 : 95;
     cx -= 6;
 #endif
     
@@ -1977,7 +2215,9 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
-    int startY = (SCREEN_HEIGHT - totalH) / 2;
+    // Use effective height to shift up in multi-alert mode
+    int effectiveH = getEffectiveScreenHeight();
+    int startY = (effectiveH - totalH) / 2;
 
     // Clear area once
     FILL_RECT(startX - 2, startY - 2, barWidth + 4, totalH + 4, PALETTE_BG);

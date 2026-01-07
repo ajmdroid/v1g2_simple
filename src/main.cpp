@@ -89,12 +89,34 @@ static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / si
 struct PersistedAlert {
     AlertData alert{};
     DisplayState state{};
+    AlertData allAlerts[4];  // Store up to 4 alerts for ghost mode
     int alertCount = 0;
     bool active = false;
     unsigned long expiresAt = 0;
 };
 
 static PersistedAlert persistedAlert;
+
+// Secondary card grace period: keep cards visible briefly after alert drops
+// This prevents flicker from brief signal dropouts
+static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
+struct CardSlot {
+    AlertData alert{};
+    unsigned long lastSeen = 0;  // When this alert was last active
+};
+static CardSlot cardSlots[3];  // Up to 3 secondary card slots
+
+// Helper to check if two alerts are the same (same band and similar frequency)
+static bool alertsMatch(const AlertData& a, const AlertData& b) {
+    if (a.band != b.band) return false;
+    // For radar bands, allow some frequency tolerance (50 MHz)
+    if (a.frequency > 0 && b.frequency > 0) {
+        uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
+        return diff < 50;
+    }
+    return true;  // Laser or no freq - just match by band
+}
+
 enum class DisplayMode {
     IDLE,
     LIVE,
@@ -686,13 +708,24 @@ void processBLEData() {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
+                const auto& currentAlerts = parser.getAllAlerts();
                 
                 // Stash for persistence (render muted if used later)
+                // Always update the priority alert with the current strongest
                 persistedAlert.alert = priority;
                 persistedAlert.alert.isValid = true;
                 persistedAlert.state = state;
                 persistedAlert.state.muted = true;  // render ghost in muted palette
-                persistedAlert.alertCount = alertCount;
+                
+                // Store multi-alert state: keep the highest alert count seen in this alert session
+                // This preserves cards when alerts drop off one by one before ghost triggers
+                if (alertCount > persistedAlert.alertCount) {
+                    persistedAlert.alertCount = alertCount;
+                    // Store all alerts for ghost mode secondary cards
+                    for (int i = 0; i < std::min(alertCount, 4); i++) {
+                        persistedAlert.allAlerts[i] = currentAlerts[i];
+                    }
+                }
                 persistedAlert.active = false;
                 persistedAlert.expiresAt = 0;
                 displayMode = DisplayMode::LIVE;
@@ -763,7 +796,8 @@ void processBLEData() {
                 }
 
                 // Update display FIRST for lowest latency
-                display.update(priority, state, alertCount);
+                // Pass all alerts for multi-alert card display
+                display.update(priority, currentAlerts.data(), alertCount, state);
                 
             } else {
                 // Enable alert persistence (ghost) if configured for the active slot
@@ -779,8 +813,13 @@ void processBLEData() {
                         displayMode = DisplayMode::GHOST;
 
                         // Draw ghost once and hold; skip other draws this cycle
+                        // Use multi-alert update to show ghost cards if there were multiple alerts
                         display.setGhostMode(true);
-                        display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
+                        if (persistedAlert.alertCount > 1) {
+                            display.update(persistedAlert.alert, persistedAlert.allAlerts, persistedAlert.alertCount, persistedAlert.state);
+                        } else {
+                            display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
+                        }
                         display.setGhostMode(false);
                         lastDisplayDraw = millis();
                         continue;
@@ -792,6 +831,7 @@ void processBLEData() {
                         persistedAlert.active = false;
                         persistedAlert.expiresAt = 0;
                         persistedAlert.alert = AlertData();
+                        persistedAlert.alertCount = 0;
                         displayMode = DisplayMode::IDLE;
                         display.showResting();  // Immediately redraw idle display
                         lastDisplayDraw = millis();

@@ -38,6 +38,8 @@ public:
     void update(const AlertData& alert, bool mutedFlag);
     void update(const AlertData& alert);
     void update(const AlertData& alert, const DisplayState& state, int alertCount);
+    // Multi-alert display: shows priority alert + secondary alert cards
+    void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
     
     // Show connection status
     void showDisconnected();
@@ -126,6 +128,10 @@ private:
     void draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     int draw14SegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     Band pickDominantBand(uint8_t bandMask);
+    
+    // Multi-alert card row
+    void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
+    static constexpr int SECONDARY_ROW_HEIGHT = 38;  // Height reserved for secondary alert cards
 
     int currentProfileSlot = 0;  // Track current profile for display
     
@@ -138,6 +144,7 @@ private:
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool ghostMode = false;                 // Render muted ghost without mute badge
+    bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 
