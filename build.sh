@@ -129,7 +129,7 @@ echo ""
 # Step 1: Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}🧹 Cleaning build artifacts...${NC}"
-    $PIO_CMD run $PIO_ARGS -t clean
+    "$PIO_CMD" run $PIO_ARGS -t clean
     rm -rf interface/build interface/.svelte-kit
     echo -e "${GREEN}✅ Clean complete${NC}"
     echo ""
@@ -182,7 +182,7 @@ fi
 
 # Step 3: Build firmware
 echo -e "${YELLOW}🔧 Building firmware (env: $PIO_ENV)...${NC}"
-$PIO_CMD run $PIO_ARGS
+"$PIO_CMD" run $PIO_ARGS
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Firmware build failed!${NC}"
@@ -193,13 +193,13 @@ echo -e "${GREEN}✅ Firmware built successfully${NC}"
 
 # Show build size
 echo -e "${BLUE}📊 Build size:${NC}"
-$PIO_CMD run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
+"$PIO_CMD" run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
 # Step 4: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
-    $PIO_CMD run $PIO_ARGS -t uploadfs
+    "$PIO_CMD" run $PIO_ARGS -t uploadfs
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Filesystem upload failed!${NC}"
@@ -213,7 +213,7 @@ fi
 # Step 5: Upload firmware if requested
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
-    $PIO_CMD run $PIO_ARGS -t upload
+    "$PIO_CMD" run $PIO_ARGS -t upload
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Firmware upload failed!${NC}"
@@ -230,7 +230,14 @@ if [ "$MONITOR" = true ]; then
     echo -e "${BLUE}(Press Ctrl+C to exit)${NC}"
     echo ""
     sleep 1
-    $PIO_CMD device monitor $PIO_ARGS
+    # Remap upload port to monitor port and strip upload-only flags
+    MONITOR_ARGS="$PIO_ARGS"
+    if echo "$MONITOR_ARGS" | grep -q -- "--upload-port"; then
+        PORT_VAL=$(echo "$MONITOR_ARGS" | sed -n 's/.*--upload-port[[:space:]]\+([^[:space:]]\+).*/\1/p')
+        MONITOR_ARGS=$(echo "$MONITOR_ARGS" | sed 's/--upload-port[[:space:]]\+[^[:space:]]\+//g')
+        MONITOR_ARGS="$MONITOR_ARGS --port $PORT_VAL"
+    fi
+    "$PIO_CMD" device monitor $MONITOR_ARGS
 fi
 
 # Final summary

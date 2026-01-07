@@ -23,7 +23,8 @@
 		bar6: 0xF800,    // Red (strongest)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
-		hideBatteryIcon: false
+		hideBatteryIcon: false,
+		hideBleIcon: false
 	});
 	
 	let loading = $state(true);
@@ -96,6 +97,7 @@
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
+			params.append('hideBleIcon', colors.hideBleIcon);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -156,7 +158,8 @@
 					bar6: 0xF800,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
-					hideBatteryIcon: false
+					hideBatteryIcon: false,
+					hideBleIcon: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -493,6 +496,21 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideBatteryIcon}
 							onchange={(e) => colors.hideBatteryIcon = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide BLE Icon</span>
+							<p class="text-xs text-base-content/50">Hide the Bluetooth proxy indicator</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideBleIcon}
+							onchange={(e) => colors.hideBleIcon = e.target.checked}
 						/>
 					</label>
 				</div>

@@ -136,6 +136,7 @@ void SettingsManager::load() {
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
+    settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -247,6 +248,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -453,6 +455,11 @@ void SettingsManager::setHideBatteryIcon(bool hide) {
     save();
 }
 
+void SettingsManager::setHideBleIcon(bool hide) {
+    settings.hideBleIcon = hide;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -611,6 +618,7 @@ void SettingsManager::backupToSD() {
     doc["hideWifiIcon"] = settings.hideWifiIcon;
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
+    doc["hideBleIcon"] = settings.hideBleIcon;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -692,6 +700,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
@@ -727,6 +736,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);

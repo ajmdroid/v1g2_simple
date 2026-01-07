@@ -107,6 +107,7 @@ struct V1Settings {
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
+    bool hideBleIcon;            // Hide BLE icon
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -172,6 +173,7 @@ struct V1Settings {
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
+        hideBleIcon(false),      // Show BLE icon by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -235,6 +237,7 @@ public:
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
+    void setHideBleIcon(bool hide);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

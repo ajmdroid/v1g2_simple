@@ -963,8 +963,14 @@ void V1Display::drawBLEProxyIndicator() {
         return;
     }
 
-    // Icon color from settings: connected vs disconnected
+    // Check if BLE icon should be hidden
     const V1Settings& s = settingsManager.get();
+    if (s.hideBleIcon) {
+        bleProxyDrawn = false;
+        return;
+    }
+
+    // Icon color from settings: connected vs disconnected
     uint16_t btColor = bleProxyClientConnected ? dimColor(s.colorBleConnected, 85)
                                                : dimColor(s.colorBleDisconnected, 85);
 
