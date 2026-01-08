@@ -80,9 +80,8 @@ public:
     size_t getAlertCount() const { return alertCount; }
 
     // Check if there are active alerts
-    // Check both alertCount AND displayState.activeBands to handle timing gaps
-    // between alert data packets and display data packets
-    bool hasAlerts() const { return alertCount > 0 || displayState.activeBands != BAND_NONE; }
+    // Only check alertCount - display state can lag behind
+    bool hasAlerts() const { return alertCount > 0; }
 
 private:
     DisplayState displayState;

@@ -1604,6 +1604,7 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
         alertCount != lastSingleCount ||
         state.activeBands != lastSingleState.activeBands ||
         state.arrows != lastSingleState.arrows ||
+        state.signalBars != lastSingleState.signalBars ||
         state.muted != lastSingleState.muted;
     
     if (!needsRedraw) {
@@ -1644,8 +1645,8 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     // Use bands from display state for the indicators
     drawBandIndicators(bandMask, state.muted);
     
-    // Signal bars from priority alert
-    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, state.muted);
+    // Signal bars from display state (max across all alerts, calculated in packet_parser)
+    drawVerticalSignalBars(state.signalBars, state.signalBars, alert.band, state.muted);
     
     // Direction from display state (shows all active arrows)
     drawDirectionArrow(state.arrows, state.muted);
@@ -1713,18 +1714,26 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    // Track arrow changes separately for incremental update
+    // Track arrow and signal bar changes separately for incremental update
     static uint8_t lastArrows = 0;
+    static uint8_t lastSignalBars = 0;
     bool arrowsChanged = (state.arrows != lastArrows);
+    bool signalBarsChanged = (state.signalBars != lastSignalBars);
     
-    if (!needsRedraw && !arrowsChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged) {
         return;  // Nothing changed at all
     }
     
-    if (!needsRedraw && arrowsChanged) {
-        // Only arrows changed - do incremental arrow update without full redraw
-        lastArrows = state.arrows;
-        drawDirectionArrow(state.arrows, state.muted);
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged)) {
+        // Only arrows and/or signal bars changed - do incremental update without full redraw
+        if (arrowsChanged) {
+            lastArrows = state.arrows;
+            drawDirectionArrow(state.arrows, state.muted);
+        }
+        if (signalBarsChanged) {
+            lastSignalBars = state.signalBars;
+            drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
+        }
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1736,6 +1745,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastAlertCount = alertCount;
     lastMultiState = state;
     lastArrows = state.arrows;
+    lastSignalBars = state.signalBars;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
@@ -1763,9 +1773,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     
     // Main alert display (frequency, bands, arrows, signal bars)
+    // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
     drawFrequency(priority.frequency, priority.band == BAND_LASER, state.muted);
     drawBandIndicators(bandMask, state.muted);
-    drawVerticalSignalBars(priority.frontStrength, priority.rearStrength, priority.band, state.muted);
+    drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
     drawDirectionArrow(state.arrows, state.muted);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
@@ -2336,7 +2347,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     // Use the stronger side so rear-only alerts still light bars
     uint8_t strength = std::max(frontStrength, rearStrength);
 
-    // Clamp strength to valid range (V1 Gen2 uses 0-6)
+    // Clamp strength to valid range (already mapped from 0-8 to 0-6)
     if (strength > 6) strength = 6;
 
     bool hasSignal = (strength > 0);

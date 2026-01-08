@@ -125,9 +125,11 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     if (arrow.laser) {
         displayState.signalBars = 6; // Full bars for laser
     } else if (displayState.activeBands == BAND_NONE) {
-        // No active bands from display data - clear signal bars
-        // (alert data will override this if alerts are present)
+        // No active bands from display data - clear alerts immediately
+        // Don't wait for alert packet with 0 count - display packet is authoritative
         displayState.signalBars = 0;
+        alertCount = 0;
+        chunkCount = 0;
     }
     
     return true;
@@ -149,32 +151,38 @@ Direction PacketParser::decodeDirection(uint8_t bandArrow) const {
 }
 
 uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
-    // V1 Gen2 uses 0-6 signal bar range
-    // If the device already provides a 0-6 style value, use it directly
-    if (raw <= 6) {
-        return raw;
-    }
-
+    // DEBUG: Log raw strength values from V1
+    Serial.printf("[DEBUG] mapStrengthToBars: band=%d, raw=%d (0x%02X)\n", band, raw, raw);
+    
+    // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
+    // Use threshold tables to convert to 0-6 bar display
+    
     // Threshold tables for raw RSSI -> 0..6 bars
-    // Adjusted from original 0-8 scale to 0-6 scale
-    static constexpr uint8_t kaThresholds[] = {0x00, 0x8F, 0x99, 0xA4, 0xAF, 0xB5, 0xFF};
-    static constexpr uint8_t kThresholds[]  = {0x00, 0x87, 0x95, 0xA3, 0xB1, 0xBF, 0xFF};
-    static constexpr uint8_t xThresholds[]  = {0x00, 0x95, 0xA5, 0xB3, 0xC0, 0xCC, 0xFF};
+    // Values below 0x80 typically mean "no signal" on that antenna
+    // Format: {0-bar max, 1-bar max, 2-bar max, 3-bar max, 4-bar max, 5-bar max, 6-bar}
+    static constexpr uint8_t kaThresholds[] = {0x7F, 0x88, 0x92, 0x9C, 0xA6, 0xB0, 0xFF};
+    static constexpr uint8_t kThresholds[]  = {0x7F, 0x86, 0x90, 0x9A, 0xA4, 0xAE, 0xFF};
+    static constexpr uint8_t xThresholds[]  = {0x7F, 0x8A, 0x98, 0xA6, 0xB4, 0xC2, 0xFF};
 
     const uint8_t* table = nullptr;
     switch (band) {
         case BAND_KA: table = kaThresholds; break;
         case BAND_K:  table = kThresholds;  break;
         case BAND_X:  table = xThresholds;  break;
-        default:      return raw > 0 ? 6 : 0; // Laser/junk/unknown -> full bars
+        default:      
+            uint8_t bars = raw > 0 ? 6 : 0; // Laser/junk/unknown -> full bars if any signal
+            Serial.printf("[DEBUG] Unknown band, returning %d bars\n", bars);
+            return bars;
     }
 
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
+            Serial.printf("[DEBUG] RSSI 0x%02X -> %d bars (threshold 0x%02X)\n", raw, i, table[i]);
             return i;
         }
     }
-    return 0;
+    Serial.printf("[DEBUG] RSSI 0x%02X above all thresholds -> 6 bars\n", raw);
+    return 6;
 }
 
 bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
@@ -248,8 +256,17 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     displayState.muted = displayState.muted || anyMuted;
 
     if (alertCount > 0) {
+        // Find MAX signal strength across ALL alerts (not just priority)
+        // V1 display shows the strongest signal from any alert
+        uint8_t maxSignal = 0;
+        for (size_t i = 0; i < alertCount; ++i) {
+            uint8_t sig = std::max(alerts[i].frontStrength, alerts[i].rearStrength);
+            if (sig > maxSignal) maxSignal = sig;
+        }
+        displayState.signalBars = maxSignal;
+        
+        // Direction comes from priority alert
         AlertData priority = getPriorityAlert();
-        displayState.signalBars = std::max(priority.frontStrength, priority.rearStrength);
         displayState.arrows = priority.direction;
     } else {
         displayState.signalBars = 0;

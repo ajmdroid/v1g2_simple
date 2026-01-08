@@ -87,44 +87,12 @@ static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
 };
 static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
 
-struct PersistedAlert {
-    AlertData alert{};
-    DisplayState state{};
-    AlertData allAlerts[4];  // Store up to 4 alerts for ghost mode
-    int alertCount = 0;
-    bool active = false;
-    unsigned long expiresAt = 0;
-};
-
-static PersistedAlert persistedAlert;
-
-// Secondary card grace period: keep cards visible briefly after alert drops
-// This prevents flicker from brief signal dropouts
-static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
-struct CardSlot {
-    AlertData alert{};
-    unsigned long lastSeen = 0;  // When this alert was last active
-};
-static CardSlot cardSlots[3];  // Up to 3 secondary card slots
-
-// Helper to check if two alerts are the same (same band and similar frequency)
-static bool alertsMatch(const AlertData& a, const AlertData& b) {
-    if (a.band != b.band) return false;
-    // For radar bands, allow some frequency tolerance (50 MHz)
-    if (a.frequency > 0 && b.frequency > 0) {
-        uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
-        return diff < 50;
-    }
-    return true;  // Laser or no freq - just match by band
-}
-
+// Display mode tracking (ghost mode removed - see git history if needed)
 enum class DisplayMode {
     IDLE,
-    LIVE,
-    GHOST
+    LIVE
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
-static unsigned long ghostExpiresAt = 0;
 
 void requestColorPreviewHold(uint32_t durationMs) {
     colorPreviewActive = true;
@@ -194,8 +162,7 @@ static bool localMuteOverride = false;
 static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
 static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
-const unsigned long LOCAL_MUTE_TIMEOUT_MS = 2000;  // Clear override 2s after alert ends
-const unsigned long UNMUTE_GRACE_MS = 1000;  // Force unmuted state for 1s after sending unmute command
+const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after sending unmute command
 
 // Track muted alert to detect stronger signals
 static uint8_t mutedAlertStrength = 0;
@@ -673,30 +640,6 @@ void processBLEData() {
                 lastLoggedMuted = state.muted;
                 lastV1Muted = v1MutedRaw;
             }
-
-            // Handle timeout logic separately
-            if (localMuteActive) {
-                // While alerts are active, ALWAYS keep override (no timeout)
-                // Timeout only applies when no alerts (waiting for V1 response)
-                if (hasAlerts) {
-                    // Reset timestamp so we get fresh timeout window when alert goes away
-                    localMuteTimestamp = millis();
-                } else {
-                    // No alerts - check timeout
-                    unsigned long now = millis();
-                    if (now - localMuteTimestamp >= LOCAL_MUTE_TIMEOUT_MS) {
-                        // Timeout and no alerts - clear override and send unmute
-                        SerialLog.println("Local mute override timed out (no alerts) - sending unmute to V1");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        state.muted = false;  // Clear muted state on timeout
-                        bleClient.setMute(false);
-                        unmuteSentTimestamp = millis();  // Track when we sent unmute
-                    }
-                }
-            }
             
             // Throttle display updates to prevent crashes
             unsigned long now = millis();
@@ -711,26 +654,7 @@ void processBLEData() {
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
                 const auto& currentAlerts = parser.getAllAlerts();
                 
-                // Stash for persistence (render muted if used later)
-                // Always update the priority alert with the current strongest
-                persistedAlert.alert = priority;
-                persistedAlert.alert.isValid = true;
-                persistedAlert.state = state;
-                persistedAlert.state.muted = true;  // render ghost in muted palette
-                
-                // Store multi-alert state: keep the highest alert count seen in this alert session
-                // This preserves cards when alerts drop off one by one before ghost triggers
-                if (alertCount > persistedAlert.alertCount) {
-                    persistedAlert.alertCount = alertCount;
-                    // Store all alerts for ghost mode secondary cards
-                    for (int i = 0; i < std::min(alertCount, 4); i++) {
-                        persistedAlert.allAlerts[i] = currentAlerts[i];
-                    }
-                }
-                persistedAlert.active = false;
-                persistedAlert.expiresAt = 0;
                 displayMode = DisplayMode::LIVE;
-                ghostExpiresAt = 0;
 
                 // Auto-unmute logic: new stronger signal or different band
                 if (localMuteActive && localMuteOverride) {
@@ -787,72 +711,30 @@ void processBLEData() {
                 display.update(priority, currentAlerts.data(), alertCount, state);
                 
             } else {
-                // Enable alert persistence (ghost) if configured for the active slot
-                const V1Settings& cfg = settingsManager.get();
-                uint8_t persistSec = settingsManager.getSlotAlertPersistSec(cfg.activeSlot);
-                unsigned long persistMs = persistSec * 1000UL;
-
-                if (persistMs > 0 && persistedAlert.alert.isValid) {
-                    if (!persistedAlert.active) {
-                        persistedAlert.active = true;
-                        ghostExpiresAt = millis() + persistMs;
-                        persistedAlert.expiresAt = ghostExpiresAt;
-                        displayMode = DisplayMode::GHOST;
-
-                        // Draw ghost once and hold; skip other draws this cycle
-                        // Use multi-alert update to show ghost cards if there were multiple alerts
-                        display.setGhostMode(true);
-                        if (persistedAlert.alertCount > 1) {
-                            display.update(persistedAlert.alert, persistedAlert.allAlerts, persistedAlert.alertCount, persistedAlert.state);
-                        } else {
-                            display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
-                        }
-                        display.setGhostMode(false);
-                        lastDisplayDraw = millis();
-                        continue;
-                    } else if (persistedAlert.active && millis() <= persistedAlert.expiresAt) {
-                        displayMode = DisplayMode::GHOST;
-                        continue;  // Keep ghost on screen; avoid resting redraws
-                    } else if (persistedAlert.active && millis() > persistedAlert.expiresAt) {
-                        // Ghost expired - clear and show resting state
-                        persistedAlert.active = false;
-                        persistedAlert.expiresAt = 0;
-                        persistedAlert.alert = AlertData();
-                        persistedAlert.alertCount = 0;
-                        displayMode = DisplayMode::IDLE;
-                        display.showResting();  // Immediately redraw idle display
-                        lastDisplayDraw = millis();
-                        continue;
-                    }
-                } else {
-                    displayMode = DisplayMode::IDLE;
+                // No alerts - immediately clear mute state and show resting
+                static unsigned long lastNoAlertLog = 0;
+                if (millis() - lastNoAlertLog > 500) {
+                    SerialLog.printf("[DEBUG] No alerts: alertCount=%d, activeBands=0x%02X, muted=%d, localMute=%d\n",
+                                     parser.getAlertCount(), parser.getDisplayState().activeBands, 
+                                     state.muted, localMuteActive);
+                    lastNoAlertLog = millis();
                 }
-
-                // No alerts - clear mute override only after timeout has passed
+                displayMode = DisplayMode::IDLE;
+                
                 if (localMuteActive) {
-                    // Don't timeout if V1 still shows active bands - alert might return
-                    if (state.activeBands != BAND_NONE) {
-                        // V1 display still shows bands, keep mute active and skip update
-                        continue;
-                    }
-                    
-                    unsigned long timeSinceMute = millis() - localMuteTimestamp;
-                    if (timeSinceMute >= LOCAL_MUTE_TIMEOUT_MS) {
-                        SerialLog.println("Alert cleared - clearing local mute override and sending unmute to V1");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        mutedAlertFreq = 0;
-                        // Send unmute command to V1
-                        bleClient.setMute(false);
-                        unmuteSentTimestamp = millis();  // Track when we sent unmute
-                    } else {
-                        // Still waiting for timeout - skip display update to avoid color flash
-                        continue;
-                    }
+                    // Clear mute immediately when alert ends (no timeout delay)
+                    SerialLog.println("Alert cleared - clearing local mute override");
+                    localMuteActive = false;
+                    localMuteOverride = false;
+                    mutedAlertStrength = 0;
+                    mutedAlertBand = BAND_NONE;
+                    mutedAlertFreq = 0;
+                    // Send unmute command to V1
+                    bleClient.setMute(false);
+                    unmuteSentTimestamp = millis();
                 }
                 
+                SerialLog.println("[DEBUG] Calling display.update(state) - no alerts");
                 display.update(state);
             }
         }
@@ -1181,9 +1063,7 @@ void loop() {
                     const V1Settings& s = settingsManager.get();
                     int newSlot = (s.activeSlot + 1) % 3;
                     settingsManager.setActiveSlot(newSlot);
-                    persistedAlert = PersistedAlert();  // Clear any ghost from previous slot
                     displayMode = DisplayMode::IDLE;
-                    ghostExpiresAt = 0;
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
@@ -1268,60 +1148,36 @@ void loop() {
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
         if (!isColorPreviewActive()) {
-            bool skipDisplayTick = false;
-            // Handle ghost refresh/expiry centrally to avoid flicker
-            if (displayMode == DisplayMode::GHOST && persistedAlert.active) {
-                if (millis() <= persistedAlert.expiresAt) {
-                    display.setGhostMode(true);
-                    display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
-                    display.setGhostMode(false);
-                    lastDisplayDraw = millis();
-                    // Skip other redraws while ghost is active
-                    skipDisplayTick = true;
+            // Check connection status
+            static bool wasConnected = false;
+            bool isConnected = bleClient.isConnected();
+            
+            // Only trigger state changes on actual transitions
+            if (isConnected != wasConnected) {
+                if (isConnected) {
+                    display.showResting(); // stay on resting view until data arrives
+                    SerialLog.println("V1 connected!");
                 } else {
-                    // Ghost expired - clear and redraw resting state
-                    persistedAlert = PersistedAlert();
+                    display.showScanning();
+                    SerialLog.println("V1 disconnected - Scanning...");
                     displayMode = DisplayMode::IDLE;
-                    ghostExpiresAt = 0;
-                    display.showResting();  // Redraw idle display after ghost ends
-                    skipDisplayTick = true;  // Skip further draws this cycle
                 }
+                wasConnected = isConnected;
             }
 
-            if (!skipDisplayTick) {
-                // Check connection status
-                static bool wasConnected = false;
-                bool isConnected = bleClient.isConnected();
-                
-                // Only trigger state changes on actual transitions
-                if (isConnected != wasConnected) {
-                    if (isConnected) {
-                        display.showResting(); // stay on resting view until data arrives
-                        SerialLog.println("V1 connected!");
-                    } else {
-                        display.showScanning();
-                        SerialLog.println("V1 disconnected - Scanning...");
-                        persistedAlert = PersistedAlert();  // Drop any ghost data on disconnect
-                        displayMode = DisplayMode::IDLE;
-                        ghostExpiresAt = 0;
-                    }
-                    wasConnected = isConnected;
-                }
+            // If connected but not seeing traffic, re-request alert data periodically
+            static unsigned long lastReq = 0;
+            if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
+                SerialLog.println("No data recently; re-requesting alert data...");
+                bleClient.requestAlertData();
+                lastReq = now;
+            }
 
-                // If connected but not seeing traffic, re-request alert data periodically
-                static unsigned long lastReq = 0;
-                if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-                    SerialLog.println("No data recently; re-requesting alert data...");
-                    bleClient.requestAlertData();
-                    lastReq = now;
-                }
-
-                // Periodically refresh indicators (WiFi/battery) even when scanning
-                if (!isConnected) {
-                    display.drawWiFiIndicator();
-                    display.drawBatteryIndicator();
-                    display.flush();  // Push canvas changes to physical display
-                }
+            // Periodically refresh indicators (WiFi/battery) even when scanning
+            if (!isConnected) {
+                display.drawWiFiIndicator();
+                display.drawBatteryIndicator();
+                display.flush();  // Push canvas changes to physical display
             }
         }
     }
