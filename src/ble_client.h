@@ -276,8 +276,8 @@ private:
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
     // ESP32-S3 WiFi coexistence: radio needs time after scan to be ready for connect
     // WiFi AP sends beacons every 100ms - need to wait for a clear window
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 500;
-    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 1000;  // Longer settle on fresh flash
+    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 200;
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 600;  // Shorter settle on reconnects; longer only on cold boot
     bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts

@@ -80,6 +80,8 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
     }
     return 0;
 }
+// Optional verbose logs for individual connect attempts
+constexpr bool CONNECT_ATTEMPT_VERBOSE = false;
 } // namespace
 
 // Static instance for callbacks
@@ -612,30 +614,36 @@ bool V1BLEClient::connectToServer() {
     // Use SYNCHRONOUS connect with retries
     // Async connect had issues with callback timing on ESP32-S3
     bool connectedOk = false;
-    int attempts = 3;
+    const int attempts = 2;
+    int lastErr = 0;
     
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
-        Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
+        if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
+            Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
+        }
         
         // Parameters: address, deleteAttributes=true
         connectedOk = pClient->connect(targetAddress, true);
         
         if (!connectedOk) {
-            int err = pClient->getLastError();
-            Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, err);
+            lastErr = pClient->getLastError();
+            if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
+                Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, lastErr);
+            }
             
             // Error 13 = EBUSY - BLE stack busy
-            if (err == 13 && attempt < attempts) {
-                Serial.println("[BLE] Stack busy, waiting 2s before retry...");
+            if (lastErr == 13 && attempt < attempts) {
+                if (CONNECT_ATTEMPT_VERBOSE) {
+                    Serial.println("[BLE] Stack busy, waiting 2s before retry...");
+                }
                 vTaskDelay(pdMS_TO_TICKS(2000));
             } else if (attempt < attempts) {
-                vTaskDelay(pdMS_TO_TICKS(500));
+                vTaskDelay(pdMS_TO_TICKS(750));
             }
         }
     }
     
     if (!connectedOk) {
-        int lastErr = pClient->getLastError();
         Serial.printf("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
         
         consecutiveConnectFailures++;
