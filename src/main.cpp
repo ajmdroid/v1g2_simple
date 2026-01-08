@@ -1283,5 +1283,6 @@ void loop() {
         }
     }
 
-    delay(5);  // Minimal yield for watchdog
+    // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
+    vTaskDelay(pdMS_TO_TICKS(1));
 }
