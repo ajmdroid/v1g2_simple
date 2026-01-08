@@ -85,6 +85,9 @@ public:
     // Check if BLE proxy is enabled
     bool isProxyEnabled() const { return proxyEnabled; }
     
+    // Check if this is a fresh boot after firmware flash
+    bool isFreshFlashBoot() const { return freshFlashBoot; }
+    
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
 
@@ -274,10 +277,15 @@ private:
     // ESP32-S3 WiFi coexistence: radio needs time after scan to be ready for connect
     // WiFi AP sends beacons every 100ms - need to wait for a clear window
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 500;
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 1000;  // Longer settle on fresh flash
+    bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
     unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
+    
+    // Fresh flash detection - set when firmware version changed
+    bool freshFlashBoot = false;
     
     // Called from connectToServer() after successful sync connect
     bool finishConnection();

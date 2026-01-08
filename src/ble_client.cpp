@@ -22,6 +22,7 @@
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
+#include <Preferences.h>  // For fresh-flash detection
 #include <set>
 #include <string>
 #include <cstdlib>
@@ -106,6 +107,7 @@ V1BLEClient::V1BLEClient()
     , hasTargetDevice(false)
     , targetAddress()
     , lastScanStart(0)
+    , freshFlashBoot(false)
     , pScanCallbacks(nullptr)
     , pClientCallbacks(nullptr)
     , pProxyServerCallbacks(nullptr)
@@ -163,7 +165,7 @@ void V1BLEClient::cleanupConnection() {
     // 2. Disconnect if connected
     if (pClient && pClient->isConnected()) {
         pClient->disconnect();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Brief delay for disconnect to complete
+        vTaskDelay(pdMS_TO_TICKS(300));  // Allow disconnect to fully complete
     }
     
     // 3. Clear characteristic references (they become invalid after disconnect)
@@ -213,8 +215,9 @@ void V1BLEClient::hardResetBLEClient() {
             pClientCallbacks = new ClientCallbacks();
         }
         pClient->setClientCallbacks(pClientCallbacks);
-        pClient->setConnectionParams(12, 24, 0, 400);
-        pClient->setConnectTimeout(10);
+        // Use relaxed params for WiFi coexistence (same as initBLE/connectToServer)
+        pClient->setConnectionParams(40, 80, 0, 600);
+        pClient->setConnectTimeout(15);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
     }
@@ -249,6 +252,29 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (!bleMutex || !bleNotifyMutex) {
         Serial.println("ERROR: Failed to create BLE mutexes");
         return false;
+    }
+    
+    // Fresh-flash detection: clear BLE bonds if firmware version changed
+    // Stale bonding info in NVS can cause connection issues after OTA/flash
+    {
+        Preferences blePrefs;
+        blePrefs.begin("ble_state", false);  // Read-write mode
+        String storedVersion = blePrefs.getString("fwVersion", "");
+        if (storedVersion != FIRMWARE_VERSION) {
+            Serial.printf("[BLE] Fresh flash detected (stored: '%s', current: '%s')\n", 
+                         storedVersion.c_str(), FIRMWARE_VERSION);
+            Serial.println("[BLE] Clearing all BLE bonds for clean start...");
+            // NimBLE must be initialized before deleteAllBonds works
+            // We'll do a minimal init, clear bonds, then deinit and reinit properly
+            NimBLEDevice::init("");
+            NimBLEDevice::deleteAllBonds();
+            NimBLEDevice::deinit(true);  // true = clear all BLE state
+            vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
+            blePrefs.putString("fwVersion", FIRMWARE_VERSION);
+            Serial.println("[BLE] Bonds cleared, version marker updated");
+            freshFlashBoot = true;
+        }
+        blePrefs.end();
     }
     
     // Kenny's v1g2-t4s3 exact initialization pattern:
@@ -579,7 +605,7 @@ bool V1BLEClient::connectToServer() {
     if (pClient->isConnected()) {
         Serial.println("[BLE] Client thinks it's connected, disconnecting first");
         pClient->disconnect();
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(300));  // Allow disconnect to fully complete before reconnect
     }
     
     // Use SYNCHRONOUS connect with retries
@@ -1252,7 +1278,13 @@ void V1BLEClient::process() {
             }
             
             // Check if settle time has elapsed
-            if (elapsed >= SCAN_STOP_SETTLE_MS) {
+            // Use longer settle on first scan after boot (radio is "cold")
+            unsigned long settleTime = firstScanAfterBoot ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
+            if (elapsed >= settleTime) {
+                if (firstScanAfterBoot) {
+                    Serial.println("[BLE] First scan settle complete (extended)");
+                    firstScanAfterBoot = false;
+                }
                 resultsCleared = false;  // Reset for next time
                 // Ready to connect
                 bool wantConnect = false;
