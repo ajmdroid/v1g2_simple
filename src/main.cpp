@@ -163,6 +163,10 @@ static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
 static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
 const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after sending unmute command
+static constexpr uint8_t STRONG_SIGNAL_UNMUTE_THRESHOLD = 5;  // Bars (out of 6) to force-unmute audio
+static bool forceUnmuteLatched = false;       // Prevents spamming setMute(false) while condition persists
+static unsigned long lastForceUnmuteMs = 0;   // Timestamp for last force-unmute
+static bool suppressForceUnmute = false;      // Set when user re-mutes after a force unmute
 
 // Track muted alert to detect stronger signals
 static uint8_t mutedAlertStrength = 0;
@@ -656,6 +660,10 @@ void processBLEData() {
                 
                 displayMode = DisplayMode::LIVE;
 
+                // Force-unmute temporarily disabled to restore reliable user mute
+                forceUnmuteLatched = false;
+                suppressForceUnmute = false;
+
                 // Auto-unmute logic: new stronger signal or different band
                 if (localMuteActive && localMuteOverride) {
                     bool strongerSignal = false;
@@ -696,6 +704,7 @@ void processBLEData() {
                         SerialLog.println("Auto-unmuting for new/stronger/priority alert");
                         localMuteActive = false;
                         localMuteOverride = false;
+                        suppressForceUnmute = false;  // allow future force-unmute on next alert
                         state.muted = false;
                         mutedAlertStrength = 0;
                         mutedAlertBand = BAND_NONE;
@@ -726,6 +735,8 @@ void processBLEData() {
                     SerialLog.println("Alert cleared - clearing local mute override");
                     localMuteActive = false;
                     localMuteOverride = false;
+                    suppressForceUnmute = false;
+                    forceUnmuteLatched = false;
                     mutedAlertStrength = 0;
                     mutedAlertBand = BAND_NONE;
                     mutedAlertFreq = 0;
@@ -1035,6 +1046,52 @@ void loop() {
     // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
     int16_t touchX, touchY;
     bool hasActiveAlert = parser.hasAlerts();
+
+    // Helper to toggle mute state (shared by immediate and deferred handlers)
+    auto performMuteToggle = [&](const char* reason) {
+        if (!hasActiveAlert) {
+            SerialLog.println("MUTE BLOCKED: No active alert to mute");
+            return;
+        }
+
+        DisplayState state = parser.getDisplayState();
+        bool currentMuted = state.muted;
+        bool newMuted = !currentMuted;
+
+        // Apply local override immediately for instant visual feedback
+        localMuteOverride = newMuted;
+        localMuteActive = true;
+        localMuteTimestamp = millis();
+
+        // Store current alert details for detecting stronger signals
+        if (newMuted) {
+            AlertData priority = parser.getPriorityAlert();
+            mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
+            mutedAlertBand = priority.band;
+            mutedAlertFreq = priority.frequency;
+            SerialLog.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
+                        mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
+        } else {
+            // Unmuting - clear stored alert
+            mutedAlertStrength = 0;
+            mutedAlertBand = BAND_NONE;
+            mutedAlertFreq = 0;
+        }
+
+        SerialLog.printf("Current mute state: %s -> Sending: %s (%s)\n", 
+                      currentMuted ? "MUTED" : "UNMUTED",
+                      newMuted ? "MUTE_ON" : "MUTE_OFF",
+                      reason);
+
+        // If user re-mutes after a force-unmute, suppress future forced unmutes for this alert
+        if (newMuted && forceUnmuteLatched) {
+            suppressForceUnmute = true;
+        }
+
+        // Send mute command to V1
+        bool cmdSent = bleClient.setMute(newMuted);
+        SerialLog.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+    };
     
     if (touchHandler.getTouchPoint(touchX, touchY)) {
         unsigned long now = millis();
@@ -1051,6 +1108,13 @@ void loop() {
             lastTapTime = now;
             
             SerialLog.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
+
+            // With an active alert, toggle mute immediately on first tap for responsiveness
+            if (hasActiveAlert && tapCount == 1) {
+                performMuteToggle("immediate tap");
+                tapCount = 0;  // reset so follow-up taps start fresh
+                return;        // skip triple-tap handling
+            }
             
             // Check for triple-tap to cycle profiles (ONLY when no active alert)
             if (tapCount >= 3) {
@@ -1087,43 +1151,7 @@ void loop() {
             // Window expired with 1-2 taps - treat as mute toggle (ONLY with active alert)
             SerialLog.printf("Processing %d tap(s) as mute toggle\n", tapCount);
             tapCount = 0;
-            
-            if (!hasActiveAlert) {
-                SerialLog.println("MUTE BLOCKED: No active alert to mute");
-            } else {
-                // Get current mute state from parser and toggle it
-                DisplayState state = parser.getDisplayState();
-                bool currentMuted = state.muted;
-                bool newMuted = !currentMuted;
-                
-                // Apply local override immediately for instant visual feedback
-                localMuteOverride = newMuted;
-                localMuteActive = true;
-                localMuteTimestamp = millis();
-                
-                // Store current alert details for detecting stronger signals
-                if (newMuted) {
-                    AlertData priority = parser.getPriorityAlert();
-                    mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
-                    mutedAlertBand = priority.band;
-                    mutedAlertFreq = priority.frequency;
-                    SerialLog.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
-                                mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
-                } else {
-                    // Unmuting - clear stored alert
-                    mutedAlertStrength = 0;
-                    mutedAlertBand = BAND_NONE;
-                    mutedAlertFreq = 0;
-                }
-                
-                SerialLog.printf("Current mute state: %s -> Sending: %s\n", 
-                              currentMuted ? "MUTED" : "UNMUTED",
-                              newMuted ? "MUTE_ON" : "MUTE_OFF");
-                
-                // Send mute command to V1
-                bool cmdSent = bleClient.setMute(newMuted);
-                SerialLog.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
-            }
+            performMuteToggle("deferred tap");
         }
     }
     

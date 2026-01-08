@@ -156,6 +156,7 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     
     // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
     // Use threshold tables to convert to 0-6 bar display
+    // Skip smoothing entirely - let hysteresis handle flicker at the bar level
     
     // Threshold tables for raw RSSI -> 0..6 bars
     // Values below 0x80 typically mean "no signal" on that antenna
@@ -169,20 +170,56 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
         case BAND_KA: table = kaThresholds; break;
         case BAND_K:  table = kThresholds;  break;
         case BAND_X:  table = xThresholds;  break;
-        default:      
-            uint8_t bars = raw > 0 ? 6 : 0; // Laser/junk/unknown -> full bars if any signal
-            Serial.printf("[DEBUG] Unknown band, returning %d bars\n", bars);
+        case BAND_LASER: {
+            uint8_t bars = (raw > 0x10) ? 6 : 0; // treat tiny noise as zero
+            Serial.printf("[DEBUG] Laser band, returning %d bars\n", bars);
             return bars;
+        }
+        default:
+            Serial.printf("[DEBUG] Unknown band, returning 0 bars\n");
+            return 0;
     }
 
+    // Hysteresis: clamp spurious near-zero readings and limit drop rate
+    static uint8_t lastBarsKa = 0;
+    static uint8_t lastBarsK  = 0;
+    static uint8_t lastBarsX  = 0;
+    uint8_t* lastBarsPtr = nullptr;
+    switch (band) {
+        case BAND_KA: lastBarsPtr = &lastBarsKa; break;
+        case BAND_K:  lastBarsPtr = &lastBarsK;  break;
+        case BAND_X:  lastBarsPtr = &lastBarsX;  break;
+        default: break;
+    }
+
+    uint8_t candidate = 0;
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
+            candidate = i;
             Serial.printf("[DEBUG] RSSI 0x%02X -> %d bars (threshold 0x%02X)\n", raw, i, table[i]);
-            return i;
+            break;
         }
     }
-    Serial.printf("[DEBUG] RSSI 0x%02X above all thresholds -> 6 bars\n", raw);
-    return 6;
+    if (candidate == 0 && raw > table[0]) {
+        candidate = 6;
+        Serial.printf("[DEBUG] RSSI 0x%02X above all thresholds -> 6 bars\n", raw);
+    }
+
+    if (lastBarsPtr) {
+        // Allow instant jump UP (new alert), but limit drops to -1 per sample
+        // This prevents flicker on decay while allowing immediate response to new alerts
+        if (candidate < *lastBarsPtr && *lastBarsPtr > 0) {
+            // Dropping - limit to -1 per sample unless raw signal is truly gone
+            if (raw >= 0x80) {
+                candidate = static_cast<uint8_t>(*lastBarsPtr - 1);
+            }
+            // else: raw < 0x80 means signal truly gone, allow fast drop
+        }
+        // Jump up is always allowed (no clamping when candidate > lastBars)
+        *lastBarsPtr = candidate;
+    }
+
+    return candidate;
 }
 
 bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {

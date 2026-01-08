@@ -24,6 +24,7 @@ static bool ofrInitialized = false;
 // Multi-alert mode tracking (extern from V1Display class)
 static bool g_multiAlertMode = false;
 static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
+static constexpr uint8_t STRONG_SIGNAL_UNMUTE_THRESHOLD = 5;  // Bars (out of 6) to override mute
 
 // Helper to get effective screen height (reduced when multi-alert cards are shown)
 static inline int getEffectiveScreenHeight() {
@@ -927,7 +928,11 @@ void V1Display::drawMuteIcon(bool muted) {
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);  // Boost readability in compact badge
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
-        GFX_drawString(tft, "MUTED", x + w / 2, y + h / 2 + 1);
+        int cx = x + w / 2;
+        int cy = y + h / 2 + 1;
+        // Pseudo-bold: draw twice with slight offset
+        GFX_drawString(tft, "MUTED", cx, cy);
+        GFX_drawString(tft, "MUTED", cx + 1, cy);
     } else {
         // Clear the badge area when not muted
         FILL_RECT(x, y, w, h, PALETTE_BG);
@@ -1308,6 +1313,10 @@ void V1Display::showResting() {
 }
 
 void V1Display::showScanning() {
+    // Align layout with multi-alert default positioning if enabled
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;
+
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
@@ -1319,8 +1328,6 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     drawProfileIndicator(currentProfileSlot);
-    
-    const V1Settings& s = settingsManager.get();
     
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
@@ -1507,13 +1514,22 @@ void V1Display::update(const DisplayState& state) {
     bool flashJustExpired = wasInFlashPeriod && !inFlashPeriod;
     wasInFlashPeriod = inFlashPeriod;
 
+    // Override mute when laser active or strong signal present
+    bool effectiveMuted = state.muted;
+    bool laserActive = (state.activeBands & BAND_LASER) != 0;
+    if (laserActive) {
+        effectiveMuted = false;
+    } else if (effectiveMuted && state.signalBars >= STRONG_SIGNAL_UNMUTE_THRESHOLD) {
+        effectiveMuted = false;
+    }
+
     bool stateChanged =
         firstUpdate ||
         flashJustExpired ||
         state.activeBands != lastState.activeBands ||
         state.arrows != lastState.arrows ||
         state.signalBars != lastState.signalBars ||
-        state.muted != lastState.muted ||
+        effectiveMuted != lastState.muted ||
         state.modeChar != lastState.modeChar ||
         state.hasMode != lastState.hasMode;
 
@@ -1521,13 +1537,13 @@ void V1Display::update(const DisplayState& state) {
         firstUpdate = false;
         drawBaseFrame();
         char topChar = state.hasMode ? state.modeChar : '0';
-        drawTopCounter(topChar, state.muted, true);  // Always show dot
-        drawBandIndicators(state.activeBands, state.muted);
+        drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+        drawBandIndicators(state.activeBands, effectiveMuted);
         // BLE proxy status indicator
         
         // Check if laser is active from display state
         bool isLaser = (state.activeBands & BAND_LASER) != 0;
-        drawFrequency(0, isLaser, state.muted);
+        drawFrequency(0, isLaser, effectiveMuted);
         
         // Determine primary band for signal bar coloring
         Band primaryBand = BAND_KA; // default
@@ -1536,16 +1552,16 @@ void V1Display::update(const DisplayState& state) {
         else if (state.activeBands & BAND_K) primaryBand = BAND_K;
         else if (state.activeBands & BAND_X) primaryBand = BAND_X;
         
-        drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, state.muted);
-        drawDirectionArrow(state.arrows, state.muted);
-        drawMuteIcon(state.muted);
+        drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
+        drawDirectionArrow(state.arrows, effectiveMuted);
+        drawMuteIcon(effectiveMuted);
         drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();  // Push canvas to display
 #endif
 
-        lastState = state;
+        lastState = state;            // Preserve actual user mute state
     }
 }
 
@@ -1554,16 +1570,25 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
         return;
     }
 
+    // Override mute when laser active or strong signal present during alert
+    uint8_t strength = std::max(alert.frontStrength, alert.rearStrength);
+    bool effectiveMuted = mutedFlag;
+    if (alert.band == BAND_LASER) {
+        effectiveMuted = false;
+    } else if (effectiveMuted && strength >= STRONG_SIGNAL_UNMUTE_THRESHOLD) {
+        effectiveMuted = false;
+    }
+
     // Always redraw for clean display
     drawBaseFrame();
 
     uint8_t bandMask = alert.band;
-    drawTopCounter('1', mutedFlag, true); // bogey counter shows 1 during alert
-    drawFrequency(alert.frequency, alert.band == BAND_LASER, mutedFlag);
-    drawBandIndicators(bandMask, mutedFlag);
-    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, mutedFlag);
-    drawDirectionArrow(alert.direction, mutedFlag);
-    drawMuteIcon(mutedFlag);
+    drawTopCounter('1', effectiveMuted, true); // bogey counter shows 1 during alert
+    drawFrequency(alert.frequency, alert.band == BAND_LASER, effectiveMuted);
+    drawBandIndicators(bandMask, effectiveMuted);
+    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, effectiveMuted);
+    drawDirectionArrow(alert.direction, effectiveMuted);
+    drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
 
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1574,7 +1599,7 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
     lastState.activeBands = bandMask;
     lastState.arrows = alert.direction;
     lastState.signalBars = std::max(alert.frontStrength, alert.rearStrength);
-    lastState.muted = mutedFlag;
+    lastState.muted = mutedFlag;  // Preserve actual mute flag; UI used effectiveMuted
 }
 
 void V1Display::update(const AlertData& alert) {
@@ -1948,9 +1973,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastDrawnCards[storeIdx].valid = false;
     }
     
-    // Clear the secondary row area (start after icon column to preserve battery/wifi/ble)
+    // Clear the secondary row area (start after icon column, end before signal bars)
     const int iconAreaWidth = 48;  // Battery + margin
-    FILL_RECT(iconAreaWidth, cardY, SCREEN_WIDTH - iconAreaWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    const int signalBarsX = SCREEN_WIDTH - 228 - 2;  // signal bars startX with padding
+    const int clearWidth = signalBarsX - iconAreaWidth;
+    if (clearWidth > 0) {
+        FILL_RECT(iconAreaWidth, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    }
     
     // Draw cards for all valid slots (live or within grace period)
     int drawnCount = 0;
@@ -2239,7 +2268,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     // Position arrows to fit ABOVE frequency display at bottom
     // With multi-alert always enabled, use raised layout as default
     if (g_multiAlertMode) {
-        cy = 80;  // Raised position for multi-alert layout (keeps tips on-screen)
+        cy = 85;  // Raised but allow full-size arrows
         cx -= 6;
     } else {
         cy = 95;
@@ -2247,8 +2276,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     }
 #endif
     
-    // Scale factor for multi-alert mode (slightly smaller arrows)
-    float scale = g_multiAlertMode ? 0.80f : 1.0f;
+    // Use full-size arrows in both layouts
+    float scale = 1.0f;
     
     // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
     // Wider/shallower angle to match V1 reference
@@ -2395,11 +2424,21 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
-    // Keep bars vertically centered on the full screen (do not shift in multi-alert)
-    int startY = (SCREEN_HEIGHT - totalH) / 2;
+    // Keep bars vertically centered; prefer the classic center, but clamp above the secondary row
+    int availableH = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT; // avoid drawing over secondary row
+    int desiredStartY = (SCREEN_HEIGHT - totalH) / 2;      // original center alignment
+    int startY = desiredStartY;
+    if (startY + totalH > availableH) {
+        startY = availableH - totalH; // push up only if we would overlap the secondary row
+    }
+    if (startY < 8) startY = 8; // keep some padding from top icons
 
     // Clear area once
-    FILL_RECT(startX - 2, startY - 2, barWidth + 4, totalH + 4, PALETTE_BG);
+    int clearH = totalH + 4;
+    if (startY - 2 + clearH > availableH) {
+        clearH = availableH - (startY - 2); // clamp clear to stay above secondary row
+    }
+    FILL_RECT(startX - 2, startY - 2, barWidth + 4, clearH, PALETTE_BG);
 
     for (int i = 0; i < barCount; i++) {
         // Draw from bottom to top
