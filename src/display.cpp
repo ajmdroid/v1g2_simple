@@ -543,10 +543,6 @@ void V1Display::clear() {
     bleProxyDrawn = false;
 }
 
-void V1Display::setGhostMode(bool enabled) {
-    ghostMode = enabled;
-}
-
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
 #if defined(DISPLAY_WAVESHARE_349)
     if (bleProxyDrawn &&
@@ -910,12 +906,6 @@ void V1Display::drawMuteIcon(bool muted) {
     // Keep badge low enough to avoid the top/bogey region when frequency is raised
     int y = freqY - h - 4;
     if (y < 40) y = 40;  // Minimum y to avoid overlapping mode/bogey counter
-    
-    if (ghostMode) {
-        // Clear badge area and skip text for ghosted alerts
-        FILL_RECT(x - 2, y - 2, w + 4, h + 4, PALETTE_BG);
-        return;
-    }
     
     if (muted) {
         // Draw badge with muted styling
@@ -1812,8 +1802,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
     
-    // Draw secondary alert cards at bottom (use ghostMode for muted styling)
-    drawSecondaryAlertCards(allAlerts, alertCount, priority, ghostMode);
+    // Draw secondary alert cards at bottom
+    drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
     
     // Keep g_multiAlertMode true while in multi-alert - only reset when going to single-alert mode
 
@@ -1994,7 +1984,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         int cardX = startX + drawnCount * (cardW + cardSpacing);
         drawnCount++;
         
-        // Card background with band color tint (use grey for ghost/grace mode)
+        // Card background with band color tint (grey when muted)
         uint16_t bandCol = drawMuted ? PALETTE_MUTED : getBandColor(alert.band);
         uint8_t r = ((bandCol >> 11) & 0x1F) * (drawMuted ? 2 : 3) / 10;
         uint8_t g = ((bandCol >> 5) & 0x3F) * (drawMuted ? 2 : 3) / 10;

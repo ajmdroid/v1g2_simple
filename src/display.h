@@ -84,9 +84,6 @@ public:
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
     
-    // Enable/disable ghost style (muted palette, no mute badge)
-    void setGhostMode(bool enabled);
-    
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
     
@@ -143,7 +140,6 @@ private:
     bool bleProxyEnabled = false;           // BLE proxy enabled flag
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
-    bool ghostMode = false;                 // Render muted ghost without mute badge
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection

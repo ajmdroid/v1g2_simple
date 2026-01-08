@@ -87,7 +87,6 @@ static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
 };
 static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
 
-// Display mode tracking (ghost mode removed - see git history if needed)
 enum class DisplayMode {
     IDLE,
     LIVE
