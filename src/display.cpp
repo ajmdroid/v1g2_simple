@@ -902,11 +902,13 @@ void V1Display::drawMuteIcon(bool muted) {
     const int rightMargin = 120;
     int maxWidth = SCREEN_WIDTH - rightMargin;
     
-    // Badge dimensions (50% larger than original)
-    int w = 108;  // 72 * 1.5
-    int h = 30;   // 20 * 1.5
+    // Badge dimensions (slightly smaller to avoid crowding top UI)
+    int w = 92;
+    int h = 26;
     int x = (maxWidth - w) / 2;
-    int y = freqY - h - 12; // Position above frequency with spacing
+    // Keep badge low enough to avoid the top/bogey region when frequency is raised
+    int y = freqY - h - 4;
+    if (y < 40) y = 40;  // Minimum y to avoid overlapping mode/bogey counter
     
     if (ghostMode) {
         // Clear badge area and skip text for ghosted alerts
@@ -923,7 +925,7 @@ void V1Display::drawMuteIcon(bool muted) {
         DRAW_ROUND_RECT(x, y, w, h, 6, outline);
         
         GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);  // 50% larger text
+        TFT_CALL(setTextSize)(2);  // Boost readability in compact badge
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
         GFX_drawString(tft, "MUTED", x + w / 2, y + h / 2 + 1);
     } else {
@@ -1031,11 +1033,11 @@ void V1Display::drawBatteryIndicator() {
         return;
     }
     
-    // Battery icon position - bottom left, aligned with frequency display bottom
+    // Battery icon position - bottom left (use actual screen height, not effective)
     const int battX = 12;   // Align with bogey counter left edge
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
-    const int battY = getEffectiveScreenHeight() - battH - 8;  // Bottom aligned with frequency
+    const int battY = SCREEN_HEIGHT - battH - 8;  // Stay at actual bottom, not raised area
     
     // Check if user explicitly hides the battery icon
     if (s.hideBatteryIcon) {
@@ -1091,8 +1093,9 @@ void V1Display::drawBatteryIndicator() {
 void V1Display::drawBLEProxyIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     // Stack above WiFi indicator to keep the left column compact
+    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
     const int battH = 14;
-    const int battY = getEffectiveScreenHeight() - battH - 8;
+    const int battY = SCREEN_HEIGHT - battH - 8;
     const int wifiSize = 20;
     const int wifiY = battY - wifiSize - 6;
 
@@ -1181,9 +1184,10 @@ void V1Display::drawWiFiIndicator() {
     const V1Settings& s = settingsManager.get();
     
     // WiFi icon position - above battery icon, bottom left
+    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int battY = getEffectiveScreenHeight() - 14 - 8;
+    const int battY = SCREEN_HEIGHT - 14 - 8;
     const int wifiY = battY - wifiSize - 6;
     
     // Check if user explicitly hides the WiFi icon
@@ -1587,9 +1591,10 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     bool modeChanged = wasInMultiAlertMode;  // If we were in multi-mode, force redraw
     wasInMultiAlertMode = false;  // We're now in single-alert mode
     
-    // Reset multi-alert mode globals when in single-alert mode
-    g_multiAlertMode = false;
-    multiAlertMode = false;
+    // Keep frequency raised when multi-alert is enabled (consistent position)
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;  // Keep raised if multi-alert enabled
+    multiAlertMode = false;  // But no cards to draw
 
     // Change detection: skip redraw if nothing meaningful changed
     // (signal strength fluctuates constantly, so exclude it)
@@ -1673,8 +1678,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // If only 1 alert or multi-alert disabled, use standard display (no cards row)
     if (alertCount <= 1 || !s.enableMultiAlert) {
-        g_multiAlertMode = false;
-        multiAlertMode = false;
+        // Keep frequency raised when multi-alert is enabled (consistent position)
+        g_multiAlertMode = s.enableMultiAlert;
+        multiAlertMode = false;  // No cards to draw
         update(priority, state, alertCount);
         return;
     }
@@ -1799,10 +1805,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 #if defined(DISPLAY_WAVESHARE_349)
     const int cardH = SECONDARY_ROW_HEIGHT;  // Full height, no margin
     const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Flush to bottom
-    const int maxCards = 3;  // Max secondary cards to show
-    const int cardW = 170;   // Bigger cards
-    const int cardSpacing = 8;
-    const int startX = 10;   // Start closer to left edge
+    const int maxCards = 2;  // Show up to 2 secondary cards (primary + 2 = 3 alerts total)
+    const int cardW = 140;   // Fit between icons and signal bars
+    const int cardSpacing = 6;
+    const int startX = 50;   // Start after battery/WiFi/BLE icon area
     static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
     
     // Static tracking for grace period - each slot remembers its last alert
@@ -1942,8 +1948,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastDrawnCards[storeIdx].valid = false;
     }
     
-    // Clear the secondary row area
-    FILL_RECT(0, cardY, SCREEN_WIDTH, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    // Clear the secondary row area (start after icon column to preserve battery/wifi/ble)
+    const int iconAreaWidth = 48;  // Battery + margin
+    FILL_RECT(iconAreaWidth, cardY, SCREEN_WIDTH - iconAreaWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
     
     // Draw cards for all valid slots (live or within grace period)
     int drawnCount = 0;
@@ -2079,22 +2086,27 @@ void V1Display::drawSignalBars(uint8_t bars) {
         bars = MAX_SIGNAL_BARS;
     }
     
-    int startX = (SCREEN_WIDTH - (MAX_SIGNAL_BARS * (BAR_WIDTH + BAR_SPACING))) / 2;
-    // Adjust Y position for multi-alert mode
-    int barsY = g_multiAlertMode ? (BARS_Y - MULTI_ALERT_OFFSET) : BARS_Y;
+    // Keep standard sizing/placement even in raised layout to avoid visual shifts
+    int barWidth = BAR_WIDTH;
+    int barHeight = BAR_HEIGHT;
+    int barSpacing = BAR_SPACING;
+    
+    int startX = (SCREEN_WIDTH - (MAX_SIGNAL_BARS * (barWidth + barSpacing))) / 2;
+    // Keep bars at the standard baseline (no vertical shift in multi-alert)
+    int barsY = BARS_Y;
     
     for (uint8_t i = 0; i < MAX_SIGNAL_BARS; i++) {
-        int x = startX + i * (BAR_WIDTH + BAR_SPACING);
-        int height = BAR_HEIGHT * (i + 1) / MAX_SIGNAL_BARS;
-        int y = barsY + (BAR_HEIGHT - height);
+        int x = startX + i * (barWidth + barSpacing);
+        int height = barHeight * (i + 1) / MAX_SIGNAL_BARS;
+        int y = barsY + (barHeight - height);
         
         if (i < bars) {
             // Draw filled bar
-            FILL_RECT(x, y, BAR_WIDTH, height, PALETTE_SIGNAL_BAR);
+            FILL_RECT(x, y, barWidth, height, PALETTE_SIGNAL_BAR);
         } else {
             // Draw empty bar outline
-            DRAW_RECT(x, y, BAR_WIDTH, height, TFT_DARKGREY);
-            FILL_RECT(x + 1, y + 1, BAR_WIDTH - 2, height - 2, PALETTE_BG);
+            DRAW_RECT(x, y, barWidth, height, TFT_DARKGREY);
+            FILL_RECT(x + 1, y + 1, barWidth - 2, height - 2, PALETTE_BG);
         }
     }
 }
@@ -2225,30 +2237,35 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
 
 #if defined(DISPLAY_WAVESHARE_349)
     // Position arrows to fit ABOVE frequency display at bottom
-    // Frequency starts around y=126, so arrows must end before that
-    // Keep overall position, center middle arrow between top and bottom
-    // Shift up when multi-alert mode is active
-    cy = g_multiAlertMode ? 75 : 95;
-    cx -= 6;
+    // With multi-alert always enabled, use raised layout as default
+    if (g_multiAlertMode) {
+        cy = 80;  // Raised position for multi-alert layout (keeps tips on-screen)
+        cx -= 6;
+    } else {
+        cy = 95;
+        cx -= 6;
+    }
 #endif
+    
+    // Scale factor for multi-alert mode (slightly smaller arrows)
+    float scale = g_multiAlertMode ? 0.80f : 1.0f;
     
     // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
     // Wider/shallower angle to match V1 reference
-    const int topW = 125;      // Width at base - wider for shallower angle
-    const int topH = 62;       // Height - shorter for less pointy look
-    const int topNotchW = 63;  // Notch width at bottom
-    const int topNotchH = 8;   // Notch height
+    const int topW = (int)(125 * scale);      // Width at base
+    const int topH = (int)(62 * scale);       // Height
+    const int topNotchW = (int)(63 * scale);  // Notch width at bottom
+    const int topNotchH = (int)(8 * scale);   // Notch height
 
     // Bottom arrow (REAR): Shorter/squatter triangle pointing down
-    const int bottomW = 125;   // Same width as top - wider
-    const int bottomH = 40;    // Shorter height - flatter arrow
-    const int bottomNotchW = 63;  // Same notch width
-    const int bottomNotchH = 8;   // Notch height
+    const int bottomW = (int)(125 * scale);   // Same width as top
+    const int bottomH = (int)(40 * scale);    // Shorter height
+    const int bottomNotchW = (int)(63 * scale);
+    const int bottomNotchH = (int)(8 * scale);
 
     // Calculate positions for equal gaps between arrows
-    // Side arrow bar is 22px tall, centered at cy (scaled up from 18)
-    const int sideBarH = 22;
-    const int gap = 13;  // gap between arrows (more visible separation)
+    const int sideBarH = (int)(22 * scale);
+    const int gap = (int)(13 * scale);  // gap between arrows
     
     // Top arrow center: above side arrow with gap
     int topArrowCenterY = cy - sideBarH/2 - gap - topH/2;
@@ -2308,10 +2325,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
     auto drawSideArrow = [&](bool active) {
         uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
-        const int barW = 66;   // Center bar width
+        const int barW = (int)(66 * scale);   // Center bar width
         const int barH = sideBarH;
-        const int headW = 28;  // Arrow head width - how far it extends
-        const int headH = 22;  // Arrow head height - half-height of the point (taller to fill more)
+        const int headW = (int)(28 * scale);  // Arrow head width
+        const int headH = (int)(22 * scale);  // Arrow head height
         const int halfH = barH / 2;
 
         // Fill center bar
@@ -2378,9 +2395,8 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
-    // Use effective height to shift up in multi-alert mode
-    int effectiveH = getEffectiveScreenHeight();
-    int startY = (effectiveH - totalH) / 2;
+    // Keep bars vertically centered on the full screen (do not shift in multi-alert)
+    int startY = (SCREEN_HEIGHT - totalH) / 2;
 
     // Clear area once
     FILL_RECT(startX - 2, startY - 2, barWidth + 4, totalH + 4, PALETTE_BG);
