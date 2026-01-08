@@ -794,13 +794,6 @@ void processBLEData() {
                 
             } else {
                 // No alerts from V1
-                static unsigned long lastNoAlertLog = 0;
-                if (millis() - lastNoAlertLog > 500) {
-                    SerialLog.printf("[DEBUG] No alerts: alertCount=%d, activeBands=0x%02X, muted=%d, localMute=%d\n",
-                                     parser.getAlertCount(), parser.getDisplayState().activeBands, 
-                                     state.muted, localMuteActive);
-                    lastNoAlertLog = millis();
-                }
                 displayMode = DisplayMode::IDLE;
                 
                 if (localMuteActive) {

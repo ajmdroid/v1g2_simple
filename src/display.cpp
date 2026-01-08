@@ -1256,9 +1256,6 @@ void V1Display::showDisconnected() {
 }
 
 void V1Display::showResting() {
-    Serial.println("showResting() called");
-    Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
-    
     // Align layout with multi-alert positioning if enabled
     const V1Settings& s = settingsManager.get();
     g_multiAlertMode = s.enableMultiAlert;
@@ -1273,14 +1270,12 @@ void V1Display::showResting() {
     drawTopCounter('0', false, true);
     
     // Band indicators all dimmed (no active bands)
-    Serial.println("Drawing band indicators...");
     drawBandIndicators(0, false);
     
     // Signal bars all empty
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     
     // Direction arrows all dimmed
-    Serial.println("Drawing arrows...");
     drawDirectionArrow(DIR_NONE, false);
     
     // Frequency display showing dashes
@@ -1299,8 +1294,6 @@ void V1Display::showResting() {
     // Flush canvas to display
     tft->flush();
 #endif
-    
-    Serial.println("showResting() complete");
 }
 
 void V1Display::showScanning() {

@@ -197,9 +197,6 @@ void SettingsManager::load() {
 }
 
 void SettingsManager::save() {
-    Serial.println("=== SettingsManager::save() starting ===");
-    Serial.printf("  About to save - brightness: %d, wifiMode: %d\n", settings.brightness, settings.wifiMode);
-    
     if (!preferences.begin("v1settings", false)) {  // Read-write mode
         Serial.println("ERROR: Failed to open preferences for writing!");
         return;
@@ -276,7 +273,6 @@ void SettingsManager::save() {
     written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
     written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
     written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
-    Serial.printf("  [Save] slot0: darkMode=%s MZ=%s\n", settings.slot0DarkMode ? "true" : "false", settings.slot0MuteToZero ? "true" : "false");
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -287,14 +283,7 @@ void SettingsManager::save() {
     
     preferences.end();
     
-    Serial.printf("Settings saved, bytes written: %d\n", written);
-    
-    // Verify by re-reading
-    preferences.begin("v1settings", true);
-    int verifyBrightness = preferences.getUChar("brightness", 0);
-    int verifyMode = preferences.getInt("wifiMode", -1);
-    preferences.end();
-    Serial.printf("  Verify read-back - brightness: %d, wifiMode: %d\n", verifyBrightness, verifyMode);
+    Serial.printf("Settings saved (%d bytes)\n", written);
     
     // Backup display settings to SD card (survives reflash)
     backupToSD();

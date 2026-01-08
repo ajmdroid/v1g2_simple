@@ -151,9 +151,6 @@ Direction PacketParser::decodeDirection(uint8_t bandArrow) const {
 }
 
 uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
-    // DEBUG: Log raw strength values from V1
-    Serial.printf("[DEBUG] mapStrengthToBars: band=%d, raw=%d (0x%02X)\n", band, raw, raw);
-    
     // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
     // Use threshold tables to convert to 0-6 bar display
     // Skip smoothing entirely - let hysteresis handle flicker at the bar level
@@ -172,11 +169,9 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
         case BAND_X:  table = xThresholds;  break;
         case BAND_LASER: {
             uint8_t bars = (raw > 0x10) ? 6 : 0; // treat tiny noise as zero
-            Serial.printf("[DEBUG] Laser band, returning %d bars\n", bars);
             return bars;
         }
         default:
-            Serial.printf("[DEBUG] Unknown band, returning 0 bars\n");
             return 0;
     }
 
@@ -196,13 +191,11 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
             candidate = i;
-            Serial.printf("[DEBUG] RSSI 0x%02X -> %d bars (threshold 0x%02X)\n", raw, i, table[i]);
             break;
         }
     }
     if (candidate == 0 && raw > table[0]) {
         candidate = 6;
-        Serial.printf("[DEBUG] RSSI 0x%02X above all thresholds -> 6 bars\n", raw);
     }
 
     if (lastBarsPtr) {

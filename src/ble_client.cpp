@@ -714,12 +714,6 @@ bool V1BLEClient::setupCharacteristics() {
     auto& chars = pRemoteService->getCharacteristics(true);
     if (!chars.empty()) {
         Serial.printf("Found %u characteristics on V1 service\n", (unsigned)chars.size());
-        for (auto* c : chars) {
-            auto uuid = c->getUUID().toString();
-            Serial.printf("Char %s props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                          uuid.c_str(), c->canNotify(), c->canIndicate(),
-                          c->canRead(), c->canWrite(), c->canWriteNoResponse());
-        }
     } else {
         Serial.println("No characteristics found on V1 service");
     }
@@ -733,9 +727,6 @@ bool V1BLEClient::setupCharacteristics() {
         connected = false;
         return false;
     }
-    Serial.printf("DisplayChar props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                  pDisplayDataChar->canNotify(), pDisplayDataChar->canIndicate(),
-                  pDisplayDataChar->canRead(), pDisplayDataChar->canWrite(), pDisplayDataChar->canWriteNoResponse());
     
     // Get command characteristic (write)
     pCommandChar = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_UUID);
@@ -773,9 +764,6 @@ bool V1BLEClient::setupCharacteristics() {
         connected = false;
         return false;
     }
-    Serial.printf("CommandChar props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                  pCommandChar->canNotify(), pCommandChar->canIndicate(),
-                  pCommandChar->canRead(), pCommandChar->canWrite(), pCommandChar->canWriteNoResponse());
     
     // Subscribe to notifications (main display data characteristic only)
     // Following Kenny's approach: only subscribe to B2CE for alert data
