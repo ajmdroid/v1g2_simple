@@ -302,9 +302,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
         displayState.signalBars = maxSignal;
         
-        // Direction comes from priority alert
-        AlertData priority = getPriorityAlert();
-        displayState.arrows = priority.direction;
+        // Note: arrows already set by parseDisplayData() which shows all active directions
+        // Don't overwrite with priority alert's single direction - display packet is authoritative
     } else {
         displayState.signalBars = 0;
         displayState.arrows = DIR_NONE;
