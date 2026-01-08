@@ -84,6 +84,9 @@ public:
     
     // Check if BLE proxy is enabled
     bool isProxyEnabled() const { return proxyEnabled; }
+    
+    // Check if proxy is actively advertising (only true after V1 connects)
+    bool isProxyAdvertising() const;
 
     // Set proxy client connection status (for internal callback use)
     void setProxyClientConnected(bool connected);

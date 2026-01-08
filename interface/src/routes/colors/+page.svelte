@@ -466,7 +466,7 @@
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="bleConnected-color">
-							<span class="label-text">BLE Connected</span>
+							<span class="label-text">Proxy Connected</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
@@ -485,13 +485,13 @@
 					</div>
 					<div class="form-control">
 						<label class="label" for="bleDisconnected-color">
-							<span class="label-text">BLE Disconnected</span>
+							<span class="label-text">Proxy Ready</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
 								id="bleDisconnected-color"
 								type="color" 
-								aria-label="Bluetooth disconnected color"
+								aria-label="BLE proxy ready color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bleDisconnected)}
 								onchange={(e) => updateColor('bleDisconnected', e.target.value)}
@@ -555,8 +555,8 @@
 				<div class="form-control">
 					<label class="label cursor-pointer">
 						<div>
-							<span class="label-text">Hide BLE Icon</span>
-							<p class="text-xs text-base-content/50">Hide the Bluetooth proxy indicator</p>
+							<span class="label-text">Hide BLE Proxy Icon</span>
+							<p class="text-xs text-base-content/50">Hide the JBV1 proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 

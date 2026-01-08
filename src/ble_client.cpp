@@ -1537,6 +1537,11 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     Serial.println("Proxy service created with 6 characteristics (full V1 API)");
 }
 
+bool V1BLEClient::isProxyAdvertising() const {
+    return proxyEnabled && proxyServerInitialized && 
+           NimBLEDevice::getAdvertising()->isAdvertising();
+}
+
 void V1BLEClient::startProxyAdvertising() {
     if (!proxyServerInitialized || !pServer) {
         Serial.println("Cannot start advertising - proxy server not initialized");
