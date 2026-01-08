@@ -98,8 +98,7 @@ enum class DisplayMode {
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
 
-// WiFi deferred startup - wait for BLE to connect first
-static bool wifiStarted = false;
+// WiFi manual startup - user must long-press BOOT to start AP
 
 void requestColorPreviewHold(uint32_t durationMs) {
     colorPreviewActive = true;
@@ -391,10 +390,9 @@ static void processAutoPush() {
 
 // Start WiFi after BLE connects to avoid radio contention during connection
 void startWifi() {
-    if (wifiStarted) return;
-    wifiStarted = true;
+    if (wifiManager.isSetupModeActive()) return;
     
-    SerialLog.println("[WiFi] Starting WiFi (deferred until BLE connected)...");
+    SerialLog.println("[WiFi] Starting WiFi (manual start)...");
     wifiManager.begin();
     
     // Reduce WiFi TX power to minimize interference with BLE
@@ -450,9 +448,6 @@ void startWifi() {
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
-    // Start WiFi now that BLE is connected and stable
-    startWifi();
-    
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     if (activeSlotIndex != s.activeSlot) {
@@ -962,8 +957,8 @@ void setup() {
     SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
     SerialLog.println("==============================");
     
-    // WiFi startup is deferred until BLE connects to avoid radio contention
-    SerialLog.println("[WiFi] Deferred - will start after BLE connects");
+    // WiFi is off by default; long-press BOOT (~2s) to start the AP when needed
+    SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
     SerialLog.println("Initializing touch handler...");
@@ -1012,7 +1007,7 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    SerialLog.println("Setup complete - BLE scanning, WiFi deferred until V1 connects");
+    SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
 }
 
 void loop() {
@@ -1081,7 +1076,7 @@ void loop() {
                     wifiManager.stopSetupMode(true);
                     SerialLog.println("[WiFi] AP stopped (button long press)");
                 } else {
-                    wifiManager.startSetupMode();
+                    startWifi();
                     SerialLog.println("[WiFi] AP started (button long press)");
                 }
                 display.drawWiFiIndicator();

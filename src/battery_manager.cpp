@@ -28,6 +28,11 @@ extern SettingsManager settingsManager;
 
 BatteryManager batteryManager;
 
+// Gate verbose battery logs to reduce boot noise
+static constexpr bool BATTERY_LOG_VERBOSE = false;
+#define BATTERY_LOGF(...) do { if (BATTERY_LOG_VERBOSE) Serial.printf(__VA_ARGS__); } while (0)
+#define BATTERY_LOGLN(msg) do { if (BATTERY_LOG_VERBOSE) Serial.println(msg); } while (0)
+
 // ADC handles
 #ifdef WINDOWS_BUILD
 static esp_adc_cal_characteristics_t *adc_chars = NULL;
@@ -54,17 +59,17 @@ BatteryManager::BatteryManager()
 }
 
 bool BatteryManager::begin() {
-    Serial.println("[Battery] Initializing battery manager...");
+    BATTERY_LOGLN("[Battery] Initializing battery manager...");
     
     // CRITICAL: Initialize TCA9554 and latch power FIRST, before anything else
     // This MUST happen immediately on ANY boot to handle button-press boot scenarios
     // During button boot, GPIO16 is LOW (button pressed) but we still need the latch
-    Serial.println("[Battery] Initializing power latch (required for battery operation)...");
+    BATTERY_LOGLN("[Battery] Initializing power latch (required for battery operation)...");
     if (!initTCA9554()) {
         Serial.println("[Battery] WARNING: TCA9554 init failed - power latch unavailable");
     } else {
         if (latchPowerOn()) {
-            Serial.println("[Battery] Power latch engaged - device will stay on after button release");
+            BATTERY_LOGLN("[Battery] Power latch engaged - device will stay on after button release");
         } else {
             Serial.println("[Battery] WARNING: Power latch verification failed!");
         }
@@ -79,7 +84,7 @@ bool BatteryManager::begin() {
     const int samples = 10;
     int highCount = 0;
     
-    Serial.println("[Battery] Sampling power source detection...");
+    BATTERY_LOGLN("[Battery] Sampling power source detection...");
     for (int i = 0; i < samples; i++) {
         if (digitalRead(PWR_BUTTON_GPIO) == HIGH) {
             highCount++;
@@ -90,7 +95,7 @@ bool BatteryManager::begin() {
     // Majority vote
     onBattery = (highCount > samples / 2);
     
-    Serial.printf("[Battery] Power detection: GPIO16 samples=%d/%d (HIGH), decision=%s\n",
+    BATTERY_LOGF("[Battery] Power detection: GPIO16 samples=%d/%d (HIGH), decision=%s\n",
                   highCount, samples, onBattery ? "BATTERY" : "USB");
     
     // Initialize ADC for battery voltage reading
@@ -106,7 +111,7 @@ bool BatteryManager::begin() {
     if (adc1_handle) {
 #endif
         initialVoltage = readADCMillivolts();
-        Serial.printf("[Battery] Initial voltage reading: %dmV\n", initialVoltage);
+        BATTERY_LOGF("[Battery] Initial voltage reading: %dmV\n", initialVoltage);
         
         // Sanity check: if we think we're on USB but voltage looks like battery
         if (!onBattery && initialVoltage > BATTERY_EMPTY_MV && initialVoltage < BATTERY_FULL_MV + 500) {
@@ -121,18 +126,16 @@ bool BatteryManager::begin() {
     // TCA9554 already initialized if on battery (done early)
     // Just log the final status
     if (onBattery && !initialized) {
-        Serial.println("[Battery] Power latch already set (early init)");
+        BATTERY_LOGLN("[Battery] Power latch already set (early init)");
     }
     
     initialized = true;
     
     // Do initial cache update to populate voltage reading
     update();
-    Serial.printf("[Battery] Cached state: %dmV, %d%%, hasBattery=%d\n", 
+    Serial.printf("[Battery] Init OK (%s, %dmV, %d%%, hasBattery=%d)\n", 
+                  onBattery ? "BATTERY" : "USB",
                   cachedVoltage, cachedPercent, hasBattery());
-    
-    Serial.printf("[Battery] Battery manager initialized - Mode: %s\n", 
-                  onBattery ? "BATTERY" : "USB");
     return true;
 }
 
@@ -148,7 +151,7 @@ bool BatteryManager::initADC() {
         esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 1100, adc_chars);
     }
     
-    Serial.println("[Battery] ADC initialized (legacy API)");
+    BATTERY_LOGLN("[Battery] ADC initialized (legacy API)");
     return true;
 #else
     // ESP32 Arduino 3.x - oneshot API
@@ -191,7 +194,7 @@ bool BatteryManager::initADC() {
         return false;
     }
     
-    Serial.println("[Battery] ADC initialized for battery monitoring");
+    BATTERY_LOGLN("[Battery] ADC initialized for battery monitoring");
     return true;
 #endif
 }
@@ -209,7 +212,7 @@ bool BatteryManager::initTCA9554() {
         tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
         error = tca9554Wire.endTransmission();
         if (error == 0) break;
-        Serial.printf("[Battery] TCA9554 probe attempt %d failed\n", retry + 1);
+        BATTERY_LOGF("[Battery] TCA9554 probe attempt %d failed\n", retry + 1);
         delay(5);
     }
     
@@ -250,7 +253,7 @@ bool BatteryManager::initTCA9554() {
         return false;
     }
     
-    Serial.println("[Battery] TCA9554 initialized - power latch engaged");
+    BATTERY_LOGLN("[Battery] TCA9554 initialized - power latch engaged");
     return true;
 }
 
@@ -447,7 +450,7 @@ bool BatteryManager::isCritical() const {
 
 bool BatteryManager::latchPowerOn() {
     // Verify the latch is HIGH (should already be set by initTCA9554)
-    Serial.println("[Battery] Verifying power latch is ON");
+    BATTERY_LOGLN("[Battery] Verifying power latch is ON");
     
     // Read current output state
     tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
@@ -463,8 +466,8 @@ bool BatteryManager::latchPowerOn() {
     uint8_t current = tca9554Wire.read();
     bool latchHigh = (current & (1 << TCA9554_PWR_LATCH_PIN)) != 0;
     
-    Serial.printf("[Battery] Power latch pin 6 is %s (0x%02X)\n", 
-                  latchHigh ? "HIGH" : "LOW", current);
+    BATTERY_LOGF("[Battery] Power latch pin 6 is %s (0x%02X)\n", 
+                 latchHigh ? "HIGH" : "LOW", current);
     
     if (!latchHigh) {
         Serial.println("[Battery] WARNING: Latch is LOW - forcing HIGH!");

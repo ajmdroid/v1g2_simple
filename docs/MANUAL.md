@@ -75,9 +75,10 @@ pio device monitor -b 115200
 
 1. Device shows boot splash (if power-on reset)
 2. Screen displays "SCAN" with resting animation
-3. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
-4. Browse to `http://192.168.35.5`
-5. Web UI should load (SvelteKit-based interface)
+3. Long-press **BOOT** (~2s) to start the WiFi AP (off by default)
+4. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
+5. Browse to `http://192.168.35.5`
+6. Web UI should load (SvelteKit-based interface)
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [build.sh](build.sh#L1-L30), [interface/scripts/deploy.js](interface/scripts/deploy.js#L1-L30)
 
@@ -239,7 +240,7 @@ V1 Gen2 (BLE)
 9. settingsManager.begin()             // Load from NVS
 10. storageManager.begin()             // Mount SD or LittleFS
 11. v1ProfileManager.begin()           // Profile filesystem access
-12. wifiManager.begin()                // Start AP, web server
+12. (WiFi **not** auto-started)        // Long-press BOOT (~2s) to start AP when needed
 13. touchHandler.begin()               // I2C touch init
 14. bleClient.initBLE()                // NimBLE stack
 15. bleClient.begin()                  // Start scanning
@@ -265,6 +266,12 @@ V1 Gen2 (BLE)
 | Touch init fails | Warning logged, continues without touch |
 | Storage init fails | Warning logged, profiles disabled |
 | WiFi/AP fails | Warning logged, continues without web UI |
+
+### WiFi AP Control & Timeout
+
+- **Default behavior:** AP is OFF by default; start it with a ~2s BOOT long-press. It stays on until you toggle it off.
+- **Button toggle:** Long-press BOOT (GPIO0) for ~2s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
 
