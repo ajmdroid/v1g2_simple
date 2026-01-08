@@ -41,6 +41,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+// Gate verbose AutoPush logs behind a debug switch (keep off in normal builds)
+static constexpr bool AUTOPUSH_DEBUG_LOGS = false;
+#define AUTO_PUSH_LOGF(...) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
+#define AUTO_PUSH_LOGLN(msg) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.println(msg); } while (0)
+
 // Global objects
 V1BLEClient bleClient;
 PacketParser parser;
@@ -245,8 +250,8 @@ static void startAutoPush(int slotIndex) {
     autoPushState.profile = V1Profile();
     autoPushState.step = AUTO_PUSH_STEP_WAIT_READY;
     autoPushState.nextStepAtMs = millis() + 500;
-    SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
-                     slotNames[clampedIndex], clampedIndex);
+    AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
+                   slotNames[clampedIndex], clampedIndex);
     
     // Show the profile indicator on display when auto-push starts
     display.drawProfileIndicator(clampedIndex);
@@ -276,7 +281,7 @@ static void processAutoPush() {
         case AUTO_PUSH_STEP_PROFILE: {
             const AutoPushSlot& slot = autoPushState.slot;
             if (slot.profileName.length() > 0) {
-                SerialLog.printf("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
+                AUTO_PUSH_LOGF("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
                 V1Profile profile;
                 if (v1ProfileManager.loadProfile(slot.profileName, profile)) {
                     autoPushState.profile = profile;
@@ -284,9 +289,9 @@ static void processAutoPush() {
                     
                     // Apply slot-level Mute to Zero setting to user bytes before pushing
                     bool slotMuteToZero = settingsManager.getSlotMuteToZero(autoPushState.slotIndex);
-                    SerialLog.printf("[AutoPush] Slot %d MZ setting: %s\n", 
+                    AUTO_PUSH_LOGF("[AutoPush] Slot %d MZ setting: %s\n", 
                                     autoPushState.slotIndex, slotMuteToZero ? "ON" : "OFF");
-                    SerialLog.printf("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
+                    AUTO_PUSH_LOGF("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
                     
                     V1UserSettings modifiedSettings = profile.settings;
                     if (slotMuteToZero) {
@@ -296,27 +301,27 @@ static void processAutoPush() {
                         // MZ disabled: set bit 4
                         modifiedSettings.bytes[0] |= 0x10;
                     }
-                    SerialLog.printf("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
+                    AUTO_PUSH_LOGF("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
                                     modifiedSettings.bytes[0], 
                                     (modifiedSettings.bytes[0] & 0x10) ? 1 : 0,
                                     (modifiedSettings.bytes[0] & 0x10) ? "OFF" : "ON");
                     
                     if (bleClient.writeUserBytes(modifiedSettings.bytes)) {
-                        SerialLog.printf("[AutoPush] Profile settings pushed (MZ=%s)\n", 
+                        AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n", 
                                         slotMuteToZero ? "ON" : "OFF");
                         // Request read-back to verify V1 accepted the settings
                         delay(100);
                         bleClient.requestUserBytes();
-                        SerialLog.println("[AutoPush] Requested user bytes read-back for verification");
+                        AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
                     } else {
-                        SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
+                        AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
                 } else {
-                    SerialLog.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
+                    AUTO_PUSH_LOGF("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
                     autoPushState.profileLoaded = false;
                 }
             } else {
-                SerialLog.println("[AutoPush] No profile configured for active slot");
+                AUTO_PUSH_LOGLN("[AutoPush] No profile configured for active slot");
                 autoPushState.profileLoaded = false;
             }
 
@@ -331,8 +336,8 @@ static void processAutoPush() {
             bool slotDarkMode = settingsManager.getSlotDarkMode(autoPushState.slotIndex);
             bool displayOn = !slotDarkMode;  // Dark mode = display off
             bleClient.setDisplayOn(displayOn);
-            SerialLog.printf("[AutoPush] Display set to: %s (darkMode=%s)\n",
-                             displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
+            AUTO_PUSH_LOGF("[AutoPush] Display set to: %s (darkMode=%s)\n",
+                           displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
             autoPushState.step = AUTO_PUSH_STEP_MODE;
             autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
             return;
@@ -346,9 +351,9 @@ static void processAutoPush() {
                 else if (autoPushState.slot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
 
                 if (bleClient.setMode(static_cast<uint8_t>(autoPushState.slot.mode))) {
-                    SerialLog.printf("[AutoPush] Mode set to: %s\n", modeName);
+                    AUTO_PUSH_LOGF("[AutoPush] Mode set to: %s\n", modeName);
                 } else {
-                    SerialLog.println("[AutoPush] ERROR: Failed to set mode");
+                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set mode");
                 }
             }
 
@@ -365,13 +370,13 @@ static void processAutoPush() {
             uint8_t muteVol = settingsManager.getSlotMuteVolume(autoPushState.slotIndex);
             if (mainVol != 0xFF || muteVol != 0xFF) {
                 if (bleClient.setVolume(mainVol, muteVol)) {
-                    SerialLog.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
+                    AUTO_PUSH_LOGF("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
                 } else {
-                    SerialLog.println("[AutoPush] ERROR: Failed to set volume");
+                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set volume");
                 }
             }
 
-            SerialLog.println("[AutoPush] Complete");
+            AUTO_PUSH_LOGLN("[AutoPush] Complete");
             autoPushState.step = AUTO_PUSH_STEP_IDLE;
             autoPushState.nextStepAtMs = 0;
             return;
@@ -450,17 +455,17 @@ void onV1Connected() {
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     if (activeSlotIndex != s.activeSlot) {
-        SerialLog.printf("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
-                      s.activeSlot, activeSlotIndex);
+        AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
+                        s.activeSlot, activeSlotIndex);
     }
     
     if (!s.autoPushEnabled) {
-        SerialLog.println("[AutoPush] Disabled, skipping");
+        AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
         return;
     }
 
     // Use global activeSlot
-    SerialLog.printf("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
+    AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
 
     startAutoPush(activeSlotIndex);
 }
