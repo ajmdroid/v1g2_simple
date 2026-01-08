@@ -26,7 +26,7 @@
 #define V1_DISPLAY_DATA_LONG_UUID "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E"  // V1 out LONG (notify) - alert data, voltage responses
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
-#define SCAN_DURATION           10    // 10-second scan (stops early when V1 found)
+#define SCAN_DURATION           10000 // 10-second scan in milliseconds (stops early when V1 found)
 #define RECONNECT_DELAY         100   // 100ms delay between scan attempts
 
 // ESP Packet Constants

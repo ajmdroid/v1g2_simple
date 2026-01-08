@@ -267,7 +267,7 @@ private:
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 500;  // Wait after scan stop (increased for max stability)
+    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 1000;  // Wait after scan stop (1s for WiFi coexistence)
     
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
@@ -285,9 +285,10 @@ private:
     static constexpr unsigned long BACKOFF_BASE_MS = 5000;   // 5 seconds base
     static constexpr unsigned long BACKOFF_MAX_MS = 30000;   // 30 seconds max
     
-    // Deferred proxy advertising start (non-blocking - avoids 1500ms stall)
+    // Deferred proxy advertising start (non-blocking - avoids stall)
+    // 150ms matches Kenny's v1g2-t4s3 approach - just enough for radio to settle
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
-    static constexpr unsigned long PROXY_STABILIZE_MS = 1500;  // Delay before advertising
+    static constexpr unsigned long PROXY_STABILIZE_MS = 150;  // Match Kenny's 150ms delay
     
     // Write verification state
     bool verifyPending = false;

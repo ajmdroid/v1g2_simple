@@ -565,6 +565,7 @@ void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
+    secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
 }
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
@@ -1259,6 +1260,10 @@ void V1Display::showResting() {
     Serial.println("showResting() called");
     Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
+    // Reset multi-alert mode when showing resting state
+    g_multiAlertMode = false;
+    multiAlertMode = false;
+    
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
@@ -1578,7 +1583,38 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
         return;
     }
 
-    // Always redraw for clean display
+    // Track mode transitions - force redraw when switching from multi to single alert
+    bool modeChanged = wasInMultiAlertMode;  // If we were in multi-mode, force redraw
+    wasInMultiAlertMode = false;  // We're now in single-alert mode
+    
+    // Reset multi-alert mode globals when in single-alert mode
+    g_multiAlertMode = false;
+    multiAlertMode = false;
+
+    // Change detection: skip redraw if nothing meaningful changed
+    // (signal strength fluctuates constantly, so exclude it)
+    // Only compare values we actually draw - state.arrows, not alert.direction
+    static AlertData lastSingleAlert;
+    static DisplayState lastSingleState;
+    static int lastSingleCount = 0;
+    
+    bool needsRedraw = modeChanged ||
+        alert.frequency != lastSingleAlert.frequency ||
+        alert.band != lastSingleAlert.band ||
+        alertCount != lastSingleCount ||
+        state.activeBands != lastSingleState.activeBands ||
+        state.arrows != lastSingleState.arrows ||
+        state.muted != lastSingleState.muted;
+    
+    if (!needsRedraw) {
+        return;  // No change, skip redraw
+    }
+    
+    // Store for next comparison
+    lastSingleAlert = alert;
+    lastSingleState = state;
+    lastSingleCount = alertCount;
+
     drawBaseFrame();
 
     // Use activeBands from display state (all detected bands), not just priority alert band
@@ -1643,10 +1679,67 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
 
     // Enable multi-alert mode to shift main content up
+    bool wasMultiAlertMode = g_multiAlertMode;
     g_multiAlertMode = true;
     multiAlertMode = true;
+    
+    // Track that we're in multi-alert mode for transition detection
+    wasInMultiAlertMode = true;
 
-    // Always redraw for clean display
+    // Change detection: check if we need to redraw
+    // Exclude arrows - they fluctuate rapidly with multiple alerts as V1 switches focus
+    static AlertData lastPriority;
+    static int lastAlertCount = 0;
+    static DisplayState lastMultiState;
+    
+    bool needsRedraw = false;
+    
+    if (!wasMultiAlertMode) { needsRedraw = true; }
+    else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
+    else if (priority.band != lastPriority.band) { needsRedraw = true; }
+    else if (alertCount != lastAlertCount) { needsRedraw = true; }
+    else if (state.activeBands != lastMultiState.activeBands) { needsRedraw = true; }
+    else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
+    
+    // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
+    static AlertData lastSecondary[4];
+    if (!needsRedraw) {
+        for (int i = 0; i < alertCount && i < 4; i++) {
+            if (allAlerts[i].frequency != lastSecondary[i].frequency ||
+                allAlerts[i].band != lastSecondary[i].band) {
+                needsRedraw = true;
+                break;
+            }
+        }
+    }
+    
+    // Track arrow changes separately for incremental update
+    static uint8_t lastArrows = 0;
+    bool arrowsChanged = (state.arrows != lastArrows);
+    
+    if (!needsRedraw && !arrowsChanged) {
+        return;  // Nothing changed at all
+    }
+    
+    if (!needsRedraw && arrowsChanged) {
+        // Only arrows changed - do incremental arrow update without full redraw
+        lastArrows = state.arrows;
+        drawDirectionArrow(state.arrows, state.muted);
+#if defined(DISPLAY_WAVESHARE_349)
+        tft->flush();
+#endif
+        return;
+    }
+    
+    // Full redraw needed - store current state for next comparison
+    lastPriority = priority;
+    lastAlertCount = alertCount;
+    lastMultiState = state;
+    lastArrows = state.arrows;
+    for (int i = 0; i < alertCount && i < 4; i++) {
+        lastSecondary[i] = allAlerts[i];
+    }
+    
     drawBaseFrame();
 
     // Use activeBands from display state
@@ -1680,9 +1773,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Draw secondary alert cards at bottom (use ghostMode for muted styling)
     drawSecondaryAlertCards(allAlerts, alertCount, priority, ghostMode);
     
-    // Reset multi-alert mode after drawing
-    g_multiAlertMode = false;
-    multiAlertMode = false;
+    // Keep g_multiAlertMode true while in multi-alert - only reset when going to single-alert mode
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();
@@ -1780,6 +1871,64 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 }
             }
         }
+    }
+    
+    // Change detection for secondary cards - only redraw if visible cards changed
+    static struct {
+        uint32_t frequency;
+        Band band;
+        bool valid;
+    } lastDrawnCards[3] = {};
+    static int lastDrawnCount = 0;
+    static bool lastMuted = false;
+    
+    // Count how many valid cards we'll draw
+    int willDrawCount = 0;
+    for (int slot = 0; slot < maxCards; slot++) {
+        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
+            willDrawCount++;
+        }
+    }
+    
+    // Check if anything changed (or if screen was cleared)
+    bool cardsChanged = secondaryCardsNeedRedraw || (willDrawCount != lastDrawnCount) || (muted != lastMuted);
+    if (!cardsChanged) {
+        int checkIdx = 0;
+        for (int slot = 0; slot < maxCards && !cardsChanged; slot++) {
+            if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
+                if (checkIdx >= 3 ||
+                    cardSlots[slot].alert.frequency != lastDrawnCards[checkIdx].frequency ||
+                    cardSlots[slot].alert.band != lastDrawnCards[checkIdx].band) {
+                    cardsChanged = true;
+                }
+                checkIdx++;
+            }
+        }
+    }
+    
+    if (!cardsChanged) {
+        return;  // Secondary cards unchanged, skip redraw
+    }
+    
+    // Clear the force-redraw flag
+    secondaryCardsNeedRedraw = false;
+    
+    // Update last drawn state
+    lastDrawnCount = willDrawCount;
+    lastMuted = muted;
+    int storeIdx = 0;
+    for (int slot = 0; slot < maxCards; slot++) {
+        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
+            if (storeIdx < 3) {
+                lastDrawnCards[storeIdx].frequency = cardSlots[slot].alert.frequency;
+                lastDrawnCards[storeIdx].band = cardSlots[slot].alert.band;
+                lastDrawnCards[storeIdx].valid = true;
+                storeIdx++;
+            }
+        }
+    }
+    for (; storeIdx < 3; storeIdx++) {
+        lastDrawnCards[storeIdx].valid = false;
     }
     
     // Clear the secondary row area

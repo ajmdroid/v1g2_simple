@@ -145,6 +145,8 @@ private:
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool ghostMode = false;                 // Render muted ghost without mute badge
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
+    bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
+    bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

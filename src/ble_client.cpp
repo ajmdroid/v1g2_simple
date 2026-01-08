@@ -250,29 +250,30 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         return false;
     }
     
-    // Kenny's exact initialization pattern:
+    // Kenny's v1g2-t4s3 exact initialization pattern:
     // 1. init() with generic name
-    // 2. setDeviceName() with the actual advertised name
+    // 2. setDeviceName() with the actual advertised name  
     // 3. setPower() and setMTU for better throughput
+    // 4. Create proxy server BEFORE scanning (critical for NimBLE dual-role stability)
+    // 5. Start advertising then immediately stop (initializes BLE stack)
+    // 6. After V1 connects, advertising restarts via startProxyAdvertising()
     if (proxyEnabled) {
+        Serial.println("Proxy mode enabled - creating server BEFORE scanning (Kenny's pattern)");
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
+        
+        // Create proxy server NOW, BEFORE scanning starts
+        // This is Kenny's critical pattern - server exists but doesn't advertise
+        // until V1 connection is established
+        initProxyServer(proxyName_.c_str());
+        proxyServerInitialized = true;
+        Serial.println("Proxy server created - now ready to scan");
     } else {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
-    }
-    
-    // Create proxy server early (required before BLE stack starts client operations)
-    if (proxyEnabled) {
-        // Kenny's approach: NO security settings for proxy mode
-        // JBV1 and V1 Companion expect open connections without pairing
-        Serial.println("Creating proxy server (advertising will start after V1 connects)...");
-        initProxyServer(proxyName_.c_str());
-        proxyServerInitialized = true;
-        // Advertising data configured in initProxyServer, will start after V1 connects
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
     
     initialized = true;
@@ -479,7 +480,7 @@ bool V1BLEClient::connectToServer() {
         return false;
     }
     
-    // Guard 2: Check if scanning is still active
+    // Guard 2: Check if scanning is still active - must be fully stopped
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
@@ -511,22 +512,21 @@ bool V1BLEClient::connectToServer() {
         delay(100);
     }
     
-    // Brief pause for radio to settle
-    vTaskDelay(pdMS_TO_TICKS(300));
+    // CRITICAL: Give BLE stack time to fully settle after scan stop
+    // WiFi coexistence on ESP32-S3 requires longer settle times
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     bool connectedOk = false;
-    // Try up to 3 times - V1 can be slow to respond
-    int attempts = 3; 
+    int attempts = 3;
     
-    // Reuse existing client if available
+    // Delete existing client and create fresh one to clear any stuck state
     if (pClient) {
-        if (pClient->isConnected()) {
-            pClient->disconnect();
-            delay(100);
-        }
-    } else {
-        pClient = NimBLEDevice::createClient();
+        NimBLEDevice::deleteClient(pClient);
+        pClient = nullptr;
+        vTaskDelay(pdMS_TO_TICKS(100));  // Let NimBLE clean up
     }
+    
+    pClient = NimBLEDevice::createClient();
     
     if (!pClient) {
         Serial.println("[BLE] ERROR: Failed to create client");
@@ -540,27 +540,29 @@ bool V1BLEClient::connectToServer() {
         pClientCallbacks = new ClientCallbacks();
     }
     pClient->setClientCallbacks(pClientCallbacks);
-    // Use tighter connection parameters for lower proxy latency
-    // min/max interval: 12-24 (15-30ms), latency: 0, timeout: 400 (4000ms)
-    pClient->setConnectionParams(12, 24, 0, 400);
-    // Give it plenty of time to connect (10s)
-    pClient->setConnectTimeout(10); 
+    // Very relaxed connection parameters for WiFi coexistence
+    // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 600 (6000ms)
+    pClient->setConnectionParams(40, 80, 0, 600);
+    // Give it plenty of time to connect (15s)
+    pClient->setConnectTimeout(15); 
 
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
-        // Prefer device object on first attempt (has full advertisement data)
-        if (hasTargetDevice && attempt == 1) {
-            connectedOk = pClient->connect(targetDevice, false);
-        } else {
-            connectedOk = pClient->connect(targetAddress, false);
-        }
+        Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
+        
+        // Connect by address only - simpler and more reliable
+        connectedOk = pClient->connect(targetAddress, false);
 
         if (!connectedOk) {
             int err = pClient->getLastError();
-            // Error 13 = EBUSY - device busy, wait longer
+            Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, err);
+            
+            // Error 13 = EBUSY - BLE stack busy, need longer wait
+            // DON'T delete/recreate client here - that causes heap corruption
+            // Just wait longer for the stack to settle
             if (err == 13) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskDelay(pdMS_TO_TICKS(3000));  // Long wait for stack to clear
             } else if (attempt < attempts) {
-                vTaskDelay(pdMS_TO_TICKS(500));
+                vTaskDelay(pdMS_TO_TICKS(1000));
             }
         }
     }
@@ -787,16 +789,11 @@ bool V1BLEClient::setupCharacteristics() {
         connectCallback();
     }
     
-    // Wait for V1 connection to fully stabilize before starting proxy advertising
-    // This allows time for:
-    // - Initial data exchange with V1
-    // - Profile push to complete
-    // - Subscriptions to settle
-    // - Connection parameters to negotiate
-    // NON-BLOCKING: Schedule advertising start in process() instead of blocking here
+    // Schedule proxy advertising start - server already exists from initBLE()
+    // Just need to start advertising now that V1 is connected
     if (proxyEnabled && proxyServerInitialized) {
         Serial.println("Scheduling proxy advertising start (non-blocking)...");
-        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;  // Deferred start
+        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
     }
 
     return connected;
@@ -1479,12 +1476,13 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pAdvertising->setAdvertisementData(advData);
     pAdvertising->setScanResponseData(scanRespData);
     
-    // CRITICAL: Kenny's pattern - start then immediately stop if not connected
-    // This initializes the advertising stack properly
+    // Kenny's pattern: Start advertising then immediately stop
+    // This initializes the advertising stack and ensures clean state
+    // Without this, the advertising state may be undefined when scanning starts
     pAdvertising->start();
-    if (!connected) {
-        NimBLEDevice::stopAdvertising();
-    }
+    delay(50);  // Brief settle time
+    NimBLEDevice::stopAdvertising();
+    delay(50);
     
     Serial.println("Proxy service created with 6 characteristics (full V1 API)");
 }
