@@ -93,6 +93,9 @@ enum class DisplayMode {
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
 
+// WiFi deferred startup - wait for BLE to connect first
+static bool wifiStarted = false;
+
 void requestColorPreviewHold(uint32_t durationMs) {
     colorPreviewActive = true;
     colorPreviewStartMs = millis();
@@ -380,9 +383,70 @@ static void processAutoPush() {
     }
 }
 
+// Start WiFi after BLE connects to avoid radio contention during connection
+void startWifi() {
+    if (wifiStarted) return;
+    wifiStarted = true;
+    
+    SerialLog.println("[WiFi] Starting WiFi (deferred until BLE connected)...");
+    wifiManager.begin();
+    
+    // Reduce WiFi TX power to minimize interference with BLE
+    // WIFI_POWER_11dBm is a good balance - enough for local AP, less BLE interference
+    WiFi.setTxPower(WIFI_POWER_11dBm);
+    SerialLog.println("[WiFi] TX power reduced to 11dBm for BLE coexistence");
+    
+    // Set up callbacks for web interface
+    wifiManager.setStatusCallback([]() {
+        return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
+    });
+    
+    wifiManager.setAlertCallback([]() {
+        JsonDocument doc;
+        if (parser.hasAlerts()) {
+            AlertData alert = parser.getPriorityAlert();
+            doc["active"] = true;
+            const char* bandStr = "None";
+            if (alert.band == BAND_KA) bandStr = "Ka";
+            else if (alert.band == BAND_K) bandStr = "K";
+            else if (alert.band == BAND_X) bandStr = "X";
+            else if (alert.band == BAND_LASER) bandStr = "LASER";
+            doc["band"] = bandStr;
+            doc["strength"] = alert.frontStrength;
+            doc["frequency"] = alert.frequency;
+            doc["direction"] = alert.direction;
+        } else {
+            doc["active"] = false;
+        }
+        String json;
+        serializeJson(doc, json);
+        return json;
+    });
+    
+    // Set up command callback for dark mode and mute
+    wifiManager.setCommandCallback([](const char* cmd, bool state) {
+        if (strcmp(cmd, "display") == 0) {
+            return bleClient.setDisplayOn(state);
+        } else if (strcmp(cmd, "mute") == 0) {
+            return bleClient.setMute(state);
+        }
+        return false;
+    });
+
+    // Provide filesystem access for web profile/device APIs
+    wifiManager.setFilesystemCallback([]() -> fs::FS* {
+        return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
+    });
+    
+    SerialLog.println("[WiFi] Initialized");
+}
+
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
+    // Start WiFi now that BLE is connected and stable
+    startWifi();
+    
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     if (activeSlotIndex != s.activeSlot) {
@@ -899,53 +963,8 @@ void setup() {
     SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
     SerialLog.println("==============================");
     
-    // Initialize WiFi manager
-    SerialLog.println("Starting WiFi manager...");
-    wifiManager.begin();
-        
-        // Set up callbacks for web interface
-        wifiManager.setStatusCallback([]() {
-            return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
-        });
-        
-        wifiManager.setAlertCallback([]() {
-            JsonDocument doc;
-            if (parser.hasAlerts()) {
-                AlertData alert = parser.getPriorityAlert();
-                doc["active"] = true;
-                const char* bandStr = "None";
-                if (alert.band == BAND_KA) bandStr = "Ka";
-                else if (alert.band == BAND_K) bandStr = "K";
-                else if (alert.band == BAND_X) bandStr = "X";
-                else if (alert.band == BAND_LASER) bandStr = "LASER";
-                doc["band"] = bandStr;
-                doc["strength"] = alert.frontStrength;
-                doc["frequency"] = alert.frequency;
-                doc["direction"] = alert.direction;
-            } else {
-                doc["active"] = false;
-            }
-            String json;
-            serializeJson(doc, json);
-            return json;
-        });
-        
-        // Set up command callback for dark mode and mute
-        wifiManager.setCommandCallback([](const char* cmd, bool state) {
-            if (strcmp(cmd, "display") == 0) {
-                return bleClient.setDisplayOn(state);
-            } else if (strcmp(cmd, "mute") == 0) {
-                return bleClient.setMute(state);
-            }
-            return false;
-        });
-
-        // Provide filesystem access for web profile/device APIs
-        wifiManager.setFilesystemCallback([]() -> fs::FS* {
-            return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
-        });
-        
-        SerialLog.println("WiFi initialized");
+    // WiFi startup is deferred until BLE connects to avoid radio contention
+    SerialLog.println("[WiFi] Deferred - will start after BLE connects");
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
     SerialLog.println("Initializing touch handler...");
@@ -994,7 +1013,7 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    SerialLog.println("Setup complete - WiFi and BLE enabled");
+    SerialLog.println("Setup complete - BLE scanning, WiFi deferred until V1 connects");
 }
 
 void loop() {

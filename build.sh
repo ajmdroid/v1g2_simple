@@ -221,6 +221,21 @@ if [ "$UPLOAD_FW" = true ]; then
     fi
     
     echo -e "${GREEN}✅ Firmware uploaded${NC}"
+    
+    # Extra reset after upload to ensure clean BLE state
+    echo -e "${YELLOW}🔄 Resetting device for clean start...${NC}"
+    sleep 1
+    # Use esptool to hard reset via RTS
+    if [ -n "$UPLOAD_PORT" ]; then
+        python3 -c "import serial; s=serial.Serial('$UPLOAD_PORT', 115200); s.setRTS(True); s.setRTS(False); s.close()" 2>/dev/null || true
+    else
+        # Auto-detect port like PlatformIO does
+        PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
+        if [ -n "$PORT" ]; then
+            python3 -c "import serial; s=serial.Serial('$PORT', 115200); s.setRTS(True); s.setRTS(False); s.close()" 2>/dev/null || true
+        fi
+    fi
+    echo -e "${GREEN}✅ Device reset${NC}"
     echo ""
 fi
 
