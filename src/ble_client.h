@@ -69,7 +69,7 @@ public:
     V1BLEClient();
     ~V1BLEClient();
     
-    // Initialize BLE stack only (no scanning) - call before fastReconnect()
+    // Initialize BLE stack only (no scanning)
     bool initBLE(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
     
     // Initialize BLE and start scanning
@@ -145,12 +145,6 @@ public:
     
     // Process BLE events (call in loop)
     void process();
-    
-    // Attempt a fast reconnect to a known address
-    bool fastReconnect();
-    
-    // Set the target address for fast reconnect (must be called before fastReconnect)
-    void setTargetAddress(const NimBLEAddress& address);
     
     // Restart scanning for V1
     void startScanning();
@@ -283,6 +277,10 @@ private:
     
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
+    unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
+    
+    // Called from connectToServer() after successful sync connect
+    bool finishConnection();
     
     // State transition helper
     void setBLEState(BLEState newState, const char* reason);

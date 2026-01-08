@@ -226,7 +226,7 @@ void V1BLEClient::hardResetBLEClient() {
     setBLEState(BLEState::DISCONNECTED, "hard reset complete");
 }
 
-// Initialize BLE stack without starting scan - use for fast reconnect
+// Initialize BLE stack without starting scan
 bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     static bool initialized = false;
     if (initialized) {
@@ -449,11 +449,12 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
 }
 
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
-    Serial.println("Connected to V1");
+    Serial.println("[BLE] onConnect callback - V1 connected!");
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = true;
         instancePtr->setBLEState(BLEState::CONNECTED, "onConnect callback");
+        // Note: finishConnection() is called from connectToServer() after sync connect
     }
 }
 
@@ -479,6 +480,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = false;
         instancePtr->connectInProgress = false;  // Clear connection guard
+        instancePtr->connectStartMs = 0;  // Clear async connect timer
         // Clear proxy client connection state too - can't proxy without V1 connection
         instancePtr->proxyClientConnected = false;
         // Do NOT clear pClient - we reuse it to prevent memory leaks
@@ -525,9 +527,10 @@ bool V1BLEClient::connectToServer() {
     
     // Set connection guard
     connectInProgress = true;
+    connectStartMs = millis();  // Track when we started for timeout
     setBLEState(BLEState::CONNECTING, "connectToServer");
     
-    Serial.printf("[BLE] Connecting to %s...\n", addrStr.c_str());
+    Serial.printf("[BLE] Connecting to %s (async)...\n", addrStr.c_str());
     
     // Clear any stale bonding info
     if (NimBLEDevice::isBonded(targetAddress)) {
@@ -535,20 +538,12 @@ bool V1BLEClient::connectToServer() {
         delay(100);
     }
     
-    // CRITICAL: Give BLE stack time to fully settle after scan stop
-    // WiFi coexistence on ESP32-S3 requires longer settle times
-    vTaskDelay(pdMS_TO_TICKS(200));
-    
     // CRITICAL: Stop proxy advertising - this competes with client connect!
     if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
+        Serial.println("[BLE] Stopping proxy advertising before connect");
         NimBLEDevice::stopAdvertising();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Let advertising stop settle
+        vTaskDelay(pdMS_TO_TICKS(200));  // Longer wait for advertising to fully stop
     }
-    
-    // NOTE: WiFi/AP teardown during every connect was causing repeated EBUSY and
-    // wifi un-init timeouts on the shared radio. For testing, keep WiFi running
-    // instead of toggling it here; revisit if coexistence still needs tuning.
-    // (Previously we called WiFi.disconnect/softAPdisconnect/mode(WIFI_OFF)).
     
     // Extra verify scan is stopped
     if (pScan && pScan->isScanning()) {
@@ -556,9 +551,6 @@ bool V1BLEClient::connectToServer() {
         pScan->stop();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-
-    bool connectedOk = false;
-    int attempts = 3;
     
     // DON'T delete/recreate client - causes heap corruption and callback issues
     // Create client only if it doesn't exist
@@ -580,53 +572,51 @@ bool V1BLEClient::connectToServer() {
     // Very relaxed connection parameters for WiFi coexistence
     // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 600 (6000ms)
     pClient->setConnectionParams(40, 80, 0, 600);
-    // Give it plenty of time to connect (15s)
-    pClient->setConnectTimeout(15); 
+    // Give it plenty of time to connect (20s)
+    pClient->setConnectTimeout(20); 
 
+    // Ensure client is disconnected before attempting
+    if (pClient->isConnected()) {
+        Serial.println("[BLE] Client thinks it's connected, disconnecting first");
+        pClient->disconnect();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    
+    // Use SYNCHRONOUS connect with retries
+    // Async connect had issues with callback timing on ESP32-S3
+    bool connectedOk = false;
+    int attempts = 3;
+    
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
         
-        // Ensure client is disconnected before attempting
-        if (pClient->isConnected()) {
-            Serial.println("[BLE] Client thinks it's connected, disconnecting first");
-            pClient->disconnect();
-            vTaskDelay(pdMS_TO_TICKS(200));
-        }
-        
-        // Connect with deleteAttributes=true to clear stale cached data
+        // Parameters: address, deleteAttributes=true
         connectedOk = pClient->connect(targetAddress, true);
-
+        
         if (!connectedOk) {
             int err = pClient->getLastError();
             Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, err);
             
-            // Error 13 = EBUSY - BLE stack busy, need longer wait
-            // DON'T delete/recreate client here - that causes heap corruption
-            // Just wait longer for the stack to settle
-            if (err == 13) {
-                vTaskDelay(pdMS_TO_TICKS(3000));  // Long wait for stack to clear
+            // Error 13 = EBUSY - BLE stack busy
+            if (err == 13 && attempt < attempts) {
+                Serial.println("[BLE] Stack busy, waiting 2s before retry...");
+                vTaskDelay(pdMS_TO_TICKS(2000));
             } else if (attempt < attempts) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskDelay(pdMS_TO_TICKS(500));
             }
         }
     }
-
+    
     if (!connectedOk) {
         int lastErr = pClient->getLastError();
-        Serial.printf("[BLE] Connection failed (error: %d, failures: %d)\n", lastErr, consecutiveConnectFailures + 1);
-        
-        // DON'T restore WiFi here - we'll retry and want WiFi to stay off
-        // WiFi will be restored only on success
+        Serial.printf("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
         
         consecutiveConnectFailures++;
         
-        // Check if we need a hard reset of the BLE stack
         if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
             hardResetBLEClient();
             return false;
         }
-        
-        cleanupConnection();
         
         // Calculate exponential backoff
         int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
@@ -634,16 +624,24 @@ bool V1BLEClient::connectToServer() {
         if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
         nextConnectAllowedMs = millis() + backoffMs;
         
-        cleanupConnection();
         connectInProgress = false;
+        connectStartMs = 0;
         setBLEState(BLEState::BACKOFF, "connection failed");
         return false;
     }
     
+    // Success! Now finish connection setup
+    Serial.println("[BLE] Connected! Setting up characteristics...");
+    return finishConnection();
+}
+
+// Called from onConnect callback to finish connection setup
+bool V1BLEClient::finishConnection() {
+    Serial.println("[BLE] Connection established, setting up characteristics...");
+    
     // Success!
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = 0;
-    Serial.println("[BLE] Connected! Setting up...");
     
     // Restore WiFi AP now that BLE connection is established
     WiFi.mode(WIFI_AP);
@@ -1276,8 +1274,15 @@ void V1BLEClient::process() {
         }
         
         case BLEState::CONNECTING: {
-            // Connection in progress - just wait for callbacks
-            // onConnect/onDisconnect will update state
+            // Sync connection in progress - connectToServer() handles this
+            // This state should be brief as sync connect blocks
+            // If we're stuck here for too long, something is wrong
+            if (connectStartMs > 0 && (now - connectStartMs) > 30000) {
+                Serial.println("[BLE] Connect state stuck for 30s - resetting");
+                connectInProgress = false;
+                connectStartMs = 0;
+                setBLEState(BLEState::DISCONNECTED, "connect state timeout");
+            }
             break;
         }
         
@@ -1655,56 +1660,4 @@ int V1BLEClient::processProxyQueue() {
     }
     
     return sent;
-}
-
-// Attempt a fast reconnect to a known address before scanning
-bool V1BLEClient::fastReconnect() {
-    // Check if we have a previously known address by comparing to a default (zeroed) address
-    if (targetAddress == NimBLEAddress()) {
-        return false;
-    }
-    
-    // Guard: Don't attempt if already connecting or connected
-    if (bleState == BLEState::CONNECTING || bleState == BLEState::CONNECTED) {
-        return false;
-    }
-    
-    // Stop any active scan first
-    NimBLEScan* pScan = NimBLEDevice::getScan();
-    if (pScan->isScanning()) {
-        pScan->stop();
-        vTaskDelay(pdMS_TO_TICKS(SCAN_STOP_SETTLE_MS));
-    }
-
-    Serial.printf("[BLE] Fast reconnect to %s\n", targetAddress.toString().c_str());
-    hasTargetDevice = false;  // Ensure we connect by address only (not by advertised device)
-    
-    // Set state to DISCONNECTED so connectToServer() can proceed
-    setBLEState(BLEState::DISCONNECTED, "fast reconnect prep");
-    
-    // Try to connect directly - connectToServer will handle state transitions
-    bool result = connectToServer();
-    
-    // Clear shouldConnect flag regardless of result
-    {
-        SemaphoreGuard lock(bleMutex);
-        if (lock.locked()) {
-            shouldConnect = false;
-        }
-    }
-    
-    if (!result && bleState != BLEState::BACKOFF) {
-        // Reset to DISCONNECTED so process() can start scanning
-        setBLEState(BLEState::DISCONNECTED, "fast reconnect failed");
-    }
-    
-    return result;
-}
-
-void V1BLEClient::setTargetAddress(const NimBLEAddress& address) {
-    // Check if address is valid (not all zeros)
-    if (address != NimBLEAddress()) {
-        targetAddress = address;
-        Serial.printf("[BLE] Set target address for fast reconnect: %s\n", targetAddress.toString().c_str());
-    }
 }
