@@ -241,13 +241,20 @@ private:
     
     // Proxy queue for decoupling notify from hot path
     static constexpr size_t PROXY_QUEUE_SIZE = 8;  // Small queue, drop-oldest on overflow
-    static constexpr size_t PROXY_PACKET_MAX = 64; // Max packet size for proxy
+    static constexpr size_t PROXY_PACKET_MAX = 512; // Max packet size for proxy (handles full V1 packets)
     struct ProxyPacket {
         uint8_t data[PROXY_PACKET_MAX];
         size_t length;
         uint16_t charUUID;
     };
     ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
+    
+    // Phone→V1 command queue for safe writes (decoupled from callback context)
+    static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
+    ProxyPacket phone2v1Queue[PHONE_CMD_QUEUE_SIZE];
+    volatile size_t phone2v1QueueHead = 0;
+    volatile size_t phone2v1QueueTail = 0;
+    volatile size_t phone2v1QueueCount = 0;
     volatile size_t proxyQueueHead = 0;  // Next write position
     volatile size_t proxyQueueTail = 0;  // Next read position
     volatile size_t proxyQueueCount = 0; // Current items in queue
@@ -267,7 +274,9 @@ private:
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 1000;  // Wait after scan stop (1s for WiFi coexistence)
+    // ESP32-S3 WiFi coexistence: radio needs time after scan to be ready for connect
+    // WiFi AP sends beacons every 100ms - need to wait for a clear window
+    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 500;
     
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
@@ -282,8 +291,8 @@ private:
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
     static constexpr uint8_t MAX_BACKOFF_FAILURES = 5;
-    static constexpr unsigned long BACKOFF_BASE_MS = 5000;   // 5 seconds base
-    static constexpr unsigned long BACKOFF_MAX_MS = 30000;   // 30 seconds max
+    static constexpr unsigned long BACKOFF_BASE_MS = 500;    // 500ms base - quick retry
+    static constexpr unsigned long BACKOFF_MAX_MS = 5000;    // 5 seconds max
     
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // 150ms matches Kenny's v1g2-t4s3 approach - just enough for radio to settle

@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "../include/config.h"
 #include <Arduino.h>
+#include <WiFi.h>  // For WiFi coexistence during BLE connect
 #include <set>
 #include <string>
 #include <cstdlib>
@@ -186,7 +187,7 @@ void V1BLEClient::cleanupConnection() {
 }
 
 // Hard reset of BLE client stack - use after repeated failures
-// This recreates the client object to clear any stuck internal state
+// Clears stuck state without recreating client (which causes callback corruption)
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
     
@@ -276,6 +277,27 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
     
+    // Create client ONCE during init (Kenny's pattern) - reuse for all connection attempts
+    // DON'T delete/recreate on connection failures - causes callback pointer corruption
+    if (!pClient) {
+        pClient = NimBLEDevice::createClient();
+        if (!pClient) {
+            Serial.println("ERROR: Failed to create BLE client");
+            return false;
+        }
+        
+        // Create callbacks once and keep them for the lifetime of the client
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
+        pClient->setClientCallbacks(pClientCallbacks);
+        
+        // Connection parameters for WiFi coexistence
+        pClient->setConnectionParams(40, 80, 0, 600);
+        pClient->setConnectTimeout(15);
+        Serial.println("BLE client created");
+    }
+    
     initialized = true;
     Serial.println("BLE stack initialized");
     return true;
@@ -297,11 +319,12 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScanCallbacks = new ScanCallbacks(this);
     pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
-    pScan->setInterval(100);  // 62.5ms interval - relaxed scanning (Kenny's setting)
-    pScan->setWindow(75);     // 47ms window - 75% duty cycle
+    // ESP32-S3 WiFi coexistence: use 50% duty cycle to give WiFi AP radio time
+    pScan->setInterval(160);  // 100ms interval 
+    pScan->setWindow(80);     // 50ms window - 50% duty cycle
     pScan->setMaxResults(0);  // Unlimited results
     pScan->setDuplicateFilter(false);  // Don't filter duplicates - we want to see everything
-    Serial.println("Scan configured: interval=100 (62.5ms), window=75 (47ms), active=true, 75% duty, 10s duration");
+    Serial.println("Scan configured: interval=160 (100ms), window=80 (50ms), active=true, 50% duty, 10s duration");
     
     Serial.println("Scanning for V1 Gen2...");
     lastScanStart = millis();
@@ -514,32 +537,46 @@ bool V1BLEClient::connectToServer() {
     
     // CRITICAL: Give BLE stack time to fully settle after scan stop
     // WiFi coexistence on ESP32-S3 requires longer settle times
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(200));
+    
+    // CRITICAL: Stop proxy advertising - this competes with client connect!
+    if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
+        NimBLEDevice::stopAdvertising();
+        vTaskDelay(pdMS_TO_TICKS(100));  // Let advertising stop settle
+    }
+    
+    // NOTE: WiFi/AP teardown during every connect was causing repeated EBUSY and
+    // wifi un-init timeouts on the shared radio. For testing, keep WiFi running
+    // instead of toggling it here; revisit if coexistence still needs tuning.
+    // (Previously we called WiFi.disconnect/softAPdisconnect/mode(WIFI_OFF)).
+    
+    // Extra verify scan is stopped
+    if (pScan && pScan->isScanning()) {
+        Serial.println("[BLE] WARNING: Scan still active, stopping again");
+        pScan->stop();
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 
     bool connectedOk = false;
     int attempts = 3;
     
-    // Delete existing client and create fresh one to clear any stuck state
-    if (pClient) {
-        NimBLEDevice::deleteClient(pClient);
-        pClient = nullptr;
-        vTaskDelay(pdMS_TO_TICKS(100));  // Let NimBLE clean up
-    }
-    
-    pClient = NimBLEDevice::createClient();
-    
+    // DON'T delete/recreate client - causes heap corruption and callback issues
+    // Create client only if it doesn't exist
     if (!pClient) {
-        Serial.println("[BLE] ERROR: Failed to create client");
-        connectInProgress = false;
-        setBLEState(BLEState::DISCONNECTED, "client creation failed");
-        return false;
+        pClient = NimBLEDevice::createClient();
+        if (!pClient) {
+            Serial.println("[BLE] ERROR: Failed to create client");
+            connectInProgress = false;
+            setBLEState(BLEState::DISCONNECTED, "client creation failed");
+            return false;
+        }
+        // Create client callbacks if not already created
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
+        pClient->setClientCallbacks(pClientCallbacks);
     }
-
-    // Create client callbacks if not already created
-    if (!pClientCallbacks) {
-        pClientCallbacks = new ClientCallbacks();
-    }
-    pClient->setClientCallbacks(pClientCallbacks);
+    
     // Very relaxed connection parameters for WiFi coexistence
     // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 600 (6000ms)
     pClient->setConnectionParams(40, 80, 0, 600);
@@ -549,8 +586,15 @@ bool V1BLEClient::connectToServer() {
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
         
-        // Connect by address only - simpler and more reliable
-        connectedOk = pClient->connect(targetAddress, false);
+        // Ensure client is disconnected before attempting
+        if (pClient->isConnected()) {
+            Serial.println("[BLE] Client thinks it's connected, disconnecting first");
+            pClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+        
+        // Connect with deleteAttributes=true to clear stale cached data
+        connectedOk = pClient->connect(targetAddress, true);
 
         if (!connectedOk) {
             int err = pClient->getLastError();
@@ -570,6 +614,9 @@ bool V1BLEClient::connectToServer() {
     if (!connectedOk) {
         int lastErr = pClient->getLastError();
         Serial.printf("[BLE] Connection failed (error: %d, failures: %d)\n", lastErr, consecutiveConnectFailures + 1);
+        
+        // DON'T restore WiFi here - we'll retry and want WiFi to stay off
+        // WiFi will be restored only on success
         
         consecutiveConnectFailures++;
         
@@ -597,6 +644,9 @@ bool V1BLEClient::connectToServer() {
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = 0;
     Serial.println("[BLE] Connected! Setting up...");
+    
+    // Restore WiFi AP now that BLE connection is established
+    WiFi.mode(WIFI_AP);
     
     // NimBLE 2.x requires explicit service discovery
     int maxRetries = 3;
