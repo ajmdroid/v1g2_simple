@@ -24,6 +24,9 @@ extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
 extern void cancelColorPreview();
 
+// Enable to dump LittleFS root on WiFi start (debug only); keep false for release
+static constexpr bool WIFI_DEBUG_FS_DUMP = false;
+
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
@@ -202,8 +205,10 @@ void WiFiManager::setupWebServer() {
         return;
     }
     Serial.println("[SetupMode] LittleFS mounted");
-    // Dump LittleFS root for diagnostics
-    dumpLittleFSRoot();
+    // Dump LittleFS root for diagnostics (opt-in to avoid startup stall)
+    if (WIFI_DEBUG_FS_DUMP) {
+        dumpLittleFSRoot();
+    }
     
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
