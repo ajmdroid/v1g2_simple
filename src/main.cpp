@@ -172,6 +172,11 @@ static uint8_t mutedAlertStrength = 0;
 static Band mutedAlertBand = BAND_NONE;
 static uint32_t mutedAlertFreq = 0;
 
+// Alert persistence - show last alert in grey after V1 clears it
+static AlertData persistedAlert;
+static unsigned long alertClearedTime = 0;
+static bool alertPersistenceActive = false;
+
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
 static int tapCount = 0;
@@ -718,8 +723,13 @@ void processBLEData() {
                 // Pass all alerts for multi-alert card display
                 display.update(priority, currentAlerts.data(), alertCount, state);
                 
+                // Save priority alert for potential persistence when alert clears
+                persistedAlert = priority;
+                alertPersistenceActive = false;  // Cancel any active persistence
+                alertClearedTime = 0;
+                
             } else {
-                // No alerts - immediately clear mute state and show resting
+                // No alerts from V1
                 static unsigned long lastNoAlertLog = 0;
                 if (millis() - lastNoAlertLog > 500) {
                     SerialLog.printf("[DEBUG] No alerts: alertCount=%d, activeBands=0x%02X, muted=%d, localMute=%d\n",
@@ -744,8 +754,43 @@ void processBLEData() {
                     unmuteSentTimestamp = millis();
                 }
                 
-                SerialLog.println("[DEBUG] Calling display.update(state) - no alerts");
-                display.update(state);
+                // Alert persistence: show last alert in grey for configured duration
+                const V1Settings& s = settingsManager.get();
+                uint8_t persistSec = settingsManager.getSlotAlertPersistSec(s.activeSlot);
+                unsigned long now = millis();
+                
+                if (persistSec > 0 && persistedAlert.isValid) {
+                    // Start persistence timer on transition from alerts to no-alerts
+                    if (alertClearedTime == 0) {
+                        alertClearedTime = now;
+                        alertPersistenceActive = true;
+                        SerialLog.printf("[AlertPersist] Started %d sec persistence for %s %.3f MHz\n",
+                                        persistSec, 
+                                        persistedAlert.band == BAND_KA ? "Ka" : 
+                                        persistedAlert.band == BAND_K ? "K" : 
+                                        persistedAlert.band == BAND_X ? "X" : "Laser",
+                                        persistedAlert.frequency / 1000.0f);
+                    }
+                    
+                    // Check if persistence timer still active
+                    unsigned long persistMs = persistSec * 1000UL;
+                    if (alertPersistenceActive && (now - alertClearedTime) < persistMs) {
+                        // Show persisted alert in dark grey
+                        display.updatePersisted(persistedAlert, state);
+                    } else {
+                        // Persistence expired - show normal resting
+                        if (alertPersistenceActive) {
+                            SerialLog.println("[AlertPersist] Expired, showing resting");
+                            alertPersistenceActive = false;
+                        }
+                        display.update(state);
+                    }
+                } else {
+                    // Persistence disabled or no valid persisted alert
+                    alertPersistenceActive = false;
+                    alertClearedTime = 0;
+                    display.update(state);
+                }
             }
         }
     }

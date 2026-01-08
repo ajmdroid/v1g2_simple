@@ -1259,8 +1259,9 @@ void V1Display::showResting() {
     Serial.println("showResting() called");
     Serial.printf("SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
-    // Reset multi-alert mode when showing resting state
-    g_multiAlertMode = false;
+    // Align layout with multi-alert positioning if enabled
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;
     multiAlertMode = false;
     
     // Clear and draw the base frame
@@ -1499,6 +1500,11 @@ void V1Display::update(const DisplayState& state) {
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
     
+    // Align layout with multi-alert positioning if enabled
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;
+    multiAlertMode = false;  // No cards to draw in resting state
+    
     // Check if profile flash period just expired (needs redraw to clear)
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
     bool flashJustExpired = wasInFlashPeriod && !inFlashPeriod;
@@ -1559,6 +1565,11 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
     if (!alert.isValid) {
         return;
     }
+    
+    // Align layout with multi-alert positioning if enabled (consistent with other screens)
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;
+    multiAlertMode = false;  // No cards to draw in legacy single-alert mode
 
     // Override mute when laser active or strong signal present during alert
     uint8_t strength = std::max(alert.frontStrength, alert.rearStrength);
@@ -1595,6 +1606,59 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
 void V1Display::update(const AlertData& alert) {
     // Preserve legacy call sites by using the last known muted flag
     update(alert, lastState.muted);
+}
+
+// Persisted alert display - shows last alert in dark grey after V1 clears it
+// Only draws frequency, band, and arrows - no signal bars, no mute badge
+// Bogey counter shows V1 mode (from state), not "1"
+void V1Display::updatePersisted(const AlertData& alert, const DisplayState& state) {
+    if (!alert.isValid) {
+        update(state);  // Fall back to normal resting display
+        return;
+    }
+    
+    // Derive persisted color from muted - darken by ~50%
+    auto darkenColor = [](uint16_t color) -> uint16_t {
+        uint8_t r = ((color >> 11) & 0x1F) / 2;
+        uint8_t g = ((color >> 5) & 0x3F) / 2;
+        uint8_t b = (color & 0x1F) / 2;
+        return (r << 11) | (g << 5) | b;
+    };
+    
+    // Align layout with multi-alert positioning if enabled (consistent with alert screens)
+    const V1Settings& s = settingsManager.get();
+    g_multiAlertMode = s.enableMultiAlert;
+    multiAlertMode = false;  // No cards to draw
+    wasInMultiAlertMode = false;
+    
+    drawBaseFrame();
+    
+    // Bogey counter shows V1 mode (truth from V1), not alert count
+    char topChar = state.hasMode ? state.modeChar : '0';
+    drawTopCounter(topChar, true, true);  // muted=true for grey styling
+    
+    // Band indicator in dark grey
+    uint8_t bandMask = alert.band;
+    drawBandIndicators(bandMask, true);  // muted=true for grey styling
+    
+    // Frequency in dark grey (pass muted=true)
+    drawFrequency(alert.frequency, alert.band == BAND_LASER, true);
+    
+    // No signal bars - just draw empty
+    drawVerticalSignalBars(0, 0, alert.band, true);
+    
+    // Arrows in dark grey
+    drawDirectionArrow(alert.direction, true);  // muted=true for grey
+    
+    // No mute badge
+    // drawMuteIcon intentionally skipped
+    
+    // Profile indicator still shown
+    drawProfileIndicator(currentProfileSlot);
+
+#if defined(DISPLAY_WAVESHARE_349)
+    tft->flush();
+#endif
 }
 
 void V1Display::update(const AlertData& alert, const DisplayState& state, int alertCount) {

@@ -41,6 +41,9 @@ public:
     // Multi-alert display: shows priority alert + secondary alert cards
     void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
     
+    // Persisted alert display (shows last alert in dark grey after V1 clears it)
+    void updatePersisted(const AlertData& alert, const DisplayState& state);
+    
     // Show connection status
     void showDisconnected();
     void showResting(); // idle/rest screen

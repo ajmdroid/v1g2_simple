@@ -312,7 +312,7 @@
 									{#if !slot.darkMode && !slot.muteToZero}—{/if}
 								</div>
 								<div class="text-base-content/60">Alert persistence:</div>
-								<div class="font-medium">{slot.alertPersist || 0}s ghost</div>
+								<div class="font-medium">{slot.alertPersist || 0}s</div>
 							</div>
 						{/if}
 						
