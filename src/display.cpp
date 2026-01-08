@@ -1253,6 +1253,35 @@ void V1Display::flush() {
 #endif
 }
 
+void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    // Constrain region to framebuffer bounds
+    if (!tft || !gfxPanel) return;
+    int16_t maxW = tft->width();
+    int16_t maxH = tft->height();
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (w <= 0 || h <= 0) return;
+    if (x >= maxW || y >= maxH) return;
+    if (x + w > maxW) w = maxW - x;
+    if (y + h > maxH) h = maxH - y;
+
+    uint16_t* fb = tft->getFramebuffer();
+    if (!fb) {
+        tft->flush();
+        return;
+    }
+
+    int16_t stride = tft->width();
+    for (int16_t row = 0; row < h; ++row) {
+        uint16_t* rowPtr = fb + (y + row) * stride + x;
+        gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+    }
+#else
+    (void)x; (void)y; (void)w; (void)h;
+#endif
+}
+
 void V1Display::showDisconnected() {
     drawBaseFrame();
     drawStatusText("Disconnected", PALETTE_KA);
@@ -1311,7 +1340,16 @@ void V1Display::showResting() {
         drawProfileIndicator(profileSlot);
         lastRestingProfileSlot = profileSlot;
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-        tft->flush();
+        // Push only the regions touched by profile/WiFi/BLE/battery indicators
+        const int profileFlushY = 8;
+        const int profileFlushH = 36;
+        flushRegion(100, profileFlushY, SCREEN_WIDTH - 160, profileFlushH);
+
+        const int leftColWidth = 64;
+        const int leftColHeight = 96;
+        flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
+    #else
+        flush();
 #endif
     }
 
