@@ -85,7 +85,7 @@ pio run -e waveshare-349-windows --target upload
 
 ## 7. Connect to WiFi Configuration
 
-After flashing, the display will create a WiFi Access Point:
+WiFi AP is **off by default**. Long-press **BOOT** (~2s) to start the access point, then connect:
 
 | Setting | Value |
 |---------|-------|
@@ -93,7 +93,7 @@ After flashing, the display will create a WiFi Access Point:
 | Password | `setupv1g2` |
 | Config URL | `http://192.168.35.5` |
 
-Connect to this network and open the URL to configure WiFi and display settings.
+Connect to this network and open the URL to configure WiFi and display settings. Long-press BOOT again to turn the AP off when finished.
 
 ---
 

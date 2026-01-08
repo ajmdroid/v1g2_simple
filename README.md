@@ -232,7 +232,7 @@ pio run -e waveshare-349 -t upload --upload-port /dev/cu.usbmodem14101
 
 ### First Boot and WiFi
 
-When you first power on the display, it creates a WiFi access point:
+WiFi AP is **off by default**. Long-press **BOOT** (~2s) to start the access point when you need it:
 
 | Setting | Value |
 |---------|-------|
@@ -242,9 +242,10 @@ When you first power on the display, it creates a WiFi access point:
 
 **Security note:** Change the default AP password after setup via Settings → AP Password.
 
-1. **Connect your phone or computer** to the `V1-Simple` WiFi network
-2. **Open a browser** and go to `http://192.168.35.5`
-3. **Configure your settings:**
+1. **Long-press BOOT (~2s)** to start the AP (toggle off with another long-press)
+2. **Connect your phone or computer** to the `V1-Simple` WiFi network
+3. **Open a browser** and go to `http://192.168.35.5`
+4. **Configure your settings:**
    - Set display brightness
    - Enable BLE proxy for JBV1 app compatibility
    - Adjust color theme
