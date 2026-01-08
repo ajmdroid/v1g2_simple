@@ -94,6 +94,8 @@ public:
     void flush();
 
 private:
+    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
+
     // Display driver (Arduino_GFX)
     Arduino_DataBus* bus = nullptr;
     Arduino_GFX* gfxPanel = nullptr;
@@ -134,6 +136,10 @@ private:
     static constexpr int SECONDARY_ROW_HEIGHT = 30;  // Height reserved for secondary alert cards
 
     int currentProfileSlot = 0;  // Track current profile for display
+    ScreenMode currentScreen = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws
+    uint32_t paletteRevision = 0;                    // Incremented on theme change to trigger redraws
+    uint32_t lastRestingPaletteRevision = 0;         // Palette revision last used for resting screen
+    int lastRestingProfileSlot = -1;                 // Last profile shown on resting screen
     
     // Visibility timeout tracking
     unsigned long wifiConnectedTime = 0;    // When WiFi became connected

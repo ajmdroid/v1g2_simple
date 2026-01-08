@@ -267,6 +267,11 @@ V1Display::V1Display() {
     currentPalette = ColorThemes::STANDARD();
     // Set global instance for color palette access
     g_displayInstance = this;
+
+    currentScreen = ScreenMode::Unknown;
+    paletteRevision = 0;
+    lastRestingPaletteRevision = 0;
+    lastRestingProfileSlot = -1;
 }
 
 V1Display::~V1Display() {
@@ -1260,40 +1265,58 @@ void V1Display::showResting() {
     const V1Settings& s = settingsManager.get();
     g_multiAlertMode = s.enableMultiAlert;
     multiAlertMode = false;
+
+    // Avoid redundant full-screen clears/flushes when already resting and nothing changed
+    bool paletteChanged = (lastRestingPaletteRevision != paletteRevision);
+    bool screenChanged = (currentScreen != ScreenMode::Resting);
+    int profileSlot = currentProfileSlot;
+    bool profileChanged = (profileSlot != lastRestingProfileSlot);
     
-    // Clear and draw the base frame
-    TFT_CALL(fillScreen)(PALETTE_BG);
-    drawBaseFrame();
-    
-    // Draw idle state: dimmed UI elements showing V1 is ready
-    // Top counter showing "0" (no bogeys)
-    drawTopCounter('0', false, true);
-    
-    // Band indicators all dimmed (no active bands)
-    drawBandIndicators(0, false);
-    
-    // Signal bars all empty
-    drawVerticalSignalBars(0, 0, BAND_KA, false);
-    
-    // Direction arrows all dimmed
-    drawDirectionArrow(DIR_NONE, false);
-    
-    // Frequency display showing dashes
-    drawFrequency(0, false);
-    
-    // Mute indicator off
-    drawMuteIcon(false);
-    
-    // Profile indicator
-    drawProfileIndicator(currentProfileSlot);
-    
+    if (screenChanged || paletteChanged) {
+        // Full redraw when coming from another screen or after theme change
+        TFT_CALL(fillScreen)(PALETTE_BG);
+        drawBaseFrame();
+        
+        // Draw idle state: dimmed UI elements showing V1 is ready
+        // Top counter showing "0" (no bogeys)
+        drawTopCounter('0', false, true);
+        
+        // Band indicators all dimmed (no active bands)
+        drawBandIndicators(0, false);
+        
+        // Signal bars all empty
+        drawVerticalSignalBars(0, 0, BAND_KA, false);
+        
+        // Direction arrows all dimmed
+        drawDirectionArrow(DIR_NONE, false);
+        
+        // Frequency display showing dashes
+        drawFrequency(0, false);
+        
+        // Mute indicator off
+        drawMuteIcon(false);
+        
+        // Profile indicator
+        drawProfileIndicator(profileSlot);
+
+        lastRestingPaletteRevision = paletteRevision;
+        lastRestingProfileSlot = profileSlot;
+        currentScreen = ScreenMode::Resting;
+
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+        tft->flush();
+#endif
+    } else if (profileChanged) {
+        // Only the profile changed while already resting; redraw just the indicator
+        drawProfileIndicator(profileSlot);
+        lastRestingProfileSlot = profileSlot;
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+        tft->flush();
+#endif
+    }
+
     // Reset lastState so next update() detects changes from this "resting" state
     lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
-    
-#if defined(DISPLAY_USE_ARDUINO_GFX)
-    // Flush canvas to display
-    tft->flush();
-#endif
 }
 
 void V1Display::showScanning() {
@@ -1361,6 +1384,9 @@ void V1Display::showScanning() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->flush();
 #endif
+
+    currentScreen = ScreenMode::Scanning;
+    lastRestingProfileSlot = -1;
 }
 
 void V1Display::showDemo() {
