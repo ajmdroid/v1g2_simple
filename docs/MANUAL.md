@@ -830,6 +830,15 @@ When auto-push is enabled and V1 connects, the system executes a 5-step sequence
 
 **Source:** [src/main.cpp](src/main.cpp#L175-L340) (autoPushState enum, processAutoPush())
 
+### Debug Logging
+
+Auto-push Serial spam is gated by a compile-time switch. To see every state transition and command:
+
+1. Open [src/main.cpp](src/main.cpp#L30-L60) and set `AUTOPUSH_DEBUG_LOGS` to `true`.
+2. Rebuild and flash firmware.
+
+Default is `false` to keep boot logs quiet.
+
 ### Profile Cycling (Touch Gesture)
 
 **Triple-tap** the screen to cycle through profiles 0→1→2→0...
@@ -924,6 +933,7 @@ See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 | `PERF_METRICS` | 1 | Enable performance counters |
 | `PERF_MONITORING` | 1 | Enable sampled timing |
 | `PERF_VERBOSE` | 0 | Enable immediate latency alerts |
+| `AUTOPUSH_DEBUG_LOGS` | false | Enable verbose `[AutoPush]` Serial logs (set in `src/main.cpp`) |
 
 **Source:** [include/config.h](include/config.h#L65-L68), [src/perf_metrics.h](src/perf_metrics.h#L25-L55)
 
