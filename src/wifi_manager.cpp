@@ -27,6 +27,10 @@ extern void cancelColorPreview();
 // Enable to dump LittleFS root on WiFi start (debug only); keep false for release
 static constexpr bool WIFI_DEBUG_FS_DUMP = false;
 
+// Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
+static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
+static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
+
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
@@ -142,6 +146,9 @@ bool WiFiManager::isUiActive(unsigned long timeoutMs) const {
     return (millis() - lastUiActivityMs) < timeoutMs;
 }
 
+// Ensure last client seen timestamp advances when UI is accessed
+// (called on every HTTP request via checkRateLimit/markUiActivity)
+
 bool WiFiManager::startSetupMode() {
     // Always-on AP; idempotent start
     if (setupModeState == SETUP_MODE_AP_ON) {
@@ -151,6 +158,7 @@ bool WiFiManager::startSetupMode() {
 
     Serial.println("[SetupMode] Starting AP (always-on mode)...");
     setupModeStartTime = millis();
+    lastClientSeenMs = setupModeStartTime;
 
     WiFi.mode(WIFI_AP);
 
@@ -169,9 +177,36 @@ bool WiFiManager::startSetupMode() {
 
     Serial.printf("[SetupMode] AP started - connect to SSID shown on display\n");
     Serial.printf("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
-    Serial.println("[SetupMode] AP will remain on (no timeout)");
+    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) {
+        Serial.println("[SetupMode] AP will remain on (no timeout)");
+    } else {
+        Serial.printf("[SetupMode] AP auto-timeout set to %lu ms\n", WIFI_AP_AUTO_TIMEOUT_MS);
+    }
 
     return true;
+}
+
+bool WiFiManager::stopSetupMode(bool manual) {
+    if (setupModeState != SETUP_MODE_AP_ON) {
+        return false;
+    }
+
+    Serial.println("[SetupMode] Stopping AP...");
+    server.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+    setupModeState = SETUP_MODE_OFF;
+
+    EVENT_LOG(EVT_WIFI_AP_STOP, 0);
+    EVENT_LOG(EVT_SETUP_MODE_EXIT, manual ? 1 : 0);
+    return true;
+}
+
+bool WiFiManager::toggleSetupMode(bool manual) {
+    if (setupModeState == SETUP_MODE_AP_ON) {
+        return stopSetupMode(manual);
+    }
+    return startSetupMode();
 }
 
 void WiFiManager::setupAP() {
@@ -381,13 +416,43 @@ void WiFiManager::setupWebServer() {
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
+void WiFiManager::checkAutoTimeout() {
+    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) return;  // Disabled by default
+    if (setupModeState != SETUP_MODE_AP_ON) return;
+
+    unsigned long now = millis();
+    int staCount = WiFi.softAPgetStationNum();
+    if (staCount > 0) {
+        lastClientSeenMs = now;
+    }
+
+    unsigned long lastActivity = lastUiActivityMs;
+    if (lastClientSeenMs > lastActivity) {
+        lastActivity = lastClientSeenMs;
+    }
+
+    bool timeoutElapsed = (now - setupModeStartTime) >= WIFI_AP_AUTO_TIMEOUT_MS;
+    bool inactiveEnough = (lastActivity == 0) ? ((now - setupModeStartTime) >= WIFI_AP_INACTIVITY_GRACE_MS)
+                                              : ((now - lastActivity) >= WIFI_AP_INACTIVITY_GRACE_MS);
+
+    if (timeoutElapsed && inactiveEnough && staCount == 0) {
+        Serial.println("[SetupMode] Auto-timeout reached - stopping AP");
+        stopSetupMode(false);
+    }
+}
+
 void WiFiManager::process() {
     if (setupModeState != SETUP_MODE_AP_ON) {
         return;  // No WiFi processing when Setup Mode is off
     }
     
     // Handle web requests
+    if (setupModeState != SETUP_MODE_AP_ON) {
+        return;
+    }
+
     server.handleClient();
+    checkAutoTimeout();
 }
 
 String WiFiManager::getAPIPAddress() const {

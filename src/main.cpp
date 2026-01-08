@@ -194,7 +194,8 @@ const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 // Brightness adjustment mode (BOOT button triggered)
 static bool brightnessAdjustMode = false;
 static uint8_t brightnessAdjustValue = 200;  // Current slider value
-static unsigned long lastBootButtonPress = 0;
+static unsigned long bootPressStart = 0;     // For long-press detection
+static bool bootWasPressed = false;
 const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
 
 
@@ -1053,29 +1054,49 @@ void loop() {
         }
     }
     
-    // BOOT button handling for brightness adjustment
+    // BOOT button handling: short press = brightness adjust, long press = AP toggle
     bool bootPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);  // Active low
     unsigned long now = millis();
-    
-    if (bootPressed && (now - lastBootButtonPress > BOOT_DEBOUNCE_MS)) {
-        lastBootButtonPress = now;
-        
-        if (!brightnessAdjustMode) {
-            // Enter brightness adjustment mode
-            brightnessAdjustMode = true;
-            brightnessAdjustValue = settingsManager.get().brightness;
-            display.showBrightnessSlider(brightnessAdjustValue);
-            SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
-        } else {
-            // Exit brightness adjustment mode and save
-            brightnessAdjustMode = false;
-            settingsManager.setBrightness(brightnessAdjustValue);
-            settingsManager.save();
-            display.hideBrightnessSlider();
-            display.showResting();  // Return to normal display
-            SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+
+    if (bootPressed && !bootWasPressed) {
+        bootPressStart = now;
+    }
+
+    if (!bootPressed && bootWasPressed) {
+        unsigned long pressDuration = now - bootPressStart;
+        if (pressDuration >= BOOT_DEBOUNCE_MS) {
+            const unsigned long AP_TOGGLE_LONG_PRESS_MS = 2000;
+
+            if (brightnessAdjustMode) {
+                // Exit brightness adjustment mode and save
+                brightnessAdjustMode = false;
+                settingsManager.setBrightness(brightnessAdjustValue);
+                settingsManager.save();
+                display.hideBrightnessSlider();
+                display.showResting();  // Return to normal display
+                SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+            } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+                bool wasActive = wifiManager.isSetupModeActive();
+                if (wasActive) {
+                    wifiManager.stopSetupMode(true);
+                    SerialLog.println("[WiFi] AP stopped (button long press)");
+                } else {
+                    wifiManager.startSetupMode();
+                    SerialLog.println("[WiFi] AP started (button long press)");
+                }
+                display.drawWiFiIndicator();
+                display.flush();
+            } else {
+                // Enter brightness adjustment mode (short press)
+                brightnessAdjustMode = true;
+                brightnessAdjustValue = settingsManager.get().brightness;
+                display.showBrightnessSlider(brightnessAdjustValue);
+                SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
+            }
         }
     }
+
+    bootWasPressed = bootPressed;
     
     // If in brightness adjustment mode, handle touch for slider
     if (brightnessAdjustMode) {
