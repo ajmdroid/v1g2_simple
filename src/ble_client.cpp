@@ -349,7 +349,8 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setInterval(160);  // 100ms interval 
     pScan->setWindow(80);     // 50ms window - 50% duty cycle
     pScan->setMaxResults(0);  // Unlimited results
-    pScan->setDuplicateFilter(false);  // Don't filter duplicates - we want to see everything
+    // Filter duplicate advertisements to reduce scan load and radio time
+    pScan->setDuplicateFilter(true);
     Serial.println("Scan configured: interval=160 (100ms), window=80 (50ms), active=true, 50% duty, 10s duration");
     
     Serial.println("Scanning for V1 Gen2...");
