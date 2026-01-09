@@ -2,7 +2,7 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 1.9.2  
+**Version:** 2.0.1 RC  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
@@ -1033,6 +1033,10 @@ Enable verbose logging by checking serial output for:
 [BLE_SM] Service discovery completed
 [BLE_SM] Subscribed to display data notifications
 ```
+
+**Tuning knobs (advanced):**
+- Connection attempts: 2 (quiet by default). Flip `CONNECT_ATTEMPT_VERBOSE` in [src/ble_client.cpp](src/ble_client.cpp#L80-L85) to see per-attempt logs.
+- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L276-L305) if you need slower retries or longer radio settle time.
 
 ### Web API Endpoints
 

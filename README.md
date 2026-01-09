@@ -4,7 +4,7 @@
 
 A configurable touchscreen display for the Valentine One Gen2 radar detector, built on the Waveshare ESP32‑S3‑Touch‑LCD‑3.49.
 
-**Version:** 1.9.2
+**Version:** 2.0.1 RC
 
 **Features:**
 - Wireless BLE connection with fast reconnection
@@ -173,6 +173,8 @@ pio run -e waveshare-349-windows -t uploadfs    # Upload web filesystem
 
 pio device monitor                       # Open serial monitor
 ```
+
+If `./build.sh --all` fails on Windows, run the Windows `pio` commands above from the repo root. Ensure `npm install` has been run once in `interface/` before running `pio` uploads.
 
 ### Additional build helpers
 
