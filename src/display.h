@@ -117,7 +117,7 @@ private:
     void drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted);    // Montserrat Bold font
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
-    void drawDirectionArrow(Direction dir, bool muted);
+    void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
     void drawBaseFrame();

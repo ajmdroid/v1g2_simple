@@ -1606,7 +1606,7 @@ void V1Display::update(const DisplayState& state) {
         else if (state.activeBands & BAND_X) primaryBand = BAND_X;
         
         drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
-        drawDirectionArrow(state.arrows, effectiveMuted);
+        drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
         drawMuteIcon(effectiveMuted);
         drawProfileIndicator(currentProfileSlot);
 
@@ -1645,7 +1645,7 @@ void V1Display::update(const AlertData& alert, bool mutedFlag) {
     drawFrequency(alert.frequency, alert.band == BAND_LASER, effectiveMuted);
     drawBandIndicators(bandMask, effectiveMuted);
     drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, effectiveMuted);
-    drawDirectionArrow(alert.direction, effectiveMuted);
+    drawDirectionArrow(alert.direction, effectiveMuted);  // No state, no flashBits
     drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
 
@@ -1690,9 +1690,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     drawBaseFrame();
     
-    // Bogey counter shows V1 mode (truth from V1), not alert count
+    // Bogey counter shows V1 mode (truth from V1) - NOT greyed, always visible
     char topChar = state.hasMode ? state.modeChar : '0';
-    drawTopCounter(topChar, true, true);  // muted=true for grey styling
+    drawTopCounter(topChar, false, true);  // muted=false to keep it visible
     
     // Band indicator in dark grey
     uint8_t bandMask = alert.band;
@@ -1712,6 +1712,19 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     // Profile indicator still shown
     drawProfileIndicator(currentProfileSlot);
+    
+    // Clear card area (no cards during persisted state) and expire any tracked cards
+    #if defined(DISPLAY_WAVESHARE_349)
+    {
+        const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;
+        const int startX = 120;
+        const int signalBarsX = SCREEN_WIDTH - 228 - 2;
+        const int clearWidth = signalBarsX - startX;
+        if (clearWidth > 0) {
+            FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+        }
+    }
+    #endif
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();
@@ -1789,8 +1802,8 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     // Signal bars from display state (max across all alerts, calculated in packet_parser)
     drawVerticalSignalBars(state.signalBars, state.signalBars, alert.band, state.muted);
     
-    // Direction from display state (shows all active arrows)
-    drawDirectionArrow(state.arrows, state.muted);
+    // Direction from display state with flash/blink support
+    drawDirectionArrow(state.arrows, state.muted, state.flashBits);
     
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
@@ -1805,39 +1818,37 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
 
 // Multi-alert update: draws priority alert with secondary alert cards below
 void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
-    if (!priority.isValid) {
-        return;
-    }
-    
     // Check if multi-alert display is enabled in settings
     const V1Settings& s = settingsManager.get();
     
-    // If only 1 alert or multi-alert disabled, use standard display (no cards row)
-    if (alertCount <= 1 || !s.enableMultiAlert) {
-        // Keep frequency raised when multi-alert is enabled (consistent position)
-        g_multiAlertMode = s.enableMultiAlert;
-        multiAlertMode = false;  // No cards to draw
-        update(priority, state, alertCount);
+    // When multi-alert is enabled, ALWAYS use raised layout (no jumping between modes)
+    // Cards will only be drawn if there are secondary alerts to show
+    if (s.enableMultiAlert) {
+        g_multiAlertMode = true;
+        multiAlertMode = true;
+    } else {
+        g_multiAlertMode = false;
+        multiAlertMode = false;
+    }
+    
+    // If no valid priority alert, return (caller should use updatePersisted or update(state) instead)
+    if (!priority.isValid || priority.band == BAND_NONE) {
         return;
     }
 
-    // Enable multi-alert mode to shift main content up
-    bool wasMultiAlertMode = g_multiAlertMode;
-    g_multiAlertMode = true;
-    multiAlertMode = true;
-    
-    // Track that we're in multi-alert mode for transition detection
-    wasInMultiAlertMode = true;
-
     // Change detection: check if we need to redraw
-    // Exclude arrows - they fluctuate rapidly with multiple alerts as V1 switches focus
     static AlertData lastPriority;
     static int lastAlertCount = 0;
     static DisplayState lastMultiState;
+    static bool lastMultiAlertEnabled = false;
+    static bool firstRun = true;
     
     bool needsRedraw = false;
     
-    if (!wasMultiAlertMode) { needsRedraw = true; }
+    // Always redraw on first run
+    if (firstRun) { needsRedraw = true; firstRun = false; }
+    // Force redraw if multi-alert setting changed
+    else if (s.enableMultiAlert != lastMultiAlertEnabled) { needsRedraw = true; lastMultiAlertEnabled = s.enableMultiAlert; }
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (alertCount != lastAlertCount) { needsRedraw = true; }
@@ -1857,25 +1868,37 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     
     // Track arrow and signal bar changes separately for incremental update
+    // In multi-alert mode, show ALL active arrows from display packet (state.arrows)
+    // not just priority alert's direction - V1 shows all directions simultaneously
     static uint8_t lastArrows = 0;
     static uint8_t lastSignalBars = 0;
     bool arrowsChanged = (state.arrows != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged) {
-        return;  // Nothing changed at all
+    // If any flash bits set, arrows need continuous redraws for animation
+    bool arrowsFlashing = (state.flashBits & 0xE0) != 0;
+    
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !arrowsFlashing) {
+        // Nothing changed on main display, but still process cards for expiration
+        drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
+#if defined(DISPLAY_WAVESHARE_349)
+        tft->flush();
+#endif
+        return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || arrowsFlashing)) {
         // Only arrows and/or signal bars changed - do incremental update without full redraw
-        if (arrowsChanged) {
+        if (arrowsChanged || arrowsFlashing) {
             lastArrows = state.arrows;
-            drawDirectionArrow(state.arrows, state.muted);
+            drawDirectionArrow(state.arrows, state.muted, state.flashBits);
         }
         if (signalBarsChanged) {
             lastSignalBars = state.signalBars;
             drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
         }
+        // Still process cards so they can expire and be cleared
+        drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1919,7 +1942,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawFrequency(priority.frequency, priority.band == BAND_LASER, state.muted);
     drawBandIndicators(bandMask, state.muted);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
-    drawDirectionArrow(state.arrows, state.muted);
+    
+    // Draw all active arrows from display packet (not just priority's direction)
+    drawDirectionArrow(state.arrows, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
     
@@ -1937,224 +1962,206 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 }
 
 // Draw mini alert cards for secondary (non-priority) alerts
+// With persistence: cards stay visible (greyed) for a grace period after alert disappears
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const int cardH = SECONDARY_ROW_HEIGHT;  // Full height, no margin
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Flush to bottom
-    const int maxCards = 2;  // Show up to 2 secondary cards (primary + 2 = 3 alerts total)
-    const int cardW = 140;   // Fit between icons and signal bars
+    const int cardH = SECONDARY_ROW_HEIGHT;  // 30px
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=142
+    const int cardW = 145;     // Card width (wider to fit freq + band)
     const int cardSpacing = 6;
-    const int startX = 50;   // Start after battery/WiFi/BLE icon area
-    static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
+    const int startX = 120;    // Start after band indicators (L/Ka/K/X ends around X=115)
     
-    // Static tracking for grace period - each slot remembers its last alert
-    static struct {
-        AlertData alert{};
-        unsigned long lastSeen = 0;
-    } cardSlots[3];
+    // Get persistence time from profile settings (same as main alert persistence)
+    const V1Settings& settings = settingsManager.get();
+    uint8_t persistSec = settingsManager.getSlotAlertPersistSec(settings.activeSlot);
+    unsigned long gracePeriodMs = persistSec * 1000UL;
     
-    // Helper lambda to match alerts (same band and similar frequency)
-    auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
-        if (a.band != b.band) return false;
-        if (a.frequency > 0 && b.frequency > 0) {
-            uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
-            return diff < 50;
-        }
-        return true;
-    };
-    
-    // Collect current secondary alerts (skip the priority alert)
-    AlertData currentSecondary[maxCards];
-    int currentCount = 0;
-    
-    for (int i = 0; i < alertCount && currentCount < maxCards; i++) {
-        if (alerts[i].frequency == priority.frequency && 
-            alerts[i].band == priority.band &&
-            alerts[i].direction == priority.direction) {
-            continue;
-        }
-        if (alerts[i].isValid && alerts[i].band != BAND_NONE) {
-            currentSecondary[currentCount++] = alerts[i];
-        }
+    // If persistence is disabled (0), cards disappear immediately
+    if (gracePeriodMs == 0) {
+        gracePeriodMs = 1;  // Minimum 1ms so expiration logic works
     }
     
     unsigned long now = millis();
     
-    // Update card slots: refresh lastSeen for alerts still present, keep grace period for dropped ones
-    for (int slot = 0; slot < maxCards; slot++) {
-        bool stillActive = false;
-        
-        // Check if this slot's alert is still in current alerts
-        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE) {
-            for (int c = 0; c < currentCount; c++) {
-                if (alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
-                    stillActive = true;
-                    cardSlots[slot].lastSeen = now;
-                    break;
-                }
-            }
-        }
-        
-        // Clear slot if grace period expired
-        if (!stillActive && cardSlots[slot].lastSeen > 0 && (now - cardSlots[slot].lastSeen) > CARD_GRACE_MS) {
-            cardSlots[slot].alert = AlertData();
-            cardSlots[slot].lastSeen = 0;
-        }
-    }
-    
-    // Assign new alerts to empty slots
-    for (int c = 0; c < currentCount; c++) {
-        bool found = false;
-        for (int slot = 0; slot < maxCards; slot++) {
-            if (cardSlots[slot].alert.isValid && alertsMatch(cardSlots[slot].alert, currentSecondary[c])) {
-                // Update existing slot with current data
-                cardSlots[slot].alert = currentSecondary[c];
-                cardSlots[slot].lastSeen = now;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            // Find empty slot
-            for (int slot = 0; slot < maxCards; slot++) {
-                if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) {
-                    cardSlots[slot].alert = currentSecondary[c];
-                    cardSlots[slot].lastSeen = now;
-                    break;
-                }
-            }
-        }
-    }
-    
-    // Change detection for secondary cards - only redraw if visible cards changed
+    // Static card slots for persistence tracking
     static struct {
-        uint32_t frequency;
-        Band band;
-        bool valid;
-    } lastDrawnCards[3] = {};
-    static int lastDrawnCount = 0;
-    static bool lastMuted = false;
+        AlertData alert{};
+        unsigned long lastSeen = 0;  // 0 = empty slot
+    } cards[2];
     
-    // Count how many valid cards we'll draw
-    int willDrawCount = 0;
-    for (int slot = 0; slot < maxCards; slot++) {
-        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
-            willDrawCount++;
-        }
-    }
+    // Helper: check if two alerts match (same band + exact frequency)
+    auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
+        if (a.band != b.band) return false;
+        if (a.band == BAND_LASER) return true;
+        return (a.frequency == b.frequency);
+    };
     
-    // Check if anything changed (or if screen was cleared)
-    bool cardsChanged = secondaryCardsNeedRedraw || (willDrawCount != lastDrawnCount) || (muted != lastMuted);
-    if (!cardsChanged) {
-        int checkIdx = 0;
-        for (int slot = 0; slot < maxCards && !cardsChanged; slot++) {
-            if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
-                if (checkIdx >= 3 ||
-                    cardSlots[slot].alert.frequency != lastDrawnCards[checkIdx].frequency ||
-                    cardSlots[slot].alert.band != lastDrawnCards[checkIdx].band) {
-                    cardsChanged = true;
-                }
-                checkIdx++;
-            }
-        }
-    }
+    // Helper: check if alert matches priority (returns false if priority is invalid)
+    auto isSameAsPriority = [&priority, &alertsMatch](const AlertData& a) -> bool {
+        if (!priority.isValid || priority.band == BAND_NONE) return false;
+        return alertsMatch(a, priority);
+    };
     
-    if (!cardsChanged) {
-        return;  // Secondary cards unchanged, skip redraw
-    }
-    
-    // Clear the force-redraw flag
-    secondaryCardsNeedRedraw = false;
-    
-    // Update last drawn state
-    lastDrawnCount = willDrawCount;
-    lastMuted = muted;
-    int storeIdx = 0;
-    for (int slot = 0; slot < maxCards; slot++) {
-        if (cardSlots[slot].alert.isValid && cardSlots[slot].alert.band != BAND_NONE && cardSlots[slot].lastSeen > 0) {
-            if (storeIdx < 3) {
-                lastDrawnCards[storeIdx].frequency = cardSlots[slot].alert.frequency;
-                lastDrawnCards[storeIdx].band = cardSlots[slot].alert.band;
-                lastDrawnCards[storeIdx].valid = true;
-                storeIdx++;
-            }
-        }
-    }
-    for (; storeIdx < 3; storeIdx++) {
-        lastDrawnCards[storeIdx].valid = false;
-    }
-    
-    // Clear the secondary row area (start after icon column, end before signal bars)
-    const int iconAreaWidth = 48;  // Battery + margin
-    const int signalBarsX = SCREEN_WIDTH - 228 - 2;  // signal bars startX with padding
-    const int clearWidth = signalBarsX - iconAreaWidth;
-    if (clearWidth > 0) {
-        FILL_RECT(iconAreaWidth, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
-    }
-    
-    // Draw cards for all valid slots (live or within grace period)
-    int drawnCount = 0;
-    for (int slot = 0; slot < maxCards && drawnCount < maxCards; slot++) {
-        if (!cardSlots[slot].alert.isValid || cardSlots[slot].alert.band == BAND_NONE) continue;
-        if (cardSlots[slot].lastSeen == 0) continue;
+    // Step 1: Update existing slots - refresh timestamp if alert still exists
+    for (int c = 0; c < 2; c++) {
+        if (cards[c].lastSeen == 0) continue;
         
-        const AlertData& alert = cardSlots[slot].alert;
-        bool isGraced = (now - cardSlots[slot].lastSeen) > 0;  // Any age means it's being held
-        bool drawMuted = muted || (isGraced && (now - cardSlots[slot].lastSeen) > 100);  // Grace cards go grey after 100ms
+        bool stillExists = false;
+        if (alerts != nullptr) {
+            for (int i = 0; i < alertCount; i++) {
+                if (alertsMatch(cards[c].alert, alerts[i])) {
+                    stillExists = true;
+                    cards[c].alert = alerts[i];  // Update with latest data
+                    cards[c].lastSeen = now;
+                    break;
+                }
+            }
+        }
+        
+        // Expire if past grace period
+        if (!stillExists) {
+            unsigned long age = now - cards[c].lastSeen;
+            if (age > gracePeriodMs) {
+                cards[c].alert = AlertData();
+                cards[c].lastSeen = 0;
+            }
+        }
+    }
+    
+    // Step 2: Add new alerts to empty slots (including priority - it may become secondary later)
+    if (alerts != nullptr) {
+        for (int i = 0; i < alertCount; i++) {
+            if (!alerts[i].isValid || alerts[i].band == BAND_NONE) continue;
+            
+            // Check if already tracked
+            bool found = false;
+            for (int c = 0; c < 2; c++) {
+                if (cards[c].lastSeen > 0 && alertsMatch(cards[c].alert, alerts[i])) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                // Find empty slot
+                for (int c = 0; c < 2; c++) {
+                    if (cards[c].lastSeen == 0) {
+                        cards[c].alert = alerts[i];
+                        cards[c].lastSeen = now;
+                        Serial.printf("[CARDS] ADD slot%d b%d f%d\n", c, alerts[i].band, alerts[i].frequency);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // For debug logging if needed
+    // static unsigned long lastDbg = 0;
+    // bool doDebug = (now - lastDbg > 500);
+    bool doDebug = false;
+    
+    // Clear card area
+    const int signalBarsX = SCREEN_WIDTH - 228 - 2;
+    const int clearWidth = signalBarsX - startX;
+    if (clearWidth > 0) {
+        FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
+    }
+    
+    // Step 3: Draw cards (skip priority, include graced alerts)
+    int drawnCount = 0;
+    for (int c = 0; c < 2 && drawnCount < 2; c++) {
+        if (cards[c].lastSeen == 0) continue;
+        if (isSameAsPriority(cards[c].alert)) continue;  // Priority shown on main display
+        
+        const AlertData& alert = cards[c].alert;
+        
+        // Check if this is a live or graced (persisting) alert
+        bool isLive = false;
+        if (alerts != nullptr) {
+            for (int i = 0; i < alertCount; i++) {
+                if (alertsMatch(alert, alerts[i])) {
+                    isLive = true;
+                    break;
+                }
+            }
+        }
+        bool isGraced = !isLive;
+        bool drawMuted = muted || isGraced;
         
         int cardX = startX + drawnCount * (cardW + cardSpacing);
         drawnCount++;
         
-        // Card background with band color tint (grey when muted)
-        uint16_t bandCol = drawMuted ? PALETTE_MUTED : getBandColor(alert.band);
-        uint8_t r = ((bandCol >> 11) & 0x1F) * (drawMuted ? 2 : 3) / 10;
-        uint8_t g = ((bandCol >> 5) & 0x3F) * (drawMuted ? 2 : 3) / 10;
-        uint8_t b = (bandCol & 0x1F) * (drawMuted ? 2 : 3) / 10;
-        uint16_t bgCol = (r << 11) | (g << 5) | b;
+        if (doDebug) {
+            Serial.printf("[CARDS] DRAW slot%d b%d f%d graced=%d X=%d\n", 
+                          c, alert.band, alert.frequency, isGraced, cardX);
+        }
+        
+        // Card background and border colors
+        uint16_t bandCol = getBandColor(alert.band);
+        uint16_t bgCol, borderCol;
+        
+        if (isGraced) {
+            // Graced: use PALETTE_MUTED (grey) with slightly visible background
+            bgCol = 0x2104;  // Dark grey background
+            borderCol = PALETTE_MUTED;
+        } else if (drawMuted) {
+            // Muted but not graced
+            bgCol = 0x2104;
+            borderCol = PALETTE_MUTED;
+        } else {
+            // Active card - darker version of band color
+            uint8_t r = ((bandCol >> 11) & 0x1F) * 3 / 10;
+            uint8_t g = ((bandCol >> 5) & 0x3F) * 3 / 10;
+            uint8_t b = (bandCol & 0x1F) * 3 / 10;
+            bgCol = (r << 11) | (g << 5) | b;
+            borderCol = bandCol;
+        }
         
         FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bandCol);
+        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
         
-        // Draw direction arrow
+        // Colors for content - graced cards use grey
+        uint16_t contentCol = (isGraced || drawMuted) ? PALETTE_MUTED : TFT_WHITE;
+        uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
+        
+        // Direction arrow on left side of card
         int arrowX = cardX + 18;
         int arrowCY = cardY + cardH / 2;
-        uint16_t arrowCol = drawMuted ? PALETTE_MUTED : TFT_WHITE;
         
         if (alert.direction & DIR_FRONT) {
-            int aw = 14, ah = 16;
-            tft->fillTriangle(arrowX, arrowCY - ah/2, 
-                             arrowX - aw/2, arrowCY + ah/2,
-                             arrowX + aw/2, arrowCY + ah/2, arrowCol);
+            tft->fillTriangle(arrowX, arrowCY - 8, arrowX - 7, arrowCY + 8, arrowX + 7, arrowCY + 8, contentCol);
         } else if (alert.direction & DIR_REAR) {
-            int aw = 14, ah = 16;
-            tft->fillTriangle(arrowX, arrowCY + ah/2,
-                             arrowX - aw/2, arrowCY - ah/2,
-                             arrowX + aw/2, arrowCY - ah/2, arrowCol);
+            tft->fillTriangle(arrowX, arrowCY + 8, arrowX - 7, arrowCY - 8, arrowX + 7, arrowCY - 8, contentCol);
         } else if (alert.direction & DIR_SIDE) {
-            FILL_RECT(arrowX - 8, arrowCY - 3, 16, 6, arrowCol);
+            FILL_RECT(arrowX - 8, arrowCY - 3, 16, 6, contentCol);
         }
         
-        // Frequency
-        char freqStr[10];
+        // Band indicator (colored dot or short label) on left after arrow
+        int labelX = cardX + 36;
+        tft->setTextColor(bandLabelCol);
+        tft->setTextSize(2);
         if (alert.band == BAND_LASER) {
-            snprintf(freqStr, sizeof(freqStr), "LASER");
-        } else if (alert.frequency > 0) {
-            snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
+            tft->setCursor(labelX, cardY + (cardH - 16) / 2);
+            tft->print("LASER");
         } else {
-            snprintf(freqStr, sizeof(freqStr), "---");
+            // Band letter + frequency: "Ka 34.740" or "K 24.150"
+            const char* bandStr = bandToString(alert.band);
+            tft->setCursor(labelX, cardY + (cardH - 16) / 2);
+            tft->print(bandStr);
+            
+            // Frequency after band
+            tft->setTextColor(contentCol);
+            int freqX = labelX + strlen(bandStr) * 12 + 4;
+            tft->setCursor(freqX, cardY + (cardH - 16) / 2);
+            if (alert.frequency > 0) {
+                char freqStr[10];
+                snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
+                tft->print(freqStr);
+            } else {
+                tft->print("---");
+            }
         }
-        tft->setTextColor(drawMuted ? PALETTE_MUTED : TFT_WHITE);
-        tft->setTextSize(2);
-        tft->setCursor(cardX + 32, cardY + (cardH - 16) / 2);
-        tft->print(freqStr);
-        
-        // Band label
-        tft->setTextColor(bandCol);
-        tft->setTextSize(2);
-        const char* bandStr = bandToString(alert.band);
-        int bandW = strlen(bandStr) * 12;
-        tft->setCursor(cardX + cardW - bandW - 6, cardY + (cardH - 16) / 2);
-        tft->print(bandStr);
     }
 #endif
 }
@@ -2370,7 +2377,22 @@ void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
 
 
 // Draw large direction arrow (t4s3 style)
-void V1Display::drawDirectionArrow(Direction dir, bool muted) {
+// flashBits: bit5=front, bit6=side, bit7=rear - set when arrow should flash
+void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
+    // Blink timer for flashing arrows (~4Hz like real V1)
+    static unsigned long lastBlinkMs = 0;
+    static bool blinkOn = true;
+    unsigned long now = millis();
+    if (now - lastBlinkMs > 125) {  // ~4Hz blink rate (125ms on/off)
+        blinkOn = !blinkOn;
+        lastBlinkMs = now;
+    }
+    
+    // Determine which arrows should flash (from V1 image1/image2 decode)
+    bool frontFlash = (flashBits & 0x20) != 0;  // bit 5
+    bool sideFlash = (flashBits & 0x40) != 0;   // bit 6
+    bool rearFlash = (flashBits & 0x80) != 0;   // bit 7
+    
     // Stylized stacked arrows sized/positioned to match the real V1 display
     int cx = SCREEN_WIDTH - 70;           // right anchor
     int cy = SCREEN_HEIGHT / 2;           // vertically centered
@@ -2491,10 +2513,15 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted) {
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Up, side, down arrows - using calculated center positions with individual colors
-    drawTriangleArrow(topArrowCenterY, false, dir & DIR_FRONT, topW, topH, topNotchW, topNotchH, frontCol);
-    drawSideArrow(dir & DIR_SIDE);
-    drawTriangleArrow(bottomArrowCenterY, true, dir & DIR_REAR, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
+    // Up, side, down arrows - apply per-arrow flash state
+    // Arrow shows if: direction bit set AND (not flashing OR blink phase is on)
+    bool frontActive = (dir & DIR_FRONT) && (!frontFlash || blinkOn);
+    bool sideActive = (dir & DIR_SIDE) && (!sideFlash || blinkOn);
+    bool rearActive = (dir & DIR_REAR) && (!rearFlash || blinkOn);
+    
+    drawTriangleArrow(topArrowCenterY, false, frontActive, topW, topH, topNotchW, topNotchH, frontCol);
+    drawSideArrow(sideActive);
+    drawTriangleArrow(bottomArrowCenterY, true, rearActive, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
 }
 
 // Draw vertical signal bars on right side (t4s3 style)

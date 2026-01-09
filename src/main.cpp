@@ -67,6 +67,7 @@ unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
 const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
+static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
 static bool colorPreviewActive = false;
@@ -172,6 +173,11 @@ const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after
 static constexpr uint8_t STRONG_SIGNAL_UNMUTE_THRESHOLD = 5;  // Bars (out of 6) to force-unmute audio
 static bool forceUnmuteLatched = false;       // Prevents spamming setMute(false) while condition persists
 static unsigned long lastForceUnmuteMs = 0;   // Timestamp for last force-unmute
+
+// Mute debounce - prevent flicker from rapid state changes
+static bool debouncedMuteState = false;
+static unsigned long lastMuteChangeMs = 0;
+static constexpr unsigned long MUTE_DEBOUNCE_MS = 150;  // Ignore mute changes within 150ms
 static bool suppressForceUnmute = false;      // Set when user re-mutes after a force unmute
 
 // Track muted alert to detect stronger signals
@@ -615,6 +621,14 @@ void processBLEData() {
     const size_t MAX_PACKET_SIZE = 512;
 
     while (true) {
+        auto dumpPacket = [&](const uint8_t* p, size_t len) {
+            SerialLog.printf("PKT id=0x%02X len=%u: ", p[3], static_cast<unsigned>(len));
+            for (size_t i = 0; i < len; i++) {
+                SerialLog.printf("%02X ", p[i]);
+            }
+            SerialLog.println();
+        };
+
         auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
         if (startIt == rxBuffer.end()) {
             rxBuffer.clear();
@@ -677,6 +691,19 @@ void processBLEData() {
         // ALWAYS erase packet from buffer after attempting to parse
         // This prevents stale packets from accumulating when display updates are throttled
         bool parseOk = parser.parse(packetPtr, packetSize);
+
+        // Debug: dump display/alert packets for capture/replay (throttled to 1 Hz per ID)
+        if (packetPtr[3] == PACKET_ID_DISPLAY_DATA || packetPtr[3] == PACKET_ID_ALERT_DATA) {
+            static unsigned long lastDump31 = 0;
+            static unsigned long lastDump43 = 0;
+            unsigned long dumpNow = millis();
+            if ((packetPtr[3] == PACKET_ID_DISPLAY_DATA && dumpNow - lastDump31 > 1000) ||
+                (packetPtr[3] == PACKET_ID_ALERT_DATA && dumpNow - lastDump43 > 1000)) {
+                dumpPacket(packetPtr, packetSize);
+                if (packetPtr[3] == PACKET_ID_DISPLAY_DATA) lastDump31 = dumpNow;
+                else lastDump43 = dumpNow;
+            }
+        }
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
         
         if (parseOk) {
@@ -687,6 +714,17 @@ void processBLEData() {
 
             // Cache alert status to avoid repeated calls
             bool hasAlerts = parser.hasAlerts();
+
+            // Recovery: display shows bands but no alert table arrived
+            if (!hasAlerts && state.activeBands != BAND_NONE) {
+                unsigned long gapNow = millis();
+                if (gapNow - lastAlertGapRecoverMs > 500) {
+                    SerialLog.println("Alert gap: bands active but no alerts; re-requesting alert data");
+                    parser.resetAlertAssembly();
+                    bleClient.requestAlertData();
+                    lastAlertGapRecoverMs = gapNow;
+                }
+            }
 
             // Track V1 mute state for local override logic
             static bool lastLoggedMuted = false;
@@ -705,6 +743,18 @@ void processBLEData() {
                     state.muted = false;  // Override V1's lagging muted state
                 } else {
                     unmuteSentTimestamp = 0;  // Grace period expired, trust V1 again
+                }
+            }
+            
+            // Mute debounce: prevent flicker from rapid V1 state changes
+            unsigned long muteNow = millis();
+            if (state.muted != debouncedMuteState) {
+                if (muteNow - lastMuteChangeMs > MUTE_DEBOUNCE_MS) {
+                    debouncedMuteState = state.muted;
+                    lastMuteChangeMs = muteNow;
+                } else {
+                    // Within debounce window - keep previous state
+                    state.muted = debouncedMuteState;
                 }
             }
             
@@ -822,12 +872,6 @@ void processBLEData() {
                     if (alertClearedTime == 0) {
                         alertClearedTime = now;
                         alertPersistenceActive = true;
-                        SerialLog.printf("[AlertPersist] Started %d sec persistence for %s %.3f MHz\n",
-                                        persistSec, 
-                                        persistedAlert.band == BAND_KA ? "Ka" : 
-                                        persistedAlert.band == BAND_K ? "K" : 
-                                        persistedAlert.band == BAND_X ? "X" : "Laser",
-                                        persistedAlert.frequency / 1000.0f);
                     }
                     
                     // Check if persistence timer still active
@@ -838,7 +882,6 @@ void processBLEData() {
                     } else {
                         // Persistence expired - show normal resting
                         if (alertPersistenceActive) {
-                            SerialLog.println("[AlertPersist] Expired, showing resting");
                             alertPersistenceActive = false;
                         }
                         display.update(state);
