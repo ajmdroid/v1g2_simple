@@ -691,9 +691,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 ### Settings Page (`/settings`)
 
 Controls:
-- **WiFi Mode:** AP / STA / AP+STA / Off
-- **AP SSID/Password:** Access point credentials
-- **Station Networks:** Up to 3 saved networks for STA mode
+- **WiFi:** AP-only. You can change the AP SSID/password; station mode is not supported.
 - **BLE Proxy:** Enable/disable JBV1 forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 - **Display On/Off:** Master display switch

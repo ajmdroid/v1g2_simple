@@ -1654,11 +1654,12 @@ void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, ui
         targetChar = pProxyNotifyChar;
     }
     
-    // PERF: Use combined notify(data, len) - single BLE operation instead of setValue + notify
+    // Try immediate notify; if it fails (stack busy), fall back to queue so we don't drop
     if (targetChar && targetChar->notify(data, length)) {
         proxyMetrics.sendCount++;
     } else if (targetChar) {
         proxyMetrics.errorCount++;
+        forwardToProxy(data, length, sourceCharUUID);  // enqueue for retry on main loop
     }
 }
 
@@ -1672,11 +1673,16 @@ int V1BLEClient::processProxyQueue() {
     // Process all queued packets (typically 1-2)
     while (proxyQueueCount > 0) {
         ProxyPacket& pkt = proxyQueue[proxyQueueTail];
-        
-        // Send notification
-        if (pProxyNotifyChar) {
-            pProxyNotifyChar->setValue(pkt.data, pkt.length);
-            if (pProxyNotifyChar->notify()) {
+
+        NimBLECharacteristic* targetChar = nullptr;
+        if (pkt.charUUID == 0xB4E0 && pProxyNotifyLongChar) {
+            targetChar = pProxyNotifyLongChar;
+        } else if (pProxyNotifyChar) {
+            targetChar = pProxyNotifyChar;
+        }
+
+        if (targetChar) {
+            if (targetChar->notify(pkt.data, pkt.length)) {
                 proxyMetrics.sendCount++;
                 sent++;
             } else {
