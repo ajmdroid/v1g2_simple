@@ -217,8 +217,8 @@ void V1BLEClient::hardResetBLEClient() {
             pClientCallbacks = new ClientCallbacks();
         }
         pClient->setClientCallbacks(pClientCallbacks);
-        // Use relaxed params for WiFi coexistence (same as initBLE/connectToServer)
-        pClient->setConnectionParams(40, 80, 0, 600);
+        // Use tighter params for lower proxy latency (same as initBLE/connectToServer)
+        pClient->setConnectionParams(10, 20, 0, 400);
         pClient->setConnectTimeout(15);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
@@ -320,8 +320,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         }
         pClient->setClientCallbacks(pClientCallbacks);
         
-        // Connection parameters for WiFi coexistence
-        pClient->setConnectionParams(40, 80, 0, 600);
+        // Connection parameters tuned for lower latency
+        pClient->setConnectionParams(10, 20, 0, 400);
         pClient->setConnectTimeout(15);
         Serial.println("BLE client created");
     }
@@ -598,9 +598,9 @@ bool V1BLEClient::connectToServer() {
         pClient->setClientCallbacks(pClientCallbacks);
     }
     
-    // Very relaxed connection parameters for WiFi coexistence
-    // min/max interval: 40-80 (50-100ms), latency: 0, timeout: 600 (6000ms)
-    pClient->setConnectionParams(40, 80, 0, 600);
+    // Lower-latency connection parameters
+    // min/max interval: 10-20 (~12.5-25ms), latency: 0, timeout: 400 (4000ms)
+    pClient->setConnectionParams(10, 20, 0, 400);
     // Give it plenty of time to connect (20s)
     pClient->setConnectTimeout(20); 
 
@@ -680,6 +680,9 @@ bool V1BLEClient::finishConnection() {
     
     // Restore WiFi AP now that BLE connection is established
     WiFi.mode(WIFI_AP);
+
+    // Log the negotiated connection parameters (interval units = 1.25ms, timeout units = 10ms)
+    logConnParams("post-connect");
     
     // NimBLE 2.x requires explicit service discovery
     int maxRetries = 3;
@@ -707,6 +710,20 @@ bool V1BLEClient::finishConnection() {
     connectInProgress = false;
     // State is already CONNECTED from onConnect callback
     return connected;
+}
+
+void V1BLEClient::logConnParams(const char* tag) {
+    if (!pClient) {
+        return;
+    }
+
+    NimBLEConnInfo info = pClient->getConnInfo();
+    float intervalMs = info.getConnInterval() * 1.25f;
+
+    Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\n",
+                  tag ? tag : "n/a",
+                  intervalMs,
+                  info.getConnLatency());
 }
 
 bool V1BLEClient::setupCharacteristics() {
@@ -913,6 +930,14 @@ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
         //Serial.println("sendCommand: not connected or command characteristic missing");
         return false;
     }
+
+    // Light pacing between command writes to avoid bursty air-time spikes (profile/settings push)
+    static unsigned long lastCommandMs = 0;
+    unsigned long nowMs = millis();
+    if (lastCommandMs != 0 && nowMs - lastCommandMs < 5) {
+        vTaskDelay(pdMS_TO_TICKS(5 - (nowMs - lastCommandMs)));
+    }
+    lastCommandMs = millis();
     
     // Validate inputs
     if (!data) {

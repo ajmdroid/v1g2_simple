@@ -289,6 +289,9 @@ private:
     
     // Called from connectToServer() after successful sync connect
     bool finishConnection();
+
+    // Diagnostic helper to log negotiated connection parameters
+    void logConnParams(const char* tag);
     
     // State transition helper
     void setBLEState(BLEState newState, const char* reason);

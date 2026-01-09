@@ -1011,8 +1011,8 @@ void setup() {
 }
 
 void loop() {
-    // Update BLE proxy indicator state (only shows when advertising, i.e., after V1 connects)
-    display.setBLEProxyStatus(bleClient.isProxyAdvertising(), bleClient.isProxyClientConnected());
+    // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
+    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
 
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
