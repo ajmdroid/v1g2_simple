@@ -29,7 +29,6 @@
 				<li><a href="/" class="hover:text-primary">Dashboard</a></li>
 				<li><a href="/autopush" class="hover:text-primary">Auto-Push</a></li>
 				<li><a href="/profiles" class="hover:text-primary">Profiles</a></li>
-				<li><a href="/devices" class="hover:text-primary">Saved V1s</a></li>
 				<li><a href="/colors" class="hover:text-primary">Colors</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
 			</ul>

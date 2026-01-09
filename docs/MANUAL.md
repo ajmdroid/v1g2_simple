@@ -686,7 +686,6 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/colors` | `colors/+page.svelte` | Color customization, theme selection |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
-| `/devices` | `devices/+page.svelte` | Known V1 devices |
 
 ### Settings Page (`/settings`)
 

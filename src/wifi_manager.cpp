@@ -373,12 +373,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
     server.on("/api/autopush/status", HTTP_GET, [this]() { handleAutoPushStatus(); });
     
-    // V1 Device Cache routes (fast reconnect)
-    server.on("/api/v1/devices", HTTP_GET, [this]() { handleV1DevicesApi(); });
-    server.on("/api/v1/devices/name", HTTP_POST, [this]() { handleV1DeviceNameSave(); });
-    server.on("/api/v1/devices/profile", HTTP_POST, [this]() { handleV1DeviceProfileSave(); });
-    server.on("/api/v1/devices/delete", HTTP_POST, [this]() { handleV1DeviceDelete(); });
-    
     // Display Colors routes
     server.on("/displaycolors", HTTP_GET, [this]() { 
         server.sendHeader("Location", "/", true);

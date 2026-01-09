@@ -222,7 +222,6 @@
 			<div class="flex flex-wrap gap-2">
 				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
 				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
-				<a href="/devices" class="btn btn-secondary btn-sm">📡 Saved V1s</a>
 				<a href="/colors" class="btn btn-info btn-sm">🎨 Colors</a>
 				<a href="/settings" class="btn btn-ghost btn-sm">⚙️ Settings</a>
 			</div>
