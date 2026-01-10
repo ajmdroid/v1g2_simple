@@ -174,7 +174,6 @@ static unsigned long localMuteTimestamp = 0;
 static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
 const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after sending unmute command
 static bool forceUnmuteLatched = false;       // Prevents spamming setMute(false) while condition persists
-static unsigned long lastForceUnmuteMs = 0;   // Timestamp for last force-unmute
 
 // Mute debounce - prevent flicker from rapid state changes
 static bool debouncedMuteState = false;
@@ -912,7 +911,7 @@ void setup() {
     
     // Create BLE data queue early - before any BLE operations
     bleDataQueue = xQueueCreate(64, sizeof(BLEDataPacket));  // Increased from 32 to handle web server blocking
-    rxBuffer.reserve(1024);
+    rxBuffer.reserve(256);  // Trimmed at 256 bytes anyway; normal packets <100 bytes
     
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
