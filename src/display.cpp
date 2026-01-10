@@ -2026,6 +2026,17 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         unsigned long lastSeen = 0;  // 0 = empty slot
     } cards[2];
     
+    // Track profile changes - clear cards when profile rotates
+    static int lastCardProfileSlot = -1;
+    if (settings.activeSlot != lastCardProfileSlot) {
+        lastCardProfileSlot = settings.activeSlot;
+        // Clear all card state on profile change
+        for (int c = 0; c < 2; c++) {
+            cards[c].alert = AlertData();
+            cards[c].lastSeen = 0;
+        }
+    }
+    
     // If called with nullptr alerts and count 0, force-expire all cards immediately
     // (used when transitioning to non-alert screens to clear stale card state)
     if (alerts == nullptr && alertCount == 0) {

@@ -875,6 +875,15 @@ void processBLEData() {
                 uint8_t persistSec = settingsManager.getSlotAlertPersistSec(s.activeSlot);
                 unsigned long now = millis();
                 
+                // Clear persistence on profile slot change (handles web UI profile switches)
+                static int lastPersistenceSlot = -1;
+                if (s.activeSlot != lastPersistenceSlot) {
+                    lastPersistenceSlot = s.activeSlot;
+                    persistedAlert = AlertData();
+                    alertPersistenceActive = false;
+                    alertClearedTime = 0;
+                }
+                
                 if (persistSec > 0 && persistedAlert.isValid) {
                     // Start persistence timer on transition from alerts to no-alerts
                     if (alertClearedTime == 0) {
@@ -1256,6 +1265,10 @@ void loop() {
                     int newSlot = (s.activeSlot + 1) % 3;
                     settingsManager.setActiveSlot(newSlot);
                     displayMode = DisplayMode::IDLE;
+                    
+                    // Clear persisted alert state on profile change
+                    persistedAlert = AlertData();
+                    alertPersistenceActive = false;
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);

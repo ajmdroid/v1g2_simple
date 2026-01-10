@@ -413,8 +413,9 @@ void BatteryManager::update() {
         lastPowerCheckMs = now;
     }
     
-    // Update cached values at 1Hz
-    if (now - lastUpdateMs >= 1000) {
+    // Update cached voltage/percentage every 30 seconds (battery changes slowly)
+    // Power source detection above remains at 1Hz for responsive icon updates
+    if (now - lastUpdateMs >= 30000) {
         uint16_t voltage = readADCMillivolts();
         cachedVoltage = voltage;
         
