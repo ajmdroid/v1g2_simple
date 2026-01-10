@@ -1616,6 +1616,10 @@ void V1Display::update(const DisplayState& state) {
         drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
         drawMuteIcon(effectiveMuted);
         drawProfileIndicator(currentProfileSlot);
+        
+        // Clear any persisted card slots when entering resting state
+        AlertData emptyPriority;
+        drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
 
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();  // Push canvas to display
@@ -1717,18 +1721,10 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // Profile indicator still shown
     drawProfileIndicator(currentProfileSlot);
     
-    // Clear card area (no cards during persisted state) and expire any tracked cards
-    #if defined(DISPLAY_WAVESHARE_349)
-    {
-        const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;
-        const int startX = 120;
-        const int signalBarsX = SCREEN_WIDTH - 228 - 2;
-        const int clearWidth = signalBarsX - startX;
-        if (clearWidth > 0) {
-            FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
-        }
-    }
-    #endif
+    // Clear card area AND expire all tracked card slots (no cards during persisted state)
+    // This prevents stale cards from reappearing when returning to live alerts
+    AlertData emptyPriority;
+    drawSecondaryAlertCards(nullptr, 0, emptyPriority, true);
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();
@@ -1742,6 +1738,10 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     if (!alert.isValid) {
         return;
     }
+
+    // Track screen mode transitions - force redraw when entering live mode from resting/scanning
+    bool enteringLiveMode = (currentScreen != ScreenMode::Live);
+    currentScreen = ScreenMode::Live;
 
     // Track mode transitions - force redraw when switching from multi to single alert
     bool modeChanged = wasInMultiAlertMode;  // If we were in multi-mode, force redraw
@@ -1759,7 +1759,7 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     static DisplayState lastSingleState;
     static int lastSingleCount = 0;
     
-    bool needsRedraw = wasPersistedMode || modeChanged ||
+    bool needsRedraw = enteringLiveMode || wasPersistedMode || modeChanged ||
         alert.frequency != lastSingleAlert.frequency ||
         alert.band != lastSingleAlert.band ||
         alertCount != lastSingleCount ||
@@ -1829,6 +1829,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
     
+    // Track screen mode transitions - force redraw when entering live mode from resting/scanning
+    bool enteringLiveMode = (currentScreen != ScreenMode::Live);
+    currentScreen = ScreenMode::Live;
+    
     // Check if multi-alert display is enabled in settings
     const V1Settings& s = settingsManager.get();
     
@@ -1856,8 +1860,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     bool needsRedraw = false;
     
-    // Always redraw on first run or when transitioning from persisted mode
+    // Always redraw on first run, entering live mode, or when transitioning from persisted mode
     if (firstRun) { needsRedraw = true; firstRun = false; }
+    else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
     // Force redraw if multi-alert setting changed
     else if (s.enableMultiAlert != lastMultiAlertEnabled) { needsRedraw = true; }
@@ -2001,6 +2006,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         AlertData alert{};
         unsigned long lastSeen = 0;  // 0 = empty slot
     } cards[2];
+    
+    // If called with nullptr alerts and count 0, force-expire all cards immediately
+    // (used when transitioning to non-alert screens to clear stale card state)
+    if (alerts == nullptr && alertCount == 0) {
+        for (int c = 0; c < 2; c++) {
+            cards[c].alert = AlertData();
+            cards[c].lastSeen = 0;
+        }
+        // Clear the card area
+        const int signalBarsX = SCREEN_WIDTH - 228 - 2;
+        const int clearWidth = signalBarsX - startX;
+        if (clearWidth > 0) {
+            FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
+        }
+        return;
+    }
     
     // Helper: check if two alerts match (same band + exact frequency)
     auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
