@@ -220,8 +220,8 @@ void V1BLEClient::hardResetBLEClient() {
             pClientCallbacks = new ClientCallbacks();
         }
         pClient->setClientCallbacks(pClientCallbacks);
-        // Use tighter params for lower proxy latency (same as initBLE/connectToServer)
-        pClient->setConnectionParams(10, 20, 0, 400);
+        // Connection parameters: 12-24 (15-30ms interval), balanced for stability
+        pClient->setConnectionParams(12, 24, 0, 400);
         pClient->setConnectTimeout(15);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
@@ -323,8 +323,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         }
         pClient->setClientCallbacks(pClientCallbacks);
         
-        // Connection parameters tuned for lower latency
-        pClient->setConnectionParams(10, 20, 0, 400);
+        // Connection parameters: 12-24 (15-30ms interval), balanced for stability
+        pClient->setConnectionParams(12, 24, 0, 400);
         pClient->setConnectTimeout(15);
         Serial.println("BLE client created");
     }
@@ -605,9 +605,8 @@ bool V1BLEClient::connectToServer() {
         pClient->setClientCallbacks(pClientCallbacks);
     }
     
-    // Lower-latency connection parameters
-    // min/max interval: 10-20 (~12.5-25ms), latency: 0, timeout: 400 (4000ms)
-    pClient->setConnectionParams(10, 20, 0, 400);
+    // Connection parameters: 12-24 (15-30ms interval), balanced for stability
+    pClient->setConnectionParams(12, 24, 0, 400);
     // Give it plenty of time to connect (20s)
     pClient->setConnectTimeout(20); 
 

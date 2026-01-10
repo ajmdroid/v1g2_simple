@@ -398,8 +398,6 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
 void V1ProfileManager::setCurrentSettings(const uint8_t* bytes) {
     memcpy(currentSettings.bytes, bytes, 6);
     currentValid = true;
-    Serial.printf("[V1Profiles] Updated current settings: %02X %02X %02X %02X %02X %02X\n",
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
 }
 
 String V1ProfileManager::settingsToJson(const V1UserSettings& s) const {

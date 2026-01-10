@@ -1569,7 +1569,14 @@ void V1Display::drawBandLabel(Band band, bool muted) {
 }
 
 void V1Display::update(const DisplayState& state) {
+    // Track if we're transitioning FROM persisted mode (need full redraw)
+    bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
+    
+    // Track screen mode - this is "resting with bands" (between alerts)
+    // Set to Resting so that entering Live mode triggers full redraw
+    currentScreen = ScreenMode::Resting;
+    
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
     
@@ -1618,6 +1625,7 @@ void V1Display::update(const DisplayState& state) {
     bool needsFullRedraw =
         firstUpdate ||
         flashJustExpired ||
+        wasPersistedMode ||  // Force full redraw when leaving persisted mode
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted ||
         state.modeChar != lastState.modeChar ||
@@ -1751,6 +1759,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     // Enable persisted mode so draw functions use PALETTE_PERSISTED instead of PALETTE_MUTED
     persistedMode = true;
+    
+    // Track screen mode - persisted is NOT Live, so transition to Live will trigger full redraw
+    currentScreen = ScreenMode::Resting;
     
     // Align layout with multi-alert positioning if enabled (consistent with alert screens)
     const V1Settings& s = settingsManager.get();
@@ -2112,6 +2123,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         unsigned long lastSeen = 0;  // 0 = empty slot
     } cards[2];
     
+    // Track previous priority to add as persisted card when it disappears
+    static AlertData lastPriorityForCards;
+    
     // Track what was drawn last frame to avoid unnecessary redraws (declared early for reset)
     static struct {
         Band band = BAND_NONE;
@@ -2133,6 +2147,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             lastDrawnCards[c].frequency = 0;
         }
         lastDrawnCount = 0;
+        lastPriorityForCards = AlertData();
     }
     
     // If called with nullptr alerts and count 0, force-expire all cards immediately
@@ -2142,6 +2157,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             cards[c].alert = AlertData();
             cards[c].lastSeen = 0;
         }
+        lastPriorityForCards = AlertData();
         // Clear the card area
         const int signalBarsX = SCREEN_WIDTH - 228 - 2;
         const int clearWidth = signalBarsX - startX;
@@ -2163,6 +2179,49 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         if (!priority.isValid || priority.band == BAND_NONE) return false;
         return alertsMatch(a, priority);
     };
+    
+    // Step 0: Check if priority changed - add old priority as persisted card
+    // This handles the case where laser takes priority, then stops - laser should persist as card
+    if (lastPriorityForCards.isValid && lastPriorityForCards.band != BAND_NONE) {
+        bool priorityChanged = !alertsMatch(lastPriorityForCards, priority);
+        bool oldPriorityGone = true;
+        
+        // Check if old priority is still in current alerts
+        if (alerts != nullptr) {
+            for (int i = 0; i < alertCount; i++) {
+                if (alertsMatch(lastPriorityForCards, alerts[i])) {
+                    oldPriorityGone = false;
+                    break;
+                }
+            }
+        }
+        
+        // If old priority is gone (not just demoted), add it as persisted card
+        if (priorityChanged && oldPriorityGone) {
+            // Check if already tracked
+            bool found = false;
+            for (int c = 0; c < 2; c++) {
+                if (cards[c].lastSeen > 0 && alertsMatch(cards[c].alert, lastPriorityForCards)) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            // Add to empty slot if not already tracked
+            if (!found) {
+                for (int c = 0; c < 2; c++) {
+                    if (cards[c].lastSeen == 0) {
+                        cards[c].alert = lastPriorityForCards;
+                        cards[c].lastSeen = now;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update last priority tracking
+    lastPriorityForCards = priority;
     
     // Step 1: Update existing slots - refresh timestamp if alert still exists
     for (int c = 0; c < 2; c++) {
@@ -2210,7 +2269,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                     if (cards[c].lastSeen == 0) {
                         cards[c].alert = alerts[i];
                         cards[c].lastSeen = now;
-                        Serial.printf("[CARDS] ADD slot%d b%d f%d\n", c, alerts[i].band, alerts[i].frequency);
                         break;
                     }
                 }

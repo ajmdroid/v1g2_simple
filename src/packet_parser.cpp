@@ -188,7 +188,7 @@ Direction PacketParser::decodeDirection(uint8_t bandArrow) const {
 uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
     // Use threshold tables to convert to 0-6 bar display
-    // Skip smoothing entirely - let hysteresis handle flicker at the bar level
+    // Match V1's visual decay rate - instant up, gradual down
     
     // Threshold tables for raw RSSI -> 0..6 bars
     // Values below 0x80 typically mean "no signal" on that antenna
@@ -210,44 +210,56 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
             return 0;
     }
 
-    // Hysteresis: clamp spurious near-zero readings and limit drop rate
-    static uint8_t lastBarsKa = 0;
-    static uint8_t lastBarsK  = 0;
-    static uint8_t lastBarsX  = 0;
+    // Time-based decay to match V1's visual smoothing
+    // V1 drops about 1 bar every ~150ms when signal fades
+    static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
+    static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
+    constexpr unsigned long DROP_INTERVAL_MS = 150;  // Match V1's decay rate
+    
     uint8_t* lastBarsPtr = nullptr;
+    unsigned long* lastDropTimePtr = nullptr;
     switch (band) {
-        case BAND_KA: lastBarsPtr = &lastBarsKa; break;
-        case BAND_K:  lastBarsPtr = &lastBarsK;  break;
-        case BAND_X:  lastBarsPtr = &lastBarsX;  break;
+        case BAND_KA: lastBarsPtr = &lastBarsKa; lastDropTimePtr = &lastDropTimeKa; break;
+        case BAND_K:  lastBarsPtr = &lastBarsK;  lastDropTimePtr = &lastDropTimeK;  break;
+        case BAND_X:  lastBarsPtr = &lastBarsX;  lastDropTimePtr = &lastDropTimeX;  break;
         default: break;
     }
 
-    uint8_t candidate = 0;
+    // Map raw to bars
+    uint8_t newBars = 0;
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
-            candidate = i;
+            newBars = i;
             break;
         }
     }
-    if (candidate == 0 && raw > table[0]) {
-        candidate = 6;
+    if (newBars == 0 && raw > table[0]) {
+        newBars = 6;
     }
 
-    if (lastBarsPtr) {
-        // Allow instant jump UP (new alert), but limit drops to -1 per sample
-        // This prevents flicker on decay while allowing immediate response to new alerts
-        if (candidate < *lastBarsPtr && *lastBarsPtr > 0) {
-            // Dropping - limit to -1 per sample unless raw signal is truly gone
-            if (raw >= 0x80) {
-                candidate = static_cast<uint8_t>(*lastBarsPtr - 1);
+    if (lastBarsPtr && lastDropTimePtr) {
+        unsigned long now = millis();
+        
+        if (newBars >= *lastBarsPtr) {
+            // Going up or same - instant response
+            *lastBarsPtr = newBars;
+            *lastDropTimePtr = now;
+        } else {
+            // Going down - limit drop rate to match V1
+            unsigned long elapsed = now - *lastDropTimePtr;
+            uint8_t allowedDrops = elapsed / DROP_INTERVAL_MS;
+            
+            if (allowedDrops > 0) {
+                uint8_t targetBars = (*lastBarsPtr > allowedDrops) ? (*lastBarsPtr - allowedDrops) : 0;
+                if (targetBars < newBars) targetBars = newBars;  // Don't go below actual signal
+                *lastBarsPtr = targetBars;
+                *lastDropTimePtr = now;
             }
-            // else: raw < 0x80 means signal truly gone, allow fast drop
+            newBars = *lastBarsPtr;
         }
-        // Jump up is always allowed (no clamping when candidate > lastBars)
-        *lastBarsPtr = candidate;
     }
 
-    return candidate;
+    return newBars;
 }
 
 bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
