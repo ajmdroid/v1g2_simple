@@ -566,9 +566,6 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.updateAPCredentials(apSsid, apPass);
     }
     
-    // Force AP-only mode
-    settingsManager.updateWiFiMode(V1_WIFI_AP);
-    
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));

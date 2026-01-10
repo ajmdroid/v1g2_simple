@@ -47,19 +47,6 @@ enum DisplayStyle {
     DISPLAY_STYLE_MODERN = 1     // Montserrat Bold font
 };
 
-// WiFi network credential
-struct WiFiNetwork {
-    String ssid;
-    String password;
-    
-    WiFiNetwork() : ssid(""), password("") {}
-    WiFiNetwork(const String& s, const String& p) : ssid(s), password(p) {}
-    bool isValid() const { return ssid.length() > 0; }
-};
-
-// Maximum number of saved WiFi networks
-#define MAX_WIFI_NETWORKS 3
-
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -71,14 +58,11 @@ struct AutoPushSlot {
 
 // Settings structure
 struct V1Settings {
-    // WiFi settings
+    // WiFi settings (AP-only mode)
     bool enableWifi;
-    WiFiModeSetting wifiMode;
-    String ssid;             // Station mode SSID (for connecting to home WiFi)
-    String password;         // Station mode password
+    WiFiModeSetting wifiMode;  // Always V1_WIFI_AP
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
-    WiFiNetwork wifiNetworks[MAX_WIFI_NETWORKS];  // Multiple WiFi networks for auto-switching
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -155,8 +139,6 @@ struct V1Settings {
     V1Settings() : 
         enableWifi(true),
         wifiMode(V1_WIFI_AP),
-        ssid(""),
-        password(""),
         apSSID("V1-Simple"),
         apPassword("setupv1g2"),
         proxyBLE(true),
@@ -272,7 +254,6 @@ public:
     void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
     
     // Batch update methods (don't auto-save, call save() after)
-    void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
