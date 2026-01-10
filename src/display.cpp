@@ -948,6 +948,57 @@ void V1Display::drawProfileIndicator(int slot) {
     // Check if we're in the "flash" period after a profile change
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
     
+#if defined(DISPLAY_WAVESHARE_349)
+    // On Waveshare: draw profile indicator under arrows (for autopush profiles)
+    // Arrow center X = 564, profile goes below rear arrow
+    int cx = SCREEN_WIDTH - 70 - 6;  // Same as arrow cx
+    int y = 152;  // Below arrows
+    int clearW = 130;  // Wide enough for profile names at size 2
+    int clearH = 20;   // Tall enough for size 2 font
+    
+    // If user explicitly hides the indicator via web UI, only show during flash period
+    if (s.hideProfileIndicator && !inFlashPeriod) {
+        FILL_RECT(cx - clearW/2, y, clearW, clearH, PALETTE_BG);
+        drawWiFiIndicator();
+        drawBatteryIndicator();
+        return;
+    }
+
+    // Use custom names, fallback to defaults (limited to 20 chars)
+    const char* name;
+    uint16_t color;
+    switch (slot % 3) {
+        case 0:
+            name = s.slot0Name.length() > 0 ? s.slot0Name.c_str() : "DEFAULT";
+            color = s.slot0Color;
+            break;
+        case 1:
+            name = s.slot1Name.length() > 0 ? s.slot1Name.c_str() : "HIGHWAY";
+            color = s.slot1Color;
+            break;
+        default:  // case 2
+            name = s.slot2Name.length() > 0 ? s.slot2Name.c_str() : "COMFORT";
+            color = s.slot2Color;
+            break;
+    }
+
+    // Clear area under arrows
+    FILL_RECT(cx - clearW/2, y, clearW, clearH, PALETTE_BG);
+
+    // Use built-in font (OFR font subset doesn't have all letters for profile names)
+    TFT_CALL(setTextSize)(2);  // Size 2 = ~12px per char
+    TFT_CALL(setTextColor)(color, PALETTE_BG);
+    int16_t nameWidth = strlen(name) * 12;  // size 2 = ~12px per char
+    int textX = cx - nameWidth / 2;
+    GFX_setTextDatum(TL_DATUM);
+    GFX_drawString(tft, name, textX, y);
+
+    drawWiFiIndicator();
+    drawBatteryIndicator();
+    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
+    
+#else
+    // Original position for smaller displays (top area)
     // If user explicitly hides the indicator via web UI, only show during flash period
     if (s.hideProfileIndicator && !inFlashPeriod) {
         int y = 14;
@@ -961,11 +1012,7 @@ void V1Display::drawProfileIndicator(int slot) {
     }
 
     // Dimensions for clearing/profile centering
-#if defined(DISPLAY_WAVESHARE_349)
-    const float freqScale = 2.2f;
-#else
     const float freqScale = 1.7f;
-#endif
     SegMetrics mFreq = segMetrics(freqScale);
     int freqWidth = measureSevenSegmentText("35.500", freqScale);
     const int rightMargin = 120;
@@ -1019,6 +1066,7 @@ void V1Display::drawProfileIndicator(int slot) {
 
     // Draw BLE proxy indicator using the latest status
     setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
+#endif
 }
 
 void V1Display::drawBatteryIndicator() {
@@ -2578,10 +2626,11 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions
+    // Stop above profile indicator area (profile at Y=152)
     const int maxW = (topW > bottomW) ? topW : bottomW;
     const int maxH = (topH > bottomH) ? topH : bottomH;
     int clearTop = topArrowCenterY - topH/2 - 15;
-    int clearBottom = bottomArrowCenterY + bottomH/2 + 15;
+    int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
     FILL_RECT(cx - maxW/2 - 10, clearTop, maxW + 24, clearBottom - clearTop, PALETTE_BG);
 
     auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
