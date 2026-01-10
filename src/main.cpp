@@ -596,13 +596,17 @@ void processBLEData() {
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
     
-    // Process all queued packets
+    // Process all queued packets (with safety cap to prevent unbounded growth)
+    constexpr size_t RX_BUFFER_MAX = 512;  // Hard cap on buffer size
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
         // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
         // for minimal latency. We don't forward again here to avoid duplicate packets.
         
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
-        rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+        // Skip accumulation if buffer is at capacity (will be trimmed below)
+        if (rxBuffer.size() < RX_BUFFER_MAX) {
+            rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+        }
         latestPktTs = pkt.tsMs;
     }
     
@@ -615,9 +619,11 @@ void processBLEData() {
         return;
     }
 
-    // Trim runaway buffers
-    if (rxBuffer.size() > 512) {
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 256);
+    // Trim runaway buffers - more aggressive to prevent memory pressure
+    // Normal V1 packets are <100 bytes, so 256 is plenty for recovery
+    if (rxBuffer.size() > 256) {
+        // Keep last 128 bytes (enough for one complete packet with framing)
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 128);
     }
 
     const size_t MIN_HEADER_SIZE = 6;
