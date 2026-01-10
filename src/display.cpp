@@ -1855,8 +1855,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     
     // Track arrow and signal bar changes separately for incremental update
-    // Arrow display depends on priorityArrowOnly setting
-    Direction arrowsToShow = s.priorityArrowOnly ? state.priorityArrow : state.arrows;
+    // Arrow display depends on per-profile priorityArrowOnly setting
+    Direction arrowsToShow = settingsManager.getSlotPriorityArrowOnly(s.activeSlot) ? state.priorityArrow : state.arrows;
     bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     
@@ -1894,7 +1894,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastPriority = priority;
     lastAlertCount = alertCount;
     lastMultiState = state;
-    lastArrows = s.priorityArrowOnly ? state.priorityArrow : state.arrows;
+    lastArrows = settingsManager.getSlotPriorityArrowOnly(s.activeSlot) ? state.priorityArrow : state.arrows;
     lastSignalBars = state.signalBars;
     lastDebouncedBands = debouncedBandMask;
     for (int i = 0; i < alertCount && i < 4; i++) {

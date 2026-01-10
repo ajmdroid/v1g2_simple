@@ -537,7 +537,6 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
-    doc["priorityArrowOnly"] = settings.priorityArrowOnly;
     
     String json;
     serializeJson(doc, json);
@@ -592,12 +591,6 @@ void WiFiManager::handleSettingsSave() {
         int style = server.arg("displayStyle").toInt();
         style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
-    }
-    
-    // Priority arrow only setting
-    if (server.hasArg("priorityArrowOnly")) {
-        bool prioOnly = server.arg("priorityArrowOnly") == "true" || server.arg("priorityArrowOnly") == "1";
-        settingsManager.setPriorityArrowOnly(prioOnly);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
@@ -974,6 +967,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot0["darkMode"] = s.slot0DarkMode;
     slot0["muteToZero"] = s.slot0MuteToZero;
     slot0["alertPersist"] = s.slot0AlertPersist;
+    slot0["priorityArrowOnly"] = s.slot0PriorityArrow;
     
     // Slot 1
     JsonObject slot1 = slots.add<JsonObject>();
@@ -986,6 +980,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot1["darkMode"] = s.slot1DarkMode;
     slot1["muteToZero"] = s.slot1MuteToZero;
     slot1["alertPersist"] = s.slot1AlertPersist;
+    slot1["priorityArrowOnly"] = s.slot1PriorityArrow;
     
     // Slot 2
     JsonObject slot2 = slots.add<JsonObject>();
@@ -998,6 +993,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot2["darkMode"] = s.slot2DarkMode;
     slot2["muteToZero"] = s.slot2MuteToZero;
     slot2["alertPersist"] = s.slot2AlertPersist;
+    slot2["priorityArrowOnly"] = s.slot2PriorityArrow;
     
     String json;
     serializeJson(doc, json);
@@ -1068,6 +1064,13 @@ void WiFiManager::handleAutoPushSlotSave() {
         int clamped = std::max(0, std::min(5, alertPersist));
         settingsManager.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
         Serial.printf("[SaveSlot] Saved alertPersist=%ds for slot %d\n", clamped, slot);
+    }
+    
+    // Save priorityArrowOnly per slot
+    if (server.hasArg("priorityArrowOnly")) {
+        bool prioArrow = server.arg("priorityArrowOnly") == "true";
+        settingsManager.setSlotPriorityArrowOnly(slot, prioArrow);
+        Serial.printf("[SaveSlot] Saved priorityArrowOnly=%s for slot %d\n", prioArrow ? "true" : "false", slot);
     }
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));

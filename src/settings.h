@@ -102,9 +102,6 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     
-    // Display settings
-    bool priorityArrowOnly;      // Show only priority arrow (not all V1 arrows)
-    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -129,6 +126,9 @@ struct V1Settings {
     uint8_t slot0AlertPersist;   // Alert persistence (seconds) for slot 0 (0-5s)
     uint8_t slot1AlertPersist;   // Alert persistence (seconds) for slot 1 (0-5s)
     uint8_t slot2AlertPersist;   // Alert persistence (seconds) for slot 2 (0-5s)
+    bool slot0PriorityArrow;     // Priority arrow only for slot 0
+    bool slot1PriorityArrow;     // Priority arrow only for slot 1
+    bool slot2PriorityArrow;     // Priority arrow only for slot 2
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -192,6 +192,9 @@ struct V1Settings {
         slot0AlertPersist(0),
         slot1AlertPersist(0),
         slot2AlertPersist(0),
+        slot0PriorityArrow(false),
+        slot1PriorityArrow(false),
+        slot2PriorityArrow(false),
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
@@ -233,7 +236,6 @@ public:
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
-    void setPriorityArrowOnly(bool enable);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
@@ -248,9 +250,11 @@ public:
     bool getSlotDarkMode(int slotNum) const;
     bool getSlotMuteToZero(int slotNum) const;
     uint8_t getSlotAlertPersistSec(int slotNum) const;
+    bool getSlotPriorityArrowOnly(int slotNum) const;
     void setSlotDarkMode(int slotNum, bool darkMode);
     void setSlotMuteToZero(int slotNum, bool mz);
     void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
+    void setSlotPriorityArrowOnly(int slotNum, bool prioArrow);
     
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }

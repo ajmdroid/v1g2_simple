@@ -110,7 +110,6 @@ void SettingsManager::load() {
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
-    settings.priorityArrowOnly = preferences.getBool("prioArrow", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -137,6 +136,9 @@ void SettingsManager::load() {
     settings.slot0AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot0persist", 0));
     settings.slot1AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot1persist", 0));
     settings.slot2AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot2persist", 0));
+    settings.slot0PriorityArrow = preferences.getBool("slot0prio", false);
+    settings.slot1PriorityArrow = preferences.getBool("slot1prio", false);
+    settings.slot2PriorityArrow = preferences.getBool("slot2prio", false);
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -206,7 +208,6 @@ void SettingsManager::save() {
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
-    written += preferences.putBool("prioArrow", settings.priorityArrowOnly);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -230,6 +231,9 @@ void SettingsManager::save() {
     written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
     written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
     written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
+    written += preferences.putBool("slot0prio", settings.slot0PriorityArrow);
+    written += preferences.putBool("slot1prio", settings.slot1PriorityArrow);
+    written += preferences.putBool("slot2prio", settings.slot2PriorityArrow);
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -409,11 +413,6 @@ void SettingsManager::setHideBleIcon(bool hide) {
     save();
 }
 
-void SettingsManager::setPriorityArrowOnly(bool enable) {
-    settings.priorityArrowOnly = enable;
-    // Note: caller is responsible for calling save() when done
-}
-
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -500,6 +499,24 @@ void SettingsManager::setSlotAlertPersistSec(int slotNum, uint8_t seconds) {
         case 1: settings.slot1AlertPersist = clamped; break;
         case 2: settings.slot2AlertPersist = clamped; break;
         default: return;
+    }
+    save();
+}
+
+bool SettingsManager::getSlotPriorityArrowOnly(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0PriorityArrow;
+        case 1: return settings.slot1PriorityArrow;
+        case 2: return settings.slot2PriorityArrow;
+        default: return false;
+    }
+}
+
+void SettingsManager::setSlotPriorityArrowOnly(int slotNum, bool prioArrow) {
+    switch (slotNum) {
+        case 0: settings.slot0PriorityArrow = prioArrow; break;
+        case 1: settings.slot1PriorityArrow = prioArrow; break;
+        case 2: settings.slot2PriorityArrow = prioArrow; break;
     }
     save();
 }
