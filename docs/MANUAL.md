@@ -203,7 +203,7 @@ V1 Gen2 (BLE)
 |---------|-------------|---------------------|
 | **Main loop** | Arduino `loop()` at ~200Hz | Display SPI, touch I2C, WiFi |
 | **BLE task** | NimBLE internal task | Notifications, connection events, **proxy forwarding** |
-| **FreeRTOS queue** | `bleDataQueue` (64 × 260 bytes) | Decouples BLE callbacks from SPI (display only) |
+| **FreeRTOS queue** | `bleDataQueue` (64 × 142 bytes) | Decouples BLE callbacks from SPI (display only) |
 
 **Key constraints:**
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
