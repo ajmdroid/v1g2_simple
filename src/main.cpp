@@ -189,7 +189,9 @@ static bool brightnessAdjustMode = false;
 static uint8_t brightnessAdjustValue = 200;  // Current slider value
 static unsigned long bootPressStart = 0;     // For long-press detection
 static bool bootWasPressed = false;
+static bool wifiToggleTriggered = false;     // Track if WiFi toggle already fired during this press
 const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
+const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -1010,13 +1012,31 @@ void loop() {
 
     if (bootPressed && !bootWasPressed) {
         bootPressStart = now;
+        wifiToggleTriggered = false;  // Reset for new press
+    }
+
+    // Check for long press while button is still held (immediate feedback)
+    if (bootPressed && !wifiToggleTriggered && !brightnessAdjustMode) {
+        unsigned long pressDuration = now - bootPressStart;
+        if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+            wifiToggleTriggered = true;  // Prevent re-triggering
+            bool wasActive = wifiManager.isSetupModeActive();
+            if (wasActive) {
+                wifiManager.stopSetupMode(true);
+                SerialLog.println("[WiFi] AP stopped (button long press)");
+            } else {
+                startWifi();
+                SerialLog.println("[WiFi] AP started (button long press)");
+            }
+            display.drawWiFiIndicator();
+            display.flush();
+        }
     }
 
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = now - bootPressStart;
-        if (pressDuration >= BOOT_DEBOUNCE_MS) {
-            const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;
-
+        if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
+            // Only handle short press actions (not already handled by long press)
             if (brightnessAdjustMode) {
                 // Exit brightness adjustment mode and save
                 brightnessAdjustMode = false;
@@ -1025,17 +1045,6 @@ void loop() {
                 display.hideBrightnessSlider();
                 display.showResting();  // Return to normal display
                 SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
-            } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
-                bool wasActive = wifiManager.isSetupModeActive();
-                if (wasActive) {
-                    wifiManager.stopSetupMode(true);
-                    SerialLog.println("[WiFi] AP stopped (button long press)");
-                } else {
-                    startWifi();
-                    SerialLog.println("[WiFi] AP started (button long press)");
-                }
-                display.drawWiFiIndicator();
-                display.flush();
             } else {
                 // Enter brightness adjustment mode (short press)
                 brightnessAdjustMode = true;
