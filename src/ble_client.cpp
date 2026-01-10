@@ -678,8 +678,8 @@ bool V1BLEClient::finishConnection() {
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = 0;
     
-    // Restore WiFi AP now that BLE connection is established
-    WiFi.mode(WIFI_AP);
+    // Note: WiFi management is handled by wifiManager - don't touch WiFi state here
+    // Previously had WiFi.mode(WIFI_AP) here which incorrectly started WiFi on BLE connect
 
     // Log the negotiated connection parameters (interval units = 1.25ms, timeout units = 10ms)
     logConnParams("post-connect");

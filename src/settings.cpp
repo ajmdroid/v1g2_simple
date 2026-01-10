@@ -134,6 +134,7 @@ void SettingsManager::load() {
     settings.colorBar4 = preferences.getUShort("colorBar4", 0xFFE0);
     settings.colorBar5 = preferences.getUShort("colorBar5", 0xF800);
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
+    settings.colorMuted = preferences.getUShort("colorMuted", 0x3186);  // Dark grey muted color
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
@@ -245,6 +246,7 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBar4", settings.colorBar4);
     written += preferences.putUShort("colorBar5", settings.colorBar5);
     written += preferences.putUShort("colorBar6", settings.colorBar6);
+    written += preferences.putUShort("colorMuted", settings.colorMuted);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
@@ -430,6 +432,11 @@ void SettingsManager::setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t 
     settings.colorBar4 = bar4;
     settings.colorBar5 = bar5;
     settings.colorBar6 = bar6;
+    save();
+}
+
+void SettingsManager::setMutedColor(uint16_t color) {
+    settings.colorMuted = color;
     save();
 }
 

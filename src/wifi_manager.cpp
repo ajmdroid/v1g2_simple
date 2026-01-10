@@ -1592,6 +1592,12 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
     }
     
+    // Handle muted color if provided
+    if (server.hasArg("muted")) {
+        uint16_t mutedColor = server.arg("muted").toInt();
+        settingsManager.setMutedColor(mutedColor);
+    }
+    
     // Handle display visibility settings
     if (server.hasArg("hideWifiIcon")) {
         settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
@@ -1622,6 +1628,8 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
+    // Reset muted color to default dark grey
+    settingsManager.setMutedColor(0x3186);
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
@@ -1652,6 +1660,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bar4"] = s.colorBar4;
     doc["bar5"] = s.colorBar5;
     doc["bar6"] = s.colorBar6;
+    doc["muted"] = s.colorMuted;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;

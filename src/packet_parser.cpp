@@ -134,6 +134,20 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // even when individual alert entries don't have mute bit set
     displayState.muted = arrow.mute;
     
+    // Extract volume from auxData2 (payload[12]) - apps may set volume to 0 for auto-mute
+    // mainVol = upper nibble, muteVol = lower nibble
+    // If mainVol is 0, treat as effectively muted even if mute flag isn't set
+    if (length > 12) {
+        uint8_t auxData2 = payload[12];
+        uint8_t mainVol = (auxData2 & 0xF0) >> 4;
+        // uint8_t muteVol = auxData2 & 0x0F;  // Available if needed
+        
+        // Consider muted if mute flag is set OR if main volume is zero
+        if (mainVol == 0) {
+            displayState.muted = true;
+        }
+    }
+    
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {

@@ -99,7 +99,7 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_K getColorPalette().colorK
 #define PALETTE_X getColorPalette().colorX
 #define PALETTE_GRAY getColorPalette().colorGray
-#define PALETTE_MUTED getColorPalette().colorMuted
+#define PALETTE_MUTED settingsManager.get().colorMuted  // User-configurable muted color
 #define PALETTE_LASER getColorPalette().colorLaser
 #define PALETTE_ARROW getColorPalette().colorArrow
 #define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
@@ -1428,25 +1428,28 @@ void V1Display::showScanning() {
 }
 
 void V1Display::showDemo() {
-        TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
+    TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     clear();
 
-    // Simulate KA alert at 35.505 GHz from front and rear to show stacked arrows
+    // Show a MUTED K-band alert to demonstrate the muted color
     AlertData demoAlert;
-    demoAlert.band = BAND_KA;
-    demoAlert.direction = DIR_FRONT; // demo a front alert only; others stay greyed
-    demoAlert.frontStrength = 6;  // Strong signal (max)
+    demoAlert.band = BAND_K;
+    demoAlert.direction = DIR_FRONT;
+    demoAlert.frontStrength = 4;
     demoAlert.rearStrength = 0;
-    demoAlert.frequency = 35500;  // MHz (35.500 GHz)
+    demoAlert.frequency = 24150;  // MHz (24.150 GHz)
     demoAlert.isValid = true;
 
-    // Draw the alert
-    update(demoAlert, false); // keep colors bright on demo (will draw bogie 1 internally)
-    lastState.signalBars = 1; // keep internal state consistent with the demo counter
+    // Draw the alert in MUTED state (true = muted)
+    update(demoAlert, true);
+    lastState.signalBars = 1;
     
     // Also draw profile indicator and WiFi icon during demo so user can see hide toggle effect
     drawProfileIndicator(0);  // Show slot 0 profile indicator (unless hidden)
     drawWiFiIndicator();      // Show WiFi icon (unless hidden)
+    
+    // Flush to display
+    flush();
 }
 
 void V1Display::showBootSplash() {
