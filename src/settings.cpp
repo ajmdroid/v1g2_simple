@@ -110,7 +110,6 @@ void SettingsManager::load() {
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
-    settings.enableMultiAlert = preferences.getBool("multiAlert", true);
     settings.priorityArrowOnly = preferences.getBool("prioArrow", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
@@ -207,7 +206,6 @@ void SettingsManager::save() {
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
-    written += preferences.putBool("multiAlert", settings.enableMultiAlert);
     written += preferences.putBool("prioArrow", settings.priorityArrowOnly);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
@@ -408,11 +406,6 @@ void SettingsManager::setHideBatteryIcon(bool hide) {
 
 void SettingsManager::setHideBleIcon(bool hide) {
     settings.hideBleIcon = hide;
-    save();
-}
-
-void SettingsManager::setEnableMultiAlert(bool enable) {
-    settings.enableMultiAlert = enable;
     save();
 }
 

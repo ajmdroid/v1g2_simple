@@ -102,9 +102,8 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     
-    // Multi-alert display setting
-    bool enableMultiAlert;       // Show secondary alert cards when multiple alerts active
-    bool priorityArrowOnly;      // When multi-alert enabled, show only priority arrow (not all V1 arrows)
+    // Display settings
+    bool priorityArrowOnly;      // Show only priority arrow (not all V1 arrows)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -170,7 +169,6 @@ struct V1Settings {
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
-        enableMultiAlert(true),  // Enable multi-alert cards by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -235,7 +233,6 @@ public:
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
-    void setEnableMultiAlert(bool enable);
     void setPriorityArrowOnly(bool enable);
     void setLastV1Address(const String& addr);
     

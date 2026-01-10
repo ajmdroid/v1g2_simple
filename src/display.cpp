@@ -1295,9 +1295,8 @@ void V1Display::showDisconnected() {
 }
 
 void V1Display::showResting() {
-    // Align layout with multi-alert positioning if enabled
-    const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;
+    // Always use multi-alert layout positioning
+    g_multiAlertMode = true;
     multiAlertMode = false;
 
     // Avoid redundant full-screen clears/flushes when already resting and nothing changed
@@ -1363,9 +1362,11 @@ void V1Display::showResting() {
 }
 
 void V1Display::showScanning() {
-    // Align layout with multi-alert default positioning if enabled
+    // Always use multi-alert layout positioning
+    g_multiAlertMode = true;
+    
+    // Get settings for display style
     const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;
 
     // Clear and draw the base frame
     TFT_CALL(fillScreen)(PALETTE_BG);
@@ -1452,8 +1453,15 @@ void V1Display::showDemo() {
     demoAlert.frequency = 24150;  // MHz (24.150 GHz)
     demoAlert.isValid = true;
 
-    // Draw the alert in MUTED state (true = muted)
-    update(demoAlert, true);
+    // Create a demo display state
+    DisplayState demoState;
+    demoState.activeBands = BAND_K;
+    demoState.arrows = DIR_FRONT;
+    demoState.signalBars = 4;
+    demoState.muted = true;
+
+    // Draw the alert in MUTED state using multi-alert display
+    update(demoAlert, &demoAlert, 1, demoState);
     lastState.signalBars = 1;
     
     // Also draw profile indicator and WiFi icon during demo so user can see hide toggle effect
@@ -1580,9 +1588,8 @@ void V1Display::update(const DisplayState& state) {
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
     
-    // Align layout with multi-alert positioning if enabled
-    const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;
+    // Always use multi-alert layout positioning
+    g_multiAlertMode = true;
     multiAlertMode = false;  // No cards to draw in resting state
     
     // Check if profile flash period just expired (needs redraw to clear)
@@ -1699,54 +1706,6 @@ void V1Display::update(const DisplayState& state) {
     lastState = state;
 }
 
-void V1Display::update(const AlertData& alert, bool mutedFlag) {
-    persistedMode = false;  // Not in persisted mode
-    if (!alert.isValid) {
-        return;
-    }
-    
-    // Align layout with multi-alert positioning if enabled (consistent with other screens)
-    const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;
-    multiAlertMode = false;  // No cards to draw in legacy single-alert mode
-
-    // Override mute when laser active or strong signal present during alert
-    uint8_t strength = std::max(alert.frontStrength, alert.rearStrength);
-    bool effectiveMuted = mutedFlag;
-    if (alert.band == BAND_LASER) {
-        effectiveMuted = false;
-    } else if (effectiveMuted && strength >= STRONG_SIGNAL_UNMUTE_THRESHOLD) {
-        effectiveMuted = false;
-    }
-
-    // Always redraw for clean display
-    drawBaseFrame();
-
-    uint8_t bandMask = alert.band;
-    drawTopCounter('1', effectiveMuted, true); // bogey counter shows 1 during alert
-    drawFrequency(alert.frequency, alert.band == BAND_LASER, effectiveMuted);
-    drawBandIndicators(bandMask, effectiveMuted);
-    drawVerticalSignalBars(alert.frontStrength, alert.rearStrength, alert.band, effectiveMuted);
-    drawDirectionArrow(alert.direction, effectiveMuted);  // No state, no flashBits
-    drawMuteIcon(effectiveMuted);
-    drawProfileIndicator(currentProfileSlot);
-
-#if defined(DISPLAY_WAVESHARE_349)
-    tft->flush();  // Push canvas to display
-#endif
-
-    lastAlert = alert;
-    lastState.activeBands = bandMask;
-    lastState.arrows = alert.direction;
-    lastState.signalBars = std::max(alert.frontStrength, alert.rearStrength);
-    lastState.muted = mutedFlag;  // Preserve actual mute flag; UI used effectiveMuted
-}
-
-void V1Display::update(const AlertData& alert) {
-    // Preserve legacy call sites by using the last known muted flag
-    update(alert, lastState.muted);
-}
-
 // Persisted alert display - shows last alert in dark grey after V1 clears it
 // Only draws frequency, band, and arrows - no signal bars, no mute badge
 // Bogey counter shows V1 mode (from state), not "1"
@@ -1763,9 +1722,8 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // Track screen mode - persisted is NOT Live, so transition to Live will trigger full redraw
     currentScreen = ScreenMode::Resting;
     
-    // Align layout with multi-alert positioning if enabled (consistent with alert screens)
-    const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;
+    // Always use multi-alert layout positioning
+    g_multiAlertMode = true;
     multiAlertMode = false;  // No cards to draw
     wasInMultiAlertMode = false;
     
@@ -1804,98 +1762,6 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 #endif
 }
 
-void V1Display::update(const AlertData& alert, const DisplayState& state, int alertCount) {
-    // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
-    bool wasPersistedMode = persistedMode;
-    persistedMode = false;  // Not in persisted mode
-    if (!alert.isValid) {
-        return;
-    }
-
-    // Track screen mode transitions - force redraw when entering live mode from resting/scanning
-    bool enteringLiveMode = (currentScreen != ScreenMode::Live);
-    currentScreen = ScreenMode::Live;
-
-    // Track mode transitions - force redraw when switching from multi to single alert
-    bool modeChanged = wasInMultiAlertMode;  // If we were in multi-mode, force redraw
-    wasInMultiAlertMode = false;  // We're now in single-alert mode
-    
-    // Keep frequency raised when multi-alert is enabled (consistent position)
-    const V1Settings& s = settingsManager.get();
-    g_multiAlertMode = s.enableMultiAlert;  // Keep raised if multi-alert enabled
-    multiAlertMode = false;  // But no cards to draw
-
-    // Change detection: skip redraw if nothing meaningful changed
-    // (signal strength fluctuates constantly, so exclude it)
-    // Only compare values we actually draw - state.arrows, not alert.direction
-    static AlertData lastSingleAlert;
-    static DisplayState lastSingleState;
-    static int lastSingleCount = 0;
-    
-    bool needsRedraw = enteringLiveMode || wasPersistedMode || modeChanged ||
-        alert.frequency != lastSingleAlert.frequency ||
-        alert.band != lastSingleAlert.band ||
-        alertCount != lastSingleCount ||
-        state.activeBands != lastSingleState.activeBands ||
-        state.arrows != lastSingleState.arrows ||
-        state.signalBars != lastSingleState.signalBars ||
-        state.muted != lastSingleState.muted;
-    
-    if (!needsRedraw) {
-        return;  // No change, skip redraw
-    }
-    
-    // Store for next comparison
-    lastSingleAlert = alert;
-    lastSingleState = state;
-    lastSingleCount = alertCount;
-
-    drawBaseFrame();
-
-    // Use activeBands from display state (all detected bands), not just priority alert band
-    uint8_t bandMask = state.activeBands;
-    
-    // Show '=' (3 horizontal bars) for laser alerts, otherwise show bogey count (clamp to single digit, use '9' for 9+)
-    // In Modern style, skip drawing the useless '=' for laser
-    const V1Settings& settings = settingsManager.get();
-    char countChar;
-    bool skipTopCounter = false;
-    if (alert.band == BAND_LASER) {
-        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
-            skipTopCounter = true;  // Don't draw anything for laser in modern
-        } else {
-            countChar = '=';  // 3 horizontal bars like official V1 (classic only)
-        }
-    } else {
-        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
-    }
-    if (!skipTopCounter) {
-        drawTopCounter(countChar, state.muted, true);
-    }
-    
-    // Frequency from priority alert
-    drawFrequency(alert.frequency, alert.band == BAND_LASER, state.muted);
-    
-    // Use bands from display state for the indicators
-    drawBandIndicators(bandMask, state.muted);
-    
-    // Signal bars from display state (max across all alerts, calculated in packet_parser)
-    drawVerticalSignalBars(state.signalBars, state.signalBars, alert.band, state.muted);
-    
-    // Direction from display state with flash/blink support
-    drawDirectionArrow(state.arrows, state.muted, state.flashBits);
-    
-    drawMuteIcon(state.muted);
-    drawProfileIndicator(currentProfileSlot);
-
-#if defined(DISPLAY_WAVESHARE_349)
-    tft->flush();  // Push canvas to display
-#endif
-
-    lastAlert = alert;
-    lastState = state;
-}
-
 // Multi-alert update: draws priority alert with secondary alert cards below
 void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
     // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
@@ -1906,18 +1772,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool enteringLiveMode = (currentScreen != ScreenMode::Live);
     currentScreen = ScreenMode::Live;
     
-    // Check if multi-alert display is enabled in settings
-    const V1Settings& s = settingsManager.get();
+    // Always use multi-alert mode (raised layout for cards)
+    g_multiAlertMode = true;
+    multiAlertMode = true;
     
-    // When multi-alert is enabled, ALWAYS use raised layout (no jumping between modes)
-    // Cards will only be drawn if there are secondary alerts to show
-    if (s.enableMultiAlert) {
-        g_multiAlertMode = true;
-        multiAlertMode = true;
-    } else {
-        g_multiAlertMode = false;
-        multiAlertMode = false;
-    }
+    // Get settings reference for priorityArrowOnly
+    const V1Settings& s = settingsManager.get();
     
     // If no valid priority alert, return (caller should use updatePersisted or update(state) instead)
     if (!priority.isValid || priority.band == BAND_NONE) {
@@ -1925,6 +1785,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
 
     // Band debouncing: keep bands visible for a short grace period to prevent flicker
+    // when signal fluctuates on the edge of detection
     // when signal fluctuates on the edge of detection
     static unsigned long bandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
     static uint8_t debouncedBandMask = 0;
@@ -1948,7 +1809,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static AlertData lastPriority;
     static int lastAlertCount = 0;
     static DisplayState lastMultiState;
-    static bool lastMultiAlertEnabled = false;
     static bool firstRun = true;
     static AlertData lastSecondary[4];
     static uint8_t lastArrows = 0;
@@ -1960,7 +1820,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         lastPriority = AlertData();
         lastAlertCount = 0;
         lastMultiState = DisplayState();
-        lastMultiAlertEnabled = false;
         firstRun = true;
         for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
         lastArrows = 0;
@@ -1977,8 +1836,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (firstRun) { needsRedraw = true; firstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
-    // Force redraw if multi-alert setting changed
-    else if (s.enableMultiAlert != lastMultiAlertEnabled) { needsRedraw = true; }
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (alertCount != lastAlertCount) { needsRedraw = true; }
@@ -2039,7 +1896,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastMultiState = state;
     lastArrows = s.priorityArrowOnly ? state.priorityArrow : state.arrows;
     lastSignalBars = state.signalBars;
-    lastMultiAlertEnabled = s.enableMultiAlert;
     lastDebouncedBands = debouncedBandMask;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];

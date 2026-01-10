@@ -537,7 +537,6 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
-    doc["enableMultiAlert"] = settings.enableMultiAlert;
     doc["priorityArrowOnly"] = settings.priorityArrowOnly;
     
     String json;
@@ -593,12 +592,6 @@ void WiFiManager::handleSettingsSave() {
         int style = server.arg("displayStyle").toInt();
         style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
-    }
-    
-    // Multi-alert display setting
-    if (server.hasArg("enableMultiAlert")) {
-        bool multiAlert = server.arg("enableMultiAlert") == "true" || server.arg("enableMultiAlert") == "1";
-        settingsManager.setEnableMultiAlert(multiAlert);
     }
     
     // Priority arrow only setting

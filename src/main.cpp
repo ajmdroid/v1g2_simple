@@ -157,7 +157,8 @@ static void driveColorPreview() {
         previewState.signalBars = step.bars;
         previewState.muted = false;
 
-        display.update(previewAlert, previewState, 1);
+        // Use multi-alert display (single alert as priority, no secondary cards)
+        display.update(previewAlert, &previewAlert, 1, previewState);
         colorPreviewStep++;
     }
 

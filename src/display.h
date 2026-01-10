@@ -35,9 +35,6 @@ public:
     
     // Update display with current state
     void update(const DisplayState& state);
-    void update(const AlertData& alert, bool mutedFlag);
-    void update(const AlertData& alert);
-    void update(const AlertData& alert, const DisplayState& state, int alertCount);
     // Multi-alert display: shows priority alert + secondary alert cards
     void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
     
