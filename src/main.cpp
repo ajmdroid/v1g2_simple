@@ -173,7 +173,6 @@ static bool localMuteActive = false;
 static unsigned long localMuteTimestamp = 0;
 static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
 const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after sending unmute command
-static constexpr uint8_t STRONG_SIGNAL_UNMUTE_THRESHOLD = 5;  // Bars (out of 6) to force-unmute audio
 static bool forceUnmuteLatched = false;       // Prevents spamming setMute(false) while condition persists
 static unsigned long lastForceUnmuteMs = 0;   // Timestamp for last force-unmute
 

@@ -24,7 +24,6 @@ static bool ofrInitialized = false;
 // Multi-alert mode tracking (extern from V1Display class)
 static bool g_multiAlertMode = false;
 static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
-static constexpr uint8_t STRONG_SIGNAL_UNMUTE_THRESHOLD = 5;  // Bars (out of 6) to override mute
 
 // Helper to get effective screen height (reduced when multi-alert cards are shown)
 static inline int getEffectiveScreenHeight() {
