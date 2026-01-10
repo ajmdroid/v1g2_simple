@@ -25,6 +25,9 @@ static bool ofrInitialized = false;
 static bool g_multiAlertMode = false;
 static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
 
+// Force card redraw flag - set by update() when full screen is cleared
+static bool forceCardRedraw = false;
+
 // Helper to get effective screen height (reduced when multi-alert cards are shown)
 static inline int getEffectiveScreenHeight() {
     return g_multiAlertMode ? (SCREEN_HEIGHT - MULTI_ALERT_OFFSET) : SCREEN_HEIGHT;
@@ -1580,59 +1583,112 @@ void V1Display::update(const DisplayState& state) {
     bool flashJustExpired = wasInFlashPeriod && !inFlashPeriod;
     wasInFlashPeriod = inFlashPeriod;
 
+    // Band debouncing: keep bands visible for a short grace period to prevent flicker
+    static unsigned long restingBandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
+    static uint8_t restingDebouncedBands = 0;
+    const unsigned long BAND_GRACE_MS = 200;
+    unsigned long now = millis();
+    
+    if (state.activeBands & BAND_LASER) restingBandLastSeen[0] = now;
+    if (state.activeBands & BAND_KA)    restingBandLastSeen[1] = now;
+    if (state.activeBands & BAND_K)     restingBandLastSeen[2] = now;
+    if (state.activeBands & BAND_X)     restingBandLastSeen[3] = now;
+    
+    restingDebouncedBands = state.activeBands;
+    if ((now - restingBandLastSeen[0]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_LASER;
+    if ((now - restingBandLastSeen[1]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_KA;
+    if ((now - restingBandLastSeen[2]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_K;
+    if ((now - restingBandLastSeen[3]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_X;
+
     // Override mute when laser active or strong signal present
     bool effectiveMuted = state.muted;
-    bool laserActive = (state.activeBands & BAND_LASER) != 0;
+    bool laserActive = (restingDebouncedBands & BAND_LASER) != 0;
     if (laserActive) {
         effectiveMuted = false;
     } else if (effectiveMuted && state.signalBars >= STRONG_SIGNAL_UNMUTE_THRESHOLD) {
         effectiveMuted = false;
     }
 
-    bool stateChanged =
+    // Track last debounced bands for change detection
+    static uint8_t lastRestingDebouncedBands = 0;
+    static uint8_t lastRestingSignalBars = 0;
+    static uint8_t lastRestingArrows = 0;
+    
+    // Separate full redraw triggers from incremental updates
+    bool needsFullRedraw =
         firstUpdate ||
         flashJustExpired ||
-        state.activeBands != lastState.activeBands ||
-        state.arrows != lastState.arrows ||
-        state.signalBars != lastState.signalBars ||
+        restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted ||
         state.modeChar != lastState.modeChar ||
         state.hasMode != lastState.hasMode;
+    
+    bool arrowsChanged = (state.arrows != lastRestingArrows);
+    bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
+    
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged) {
+        return;  // Nothing changed
+    }
+    
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged)) {
+        // Incremental update - only redraw what changed
+        if (arrowsChanged) {
+            lastRestingArrows = state.arrows;
+            drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
+        }
+        if (signalBarsChanged) {
+            lastRestingSignalBars = state.signalBars;
+            Band primaryBand = BAND_KA;
+            if (restingDebouncedBands & BAND_LASER) primaryBand = BAND_LASER;
+            else if (restingDebouncedBands & BAND_KA) primaryBand = BAND_KA;
+            else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
+            else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
+            drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
+        }
+#if defined(DISPLAY_WAVESHARE_349)
+        tft->flush();
+#endif
+        lastState = state;
+        return;
+    }
 
-    if (stateChanged) {
-        firstUpdate = false;
-        drawBaseFrame();
-        char topChar = state.hasMode ? state.modeChar : '0';
-        drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
-        drawBandIndicators(state.activeBands, effectiveMuted);
-        // BLE proxy status indicator
-        
-        // Check if laser is active from display state
-        bool isLaser = (state.activeBands & BAND_LASER) != 0;
-        drawFrequency(0, isLaser, effectiveMuted);
-        
-        // Determine primary band for signal bar coloring
-        Band primaryBand = BAND_KA; // default
-        if (state.activeBands & BAND_LASER) primaryBand = BAND_LASER;
-        else if (state.activeBands & BAND_KA) primaryBand = BAND_KA;
-        else if (state.activeBands & BAND_K) primaryBand = BAND_K;
-        else if (state.activeBands & BAND_X) primaryBand = BAND_X;
-        
-        drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
-        drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
-        drawMuteIcon(effectiveMuted);
-        drawProfileIndicator(currentProfileSlot);
-        
-        // Clear any persisted card slots when entering resting state
-        AlertData emptyPriority;
-        drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
+    // Full redraw needed
+    firstUpdate = false;
+    lastRestingDebouncedBands = restingDebouncedBands;
+    lastRestingArrows = state.arrows;
+    lastRestingSignalBars = state.signalBars;
+    
+    drawBaseFrame();
+    char topChar = state.hasMode ? state.modeChar : '0';
+    drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+    drawBandIndicators(restingDebouncedBands, effectiveMuted);
+    // BLE proxy status indicator
+    
+    // Check if laser is active from debounced state
+    bool isLaser = (restingDebouncedBands & BAND_LASER) != 0;
+    drawFrequency(0, isLaser, effectiveMuted);
+    
+    // Determine primary band for signal bar coloring
+    Band primaryBand = BAND_KA; // default
+    if (restingDebouncedBands & BAND_LASER) primaryBand = BAND_LASER;
+    else if (restingDebouncedBands & BAND_KA) primaryBand = BAND_KA;
+    else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
+    else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
+    
+    drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
+    drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
+    drawMuteIcon(effectiveMuted);
+    drawProfileIndicator(currentProfileSlot);
+    
+    // Clear any persisted card slots when entering resting state
+    AlertData emptyPriority;
+    drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
 
 #if defined(DISPLAY_WAVESHARE_349)
-        tft->flush();  // Push canvas to display
+    tft->flush();  // Push canvas to display
 #endif
 
-        lastState = state;            // Preserve actual user mute state
-    }
+    lastState = state;
 }
 
 void V1Display::update(const AlertData& alert, bool mutedFlag) {
@@ -1857,6 +1913,26 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
 
+    // Band debouncing: keep bands visible for a short grace period to prevent flicker
+    // when signal fluctuates on the edge of detection
+    static unsigned long bandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
+    static uint8_t debouncedBandMask = 0;
+    const unsigned long BAND_GRACE_MS = 200;  // Short grace period
+    unsigned long now = millis();
+    
+    // Update last-seen times for currently active bands
+    if (state.activeBands & BAND_LASER) bandLastSeen[0] = now;
+    if (state.activeBands & BAND_KA)    bandLastSeen[1] = now;
+    if (state.activeBands & BAND_K)     bandLastSeen[2] = now;
+    if (state.activeBands & BAND_X)     bandLastSeen[3] = now;
+    
+    // Build debounced mask: include bands that are active OR were recently active
+    debouncedBandMask = state.activeBands;
+    if ((now - bandLastSeen[0]) < BAND_GRACE_MS) debouncedBandMask |= BAND_LASER;
+    if ((now - bandLastSeen[1]) < BAND_GRACE_MS) debouncedBandMask |= BAND_KA;
+    if ((now - bandLastSeen[2]) < BAND_GRACE_MS) debouncedBandMask |= BAND_K;
+    if ((now - bandLastSeen[3]) < BAND_GRACE_MS) debouncedBandMask |= BAND_X;
+
     // Change detection: check if we need to redraw
     static AlertData lastPriority;
     static int lastAlertCount = 0;
@@ -1866,6 +1942,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static AlertData lastSecondary[4];
     static uint8_t lastArrows = 0;
     static uint8_t lastSignalBars = 0;
+    static uint8_t lastDebouncedBands = 0;
     
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetChangeTrackingFlag) {
@@ -1877,6 +1954,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
         lastArrows = 0;
         lastSignalBars = 0;
+        lastDebouncedBands = 0;
+        // Reset band debounce timestamps
+        for (int i = 0; i < 4; i++) bandLastSeen[i] = 0;
         s_resetChangeTrackingFlag = false;
     }
     
@@ -1891,7 +1971,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (alertCount != lastAlertCount) { needsRedraw = true; }
-    else if (state.activeBands != lastMultiState.activeBands) { needsRedraw = true; }
+    // Use debounced band mask for change detection to prevent flicker
+    else if (debouncedBandMask != lastDebouncedBands) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
     
     // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
@@ -1948,14 +2029,15 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastArrows = state.arrows;
     lastSignalBars = state.signalBars;
     lastMultiAlertEnabled = s.enableMultiAlert;
+    lastDebouncedBands = debouncedBandMask;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
     
     drawBaseFrame();
 
-    // Use activeBands from display state
-    uint8_t bandMask = state.activeBands;
+    // Use debounced band mask to prevent flicker from signal fluctuation
+    uint8_t bandMask = debouncedBandMask;
     
     // Bogey counter
     const V1Settings& settings = settingsManager.get();
@@ -1984,6 +2066,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawDirectionArrow(state.arrows, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
+    
+    // Force card redraw since drawBaseFrame cleared the screen
+    forceCardRedraw = true;
     
     // Draw secondary alert cards at bottom
     drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -2026,6 +2111,15 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         unsigned long lastSeen = 0;  // 0 = empty slot
     } cards[2];
     
+    // Track what was drawn last frame to avoid unnecessary redraws (declared early for reset)
+    static struct {
+        Band band = BAND_NONE;
+        uint32_t frequency = 0;
+        bool isGraced = false;
+        bool wasMuted = false;
+    } lastDrawnCards[2];
+    static int lastDrawnCount = 0;
+    
     // Track profile changes - clear cards when profile rotates
     static int lastCardProfileSlot = -1;
     if (settings.activeSlot != lastCardProfileSlot) {
@@ -2034,7 +2128,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         for (int c = 0; c < 2; c++) {
             cards[c].alert = AlertData();
             cards[c].lastSeen = 0;
+            lastDrawnCards[c].band = BAND_NONE;
+            lastDrawnCards[c].frequency = 0;
         }
+        lastDrawnCount = 0;
     }
     
     // If called with nullptr alerts and count 0, force-expire all cards immediately
@@ -2121,40 +2218,86 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
     
     // For debug logging if needed
-    // static unsigned long lastDbg = 0;
-    // bool doDebug = (now - lastDbg > 500);
     bool doDebug = false;
     
-    // Clear card area
+    // Build list of cards to draw this frame
+    struct CardToDraw {
+        int slot;
+        bool isGraced;
+    } cardsToDraw[2];
+    int cardsToDrawCount = 0;
+    
+    for (int c = 0; c < 2 && cardsToDrawCount < 2; c++) {
+        if (cards[c].lastSeen == 0) continue;
+        if (isSameAsPriority(cards[c].alert)) continue;
+        cardsToDraw[cardsToDrawCount].slot = c;
+        // Check if live or graced
+        bool isLive = false;
+        if (alerts != nullptr) {
+            for (int i = 0; i < alertCount; i++) {
+                if (alertsMatch(cards[c].alert, alerts[i])) {
+                    isLive = true;
+                    break;
+                }
+            }
+        }
+        cardsToDraw[cardsToDrawCount].isGraced = !isLive;
+        cardsToDrawCount++;
+    }
+    
+    // Check if cards changed from last frame
+    bool cardsChanged = (cardsToDrawCount != lastDrawnCount);
+    if (!cardsChanged) {
+        for (int i = 0; i < cardsToDrawCount; i++) {
+            int slot = cardsToDraw[i].slot;
+            if (cards[slot].alert.band != lastDrawnCards[i].band ||
+                cards[slot].alert.frequency != lastDrawnCards[i].frequency ||
+                cardsToDraw[i].isGraced != lastDrawnCards[i].isGraced ||
+                muted != lastDrawnCards[i].wasMuted) {
+                cardsChanged = true;
+                break;
+            }
+        }
+    }
+    
+    // Only clear and redraw if cards changed (or forced after full screen redraw)
+    if (!cardsChanged && !forceCardRedraw) {
+        return;  // No card changes - skip redraw
+    }
+    forceCardRedraw = false;  // Reset the force flag
+    
+    // Clear card area only when needed
     const int signalBarsX = SCREEN_WIDTH - 228 - 2;
     const int clearWidth = signalBarsX - startX;
     if (clearWidth > 0) {
         FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
     }
     
-    // Step 3: Draw cards (skip priority, include graced alerts)
-    int drawnCount = 0;
-    for (int c = 0; c < 2 && drawnCount < 2; c++) {
-        if (cards[c].lastSeen == 0) continue;
-        if (isSameAsPriority(cards[c].alert)) continue;  // Priority shown on main display
-        
-        const AlertData& alert = cards[c].alert;
-        
-        // Check if this is a live or graced (persisting) alert
-        bool isLive = false;
-        if (alerts != nullptr) {
-            for (int i = 0; i < alertCount; i++) {
-                if (alertsMatch(alert, alerts[i])) {
-                    isLive = true;
-                    break;
-                }
-            }
+    // Update tracking for next frame
+    lastDrawnCount = cardsToDrawCount;
+    for (int i = 0; i < 2; i++) {
+        if (i < cardsToDrawCount) {
+            int slot = cardsToDraw[i].slot;
+            lastDrawnCards[i].band = cards[slot].alert.band;
+            lastDrawnCards[i].frequency = cards[slot].alert.frequency;
+            lastDrawnCards[i].isGraced = cardsToDraw[i].isGraced;
+            lastDrawnCards[i].wasMuted = muted;
+        } else {
+            lastDrawnCards[i].band = BAND_NONE;
+            lastDrawnCards[i].frequency = 0;
+            lastDrawnCards[i].isGraced = false;
+            lastDrawnCards[i].wasMuted = false;
         }
-        bool isGraced = !isLive;
+    }
+    
+    // Step 3: Draw the cards we identified
+    for (int i = 0; i < cardsToDrawCount; i++) {
+        int c = cardsToDraw[i].slot;
+        const AlertData& alert = cards[c].alert;
+        bool isGraced = cardsToDraw[i].isGraced;
         bool drawMuted = muted || isGraced;
         
-        int cardX = startX + drawnCount * (cardW + cardSpacing);
-        drawnCount++;
+        int cardX = startX + i * (cardW + cardSpacing);
         
         if (doDebug) {
             Serial.printf("[CARDS] DRAW slot%d b%d f%d graced=%d X=%d\n", 
