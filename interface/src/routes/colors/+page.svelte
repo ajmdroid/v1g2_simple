@@ -22,6 +22,7 @@
 		bar5: 0xF800,    // Red
 		bar6: 0xF800,    // Red (strongest)
 		muted: 0x3186,   // Dark grey (muted alerts)
+		persisted: 0x18C3, // Darker grey (persisted alerts)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -129,6 +130,7 @@
 			params.append('bar5', colors.bar5);
 			params.append('bar6', colors.bar6);
 			params.append('muted', colors.muted);
+			params.append('persisted', colors.persisted);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -192,6 +194,7 @@
 					bar5: 0xF800,
 					bar6: 0xF800,
 					muted: 0x3186,
+					persisted: 0x18C3,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -292,7 +295,7 @@
 				<div class="form-control">
 					<label class="label" for="muted-color">
 						<span class="label-text">Muted Alert Color</span>
-						<span class="label-text-alt text-base-content/50">When alert is muted or persisted</span>
+						<span class="label-text-alt text-base-content/50">When alert is muted</span>
 					</label>
 					<div class="flex items-center gap-3">
 						<input 
@@ -308,6 +311,28 @@
 							style="color: {rgb565ToHex(colors.muted)}"
 						>35.5</span>
 						<span class="text-sm text-base-content/60">(muted)</span>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<div class="form-control">
+					<label class="label" for="persisted-color">
+						<span class="label-text">Persisted Alert Color</span>
+						<span class="label-text-alt text-base-content/50">Ghost alert after V1 clears</span>
+					</label>
+					<div class="flex items-center gap-3">
+						<input 
+							id="persisted-color"
+							type="color" 
+							aria-label="Persisted alert color"
+							class="w-12 h-10 cursor-pointer rounded border-0"
+							value={rgb565ToHex(colors.persisted)}
+							onchange={(e) => updateColor('persisted', e.target.value)}
+						/>
+						<span 
+							class="text-2xl font-bold font-mono"
+							style="color: {rgb565ToHex(colors.persisted)}"
+						>35.5</span>
+						<span class="text-sm text-base-content/60">(persisted)</span>
 					</div>
 				</div>
 			</div>

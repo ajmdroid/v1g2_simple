@@ -1598,6 +1598,12 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setMutedColor(mutedColor);
     }
     
+    // Handle persisted color if provided
+    if (server.hasArg("persisted")) {
+        uint16_t persistedColor = server.arg("persisted").toInt();
+        settingsManager.setPersistedColor(persistedColor);
+    }
+    
     // Handle display visibility settings
     if (server.hasArg("hideWifiIcon")) {
         settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
@@ -1630,6 +1636,8 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
     // Reset muted color to default dark grey
     settingsManager.setMutedColor(0x3186);
+    // Reset persisted color to darker grey
+    settingsManager.setPersistedColor(0x18C3);
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
@@ -1661,6 +1669,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bar5"] = s.colorBar5;
     doc["bar6"] = s.colorBar6;
     doc["muted"] = s.colorMuted;
+    doc["persisted"] = s.colorPersisted;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;

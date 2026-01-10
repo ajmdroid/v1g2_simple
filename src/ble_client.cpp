@@ -80,8 +80,11 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
     }
     return 0;
 }
-// Optional verbose logs for individual connect attempts
-constexpr bool CONNECT_ATTEMPT_VERBOSE = false;
+// Debug log controls
+constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
+constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
+#define BLE_LOGF(...) do { if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while (0)
+#define BLE_LOGLN(msg) do { if (BLE_DEBUG_LOGS) Serial.println(msg); } while (0)
 } // namespace
 
 // Static instance for callbacks
@@ -991,7 +994,7 @@ bool V1BLEClient::requestAlertData() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting alert data from V1...");
+    BLE_LOGLN("Requesting alert data from V1...");
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -1008,7 +1011,7 @@ bool V1BLEClient::requestVersion() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting version info from V1...");
+    BLE_LOGLN("Requesting version info from V1...");
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -1149,7 +1152,7 @@ bool V1BLEClient::requestUserBytes() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting V1 user bytes...");
+    BLE_LOGLN("Requesting V1 user bytes...");
     return sendCommand(packet, sizeof(packet));
 }
 

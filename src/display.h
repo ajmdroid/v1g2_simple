@@ -44,6 +44,9 @@ public:
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
     
+    // Check if currently in persisted mode (for color selection)
+    bool isPersistedMode() const { return persistedMode; }
+
     // Show connection status
     void showDisconnected();
     void showResting(); // idle/rest screen
@@ -151,6 +154,7 @@ private:
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
+    bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

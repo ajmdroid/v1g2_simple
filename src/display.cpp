@@ -100,6 +100,9 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_X getColorPalette().colorX
 #define PALETTE_GRAY getColorPalette().colorGray
 #define PALETTE_MUTED settingsManager.get().colorMuted  // User-configurable muted color
+#define PALETTE_PERSISTED settingsManager.get().colorPersisted  // User-configurable persisted alert color
+// Helper macro: returns PALETTE_PERSISTED when in persisted mode, else PALETTE_MUTED
+#define PALETTE_MUTED_OR_PERSISTED (g_displayInstance && g_displayInstance->isPersistedMode() ? PALETTE_PERSISTED : PALETTE_MUTED)
 #define PALETTE_LASER getColorPalette().colorLaser
 #define PALETTE_ARROW getColorPalette().colorArrow
 #define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
@@ -774,7 +777,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     if (isDigit) {
         color = s.colorBogey;
     } else {
-        color = muted ? PALETTE_MUTED : s.colorBogey;
+        color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
     }
     drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
 }
@@ -801,7 +804,7 @@ void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
         ofr.setBackgroundColor(bgR, bgG, bgB);
         
-        uint16_t color = muted ? PALETTE_MUTED : s.colorBogey;
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
         ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         
         FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
@@ -863,7 +866,7 @@ void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
     ofr.setBackgroundColor(bgR, bgG, bgB);
     
     bool isDigit = (symbol >= '0' && symbol <= '9');
-    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED : s.colorBogey);
+    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey);
     ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
     
     FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
@@ -1552,11 +1555,12 @@ void V1Display::drawBandLabel(Band band, bool muted) {
     const char* label = (band == BAND_NONE) ? "--" : bandToString(band);
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);
-    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED : PALETTE_ARROW, PALETTE_BG);
+    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED_OR_PERSISTED : PALETTE_ARROW, PALETTE_BG);
     GFX_drawString(tft, label, 10, SCREEN_HEIGHT / 2 - 26);
 }
 
 void V1Display::update(const DisplayState& state) {
+    persistedMode = false;  // Not in persisted mode
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
     
@@ -1622,6 +1626,7 @@ void V1Display::update(const DisplayState& state) {
 }
 
 void V1Display::update(const AlertData& alert, bool mutedFlag) {
+    persistedMode = false;  // Not in persisted mode
     if (!alert.isValid) {
         return;
     }
@@ -1673,17 +1678,13 @@ void V1Display::update(const AlertData& alert) {
 // Bogey counter shows V1 mode (from state), not "1"
 void V1Display::updatePersisted(const AlertData& alert, const DisplayState& state) {
     if (!alert.isValid) {
+        persistedMode = false;
         update(state);  // Fall back to normal resting display
         return;
     }
     
-    // Derive persisted color from muted - darken by ~50%
-    auto darkenColor = [](uint16_t color) -> uint16_t {
-        uint8_t r = ((color >> 11) & 0x1F) / 2;
-        uint8_t g = ((color >> 5) & 0x3F) / 2;
-        uint8_t b = (color & 0x1F) / 2;
-        return (r << 11) | (g << 5) | b;
-    };
+    // Enable persisted mode so draw functions use PALETTE_PERSISTED instead of PALETTE_MUTED
+    persistedMode = true;
     
     // Align layout with multi-alert positioning if enabled (consistent with alert screens)
     const V1Settings& s = settingsManager.get();
@@ -1697,11 +1698,11 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     char topChar = state.hasMode ? state.modeChar : '0';
     drawTopCounter(topChar, false, true);  // muted=false to keep it visible
     
-    // Band indicator in dark grey
+    // Band indicator in persisted color
     uint8_t bandMask = alert.band;
-    drawBandIndicators(bandMask, true);  // muted=true for grey styling
+    drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     
-    // Frequency in dark grey (pass muted=true)
+    // Frequency in persisted color (pass muted=true)
     drawFrequency(alert.frequency, alert.band == BAND_LASER, true);
     
     // No signal bars - just draw empty
@@ -1735,6 +1736,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 }
 
 void V1Display::update(const AlertData& alert, const DisplayState& state, int alertCount) {
+    // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
+    bool wasPersistedMode = persistedMode;
+    persistedMode = false;  // Not in persisted mode
     if (!alert.isValid) {
         return;
     }
@@ -1755,7 +1759,7 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
     static DisplayState lastSingleState;
     static int lastSingleCount = 0;
     
-    bool needsRedraw = modeChanged ||
+    bool needsRedraw = wasPersistedMode || modeChanged ||
         alert.frequency != lastSingleAlert.frequency ||
         alert.band != lastSingleAlert.band ||
         alertCount != lastSingleCount ||
@@ -1821,6 +1825,10 @@ void V1Display::update(const AlertData& alert, const DisplayState& state, int al
 
 // Multi-alert update: draws priority alert with secondary alert cards below
 void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
+    // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
+    bool wasPersistedMode = persistedMode;
+    persistedMode = false;  // Not in persisted mode
+    
     // Check if multi-alert display is enabled in settings
     const V1Settings& s = settingsManager.get();
     
@@ -1848,10 +1856,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     bool needsRedraw = false;
     
-    // Always redraw on first run
+    // Always redraw on first run or when transitioning from persisted mode
     if (firstRun) { needsRedraw = true; firstRun = false; }
+    else if (wasPersistedMode) { needsRedraw = true; }
     // Force redraw if multi-alert setting changed
-    else if (s.enableMultiAlert != lastMultiAlertEnabled) { needsRedraw = true; lastMultiAlertEnabled = s.enableMultiAlert; }
+    else if (s.enableMultiAlert != lastMultiAlertEnabled) { needsRedraw = true; }
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (alertCount != lastAlertCount) { needsRedraw = true; }
@@ -1914,6 +1923,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastMultiState = state;
     lastArrows = state.arrows;
     lastSignalBars = state.signalBars;
+    lastMultiAlertEnabled = s.enableMultiAlert;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
@@ -2221,7 +2231,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
     
     for (int i = 0; i < 4; ++i) {
         bool active = (bandMask & cells[i].mask) != 0;
-        uint16_t col = active ? (muted ? PALETTE_MUTED : cells[i].color) : TFT_DARKGREY;
+        uint16_t col = active ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
     }
@@ -2286,7 +2296,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted)
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
         // Use muted grey for LASER when muted; otherwise custom laser color
         const V1Settings& set = settingsManager.get();
-        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED : set.colorBandL, PALETTE_BG);
+        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : set.colorBandL, PALETTE_BG);
         return;
     }
 
@@ -2308,7 +2318,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted)
     // Clear area before drawing
     const V1Settings& s = settingsManager.get();
     FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    uint16_t freqColor = muted ? PALETTE_MUTED : (hasFreq ? s.colorFrequency : PALETTE_GRAY);
+    uint16_t freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : (hasFreq ? s.colorFrequency : PALETTE_GRAY);
     drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
@@ -2336,7 +2346,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
     FILL_RECT(0, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
     if (isLaser) {
-        uint16_t color = muted ? PALETTE_MUTED : s.colorBandL;
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
         ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         
         // Get text width for centering
@@ -2356,7 +2366,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
         snprintf(freqStr, sizeof(freqStr), "--.---");
     }
     
-    uint16_t freqColor = muted ? PALETTE_MUTED : (freqMHz > 0 ? s.colorFrequency : PALETTE_GRAY);
+    uint16_t freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : (freqMHz > 0 ? s.colorFrequency : PALETTE_GRAY);
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
     
     // Get text width for centering
@@ -2439,9 +2449,9 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
 
     const V1Settings& s = settingsManager.get();
     // Get individual arrow colors (use muted color if muted)
-    uint16_t frontCol = muted ? PALETTE_MUTED : s.colorArrowFront;
-    uint16_t sideCol = muted ? PALETTE_MUTED : s.colorArrowSide;
-    uint16_t rearCol = muted ? PALETTE_MUTED : s.colorArrowRear;
+    uint16_t frontCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowFront;
+    uint16_t sideCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowSide;
+    uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     // Clear the entire arrow region using the max dimensions

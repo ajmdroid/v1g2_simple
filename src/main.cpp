@@ -41,8 +41,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
-// Gate verbose AutoPush logs behind a debug switch (keep off in normal builds)
-static constexpr bool AUTOPUSH_DEBUG_LOGS = false;
+// Gate verbose logs behind debug switches (keep off in normal builds)
+static constexpr bool DEBUG_LOGS = false;          // General debug logging (packet dumps, status)
+static constexpr bool AUTOPUSH_DEBUG_LOGS = false;  // AutoPush-specific verbose logs
+#define DEBUG_LOGF(...) do { if (DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
+#define DEBUG_LOGLN(msg) do { if (DEBUG_LOGS) SerialLog.println(msg); } while (0)
 #define AUTO_PUSH_LOGF(...) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.println(msg); } while (0)
 
@@ -622,6 +625,7 @@ void processBLEData() {
 
     while (true) {
         auto dumpPacket = [&](const uint8_t* p, size_t len) {
+            if (!DEBUG_LOGS) return;  // Skip packet dumps unless debug enabled
             SerialLog.printf("PKT id=0x%02X len=%u: ", p[3], static_cast<unsigned>(len));
             for (size_t i = 0; i < len; i++) {
                 SerialLog.printf("%02X ", p[i]);
@@ -676,14 +680,14 @@ void processBLEData() {
             // Payload starts at byte 5, length is 6 bytes
             uint8_t userBytes[6];
             memcpy(userBytes, &packetPtr[5], 6);
-            SerialLog.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
+            DEBUG_LOGF("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
                 userBytes[0], userBytes[1], userBytes[2], userBytes[3], userBytes[4], userBytes[5]);
-            SerialLog.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
+            DEBUG_LOGF("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
                 userBytes[0] & 0x01, (userBytes[0] >> 1) & 0x01, 
                 (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
             bleClient.onUserBytesReceived(userBytes);
             v1ProfileManager.setCurrentSettings(userBytes);
-            SerialLog.println("Received V1 user bytes!");
+            DEBUG_LOGLN("Received V1 user bytes!");
             rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
             continue;  // Don't pass to parser
         }
@@ -719,7 +723,7 @@ void processBLEData() {
             if (!hasAlerts && state.activeBands != BAND_NONE) {
                 unsigned long gapNow = millis();
                 if (gapNow - lastAlertGapRecoverMs > 500) {
-                    SerialLog.println("Alert gap: bands active but no alerts; re-requesting alert data");
+                    DEBUG_LOGLN("Alert gap: bands active but no alerts; re-requesting alert data");
                     parser.resetAlertAssembly();
                     bleClient.requestAlertData();
                     lastAlertGapRecoverMs = gapNow;
@@ -1316,7 +1320,7 @@ void loop() {
             // If connected but not seeing traffic, re-request alert data periodically
             static unsigned long lastReq = 0;
             if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-                SerialLog.println("No data recently; re-requesting alert data...");
+                DEBUG_LOGLN("No data recently; re-requesting alert data...");
                 bleClient.requestAlertData();
                 lastReq = now;
             }
@@ -1330,8 +1334,8 @@ void loop() {
         }
     }
     
-    // Status update (print to serial)
-    if (now - lastStatusUpdate >= STATUS_UPDATE_MS) {
+    // Status update (print to serial) - only when DEBUG_LOGS enabled
+    if (DEBUG_LOGS && now - lastStatusUpdate >= STATUS_UPDATE_MS) {
         lastStatusUpdate = now;
         
         if (bleClient.isConnected()) {

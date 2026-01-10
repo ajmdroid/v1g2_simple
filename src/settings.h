@@ -110,6 +110,7 @@ struct V1Settings {
     uint16_t colorBar5;          // Signal bar 5
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     uint16_t colorMuted;         // Muted alert color (shown when alerts are muted/grayed)
+    uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
     
     // Display visibility settings
     bool hideWifiIcon;           // Hide WiFi icon after brief display
@@ -248,6 +249,7 @@ public:
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
+    void setPersistedColor(uint16_t color);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
