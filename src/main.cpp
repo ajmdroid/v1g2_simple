@@ -1121,7 +1121,7 @@ void loop() {
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = now - bootPressStart;
         if (pressDuration >= BOOT_DEBOUNCE_MS) {
-            const unsigned long AP_TOGGLE_LONG_PRESS_MS = 2000;
+            const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;
 
             if (brightnessAdjustMode) {
                 // Exit brightness adjustment mode and save
