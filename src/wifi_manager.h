@@ -97,10 +97,6 @@ private:
     void handleV1SettingsPull();
     void handleV1SettingsPush();
     void handleV1CurrentSettings();
-    void handleV1DevicesApi();
-    void handleV1DeviceNameSave();
-    void handleV1DeviceProfileSave();
-    void handleV1DeviceDelete();
     
     // API endpoints
     void handleApiProfilePush();      // POST /api/profile/push - queue profile push
