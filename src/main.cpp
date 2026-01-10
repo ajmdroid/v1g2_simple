@@ -168,24 +168,10 @@ static void driveColorPreview() {
     }
 }
 
-// Local mute override - takes immediate effect on tap before V1 confirms
-static bool localMuteOverride = false;
-static bool localMuteActive = false;
-static unsigned long localMuteTimestamp = 0;
-static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
-const unsigned long UNMUTE_GRACE_MS = 300;  // Force unmuted state briefly after sending unmute command
-static bool forceUnmuteLatched = false;       // Prevents spamming setMute(false) while condition persists
-
-// Mute debounce - prevent flicker from rapid state changes
+// Mute debounce - prevent flicker from rapid state changes  
 static bool debouncedMuteState = false;
 static unsigned long lastMuteChangeMs = 0;
 static constexpr unsigned long MUTE_DEBOUNCE_MS = 150;  // Ignore mute changes within 150ms
-static bool suppressForceUnmute = false;      // Set when user re-mutes after a force unmute
-
-// Track muted alert to detect stronger signals
-static uint8_t mutedAlertStrength = 0;
-static Band mutedAlertBand = BAND_NONE;
-static uint32_t mutedAlertFreq = 0;
 
 // Alert persistence - show last alert in grey after V1 clears it
 static AlertData persistedAlert;
@@ -735,26 +721,7 @@ void processBLEData() {
                 }
             }
 
-            // Track V1 mute state for local override logic
-            static bool lastLoggedMuted = false;
-            static bool lastV1Muted = false;
-            bool v1MutedRaw = state.muted;  // Capture V1's raw mute state before overrides
-            
-            // Apply local mute override IMMEDIATELY - lock it in before any logic
-            if (localMuteActive && localMuteOverride) {
-                state.muted = true;
-            }
-            
-            // If we recently sent unmute command, force unmuted until V1 catches up
-            if (unmuteSentTimestamp > 0) {
-                unsigned long timeSinceUnmute = millis() - unmuteSentTimestamp;
-                if (timeSinceUnmute < UNMUTE_GRACE_MS) {
-                    state.muted = false;  // Override V1's lagging muted state
-                } else {
-                    unmuteSentTimestamp = 0;  // Grace period expired, trust V1 again
-                }
-            }
-            
+            // V1 is source of truth for mute state
             // Mute debounce: prevent flicker from rapid V1 state changes
             unsigned long muteNow = millis();
             if (state.muted != debouncedMuteState) {
@@ -765,12 +732,6 @@ void processBLEData() {
                     // Within debounce window - keep previous state
                     state.muted = debouncedMuteState;
                 }
-            }
-            
-            // Track mute state changes (no logging in hot path)
-            if (state.muted != lastLoggedMuted || v1MutedRaw != lastV1Muted) {
-                lastLoggedMuted = state.muted;
-                lastV1Muted = v1MutedRaw;
             }
             
             // Throttle display updates to prevent crashes
@@ -788,60 +749,8 @@ void processBLEData() {
                 
                 displayMode = DisplayMode::LIVE;
 
-                // Force-unmute temporarily disabled to restore reliable user mute
-                forceUnmuteLatched = false;
-                suppressForceUnmute = false;
-
-                // Auto-unmute logic: new stronger signal or different band
-                if (localMuteActive && localMuteOverride) {
-                    bool strongerSignal = false;
-                    bool differentAlert = false;
-                    bool higherPriorityBand = false;
-
-                    // Check if it's a different band first
-                    if (priority.band != mutedAlertBand && priority.band != BAND_NONE) {
-                        differentAlert = true;
-                    }
-
-                    // Check for higher priority band (Ka > K > X, Laser is special)
-                    if (mutedAlertBand == BAND_K && priority.band == BAND_KA) {
-                        higherPriorityBand = true;
-                    } else if (mutedAlertBand == BAND_X && (priority.band == BAND_KA || priority.band == BAND_K)) {
-                        higherPriorityBand = true;
-                    } else if (mutedAlertBand == BAND_LASER && priority.band != BAND_LASER && priority.band != BAND_NONE) {
-                        higherPriorityBand = true;
-                    }
-
-                    // Only check stronger signal if band changed
-                    if (priority.band != mutedAlertBand && currentStrength >= mutedAlertStrength + 2) {
-                        strongerSignal = true;
-                    }
-
-                    // Check if it's a different frequency (for same band, >50 MHz difference)
-                    if (priority.band == mutedAlertBand && priority.frequency > 0 && mutedAlertFreq > 0) {
-                        uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
-                                           (priority.frequency - mutedAlertFreq) : 
-                                           (mutedAlertFreq - priority.frequency);
-                        if (freqDiff > 50) {
-                            differentAlert = true;
-                        }
-                    }
-
-                    // Auto-unmute for stronger, different, or higher priority alert
-                    if (strongerSignal || differentAlert || higherPriorityBand) {
-                        SerialLog.println("Auto-unmuting for new/stronger/priority alert");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        suppressForceUnmute = false;  // allow future force-unmute on next alert
-                        state.muted = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        mutedAlertFreq = 0;
-                        if (bleClient.setMute(false)) {
-                            unmuteSentTimestamp = millis();
-                        }
-                    }
-                }
+                // V1 is source of truth for mute state - no auto-unmute logic
+                // Display just shows what V1 reports
 
                 // Update display FIRST for lowest latency
                 // Pass all alerts for multi-alert card display
@@ -855,21 +764,6 @@ void processBLEData() {
             } else {
                 // No alerts from V1
                 displayMode = DisplayMode::IDLE;
-                
-                if (localMuteActive) {
-                    // Clear mute immediately when alert ends (no timeout delay)
-                    SerialLog.println("Alert cleared - clearing local mute override");
-                    localMuteActive = false;
-                    localMuteOverride = false;
-                    suppressForceUnmute = false;
-                    forceUnmuteLatched = false;
-                    mutedAlertStrength = 0;
-                    mutedAlertBand = BAND_NONE;
-                    mutedAlertFreq = 0;
-                    // Send unmute command to V1
-                    bleClient.setMute(false);
-                    unmuteSentTimestamp = millis();
-                }
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
@@ -1185,7 +1079,8 @@ void loop() {
     int16_t touchX, touchY;
     bool hasActiveAlert = parser.hasAlerts();
 
-    // Helper to toggle mute state (shared by immediate and deferred handlers)
+    // Helper to toggle mute state - sends command to V1
+    // V1 is source of truth - display updates when V1 reports new state
     auto performMuteToggle = [&](const char* reason) {
         if (!hasActiveAlert) {
             SerialLog.println("MUTE BLOCKED: No active alert to mute");
@@ -1196,35 +1091,10 @@ void loop() {
         bool currentMuted = state.muted;
         bool newMuted = !currentMuted;
 
-        // Apply local override immediately for instant visual feedback
-        localMuteOverride = newMuted;
-        localMuteActive = true;
-        localMuteTimestamp = millis();
-
-        // Store current alert details for detecting stronger signals
-        if (newMuted) {
-            AlertData priority = parser.getPriorityAlert();
-            mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
-            mutedAlertBand = priority.band;
-            mutedAlertFreq = priority.frequency;
-            SerialLog.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
-                        mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
-        } else {
-            // Unmuting - clear stored alert
-            mutedAlertStrength = 0;
-            mutedAlertBand = BAND_NONE;
-            mutedAlertFreq = 0;
-        }
-
-        SerialLog.printf("Current mute state: %s -> Sending: %s (%s)\n", 
+        SerialLog.printf("Mute: %s -> Sending: %s (%s)\n", 
                       currentMuted ? "MUTED" : "UNMUTED",
                       newMuted ? "MUTE_ON" : "MUTE_OFF",
                       reason);
-
-        // If user re-mutes after a force-unmute, suppress future forced unmutes for this alert
-        if (newMuted && forceUnmuteLatched) {
-            suppressForceUnmute = true;
-        }
 
         // Send mute command to V1
         bool cmdSent = bleClient.setMute(newMuted);

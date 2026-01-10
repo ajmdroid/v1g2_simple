@@ -1499,6 +1499,9 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
     
+    // Proxy command logging disabled - we confirmed JBV1 uses standard mute (0x34/0x35)
+    // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
+    
     // Route to appropriate V1 characteristic based on source
     // B6D4 (SHORT) -> V1 B6D4
     // B8D2 (LONG) -> V1 B8D2 (for commands like voltage request)
