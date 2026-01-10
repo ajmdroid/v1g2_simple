@@ -570,12 +570,6 @@ void WiFiManager::handleSettingsSave() {
         brightness = std::max(0, std::min(brightness, 255));
         settingsManager.updateBrightness((uint8_t)brightness);
     }
-    
-    if (server.hasArg("color_theme")) {
-        int theme = server.arg("color_theme").toInt();
-        theme = std::max(0, std::min(theme, 2));  // Clamp to valid theme range
-        settingsManager.updateColorTheme(static_cast<ColorTheme>(theme));
-    }
 
     // BLE proxy settings
     if (server.hasArg("proxy_ble")) {
@@ -596,13 +590,6 @@ void WiFiManager::handleSettingsSave() {
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
-    
-    // The settingsManager instance is already up-to-date, no need to reload.
-    // We can directly apply any changes that need to take immediate effect.
-    if (server.hasArg("color_theme")) {
-        display.updateColorTheme();
-        Serial.println("Display color theme updated");
-    }
     
     server.sendHeader("Location", "/settings?saved=1");
     server.send(302);

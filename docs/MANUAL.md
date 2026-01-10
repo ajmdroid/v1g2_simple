@@ -494,9 +494,7 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 | States | Muted alerts, persisted alerts |
 | Icons | WiFi, BLE (connected/disconnected) |
 
-**Note:** Theme presets (Standard, High Contrast, Stealth, Business) are defined in code but not currently exposed in the web UI.
-
-**Source:** [include/color_themes.h](include/color_themes.h#L1-L120), [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
+**Source:** [include/color_themes.h](include/color_themes.h#L1-L30), [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
 
 ### Display Styles
 
@@ -617,7 +615,6 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
-| colorTheme | int | 0 | Theme enum |
 | autoPush | bool | false | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |

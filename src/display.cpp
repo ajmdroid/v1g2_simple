@@ -97,17 +97,11 @@ inline const ColorPalette& getColorPalette() {
 // Color macros that use the current theme palette
 #define PALETTE_BG getColorPalette().bg
 #define PALETTE_TEXT getColorPalette().text
-#define PALETTE_KA getColorPalette().colorKA
-#define PALETTE_K getColorPalette().colorK
-#define PALETTE_X getColorPalette().colorX
 #define PALETTE_GRAY getColorPalette().colorGray
 #define PALETTE_MUTED settingsManager.get().colorMuted  // User-configurable muted color
 #define PALETTE_PERSISTED settingsManager.get().colorPersisted  // User-configurable persisted alert color
 // Helper macro: returns PALETTE_PERSISTED when in persisted mode, else PALETTE_MUTED
 #define PALETTE_MUTED_OR_PERSISTED (g_displayInstance && g_displayInstance->isPersistedMode() ? PALETTE_PERSISTED : PALETTE_MUTED)
-#define PALETTE_LASER getColorPalette().colorLaser
-#define PALETTE_ARROW getColorPalette().colorArrow
-#define PALETTE_SIGNAL_BAR getColorPalette().colorSignalBar
 
 // ============================================================================
 // Cross-platform text drawing helpers
@@ -1289,7 +1283,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 
 void V1Display::showDisconnected() {
     drawBaseFrame();
-    drawStatusText("Disconnected", PALETTE_KA);
+    drawStatusText("Disconnected", 0xF800);  // Red
     drawWiFiIndicator();
     drawBatteryIndicator();
 }
@@ -1572,7 +1566,8 @@ void V1Display::drawBandLabel(Band band, bool muted) {
     const char* label = (band == BAND_NONE) ? "--" : bandToString(band);
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);
-    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED_OR_PERSISTED : PALETTE_ARROW, PALETTE_BG);
+    const V1Settings& s = settingsManager.get();
+    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandKa, PALETTE_BG);  // Use Ka color for band label
     GFX_drawString(tft, label, 10, SCREEN_HEIGHT / 2 - 26);
 }
 
@@ -2371,7 +2366,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
         
         if (i < bars) {
             // Draw filled bar
-            FILL_RECT(x, y, barWidth, height, PALETTE_SIGNAL_BAR);
+            FILL_RECT(x, y, barWidth, height, 0xF800);  // Red
         } else {
             // Draw empty bar outline
             DRAW_RECT(x, y, barWidth, height, TFT_DARKGREY);
@@ -2752,8 +2747,6 @@ uint16_t V1Display::getArrowColor(Direction dir) {
     }
 }
 void V1Display::updateColorTheme() {
-    // Load the current theme from settings and update palette
-    ColorTheme theme = settingsManager.get().colorTheme;
-    currentPalette = ColorThemes::getPalette(theme);
-    Serial.printf("Color theme updated: %s\n", ColorThemes::getThemeName(theme));
+    // Always use standard palette - custom colors are per-element in settings
+    currentPalette = ColorThemes::STANDARD();
 }

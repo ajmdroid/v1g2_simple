@@ -5,7 +5,7 @@
  * Settings Categories:
  * - WiFi: Mode (Off/STA/AP/APSTA), credentials
  * - BLE Proxy: Enable/disable, device name
- * - Display: Brightness, color theme, resting mode
+ * - Display: Brightness, custom colors, resting mode
  * - Auto-Push: 3-slot profile system with modes
  * 
  * Auto-Push Slots:
@@ -71,7 +71,6 @@ struct V1Settings {
     // Display settings
     bool turnOffDisplay;
     uint8_t brightness;
-    ColorTheme colorTheme;  // Color theme selection
     DisplayStyle displayStyle;  // Font style: classic 7-segment or modern Montserrat
     
     // Custom display colors (RGB565 format)
@@ -145,7 +144,6 @@ struct V1Settings {
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
         brightness(200),
-        colorTheme(THEME_STANDARD),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
         colorBogey(0xF800),      // Red (same as KA)
         colorFrequency(0xF800),  // Red (same as KA)
@@ -218,7 +216,6 @@ public:
     void setProxyName(const String& name);
     void setBrightness(uint8_t brightness);
     void setDisplayOff(bool off);
-    void setColorTheme(ColorTheme theme);
     void setAutoPushEnabled(bool enabled);
     void setActiveSlot(int slot);
     void setSlot(int slotNum, const String& profileName, V1Mode mode);
@@ -259,7 +256,6 @@ public:
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
-    void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
     void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
     
     // Save all settings to flash

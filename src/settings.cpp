@@ -84,7 +84,6 @@ void SettingsManager::load() {
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
-    settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
     settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
@@ -156,7 +155,6 @@ void SettingsManager::load() {
     Serial.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
     Serial.printf("  Proxy name: %s\n", settings.proxyName.c_str());
     Serial.printf("  Brightness: %d\n", settings.brightness);
-    Serial.printf("  Color theme: %d\n", settings.colorTheme);
     Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
     Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no", settings.slot0AlertPersist);
     Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no", settings.slot1AlertPersist);
@@ -182,7 +180,6 @@ void SettingsManager::save() {
     written += preferences.putString("proxyName", settings.proxyName);
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
     written += preferences.putUChar("brightness", settings.brightness);
-    written += preferences.putInt("colorTheme", settings.colorTheme);
     written += preferences.putInt("dispStyle", settings.displayStyle);
     written += preferences.putUShort("colorBogey", settings.colorBogey);
     written += preferences.putUShort("colorFreq", settings.colorFrequency);
@@ -278,11 +275,6 @@ void SettingsManager::setBrightness(uint8_t brightness) {
 
 void SettingsManager::setDisplayOff(bool off) {
     settings.turnOffDisplay = off;
-    save();
-}
-
-void SettingsManager::setColorTheme(ColorTheme theme) {
-    settings.colorTheme = theme;
     save();
 }
 
@@ -563,7 +555,6 @@ void SettingsManager::backupToSD() {
     // Display settings
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
-    doc["colorTheme"] = static_cast<int>(settings.colorTheme);
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     
     // All colors (RGB565)
@@ -646,7 +637,6 @@ bool SettingsManager::restoreFromSD() {
     // Restore display settings (using is<T>() for ArduinoJson v7 compatibility)
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
-    if (doc["colorTheme"].is<int>()) settings.colorTheme = static_cast<ColorTheme>(doc["colorTheme"].as<int>());
     if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
     
     // Restore all colors
@@ -687,7 +677,6 @@ bool SettingsManager::restoreFromSD() {
     preferences.begin("v1settings", false);
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
-    preferences.putInt("colorTheme", settings.colorTheme);
     preferences.putInt("dispStyle", settings.displayStyle);
     preferences.putUShort("colorBogey", settings.colorBogey);
     preferences.putUShort("colorFreq", settings.colorFrequency);
