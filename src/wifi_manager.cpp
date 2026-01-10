@@ -256,17 +256,16 @@ void WiFiManager::setupWebServer() {
     server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
     server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
     
-    // Root tries to serve /index.html (Svelte), falls back to inline failsafe dashboard
+    // Root serves /index.html (Svelte app)
     server.on("/", HTTP_GET, [this]() { 
         markUiActivity();  // Track UI activity
-        // Try Svelte index.html first
         if (serveLittleFSFile("/index.html", "text/html")) {
             Serial.printf("[HTTP] 200 / -> /index.html\n");
             return;
         }
-        // Fall back to inline dashboard
-        Serial.println("[HTTP] / -> inline failsafe dashboard");
-        handleFailsafeUI(); 
+        // LittleFS missing - tell user to reflash
+        Serial.println("[HTTP] 500 / -> LittleFS missing");
+        server.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
     });
     
     // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
@@ -499,51 +498,7 @@ void WiFiManager::handleStatus() {
     server.send(200, "application/json", json);
 }
 
-// ==================== Failsafe API Endpoints (PHASE A) ====================
-
-void WiFiManager::handleFailsafeUI() {
-    // Minimal always-on dashboard
-    String html = "<!DOCTYPE html><html>";
-    html += "<head>";
-    html += "<meta charset='UTF-8'>";
-    html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>V1 Gen2 AP</title>";
-    html += "<style>";
-    html += "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin:0; padding:24px; }";
-    html += ".card { max-width: 520px; margin: 0 auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:24px; box-shadow:0 12px 30px rgba(0,0,0,0.35); }";
-    html += "h1 { font-size: 22px; margin: 0 0 12px; letter-spacing:0.3px; }";
-    html += "p { margin: 6px 0; color:#cbd5e1; }";
-    html += ".pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#0ea5e9; color:#0b1220; font-weight:700; font-size:12px; letter-spacing:0.3px; }";
-    html += ".grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-top:16px; }";
-    html += ".tile { background:#0b1220; border:1px solid #1f2937; border-radius:10px; padding:12px; }";
-    html += ".label { color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; }";
-    html += ".value { color:#e2e8f0; font-size:16px; font-weight:700; margin-top:4px; }";
-    html += ".actions { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }";
-    html += ".btn { padding:10px 14px; border:none; border-radius:10px; background:#0ea5e9; color:#0b1220; font-weight:700; cursor:pointer; box-shadow:0 8px 18px rgba(14,165,233,0.35); }";
-    html += ".btn.secondary { background:#1f2937; color:#e2e8f0; box-shadow:none; }";
-    html += "</style>";
-    html += "</head><body>";
-    html += "<div class='card'>";
-    html += "<div style='display:flex; align-items:center; justify-content:space-between;'>";
-    html += "<h1>V1 Gen2 Access Point</h1><span class='pill'>Always On</span>";
-    html += "</div>";
-    html += "<p>Connect to <strong>V1-Simple</strong> at <strong>192.168.35.5</strong>. The web UI and APIs remain available; no session timeout.</p>";
-    html += "<div class='grid'>";
-    html += "  <div class='tile'><div class='label'>BLE</div><div class='value'>";
-    html += bleClient.isConnected() ? "Connected" : "Disconnected";
-    html += "</div></div>";
-    html += "  <div class='tile'><div class='label'>AP IP</div><div class='value'>" + getAPIPAddress() + "</div></div>";
-    html += "  <div class='tile'><div class='label'>Heap Free</div><div class='value'>" + String(ESP.getFreeHeap() / 1024) + " KB</div></div>";
-    html += "</div>";
-    html += "<div class='actions'>";
-    html += "  <button class='btn secondary' onclick=\"fetch('/darkmode?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Dark mode: '+(d.darkMode?'ON':'OFF')));\">Toggle Dark Mode</button>";
-    html += "  <button class='btn secondary' onclick=\"fetch('/mute?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Mute: '+(d.muted?'ON':'OFF')));\">Toggle Mute</button>";
-    html += "</div>";
-    html += "</div>";
-    html += "</body></html>";
-    
-    server.send(200, "text/html", html);
-}
+// ==================== API Endpoints ====================
 
 void WiFiManager::handleApiProfilePush() {
     // Queue profile push action (non-blocking)

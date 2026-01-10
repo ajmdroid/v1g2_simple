@@ -102,9 +102,8 @@ private:
     void handleV1DeviceProfileSave();
     void handleV1DeviceDelete();
     
-    // Failsafe UI and new API endpoints (PHASE A)
+    // API endpoints
     void handleApiProfilePush();      // POST /api/profile/push - queue profile push
-    void handleFailsafeUI();          // GET / (failsafe) - serve minimal HTML
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
