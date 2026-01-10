@@ -2005,8 +2005,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     const int cardH = SECONDARY_ROW_HEIGHT;  // 30px
     const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=142
     const int cardW = 145;     // Card width (wider to fit freq + band)
-    const int cardSpacing = 6;
-    const int startX = 120;    // Start after band indicators (L/Ka/K/X ends around X=115)
+    const int cardSpacing = 10;  // Increased spacing between cards
+    const int leftMargin = 120;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars (at X=440)
+    const int availableWidth = SCREEN_WIDTH - leftMargin - rightMargin;  // 320px
+    // Center two cards in available space
+    const int totalCardsWidth = cardW * 2 + cardSpacing;  // 300px
+    const int startX = leftMargin + (availableWidth - totalCardsWidth) / 2;  // Center offset
     
     // Get persistence time from profile settings (same as main alert persistence)
     const V1Settings& settings = settingsManager.get();
