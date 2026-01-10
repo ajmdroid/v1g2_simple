@@ -2434,13 +2434,19 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
     int y = getEffectiveScreenHeight() - m.digitH - 8;
     
     if (band == BAND_LASER) {
-        // Draw "LASER" centered with margin for arrows on right - use 14-segment for proper 'R'
+        // Draw "LASER" centered between band indicators and signal bars
         const char* laserStr = "LASER";
         int width = measureSevenSegmentText(laserStr, scale);  // measurement is same for both
+#if defined(DISPLAY_WAVESHARE_349)
+        const int leftMargin = 120;   // After band indicators
+        const int rightMargin = 200;  // Before signal bars (at X=440)
+#else
+        const int leftMargin = 0;
         const int rightMargin = 120;
-        int maxWidth = SCREEN_WIDTH - rightMargin;
-        int x = (maxWidth - width) / 2;
-        if (x < 0) x = 0;
+#endif
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - width) / 2;
+        if (x < leftMargin) x = leftMargin;
         
         // Clear area before drawing
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
@@ -2460,10 +2466,16 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
     }
 
     int width = measureSevenSegmentText(freqStr, scale);
-    const int rightMargin = 120; // leave room on the right for the arrow stack
-    int maxWidth = SCREEN_WIDTH - rightMargin;
-    int x = (maxWidth - width) / 2;
-    if (x < 0) x = 0;
+#if defined(DISPLAY_WAVESHARE_349)
+    const int leftMargin = 120;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars (at X=440)
+#else
+    const int leftMargin = 0;
+    const int rightMargin = 120;  // leave room on the right for the arrow stack
+#endif
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    int x = leftMargin + (maxWidth - width) / 2;
+    if (x < leftMargin) x = leftMargin;
     
     // Clear area before drawing
     const V1Settings& s = settingsManager.get();
@@ -2495,7 +2507,8 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     
     // OpenFontRender antialiased rendering
     const int fontSize = 66;  // Larger font size
-    const int rightMargin = 120;  // Match Classic - leave room for arrow stack
+    const int leftMargin = 120;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars (at X=440)
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 72;  // Position based on effective height
     
@@ -2503,17 +2516,17 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     ofr.setBackgroundColor(0, 0, 0);  // Black background
     
     // Clear bottom area for frequency - minimal height to avoid covering band labels
-    int maxWidth = SCREEN_WIDTH - rightMargin;
-    FILL_RECT(0, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
     if (band == BAND_LASER) {
         uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
         ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         
-        // Get text width for centering
+        // Get text width for centering between band indicators and signal bars
         FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
         int textW = bbox.xMax - bbox.xMin;
-        int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+        int x = leftMargin + (maxWidth - textW) / 2;
         
         ofr.setCursor(x, freqY);
         ofr.printf("LASER");
@@ -2540,10 +2553,10 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     }
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
     
-    // Get text width for centering
+    // Get text width for centering between band indicators and signal bars
     FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
     int textW = bbox.xMax - bbox.xMin;
-    int x = (maxWidth - textW) / 2;  // Center in left portion like Classic
+    int x = leftMargin + (maxWidth - textW) / 2;
     
     ofr.setCursor(x, freqY);
     ofr.printf("%s", freqStr);

@@ -157,8 +157,35 @@ static void driveColorPreview() {
         previewState.signalBars = step.bars;
         previewState.muted = false;
 
-        // Use multi-alert display (single alert as priority, no secondary cards)
-        display.update(previewAlert, &previewAlert, 1, previewState);
+        // Build array with secondary alerts to show cards during preview
+        // Start adding secondary alerts from step 1 onwards
+        AlertData allAlerts[3];
+        int alertCount = 1;
+        allAlerts[0] = previewAlert;
+        
+        if (colorPreviewStep >= 1) {
+            // Add X band as secondary card
+            allAlerts[alertCount].band = BAND_X;
+            allAlerts[alertCount].direction = DIR_FRONT;
+            allAlerts[alertCount].frontStrength = 3;
+            allAlerts[alertCount].frequency = 10525;
+            allAlerts[alertCount].isValid = true;
+            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_X);
+            alertCount++;
+        }
+        if (colorPreviewStep >= 2) {
+            // Add K band as secondary card
+            allAlerts[alertCount].band = BAND_K;
+            allAlerts[alertCount].direction = DIR_REAR;
+            allAlerts[alertCount].frontStrength = 0;
+            allAlerts[alertCount].rearStrength = 4;
+            allAlerts[alertCount].frequency = 24150;
+            allAlerts[alertCount].isValid = true;
+            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_K);
+            alertCount++;
+        }
+
+        display.update(previewAlert, allAlerts, alertCount, previewState);
         colorPreviewStep++;
     }
 
