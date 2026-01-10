@@ -58,7 +58,7 @@ TouchHandler touchHandler;
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
 struct BLEDataPacket {
-    uint8_t data[256];  // Max expected packet size
+    uint8_t data[128];  // V1 packets are typically <60 bytes; 128 gives headroom
     size_t length;
     uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
     uint32_t tsMs;      // Timestamp for latency measurement
