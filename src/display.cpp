@@ -1365,8 +1365,11 @@ void V1Display::showResting() {
         // Direction arrows all dimmed
         drawDirectionArrow(DIR_NONE, false);
         
-        // Frequency display showing dashes
-        drawFrequency(0, BAND_NONE);
+        // Frequency display: modern style shows blank, classic shows dashes
+        const V1Settings& s = settingsManager.get();
+        if (s.displayStyle != DISPLAY_STYLE_MODERN) {
+            drawFrequency(0, BAND_NONE);
+        }
         
         // Mute indicator off
         drawMuteIcon(false);
@@ -2499,9 +2502,14 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     
-    // Fall back to Classic style if OFR not initialized or resting state (show dim 7-seg dashes)
-    if (!ofrInitialized || (freqMHz == 0 && band != BAND_LASER)) {
+    // Fall back to Classic style if OFR not initialized
+    if (!ofrInitialized) {
         drawFrequencyClassic(freqMHz, band, muted);
+        return;
+    }
+    
+    // Modern style: show nothing when no frequency (resting/idle state)
+    if (freqMHz == 0 && band != BAND_LASER) {
         return;
     }
     
