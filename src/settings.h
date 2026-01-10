@@ -94,6 +94,7 @@ struct V1Settings {
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     uint16_t colorMuted;         // Muted alert color (shown when alerts are muted/grayed)
     uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
+    bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
     bool hideWifiIcon;           // Hide WiFi icon after brief display
@@ -163,6 +164,7 @@ struct V1Settings {
         colorBar4(0xFFE0),       // Yellow
         colorBar5(0xF800),       // Red
         colorBar6(0xF800),       // Red (strongest)
+        freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
@@ -229,6 +231,7 @@ public:
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
     void setPersistedColor(uint16_t color);
+    void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);

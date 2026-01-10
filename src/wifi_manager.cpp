@@ -1243,6 +1243,11 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setPersistedColor(persistedColor);
     }
     
+    // Handle frequency uses band color setting
+    if (server.hasArg("freqUseBandColor")) {
+        settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
+    }
+    
     // Handle display visibility settings
     if (server.hasArg("hideWifiIcon")) {
         settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
@@ -1277,6 +1282,8 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setMutedColor(0x3186);
     // Reset persisted color to darker grey
     settingsManager.setPersistedColor(0x18C3);
+    // Reset frequency use band color to off
+    settingsManager.setFreqUseBandColor(false);
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
@@ -1309,6 +1316,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bar6"] = s.colorBar6;
     doc["muted"] = s.colorMuted;
     doc["persisted"] = s.colorPersisted;
+    doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;

@@ -115,9 +115,9 @@ private:
     void drawBandIndicators(uint8_t bandMask, bool muted);
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
-    void drawFrequency(uint32_t freqMHz, bool isLaser = false, bool muted = false);
-    void drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted);   // 7-segment style
-    void drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted);    // Montserrat Bold font
+    void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false);
+    void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted);   // 7-segment style
+    void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted);    // Montserrat Bold font
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);

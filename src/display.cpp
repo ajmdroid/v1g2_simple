@@ -1318,7 +1318,7 @@ void V1Display::showResting() {
         drawDirectionArrow(DIR_NONE, false);
         
         // Frequency display showing dashes
-        drawFrequency(0, false);
+        drawFrequency(0, BAND_NONE);
         
         // Mute indicator off
         drawMuteIcon(false);
@@ -1674,16 +1674,14 @@ void V1Display::update(const DisplayState& state) {
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
     
-    // Check if laser is active from debounced state
-    bool isLaser = (restingDebouncedBands & BAND_LASER) != 0;
-    drawFrequency(0, isLaser, effectiveMuted);
-    
-    // Determine primary band for signal bar coloring
-    Band primaryBand = BAND_KA; // default
+    // Determine primary band for frequency and signal bar coloring
+    Band primaryBand = BAND_NONE;
     if (restingDebouncedBands & BAND_LASER) primaryBand = BAND_LASER;
     else if (restingDebouncedBands & BAND_KA) primaryBand = BAND_KA;
     else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
     else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
+    
+    drawFrequency(0, primaryBand, effectiveMuted);
     
     drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
     drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
@@ -1733,7 +1731,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     
     // Frequency in persisted color (pass muted=true)
-    drawFrequency(alert.frequency, alert.band == BAND_LASER, true);
+    drawFrequency(alert.frequency, alert.band, true);
     
     // No signal bars - just draw empty
     drawVerticalSignalBars(0, 0, alert.band, true);
@@ -1920,7 +1918,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
-    drawFrequency(priority.frequency, priority.band == BAND_LASER, state.muted);
+    drawFrequency(priority.frequency, priority.band, state.muted);
     drawBandIndicators(bandMask, state.muted);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
     
@@ -2376,7 +2374,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
 }
 
 // Classic 7-segment frequency display (original V1 style)
-void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted) {
+void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
     const float scale = 2.2f; // Larger for wider screen
 #else
@@ -2387,7 +2385,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted)
     // Position frequency at bottom with proper margin (shifted up in multi-alert mode)
     int y = getEffectiveScreenHeight() - m.digitH - 8;
     
-    if (isLaser) {
+    if (band == BAND_LASER) {
         // Draw "LASER" centered with margin for arrows on right - use 14-segment for proper 'R'
         const char* laserStr = "LASER";
         int width = measureSevenSegmentText(laserStr, scale);  // measurement is same for both
@@ -2422,17 +2420,28 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, bool isLaser, bool muted)
     // Clear area before drawing
     const V1Settings& s = settingsManager.get();
     FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-    uint16_t freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : (hasFreq ? s.colorFrequency : PALETTE_GRAY);
+    
+    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (!hasFreq) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
     drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
 // Modern frequency display - Antialiased with OpenFontRender
-void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) {
+void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if OFR not initialized or resting state (show dim 7-seg dashes)
-    if (!ofrInitialized || (freqMHz == 0 && !isLaser)) {
-        drawFrequencyClassic(freqMHz, isLaser, muted);
+    if (!ofrInitialized || (freqMHz == 0 && band != BAND_LASER)) {
+        drawFrequencyClassic(freqMHz, band, muted);
         return;
     }
     
@@ -2449,7 +2458,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
     int maxWidth = SCREEN_WIDTH - rightMargin;
     FILL_RECT(0, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
-    if (isLaser) {
+    if (band == BAND_LASER) {
         uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
         ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         
@@ -2470,7 +2479,17 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
         snprintf(freqStr, sizeof(freqStr), "--.---");
     }
     
-    uint16_t freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : (freqMHz > 0 ? s.colorFrequency : PALETTE_GRAY);
+    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (freqMHz == 0) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
     
     // Get text width for centering
@@ -2483,12 +2502,12 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, bool isLaser, bool muted) 
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
-void V1Display::drawFrequency(uint32_t freqMHz, bool isLaser, bool muted) {
+void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
-        drawFrequencyModern(freqMHz, isLaser, muted);
+        drawFrequencyModern(freqMHz, band, muted);
     } else {
-        drawFrequencyClassic(freqMHz, isLaser, muted);
+        drawFrequencyClassic(freqMHz, band, muted);
     }
 }
 

@@ -5,6 +5,7 @@
 	let colors = $state({
 		bogey: 0xF800,   // Red
 		freq: 0xF800,    // Red
+		freqUseBandColor: false,  // Use band color for frequency
 		arrowFront: 0xF800,  // Red (front)
 		arrowSide: 0xF800,   // Red (side)
 		arrowRear: 0xF800,   // Red (rear)
@@ -113,6 +114,7 @@
 			const params = new URLSearchParams();
 			params.append('bogey', colors.bogey);
 			params.append('freq', colors.freq);
+			params.append('freqUseBandColor', colors.freqUseBandColor);
 			params.append('arrowFront', colors.arrowFront);
 			params.append('arrowSide', colors.arrowSide);
 			params.append('arrowRear', colors.arrowRear);
@@ -177,6 +179,7 @@
 				colors = {
 					bogey: 0xF800,
 					freq: 0xF800,
+					freqUseBandColor: false,
 					arrowFront: 0xF800,
 					arrowSide: 0xF800,
 					arrowRear: 0xF800,
@@ -283,12 +286,22 @@
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.freq)}
 								onchange={(e) => updateColor('freq', e.target.value)}
+								disabled={colors.freqUseBandColor}
 							/>
 							<span 
 								class="text-2xl font-bold font-mono"
 								style="color: {rgb565ToHex(colors.freq)}"
+								class:opacity-50={colors.freqUseBandColor}
 							>35.5</span>
 						</div>
+						<label class="label cursor-pointer justify-start gap-2 mt-1">
+							<input 
+								type="checkbox"
+								class="toggle toggle-sm toggle-primary"
+								bind:checked={colors.freqUseBandColor}
+							/>
+							<span class="label-text text-sm">Use band color for frequency</span>
+						</label>
 					</div>
 				</div>
 				<div class="divider my-2"></div>
