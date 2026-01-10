@@ -210,11 +210,11 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
             return 0;
     }
 
-    // Time-based decay to match V1's visual smoothing
-    // V1 drops about 1 bar every ~150ms when signal fades
+    // Time-based decay for signal bar smoothing
+    // Faster decay for snappier response (was 150ms to match V1)
     static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
     static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
-    constexpr unsigned long DROP_INTERVAL_MS = 150;  // Match V1's decay rate
+    constexpr unsigned long DROP_INTERVAL_MS = 100;  // Reduced from 150ms for snappier response
     
     uint8_t* lastBarsPtr = nullptr;
     unsigned long* lastDropTimePtr = nullptr;

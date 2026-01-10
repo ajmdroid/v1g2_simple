@@ -1600,7 +1600,7 @@ void V1Display::update(const DisplayState& state) {
     // Band debouncing: keep bands visible for a short grace period to prevent flicker
     static unsigned long restingBandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
     static uint8_t restingDebouncedBands = 0;
-    const unsigned long BAND_GRACE_MS = 200;
+    const unsigned long BAND_GRACE_MS = 100;  // Reduced from 200ms for snappier response
     unsigned long now = millis();
     
     if (state.activeBands & BAND_LASER) restingBandLastSeen[0] = now;
@@ -1789,7 +1789,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // when signal fluctuates on the edge of detection
     static unsigned long bandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
     static uint8_t debouncedBandMask = 0;
-    const unsigned long BAND_GRACE_MS = 200;  // Short grace period
+    const unsigned long BAND_GRACE_MS = 100;  // Reduced from 200ms for snappier response
     unsigned long now = millis();
     
     // Update last-seen times for currently active bands

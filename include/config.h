@@ -61,7 +61,7 @@
 #define MAX_SIGNAL_BARS     6
 
 // Timing
-#define DISPLAY_UPDATE_MS   100   // Update display every 100ms
+#define DISPLAY_UPDATE_MS   50    // Update display every 50ms (snappier response)
 #define STATUS_UPDATE_MS    1000  // Update status indicators every second
 
 // Mute override - force unmute at this signal level (bars out of 6)
