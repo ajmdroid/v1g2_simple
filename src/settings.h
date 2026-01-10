@@ -104,6 +104,7 @@ struct V1Settings {
     
     // Multi-alert display setting
     bool enableMultiAlert;       // Show secondary alert cards when multiple alerts active
+    bool priorityArrowOnly;      // When multi-alert enabled, show only priority arrow (not all V1 arrows)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -235,6 +236,7 @@ public:
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
     void setEnableMultiAlert(bool enable);
+    void setPriorityArrowOnly(bool enable);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

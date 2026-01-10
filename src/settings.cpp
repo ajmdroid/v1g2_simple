@@ -111,6 +111,7 @@ void SettingsManager::load() {
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.enableMultiAlert = preferences.getBool("multiAlert", true);
+    settings.priorityArrowOnly = preferences.getBool("prioArrow", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -207,6 +208,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("multiAlert", settings.enableMultiAlert);
+    written += preferences.putBool("prioArrow", settings.priorityArrowOnly);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -412,6 +414,11 @@ void SettingsManager::setHideBleIcon(bool hide) {
 void SettingsManager::setEnableMultiAlert(bool enable) {
     settings.enableMultiAlert = enable;
     save();
+}
+
+void SettingsManager::setPriorityArrowOnly(bool enable) {
+    settings.priorityArrowOnly = enable;
+    // Note: caller is responsible for calling save() when done
 }
 
 const AutoPushSlot& SettingsManager::getActiveSlot() const {

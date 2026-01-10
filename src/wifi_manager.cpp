@@ -538,6 +538,7 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["enableMultiAlert"] = settings.enableMultiAlert;
+    doc["priorityArrowOnly"] = settings.priorityArrowOnly;
     
     String json;
     serializeJson(doc, json);
@@ -598,6 +599,12 @@ void WiFiManager::handleSettingsSave() {
     if (server.hasArg("enableMultiAlert")) {
         bool multiAlert = server.arg("enableMultiAlert") == "true" || server.arg("enableMultiAlert") == "1";
         settingsManager.setEnableMultiAlert(multiAlert);
+    }
+    
+    // Priority arrow only setting
+    if (server.hasArg("priorityArrowOnly")) {
+        bool prioOnly = server.arg("priorityArrowOnly") == "true" || server.arg("priorityArrowOnly") == "1";
+        settingsManager.setPriorityArrowOnly(prioOnly);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.

@@ -1987,9 +1987,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     
     // Track arrow and signal bar changes separately for incremental update
-    // In multi-alert mode, show ALL active arrows from display packet (state.arrows)
-    // not just priority alert's direction - V1 shows all directions simultaneously
-    bool arrowsChanged = (state.arrows != lastArrows);
+    // Arrow display depends on priorityArrowOnly setting
+    Direction arrowsToShow = s.priorityArrowOnly ? state.priorityArrow : state.arrows;
+    bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     
     // If any flash bits set, arrows need continuous redraws for animation
@@ -2007,8 +2007,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (!needsRedraw && (arrowsChanged || signalBarsChanged || arrowsFlashing)) {
         // Only arrows and/or signal bars changed - do incremental update without full redraw
         if (arrowsChanged || arrowsFlashing) {
-            lastArrows = state.arrows;
-            drawDirectionArrow(state.arrows, state.muted, state.flashBits);
+            lastArrows = arrowsToShow;
+            drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
         }
         if (signalBarsChanged) {
             lastSignalBars = state.signalBars;
@@ -2026,7 +2026,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastPriority = priority;
     lastAlertCount = alertCount;
     lastMultiState = state;
-    lastArrows = state.arrows;
+    lastArrows = s.priorityArrowOnly ? state.priorityArrow : state.arrows;
     lastSignalBars = state.signalBars;
     lastMultiAlertEnabled = s.enableMultiAlert;
     lastDebouncedBands = debouncedBandMask;
@@ -2062,8 +2062,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawBandIndicators(bandMask, state.muted);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
     
-    // Draw all active arrows from display packet (not just priority's direction)
-    drawDirectionArrow(state.arrows, state.muted, state.flashBits);
+    // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
+    // (arrowsToShow already computed above for change detection)
+    drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
     

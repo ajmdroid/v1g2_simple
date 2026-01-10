@@ -726,7 +726,7 @@ void processBLEData() {
             // Recovery: display shows bands but no alert table arrived
             if (!hasAlerts && state.activeBands != BAND_NONE) {
                 unsigned long gapNow = millis();
-                if (gapNow - lastAlertGapRecoverMs > 500) {
+                if (gapNow - lastAlertGapRecoverMs > 100) {  // 100ms - quick recovery for lost alert packets
                     DEBUG_LOGLN("Alert gap: bands active but no alerts; re-requesting alert data");
                     parser.resetAlertAssembly();
                     bleClient.requestAlertData();

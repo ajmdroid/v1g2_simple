@@ -5,7 +5,9 @@
 		ap_ssid: '',
 		ap_password: '',
 		proxy_ble: true,
-		proxy_name: 'V1C-LE-S3'
+		proxy_name: 'V1C-LE-S3',
+		enableMultiAlert: true,
+		priorityArrowOnly: false
 	});
 	
 	let loading = $state(true);
@@ -40,6 +42,8 @@
 			formData.append('ap_password', settings.ap_password);
 			formData.append('proxy_ble', settings.proxy_ble);
 			formData.append('proxy_name', settings.proxy_name);
+			formData.append('enableMultiAlert', settings.enableMultiAlert);
+			formData.append('priorityArrowOnly', settings.priorityArrowOnly);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -131,6 +135,24 @@
 						disabled={!settings.proxy_ble}
 					/>
 				</div>
+			</div>
+		</div>
+		
+		<!-- Display Options -->
+		<div class="card bg-base-200">
+			<div class="card-body space-y-4">
+				<h2 class="card-title">📺 Display Options</h2>
+				<label class="label cursor-pointer">
+					<span class="label-text">Multi-Alert Cards</span>
+					<input type="checkbox" class="toggle" bind:checked={settings.enableMultiAlert} />
+				</label>
+				<p class="text-xs text-base-content/60 -mt-2">Show secondary alerts as cards at bottom of screen</p>
+				
+				<label class="label cursor-pointer">
+					<span class="label-text">Priority Arrow Only</span>
+					<input type="checkbox" class="toggle" bind:checked={settings.priorityArrowOnly} disabled={!settings.enableMultiAlert} />
+				</label>
+				<p class="text-xs text-base-content/60 -mt-2">Show only priority alert direction (instead of all V1 arrows)</p>
 			</div>
 		</div>
 		
