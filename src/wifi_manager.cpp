@@ -389,7 +389,7 @@ void WiFiManager::setupWebServer() {
         } else {
             Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
             display.showDemo();
-            requestColorPreviewHold(2200);
+            requestColorPreviewHold(5500);
             server.send(200, "application/json", "{\"success\":true,\"active\":true}");
         }
     });
@@ -1267,7 +1267,7 @@ void WiFiManager::handleDisplayColorsSave() {
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
-    requestColorPreviewHold(2200);  // Hold ~2.2s and cycle bands during preview
+    requestColorPreviewHold(5500);  // Hold ~5.5s and cycle bands during preview
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1287,7 +1287,7 @@ void WiFiManager::handleDisplayColorsReset() {
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
-    requestColorPreviewHold(2200);
+    requestColorPreviewHold(5500);
     
     server.send(200, "application/json", "{\"success\":true}");
 }

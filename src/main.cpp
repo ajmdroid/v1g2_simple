@@ -85,14 +85,16 @@ struct ColorPreviewStep {
     uint8_t bars;
     Direction dir;
     uint32_t freqMHz;
+    bool muted;
 };
 
-// Sequence: X, K, Ka, Laser with arrow cycle (front, side, rear, front+rear)
+// Sequence: X, K, Ka, Laser, then Ka muted - with arrow cycle and cards
 static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
-    {300, BAND_X, 3, DIR_FRONT, 10525},
-    {700, BAND_K, 5, DIR_SIDE, 24150},
-    {1100, BAND_KA, 6, DIR_REAR, 35500},
-    {1500, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0}
+    {300, BAND_X, 3, DIR_FRONT, 10525, false},
+    {1300, BAND_K, 5, DIR_SIDE, 24150, false},
+    {2300, BAND_KA, 6, DIR_REAR, 35500, false},
+    {3300, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0, false},
+    {4300, BAND_KA, 5, DIR_FRONT, 34700, true}   // Muted Ka to show mute badge
 };
 static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
 
@@ -155,7 +157,7 @@ static void driveColorPreview() {
         previewState.activeBands = step.band;
         previewState.arrows = step.dir;
         previewState.signalBars = step.bars;
-        previewState.muted = false;
+        previewState.muted = step.muted;
 
         // Build array with secondary alerts to show cards during preview
         // Start adding secondary alerts from step 1 onwards

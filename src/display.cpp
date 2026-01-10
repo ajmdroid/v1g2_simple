@@ -892,24 +892,27 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 void V1Display::drawMuteIcon(bool muted) {
     // Draw centered badge above frequency display
 #if defined(DISPLAY_WAVESHARE_349)
-    const float freqScale = 2.2f; 
+    const float freqScale = 2.75f;  // Match Classic frequency scale
+    const int leftMargin = 120;    // After band indicators
+    const int rightMargin = 200;   // Before signal bars (at X=440)
 #else
     const float freqScale = 1.7f;
+    const int leftMargin = 0;
+    const int rightMargin = 120;
 #endif
     SegMetrics mFreq = segMetrics(freqScale);
 
     // Frequency Y position (from drawFrequency) - use effective height for multi-alert
     int freqY = getEffectiveScreenHeight() - mFreq.digitH - 8;
-    const int rightMargin = 120;
-    int maxWidth = SCREEN_WIDTH - rightMargin;
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
     // Badge dimensions (slightly smaller to avoid crowding top UI)
     int w = 92;
     int h = 26;
-    int x = (maxWidth - w) / 2;
-    // Keep badge low enough to avoid the top/bogey region when frequency is raised
-    int y = freqY - h - 4;
-    if (y < 40) y = 40;  // Minimum y to avoid overlapping mode/bogey counter
+    int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
+    // Position badge above frequency with more gap
+    int y = freqY - h - 16;  // Increased gap from 4 to 16
+    if (y < 5) y = 5;  // Lower minimum to allow badge to move up
     
     if (muted) {
         // Draw badge with muted styling
@@ -2427,7 +2430,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
 // Classic 7-segment frequency display (original V1 style)
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.2f; // Larger for wider screen
+    const float scale = 2.75f; // Larger for wider screen (+25%)
 #else
     const float scale = 1.7f; // ~15% smaller than the counter digits
 #endif
@@ -2480,9 +2483,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
     int x = leftMargin + (maxWidth - width) / 2;
     if (x < leftMargin) x = leftMargin;
     
-    // Clear area before drawing
+    // Clear area before drawing (minimal padding to avoid cutting into numbers)
     const V1Settings& s = settingsManager.get();
-    FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+    FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
     
     // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
     uint16_t freqColor;
@@ -2514,11 +2517,11 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     }
     
     // OpenFontRender antialiased rendering
-    const int fontSize = 66;  // Larger font size
+    const int fontSize = 82;  // Larger font size (+25%)
     const int leftMargin = 120;   // After band indicators
     const int rightMargin = 200;  // Before signal bars (at X=440)
     const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 72;  // Position based on effective height
+    const int freqY = effectiveHeight - 88;  // Position based on effective height (moved up)
     
     ofr.setFontSize(fontSize);
     ofr.setBackgroundColor(0, 0, 0);  // Black background
