@@ -1117,7 +1117,7 @@ void loop() {
             if (brightnessAdjustMode) {
                 // Exit brightness adjustment mode and save
                 brightnessAdjustMode = false;
-                settingsManager.setBrightness(brightnessAdjustValue);
+                settingsManager.updateBrightness(brightnessAdjustValue);
                 settingsManager.save();
                 display.hideBrightnessSlider();
                 display.showResting();  // Return to normal display
