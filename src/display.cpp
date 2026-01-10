@@ -2008,7 +2008,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
         lastPriorityForCards = AlertData();
         // Clear the card area
-        const int signalBarsX = SCREEN_WIDTH - 228 - 2;
+        const int signalBarsX = SCREEN_WIDTH - 200 - 2;
         const int clearWidth = signalBarsX - startX;
         if (clearWidth > 0) {
             FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
@@ -2175,7 +2175,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     forceCardRedraw = false;  // Reset the force flag
     
     // Clear card area only when needed
-    const int signalBarsX = SCREEN_WIDTH - 228 - 2;
+    const int signalBarsX = SCREEN_WIDTH - 200 - 2;
     const int clearWidth = signalBarsX - startX;
     if (clearWidth > 0) {
         FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
@@ -2682,9 +2682,9 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #if defined(DISPLAY_WAVESHARE_349)
     // Scale from Lilygo 320x170 to Waveshare 640x172
     // Width is 2x, height is similar - make bars wider but keep height similar
-    const int barWidth = 56;   // 26 * 2 scaled for wider screen
+    const int barWidth = 44;   // Narrower bars
     const int barHeight = 14;  // Similar to original
-    const int barSpacing = 12; // More spacing to fill vertical space
+    const int barSpacing = 10; // Tighter spacing
 #else
     const int barWidth = 26;
     const int barHeight = 10;
@@ -2694,24 +2694,18 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 
     // Place bars to the right of the band stack and vertically centered
 #if defined(DISPLAY_WAVESHARE_349)
-    int startX = SCREEN_WIDTH - 228;  // Further from arrows on wider screen
+    int startX = SCREEN_WIDTH - 200;  // Moved closer to arrows (was 228)
 #else
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
-    // Keep bars vertically centered; prefer the classic center, but clamp above the secondary row
-    int availableH = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT; // avoid drawing over secondary row
-    int desiredStartY = (SCREEN_HEIGHT - totalH) / 2;      // original center alignment
-    int startY = desiredStartY;
-    if (startY + totalH > availableH) {
-        startY = availableH - totalH; // push up only if we would overlap the secondary row
-    }
+    // Align signal bars so gap between bars 3 and 4 aligns with middle arrow center (cy=85)
+    // With 8 bars: barHeight=14, barSpacing=10, gap center at startY + 3*(barHeight+barSpacing) - barSpacing/2
+    // Want: startY + 3*24 - 5 = 85, so startY = 85 - 67 = 18
+    int startY = 18;  // Fixed position to align with middle arrow
     if (startY < 8) startY = 8; // keep some padding from top icons
 
     // Clear area once
     int clearH = totalH + 4;
-    if (startY - 2 + clearH > availableH) {
-        clearH = availableH - (startY - 2); // clamp clear to stay above secondary row
-    }
     FILL_RECT(startX - 2, startY - 2, barWidth + 4, clearH, PALETTE_BG);
 
     for (int i = 0; i < barCount; i++) {
