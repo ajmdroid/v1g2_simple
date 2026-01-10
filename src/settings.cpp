@@ -298,17 +298,6 @@ void SettingsManager::setWiFiEnabled(bool enabled) {
     save();
 }
 
-void SettingsManager::setWiFiMode(WiFiModeSetting mode) {
-    settings.wifiMode = mode;
-    save();
-}
-
-void SettingsManager::setWiFiCredentials(const String& ssid, const String& password) {
-    settings.ssid = ssid;
-    settings.password = password;
-    save();
-}
-
 void SettingsManager::setAPCredentials(const String& ssid, const String& password) {
     settings.apSSID = ssid;
     settings.apPassword = password;

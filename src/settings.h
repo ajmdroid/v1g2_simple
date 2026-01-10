@@ -229,8 +229,6 @@ public:
     
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
-    void setWiFiMode(WiFiModeSetting mode);
-    void setWiFiCredentials(const String& ssid, const String& password);
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
@@ -275,29 +273,10 @@ public:
     
     // Batch update methods (don't auto-save, call save() after)
     void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }
-    void updateWiFiCredentials(const String& ssid, const String& password) { settings.ssid = ssid; settings.password = password; }
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
     void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
-    void updatePrimaryWiFi(const String& ssid, const String& password) {
-        settings.ssid = ssid;
-        settings.password = password;
-        settings.wifiNetworks[0].ssid = ssid;
-        settings.wifiNetworks[0].password = password;
-    }
-    void updateWiFiNetwork(int index, const String& ssid, const String& password) {
-        if (index >= 0 && index < MAX_WIFI_NETWORKS) {
-            settings.wifiNetworks[index].ssid = ssid;
-            settings.wifiNetworks[index].password = password;
-        }
-    }
-    void updatePrimaryWiFiFromNetwork0() {
-        if (settings.wifiNetworks[0].isValid()) {
-            settings.ssid = settings.wifiNetworks[0].ssid;
-            settings.password = settings.wifiNetworks[0].password;
-        }
-    }
     
     // Save all settings to flash
     void save();
