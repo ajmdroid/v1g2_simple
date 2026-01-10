@@ -1316,6 +1316,9 @@ void loop() {
                     display.showResting(); // stay on resting view until data arrives
                     SerialLog.println("V1 connected!");
                 } else {
+                    // Reset stale state from previous connection
+                    PacketParser::resetPriorityState();
+                    V1Display::resetChangeTracking();
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");
                     displayMode = DisplayMode::IDLE;

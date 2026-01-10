@@ -1430,6 +1430,13 @@ void V1Display::showScanning() {
     lastRestingProfileSlot = -1;
 }
 
+// Static flag to signal display change tracking reset on next update
+static bool s_resetChangeTrackingFlag = false;
+
+void V1Display::resetChangeTracking() {
+    s_resetChangeTrackingFlag = true;
+}
+
 void V1Display::showDemo() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     clear();
@@ -1857,6 +1864,22 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static DisplayState lastMultiState;
     static bool lastMultiAlertEnabled = false;
     static bool firstRun = true;
+    static AlertData lastSecondary[4];
+    static uint8_t lastArrows = 0;
+    static uint8_t lastSignalBars = 0;
+    
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetChangeTrackingFlag) {
+        lastPriority = AlertData();
+        lastAlertCount = 0;
+        lastMultiState = DisplayState();
+        lastMultiAlertEnabled = false;
+        firstRun = true;
+        for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
+        lastArrows = 0;
+        lastSignalBars = 0;
+        s_resetChangeTrackingFlag = false;
+    }
     
     bool needsRedraw = false;
     
@@ -1873,7 +1896,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
     
     // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
-    static AlertData lastSecondary[4];
     if (!needsRedraw) {
         for (int i = 0; i < alertCount && i < 4; i++) {
             if (allAlerts[i].frequency != lastSecondary[i].frequency ||
@@ -1887,8 +1909,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Track arrow and signal bar changes separately for incremental update
     // In multi-alert mode, show ALL active arrows from display packet (state.arrows)
     // not just priority alert's direction - V1 shows all directions simultaneously
-    static uint8_t lastArrows = 0;
-    static uint8_t lastSignalBars = 0;
     bool arrowsChanged = (state.arrows != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     

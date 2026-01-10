@@ -48,6 +48,13 @@ void PacketParser::resetAlertAssembly() {
     chunkCount = 0;
 }
 
+// Static flag to signal priority state reset on next call
+static bool s_resetPriorityStateFlag = false;
+
+void PacketParser::resetPriorityState() {
+    s_resetPriorityStateFlag = true;
+}
+
 bool PacketParser::parse(const uint8_t* data, size_t length) {
     if (!validatePacket(data, length)) {
         return false;
@@ -390,6 +397,14 @@ AlertData PacketParser::getPriorityAlert() const {
     // Only stick with last priority if it's still present and not much weaker
     static AlertData lastPriority;
     static unsigned long lastPriorityTime = 0;
+    
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetPriorityStateFlag) {
+        lastPriority = AlertData();
+        lastPriorityTime = 0;
+        s_resetPriorityStateFlag = false;
+    }
+    
     constexpr unsigned long PRIORITY_STICK_MS = 300;   // Reduced from 500ms
     constexpr uint8_t PRIORITY_HYSTERESIS = 1;         // Reduced from 2 bars
     

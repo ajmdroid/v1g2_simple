@@ -88,6 +88,9 @@ public:
 
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
+    
+    // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
+    static void resetPriorityState();
 
 private:
     DisplayState displayState;

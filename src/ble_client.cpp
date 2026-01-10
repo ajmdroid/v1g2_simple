@@ -520,6 +520,10 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
         instancePtr->pCommandCharLong = nullptr;
+        // Reset verification state in case a write-verify was in progress
+        instancePtr->verifyPending = false;
+        instancePtr->verifyComplete = false;
+        instancePtr->verifyMatch = false;
         // Set state to DISCONNECTED - will trigger scan restart in process()
         instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
     }

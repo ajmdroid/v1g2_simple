@@ -51,6 +51,9 @@ public:
     void showDisconnected();
     void showResting(); // idle/rest screen
     void showScanning(); // scanning screen (like resting but with SCAN text)
+    
+    // Reset change tracking statics (call on V1 disconnect to ensure clean state on reconnect)
+    static void resetChangeTracking();
 
     // Demo mode
     void showDemo();
