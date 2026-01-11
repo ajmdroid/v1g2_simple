@@ -24,6 +24,13 @@ extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
 extern void cancelColorPreview();
 
+// Enable to dump LittleFS root on WiFi start (debug only); keep false for release
+static constexpr bool WIFI_DEBUG_FS_DUMP = false;
+
+// Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
+static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
+static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
+
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
@@ -139,6 +146,9 @@ bool WiFiManager::isUiActive(unsigned long timeoutMs) const {
     return (millis() - lastUiActivityMs) < timeoutMs;
 }
 
+// Ensure last client seen timestamp advances when UI is accessed
+// (called on every HTTP request via checkRateLimit/markUiActivity)
+
 bool WiFiManager::startSetupMode() {
     // Always-on AP; idempotent start
     if (setupModeState == SETUP_MODE_AP_ON) {
@@ -148,6 +158,7 @@ bool WiFiManager::startSetupMode() {
 
     Serial.println("[SetupMode] Starting AP (always-on mode)...");
     setupModeStartTime = millis();
+    lastClientSeenMs = setupModeStartTime;
 
     WiFi.mode(WIFI_AP);
 
@@ -166,9 +177,36 @@ bool WiFiManager::startSetupMode() {
 
     Serial.printf("[SetupMode] AP started - connect to SSID shown on display\n");
     Serial.printf("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
-    Serial.println("[SetupMode] AP will remain on (no timeout)");
+    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) {
+        Serial.println("[SetupMode] AP will remain on (no timeout)");
+    } else {
+        Serial.printf("[SetupMode] AP auto-timeout set to %lu ms\n", WIFI_AP_AUTO_TIMEOUT_MS);
+    }
 
     return true;
+}
+
+bool WiFiManager::stopSetupMode(bool manual) {
+    if (setupModeState != SETUP_MODE_AP_ON) {
+        return false;
+    }
+
+    Serial.println("[SetupMode] Stopping AP...");
+    server.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+    setupModeState = SETUP_MODE_OFF;
+
+    EVENT_LOG(EVT_WIFI_AP_STOP, 0);
+    EVENT_LOG(EVT_SETUP_MODE_EXIT, manual ? 1 : 0);
+    return true;
+}
+
+bool WiFiManager::toggleSetupMode(bool manual) {
+    if (setupModeState == SETUP_MODE_AP_ON) {
+        return stopSetupMode(manual);
+    }
+    return startSetupMode();
 }
 
 void WiFiManager::setupAP() {
@@ -202,8 +240,10 @@ void WiFiManager::setupWebServer() {
         return;
     }
     Serial.println("[SetupMode] LittleFS mounted");
-    // Dump LittleFS root for diagnostics
-    dumpLittleFSRoot();
+    // Dump LittleFS root for diagnostics (opt-in to avoid startup stall)
+    if (WIFI_DEBUG_FS_DUMP) {
+        dumpLittleFSRoot();
+    }
     
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
@@ -216,17 +256,16 @@ void WiFiManager::setupWebServer() {
     server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
     server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
     
-    // Root tries to serve /index.html (Svelte), falls back to inline failsafe dashboard
+    // Root serves /index.html (Svelte app)
     server.on("/", HTTP_GET, [this]() { 
         markUiActivity();  // Track UI activity
-        // Try Svelte index.html first
         if (serveLittleFSFile("/index.html", "text/html")) {
             Serial.printf("[HTTP] 200 / -> /index.html\n");
             return;
         }
-        // Fall back to inline dashboard
-        Serial.println("[HTTP] / -> inline failsafe dashboard");
-        handleFailsafeUI(); 
+        // LittleFS missing - tell user to reflash
+        Serial.println("[HTTP] 500 / -> LittleFS missing");
+        server.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
     });
     
     // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
@@ -333,12 +372,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
     server.on("/api/autopush/status", HTTP_GET, [this]() { handleAutoPushStatus(); });
     
-    // V1 Device Cache routes (fast reconnect)
-    server.on("/api/v1/devices", HTTP_GET, [this]() { handleV1DevicesApi(); });
-    server.on("/api/v1/devices/name", HTTP_POST, [this]() { handleV1DeviceNameSave(); });
-    server.on("/api/v1/devices/profile", HTTP_POST, [this]() { handleV1DeviceProfileSave(); });
-    server.on("/api/v1/devices/delete", HTTP_POST, [this]() { handleV1DeviceDelete(); });
-    
     // Display Colors routes
     server.on("/displaycolors", HTTP_GET, [this]() { 
         server.sendHeader("Location", "/", true);
@@ -356,7 +389,7 @@ void WiFiManager::setupWebServer() {
         } else {
             Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
             display.showDemo();
-            requestColorPreviewHold(2200);
+            requestColorPreviewHold(5500);
             server.send(200, "application/json", "{\"success\":true,\"active\":true}");
         }
     });
@@ -376,13 +409,43 @@ void WiFiManager::setupWebServer() {
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
+void WiFiManager::checkAutoTimeout() {
+    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) return;  // Disabled by default
+    if (setupModeState != SETUP_MODE_AP_ON) return;
+
+    unsigned long now = millis();
+    int staCount = WiFi.softAPgetStationNum();
+    if (staCount > 0) {
+        lastClientSeenMs = now;
+    }
+
+    unsigned long lastActivity = lastUiActivityMs;
+    if (lastClientSeenMs > lastActivity) {
+        lastActivity = lastClientSeenMs;
+    }
+
+    bool timeoutElapsed = (now - setupModeStartTime) >= WIFI_AP_AUTO_TIMEOUT_MS;
+    bool inactiveEnough = (lastActivity == 0) ? ((now - setupModeStartTime) >= WIFI_AP_INACTIVITY_GRACE_MS)
+                                              : ((now - lastActivity) >= WIFI_AP_INACTIVITY_GRACE_MS);
+
+    if (timeoutElapsed && inactiveEnough && staCount == 0) {
+        Serial.println("[SetupMode] Auto-timeout reached - stopping AP");
+        stopSetupMode(false);
+    }
+}
+
 void WiFiManager::process() {
     if (setupModeState != SETUP_MODE_AP_ON) {
         return;  // No WiFi processing when Setup Mode is off
     }
     
     // Handle web requests
+    if (setupModeState != SETUP_MODE_AP_ON) {
+        return;
+    }
+
     server.handleClient();
+    checkAutoTimeout();
 }
 
 String WiFiManager::getAPIPAddress() const {
@@ -435,51 +498,7 @@ void WiFiManager::handleStatus() {
     server.send(200, "application/json", json);
 }
 
-// ==================== Failsafe API Endpoints (PHASE A) ====================
-
-void WiFiManager::handleFailsafeUI() {
-    // Minimal always-on dashboard
-    String html = "<!DOCTYPE html><html>";
-    html += "<head>";
-    html += "<meta charset='UTF-8'>";
-    html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
-    html += "<title>V1 Gen2 AP</title>";
-    html += "<style>";
-    html += "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin:0; padding:24px; }";
-    html += ".card { max-width: 520px; margin: 0 auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:24px; box-shadow:0 12px 30px rgba(0,0,0,0.35); }";
-    html += "h1 { font-size: 22px; margin: 0 0 12px; letter-spacing:0.3px; }";
-    html += "p { margin: 6px 0; color:#cbd5e1; }";
-    html += ".pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#0ea5e9; color:#0b1220; font-weight:700; font-size:12px; letter-spacing:0.3px; }";
-    html += ".grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-top:16px; }";
-    html += ".tile { background:#0b1220; border:1px solid #1f2937; border-radius:10px; padding:12px; }";
-    html += ".label { color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; }";
-    html += ".value { color:#e2e8f0; font-size:16px; font-weight:700; margin-top:4px; }";
-    html += ".actions { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; }";
-    html += ".btn { padding:10px 14px; border:none; border-radius:10px; background:#0ea5e9; color:#0b1220; font-weight:700; cursor:pointer; box-shadow:0 8px 18px rgba(14,165,233,0.35); }";
-    html += ".btn.secondary { background:#1f2937; color:#e2e8f0; box-shadow:none; }";
-    html += "</style>";
-    html += "</head><body>";
-    html += "<div class='card'>";
-    html += "<div style='display:flex; align-items:center; justify-content:space-between;'>";
-    html += "<h1>V1 Gen2 Access Point</h1><span class='pill'>Always On</span>";
-    html += "</div>";
-    html += "<p>Connect to <strong>V1-Simple</strong> at <strong>192.168.35.5</strong>. The web UI and APIs remain available; no session timeout.</p>";
-    html += "<div class='grid'>";
-    html += "  <div class='tile'><div class='label'>BLE</div><div class='value'>";
-    html += bleClient.isConnected() ? "Connected" : "Disconnected";
-    html += "</div></div>";
-    html += "  <div class='tile'><div class='label'>AP IP</div><div class='value'>" + getAPIPAddress() + "</div></div>";
-    html += "  <div class='tile'><div class='label'>Heap Free</div><div class='value'>" + String(ESP.getFreeHeap() / 1024) + " KB</div></div>";
-    html += "</div>";
-    html += "<div class='actions'>";
-    html += "  <button class='btn secondary' onclick=\"fetch('/darkmode?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Dark mode: '+(d.darkMode?'ON':'OFF')));\">Toggle Dark Mode</button>";
-    html += "  <button class='btn secondary' onclick=\"fetch('/mute?state=1',{method:'POST'}).then(r=>r.json()).then(d=>alert('Mute: '+(d.muted?'ON':'OFF')));\">Toggle Mute</button>";
-    html += "</div>";
-    html += "</div>";
-    html += "</body></html>";
-    
-    server.send(200, "text/html", html);
-}
+// ==================== API Endpoints ====================
 
 void WiFiManager::handleApiProfilePush() {
     // Queue profile push action (non-blocking)
@@ -518,7 +537,6 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
-    doc["enableMultiAlert"] = settings.enableMultiAlert;
     
     String json;
     serializeJson(doc, json);
@@ -547,19 +565,10 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.updateAPCredentials(apSsid, apPass);
     }
     
-    // Force AP-only mode
-    settingsManager.updateWiFiMode(V1_WIFI_AP);
-    
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
         settingsManager.updateBrightness((uint8_t)brightness);
-    }
-    
-    if (server.hasArg("color_theme")) {
-        int theme = server.arg("color_theme").toInt();
-        theme = std::max(0, std::min(theme, 2));  // Clamp to valid theme range
-        settingsManager.updateColorTheme(static_cast<ColorTheme>(theme));
     }
 
     // BLE proxy settings
@@ -578,22 +587,9 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
     }
     
-    // Multi-alert display setting
-    if (server.hasArg("enableMultiAlert")) {
-        bool multiAlert = server.arg("enableMultiAlert") == "true" || server.arg("enableMultiAlert") == "1";
-        settingsManager.setEnableMultiAlert(multiAlert);
-    }
-    
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
-    
-    // The settingsManager instance is already up-to-date, no need to reload.
-    // We can directly apply any changes that need to take immediate effect.
-    if (server.hasArg("color_theme")) {
-        display.updateColorTheme();
-        Serial.println("Display color theme updated");
-    }
     
     server.sendHeader("Location", "/settings?saved=1");
     server.send(302);
@@ -797,309 +793,6 @@ void WiFiManager::handleV1CurrentSettings() {
     server.send(200, "application/json", json);
 }
 
-void WiFiManager::handleV1DevicesApi() {
-    if (!getFilesystem) {
-        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
-        return;
-    }
-    
-    fs::FS* fs = getFilesystem();
-    if (!fs) {
-        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
-        return;
-    }
-    
-    // Pre-load profiles into a map for efficient lookup
-    std::vector<std::pair<String, int>> profileMap;
-    File profileFile = fs->open("/known_v1_profiles.txt", FILE_READ);
-    if (profileFile) {
-        while (profileFile.available()) {
-            String line = profileFile.readStringUntil('\n');
-            line.trim();
-            int sep = line.indexOf('|');
-            if (sep > 0) {
-                String addr = line.substring(0, sep);
-                int profile = line.substring(sep + 1).toInt();
-                profileMap.push_back({addr, profile});
-            }
-        }
-        profileFile.close();
-    }
-    
-    JsonDocument doc;
-    JsonArray devices = doc["devices"].to<JsonArray>();
-    
-    // Read known_v1.txt for addresses
-    File addrFile = fs->open("/known_v1.txt", FILE_READ);
-    if (addrFile) {
-        while (addrFile.available()) {
-            String addr = addrFile.readStringUntil('\n');
-            addr.trim();
-            if (addr.length() == 17) {  // Valid MAC address format
-                // Look for custom name in known_v1_names.txt
-                String name = "";
-                File nameFile = fs->open("/known_v1_names.txt", FILE_READ);
-                if (nameFile) {
-                    while (nameFile.available()) {
-                        String line = nameFile.readStringUntil('\n');
-                        line.trim();
-                        int sep = line.indexOf('|');
-                        if (sep > 0) {
-                            String lineAddr = line.substring(0, sep);
-                            if (lineAddr == addr) {
-                                name = line.substring(sep + 1);
-                                break;
-                            }
-                        }
-                    }
-                    nameFile.close();
-                }
-                
-                // Look for default profile
-                int defaultProfile = 0;
-                for (const auto& pm : profileMap) {
-                    if (pm.first == addr) {
-                        defaultProfile = pm.second;
-                        break;
-                    }
-                }
-                
-                JsonObject device = devices.add<JsonObject>();
-                device["address"] = addr;
-                device["name"] = name;
-                device["defaultProfile"] = defaultProfile;
-            }
-        }
-        addrFile.close();
-    }
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleV1DeviceNameSave() {
-    if (!getFilesystem) {
-        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
-        return;
-    }
-    
-    if (!server.hasArg("address") || !server.hasArg("name")) {
-        server.send(400, "application/json", "{\"error\":\"Missing address or name\"}");
-        return;
-    }
-    
-    String address = server.arg("address");
-    String name = server.arg("name");
-    
-    fs::FS* fs = getFilesystem();
-    if (!fs) {
-        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
-        return;
-    }
-    
-    // Read existing names, update or add the new one
-    std::vector<String> lines;
-    bool found = false;
-    
-    File readFile = fs->open("/known_v1_names.txt", FILE_READ);
-    if (readFile) {
-        while (readFile.available()) {
-            String line = readFile.readStringUntil('\n');
-            line.trim();
-            if (line.length() > 0) {
-                int sep = line.indexOf('|');
-                if (sep > 0 && line.substring(0, sep) == address) {
-                    // Update existing entry
-                    if (name.length() > 0) {
-                        lines.push_back(address + "|" + name);
-                    }
-                    // If name is empty, we skip adding it (delete)
-                    found = true;
-                } else {
-                    lines.push_back(line);
-                }
-            }
-        }
-        readFile.close();
-    }
-    
-    // Add new entry if not found and name is not empty
-    if (!found && name.length() > 0) {
-        lines.push_back(address + "|" + name);
-    }
-    
-    // Write back
-    File writeFile = fs->open("/known_v1_names.txt", FILE_WRITE);
-    if (writeFile) {
-        for (const auto& line : lines) {
-            writeFile.println(line);
-        }
-        writeFile.close();
-        server.send(200, "application/json", "{\"success\":true}");
-    } else {
-        server.send(500, "application/json", "{\"error\":\"Failed to write file\"}");
-    }
-}
-
-void WiFiManager::handleV1DeviceDelete() {
-    if (!getFilesystem) {
-        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
-        return;
-    }
-    
-    if (!server.hasArg("address")) {
-        server.send(400, "application/json", "{\"error\":\"Missing address\"}");
-        return;
-    }
-    
-    String address = server.arg("address");
-    
-    fs::FS* fs = getFilesystem();
-    if (!fs) {
-        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
-        return;
-    }
-    
-    // Remove from known_v1.txt
-    std::vector<String> addresses;
-    File readFile = fs->open("/known_v1.txt", FILE_READ);
-    if (readFile) {
-        while (readFile.available()) {
-            String line = readFile.readStringUntil('\n');
-            line.trim();
-            if (line.length() > 0 && line != address) {
-                addresses.push_back(line);
-            }
-        }
-        readFile.close();
-    }
-    
-    File writeFile = fs->open("/known_v1.txt", FILE_WRITE);
-    if (writeFile) {
-        for (const auto& addr : addresses) {
-            writeFile.println(addr);
-        }
-        writeFile.close();
-    }
-    
-    // Also remove from names file
-    std::vector<String> names;
-    readFile = fs->open("/known_v1_names.txt", FILE_READ);
-    if (readFile) {
-        while (readFile.available()) {
-            String line = readFile.readStringUntil('\n');
-            line.trim();
-            if (line.length() > 0) {
-                int sep = line.indexOf('|');
-                if (sep > 0 && line.substring(0, sep) != address) {
-                    names.push_back(line);
-                }
-            }
-        }
-        readFile.close();
-    }
-    
-    writeFile = fs->open("/known_v1_names.txt", FILE_WRITE);
-    if (writeFile) {
-        for (const auto& n : names) {
-            writeFile.println(n);
-        }
-        writeFile.close();
-    }
-    
-    // Also remove from profiles file
-    std::vector<String> profiles;
-    readFile = fs->open("/known_v1_profiles.txt", FILE_READ);
-    if (readFile) {
-        while (readFile.available()) {
-            String line = readFile.readStringUntil('\n');
-            line.trim();
-            if (line.length() > 0) {
-                int sep = line.indexOf('|');
-                if (sep > 0 && line.substring(0, sep) != address) {
-                    profiles.push_back(line);
-                }
-            }
-        }
-        readFile.close();
-    }
-    
-    writeFile = fs->open("/known_v1_profiles.txt", FILE_WRITE);
-    if (writeFile) {
-        for (const auto& p : profiles) {
-            writeFile.println(p);
-        }
-        writeFile.close();
-    }
-    
-    server.send(200, "application/json", "{\"success\":true}");
-}
-
-void WiFiManager::handleV1DeviceProfileSave() {
-    if (!getFilesystem) {
-        server.send(503, "application/json", "{\"error\":\"Filesystem not available\"}");
-        return;
-    }
-    
-    if (!server.hasArg("address") || !server.hasArg("profile")) {
-        server.send(400, "application/json", "{\"error\":\"Missing address or profile\"}");
-        return;
-    }
-    
-    String address = server.arg("address");
-    int profile = server.arg("profile").toInt();
-    
-    fs::FS* fs = getFilesystem();
-    if (!fs) {
-        server.send(503, "application/json", "{\"error\":\"SD card not ready\"}");
-        return;
-    }
-    
-    // Read existing profiles, update or add the new one
-    std::vector<String> lines;
-    bool found = false;
-    
-    File readFile = fs->open("/known_v1_profiles.txt", FILE_READ);
-    if (readFile) {
-        while (readFile.available()) {
-            String line = readFile.readStringUntil('\n');
-            line.trim();
-            if (line.length() > 0) {
-                int sep = line.indexOf('|');
-                if (sep > 0 && line.substring(0, sep) == address) {
-                    // Update existing entry
-                    if (profile > 0) {
-                        lines.push_back(address + "|" + String(profile));
-                    }
-                    // If profile is 0, we skip adding it (delete/none)
-                    found = true;
-                } else {
-                    lines.push_back(line);
-                }
-            }
-        }
-        readFile.close();
-    }
-    
-    // Add new entry if not found and profile is not 0
-    if (!found && profile > 0) {
-        lines.push_back(address + "|" + String(profile));
-    }
-    
-    // Write back
-    File writeFile = fs->open("/known_v1_profiles.txt", FILE_WRITE);
-    if (writeFile) {
-        for (const auto& line : lines) {
-            writeFile.println(line);
-        }
-        writeFile.close();
-        server.send(200, "application/json", "{\"success\":true}");
-    } else {
-        server.send(500, "application/json", "{\"error\":\"Failed to write file\"}");
-    }
-}
-
 void WiFiManager::handleV1SettingsPull() {
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
@@ -1261,6 +954,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot0["darkMode"] = s.slot0DarkMode;
     slot0["muteToZero"] = s.slot0MuteToZero;
     slot0["alertPersist"] = s.slot0AlertPersist;
+    slot0["priorityArrowOnly"] = s.slot0PriorityArrow;
     
     // Slot 1
     JsonObject slot1 = slots.add<JsonObject>();
@@ -1273,6 +967,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot1["darkMode"] = s.slot1DarkMode;
     slot1["muteToZero"] = s.slot1MuteToZero;
     slot1["alertPersist"] = s.slot1AlertPersist;
+    slot1["priorityArrowOnly"] = s.slot1PriorityArrow;
     
     // Slot 2
     JsonObject slot2 = slots.add<JsonObject>();
@@ -1285,6 +980,7 @@ void WiFiManager::handleAutoPushSlotsApi() {
     slot2["darkMode"] = s.slot2DarkMode;
     slot2["muteToZero"] = s.slot2MuteToZero;
     slot2["alertPersist"] = s.slot2AlertPersist;
+    slot2["priorityArrowOnly"] = s.slot2PriorityArrow;
     
     String json;
     serializeJson(doc, json);
@@ -1355,6 +1051,13 @@ void WiFiManager::handleAutoPushSlotSave() {
         int clamped = std::max(0, std::min(5, alertPersist));
         settingsManager.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
         Serial.printf("[SaveSlot] Saved alertPersist=%ds for slot %d\n", clamped, slot);
+    }
+    
+    // Save priorityArrowOnly per slot
+    if (server.hasArg("priorityArrowOnly")) {
+        bool prioArrow = server.arg("priorityArrowOnly") == "true";
+        settingsManager.setSlotPriorityArrowOnly(slot, prioArrow);
+        Serial.printf("[SaveSlot] Saved priorityArrowOnly=%s for slot %d\n", prioArrow ? "true" : "false", slot);
     }
     
     settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
@@ -1528,6 +1231,23 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
     }
     
+    // Handle muted color if provided
+    if (server.hasArg("muted")) {
+        uint16_t mutedColor = server.arg("muted").toInt();
+        settingsManager.setMutedColor(mutedColor);
+    }
+    
+    // Handle persisted color if provided
+    if (server.hasArg("persisted")) {
+        uint16_t persistedColor = server.arg("persisted").toInt();
+        settingsManager.setPersistedColor(persistedColor);
+    }
+    
+    // Handle frequency uses band color setting
+    if (server.hasArg("freqUseBandColor")) {
+        settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
+    }
+    
     // Handle display visibility settings
     if (server.hasArg("hideWifiIcon")) {
         settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
@@ -1547,7 +1267,7 @@ void WiFiManager::handleDisplayColorsSave() {
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
-    requestColorPreviewHold(2200);  // Hold ~2.2s and cycle bands during preview
+    requestColorPreviewHold(5500);  // Hold ~5.5s and cycle bands during preview
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1558,10 +1278,16 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
+    // Reset muted color to default dark grey
+    settingsManager.setMutedColor(0x3186);
+    // Reset persisted color to darker grey
+    settingsManager.setPersistedColor(0x18C3);
+    // Reset frequency use band color to off
+    settingsManager.setFreqUseBandColor(false);
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
-    requestColorPreviewHold(2200);
+    requestColorPreviewHold(5500);
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -1588,6 +1314,9 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bar4"] = s.colorBar4;
     doc["bar5"] = s.colorBar5;
     doc["bar6"] = s.colorBar6;
+    doc["muted"] = s.colorMuted;
+    doc["persisted"] = s.colorPersisted;
+    doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;

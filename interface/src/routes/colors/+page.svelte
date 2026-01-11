@@ -5,6 +5,7 @@
 	let colors = $state({
 		bogey: 0xF800,   // Red
 		freq: 0xF800,    // Red
+		freqUseBandColor: false,  // Use band color for frequency
 		arrowFront: 0xF800,  // Red (front)
 		arrowSide: 0xF800,   // Red (side)
 		arrowRear: 0xF800,   // Red (rear)
@@ -21,6 +22,8 @@
 		bar4: 0xFFE0,    // Yellow
 		bar5: 0xF800,    // Red
 		bar6: 0xF800,    // Red (strongest)
+		muted: 0x3186,   // Dark grey (muted alerts)
+		persisted: 0x18C3, // Darker grey (persisted alerts)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -111,6 +114,7 @@
 			const params = new URLSearchParams();
 			params.append('bogey', colors.bogey);
 			params.append('freq', colors.freq);
+			params.append('freqUseBandColor', colors.freqUseBandColor);
 			params.append('arrowFront', colors.arrowFront);
 			params.append('arrowSide', colors.arrowSide);
 			params.append('arrowRear', colors.arrowRear);
@@ -127,6 +131,8 @@
 			params.append('bar4', colors.bar4);
 			params.append('bar5', colors.bar5);
 			params.append('bar6', colors.bar6);
+			params.append('muted', colors.muted);
+			params.append('persisted', colors.persisted);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -173,6 +179,7 @@
 				colors = {
 					bogey: 0xF800,
 					freq: 0xF800,
+					freqUseBandColor: false,
 					arrowFront: 0xF800,
 					arrowSide: 0xF800,
 					arrowRear: 0xF800,
@@ -189,6 +196,8 @@
 					bar4: 0xFFE0,
 					bar5: 0xF800,
 					bar6: 0xF800,
+					muted: 0x3186,
+					persisted: 0x18C3,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -277,12 +286,66 @@
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.freq)}
 								onchange={(e) => updateColor('freq', e.target.value)}
+								disabled={colors.freqUseBandColor}
 							/>
 							<span 
 								class="text-2xl font-bold font-mono"
 								style="color: {rgb565ToHex(colors.freq)}"
+								class:opacity-50={colors.freqUseBandColor}
 							>35.5</span>
 						</div>
+						<label class="label cursor-pointer justify-start gap-2 mt-1">
+							<input 
+								type="checkbox"
+								class="toggle toggle-sm toggle-primary"
+								bind:checked={colors.freqUseBandColor}
+							/>
+							<span class="label-text text-sm">Use band color for frequency</span>
+						</label>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<div class="form-control">
+					<label class="label" for="muted-color">
+						<span class="label-text">Muted Alert Color</span>
+						<span class="label-text-alt text-base-content/50">When alert is muted</span>
+					</label>
+					<div class="flex items-center gap-3">
+						<input 
+							id="muted-color"
+							type="color" 
+							aria-label="Muted alert color"
+							class="w-12 h-10 cursor-pointer rounded border-0"
+							value={rgb565ToHex(colors.muted)}
+							onchange={(e) => updateColor('muted', e.target.value)}
+						/>
+						<span 
+							class="text-2xl font-bold font-mono"
+							style="color: {rgb565ToHex(colors.muted)}"
+						>35.5</span>
+						<span class="text-sm text-base-content/60">(muted)</span>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<div class="form-control">
+					<label class="label" for="persisted-color">
+						<span class="label-text">Persisted Alert Color</span>
+						<span class="label-text-alt text-base-content/50">Ghost alert after V1 clears</span>
+					</label>
+					<div class="flex items-center gap-3">
+						<input 
+							id="persisted-color"
+							type="color" 
+							aria-label="Persisted alert color"
+							class="w-12 h-10 cursor-pointer rounded border-0"
+							value={rgb565ToHex(colors.persisted)}
+							onchange={(e) => updateColor('persisted', e.target.value)}
+						/>
+						<span 
+							class="text-2xl font-bold font-mono"
+							style="color: {rgb565ToHex(colors.persisted)}"
+						>35.5</span>
+						<span class="text-sm text-base-content/60">(persisted)</span>
 					</div>
 				</div>
 			</div>
@@ -466,7 +529,7 @@
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="bleConnected-color">
-							<span class="label-text">BLE Connected</span>
+							<span class="label-text">Proxy Connected</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
@@ -485,13 +548,13 @@
 					</div>
 					<div class="form-control">
 						<label class="label" for="bleDisconnected-color">
-							<span class="label-text">BLE Disconnected</span>
+							<span class="label-text">Proxy Ready</span>
 						</label>
 						<div class="flex items-center gap-3">
 							<input 
 								id="bleDisconnected-color"
 								type="color" 
-								aria-label="Bluetooth disconnected color"
+								aria-label="BLE proxy ready color"
 								class="w-12 h-10 cursor-pointer rounded border-0"
 								value={rgb565ToHex(colors.bleDisconnected)}
 								onchange={(e) => updateColor('bleDisconnected', e.target.value)}
@@ -555,8 +618,8 @@
 				<div class="form-control">
 					<label class="label cursor-pointer">
 						<div>
-							<span class="label-text">Hide BLE Icon</span>
-							<p class="text-xs text-base-content/50">Hide the Bluetooth proxy indicator</p>
+							<span class="label-text">Hide BLE Proxy Icon</span>
+							<p class="text-xs text-base-content/50">Hide the JBV1 proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 

@@ -10,7 +10,7 @@
 #include "display_driver.h"
 
 // Firmware Version
-#define FIRMWARE_VERSION "1.3.0"
+#define FIRMWARE_VERSION "2.0.1-rc2"
 
 // Board-specific Power Management (Waveshare only)
 // Waveshare ESP32-S3-Touch-LCD-3.49
@@ -26,7 +26,7 @@
 #define V1_DISPLAY_DATA_LONG_UUID "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E"  // V1 out LONG (notify) - alert data, voltage responses
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
-#define SCAN_DURATION           10    // 10-second scan (stops early when V1 found)
+#define SCAN_DURATION           10000 // 10-second scan in milliseconds (stops early when V1 found)
 #define RECONNECT_DELAY         100   // 100ms delay between scan attempts
 
 // ESP Packet Constants
@@ -61,8 +61,11 @@
 #define MAX_SIGNAL_BARS     6
 
 // Timing
-#define DISPLAY_UPDATE_MS   100   // Update display every 100ms
+#define DISPLAY_UPDATE_MS   50    // Update display every 50ms (snappier response)
 #define STATUS_UPDATE_MS    1000  // Update status indicators every second
+
+// Mute override - force unmute at this signal level (bars out of 6)
+#define STRONG_SIGNAL_UNMUTE_THRESHOLD  5
 
 // Development/Testing Features
 // Uncomment to enable packet replay mode for UI testing without BLE

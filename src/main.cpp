@@ -41,6 +41,14 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+// Gate verbose logs behind debug switches (keep off in normal builds)
+static constexpr bool DEBUG_LOGS = false;          // General debug logging (packet dumps, status)
+static constexpr bool AUTOPUSH_DEBUG_LOGS = false;  // AutoPush-specific verbose logs
+#define DEBUG_LOGF(...) do { if (DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
+#define DEBUG_LOGLN(msg) do { if (DEBUG_LOGS) SerialLog.println(msg); } while (0)
+#define AUTO_PUSH_LOGF(...) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
+#define AUTO_PUSH_LOGLN(msg) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.println(msg); } while (0)
+
 // Global objects
 V1BLEClient bleClient;
 PacketParser parser;
@@ -50,7 +58,7 @@ TouchHandler touchHandler;
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
 struct BLEDataPacket {
-    uint8_t data[256];  // Max expected packet size
+    uint8_t data[128];  // V1 packets are typically <60 bytes; 128 gives headroom
     size_t length;
     uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
     uint32_t tsMs;      // Timestamp for latency measurement
@@ -62,6 +70,7 @@ unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
 const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
+static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
 static bool colorPreviewActive = false;
@@ -76,55 +85,26 @@ struct ColorPreviewStep {
     uint8_t bars;
     Direction dir;
     uint32_t freqMHz;
+    bool muted;
 };
 
-// Sequence: X, K, Ka, Laser with arrow cycle (front, side, rear, front+rear)
+// Sequence: X, K, Ka, Laser, then Ka muted - with arrow cycle and cards
 static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
-    {300, BAND_X, 3, DIR_FRONT, 10525},
-    {700, BAND_K, 5, DIR_SIDE, 24150},
-    {1100, BAND_KA, 6, DIR_REAR, 35500},
-    {1500, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0}
+    {300, BAND_X, 3, DIR_FRONT, 10525, false},
+    {1300, BAND_K, 5, DIR_SIDE, 24150, false},
+    {2300, BAND_KA, 6, DIR_REAR, 35500, false},
+    {3300, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0, false},
+    {4300, BAND_KA, 5, DIR_FRONT, 34700, true}   // Muted Ka to show mute badge
 };
 static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
 
-struct PersistedAlert {
-    AlertData alert{};
-    DisplayState state{};
-    AlertData allAlerts[4];  // Store up to 4 alerts for ghost mode
-    int alertCount = 0;
-    bool active = false;
-    unsigned long expiresAt = 0;
-};
-
-static PersistedAlert persistedAlert;
-
-// Secondary card grace period: keep cards visible briefly after alert drops
-// This prevents flicker from brief signal dropouts
-static constexpr unsigned long CARD_GRACE_MS = 2000;  // 2 second grace period
-struct CardSlot {
-    AlertData alert{};
-    unsigned long lastSeen = 0;  // When this alert was last active
-};
-static CardSlot cardSlots[3];  // Up to 3 secondary card slots
-
-// Helper to check if two alerts are the same (same band and similar frequency)
-static bool alertsMatch(const AlertData& a, const AlertData& b) {
-    if (a.band != b.band) return false;
-    // For radar bands, allow some frequency tolerance (50 MHz)
-    if (a.frequency > 0 && b.frequency > 0) {
-        uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
-        return diff < 50;
-    }
-    return true;  // Laser or no freq - just match by band
-}
-
 enum class DisplayMode {
     IDLE,
-    LIVE,
-    GHOST
+    LIVE
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
-static unsigned long ghostExpiresAt = 0;
+
+// WiFi manual startup - user must long-press BOOT to start AP
 
 void requestColorPreviewHold(uint32_t durationMs) {
     colorPreviewActive = true;
@@ -177,9 +157,37 @@ static void driveColorPreview() {
         previewState.activeBands = step.band;
         previewState.arrows = step.dir;
         previewState.signalBars = step.bars;
-        previewState.muted = false;
+        previewState.muted = step.muted;
 
-        display.update(previewAlert, previewState, 1);
+        // Build array with secondary alerts to show cards during preview
+        // Start adding secondary alerts from step 1 onwards
+        AlertData allAlerts[3];
+        int alertCount = 1;
+        allAlerts[0] = previewAlert;
+        
+        if (colorPreviewStep >= 1) {
+            // Add X band as secondary card
+            allAlerts[alertCount].band = BAND_X;
+            allAlerts[alertCount].direction = DIR_FRONT;
+            allAlerts[alertCount].frontStrength = 3;
+            allAlerts[alertCount].frequency = 10525;
+            allAlerts[alertCount].isValid = true;
+            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_X);
+            alertCount++;
+        }
+        if (colorPreviewStep >= 2) {
+            // Add K band as secondary card
+            allAlerts[alertCount].band = BAND_K;
+            allAlerts[alertCount].direction = DIR_REAR;
+            allAlerts[alertCount].frontStrength = 0;
+            allAlerts[alertCount].rearStrength = 4;
+            allAlerts[alertCount].frequency = 24150;
+            allAlerts[alertCount].isValid = true;
+            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_K);
+            alertCount++;
+        }
+
+        display.update(previewAlert, allAlerts, alertCount, previewState);
         colorPreviewStep++;
     }
 
@@ -189,18 +197,15 @@ static void driveColorPreview() {
     }
 }
 
-// Local mute override - takes immediate effect on tap before V1 confirms
-static bool localMuteOverride = false;
-static bool localMuteActive = false;
-static unsigned long localMuteTimestamp = 0;
-static unsigned long unmuteSentTimestamp = 0;  // Track when we sent unmute to V1
-const unsigned long LOCAL_MUTE_TIMEOUT_MS = 2000;  // Clear override 2s after alert ends
-const unsigned long UNMUTE_GRACE_MS = 1000;  // Force unmuted state for 1s after sending unmute command
+// Mute debounce - prevent flicker from rapid state changes  
+static bool debouncedMuteState = false;
+static unsigned long lastMuteChangeMs = 0;
+static constexpr unsigned long MUTE_DEBOUNCE_MS = 150;  // Ignore mute changes within 150ms
 
-// Track muted alert to detect stronger signals
-static uint8_t mutedAlertStrength = 0;
-static Band mutedAlertBand = BAND_NONE;
-static uint32_t mutedAlertFreq = 0;
+// Alert persistence - show last alert in grey after V1 clears it
+static AlertData persistedAlert;
+static unsigned long alertClearedTime = 0;
+static bool alertPersistenceActive = false;
 
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
@@ -211,8 +216,11 @@ const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 // Brightness adjustment mode (BOOT button triggered)
 static bool brightnessAdjustMode = false;
 static uint8_t brightnessAdjustValue = 200;  // Current slider value
-static unsigned long lastBootButtonPress = 0;
+static unsigned long bootPressStart = 0;     // For long-press detection
+static bool bootWasPressed = false;
+static bool wifiToggleTriggered = false;     // Track if WiFi toggle already fired during this press
 const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
+const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -267,8 +275,8 @@ static void startAutoPush(int slotIndex) {
     autoPushState.profile = V1Profile();
     autoPushState.step = AUTO_PUSH_STEP_WAIT_READY;
     autoPushState.nextStepAtMs = millis() + 500;
-    SerialLog.printf("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
-                     slotNames[clampedIndex], clampedIndex);
+    AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
+                   slotNames[clampedIndex], clampedIndex);
     
     // Show the profile indicator on display when auto-push starts
     display.drawProfileIndicator(clampedIndex);
@@ -298,7 +306,7 @@ static void processAutoPush() {
         case AUTO_PUSH_STEP_PROFILE: {
             const AutoPushSlot& slot = autoPushState.slot;
             if (slot.profileName.length() > 0) {
-                SerialLog.printf("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
+                AUTO_PUSH_LOGF("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
                 V1Profile profile;
                 if (v1ProfileManager.loadProfile(slot.profileName, profile)) {
                     autoPushState.profile = profile;
@@ -306,9 +314,9 @@ static void processAutoPush() {
                     
                     // Apply slot-level Mute to Zero setting to user bytes before pushing
                     bool slotMuteToZero = settingsManager.getSlotMuteToZero(autoPushState.slotIndex);
-                    SerialLog.printf("[AutoPush] Slot %d MZ setting: %s\n", 
+                    AUTO_PUSH_LOGF("[AutoPush] Slot %d MZ setting: %s\n", 
                                     autoPushState.slotIndex, slotMuteToZero ? "ON" : "OFF");
-                    SerialLog.printf("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
+                    AUTO_PUSH_LOGF("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
                     
                     V1UserSettings modifiedSettings = profile.settings;
                     if (slotMuteToZero) {
@@ -318,27 +326,27 @@ static void processAutoPush() {
                         // MZ disabled: set bit 4
                         modifiedSettings.bytes[0] |= 0x10;
                     }
-                    SerialLog.printf("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
+                    AUTO_PUSH_LOGF("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
                                     modifiedSettings.bytes[0], 
                                     (modifiedSettings.bytes[0] & 0x10) ? 1 : 0,
                                     (modifiedSettings.bytes[0] & 0x10) ? "OFF" : "ON");
                     
                     if (bleClient.writeUserBytes(modifiedSettings.bytes)) {
-                        SerialLog.printf("[AutoPush] Profile settings pushed (MZ=%s)\n", 
+                        AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n", 
                                         slotMuteToZero ? "ON" : "OFF");
                         // Request read-back to verify V1 accepted the settings
                         delay(100);
                         bleClient.requestUserBytes();
-                        SerialLog.println("[AutoPush] Requested user bytes read-back for verification");
+                        AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
                     } else {
-                        SerialLog.println("[AutoPush] ERROR: Failed to push profile settings");
+                        AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
                 } else {
-                    SerialLog.printf("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
+                    AUTO_PUSH_LOGF("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
                     autoPushState.profileLoaded = false;
                 }
             } else {
-                SerialLog.println("[AutoPush] No profile configured for active slot");
+                AUTO_PUSH_LOGLN("[AutoPush] No profile configured for active slot");
                 autoPushState.profileLoaded = false;
             }
 
@@ -353,8 +361,8 @@ static void processAutoPush() {
             bool slotDarkMode = settingsManager.getSlotDarkMode(autoPushState.slotIndex);
             bool displayOn = !slotDarkMode;  // Dark mode = display off
             bleClient.setDisplayOn(displayOn);
-            SerialLog.printf("[AutoPush] Display set to: %s (darkMode=%s)\n",
-                             displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
+            AUTO_PUSH_LOGF("[AutoPush] Display set to: %s (darkMode=%s)\n",
+                           displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
             autoPushState.step = AUTO_PUSH_STEP_MODE;
             autoPushState.nextStepAtMs = now + (autoPushState.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
             return;
@@ -368,9 +376,9 @@ static void processAutoPush() {
                 else if (autoPushState.slot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
 
                 if (bleClient.setMode(static_cast<uint8_t>(autoPushState.slot.mode))) {
-                    SerialLog.printf("[AutoPush] Mode set to: %s\n", modeName);
+                    AUTO_PUSH_LOGF("[AutoPush] Mode set to: %s\n", modeName);
                 } else {
-                    SerialLog.println("[AutoPush] ERROR: Failed to set mode");
+                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set mode");
                 }
             }
 
@@ -387,13 +395,13 @@ static void processAutoPush() {
             uint8_t muteVol = settingsManager.getSlotMuteVolume(autoPushState.slotIndex);
             if (mainVol != 0xFF || muteVol != 0xFF) {
                 if (bleClient.setVolume(mainVol, muteVol)) {
-                    SerialLog.printf("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
+                    AUTO_PUSH_LOGF("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
                 } else {
-                    SerialLog.println("[AutoPush] ERROR: Failed to set volume");
+                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set volume");
                 }
             }
 
-            SerialLog.println("[AutoPush] Complete");
+            AUTO_PUSH_LOGLN("[AutoPush] Complete");
             autoPushState.step = AUTO_PUSH_STEP_IDLE;
             autoPushState.nextStepAtMs = 0;
             return;
@@ -405,23 +413,80 @@ static void processAutoPush() {
     }
 }
 
+// Start WiFi after BLE connects to avoid radio contention during connection
+void startWifi() {
+    if (wifiManager.isSetupModeActive()) return;
+    
+    SerialLog.println("[WiFi] Starting WiFi (manual start)...");
+    wifiManager.begin();
+    
+    // Reduce WiFi TX power to minimize interference with BLE
+    // WIFI_POWER_11dBm is a good balance - enough for local AP, less BLE interference
+    WiFi.setTxPower(WIFI_POWER_11dBm);
+    SerialLog.println("[WiFi] TX power reduced to 11dBm for BLE coexistence");
+    
+    // Set up callbacks for web interface
+    wifiManager.setStatusCallback([]() {
+        return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
+    });
+    
+    wifiManager.setAlertCallback([]() {
+        JsonDocument doc;
+        if (parser.hasAlerts()) {
+            AlertData alert = parser.getPriorityAlert();
+            doc["active"] = true;
+            const char* bandStr = "None";
+            if (alert.band == BAND_KA) bandStr = "Ka";
+            else if (alert.band == BAND_K) bandStr = "K";
+            else if (alert.band == BAND_X) bandStr = "X";
+            else if (alert.band == BAND_LASER) bandStr = "LASER";
+            doc["band"] = bandStr;
+            doc["strength"] = alert.frontStrength;
+            doc["frequency"] = alert.frequency;
+            doc["direction"] = alert.direction;
+        } else {
+            doc["active"] = false;
+        }
+        String json;
+        serializeJson(doc, json);
+        return json;
+    });
+    
+    // Set up command callback for dark mode and mute
+    wifiManager.setCommandCallback([](const char* cmd, bool state) {
+        if (strcmp(cmd, "display") == 0) {
+            return bleClient.setDisplayOn(state);
+        } else if (strcmp(cmd, "mute") == 0) {
+            return bleClient.setMute(state);
+        }
+        return false;
+    });
+
+    // Provide filesystem access for web profile/device APIs
+    wifiManager.setFilesystemCallback([]() -> fs::FS* {
+        return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
+    });
+    
+    SerialLog.println("[WiFi] Initialized");
+}
+
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     if (activeSlotIndex != s.activeSlot) {
-        SerialLog.printf("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
-                      s.activeSlot, activeSlotIndex);
+        AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
+                        s.activeSlot, activeSlotIndex);
     }
     
     if (!s.autoPushEnabled) {
-        SerialLog.println("[AutoPush] Disabled, skipping");
+        AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
         return;
     }
 
     // Use global activeSlot
-    SerialLog.printf("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
+    AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
 
     startAutoPush(activeSlotIndex);
 }
@@ -547,13 +612,17 @@ void processBLEData() {
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
     
-    // Process all queued packets
+    // Process all queued packets (with safety cap to prevent unbounded growth)
+    constexpr size_t RX_BUFFER_MAX = 512;  // Hard cap on buffer size
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
         // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
         // for minimal latency. We don't forward again here to avoid duplicate packets.
         
         // Accumulate and frame on 0xAA ... 0xAB so we don't choke on chunked notifications
-        rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+        // Skip accumulation if buffer is at capacity (will be trimmed below)
+        if (rxBuffer.size() < RX_BUFFER_MAX) {
+            rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+        }
         latestPktTs = pkt.tsMs;
     }
     
@@ -566,15 +635,26 @@ void processBLEData() {
         return;
     }
 
-    // Trim runaway buffers
-    if (rxBuffer.size() > 512) {
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 256);
+    // Trim runaway buffers - more aggressive to prevent memory pressure
+    // Normal V1 packets are <100 bytes, so 256 is plenty for recovery
+    if (rxBuffer.size() > 256) {
+        // Keep last 128 bytes (enough for one complete packet with framing)
+        rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - 128);
     }
 
     const size_t MIN_HEADER_SIZE = 6;
     const size_t MAX_PACKET_SIZE = 512;
 
     while (true) {
+        auto dumpPacket = [&](const uint8_t* p, size_t len) {
+            if (!DEBUG_LOGS) return;  // Skip packet dumps unless debug enabled
+            SerialLog.printf("PKT id=0x%02X len=%u: ", p[3], static_cast<unsigned>(len));
+            for (size_t i = 0; i < len; i++) {
+                SerialLog.printf("%02X ", p[i]);
+            }
+            SerialLog.println();
+        };
+
         auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
         if (startIt == rxBuffer.end()) {
             rxBuffer.clear();
@@ -622,14 +702,14 @@ void processBLEData() {
             // Payload starts at byte 5, length is 6 bytes
             uint8_t userBytes[6];
             memcpy(userBytes, &packetPtr[5], 6);
-            SerialLog.printf("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
+            DEBUG_LOGF("V1 user bytes raw: %02X %02X %02X %02X %02X %02X\n",
                 userBytes[0], userBytes[1], userBytes[2], userBytes[3], userBytes[4], userBytes[5]);
-            SerialLog.printf("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
+            DEBUG_LOGF("  xBand=%d, kBand=%d, kaBand=%d, laser=%d\n",
                 userBytes[0] & 0x01, (userBytes[0] >> 1) & 0x01, 
                 (userBytes[0] >> 2) & 0x01, (userBytes[0] >> 3) & 0x01);
             bleClient.onUserBytesReceived(userBytes);
             v1ProfileManager.setCurrentSettings(userBytes);
-            SerialLog.println("Received V1 user bytes!");
+            DEBUG_LOGLN("Received V1 user bytes!");
             rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
             continue;  // Don't pass to parser
         }
@@ -637,6 +717,19 @@ void processBLEData() {
         // ALWAYS erase packet from buffer after attempting to parse
         // This prevents stale packets from accumulating when display updates are throttled
         bool parseOk = parser.parse(packetPtr, packetSize);
+
+        // Debug: dump display/alert packets for capture/replay (throttled to 1 Hz per ID)
+        if (packetPtr[3] == PACKET_ID_DISPLAY_DATA || packetPtr[3] == PACKET_ID_ALERT_DATA) {
+            static unsigned long lastDump31 = 0;
+            static unsigned long lastDump43 = 0;
+            unsigned long dumpNow = millis();
+            if ((packetPtr[3] == PACKET_ID_DISPLAY_DATA && dumpNow - lastDump31 > 1000) ||
+                (packetPtr[3] == PACKET_ID_ALERT_DATA && dumpNow - lastDump43 > 1000)) {
+                dumpPacket(packetPtr, packetSize);
+                if (packetPtr[3] == PACKET_ID_DISPLAY_DATA) lastDump31 = dumpNow;
+                else lastDump43 = dumpNow;
+            }
+        }
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
         
         if (parseOk) {
@@ -648,53 +741,27 @@ void processBLEData() {
             // Cache alert status to avoid repeated calls
             bool hasAlerts = parser.hasAlerts();
 
-            // Track V1 mute state for local override logic
-            static bool lastLoggedMuted = false;
-            static bool lastV1Muted = false;
-            bool v1MutedRaw = state.muted;  // Capture V1's raw mute state before overrides
-            
-            // Apply local mute override IMMEDIATELY - lock it in before any logic
-            if (localMuteActive && localMuteOverride) {
-                state.muted = true;
-            }
-            
-            // If we recently sent unmute command, force unmuted until V1 catches up
-            if (unmuteSentTimestamp > 0) {
-                unsigned long timeSinceUnmute = millis() - unmuteSentTimestamp;
-                if (timeSinceUnmute < UNMUTE_GRACE_MS) {
-                    state.muted = false;  // Override V1's lagging muted state
-                } else {
-                    unmuteSentTimestamp = 0;  // Grace period expired, trust V1 again
+            // Recovery: display shows bands but no alert table arrived
+            if (!hasAlerts && state.activeBands != BAND_NONE) {
+                unsigned long gapNow = millis();
+                if (gapNow - lastAlertGapRecoverMs > 100) {  // 100ms - quick recovery for lost alert packets
+                    DEBUG_LOGLN("Alert gap: bands active but no alerts; re-requesting alert data");
+                    parser.resetAlertAssembly();
+                    bleClient.requestAlertData();
+                    lastAlertGapRecoverMs = gapNow;
                 }
             }
-            
-            // Track mute state changes (no logging in hot path)
-            if (state.muted != lastLoggedMuted || v1MutedRaw != lastV1Muted) {
-                lastLoggedMuted = state.muted;
-                lastV1Muted = v1MutedRaw;
-            }
 
-            // Handle timeout logic separately
-            if (localMuteActive) {
-                // While alerts are active, ALWAYS keep override (no timeout)
-                // Timeout only applies when no alerts (waiting for V1 response)
-                if (hasAlerts) {
-                    // Reset timestamp so we get fresh timeout window when alert goes away
-                    localMuteTimestamp = millis();
+            // V1 is source of truth for mute state
+            // Mute debounce: prevent flicker from rapid V1 state changes
+            unsigned long muteNow = millis();
+            if (state.muted != debouncedMuteState) {
+                if (muteNow - lastMuteChangeMs > MUTE_DEBOUNCE_MS) {
+                    debouncedMuteState = state.muted;
+                    lastMuteChangeMs = muteNow;
                 } else {
-                    // No alerts - check timeout
-                    unsigned long now = millis();
-                    if (now - localMuteTimestamp >= LOCAL_MUTE_TIMEOUT_MS) {
-                        // Timeout and no alerts - clear override and send unmute
-                        SerialLog.println("Local mute override timed out (no alerts) - sending unmute to V1");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        state.muted = false;  // Clear muted state on timeout
-                        bleClient.setMute(false);
-                        unmuteSentTimestamp = millis();  // Track when we sent unmute
-                    }
+                    // Within debounce window - keep previous state
+                    state.muted = debouncedMuteState;
                 }
             }
             
@@ -711,149 +778,63 @@ void processBLEData() {
                 uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
                 const auto& currentAlerts = parser.getAllAlerts();
                 
-                // Stash for persistence (render muted if used later)
-                // Always update the priority alert with the current strongest
-                persistedAlert.alert = priority;
-                persistedAlert.alert.isValid = true;
-                persistedAlert.state = state;
-                persistedAlert.state.muted = true;  // render ghost in muted palette
-                
-                // Store multi-alert state: keep the highest alert count seen in this alert session
-                // This preserves cards when alerts drop off one by one before ghost triggers
-                if (alertCount > persistedAlert.alertCount) {
-                    persistedAlert.alertCount = alertCount;
-                    // Store all alerts for ghost mode secondary cards
-                    for (int i = 0; i < std::min(alertCount, 4); i++) {
-                        persistedAlert.allAlerts[i] = currentAlerts[i];
-                    }
-                }
-                persistedAlert.active = false;
-                persistedAlert.expiresAt = 0;
                 displayMode = DisplayMode::LIVE;
-                ghostExpiresAt = 0;
 
-                // Auto-unmute logic: new stronger signal or different band
-                if (localMuteActive && localMuteOverride) {
-                    bool strongerSignal = false;
-                    bool differentAlert = false;
-                    bool higherPriorityBand = false;
-
-                    // Check if it's a different band first
-                    if (priority.band != mutedAlertBand && priority.band != BAND_NONE) {
-                        differentAlert = true;
-                    }
-
-                    // Check for higher priority band (Ka > K > X, Laser is special)
-                    if (mutedAlertBand == BAND_K && priority.band == BAND_KA) {
-                        higherPriorityBand = true;
-                    } else if (mutedAlertBand == BAND_X && (priority.band == BAND_KA || priority.band == BAND_K)) {
-                        higherPriorityBand = true;
-                    } else if (mutedAlertBand == BAND_LASER && priority.band != BAND_LASER && priority.band != BAND_NONE) {
-                        higherPriorityBand = true;
-                    }
-
-                    // Only check stronger signal if band changed
-                    if (priority.band != mutedAlertBand && currentStrength >= mutedAlertStrength + 2) {
-                        strongerSignal = true;
-                    }
-
-                    // Check if it's a different frequency (for same band, >50 MHz difference)
-                    if (priority.band == mutedAlertBand && priority.frequency > 0 && mutedAlertFreq > 0) {
-                        uint32_t freqDiff = (priority.frequency > mutedAlertFreq) ? 
-                                           (priority.frequency - mutedAlertFreq) : 
-                                           (mutedAlertFreq - priority.frequency);
-                        if (freqDiff > 50) {
-                            differentAlert = true;
-                        }
-                    }
-
-                    // Auto-unmute for stronger, different, or higher priority alert
-                    if (strongerSignal || differentAlert || higherPriorityBand) {
-                        SerialLog.println("Auto-unmuting for new/stronger/priority alert");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        state.muted = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        mutedAlertFreq = 0;
-                        if (bleClient.setMute(false)) {
-                            unmuteSentTimestamp = millis();
-                        }
-                    }
-                }
+                // V1 is source of truth for mute state - no auto-unmute logic
+                // Display just shows what V1 reports
 
                 // Update display FIRST for lowest latency
                 // Pass all alerts for multi-alert card display
                 display.update(priority, currentAlerts.data(), alertCount, state);
                 
+                // Save priority alert for potential persistence when alert clears
+                persistedAlert = priority;
+                alertPersistenceActive = false;  // Cancel any active persistence
+                alertClearedTime = 0;
+                
             } else {
-                // Enable alert persistence (ghost) if configured for the active slot
-                const V1Settings& cfg = settingsManager.get();
-                uint8_t persistSec = settingsManager.getSlotAlertPersistSec(cfg.activeSlot);
-                unsigned long persistMs = persistSec * 1000UL;
-
-                if (persistMs > 0 && persistedAlert.alert.isValid) {
-                    if (!persistedAlert.active) {
-                        persistedAlert.active = true;
-                        ghostExpiresAt = millis() + persistMs;
-                        persistedAlert.expiresAt = ghostExpiresAt;
-                        displayMode = DisplayMode::GHOST;
-
-                        // Draw ghost once and hold; skip other draws this cycle
-                        // Use multi-alert update to show ghost cards if there were multiple alerts
-                        display.setGhostMode(true);
-                        if (persistedAlert.alertCount > 1) {
-                            display.update(persistedAlert.alert, persistedAlert.allAlerts, persistedAlert.alertCount, persistedAlert.state);
-                        } else {
-                            display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
-                        }
-                        display.setGhostMode(false);
-                        lastDisplayDraw = millis();
-                        continue;
-                    } else if (persistedAlert.active && millis() <= persistedAlert.expiresAt) {
-                        displayMode = DisplayMode::GHOST;
-                        continue;  // Keep ghost on screen; avoid resting redraws
-                    } else if (persistedAlert.active && millis() > persistedAlert.expiresAt) {
-                        // Ghost expired - clear and show resting state
-                        persistedAlert.active = false;
-                        persistedAlert.expiresAt = 0;
-                        persistedAlert.alert = AlertData();
-                        persistedAlert.alertCount = 0;
-                        displayMode = DisplayMode::IDLE;
-                        display.showResting();  // Immediately redraw idle display
-                        lastDisplayDraw = millis();
-                        continue;
-                    }
-                } else {
-                    displayMode = DisplayMode::IDLE;
-                }
-
-                // No alerts - clear mute override only after timeout has passed
-                if (localMuteActive) {
-                    // Don't timeout if V1 still shows active bands - alert might return
-                    if (state.activeBands != BAND_NONE) {
-                        // V1 display still shows bands, keep mute active and skip update
-                        continue;
-                    }
-                    
-                    unsigned long timeSinceMute = millis() - localMuteTimestamp;
-                    if (timeSinceMute >= LOCAL_MUTE_TIMEOUT_MS) {
-                        SerialLog.println("Alert cleared - clearing local mute override and sending unmute to V1");
-                        localMuteActive = false;
-                        localMuteOverride = false;
-                        mutedAlertStrength = 0;
-                        mutedAlertBand = BAND_NONE;
-                        mutedAlertFreq = 0;
-                        // Send unmute command to V1
-                        bleClient.setMute(false);
-                        unmuteSentTimestamp = millis();  // Track when we sent unmute
-                    } else {
-                        // Still waiting for timeout - skip display update to avoid color flash
-                        continue;
-                    }
+                // No alerts from V1
+                displayMode = DisplayMode::IDLE;
+                
+                // Alert persistence: show last alert in grey for configured duration
+                const V1Settings& s = settingsManager.get();
+                uint8_t persistSec = settingsManager.getSlotAlertPersistSec(s.activeSlot);
+                unsigned long now = millis();
+                
+                // Clear persistence on profile slot change (handles web UI profile switches)
+                static int lastPersistenceSlot = -1;
+                if (s.activeSlot != lastPersistenceSlot) {
+                    lastPersistenceSlot = s.activeSlot;
+                    persistedAlert = AlertData();
+                    alertPersistenceActive = false;
+                    alertClearedTime = 0;
                 }
                 
-                display.update(state);
+                if (persistSec > 0 && persistedAlert.isValid) {
+                    // Start persistence timer on transition from alerts to no-alerts
+                    if (alertClearedTime == 0) {
+                        alertClearedTime = now;
+                        alertPersistenceActive = true;
+                    }
+                    
+                    // Check if persistence timer still active
+                    unsigned long persistMs = persistSec * 1000UL;
+                    if (alertPersistenceActive && (now - alertClearedTime) < persistMs) {
+                        // Show persisted alert in dark grey
+                        display.updatePersisted(persistedAlert, state);
+                    } else {
+                        // Persistence expired - show normal resting
+                        if (alertPersistenceActive) {
+                            alertPersistenceActive = false;
+                        }
+                        display.update(state);
+                    }
+                } else {
+                    // Persistence disabled or no valid persisted alert
+                    alertPersistenceActive = false;
+                    alertClearedTime = 0;
+                    display.update(state);
+                }
             }
         }
     }
@@ -865,7 +846,7 @@ void setup() {
     
     // Create BLE data queue early - before any BLE operations
     bleDataQueue = xQueueCreate(64, sizeof(BLEDataPacket));  // Increased from 32 to handle web server blocking
-    rxBuffer.reserve(1024);
+    rxBuffer.reserve(256);  // Trimmed at 256 bytes anyway; normal packets <100 bytes
     
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
@@ -962,53 +943,8 @@ void setup() {
     SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
     SerialLog.println("==============================");
     
-    // Initialize WiFi manager
-    SerialLog.println("Starting WiFi manager...");
-    wifiManager.begin();
-        
-        // Set up callbacks for web interface
-        wifiManager.setStatusCallback([]() {
-            return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
-        });
-        
-        wifiManager.setAlertCallback([]() {
-            JsonDocument doc;
-            if (parser.hasAlerts()) {
-                AlertData alert = parser.getPriorityAlert();
-                doc["active"] = true;
-                const char* bandStr = "None";
-                if (alert.band == BAND_KA) bandStr = "Ka";
-                else if (alert.band == BAND_K) bandStr = "K";
-                else if (alert.band == BAND_X) bandStr = "X";
-                else if (alert.band == BAND_LASER) bandStr = "LASER";
-                doc["band"] = bandStr;
-                doc["strength"] = alert.frontStrength;
-                doc["frequency"] = alert.frequency;
-                doc["direction"] = alert.direction;
-            } else {
-                doc["active"] = false;
-            }
-            String json;
-            serializeJson(doc, json);
-            return json;
-        });
-        
-        // Set up command callback for dark mode and mute
-        wifiManager.setCommandCallback([](const char* cmd, bool state) {
-            if (strcmp(cmd, "display") == 0) {
-                return bleClient.setDisplayOn(state);
-            } else if (strcmp(cmd, "mute") == 0) {
-                return bleClient.setMute(state);
-            }
-            return false;
-        });
-
-        // Provide filesystem access for web profile/device APIs
-        wifiManager.setFilesystemCallback([]() -> fs::FS* {
-            return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
-        });
-        
-        SerialLog.println("WiFi initialized");
+    // WiFi is off by default; long-press BOOT (~2s) to start the AP when needed
+    SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
     SerialLog.println("Initializing touch handler...");
@@ -1057,12 +993,12 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    SerialLog.println("Setup complete - WiFi and BLE enabled");
+    SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
 }
 
 void loop() {
-    // Update BLE proxy indicator state (always on; color reflects JBV1 client)
-    display.setBLEProxyStatus(bleClient.isProxyEnabled(), bleClient.isProxyClientConnected());
+    // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
+    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
 
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
@@ -1099,29 +1035,56 @@ void loop() {
         }
     }
     
-    // BOOT button handling for brightness adjustment
+    // BOOT button handling: short press = brightness adjust, long press = AP toggle
     bool bootPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);  // Active low
     unsigned long now = millis();
-    
-    if (bootPressed && (now - lastBootButtonPress > BOOT_DEBOUNCE_MS)) {
-        lastBootButtonPress = now;
-        
-        if (!brightnessAdjustMode) {
-            // Enter brightness adjustment mode
-            brightnessAdjustMode = true;
-            brightnessAdjustValue = settingsManager.get().brightness;
-            display.showBrightnessSlider(brightnessAdjustValue);
-            SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
-        } else {
-            // Exit brightness adjustment mode and save
-            brightnessAdjustMode = false;
-            settingsManager.setBrightness(brightnessAdjustValue);
-            settingsManager.save();
-            display.hideBrightnessSlider();
-            display.showResting();  // Return to normal display
-            SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+
+    if (bootPressed && !bootWasPressed) {
+        bootPressStart = now;
+        wifiToggleTriggered = false;  // Reset for new press
+    }
+
+    // Check for long press while button is still held (immediate feedback)
+    if (bootPressed && !wifiToggleTriggered && !brightnessAdjustMode) {
+        unsigned long pressDuration = now - bootPressStart;
+        if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+            wifiToggleTriggered = true;  // Prevent re-triggering
+            bool wasActive = wifiManager.isSetupModeActive();
+            if (wasActive) {
+                wifiManager.stopSetupMode(true);
+                SerialLog.println("[WiFi] AP stopped (button long press)");
+            } else {
+                startWifi();
+                SerialLog.println("[WiFi] AP started (button long press)");
+            }
+            display.drawWiFiIndicator();
+            display.flush();
         }
     }
+
+    if (!bootPressed && bootWasPressed) {
+        unsigned long pressDuration = now - bootPressStart;
+        if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
+            // Only handle short press actions (not already handled by long press)
+            if (brightnessAdjustMode) {
+                // Exit brightness adjustment mode and save
+                brightnessAdjustMode = false;
+                settingsManager.updateBrightness(brightnessAdjustValue);
+                settingsManager.save();
+                display.hideBrightnessSlider();
+                display.showResting();  // Return to normal display
+                SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+            } else {
+                // Enter brightness adjustment mode (short press)
+                brightnessAdjustMode = true;
+                brightnessAdjustValue = settingsManager.get().brightness;
+                display.showBrightnessSlider(brightnessAdjustValue);
+                SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
+            }
+        }
+    }
+
+    bootWasPressed = bootPressed;
     
     // If in brightness adjustment mode, handle touch for slider
     if (brightnessAdjustMode) {
@@ -1153,6 +1116,28 @@ void loop() {
     // Check for touch - single tap for mute (only with active alert), triple-tap for profile cycle (only without alert)
     int16_t touchX, touchY;
     bool hasActiveAlert = parser.hasAlerts();
+
+    // Helper to toggle mute state - sends command to V1
+    // V1 is source of truth - display updates when V1 reports new state
+    auto performMuteToggle = [&](const char* reason) {
+        if (!hasActiveAlert) {
+            SerialLog.println("MUTE BLOCKED: No active alert to mute");
+            return;
+        }
+
+        DisplayState state = parser.getDisplayState();
+        bool currentMuted = state.muted;
+        bool newMuted = !currentMuted;
+
+        SerialLog.printf("Mute: %s -> Sending: %s (%s)\n", 
+                      currentMuted ? "MUTED" : "UNMUTED",
+                      newMuted ? "MUTE_ON" : "MUTE_OFF",
+                      reason);
+
+        // Send mute command to V1
+        bool cmdSent = bleClient.setMute(newMuted);
+        SerialLog.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+    };
     
     if (touchHandler.getTouchPoint(touchX, touchY)) {
         unsigned long now = millis();
@@ -1169,6 +1154,13 @@ void loop() {
             lastTapTime = now;
             
             SerialLog.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
+
+            // With an active alert, toggle mute immediately on first tap for responsiveness
+            if (hasActiveAlert && tapCount == 1) {
+                performMuteToggle("immediate tap");
+                tapCount = 0;  // reset so follow-up taps start fresh
+                return;        // skip triple-tap handling
+            }
             
             // Check for triple-tap to cycle profiles (ONLY when no active alert)
             if (tapCount >= 3) {
@@ -1181,9 +1173,11 @@ void loop() {
                     const V1Settings& s = settingsManager.get();
                     int newSlot = (s.activeSlot + 1) % 3;
                     settingsManager.setActiveSlot(newSlot);
-                    persistedAlert = PersistedAlert();  // Clear any ghost from previous slot
                     displayMode = DisplayMode::IDLE;
-                    ghostExpiresAt = 0;
+                    
+                    // Clear persisted alert state on profile change
+                    persistedAlert = AlertData();
+                    alertPersistenceActive = false;
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
@@ -1207,43 +1201,7 @@ void loop() {
             // Window expired with 1-2 taps - treat as mute toggle (ONLY with active alert)
             SerialLog.printf("Processing %d tap(s) as mute toggle\n", tapCount);
             tapCount = 0;
-            
-            if (!hasActiveAlert) {
-                SerialLog.println("MUTE BLOCKED: No active alert to mute");
-            } else {
-                // Get current mute state from parser and toggle it
-                DisplayState state = parser.getDisplayState();
-                bool currentMuted = state.muted;
-                bool newMuted = !currentMuted;
-                
-                // Apply local override immediately for instant visual feedback
-                localMuteOverride = newMuted;
-                localMuteActive = true;
-                localMuteTimestamp = millis();
-                
-                // Store current alert details for detecting stronger signals
-                if (newMuted) {
-                    AlertData priority = parser.getPriorityAlert();
-                    mutedAlertStrength = std::max(priority.frontStrength, priority.rearStrength);
-                    mutedAlertBand = priority.band;
-                    mutedAlertFreq = priority.frequency;
-                    SerialLog.printf("Muted alert: band=%d, strength=%d, freq=%lu\n", 
-                                mutedAlertBand, mutedAlertStrength, mutedAlertFreq);
-                } else {
-                    // Unmuting - clear stored alert
-                    mutedAlertStrength = 0;
-                    mutedAlertBand = BAND_NONE;
-                    mutedAlertFreq = 0;
-                }
-                
-                SerialLog.printf("Current mute state: %s -> Sending: %s\n", 
-                              currentMuted ? "MUTED" : "UNMUTED",
-                              newMuted ? "MUTE_ON" : "MUTE_OFF");
-                
-                // Send mute command to V1
-                bool cmdSent = bleClient.setMute(newMuted);
-                SerialLog.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
-            }
+            performMuteToggle("deferred tap");
         }
     }
     
@@ -1268,66 +1226,45 @@ void loop() {
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
         if (!isColorPreviewActive()) {
-            bool skipDisplayTick = false;
-            // Handle ghost refresh/expiry centrally to avoid flicker
-            if (displayMode == DisplayMode::GHOST && persistedAlert.active) {
-                if (millis() <= persistedAlert.expiresAt) {
-                    display.setGhostMode(true);
-                    display.update(persistedAlert.alert, persistedAlert.state, persistedAlert.alertCount);
-                    display.setGhostMode(false);
-                    lastDisplayDraw = millis();
-                    // Skip other redraws while ghost is active
-                    skipDisplayTick = true;
+            // Check connection status
+            static bool wasConnected = false;
+            bool isConnected = bleClient.isConnected();
+            
+            // Only trigger state changes on actual transitions
+            if (isConnected != wasConnected) {
+                if (isConnected) {
+                    display.showResting(); // stay on resting view until data arrives
+                    SerialLog.println("V1 connected!");
                 } else {
-                    // Ghost expired - clear and redraw resting state
-                    persistedAlert = PersistedAlert();
+                    // Reset stale state from previous connection
+                    PacketParser::resetPriorityState();
+                    V1Display::resetChangeTracking();
+                    display.showScanning();
+                    SerialLog.println("V1 disconnected - Scanning...");
                     displayMode = DisplayMode::IDLE;
-                    ghostExpiresAt = 0;
-                    display.showResting();  // Redraw idle display after ghost ends
-                    skipDisplayTick = true;  // Skip further draws this cycle
                 }
+                wasConnected = isConnected;
             }
 
-            if (!skipDisplayTick) {
-                // Check connection status
-                static bool wasConnected = false;
-                bool isConnected = bleClient.isConnected();
-                
-                // Only trigger state changes on actual transitions
-                if (isConnected != wasConnected) {
-                    if (isConnected) {
-                        display.showResting(); // stay on resting view until data arrives
-                        SerialLog.println("V1 connected!");
-                    } else {
-                        display.showScanning();
-                        SerialLog.println("V1 disconnected - Scanning...");
-                        persistedAlert = PersistedAlert();  // Drop any ghost data on disconnect
-                        displayMode = DisplayMode::IDLE;
-                        ghostExpiresAt = 0;
-                    }
-                    wasConnected = isConnected;
-                }
+            // If connected but not seeing traffic, re-request alert data periodically
+            static unsigned long lastReq = 0;
+            if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
+                DEBUG_LOGLN("No data recently; re-requesting alert data...");
+                bleClient.requestAlertData();
+                lastReq = now;
+            }
 
-                // If connected but not seeing traffic, re-request alert data periodically
-                static unsigned long lastReq = 0;
-                if (isConnected && (now - lastRxMillis) > 2000 && (now - lastReq) > 1000) {
-                    SerialLog.println("No data recently; re-requesting alert data...");
-                    bleClient.requestAlertData();
-                    lastReq = now;
-                }
-
-                // Periodically refresh indicators (WiFi/battery) even when scanning
-                if (!isConnected) {
-                    display.drawWiFiIndicator();
-                    display.drawBatteryIndicator();
-                    display.flush();  // Push canvas changes to physical display
-                }
+            // Periodically refresh indicators (WiFi/battery) even when scanning
+            if (!isConnected) {
+                display.drawWiFiIndicator();
+                display.drawBatteryIndicator();
+                display.flush();  // Push canvas changes to physical display
             }
         }
     }
     
-    // Status update (print to serial)
-    if (now - lastStatusUpdate >= STATUS_UPDATE_MS) {
+    // Status update (print to serial) - only when DEBUG_LOGS enabled
+    if (DEBUG_LOGS && now - lastStatusUpdate >= STATUS_UPDATE_MS) {
         lastStatusUpdate = now;
         
         if (bleClient.isConnected()) {
@@ -1338,5 +1275,6 @@ void loop() {
         }
     }
 
-    delay(5);  // Minimal yield for watchdog
+    // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
+    vTaskDelay(pdMS_TO_TICKS(1));
 }

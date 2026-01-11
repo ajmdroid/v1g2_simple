@@ -19,16 +19,11 @@
 		alert: null
 	});
 	
-	let settings = $state({
-		enableMultiAlert: true
-	});
-	
 	let loading = $state(true);
 	let error = $state(null);
-	let savingMultiAlert = $state(false);
 	
 	onMount(async () => {
-		await Promise.all([fetchStatus(), fetchSettings()]);
+		await fetchStatus();
 		// Poll status every 2 seconds for responsive alerts
 		const interval = setInterval(fetchStatus, 2000);
 		return () => clearInterval(interval);
@@ -48,39 +43,6 @@
 			error = 'Connection lost';
 		} finally {
 			loading = false;
-		}
-	}
-	
-	async function fetchSettings() {
-		try {
-			const res = await fetch('/api/settings');
-			if (res.ok) {
-				const data = await res.json();
-				settings = { ...settings, ...data };
-			}
-		} catch (e) {
-			// Silent fail - settings will use defaults
-		}
-	}
-	
-	async function toggleMultiAlert() {
-		savingMultiAlert = true;
-		try {
-			const formData = new FormData();
-			formData.append('enableMultiAlert', !settings.enableMultiAlert);
-			
-			const res = await fetch('/api/settings', {
-				method: 'POST',
-				body: formData
-			});
-			
-			if (res.ok) {
-				settings.enableMultiAlert = !settings.enableMultiAlert;
-			}
-		} catch (e) {
-			error = 'Failed to save setting';
-		} finally {
-			savingMultiAlert = false;
 		}
 	}
 	
@@ -222,30 +184,9 @@
 			<div class="flex flex-wrap gap-2">
 				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
 				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
-				<a href="/devices" class="btn btn-secondary btn-sm">📡 Saved V1s</a>
 				<a href="/colors" class="btn btn-info btn-sm">🎨 Colors</a>
 				<a href="/settings" class="btn btn-ghost btn-sm">⚙️ Settings</a>
 			</div>
-		</div>
-	</div>
-
-	<!-- Display Options -->
-	<div class="card bg-base-200 shadow-xl">
-		<div class="card-body p-4">
-			<h2 class="card-title text-sm mb-2">Display Options</h2>
-			<label class="label cursor-pointer justify-start gap-3">
-				<input 
-					type="checkbox" 
-					class="toggle toggle-primary" 
-					checked={settings.enableMultiAlert}
-					onchange={toggleMultiAlert}
-					disabled={savingMultiAlert}
-				/>
-				<div>
-					<span class="label-text font-medium">Multi-Alert Cards</span>
-					<p class="text-xs text-base-content/60">Show secondary alerts as mini cards at bottom</p>
-				</div>
-			</label>
 		</div>
 	</div>
 

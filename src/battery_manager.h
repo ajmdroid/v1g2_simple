@@ -45,13 +45,13 @@ public:
     // Check if a battery is present (detects battery even when on USB power)
     bool hasBattery() const;
     
-    // Update cached battery readings (call in loop, updates at 1Hz)
+    // Update cached battery readings (call in loop, voltage updates every 30s)
     void update();
     
-    // Get cached battery voltage in millivolts (updated at 1Hz)
+    // Get cached battery voltage in millivolts (updated every 30s)
     uint16_t getVoltageMillivolts() const;
     
-    // Get cached battery percentage (0-100, updated at 1Hz)
+    // Get cached battery percentage (0-100, updated every 30s)
     uint8_t getPercentage() const;
     
     // Check if battery is low (uses cached values)
@@ -86,7 +86,7 @@ private:
     unsigned long buttonPressStart;
     bool buttonWasPressed;
     
-    // Cached battery state (updated at 1Hz)
+    // Cached battery state (updated every 30s)
     uint16_t cachedVoltage;
     uint8_t cachedPercent;
     unsigned long lastUpdateMs;

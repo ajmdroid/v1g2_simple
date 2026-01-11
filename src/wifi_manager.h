@@ -24,6 +24,8 @@ public:
     
     // AP control (AP-only for configuration)
     bool startSetupMode();      // Start AP for configuration (idempotent)
+    bool stopSetupMode(bool manual = false); // Stop AP (timeout/manual)
+    bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
     bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON; }
     
     // Process web server requests (call in loop)
@@ -59,6 +61,7 @@ private:
     WebServer server;
     SetupModeState setupModeState;
     unsigned long setupModeStartTime;
+    unsigned long lastClientSeenMs = 0;  // Tracks last STA presence for timeout
     
     // Web activity tracking for WiFi priority mode
     unsigned long lastUiActivityMs = 0;
@@ -79,6 +82,7 @@ private:
     // Setup functions
     void setupAP();
     void setupWebServer();
+    void checkAutoTimeout();
     
     // Web handlers
     void handleStatus();
@@ -93,14 +97,9 @@ private:
     void handleV1SettingsPull();
     void handleV1SettingsPush();
     void handleV1CurrentSettings();
-    void handleV1DevicesApi();
-    void handleV1DeviceNameSave();
-    void handleV1DeviceProfileSave();
-    void handleV1DeviceDelete();
     
-    // Failsafe UI and new API endpoints (PHASE A)
+    // API endpoints
     void handleApiProfilePush();      // POST /api/profile/push - queue profile push
-    void handleFailsafeUI();          // GET / (failsafe) - serve minimal HTML
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();

@@ -5,7 +5,7 @@
  * Settings Categories:
  * - WiFi: Mode (Off/STA/AP/APSTA), credentials
  * - BLE Proxy: Enable/disable, device name
- * - Display: Brightness, color theme, resting mode
+ * - Display: Brightness, custom colors, resting mode
  * - Auto-Push: 3-slot profile system with modes
  * 
  * Auto-Push Slots:
@@ -47,19 +47,6 @@ enum DisplayStyle {
     DISPLAY_STYLE_MODERN = 1     // Montserrat Bold font
 };
 
-// WiFi network credential
-struct WiFiNetwork {
-    String ssid;
-    String password;
-    
-    WiFiNetwork() : ssid(""), password("") {}
-    WiFiNetwork(const String& s, const String& p) : ssid(s), password(p) {}
-    bool isValid() const { return ssid.length() > 0; }
-};
-
-// Maximum number of saved WiFi networks
-#define MAX_WIFI_NETWORKS 3
-
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -71,14 +58,11 @@ struct AutoPushSlot {
 
 // Settings structure
 struct V1Settings {
-    // WiFi settings
+    // WiFi settings (AP-only mode)
     bool enableWifi;
-    WiFiModeSetting wifiMode;
-    String ssid;             // Station mode SSID (for connecting to home WiFi)
-    String password;         // Station mode password
+    WiFiModeSetting wifiMode;  // Always V1_WIFI_AP
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
-    WiFiNetwork wifiNetworks[MAX_WIFI_NETWORKS];  // Multiple WiFi networks for auto-switching
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -87,7 +71,6 @@ struct V1Settings {
     // Display settings
     bool turnOffDisplay;
     uint8_t brightness;
-    ColorTheme colorTheme;  // Color theme selection
     DisplayStyle displayStyle;  // Font style: classic 7-segment or modern Montserrat
     
     // Custom display colors (RGB565 format)
@@ -109,15 +92,15 @@ struct V1Settings {
     uint16_t colorBar4;          // Signal bar 4
     uint16_t colorBar5;          // Signal bar 5
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
+    uint16_t colorMuted;         // Muted alert color (shown when alerts are muted/grayed)
+    uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
+    bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
-    
-    // Multi-alert display setting
-    bool enableMultiAlert;       // Show secondary alert cards when multiple alerts active
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -143,6 +126,9 @@ struct V1Settings {
     uint8_t slot0AlertPersist;   // Alert persistence (seconds) for slot 0 (0-5s)
     uint8_t slot1AlertPersist;   // Alert persistence (seconds) for slot 1 (0-5s)
     uint8_t slot2AlertPersist;   // Alert persistence (seconds) for slot 2 (0-5s)
+    bool slot0PriorityArrow;     // Priority arrow only for slot 0
+    bool slot1PriorityArrow;     // Priority arrow only for slot 1
+    bool slot2PriorityArrow;     // Priority arrow only for slot 2
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
@@ -153,15 +139,12 @@ struct V1Settings {
     V1Settings() : 
         enableWifi(true),
         wifiMode(V1_WIFI_AP),
-        ssid(""),
-        password(""),
         apSSID("V1-Simple"),
         apPassword("setupv1g2"),
         proxyBLE(true),
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
         brightness(200),
-        colorTheme(THEME_STANDARD),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
         colorBogey(0xF800),      // Red (same as KA)
         colorFrequency(0xF800),  // Red (same as KA)
@@ -181,11 +164,11 @@ struct V1Settings {
         colorBar4(0xFFE0),       // Yellow
         colorBar5(0xF800),       // Red
         colorBar6(0xF800),       // Red (strongest)
+        freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
-        enableMultiAlert(true),  // Enable multi-alert cards by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -209,6 +192,9 @@ struct V1Settings {
         slot0AlertPersist(0),
         slot1AlertPersist(0),
         slot2AlertPersist(0),
+        slot0PriorityArrow(false),
+        slot1PriorityArrow(false),
+        slot2PriorityArrow(false),
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
@@ -227,14 +213,11 @@ public:
     
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
-    void setWiFiMode(WiFiModeSetting mode);
-    void setWiFiCredentials(const String& ssid, const String& password);
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
     void setBrightness(uint8_t brightness);
     void setDisplayOff(bool off);
-    void setColorTheme(ColorTheme theme);
     void setAutoPushEnabled(bool enabled);
     void setActiveSlot(int slot);
     void setSlot(int slotNum, const String& profileName, V1Mode mode);
@@ -246,11 +229,13 @@ public:
     void setWiFiIconColor(uint16_t color);
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
+    void setMutedColor(uint16_t color);
+    void setPersistedColor(uint16_t color);
+    void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
-    void setEnableMultiAlert(bool enable);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
@@ -265,35 +250,16 @@ public:
     bool getSlotDarkMode(int slotNum) const;
     bool getSlotMuteToZero(int slotNum) const;
     uint8_t getSlotAlertPersistSec(int slotNum) const;
+    bool getSlotPriorityArrowOnly(int slotNum) const;
     void setSlotDarkMode(int slotNum, bool darkMode);
     void setSlotMuteToZero(int slotNum, bool mz);
     void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
+    void setSlotPriorityArrowOnly(int slotNum, bool prioArrow);
     
     // Batch update methods (don't auto-save, call save() after)
-    void updateWiFiMode(WiFiModeSetting mode) { settings.wifiMode = mode; }
-    void updateWiFiCredentials(const String& ssid, const String& password) { settings.ssid = ssid; settings.password = password; }
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
-    void updateColorTheme(ColorTheme theme) { settings.colorTheme = theme; }
     void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
-    void updatePrimaryWiFi(const String& ssid, const String& password) {
-        settings.ssid = ssid;
-        settings.password = password;
-        settings.wifiNetworks[0].ssid = ssid;
-        settings.wifiNetworks[0].password = password;
-    }
-    void updateWiFiNetwork(int index, const String& ssid, const String& password) {
-        if (index >= 0 && index < MAX_WIFI_NETWORKS) {
-            settings.wifiNetworks[index].ssid = ssid;
-            settings.wifiNetworks[index].password = password;
-        }
-    }
-    void updatePrimaryWiFiFromNetwork0() {
-        if (settings.wifiNetworks[0].isValid()) {
-            settings.ssid = settings.wifiNetworks[0].ssid;
-            settings.password = settings.wifiNetworks[0].password;
-        }
-    }
     
     // Save all settings to flash
     void save();

@@ -2,7 +2,7 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 1.9.2  
+**Version:** 2.0.5  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
@@ -75,9 +75,10 @@ pio device monitor -b 115200
 
 1. Device shows boot splash (if power-on reset)
 2. Screen displays "SCAN" with resting animation
-3. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
-4. Browse to `http://192.168.35.5`
-5. Web UI should load (SvelteKit-based interface)
+3. Long-press **BOOT** (~4s) to start the WiFi AP (off by default)
+4. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
+5. Browse to `http://192.168.35.5`
+6. Web UI should load (SvelteKit-based interface)
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [build.sh](build.sh#L1-L30), [interface/scripts/deploy.js](interface/scripts/deploy.js#L1-L30)
 
@@ -117,7 +118,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 3. **Tap-to-Mute:** Single/double tap during alert toggles mute
 4. **Triple-Tap Profile Cycle:** Switch between 3 auto-push slots when idle
 5. **Web Configuration:** AP mode at 192.168.35.5 for settings
-6. **4 Color Themes:** Standard, High Contrast, Stealth, Business
+6. **Full Color Customization:** Per-element RGB565 colors via web UI
 
 **Source:** [src/main.cpp](src/main.cpp#L1-L25), [src/ble_client.cpp](src/ble_client.cpp#L1-L20)
 
@@ -148,18 +149,18 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | 1342 | Application entry, loop, touch handling |
-| `ble_client.cpp` | 1657 | NimBLE client/server, V1 connection |
-| `display.cpp` | 2284 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | 1625 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `packet_parser.cpp` | 295 | ESP packet framing and decoding |
-| `settings.cpp` | 762 | Preferences (NVS) storage |
-| `v1_profiles.cpp` | 576 | Profile JSON on SD/LittleFS |
-| `battery_manager.cpp` | 583 | ADC, TCA9554 I/O expander |
-| `storage_manager.cpp` | 63 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | 150 | AXS15231B I2C touch polling |
-| `event_ring.cpp` | 162 | Debug event logging (ArduinoJson) |
-| `perf_metrics.cpp` | 156 | Latency tracking (ArduinoJson) |
+| `main.cpp` | ~1375 | Application entry, loop, touch handling |
+| `ble_client.cpp` | ~1730 | NimBLE client/server, V1 connection |
+| `display.cpp` | ~2760 | Arduino_GFX drawing, 7/14-segment digits |
+| `wifi_manager.cpp` | ~1360 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `packet_parser.cpp` | ~475 | ESP packet framing and decoding |
+| `settings.cpp` | ~600 | Preferences (NVS) storage |
+| `v1_profiles.cpp` | ~575 | Profile JSON on SD/LittleFS |
+| `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
+| `storage_manager.cpp` | ~65 | SD/LittleFS mount abstraction |
+| `touch_handler.cpp` | ~145 | AXS15231B I2C touch polling |
+| `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
+| `perf_metrics.cpp` | ~160 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -202,7 +203,7 @@ V1 Gen2 (BLE)
 |---------|-------------|---------------------|
 | **Main loop** | Arduino `loop()` at ~200Hz | Display SPI, touch I2C, WiFi |
 | **BLE task** | NimBLE internal task | Notifications, connection events, **proxy forwarding** |
-| **FreeRTOS queue** | `bleDataQueue` (64 × 260 bytes) | Decouples BLE callbacks from SPI (display only) |
+| **FreeRTOS queue** | `bleDataQueue` (64 × 142 bytes) | Decouples BLE callbacks from SPI (display only) |
 
 **Key constraints:**
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
@@ -215,8 +216,10 @@ V1 Gen2 (BLE)
 | Operation | Timing | Source |
 |-----------|--------|--------|
 | Display draw minimum interval | 20ms (~50fps max) | `DISPLAY_DRAW_MIN_MS` in main.cpp:58 |
-| Display update check | 100ms | `DISPLAY_UPDATE_MS` in config.h:62 |
-| Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h:63 |
+| Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h:64 |
+| Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h:65 |
+| Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
+| Signal bar decay | 100ms | `DROP_INTERVAL_MS` in packet_parser.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in main.cpp:167 |
 | Local mute timeout | 2000ms | `LOCAL_MUTE_TIMEOUT_MS` in main.cpp:155 |
@@ -239,7 +242,7 @@ V1 Gen2 (BLE)
 9. settingsManager.begin()             // Load from NVS
 10. storageManager.begin()             // Mount SD or LittleFS
 11. v1ProfileManager.begin()           // Profile filesystem access
-12. wifiManager.begin()                // Start AP, web server
+12. (WiFi **not** auto-started)        // Long-press BOOT (~4s) to start AP when needed
 13. touchHandler.begin()               // I2C touch init
 14. bleClient.initBLE()                // NimBLE stack
 15. bleClient.begin()                  // Start scanning
@@ -265,6 +268,12 @@ V1 Gen2 (BLE)
 | Touch init fails | Warning logged, continues without touch |
 | Storage init fails | Warning logged, profiles disabled |
 | WiFi/AP fails | Warning logged, continues without web UI |
+
+### WiFi AP Control & Timeout
+
+- **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
 
@@ -392,7 +401,7 @@ When `proxyBLE=true`:
 // NimBLE connection params: min/max interval, latency, timeout
 // Optimized for low-latency proxy performance
 pClient->setConnectionParams(12, 24, 0, 400);  // 15-30ms interval, 0 latency, 4s timeout
-pClient->setConnectTimeout(10);  // 10 second connect timeout
+pClient->setConnectTimeout(15);  // 15 second connect timeout (20s for initial connect)
 
 // MTU set to maximum for BLE 5.x
 NimBLEDevice::setMTU(517);  // 512 payload + 5 header
@@ -468,21 +477,24 @@ When multiple alerts are active simultaneously, secondary alerts appear as compa
 
 - **Main alert:** Full-size display (frequency, bars, direction)
 - **Secondary alerts:** Compact cards showing band, direction, and signal strength
-- **Toggle:** Configurable via web UI (Settings → Display → Show Multi-Alert)
-- **Keyboard shortcut:** `m` key toggles multi-alert display in web UI
+- **Automatic:** Mode activates automatically when 2+ alerts are present
 
 **Source:** [src/display.cpp](src/display.cpp#L1690-L1880) (drawSecondaryAlerts)
 
-### Color Themes
+### Color Customization
 
-| Theme | Background | Ka | K | X | Use Case |
-|-------|------------|----|----|---|----------|
-| Standard | Black | Red | Blue | Green | Day driving |
-| High Contrast | Black | Bright Red | Bright Blue | Bright Green | Bright sun |
-| Stealth | Black | Dark Red | Dark Blue | Dark Green | Night driving |
-| Business | Navy | Amber | Steel | Teal | Professional |
+All display colors are customizable via the web UI (`/colors`). Colors are stored as RGB565 values:
 
-**Source:** [include/color_themes.h](include/color_themes.h#L1-L120)
+| Category | Elements |
+|----------|----------|
+| Band Indicators | L (Laser), Ka, K, X |
+| Arrows | Front, Side, Rear (separate colors) |
+| Signal Bars | 6 levels (weak to strong) |
+| Text | Bogey counter, frequency display |
+| States | Muted alerts, persisted alerts |
+| Icons | WiFi, BLE (connected/disconnected) |
+
+**Source:** [include/color_themes.h](include/color_themes.h#L1-L30), [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
 
 ### Display Styles
 
@@ -491,7 +503,7 @@ When multiple alerts are active simultaneously, secondary alerts appear as compa
 | Retro | 7/14-segment | Classic LED-style segmented digits with ghost segments |
 | Modern | Montserrat Bold | Antialiased TrueType font via OpenFontRender |
 
-Toggle via web UI: **Settings → Display → Display Style**
+Toggle via web UI: **Colors → Display Style**
 
 **Source:** [src/display.cpp](src/display.cpp#L1993-L2050) (drawFrequencyModern), [include/FreeSansBold24pt7b.h](include/FreeSansBold24pt7b.h)
 
@@ -603,7 +615,6 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
-| colorTheme | int | 0 | Theme enum |
 | autoPush | bool | false | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
@@ -611,11 +622,13 @@ ESP32 Preferences API with namespace `v1settings`:
 | slot0dark | bool | false | Slot 0 dark mode |
 | slot0mz | bool | false | Slot 0 mute-to-zero |
 | slot0persist | uint8 | 0 | Slot 0 alert persistence (0-5 sec) |
+| slot0prio | bool | false | Slot 0 priority arrow only |
 | lastV1Addr | String | "" | Last connected V1 address |
 | hideWifi | bool | false | Hide WiFi icon |
 | hideProf | bool | false | Hide profile indicator |
 | hideBatt | bool | false | Hide battery icon |
 | hideBle | bool | false | Hide BLE icon |
+| freqBandCol | bool | false | Use band color for frequency display |
 | colorArrF | uint16 | theme | Front arrow color |
 | colorArrS | uint16 | theme | Side arrow color |
 | colorArrR | uint16 | theme | Rear arrow color |
@@ -675,30 +688,24 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | Route | File | Purpose |
 |-------|------|---------|
 | `/` | `+page.svelte` | Home - connection status, quick links |
-| `/settings` | `settings/+page.svelte` | WiFi, BLE proxy, display settings |
-| `/colors` | `colors/+page.svelte` | Color customization, theme selection |
+| `/settings` | `settings/+page.svelte` | WiFi AP, BLE proxy settings |
+| `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
-| `/devices` | `devices/+page.svelte` | Known V1 devices |
 
 ### Settings Page (`/settings`)
 
 Controls:
-- **WiFi Mode:** AP / STA / AP+STA / Off
-- **AP SSID/Password:** Access point credentials
-- **Station Networks:** Up to 3 saved networks for STA mode
+- **AP Name/Password:** Change WiFi network name and password (AP-only, no station mode)
 - **BLE Proxy:** Enable/disable JBV1 forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
-- **Display On/Off:** Master display switch
-- **Brightness:** 0-255 slider
-- **Resting Mode:** Show logo when idle
 
 **Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
 
 ### Colors Page (`/colors`)
 
 Controls:
-- **Theme Selection:** Standard, High Contrast, Stealth, Business
+- **Display Style:** Classic (7-segment) or Modern font
 - **Custom Colors:** Per-element RGB565 colors
   - Bogey counter, Frequency display
   - Individual arrow colors (Front, Side, Rear separately)
@@ -706,8 +713,10 @@ Controls:
   - Signal bar gradient (6 levels)
   - WiFi icon color
   - BLE icon colors (Connected, Disconnected states)
+  - Muted alert color, Persisted alert color
+- **Use Band Color for Frequency:** When enabled, frequency display uses the detected band's color instead of custom frequency color
 - **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon
-- **Preview Button:** Shows color demo on physical display
+- **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
 
@@ -726,6 +735,7 @@ Controls:
   - Dark mode (V1 display off when slot active)
   - Mute to zero (mute completely silences alerts)
   - Alert persistence / ghost (0-5 seconds, shows last alert in gray after it clears)
+  - Priority arrow only (show only strongest alert's direction, reduces flicker with multiple alerts)
 - **Quick-Push Buttons:** Activate and push a slot immediately
 
 **Source:** [interface/src/routes/autopush/+page.svelte](interface/src/routes/autopush/+page.svelte)
@@ -789,6 +799,7 @@ Each slot stores:
 - Dark mode setting (turns off V1's display)
 - Mute to zero setting (completely silences muted alerts)
 - Alert persistence duration (0-5 seconds ghost display after alert clears)
+- Priority arrow only (show only strongest alert's direction arrow)
 
 **Source:** [src/settings.cpp](src/settings.cpp#L100-L150) (slot0prof, slot0mode, etc.)
 
@@ -829,6 +840,15 @@ When auto-push is enabled and V1 connects, the system executes a 5-step sequence
 **Timing:** Each step waits 100ms before sending the next command to avoid overwhelming the V1.
 
 **Source:** [src/main.cpp](src/main.cpp#L175-L340) (autoPushState enum, processAutoPush())
+
+### Debug Logging
+
+Auto-push Serial spam is gated by a compile-time switch. To see every state transition and command:
+
+1. Open [src/main.cpp](src/main.cpp#L30-L60) and set `AUTOPUSH_DEBUG_LOGS` to `true`.
+2. Rebuild and flash firmware.
+
+Default is `false` to keep boot logs quiet.
 
 ### Profile Cycling (Touch Gesture)
 
@@ -924,6 +944,7 @@ See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 | `PERF_METRICS` | 1 | Enable performance counters |
 | `PERF_MONITORING` | 1 | Enable sampled timing |
 | `PERF_VERBOSE` | 0 | Enable immediate latency alerts |
+| `AUTOPUSH_DEBUG_LOGS` | false | Enable verbose `[AutoPush]` Serial logs (set in `src/main.cpp`) |
 
 **Source:** [include/config.h](include/config.h#L65-L68), [src/perf_metrics.h](src/perf_metrics.h#L25-L55)
 
@@ -931,9 +952,9 @@ See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 
 All settings modifiable via web UI at `http://192.168.35.5`:
 
-- **Settings page:** WiFi, BLE proxy, brightness, theme
-- **Colors page:** Custom per-element colors
-- **Profiles page:** Create/edit/delete V1 profiles
+- **Settings page:** WiFi AP name/password, BLE proxy
+- **Colors page:** Display style, custom per-element colors
+- **Profiles page:** Pull V1 settings, save as profiles
 - **Auto-push page:** Configure 3 profile slots
 - **Devices page:** Manage known V1 addresses
 
@@ -1016,6 +1037,10 @@ Enable verbose logging by checking serial output for:
 [BLE_SM] Service discovery completed
 [BLE_SM] Subscribed to display data notifications
 ```
+
+**Tuning knobs (advanced):**
+- Connection attempts: 2 (quiet by default). Flip `CONNECT_ATTEMPT_VERBOSE` in [src/ble_client.cpp](src/ble_client.cpp#L80-L85) to see per-attempt logs.
+- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L276-L305) if you need slower retries or longer radio settle time.
 
 ### Web API Endpoints
 

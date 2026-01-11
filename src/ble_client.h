@@ -69,7 +69,7 @@ public:
     V1BLEClient();
     ~V1BLEClient();
     
-    // Initialize BLE stack only (no scanning) - call before fastReconnect()
+    // Initialize BLE stack only (no scanning)
     bool initBLE(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
     
     // Initialize BLE and start scanning
@@ -84,6 +84,12 @@ public:
     
     // Check if BLE proxy is enabled
     bool isProxyEnabled() const { return proxyEnabled; }
+    
+    // Check if this is a fresh boot after firmware flash
+    bool isFreshFlashBoot() const { return freshFlashBoot; }
+    
+    // Check if proxy is actively advertising (only true after V1 connects)
+    bool isProxyAdvertising() const;
 
     // Set proxy client connection status (for internal callback use)
     void setProxyClientConnected(bool connected);
@@ -142,12 +148,6 @@ public:
     
     // Process BLE events (call in loop)
     void process();
-    
-    // Attempt a fast reconnect to a known address
-    bool fastReconnect();
-    
-    // Set the target address for fast reconnect (must be called before fastReconnect)
-    void setTargetAddress(const NimBLEAddress& address);
     
     // Restart scanning for V1
     void startScanning();
@@ -241,13 +241,20 @@ private:
     
     // Proxy queue for decoupling notify from hot path
     static constexpr size_t PROXY_QUEUE_SIZE = 8;  // Small queue, drop-oldest on overflow
-    static constexpr size_t PROXY_PACKET_MAX = 64; // Max packet size for proxy
+    static constexpr size_t PROXY_PACKET_MAX = 512; // Max packet size for proxy (handles full V1 packets)
     struct ProxyPacket {
         uint8_t data[PROXY_PACKET_MAX];
         size_t length;
         uint16_t charUUID;
     };
     ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
+    
+    // Phone→V1 command queue for safe writes (decoupled from callback context)
+    static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
+    ProxyPacket phone2v1Queue[PHONE_CMD_QUEUE_SIZE];
+    volatile size_t phone2v1QueueHead = 0;
+    volatile size_t phone2v1QueueTail = 0;
+    volatile size_t phone2v1QueueCount = 0;
     volatile size_t proxyQueueHead = 0;  // Next write position
     volatile size_t proxyQueueTail = 0;  // Next read position
     volatile size_t proxyQueueCount = 0; // Current items in queue
@@ -267,10 +274,24 @@ private:
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 500;  // Wait after scan stop (increased for max stability)
+    // ESP32-S3 WiFi coexistence: radio needs time after scan to be ready for connect
+    // WiFi AP sends beacons every 100ms - need to wait for a clear window
+    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 200;
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 600;  // Shorter settle on reconnects; longer only on cold boot
+    bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
+    unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
+    
+    // Fresh flash detection - set when firmware version changed
+    bool freshFlashBoot = false;
+    
+    // Called from connectToServer() after successful sync connect
+    bool finishConnection();
+
+    // Diagnostic helper to log negotiated connection parameters
+    void logConnParams(const char* tag);
     
     // State transition helper
     void setBLEState(BLEState newState, const char* reason);
@@ -282,12 +303,13 @@ private:
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
     static constexpr uint8_t MAX_BACKOFF_FAILURES = 5;
-    static constexpr unsigned long BACKOFF_BASE_MS = 5000;   // 5 seconds base
-    static constexpr unsigned long BACKOFF_MAX_MS = 30000;   // 30 seconds max
+    static constexpr unsigned long BACKOFF_BASE_MS = 500;    // 500ms base - quick retry
+    static constexpr unsigned long BACKOFF_MAX_MS = 5000;    // 5 seconds max
     
-    // Deferred proxy advertising start (non-blocking - avoids 1500ms stall)
+    // Deferred proxy advertising start (non-blocking - avoids stall)
+    // 150ms matches Kenny's v1g2-t4s3 approach - just enough for radio to settle
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
-    static constexpr unsigned long PROXY_STABILIZE_MS = 1500;  // Delay before advertising
+    static constexpr unsigned long PROXY_STABILIZE_MS = 150;  // Match Kenny's 150ms delay
     
     // Write verification state
     bool verifyPending = false;

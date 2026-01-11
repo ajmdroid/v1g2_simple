@@ -21,6 +21,8 @@
 #include "settings.h"
 #include "../include/config.h"
 #include <Arduino.h>
+#include <WiFi.h>  // For WiFi coexistence during BLE connect
+#include <Preferences.h>  // For fresh-flash detection
 #include <set>
 #include <string>
 #include <cstdlib>
@@ -78,6 +80,11 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
     }
     return 0;
 }
+// Debug log controls
+constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
+constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
+#define BLE_LOGF(...) do { if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while (0)
+#define BLE_LOGLN(msg) do { if (BLE_DEBUG_LOGS) Serial.println(msg); } while (0)
 } // namespace
 
 // Static instance for callbacks
@@ -105,6 +112,7 @@ V1BLEClient::V1BLEClient()
     , hasTargetDevice(false)
     , targetAddress()
     , lastScanStart(0)
+    , freshFlashBoot(false)
     , pScanCallbacks(nullptr)
     , pClientCallbacks(nullptr)
     , pProxyServerCallbacks(nullptr)
@@ -162,7 +170,7 @@ void V1BLEClient::cleanupConnection() {
     // 2. Disconnect if connected
     if (pClient && pClient->isConnected()) {
         pClient->disconnect();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Brief delay for disconnect to complete
+        vTaskDelay(pdMS_TO_TICKS(300));  // Allow disconnect to fully complete
     }
     
     // 3. Clear characteristic references (they become invalid after disconnect)
@@ -186,7 +194,7 @@ void V1BLEClient::cleanupConnection() {
 }
 
 // Hard reset of BLE client stack - use after repeated failures
-// This recreates the client object to clear any stuck internal state
+// Clears stuck state without recreating client (which causes callback corruption)
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
     
@@ -212,8 +220,9 @@ void V1BLEClient::hardResetBLEClient() {
             pClientCallbacks = new ClientCallbacks();
         }
         pClient->setClientCallbacks(pClientCallbacks);
+        // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(12, 24, 0, 400);
-        pClient->setConnectTimeout(10);
+        pClient->setConnectTimeout(15);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
     }
@@ -225,7 +234,7 @@ void V1BLEClient::hardResetBLEClient() {
     setBLEState(BLEState::DISCONNECTED, "hard reset complete");
 }
 
-// Initialize BLE stack without starting scan - use for fast reconnect
+// Initialize BLE stack without starting scan
 bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     static bool initialized = false;
     if (initialized) {
@@ -250,29 +259,74 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         return false;
     }
     
-    // Kenny's exact initialization pattern:
+    // Fresh-flash detection: clear BLE bonds if firmware version changed
+    // Stale bonding info in NVS can cause connection issues after OTA/flash
+    {
+        Preferences blePrefs;
+        blePrefs.begin("ble_state", false);  // Read-write mode
+        String storedVersion = blePrefs.getString("fwVersion", "");
+        if (storedVersion != FIRMWARE_VERSION) {
+            Serial.printf("[BLE] Fresh flash detected (stored: '%s', current: '%s')\n", 
+                         storedVersion.c_str(), FIRMWARE_VERSION);
+            Serial.println("[BLE] Clearing all BLE bonds for clean start...");
+            // NimBLE must be initialized before deleteAllBonds works
+            // We'll do a minimal init, clear bonds, then deinit and reinit properly
+            NimBLEDevice::init("");
+            NimBLEDevice::deleteAllBonds();
+            NimBLEDevice::deinit(true);  // true = clear all BLE state
+            vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
+            blePrefs.putString("fwVersion", FIRMWARE_VERSION);
+            Serial.println("[BLE] Bonds cleared, version marker updated");
+            freshFlashBoot = true;
+        }
+        blePrefs.end();
+    }
+    
+    // Kenny's v1g2-t4s3 exact initialization pattern:
     // 1. init() with generic name
-    // 2. setDeviceName() with the actual advertised name
+    // 2. setDeviceName() with the actual advertised name  
     // 3. setPower() and setMTU for better throughput
+    // 4. Create proxy server BEFORE scanning (critical for NimBLE dual-role stability)
+    // 5. Start advertising then immediately stop (initializes BLE stack)
+    // 6. After V1 connects, advertising restarts via startProxyAdvertising()
     if (proxyEnabled) {
+        Serial.println("Proxy mode enabled - creating server BEFORE scanning (Kenny's pattern)");
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
+        
+        // Create proxy server NOW, BEFORE scanning starts
+        // This is Kenny's critical pattern - server exists but doesn't advertise
+        // until V1 connection is established
+        initProxyServer(proxyName_.c_str());
+        proxyServerInitialized = true;
+        Serial.println("Proxy server created - now ready to scan");
     } else {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x (512 payload + 5 header)
+        NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
     
-    // Create proxy server early (required before BLE stack starts client operations)
-    if (proxyEnabled) {
-        // Kenny's approach: NO security settings for proxy mode
-        // JBV1 and V1 Companion expect open connections without pairing
-        Serial.println("Creating proxy server (advertising will start after V1 connects)...");
-        initProxyServer(proxyName_.c_str());
-        proxyServerInitialized = true;
-        // Advertising data configured in initProxyServer, will start after V1 connects
+    // Create client ONCE during init (Kenny's pattern) - reuse for all connection attempts
+    // DON'T delete/recreate on connection failures - causes callback pointer corruption
+    if (!pClient) {
+        pClient = NimBLEDevice::createClient();
+        if (!pClient) {
+            Serial.println("ERROR: Failed to create BLE client");
+            return false;
+        }
+        
+        // Create callbacks once and keep them for the lifetime of the client
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
+        pClient->setClientCallbacks(pClientCallbacks);
+        
+        // Connection parameters: 12-24 (15-30ms interval), balanced for stability
+        pClient->setConnectionParams(12, 24, 0, 400);
+        pClient->setConnectTimeout(15);
+        Serial.println("BLE client created");
     }
     
     initialized = true;
@@ -296,11 +350,13 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScanCallbacks = new ScanCallbacks(this);
     pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
-    pScan->setInterval(100);  // 62.5ms interval - relaxed scanning (Kenny's setting)
-    pScan->setWindow(75);     // 47ms window - 75% duty cycle
+    // ESP32-S3 WiFi coexistence: use 50% duty cycle to give WiFi AP radio time
+    pScan->setInterval(160);  // 100ms interval 
+    pScan->setWindow(80);     // 50ms window - 50% duty cycle
     pScan->setMaxResults(0);  // Unlimited results
-    pScan->setDuplicateFilter(false);  // Don't filter duplicates - we want to see everything
-    Serial.println("Scan configured: interval=100 (62.5ms), window=75 (47ms), active=true, 75% duty, 10s duration");
+    // Filter duplicate advertisements to reduce scan load and radio time
+    pScan->setDuplicateFilter(true);
+    Serial.println("Scan configured: interval=160 (100ms), window=80 (50ms), active=true, 50% duty, 10s duration");
     
     Serial.println("Scanning for V1 Gen2...");
     lastScanStart = millis();
@@ -425,11 +481,12 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
 }
 
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
-    Serial.println("Connected to V1");
+    Serial.println("[BLE] onConnect callback - V1 connected!");
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = true;
         instancePtr->setBLEState(BLEState::CONNECTED, "onConnect callback");
+        // Note: finishConnection() is called from connectToServer() after sync connect
     }
 }
 
@@ -455,6 +512,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = false;
         instancePtr->connectInProgress = false;  // Clear connection guard
+        instancePtr->connectStartMs = 0;  // Clear async connect timer
         // Clear proxy client connection state too - can't proxy without V1 connection
         instancePtr->proxyClientConnected = false;
         // Do NOT clear pClient - we reuse it to prevent memory leaks
@@ -462,6 +520,10 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         instancePtr->pDisplayDataChar = nullptr;
         instancePtr->pCommandChar = nullptr;
         instancePtr->pCommandCharLong = nullptr;
+        // Reset verification state in case a write-verify was in progress
+        instancePtr->verifyPending = false;
+        instancePtr->verifyComplete = false;
+        instancePtr->verifyMatch = false;
         // Set state to DISCONNECTED - will trigger scan restart in process()
         instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
     }
@@ -479,7 +541,7 @@ bool V1BLEClient::connectToServer() {
         return false;
     }
     
-    // Guard 2: Check if scanning is still active
+    // Guard 2: Check if scanning is still active - must be fully stopped
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
@@ -501,9 +563,10 @@ bool V1BLEClient::connectToServer() {
     
     // Set connection guard
     connectInProgress = true;
+    connectStartMs = millis();  // Track when we started for timeout
     setBLEState(BLEState::CONNECTING, "connectToServer");
     
-    Serial.printf("[BLE] Connecting to %s...\n", addrStr.c_str());
+    Serial.printf("[BLE] Connecting to %s (async)...\n", addrStr.c_str());
     
     // Clear any stale bonding info
     if (NimBLEDevice::isBonded(targetAddress)) {
@@ -511,73 +574,90 @@ bool V1BLEClient::connectToServer() {
         delay(100);
     }
     
-    // Brief pause for radio to settle
-    vTaskDelay(pdMS_TO_TICKS(300));
-
-    bool connectedOk = false;
-    // Try up to 3 times - V1 can be slow to respond
-    int attempts = 3; 
-    
-    // Reuse existing client if available
-    if (pClient) {
-        if (pClient->isConnected()) {
-            pClient->disconnect();
-            delay(100);
-        }
-    } else {
-        pClient = NimBLEDevice::createClient();
+    // CRITICAL: Stop proxy advertising - this competes with client connect!
+    if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
+        Serial.println("[BLE] Stopping proxy advertising before connect");
+        NimBLEDevice::stopAdvertising();
+        vTaskDelay(pdMS_TO_TICKS(200));  // Longer wait for advertising to fully stop
     }
     
+    // Extra verify scan is stopped
+    if (pScan && pScan->isScanning()) {
+        Serial.println("[BLE] WARNING: Scan still active, stopping again");
+        pScan->stop();
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    
+    // DON'T delete/recreate client - causes heap corruption and callback issues
+    // Create client only if it doesn't exist
     if (!pClient) {
-        Serial.println("[BLE] ERROR: Failed to create client");
-        connectInProgress = false;
-        setBLEState(BLEState::DISCONNECTED, "client creation failed");
-        return false;
-    }
-
-    // Create client callbacks if not already created
-    if (!pClientCallbacks) {
-        pClientCallbacks = new ClientCallbacks();
-    }
-    pClient->setClientCallbacks(pClientCallbacks);
-    // Use tighter connection parameters for lower proxy latency
-    // min/max interval: 12-24 (15-30ms), latency: 0, timeout: 400 (4000ms)
-    pClient->setConnectionParams(12, 24, 0, 400);
-    // Give it plenty of time to connect (10s)
-    pClient->setConnectTimeout(10); 
-
-    for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
-        // Prefer device object on first attempt (has full advertisement data)
-        if (hasTargetDevice && attempt == 1) {
-            connectedOk = pClient->connect(targetDevice, false);
-        } else {
-            connectedOk = pClient->connect(targetAddress, false);
+        pClient = NimBLEDevice::createClient();
+        if (!pClient) {
+            Serial.println("[BLE] ERROR: Failed to create client");
+            connectInProgress = false;
+            setBLEState(BLEState::DISCONNECTED, "client creation failed");
+            return false;
         }
+        // Create client callbacks if not already created
+        if (!pClientCallbacks) {
+            pClientCallbacks = new ClientCallbacks();
+        }
+        pClient->setClientCallbacks(pClientCallbacks);
+    }
+    
+    // Connection parameters: 12-24 (15-30ms interval), balanced for stability
+    pClient->setConnectionParams(12, 24, 0, 400);
+    // Give it plenty of time to connect (20s)
+    pClient->setConnectTimeout(20); 
 
+    // Ensure client is disconnected before attempting
+    if (pClient->isConnected()) {
+        Serial.println("[BLE] Client thinks it's connected, disconnecting first");
+        pClient->disconnect();
+        vTaskDelay(pdMS_TO_TICKS(300));  // Allow disconnect to fully complete before reconnect
+    }
+    
+    // Use SYNCHRONOUS connect with retries
+    // Async connect had issues with callback timing on ESP32-S3
+    bool connectedOk = false;
+    const int attempts = 2;
+    int lastErr = 0;
+    
+    for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
+        if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
+            Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
+        }
+        
+        // Parameters: address, deleteAttributes=true
+        connectedOk = pClient->connect(targetAddress, true);
+        
         if (!connectedOk) {
-            int err = pClient->getLastError();
-            // Error 13 = EBUSY - device busy, wait longer
-            if (err == 13) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+            lastErr = pClient->getLastError();
+            if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
+                Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, lastErr);
+            }
+            
+            // Error 13 = EBUSY - BLE stack busy
+            if (lastErr == 13 && attempt < attempts) {
+                if (CONNECT_ATTEMPT_VERBOSE) {
+                    Serial.println("[BLE] Stack busy, waiting 2s before retry...");
+                }
+                vTaskDelay(pdMS_TO_TICKS(2000));
             } else if (attempt < attempts) {
-                vTaskDelay(pdMS_TO_TICKS(500));
+                vTaskDelay(pdMS_TO_TICKS(750));
             }
         }
     }
-
+    
     if (!connectedOk) {
-        int lastErr = pClient->getLastError();
-        Serial.printf("[BLE] Connection failed (error: %d, failures: %d)\n", lastErr, consecutiveConnectFailures + 1);
+        Serial.printf("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
         
         consecutiveConnectFailures++;
         
-        // Check if we need a hard reset of the BLE stack
         if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
             hardResetBLEClient();
             return false;
         }
-        
-        cleanupConnection();
         
         // Calculate exponential backoff
         int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
@@ -585,16 +665,30 @@ bool V1BLEClient::connectToServer() {
         if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
         nextConnectAllowedMs = millis() + backoffMs;
         
-        cleanupConnection();
         connectInProgress = false;
+        connectStartMs = 0;
         setBLEState(BLEState::BACKOFF, "connection failed");
         return false;
     }
     
+    // Success! Now finish connection setup
+    Serial.println("[BLE] Connected! Setting up characteristics...");
+    return finishConnection();
+}
+
+// Called from onConnect callback to finish connection setup
+bool V1BLEClient::finishConnection() {
+    Serial.println("[BLE] Connection established, setting up characteristics...");
+    
     // Success!
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = 0;
-    Serial.println("[BLE] Connected! Setting up...");
+    
+    // Note: WiFi management is handled by wifiManager - don't touch WiFi state here
+    // Previously had WiFi.mode(WIFI_AP) here which incorrectly started WiFi on BLE connect
+
+    // Log the negotiated connection parameters (interval units = 1.25ms, timeout units = 10ms)
+    logConnParams("post-connect");
     
     // NimBLE 2.x requires explicit service discovery
     int maxRetries = 3;
@@ -624,6 +718,20 @@ bool V1BLEClient::connectToServer() {
     return connected;
 }
 
+void V1BLEClient::logConnParams(const char* tag) {
+    if (!pClient) {
+        return;
+    }
+
+    NimBLEConnInfo info = pClient->getConnInfo();
+    float intervalMs = info.getConnInterval() * 1.25f;
+
+    Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\n",
+                  tag ? tag : "n/a",
+                  intervalMs,
+                  info.getConnLatency());
+}
+
 bool V1BLEClient::setupCharacteristics() {
     pRemoteService = pClient->getService(V1_SERVICE_UUID);
     if (!pRemoteService) {
@@ -638,12 +746,6 @@ bool V1BLEClient::setupCharacteristics() {
     auto& chars = pRemoteService->getCharacteristics(true);
     if (!chars.empty()) {
         Serial.printf("Found %u characteristics on V1 service\n", (unsigned)chars.size());
-        for (auto* c : chars) {
-            auto uuid = c->getUUID().toString();
-            Serial.printf("Char %s props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                          uuid.c_str(), c->canNotify(), c->canIndicate(),
-                          c->canRead(), c->canWrite(), c->canWriteNoResponse());
-        }
     } else {
         Serial.println("No characteristics found on V1 service");
     }
@@ -657,9 +759,6 @@ bool V1BLEClient::setupCharacteristics() {
         connected = false;
         return false;
     }
-    Serial.printf("DisplayChar props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                  pDisplayDataChar->canNotify(), pDisplayDataChar->canIndicate(),
-                  pDisplayDataChar->canRead(), pDisplayDataChar->canWrite(), pDisplayDataChar->canWriteNoResponse());
     
     // Get command characteristic (write)
     pCommandChar = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_UUID);
@@ -697,9 +796,6 @@ bool V1BLEClient::setupCharacteristics() {
         connected = false;
         return false;
     }
-    Serial.printf("CommandChar props: notify=%d indicate=%d read=%d write=%d writeNR=%d\n",
-                  pCommandChar->canNotify(), pCommandChar->canIndicate(),
-                  pCommandChar->canRead(), pCommandChar->canWrite(), pCommandChar->canWriteNoResponse());
     
     // Subscribe to notifications (main display data characteristic only)
     // Following Kenny's approach: only subscribe to B2CE for alert data
@@ -787,16 +883,11 @@ bool V1BLEClient::setupCharacteristics() {
         connectCallback();
     }
     
-    // Wait for V1 connection to fully stabilize before starting proxy advertising
-    // This allows time for:
-    // - Initial data exchange with V1
-    // - Profile push to complete
-    // - Subscriptions to settle
-    // - Connection parameters to negotiate
-    // NON-BLOCKING: Schedule advertising start in process() instead of blocking here
+    // Schedule proxy advertising start - server already exists from initBLE()
+    // Just need to start advertising now that V1 is connected
     if (proxyEnabled && proxyServerInitialized) {
         Serial.println("Scheduling proxy advertising start (non-blocking)...");
-        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;  // Deferred start
+        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
     }
 
     return connected;
@@ -845,6 +936,14 @@ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
         //Serial.println("sendCommand: not connected or command characteristic missing");
         return false;
     }
+
+    // Light pacing between command writes to avoid bursty air-time spikes (profile/settings push)
+    static unsigned long lastCommandMs = 0;
+    unsigned long nowMs = millis();
+    if (lastCommandMs != 0 && nowMs - lastCommandMs < 5) {
+        vTaskDelay(pdMS_TO_TICKS(5 - (nowMs - lastCommandMs)));
+    }
+    lastCommandMs = millis();
     
     // Validate inputs
     if (!data) {
@@ -898,7 +997,7 @@ bool V1BLEClient::requestAlertData() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting alert data from V1...");
+    BLE_LOGLN("Requesting alert data from V1...");
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -915,7 +1014,7 @@ bool V1BLEClient::requestVersion() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting version info from V1...");
+    BLE_LOGLN("Requesting version info from V1...");
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -1056,7 +1155,7 @@ bool V1BLEClient::requestUserBytes() {
 
     packet[5] = calcV1Checksum(packet, 5);
 
-    Serial.println("Requesting V1 user bytes...");
+    BLE_LOGLN("Requesting V1 user bytes...");
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -1207,7 +1306,13 @@ void V1BLEClient::process() {
             }
             
             // Check if settle time has elapsed
-            if (elapsed >= SCAN_STOP_SETTLE_MS) {
+            // Use longer settle on first scan after boot (radio is "cold")
+            unsigned long settleTime = firstScanAfterBoot ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
+            if (elapsed >= settleTime) {
+                if (firstScanAfterBoot) {
+                    Serial.println("[BLE] First scan settle complete (extended)");
+                    firstScanAfterBoot = false;
+                }
                 resultsCleared = false;  // Reset for next time
                 // Ready to connect
                 bool wantConnect = false;
@@ -1229,8 +1334,15 @@ void V1BLEClient::process() {
         }
         
         case BLEState::CONNECTING: {
-            // Connection in progress - just wait for callbacks
-            // onConnect/onDisconnect will update state
+            // Sync connection in progress - connectToServer() handles this
+            // This state should be brief as sync connect blocks
+            // If we're stuck here for too long, something is wrong
+            if (connectStartMs > 0 && (now - connectStartMs) > 30000) {
+                Serial.println("[BLE] Connect state stuck for 30s - resetting");
+                connectInProgress = false;
+                connectStartMs = 0;
+                setBLEState(BLEState::DISCONNECTED, "connect state timeout");
+            }
             break;
         }
         
@@ -1387,6 +1499,9 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
     
+    // Proxy command logging disabled - we confirmed JBV1 uses standard mute (0x34/0x35)
+    // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
+    
     // Route to appropriate V1 characteristic based on source
     // B6D4 (SHORT) -> V1 B6D4
     // B8D2 (LONG) -> V1 B8D2 (for commands like voltage request)
@@ -1479,14 +1594,20 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pAdvertising->setAdvertisementData(advData);
     pAdvertising->setScanResponseData(scanRespData);
     
-    // CRITICAL: Kenny's pattern - start then immediately stop if not connected
-    // This initializes the advertising stack properly
+    // Kenny's pattern: Start advertising then immediately stop
+    // This initializes the advertising stack and ensures clean state
+    // Without this, the advertising state may be undefined when scanning starts
     pAdvertising->start();
-    if (!connected) {
-        NimBLEDevice::stopAdvertising();
-    }
+    delay(50);  // Brief settle time
+    NimBLEDevice::stopAdvertising();
+    delay(50);
     
     Serial.println("Proxy service created with 6 characteristics (full V1 API)");
+}
+
+bool V1BLEClient::isProxyAdvertising() const {
+    return proxyEnabled && proxyServerInitialized && 
+           NimBLEDevice::getAdvertising()->isAdvertising();
 }
 
 void V1BLEClient::startProxyAdvertising() {
@@ -1567,11 +1688,12 @@ void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, ui
         targetChar = pProxyNotifyChar;
     }
     
-    // PERF: Use combined notify(data, len) - single BLE operation instead of setValue + notify
+    // Try immediate notify; if it fails (stack busy), fall back to queue so we don't drop
     if (targetChar && targetChar->notify(data, length)) {
         proxyMetrics.sendCount++;
     } else if (targetChar) {
         proxyMetrics.errorCount++;
+        forwardToProxy(data, length, sourceCharUUID);  // enqueue for retry on main loop
     }
 }
 
@@ -1585,11 +1707,16 @@ int V1BLEClient::processProxyQueue() {
     // Process all queued packets (typically 1-2)
     while (proxyQueueCount > 0) {
         ProxyPacket& pkt = proxyQueue[proxyQueueTail];
-        
-        // Send notification
-        if (pProxyNotifyChar) {
-            pProxyNotifyChar->setValue(pkt.data, pkt.length);
-            if (pProxyNotifyChar->notify()) {
+
+        NimBLECharacteristic* targetChar = nullptr;
+        if (pkt.charUUID == 0xB4E0 && pProxyNotifyLongChar) {
+            targetChar = pProxyNotifyLongChar;
+        } else if (pProxyNotifyChar) {
+            targetChar = pProxyNotifyChar;
+        }
+
+        if (targetChar) {
+            if (targetChar->notify(pkt.data, pkt.length)) {
                 proxyMetrics.sendCount++;
                 sent++;
             } else {
@@ -1602,56 +1729,4 @@ int V1BLEClient::processProxyQueue() {
     }
     
     return sent;
-}
-
-// Attempt a fast reconnect to a known address before scanning
-bool V1BLEClient::fastReconnect() {
-    // Check if we have a previously known address by comparing to a default (zeroed) address
-    if (targetAddress == NimBLEAddress()) {
-        return false;
-    }
-    
-    // Guard: Don't attempt if already connecting or connected
-    if (bleState == BLEState::CONNECTING || bleState == BLEState::CONNECTED) {
-        return false;
-    }
-    
-    // Stop any active scan first
-    NimBLEScan* pScan = NimBLEDevice::getScan();
-    if (pScan->isScanning()) {
-        pScan->stop();
-        vTaskDelay(pdMS_TO_TICKS(SCAN_STOP_SETTLE_MS));
-    }
-
-    Serial.printf("[BLE] Fast reconnect to %s\n", targetAddress.toString().c_str());
-    hasTargetDevice = false;  // Ensure we connect by address only (not by advertised device)
-    
-    // Set state to DISCONNECTED so connectToServer() can proceed
-    setBLEState(BLEState::DISCONNECTED, "fast reconnect prep");
-    
-    // Try to connect directly - connectToServer will handle state transitions
-    bool result = connectToServer();
-    
-    // Clear shouldConnect flag regardless of result
-    {
-        SemaphoreGuard lock(bleMutex);
-        if (lock.locked()) {
-            shouldConnect = false;
-        }
-    }
-    
-    if (!result && bleState != BLEState::BACKOFF) {
-        // Reset to DISCONNECTED so process() can start scanning
-        setBLEState(BLEState::DISCONNECTED, "fast reconnect failed");
-    }
-    
-    return result;
-}
-
-void V1BLEClient::setTargetAddress(const NimBLEAddress& address) {
-    // Check if address is valid (not all zeros)
-    if (address != NimBLEAddress()) {
-        targetAddress = address;
-        Serial.printf("[BLE] Set target address for fast reconnect: %s\n", targetAddress.toString().c_str());
-    }
 }

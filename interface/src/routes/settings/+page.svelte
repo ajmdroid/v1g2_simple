@@ -1,15 +1,12 @@
 <script>
 	import { onMount } from 'svelte';
 	
-	let settings = $state({
-		ssid: '',
-		password: '',
-		ap_ssid: '',
-		ap_password: '',
-		wifi_mode: 2,
-		proxy_ble: true,
-		proxy_name: 'V1C-LE-S3'
-	});
+    let settings = $state({
+        ap_ssid: '',
+        ap_password: '',
+        proxy_ble: true,
+        proxy_name: 'V1C-LE-S3'
+    });
 	
 	let loading = $state(true);
 	let saving = $state(false);
@@ -39,13 +36,10 @@
 		
 		try {
 			const formData = new FormData();
-			formData.append('ssid', settings.ssid);
-			formData.append('password', settings.password);
 			formData.append('ap_ssid', settings.ap_ssid);
 			formData.append('ap_password', settings.ap_password);
-			formData.append('wifi_mode', settings.wifi_mode);
 			formData.append('proxy_ble', settings.proxy_ble);
-			formData.append('proxy_name', settings.proxy_name);
+            formData.append('proxy_name', settings.proxy_name);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -64,19 +58,7 @@
 		}
 	}
 	
-	async function scanNetworks() {
-		message = { type: 'info', text: 'Scanning for networks...' };
-		try {
-			const res = await fetch('/api/scan');
-			if (res.ok) {
-				const data = await res.json();
-				// Could populate a dropdown here
-				message = { type: 'success', text: `Found ${data.networks?.length || 0} networks` };
-			}
-		} catch (e) {
-			message = { type: 'error', text: 'Scan failed' };
-		}
-	}
+	// AP-only UI; STA/scan removed by design
 </script>
 
 <div class="space-y-6">
@@ -93,49 +75,11 @@
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else}
-		<!-- WiFi Station Settings -->
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<h2 class="card-title">📶 WiFi Network</h2>
-				<p class="text-sm text-base-content/60">Connect to your home/car WiFi network</p>
-				
-				<div class="form-control">
-					<label class="label" for="wifi-ssid">
-						<span class="label-text">Network Name (SSID)</span>
-					</label>
-					<input 
-						id="wifi-ssid"
-						type="text" 
-						class="input input-bordered" 
-						bind:value={settings.ssid}
-						placeholder="Your WiFi network"
-					/>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="wifi-password">
-						<span class="label-text">Password</span>
-					</label>
-					<input 
-						id="wifi-password"
-						type="password" 
-						class="input input-bordered" 
-						bind:value={settings.password}
-						placeholder="WiFi password"
-					/>
-				</div>
-				
-				<button class="btn btn-outline btn-sm mt-2" onclick={scanNetworks}>
-					🔍 Scan Networks
-				</button>
-			</div>
-		</div>
-		
 		<!-- AP Settings -->
 		<div class="card bg-base-200">
 			<div class="card-body">
-				<h2 class="card-title">📡 Access Point</h2>
-				<p class="text-sm text-base-content/60">The WiFi network this device broadcasts</p>
+				<h2 class="card-title">📡 Access Point (AP-only)</h2>
+				<p class="text-sm text-base-content/60">Device always hosts its own hotspot; station mode is intentionally disabled.</p>
 				
 				<div class="form-control">
 					<label class="label" for="ap-ssid">
@@ -165,32 +109,6 @@
 			</div>
 		</div>
 		
-		<!-- WiFi Mode -->
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<h2 class="card-title">🔧 WiFi Mode</h2>
-				
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<span class="label-text">AP Only (creates hotspot)</span>
-						<input type="radio" name="wifi_mode" class="radio" value={0} bind:group={settings.wifi_mode} />
-					</label>
-				</div>
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<span class="label-text">Station Only (connects to network)</span>
-						<input type="radio" name="wifi_mode" class="radio" value={1} bind:group={settings.wifi_mode} />
-					</label>
-				</div>
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<span class="label-text">AP + Station (recommended)</span>
-						<input type="radio" name="wifi_mode" class="radio" value={2} bind:group={settings.wifi_mode} />
-					</label>
-				</div>
-			</div>
-		</div>
-
 		<!-- BLE Proxy -->
 		<div class="card bg-base-200">
 			<div class="card-body space-y-4">

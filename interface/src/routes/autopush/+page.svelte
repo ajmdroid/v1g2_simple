@@ -35,7 +35,8 @@
 				// Normalize defaults for new fields
 				loaded.slots = (loaded.slots || []).map((s) => ({
 					...s,
-					alertPersist: s.alertPersist ?? 0
+					alertPersist: s.alertPersist ?? 0,
+					priorityArrowOnly: s.priorityArrowOnly ?? false
 				}));
 				data = loaded;
 			}
@@ -119,6 +120,7 @@
 			formData.append('darkMode', s.darkMode ? 'true' : 'false');
 			formData.append('muteToZero', s.muteToZero ? 'true' : 'false');
 			formData.append('alertPersist', persist);
+			formData.append('priorityArrowOnly', s.priorityArrowOnly ? 'true' : 'false');
 			
 			const res = await fetch('/api/autopush/slot', {
 				method: 'POST',
@@ -270,6 +272,12 @@
 									</label>
 								</div>
 								<div class="form-control">
+									<label class="label cursor-pointer justify-start gap-3 py-1">
+										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.priorityArrowOnly} />
+										<span class="label-text text-xs">Priority Arrow Only</span>
+									</label>
+								</div>
+								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-persist`}>
 										<span class="label-text text-xs">Alert persistence (seconds)</span>
 										<span class="label-text-alt text-[10px] text-base-content/60">0 = off, max 5s</span>
@@ -309,10 +317,12 @@
 									{#if slot.darkMode}🌙 Dark{/if}
 									{#if slot.darkMode && slot.muteToZero} · {/if}
 									{#if slot.muteToZero}🔇 MZ{/if}
-									{#if !slot.darkMode && !slot.muteToZero}—{/if}
+									{#if (slot.darkMode || slot.muteToZero) && slot.priorityArrowOnly} · {/if}
+									{#if slot.priorityArrowOnly}↑ Prio Arrow{/if}
+									{#if !slot.darkMode && !slot.muteToZero && !slot.priorityArrowOnly}—{/if}
 								</div>
 								<div class="text-base-content/60">Alert persistence:</div>
-								<div class="font-medium">{slot.alertPersist || 0}s ghost</div>
+								<div class="font-medium">{slot.alertPersist || 0}s</div>
 							</div>
 						{/if}
 						

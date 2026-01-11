@@ -44,7 +44,8 @@ struct AlertData {
 // Display state
 struct DisplayState {
     uint8_t activeBands;    // Bitmap of active bands
-    Direction arrows;       // Bitmap of arrow directions
+    Direction arrows;       // Bitmap of arrow directions (from display packet - all active)
+    Direction priorityArrow; // Arrow from priority (strongest) alert only
     uint8_t signalBars;     // 0-6 signal strength (V1 Gen2)
     bool muted;
     bool systemTest;
@@ -52,10 +53,12 @@ struct DisplayState {
     bool hasMode;
     bool displayOn;         // True if main display is ON (not dark)
     bool hasDisplayOn;      // True if we've seen explicit on/off ack
+    uint8_t flashBits;      // Blink state for arrows (from display packet)
     
-    DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), 
+    DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
-                     modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false) {}
+                     modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
+                     flashBits(0) {}
 };
 
 class PacketParser {
@@ -80,15 +83,20 @@ public:
     size_t getAlertCount() const { return alertCount; }
 
     // Check if there are active alerts
-    // Check both alertCount AND displayState.activeBands to handle timing gaps
-    // between alert data packets and display data packets
-    bool hasAlerts() const { return alertCount > 0 || displayState.activeBands != BAND_NONE; }
+    // Only check alertCount - display state can lag behind
+    bool hasAlerts() const { return alertCount > 0; }
+
+    // Clear any partially assembled alert chunks (used when we re-request alert data)
+    void resetAlertAssembly();
+    
+    // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
+    static void resetPriorityState();
 
 private:
     DisplayState displayState;
     std::array<AlertData, MAX_ALERTS> alerts;
     size_t alertCount;
-    std::array<std::array<uint8_t, 7>, MAX_ALERTS> alertChunks;
+    std::array<std::array<uint8_t, 8>, MAX_ALERTS> alertChunks;  // full 8-byte alert rows
     size_t chunkCount;
     
     // Packet parsing helpers

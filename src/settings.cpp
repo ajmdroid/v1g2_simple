@@ -64,57 +64,26 @@ void SettingsManager::load() {
     int storedVersion = preferences.getInt("settingsVer", 1);
     
     settings.enableWifi = preferences.getBool("enableWifi", true);
-    settings.wifiMode = static_cast<WiFiModeSetting>(preferences.getInt("wifiMode", V1_WIFI_AP));
-    settings.ssid = preferences.getString("ssid", "");
+    settings.wifiMode = V1_WIFI_AP;  // Always AP-only mode
     
-    // Handle password storage - version 1 was plain text, version 2+ is obfuscated
-    String storedPwd = preferences.getString("password", "");
+    // Handle AP password storage - version 1 was plain text, version 2+ is obfuscated
     String storedApPwd = preferences.getString("apPassword", "");
     
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode them
-        settings.password = storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
         settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "setupv1g2";
     } else {
         // Version 1 - passwords stored in plain text, use as-is
-        settings.password = storedPwd;
         settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "setupv1g2";
         Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
     
     settings.apSSID = preferences.getString("apSSID", "V1-Simple");
     
-    // Load multiple WiFi networks
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        String ssidKey = "wifiSSID" + String(i);
-        String pwdKey = "wifiPwd" + String(i);
-        String storedNetPwd = preferences.getString(pwdKey.c_str(), "");
-        settings.wifiNetworks[i].ssid = preferences.getString(ssidKey.c_str(), "");
-        if (storedVersion >= 2) {
-            settings.wifiNetworks[i].password = storedNetPwd.length() > 0 ? xorObfuscate(storedNetPwd) : "";
-        } else {
-            settings.wifiNetworks[i].password = storedNetPwd;
-        }
-        Serial.printf("[Settings] Network[%d]: SSID='%s' (len=%d), PWD len=%d\n", 
-                      i, settings.wifiNetworks[i].ssid.c_str(), 
-                      settings.wifiNetworks[i].ssid.length(),
-                      settings.wifiNetworks[i].password.length());
-    }
-    
-    // Legacy migration: check if there's an old staSSID stored in preferences but wifiNetworks[0] is empty
-    String legacyStaSSID = preferences.getString("staSSID", "");
-    String legacyStaPwd = preferences.getString("staPassword", "");
-    if (!settings.wifiNetworks[0].isValid() && legacyStaSSID.length() > 0) {
-        settings.wifiNetworks[0].ssid = legacyStaSSID;
-        settings.wifiNetworks[0].password = storedVersion >= 2 && legacyStaPwd.length() > 0 ? xorObfuscate(legacyStaPwd) : legacyStaPwd;
-        Serial.println("[Settings] Migrated legacy staSSID to wifiNetworks[0]");
-    }
-    
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = preferences.getUChar("brightness", 200);
-    settings.colorTheme = static_cast<ColorTheme>(preferences.getInt("colorTheme", THEME_STANDARD));
     settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
@@ -134,11 +103,13 @@ void SettingsManager::load() {
     settings.colorBar4 = preferences.getUShort("colorBar4", 0xFFE0);
     settings.colorBar5 = preferences.getUShort("colorBar5", 0xF800);
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
+    settings.colorMuted = preferences.getUShort("colorMuted", 0x3186);  // Dark grey muted color
+    settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
+    settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
-    settings.enableMultiAlert = preferences.getBool("multiAlert", true);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -165,6 +136,9 @@ void SettingsManager::load() {
     settings.slot0AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot0persist", 0));
     settings.slot1AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot1persist", 0));
     settings.slot2AlertPersist = std::min<uint8_t>(5, preferences.getUChar("slot2persist", 0));
+    settings.slot0PriorityArrow = preferences.getBool("slot0prio", false);
+    settings.slot1PriorityArrow = preferences.getBool("slot1prio", false);
+    settings.slot2PriorityArrow = preferences.getBool("slot2prio", false);
     settings.slot0_default.profileName = preferences.getString("slot0prof", "");
     settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
     settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
@@ -177,19 +151,11 @@ void SettingsManager::load() {
     
     Serial.println("Settings loaded:");
     Serial.printf("  WiFi enabled: %s\n", settings.enableWifi ? "yes" : "no");
-    Serial.printf("  WiFi mode: %d\n", settings.wifiMode);
-    Serial.printf("  SSID: %s\n", settings.ssid.c_str());
     Serial.printf("  AP SSID: %s\n", settings.apSSID.c_str());
     // Note: Passwords not logged for security
-    int validNetworks = 0;
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        if (settings.wifiNetworks[i].isValid()) validNetworks++;
-    }
-    Serial.printf("  WiFi networks: %d configured\n", validNetworks);
     Serial.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
     Serial.printf("  Proxy name: %s\n", settings.proxyName.c_str());
     Serial.printf("  Brightness: %d\n", settings.brightness);
-    Serial.printf("  Color theme: %d\n", settings.colorTheme);
     Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
     Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no", settings.slot0AlertPersist);
     Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no", settings.slot1AlertPersist);
@@ -197,9 +163,6 @@ void SettingsManager::load() {
 }
 
 void SettingsManager::save() {
-    Serial.println("=== SettingsManager::save() starting ===");
-    Serial.printf("  About to save - brightness: %d, wifiMode: %d\n", settings.brightness, settings.wifiMode);
-    
     if (!preferences.begin("v1settings", false)) {  // Read-write mode
         Serial.println("ERROR: Failed to open preferences for writing!");
         return;
@@ -210,25 +173,14 @@ void SettingsManager::save() {
     written += preferences.putInt("settingsVer", SETTINGS_VERSION);
     written += preferences.putBool("enableWifi", settings.enableWifi);
     written += preferences.putInt("wifiMode", settings.wifiMode);
-    written += preferences.putString("ssid", settings.ssid);
-    // Obfuscate passwords before storing
-    written += preferences.putString("password", xorObfuscate(settings.password));
     written += preferences.putString("apSSID", settings.apSSID);
+    // Obfuscate passwords before storing
     written += preferences.putString("apPassword", xorObfuscate(settings.apPassword));
-    
-    // Save multiple WiFi networks
-    for (int i = 0; i < MAX_WIFI_NETWORKS; i++) {
-        String ssidKey = "wifiSSID" + String(i);
-        String pwdKey = "wifiPwd" + String(i);
-        written += preferences.putString(ssidKey.c_str(), settings.wifiNetworks[i].ssid);
-        written += preferences.putString(pwdKey.c_str(), xorObfuscate(settings.wifiNetworks[i].password));
-    }
     
     written += preferences.putBool("proxyBLE", settings.proxyBLE);
     written += preferences.putString("proxyName", settings.proxyName);
     written += preferences.putBool("displayOff", settings.turnOffDisplay);
     written += preferences.putUChar("brightness", settings.brightness);
-    written += preferences.putInt("colorTheme", settings.colorTheme);
     written += preferences.putInt("dispStyle", settings.displayStyle);
     written += preferences.putUShort("colorBogey", settings.colorBogey);
     written += preferences.putUShort("colorFreq", settings.colorFrequency);
@@ -248,11 +200,13 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBar4", settings.colorBar4);
     written += preferences.putUShort("colorBar5", settings.colorBar5);
     written += preferences.putUShort("colorBar6", settings.colorBar6);
+    written += preferences.putUShort("colorMuted", settings.colorMuted);
+    written += preferences.putUShort("colorPersist", settings.colorPersisted);
+    written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
-    written += preferences.putBool("multiAlert", settings.enableMultiAlert);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -276,7 +230,9 @@ void SettingsManager::save() {
     written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
     written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
     written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
-    Serial.printf("  [Save] slot0: darkMode=%s MZ=%s\n", settings.slot0DarkMode ? "true" : "false", settings.slot0MuteToZero ? "true" : "false");
+    written += preferences.putBool("slot0prio", settings.slot0PriorityArrow);
+    written += preferences.putBool("slot1prio", settings.slot1PriorityArrow);
+    written += preferences.putBool("slot2prio", settings.slot2PriorityArrow);
     written += preferences.putString("slot0prof", settings.slot0_default.profileName);
     written += preferences.putInt("slot0mode", settings.slot0_default.mode);
     written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
@@ -287,14 +243,7 @@ void SettingsManager::save() {
     
     preferences.end();
     
-    Serial.printf("Settings saved, bytes written: %d\n", written);
-    
-    // Verify by re-reading
-    preferences.begin("v1settings", true);
-    int verifyBrightness = preferences.getUChar("brightness", 0);
-    int verifyMode = preferences.getInt("wifiMode", -1);
-    preferences.end();
-    Serial.printf("  Verify read-back - brightness: %d, wifiMode: %d\n", verifyBrightness, verifyMode);
+    Serial.printf("Settings saved (%d bytes)\n", written);
     
     // Backup display settings to SD card (survives reflash)
     backupToSD();
@@ -302,17 +251,6 @@ void SettingsManager::save() {
 
 void SettingsManager::setWiFiEnabled(bool enabled) {
     settings.enableWifi = enabled;
-    save();
-}
-
-void SettingsManager::setWiFiMode(WiFiModeSetting mode) {
-    settings.wifiMode = mode;
-    save();
-}
-
-void SettingsManager::setWiFiCredentials(const String& ssid, const String& password) {
-    settings.ssid = ssid;
-    settings.password = password;
     save();
 }
 
@@ -339,11 +277,6 @@ void SettingsManager::setBrightness(uint8_t brightness) {
 
 void SettingsManager::setDisplayOff(bool off) {
     settings.turnOffDisplay = off;
-    save();
-}
-
-void SettingsManager::setColorTheme(ColorTheme theme) {
-    settings.colorTheme = theme;
     save();
 }
 
@@ -444,6 +377,21 @@ void SettingsManager::setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t 
     save();
 }
 
+void SettingsManager::setMutedColor(uint16_t color) {
+    settings.colorMuted = color;
+    save();
+}
+
+void SettingsManager::setPersistedColor(uint16_t color) {
+    settings.colorPersisted = color;
+    save();
+}
+
+void SettingsManager::setFreqUseBandColor(bool use) {
+    settings.freqUseBandColor = use;
+    save();
+}
+
 void SettingsManager::setHideWifiIcon(bool hide) {
     settings.hideWifiIcon = hide;
     save();
@@ -461,11 +409,6 @@ void SettingsManager::setHideBatteryIcon(bool hide) {
 
 void SettingsManager::setHideBleIcon(bool hide) {
     settings.hideBleIcon = hide;
-    save();
-}
-
-void SettingsManager::setEnableMultiAlert(bool enable) {
-    settings.enableMultiAlert = enable;
     save();
 }
 
@@ -559,6 +502,24 @@ void SettingsManager::setSlotAlertPersistSec(int slotNum, uint8_t seconds) {
     save();
 }
 
+bool SettingsManager::getSlotPriorityArrowOnly(int slotNum) const {
+    switch (slotNum) {
+        case 0: return settings.slot0PriorityArrow;
+        case 1: return settings.slot1PriorityArrow;
+        case 2: return settings.slot2PriorityArrow;
+        default: return false;
+    }
+}
+
+void SettingsManager::setSlotPriorityArrowOnly(int slotNum, bool prioArrow) {
+    switch (slotNum) {
+        case 0: settings.slot0PriorityArrow = prioArrow; break;
+        case 1: settings.slot1PriorityArrow = prioArrow; break;
+        case 2: settings.slot2PriorityArrow = prioArrow; break;
+    }
+    save();
+}
+
 void SettingsManager::resetToDefaults() {
     settings = V1Settings();  // Reset to defaults
     save();
@@ -601,7 +562,6 @@ void SettingsManager::backupToSD() {
     // Display settings
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
-    doc["colorTheme"] = static_cast<int>(settings.colorTheme);
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     
     // All colors (RGB565)
@@ -684,7 +644,6 @@ bool SettingsManager::restoreFromSD() {
     // Restore display settings (using is<T>() for ArduinoJson v7 compatibility)
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
-    if (doc["colorTheme"].is<int>()) settings.colorTheme = static_cast<ColorTheme>(doc["colorTheme"].as<int>());
     if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
     
     // Restore all colors
@@ -725,7 +684,6 @@ bool SettingsManager::restoreFromSD() {
     preferences.begin("v1settings", false);
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
-    preferences.putInt("colorTheme", settings.colorTheme);
     preferences.putInt("dispStyle", settings.displayStyle);
     preferences.putUShort("colorBogey", settings.colorBogey);
     preferences.putUShort("colorFreq", settings.colorFrequency);
