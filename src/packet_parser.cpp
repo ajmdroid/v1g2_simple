@@ -117,16 +117,11 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     BandArrowData arrow = processBandArrow(payload[3]);
     decodeMode(payload, length);
     
-    // Flash detection from image1 (payload[3]) and image2 (payload[4])
-    // Arrow flashes when: image1 bit is SET (on) AND image2 bit is CLEAR (flashing)
-    // flashBits = arrows that are ON in image1 but have image2=0 (flashing)
-    if (length > 4) {
-        uint8_t image1 = payload[3];  // ON bits
-        uint8_t image2 = payload[4];  // NOT-flashing bits (0 = flashing)
-        uint8_t flashingBits = image1 & ~image2;  // Bits that are ON and flashing
-        displayState.flashBits = flashingBits & 0xE0;      // Arrow bits (5,6,7)
-        displayState.bandFlashBits = flashingBits & 0x0F;  // Band bits (0-3: L,Ka,K,X)
-    }
+    // V1 is source of truth - just use image1 directly
+    // When V1 blinks, image1 bits toggle on/off - we follow that
+    // No local timers or sustain logic needed
+    displayState.flashBits = 0;      // Not used - V1 handles blinking via image1
+    displayState.bandFlashBits = 0;  // Not used - V1 handles blinking via image1
 
     displayState.activeBands = BAND_NONE;
     if (arrow.laser) displayState.activeBands |= BAND_LASER;
