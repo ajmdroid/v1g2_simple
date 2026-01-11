@@ -123,7 +123,9 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     if (length > 4) {
         uint8_t image1 = payload[3];  // ON bits
         uint8_t image2 = payload[4];  // NOT-flashing bits (0 = flashing)
-        displayState.flashBits = (image1 & ~image2) & 0xE0;  // Only arrow bits (5,6,7)
+        uint8_t flashingBits = image1 & ~image2;  // Bits that are ON and flashing
+        displayState.flashBits = flashingBits & 0xE0;      // Arrow bits (5,6,7)
+        displayState.bandFlashBits = flashingBits & 0x0F;  // Band bits (0-3: L,Ka,K,X)
     }
 
     displayState.activeBands = BAND_NONE;

@@ -1973,7 +1973,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
     drawFrequency(priority.frequency, priority.band, state.muted);
-    drawBandIndicators(bandMask, state.muted);
+    drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
     
     // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
@@ -2359,7 +2359,17 @@ void V1Display::drawBandBadge(Band band) {
     GFX_drawString(tft, txt, bx + bw/2, by + bh/2 + 1);
 }
 
-void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
+void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
+    // Blink timer for flashing bands (~4Hz like real V1)
+    // Share timing with arrow blink for visual consistency
+    static unsigned long lastBlinkMs = 0;
+    static bool blinkOn = true;
+    unsigned long now = millis();
+    if (now - lastBlinkMs > 125) {  // ~4Hz blink rate (125ms on/off)
+        blinkOn = !blinkOn;
+        lastBlinkMs = now;
+    }
+    
     // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
 #if defined(DISPLAY_WAVESHARE_349)
     const int x = 82;
@@ -2378,11 +2388,12 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
         const char* label;
         uint8_t mask;
         uint16_t color;
+        uint8_t flashMask;  // Which bit in bandFlashBits triggers flashing
     } cells[4] = {
-        {"L",  BAND_LASER, s.colorBandL},
-        {"Ka", BAND_KA,   s.colorBandKa},
-        {"K",  BAND_K,    s.colorBandK},
-        {"X",  BAND_X,    s.colorBandX}
+        {"L",  BAND_LASER, s.colorBandL,  0x01},  // bit 0 = L (Laser)
+        {"Ka", BAND_KA,    s.colorBandKa, 0x02},  // bit 1 = Ka
+        {"K",  BAND_K,     s.colorBandK,  0x04},  // bit 2 = K
+        {"X",  BAND_X,     s.colorBandX,  0x08}   // bit 3 = X
     };
 
     // Use 24pt font for crisp band labels (no scaling)
@@ -2391,7 +2402,10 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted) {
     GFX_setTextDatum(ML_DATUM);
     
     for (int i = 0; i < 4; ++i) {
-        bool active = (bandMask & cells[i].mask) != 0;
+        bool isOn = (bandMask & cells[i].mask) != 0;
+        bool isFlashing = (bandFlashBits & cells[i].flashMask) != 0;
+        // Band shows if: band bit is ON AND (not flashing OR blink phase is on)
+        bool active = isOn && (!isFlashing || blinkOn);
         uint16_t col = active ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
