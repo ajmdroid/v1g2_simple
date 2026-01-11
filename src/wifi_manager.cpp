@@ -1271,6 +1271,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideBleIcon")) {
         settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
     }
+    if (server.hasArg("hideVolumeIndicator")) {
+        settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1336,6 +1339,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
+    doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     
     String json;
     serializeJson(doc, json);

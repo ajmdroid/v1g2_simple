@@ -103,6 +103,7 @@ struct V1Settings {
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
+    bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -171,6 +172,7 @@ struct V1Settings {
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
+        hideVolumeIndicator(false), // Show volume indicator by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -240,6 +242,7 @@ public:
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
+    void setHideVolumeIndicator(bool hide);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

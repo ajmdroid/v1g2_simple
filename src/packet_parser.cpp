@@ -87,9 +87,42 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
         case PACKET_ID_MUTE_OFF:            // 0x35 - ACK for mute off
         case 0x36:                          // ACK for mode change (reqChangeMode)
         case PACKET_ID_REQ_WRITE_VOLUME:    // 0x39 - ACK for volume change
-        case PACKET_ID_VERSION:             // 0x01 - Version response
         case PACKET_ID_RESP_USER_BYTES:     // 0x12 - User bytes response
             return true;  // Acknowledged, no further processing needed
+        
+        case PACKET_ID_VERSION: {           // 0x01 - Version response
+            // Parse V1 firmware version from response
+            // Payload format: [versionID][major][minor][rev1][rev2][ctrl]
+            // versionID 'V' = main firmware version
+            // Example: V 4 1 0 2 8 = version 4.1028
+            if (length >= 12) {  // Full packet with 7-byte payload
+                const uint8_t* payload = data + 5;
+                char versionID = (char)payload[1];
+                if (versionID == 'V') {
+                    // Convert ASCII digits to integer version
+                    // e.g., "4.1028" becomes 41028
+                    char major = (char)payload[2];
+                    char minor = (char)payload[3];
+                    char rev1 = (char)payload[4];
+                    char rev2 = (char)payload[5];
+                    char ctrl = (char)payload[6];
+                    
+                    // Build version number: major * 10000 + minor * 1000 + rev1 * 100 + rev2 * 10 + ctrl
+                    uint32_t version = 0;
+                    if (major >= '0' && major <= '9') version += (major - '0') * 10000;
+                    if (minor >= '0' && minor <= '9') version += (minor - '0') * 1000;
+                    if (rev1 >= '0' && rev1 <= '9') version += (rev1 - '0') * 100;
+                    if (rev2 >= '0' && rev2 <= '9') version += (rev2 - '0') * 10;
+                    if (ctrl >= '0' && ctrl <= '9') version += (ctrl - '0');
+                    
+                    displayState.v1FirmwareVersion = version;
+                    displayState.hasV1Version = true;
+                    Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\\n",
+                                  major, minor, rev1, rev2, ctrl, version);
+                }
+            }
+            return true;
+        }
             
         default:
             // Unknown packet - silently ignore in hot path
@@ -158,6 +191,7 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         uint8_t auxData2 = payload[7];
         displayState.mainVolume = (auxData2 & 0xF0) >> 4;
         displayState.muteVolume = auxData2 & 0x0F;
+        displayState.hasVolumeData = true;  // Mark that we've received volume data
         
         // Consider muted if mute flag is set OR if main volume is zero
         if (displayState.mainVolume == 0) {

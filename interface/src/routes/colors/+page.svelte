@@ -29,7 +29,8 @@
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
-		hideBleIcon: false
+		hideBleIcon: false,
+		hideVolumeIndicator: false
 	});
 	
 	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern
@@ -141,6 +142,7 @@
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
 			params.append('hideBleIcon', colors.hideBleIcon);
+			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -207,7 +209,8 @@
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
-					hideBleIcon: false
+					hideBleIcon: false,
+					hideVolumeIndicator: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -674,6 +677,21 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideBleIcon}
 							onchange={(e) => colors.hideBleIcon = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide Volume Indicator</span>
+							<p class="text-xs text-base-content/50">Hide the V1 volume display (requires V1 firmware 4.1028+)</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideVolumeIndicator}
+							onchange={(e) => colors.hideVolumeIndicator = e.target.checked}
 						/>
 					</label>
 				</div>
