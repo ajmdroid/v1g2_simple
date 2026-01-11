@@ -2366,11 +2366,11 @@ void V1Display::drawBandBadge(Band band) {
 }
 
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
-    // Local blink timer - V1 blinks at ~4Hz, we match that
+    // Local blink timer - V1 blinks at ~5Hz, we match that
     // Use same timer as arrows for synchronized blinking
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
-    const unsigned long BLINK_INTERVAL_MS = 125;  // ~4Hz blink rate
+    const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
     
     unsigned long now = millis();
     if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
@@ -2626,10 +2626,10 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
-    // Local blink timer - V1 blinks at ~4Hz, we match that
+    // Local blink timer - V1 blinks at ~5Hz, we match that
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
-    const unsigned long BLINK_INTERVAL_MS = 125;  // ~4Hz blink rate
+    const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
     
     unsigned long now = millis();
     if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
