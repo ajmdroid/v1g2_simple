@@ -1876,7 +1876,10 @@ void V1Display::update(const DisplayState& state) {
     }
     
     drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
-    drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
+    // Never draw arrows in resting display - arrows should only appear in live mode
+    // when we have actual alert data with frequency. If display packet has arrows but
+    // no alert packet arrived, we shouldn't show arrows without frequency.
+    drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
     
