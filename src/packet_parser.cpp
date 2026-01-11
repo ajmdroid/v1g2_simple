@@ -113,18 +113,28 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    // band/arrow information sits at payload[3]
-    BandArrowData arrow = processBandArrow(payload[3]);
+    // Display packet structure:
+    // payload[3] = image1 (currently ON bits)
+    // payload[4] = image2 (steady/NOT-flashing bits)
+    // Bits in image1 but NOT in image2 = FLASHING
+    // V1 hardware handles the actual blink animation internally - we must do the same
+    
+    uint8_t image1 = payload[3];
+    uint8_t image2 = payload[4];
+    
+    // band/arrow information from image1
+    BandArrowData arrow = processBandArrow(image1);
     decodeMode(payload, length);
     
-    // Flash detection from image1 (payload[3]) and image2 (payload[4])
-    // Arrow flashes when: image1 bit is SET (on) AND image2 bit is CLEAR (flashing)
-    // flashBits = arrows that are ON in image1 but have image2=0 (flashing)
-    if (length > 4) {
-        uint8_t image1 = payload[3];  // ON bits
-        uint8_t image2 = payload[4];  // NOT-flashing bits (0 = flashing)
-        displayState.flashBits = (image1 & ~image2) & 0xE0;  // Only arrow bits (5,6,7)
-    }
+    // Calculate flash bits: things that are ON (image1) but NOT steady (image2)
+    // These bits should blink on our display
+    uint8_t flashingBits = image1 & ~image2;
+    
+    // Band flash bits (lower nibble): L=0x01, Ka=0x02, K=0x04, X=0x08
+    displayState.bandFlashBits = flashingBits & 0x0F;
+    
+    // Arrow flash bits (upper nibble): Front=0x20, Side=0x40, Rear=0x80
+    displayState.flashBits = flashingBits & 0xE0;
 
     displayState.activeBands = BAND_NONE;
     if (arrow.laser) displayState.activeBands |= BAND_LASER;

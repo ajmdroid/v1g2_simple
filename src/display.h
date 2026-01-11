@@ -112,7 +112,7 @@ private:
     ColorPalette currentPalette;  // Store current theme palette
     
     // Drawing helpers
-    void drawBandIndicators(uint8_t bandMask, bool muted);
+    void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false);

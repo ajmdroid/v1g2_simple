@@ -54,11 +54,12 @@ struct DisplayState {
     bool displayOn;         // True if main display is ON (not dark)
     bool hasDisplayOn;      // True if we've seen explicit on/off ack
     uint8_t flashBits;      // Blink state for arrows (from display packet)
+    uint8_t bandFlashBits;  // Blink state for bands (L=0x01, Ka=0x02, K=0x04, X=0x08)
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
                      modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
-                     flashBits(0) {}
+                     flashBits(0), bandFlashBits(0) {}
 };
 
 class PacketParser {
