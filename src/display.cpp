@@ -1388,6 +1388,7 @@ void V1Display::showResting() {
         // Draw idle state: dimmed UI elements showing V1 is ready
         // Top counter showing "0" (no bogeys)
         drawTopCounter('0', false, true);
+        drawVolumeIndicator(0, 0);  // Show 0V 0M when resting
         
         // Band indicators all dimmed (no active bands)
         drawBandIndicators(0, false);
@@ -1452,6 +1453,7 @@ void V1Display::showScanning() {
     
     // Draw idle state elements
     drawTopCounter('0', false, true);
+    drawVolumeIndicator(0, 0);  // Show 0V 0M when scanning
     drawBandIndicators(0, false);
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     drawDirectionArrow(DIR_NONE, false);
@@ -1820,6 +1822,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // Bogey counter shows V1 mode (truth from V1) - NOT greyed, always visible
     char topChar = state.hasMode ? state.modeChar : '0';
     drawTopCounter(topChar, false, true);  // muted=false to keep it visible
+    drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume
     
     // Band indicator in persisted color
     uint8_t bandMask = alert.band;
