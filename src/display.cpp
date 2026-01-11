@@ -1863,16 +1863,19 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (firstRun) { needsRedraw = true; firstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
-    else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
+    // Only trigger redraw for frequency change if band also changed (avoids redraw during V1 blink)
+    else if (priority.frequency != lastPriority.frequency && priority.band != lastPriority.band) { 
+        needsRedraw = true;
+    }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
-    else if (alertCount != lastAlertCount) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
+    // Don't trigger redraw just for alertCount change - V1 blink can cause momentary count changes
     
     // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
     if (!needsRedraw) {
         for (int i = 0; i < alertCount && i < 4; i++) {
-            if (allAlerts[i].frequency != lastSecondary[i].frequency ||
-                allAlerts[i].band != lastSecondary[i].band) {
+            // Only check band changes for secondary alerts, not frequency (avoids blink flicker)
+            if (allAlerts[i].band != lastSecondary[i].band) {
                 needsRedraw = true;
                 break;
             }
@@ -1881,12 +1884,33 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Track arrow, signal bar, and band changes separately for incremental update
     // Arrow display depends on per-profile priorityArrowOnly setting
-    Direction arrowsToShow = settingsManager.getSlotPriorityArrowOnly(s.activeSlot) ? state.priorityArrow : state.arrows;
+    // When priorityArrowOnly is enabled, still respect V1's arrow blinking by masking with state.arrows
+    // V1 handles blinking by toggling image1 arrow bits - we follow that
+    Direction arrowsToShow;
+    if (settingsManager.getSlotPriorityArrowOnly(s.activeSlot)) {
+        // Show priority arrow only when V1 is also showing that direction
+        arrowsToShow = static_cast<Direction>(state.priorityArrow & state.arrows);
+    } else {
+        arrowsToShow = state.arrows;
+    }
     bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged) {
+    // Force periodic redraw when something is flashing (for blink animation)
+    // Check if any arrows or bands are marked as flashing
+    bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
+    static unsigned long lastFlashRedraw = 0;
+    bool needsFlashUpdate = false;
+    if (hasFlashing) {
+        unsigned long now = millis();
+        if (now - lastFlashRedraw >= 100) {  // Redraw at ~10Hz for smooth blink
+            needsFlashUpdate = true;
+            lastFlashRedraw = now;
+        }
+    }
+    
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1895,9 +1919,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate)) {
         // Only arrows, signal bars, or bands changed - do incremental update without full redraw
-        if (arrowsChanged) {
+        // Also handle flash updates (periodic redraw for blink animation)
+        if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
             lastArrows = arrowsToShow;
             drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
         }
@@ -1905,7 +1930,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastSignalBars = state.signalBars;
             drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
         }
-        if (bandsChanged) {
+        if (bandsChanged || (needsFlashUpdate && state.bandFlashBits != 0)) {
             lastActiveBands = state.activeBands;
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
         }
@@ -1921,7 +1946,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastPriority = priority;
     lastAlertCount = alertCount;
     lastMultiState = state;
-    lastArrows = settingsManager.getSlotPriorityArrowOnly(s.activeSlot) ? state.priorityArrow : state.arrows;
+    // Use same arrowsToShow logic as computed above for change detection
+    lastArrows = arrowsToShow;
     lastSignalBars = state.signalBars;
     lastActiveBands = state.activeBands;
     for (int i = 0; i < alertCount && i < 4; i++) {
@@ -2340,8 +2366,24 @@ void V1Display::drawBandBadge(Band band) {
 }
 
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
-    // V1 is source of truth - bandMask comes from image1, which V1 toggles for blinking
-    // No local blink timer needed - just show what V1 says
+    // Local blink timer - V1 blinks at ~4Hz, we match that
+    // Use same timer as arrows for synchronized blinking
+    static unsigned long lastBlinkTime = 0;
+    static bool blinkOn = true;
+    const unsigned long BLINK_INTERVAL_MS = 125;  // ~4Hz blink rate
+    
+    unsigned long now = millis();
+    if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
+        blinkOn = !blinkOn;
+        lastBlinkTime = now;
+    }
+    
+    // Apply blink: if flash bit is set and we're in OFF phase, treat band as inactive
+    uint8_t effectiveBandMask = bandMask;
+    if (!blinkOn) {
+        // Turn off bands that are flashing during the OFF phase
+        effectiveBandMask &= ~bandFlashBits;
+    }
     
     // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2373,11 +2415,20 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     TFT_CALL(setTextSize)(textSize);
     GFX_setTextDatum(ML_DATUM);
     
+    // Clear and redraw each band label individually
+    // Font is ~35px tall, labels are at ML_DATUM (middle-left), so text extends above/below Y
+    const int labelClearW = 50;  // Width for "Ka" (widest label)
+    const int labelClearH = 38;  // Height of 24pt font
+    
     for (int i = 0; i < 4; ++i) {
-        bool active = (bandMask & cells[i].mask) != 0;
+        int labelY = startY + i * spacing;
+        // Clear area around this label (ML_DATUM means Y is vertical center)
+        FILL_RECT(x - 5, labelY - labelClearH/2, labelClearW, labelClearH, PALETTE_BG);
+        
+        bool active = (effectiveBandMask & cells[i].mask) != 0;
         uint16_t col = active ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
-        GFX_drawString(tft, cells[i].label, x, startY + i * spacing);
+        GFX_drawString(tft, cells[i].label, x, labelY);
     }
     
     // Reset to default font for other text
@@ -2573,10 +2624,31 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
 
 
 // Draw large direction arrow (t4s3 style)
-// flashBits parameter kept for API compatibility but not used - V1 handles blinking via image1
+// flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
-    // V1 is source of truth - dir comes from image1, which V1 toggles for blinking
-    // No local blink timer needed - just show what V1 says
+    // Local blink timer - V1 blinks at ~4Hz, we match that
+    static unsigned long lastBlinkTime = 0;
+    static bool blinkOn = true;
+    const unsigned long BLINK_INTERVAL_MS = 125;  // ~4Hz blink rate
+    
+    unsigned long now = millis();
+    if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
+        blinkOn = !blinkOn;
+        lastBlinkTime = now;
+    }
+    
+    // Determine which arrows to actually show
+    // If an arrow is in flashBits and blink is OFF, hide it
+    bool showFront = (dir & DIR_FRONT) != 0;
+    bool showSide = (dir & DIR_SIDE) != 0;
+    bool showRear = (dir & DIR_REAR) != 0;
+    
+    // Apply blink: if flashing bit is set and we're in OFF phase, hide that arrow
+    if (!blinkOn) {
+        if (flashBits & 0x20) showFront = false;  // Front flash bit
+        if (flashBits & 0x40) showSide = false;   // Side flash bit
+        if (flashBits & 0x80) showRear = false;   // Rear flash bit
+    }
     
     // Stylized stacked arrows sized/positioned to match the real V1 display
     int cx = SCREEN_WIDTH - 70;           // right anchor
@@ -2699,14 +2771,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // V1 is source of truth - just show what's in dir (from image1)
-    bool frontActive = (dir & DIR_FRONT) != 0;
-    bool sideActive = (dir & DIR_SIDE) != 0;
-    bool rearActive = (dir & DIR_REAR) != 0;
-    
-    drawTriangleArrow(topArrowCenterY, false, frontActive, topW, topH, topNotchW, topNotchH, frontCol);
-    drawSideArrow(sideActive);
-    drawTriangleArrow(bottomArrowCenterY, true, rearActive, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
+    // Use showFront/Side/Rear which incorporate the blink state
+    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol);
+    drawSideArrow(showSide);
+    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
