@@ -2,7 +2,7 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 2.0.1 RC  
+**Version:** 2.0.5  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
@@ -75,7 +75,7 @@ pio device monitor -b 115200
 
 1. Device shows boot splash (if power-on reset)
 2. Screen displays "SCAN" with resting animation
-3. Long-press **BOOT** (~2s) to start the WiFi AP (off by default)
+3. Long-press **BOOT** (~4s) to start the WiFi AP (off by default)
 4. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
 5. Browse to `http://192.168.35.5`
 6. Web UI should load (SvelteKit-based interface)
@@ -242,7 +242,7 @@ V1 Gen2 (BLE)
 9. settingsManager.begin()             // Load from NVS
 10. storageManager.begin()             // Mount SD or LittleFS
 11. v1ProfileManager.begin()           // Profile filesystem access
-12. (WiFi **not** auto-started)        // Long-press BOOT (~2s) to start AP when needed
+12. (WiFi **not** auto-started)        // Long-press BOOT (~4s) to start AP when needed
 13. touchHandler.begin()               // I2C touch init
 14. bleClient.initBLE()                // NimBLE stack
 15. bleClient.begin()                  // Start scanning
@@ -271,8 +271,8 @@ V1 Gen2 (BLE)
 
 ### WiFi AP Control & Timeout
 
-- **Default behavior:** AP is OFF by default; start it with a ~2s BOOT long-press. It stays on until you toggle it off.
-- **Button toggle:** Long-press BOOT (GPIO0) for ~2s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
 - **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
@@ -628,6 +628,7 @@ ESP32 Preferences API with namespace `v1settings`:
 | hideProf | bool | false | Hide profile indicator |
 | hideBatt | bool | false | Hide battery icon |
 | hideBle | bool | false | Hide BLE icon |
+| freqBandCol | bool | false | Use band color for frequency display |
 | colorArrF | uint16 | theme | Front arrow color |
 | colorArrS | uint16 | theme | Side arrow color |
 | colorArrR | uint16 | theme | Rear arrow color |
@@ -713,8 +714,9 @@ Controls:
   - WiFi icon color
   - BLE icon colors (Connected, Disconnected states)
   - Muted alert color, Persisted alert color
+- **Use Band Color for Frequency:** When enabled, frequency display uses the detected band's color instead of custom frequency color
 - **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon
-- **Test Button:** Shows color demo on physical display
+- **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
 
