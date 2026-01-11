@@ -889,6 +889,36 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     }
 }
 
+void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
+    // Draw volume indicator below bogey counter: "5V  0M" format
+    // Position: below the bogey counter (x=10), between counter and BLE icon
+    // Bogey counter ends around Y=55, BLE icon starts at Y=98
+    const V1Settings& s = settingsManager.get();
+    const int x = 8;
+    const int y = 72;  // Moved lower
+    const int clearW = 75;
+    const int clearH = 28;
+    
+    // Clear the area first
+    FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+    
+    // Draw main volume in blue, mute volume in yellow (user-configurable colors)
+    GFX_setTextDatum(TL_DATUM);  // Top-left alignment
+    TFT_CALL(setTextSize)(2);  // Size 2 = ~16px height
+    
+    // Draw main volume "5V" in main volume color
+    char mainBuf[4];
+    snprintf(mainBuf, sizeof(mainBuf), "%dV", mainVol);
+    TFT_CALL(setTextColor)(s.colorVolumeMain, PALETTE_BG);
+    GFX_drawString(tft, mainBuf, x, y);
+    
+    // Draw mute volume "0M" in mute volume color, offset to the right
+    char muteBuf[4];
+    snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
+    TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
+    GFX_drawString(tft, muteBuf, x + 32, y);  // Reduced spacing
+}
+
 void V1Display::drawMuteIcon(bool muted) {
     // Draw centered badge above frequency display
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1676,6 +1706,8 @@ void V1Display::update(const DisplayState& state) {
     static uint8_t lastRestingDebouncedBands = 0;
     static uint8_t lastRestingSignalBars = 0;
     static uint8_t lastRestingArrows = 0;
+    static uint8_t lastRestingMainVol = 255;
+    static uint8_t lastRestingMuteVol = 255;
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1689,12 +1721,13 @@ void V1Display::update(const DisplayState& state) {
     
     bool arrowsChanged = (state.arrows != lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
+    bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged) {
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -1709,6 +1742,11 @@ void V1Display::update(const DisplayState& state) {
             else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
             drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
         }
+        if (volumeChanged) {
+            lastRestingMainVol = state.mainVolume;
+            lastRestingMuteVol = state.muteVolume;
+            drawVolumeIndicator(state.mainVolume, state.muteVolume);
+        }
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1721,10 +1759,13 @@ void V1Display::update(const DisplayState& state) {
     lastRestingDebouncedBands = restingDebouncedBands;
     lastRestingArrows = state.arrows;
     lastRestingSignalBars = state.signalBars;
+    lastRestingMainVol = state.mainVolume;
+    lastRestingMuteVol = state.muteVolume;
     
     drawBaseFrame();
     char topChar = state.hasMode ? state.modeChar : '0';
     drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+    drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
     
@@ -1897,6 +1938,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
     
+    // Volume tracking
+    static uint8_t lastMainVol = 255;
+    static uint8_t lastMuteVol = 255;
+    bool volumeChanged = (state.mainVolume != lastMainVol || state.muteVolume != lastMuteVol);
+    
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
@@ -1910,7 +1956,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1919,7 +1965,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged)) {
         // Only arrows, signal bars, or bands changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -1933,6 +1979,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         if (bandsChanged || (needsFlashUpdate && state.bandFlashBits != 0)) {
             lastActiveBands = state.activeBands;
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
+        }
+        if (volumeChanged) {
+            lastMainVol = state.mainVolume;
+            lastMuteVol = state.muteVolume;
+            drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -1950,6 +2001,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastArrows = arrowsToShow;
     lastSignalBars = state.signalBars;
     lastActiveBands = state.activeBands;
+    lastMainVol = state.mainVolume;
+    lastMuteVol = state.muteVolume;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
@@ -1975,6 +2028,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (!skipTopCounter) {
         drawTopCounter(countChar, state.muted, true);
     }
+    drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)

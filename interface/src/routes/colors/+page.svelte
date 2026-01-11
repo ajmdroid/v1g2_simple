@@ -24,6 +24,8 @@
 		bar6: 0xF800,    // Red (strongest)
 		muted: 0x3186,   // Dark grey (muted alerts)
 		persisted: 0x18C3, // Darker grey (persisted alerts)
+		volumeMain: 0x001F, // Blue (main volume)
+		volumeMute: 0xFFE0, // Yellow (mute volume)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -133,6 +135,8 @@
 			params.append('bar6', colors.bar6);
 			params.append('muted', colors.muted);
 			params.append('persisted', colors.persisted);
+			params.append('volumeMain', colors.volumeMain);
+			params.append('volumeMute', colors.volumeMute);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -198,6 +202,8 @@
 					bar6: 0xF800,
 					muted: 0x3186,
 					persisted: 0x18C3,
+					volumeMain: 0x001F,
+					volumeMute: 0xFFE0,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -346,6 +352,48 @@
 							style="color: {rgb565ToHex(colors.persisted)}"
 						>35.5</span>
 						<span class="text-sm text-base-content/60">(persisted)</span>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<h3 class="font-semibold text-sm mt-2">Volume Indicator</h3>
+				<div class="grid grid-cols-2 gap-4">
+					<div class="form-control">
+						<label class="label" for="volumeMain-color">
+							<span class="label-text">Main Volume</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="volumeMain-color"
+								type="color" 
+								aria-label="Main volume color"
+								class="w-10 h-8 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.volumeMain)}
+								onchange={(e) => updateColor('volumeMain', e.target.value)}
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.volumeMain)}"
+							>5V</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="volumeMute-color">
+							<span class="label-text">Mute Volume</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="volumeMute-color"
+								type="color" 
+								aria-label="Mute volume color"
+								class="w-10 h-8 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.volumeMute)}
+								onchange={(e) => updateColor('volumeMute', e.target.value)}
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.volumeMute)}"
+							>0M</span>
+						</div>
 					</div>
 				</div>
 			</div>

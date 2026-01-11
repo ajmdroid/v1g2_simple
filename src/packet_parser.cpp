@@ -151,16 +151,16 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // even when individual alert entries don't have mute bit set
     displayState.muted = arrow.mute;
     
-    // Extract volume from auxData2 (payload[12]) - apps may set volume to 0 for auto-mute
+    // Extract volume from auxData2 - in raw packet it's at data[12]
+    // Since we stripped 5 bytes (header), it's payload[7]
     // mainVol = upper nibble, muteVol = lower nibble
-    // If mainVol is 0, treat as effectively muted even if mute flag isn't set
-    if (length > 12) {
-        uint8_t auxData2 = payload[12];
-        uint8_t mainVol = (auxData2 & 0xF0) >> 4;
-        // uint8_t muteVol = auxData2 & 0x0F;  // Available if needed
+    if (length > 7) {
+        uint8_t auxData2 = payload[7];
+        displayState.mainVolume = (auxData2 & 0xF0) >> 4;
+        displayState.muteVolume = auxData2 & 0x0F;
         
         // Consider muted if mute flag is set OR if main volume is zero
-        if (mainVol == 0) {
+        if (displayState.mainVolume == 0) {
             displayState.muted = true;
         }
     }

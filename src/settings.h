@@ -94,6 +94,8 @@ struct V1Settings {
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     uint16_t colorMuted;         // Muted alert color (shown when alerts are muted/grayed)
     uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
+    uint16_t colorVolumeMain;    // Volume indicator main volume color
+    uint16_t colorVolumeMute;    // Volume indicator muted volume color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -231,6 +233,8 @@ public:
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
     void setPersistedColor(uint16_t color);
+    void setVolumeMainColor(uint16_t color);
+    void setVolumeMuteColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);

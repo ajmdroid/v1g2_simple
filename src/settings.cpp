@@ -105,6 +105,8 @@ void SettingsManager::load() {
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
     settings.colorMuted = preferences.getUShort("colorMuted", 0x3186);  // Dark grey muted color
     settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
+    settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0x001F);  // Blue for main volume
+    settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0xFFE0);  // Yellow for mute volume
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -202,6 +204,8 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBar6", settings.colorBar6);
     written += preferences.putUShort("colorMuted", settings.colorMuted);
     written += preferences.putUShort("colorPersist", settings.colorPersisted);
+    written += preferences.putUShort("colorVolMain", settings.colorVolumeMain);
+    written += preferences.putUShort("colorVolMute", settings.colorVolumeMute);
     written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
@@ -384,6 +388,16 @@ void SettingsManager::setMutedColor(uint16_t color) {
 
 void SettingsManager::setPersistedColor(uint16_t color) {
     settings.colorPersisted = color;
+    save();
+}
+
+void SettingsManager::setVolumeMainColor(uint16_t color) {
+    settings.colorVolumeMain = color;
+    save();
+}
+
+void SettingsManager::setVolumeMuteColor(uint16_t color) {
+    settings.colorVolumeMute = color;
     save();
 }
 
