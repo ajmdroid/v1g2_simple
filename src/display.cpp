@@ -29,12 +29,13 @@ static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
 
-// Volume zero warning tracking (show for 10 seconds when no app connected, after 5 second delay)
+// Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
 static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
 static bool volumeZeroWarningShown = false;
 static bool volumeZeroWarningAcknowledged = false;
-static constexpr unsigned long VOLUME_ZERO_DELAY_MS = 5000;           // Wait 5 seconds before showing warning
+static bool appJustDisconnected = false;             // Set by setBLEProxyStatus when app disconnects
+static constexpr unsigned long VOLUME_ZERO_DELAY_MS = 15000;          // Wait 15 seconds before showing warning
 static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show warning for 10 seconds
 
 // External reference to BLE client for checking proxy connection
@@ -561,6 +562,11 @@ void V1Display::clear() {
 
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
 #if defined(DISPLAY_WAVESHARE_349)
+    // Detect app disconnect - was connected, now isn't
+    if (bleProxyClientConnected && !clientConnected) {
+        appJustDisconnected = true;  // Signal to reset VOL 0 warning
+    }
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
         clientConnected == bleProxyClientConnected) {
@@ -579,6 +585,7 @@ void V1Display::drawBaseFrame() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
+    drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
@@ -1734,8 +1741,10 @@ void V1Display::update(const DisplayState& state) {
     bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
     
     // Check if volume zero warning should be active (for flashing effect)
+    // Use current proxy state for accurate check
+    bool currentProxyConnected = bleClient.isProxyClientConnected();
     bool volumeWarningActive = false;
-    if (state.mainVolume == 0 && state.hasVolumeData && !bleClient.isProxyClientConnected() && !volumeZeroWarningAcknowledged) {
+    if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged) {
         // Warning is active if we're past the delay and within the warning duration
         if (volumeZeroDetectedMs > 0 && (millis() - volumeZeroDetectedMs) >= VOLUME_ZERO_DELAY_MS) {
             if (volumeZeroWarningStartMs == 0 || (millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
@@ -1810,10 +1819,22 @@ void V1Display::update(const DisplayState& state) {
     // - Main volume is 0
     // - No BLE proxy client (app) connected
     // - We have volume data
-    // - Wait 5 seconds before showing (to let JBV1 connect)
+    // - Wait 15 seconds before showing (to let JBV1 connect)
     // - Warning shown for 10 seconds after delay
+    // - Also trigger if app just disconnected with volume=0
     bool showVolumeWarning = false;
-    if (state.mainVolume == 0 && state.hasVolumeData && !bleClient.isProxyClientConnected()) {
+    bool proxyConnected = bleClient.isProxyClientConnected();
+    
+    // Check if app just disconnected - reset warning state so it can trigger again
+    if (appJustDisconnected) {
+        appJustDisconnected = false;  // Clear the flag
+        volumeZeroDetectedMs = 0;     // Will be set below if volume==0
+        volumeZeroWarningStartMs = 0;
+        volumeZeroWarningShown = false;
+        volumeZeroWarningAcknowledged = false;
+    }
+    
+    if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected) {
         if (!volumeZeroWarningAcknowledged) {
             if (volumeZeroDetectedMs == 0) {
                 // First time detecting volume=0, start the delay timer
