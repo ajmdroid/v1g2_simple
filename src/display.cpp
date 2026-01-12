@@ -2389,10 +2389,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
     }
     
-    // Step 2: Add new alerts to empty slots (including priority - it may become secondary later)
+    // Step 2: Add new non-priority alerts to empty slots
+    // Skip priority alert - it's shown in the main display, not as a card
     if (alerts != nullptr) {
         for (int i = 0; i < alertCount; i++) {
             if (!alerts[i].isValid || alerts[i].band == BAND_NONE) continue;
+            if (isSameAsPriority(alerts[i])) continue;  // Skip priority - don't waste a card slot
             
             // Check if already tracked
             bool found = false;
