@@ -788,10 +788,12 @@ void processBLEData() {
                 displayMode = DisplayMode::LIVE;
 
                 // Voice alerts: announce new priority alert when no phone app connected
+                // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
                 const V1Settings& settings = settingsManager.get();
                 bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
                 if (settings.voiceAlertsEnabled && 
                     !muteForVolZero &&
+                    !state.muted &&  // Don't announce muted alerts
                     !bleClient.isProxyClientConnected() &&
                     priority.isValid &&
                     priority.band != BAND_NONE) {
