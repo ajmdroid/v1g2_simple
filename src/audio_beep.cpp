@@ -1,5 +1,5 @@
 // audio_beep.cpp
-// Simple beep playback for VOL 0 warning using ES8311 DAC on Waveshare ESP32-S3-Touch-LCD-3.49
+// TTS playback for VOL 0 warning using ES8311 DAC on Waveshare ESP32-S3-Touch-LCD-3.49
 // Hardware: ES8311 (I2C/I2S), TCA9554 IO expander (I2C, pin 7 = speaker amp enable)
 //
 // I2C bus: SDA=47, SCL=48 (shared with battery manager TCA9554)
@@ -11,7 +11,6 @@
 #include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
 #include <Arduino.h>
 #include <Wire.h>
-#include <math.h>
 #include "driver/i2s_std.h"   // New I2S standard driver (not legacy)
 #include "driver/gpio.h"
 
@@ -28,9 +27,7 @@
 #define I2S_WS_PIN   GPIO_NUM_46
 #define I2S_DOUT_PIN GPIO_NUM_45   // Data OUT for playback (not DIN=6 which is for recording)
 
-// Beep parameters
-#define BEEP_FREQ_HZ 500
-#define BEEP_DURATION_MS 500
+// Audio parameters
 #define SAMPLE_RATE 22050  // Match Waveshare BSP default (22.05kHz)
 
 // Use battery manager's TwoWire instance (already initialized on SDA=47, SCL=48)
@@ -325,7 +322,10 @@ static void i2s_init() {
     Serial.print(", DOUT="); Serial.println(I2S_DOUT_PIN);
 }
 
-// Generate and play a simple beep
+// Include pre-recorded TTS audio
+#include "../include/warning_audio.h"
+
+// Play "Warning Volume Zero" speech
 void play_vol0_beep() {
     Serial.println("[AUDIO_BEEP] play_vol0_beep() called");
     
@@ -345,11 +345,11 @@ void play_vol0_beep() {
     
     // Enable speaker amp - let it fully stabilize
     set_speaker_amp(true);
-    delay(200); // Give amp more time to stabilize
+    delay(100);
     
-    // Generate 16-bit PCM sine wave (STEREO for Philips I2S format)
-    const int samples = SAMPLE_RATE * BEEP_DURATION_MS / 1000;
-    const int stereo_samples = samples * 2;  // Left + Right
+    // Convert mono PCM to stereo for I2S Philips format
+    const int mono_samples = WARNING_VOLUME_ZERO_PCM_SAMPLES;
+    const int stereo_samples = mono_samples * 2;
     int16_t* buf = (int16_t*)malloc(stereo_samples * sizeof(int16_t));
     if (!buf) {
         Serial.println("[AUDIO_BEEP] ERROR: malloc failed!");
@@ -357,18 +357,16 @@ void play_vol0_beep() {
         return;
     }
     
-    // Generate sine wave at high amplitude for audibility
-    const float pi = 3.14159265f;
-    for (int i = 0; i < samples; ++i) {
-        float t = (float)i / SAMPLE_RATE;
-        int16_t sample = (int16_t)(28000.0f * sinf(2.0f * pi * BEEP_FREQ_HZ * t));
+    // Copy mono to stereo (both channels)
+    for (int i = 0; i < mono_samples; ++i) {
+        int16_t sample = pgm_read_word(&warning_volume_zero_pcm[i]);
         buf[i * 2] = sample;       // Left channel
         buf[i * 2 + 1] = sample;   // Right channel
     }
     
-    Serial.print("[AUDIO_BEEP] Playing "); Serial.print(BEEP_DURATION_MS);
-    Serial.print("ms beep at "); Serial.print(BEEP_FREQ_HZ); Serial.println("Hz");
-    Serial.print("[AUDIO_BEEP] Buffer: "); Serial.print(stereo_samples); Serial.println(" samples (stereo)");
+    Serial.print("[AUDIO_BEEP] Playing 'Warning Volume Zero' (");
+    Serial.print(WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+    Serial.println("ms)");
     
     size_t bytes_written = 0;
     esp_err_t err = i2s_channel_write(i2s_tx_chan, buf, stereo_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
@@ -380,15 +378,15 @@ void play_vol0_beep() {
     }
     
     // Wait for audio to finish playing through DMA
-    delay(BEEP_DURATION_MS + 100);
+    delay(WARNING_VOLUME_ZERO_PCM_DURATION_MS + 100);
     
     free(buf);
     set_speaker_amp(false);
-    Serial.println("[AUDIO_BEEP] Beep complete");
+    Serial.println("[AUDIO_BEEP] Speech complete");
 }
 
 // Test beep on startup (for debugging audio hardware)
 void play_test_beep() {
-    Serial.println("[AUDIO_BEEP] === TEST BEEP ON STARTUP ===");
+    Serial.println("[AUDIO_BEEP] === TEST SPEECH ON STARTUP ===");
     play_vol0_beep();
 }
