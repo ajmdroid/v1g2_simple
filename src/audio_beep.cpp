@@ -8,6 +8,18 @@
 // ES8311 address: 0x18
 
 #include "audio_beep.h"
+
+// Windows build uses older ESP-IDF without new I2S driver - stub out audio
+#ifdef WINDOWS_BUILD
+
+void audio_set_volume(uint8_t volumePercent) { (void)volumePercent; }
+void play_vol0_beep() {}
+void play_alert_voice(AlertBand band, AlertDirection direction) { (void)band; (void)direction; }
+void play_test_beep() {}
+void play_test_voice() {}
+
+#else  // Normal build with full audio support
+
 #include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
 #include <Arduino.h>
 #include <Wire.h>
@@ -604,3 +616,5 @@ void play_test_voice() {
     // Use "Ka ahead" as test phrase - short and recognizable (~822ms)
     play_pcm_audio(alert_ka_ahead, ALERT_KA_AHEAD_SAMPLES, ALERT_KA_AHEAD_DURATION_MS);
 }
+
+#endif  // WINDOWS_BUILD
