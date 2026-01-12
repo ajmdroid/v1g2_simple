@@ -94,6 +94,8 @@ struct V1Settings {
     uint16_t colorBar6;          // Signal bar 6 (top/strongest)
     uint16_t colorMuted;         // Muted alert color (shown when alerts are muted/grayed)
     uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
+    uint16_t colorVolumeMain;    // Volume indicator main volume color
+    uint16_t colorVolumeMute;    // Volume indicator muted volume color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -101,6 +103,7 @@ struct V1Settings {
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
+    bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -169,6 +172,7 @@ struct V1Settings {
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
+        hideVolumeIndicator(false), // Show volume indicator by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -231,11 +235,14 @@ public:
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
     void setPersistedColor(uint16_t color);
+    void setVolumeMainColor(uint16_t color);
+    void setVolumeMuteColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
+    void setHideVolumeIndicator(bool hide);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

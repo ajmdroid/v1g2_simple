@@ -105,11 +105,14 @@ void SettingsManager::load() {
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
     settings.colorMuted = preferences.getUShort("colorMuted", 0x3186);  // Dark grey muted color
     settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
+    settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0x001F);  // Blue for main volume
+    settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0xFFE0);  // Yellow for mute volume
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
+    settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -202,11 +205,14 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBar6", settings.colorBar6);
     written += preferences.putUShort("colorMuted", settings.colorMuted);
     written += preferences.putUShort("colorPersist", settings.colorPersisted);
+    written += preferences.putUShort("colorVolMain", settings.colorVolumeMain);
+    written += preferences.putUShort("colorVolMute", settings.colorVolumeMute);
     written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
+    written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -387,6 +393,16 @@ void SettingsManager::setPersistedColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setVolumeMainColor(uint16_t color) {
+    settings.colorVolumeMain = color;
+    save();
+}
+
+void SettingsManager::setVolumeMuteColor(uint16_t color) {
+    settings.colorVolumeMute = color;
+    save();
+}
+
 void SettingsManager::setFreqUseBandColor(bool use) {
     settings.freqUseBandColor = use;
     save();
@@ -409,6 +425,11 @@ void SettingsManager::setHideBatteryIcon(bool hide) {
 
 void SettingsManager::setHideBleIcon(bool hide) {
     settings.hideBleIcon = hide;
+    save();
+}
+
+void SettingsManager::setHideVolumeIndicator(bool hide) {
+    settings.hideVolumeIndicator = hide;
     save();
 }
 
@@ -589,6 +610,7 @@ void SettingsManager::backupToSD() {
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
     doc["hideBleIcon"] = settings.hideBleIcon;
+    doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -671,6 +693,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
+    if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
@@ -707,6 +730,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideProfile", settings.hideProfileIndicator);
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
     preferences.putBool("hideBle", settings.hideBleIcon);
+    preferences.putBool("hideVol", settings.hideVolumeIndicator);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);

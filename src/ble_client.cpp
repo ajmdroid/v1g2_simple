@@ -878,6 +878,11 @@ bool V1BLEClient::setupCharacteristics() {
         Serial.println("Failed to request alert data (non-critical)");
     }
     
+    // Request V1 firmware version (needed for feature detection like volume support)
+    if (!requestVersion()) {
+        Serial.println("Failed to request version (non-critical)");
+    }
+    
     // Notify user callback that V1 connection is fully established
     if (connectCallback) {
         connectCallback();

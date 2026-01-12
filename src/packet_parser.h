@@ -55,11 +55,21 @@ struct DisplayState {
     bool hasDisplayOn;      // True if we've seen explicit on/off ack
     uint8_t flashBits;      // Blink state for arrows (from display packet)
     uint8_t bandFlashBits;  // Blink state for bands (L=0x01, Ka=0x02, K=0x04, X=0x08)
+    uint8_t mainVolume;     // Main volume 0-9
+    uint8_t muteVolume;     // Muted volume 0-9
+    uint32_t v1FirmwareVersion;  // V1 firmware version as integer (e.g., 41028 for 4.1028)
+    bool hasV1Version;      // True if we've received version from V1
+    bool hasVolumeData;     // True if we've received volume data in display packet
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
                      modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
-                     flashBits(0), bandFlashBits(0) {}
+                     flashBits(0), bandFlashBits(0), mainVolume(0), muteVolume(0),
+                     v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false) {}
+    
+    // Check if V1 firmware supports volume display
+    // Show volume if we've received volume data OR confirmed firmware version 4.1028+
+    bool supportsVolume() const { return hasVolumeData || (hasV1Version && v1FirmwareVersion >= 41028); }
 };
 
 class PacketParser {
@@ -86,12 +96,19 @@ public:
     // Check if there are active alerts
     // Only check alertCount - display state can lag behind
     bool hasAlerts() const { return alertCount > 0; }
+    
+    // Check if V1 firmware supports volume display
+    // Show volume if we've received volume data OR confirmed firmware version 4.1028+
+    bool supportsVolume() const { return displayState.hasVolumeData || (displayState.hasV1Version && displayState.v1FirmwareVersion >= 41028); }
 
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
     
     // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
     static void resetPriorityState();
+    
+    // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
+    static void resetSignalBarDecay();
 
 private:
     DisplayState displayState;

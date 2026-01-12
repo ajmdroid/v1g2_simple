@@ -1243,6 +1243,16 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setPersistedColor(persistedColor);
     }
     
+    // Handle volume indicator colors
+    if (server.hasArg("volumeMain")) {
+        uint16_t volMainColor = server.arg("volumeMain").toInt();
+        settingsManager.setVolumeMainColor(volMainColor);
+    }
+    if (server.hasArg("volumeMute")) {
+        uint16_t volMuteColor = server.arg("volumeMute").toInt();
+        settingsManager.setVolumeMuteColor(volMuteColor);
+    }
+    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -1260,6 +1270,9 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("hideBleIcon")) {
         settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
+    }
+    if (server.hasArg("hideVolumeIndicator")) {
+        settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
     }
 
     // Persist all color/visibility changes
@@ -1282,6 +1295,9 @@ void WiFiManager::handleDisplayColorsReset() {
     settingsManager.setMutedColor(0x3186);
     // Reset persisted color to darker grey
     settingsManager.setPersistedColor(0x18C3);
+    // Reset volume indicator colors: Main=Blue, Mute=Yellow
+    settingsManager.setVolumeMainColor(0x001F);
+    settingsManager.setVolumeMuteColor(0xFFE0);
     // Reset frequency use band color to off
     settingsManager.setFreqUseBandColor(false);
     
@@ -1316,11 +1332,14 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bar6"] = s.colorBar6;
     doc["muted"] = s.colorMuted;
     doc["persisted"] = s.colorPersisted;
+    doc["volumeMain"] = s.colorVolumeMain;
+    doc["volumeMute"] = s.colorVolumeMute;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
+    doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     
     String json;
     serializeJson(doc, json);

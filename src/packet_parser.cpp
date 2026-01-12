@@ -55,6 +55,13 @@ void PacketParser::resetPriorityState() {
     s_resetPriorityStateFlag = true;
 }
 
+// Static flag to signal signal bar decay reset on next call
+static bool s_resetSignalBarDecayFlag = false;
+
+void PacketParser::resetSignalBarDecay() {
+    s_resetSignalBarDecayFlag = true;
+}
+
 bool PacketParser::parse(const uint8_t* data, size_t length) {
     if (!validatePacket(data, length)) {
         return false;
@@ -87,9 +94,42 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
         case PACKET_ID_MUTE_OFF:            // 0x35 - ACK for mute off
         case 0x36:                          // ACK for mode change (reqChangeMode)
         case PACKET_ID_REQ_WRITE_VOLUME:    // 0x39 - ACK for volume change
-        case PACKET_ID_VERSION:             // 0x01 - Version response
         case PACKET_ID_RESP_USER_BYTES:     // 0x12 - User bytes response
             return true;  // Acknowledged, no further processing needed
+        
+        case PACKET_ID_VERSION: {           // 0x01 - Version response
+            // Parse V1 firmware version from response
+            // Payload format: [versionID][major][minor][rev1][rev2][ctrl]
+            // versionID 'V' = main firmware version
+            // Example: V 4 1 0 2 8 = version 4.1028
+            if (length >= 12) {  // Full packet with 7-byte payload
+                const uint8_t* payload = data + 5;
+                char versionID = (char)payload[1];
+                if (versionID == 'V') {
+                    // Convert ASCII digits to integer version
+                    // e.g., "4.1028" becomes 41028
+                    char major = (char)payload[2];
+                    char minor = (char)payload[3];
+                    char rev1 = (char)payload[4];
+                    char rev2 = (char)payload[5];
+                    char ctrl = (char)payload[6];
+                    
+                    // Build version number: major * 10000 + minor * 1000 + rev1 * 100 + rev2 * 10 + ctrl
+                    uint32_t version = 0;
+                    if (major >= '0' && major <= '9') version += (major - '0') * 10000;
+                    if (minor >= '0' && minor <= '9') version += (minor - '0') * 1000;
+                    if (rev1 >= '0' && rev1 <= '9') version += (rev1 - '0') * 100;
+                    if (rev2 >= '0' && rev2 <= '9') version += (rev2 - '0') * 10;
+                    if (ctrl >= '0' && ctrl <= '9') version += (ctrl - '0');
+                    
+                    displayState.v1FirmwareVersion = version;
+                    displayState.hasV1Version = true;
+                    Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\\n",
+                                  major, minor, rev1, rev2, ctrl, version);
+                }
+            }
+            return true;
+        }
             
         default:
             // Unknown packet - silently ignore in hot path
@@ -151,16 +191,17 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // even when individual alert entries don't have mute bit set
     displayState.muted = arrow.mute;
     
-    // Extract volume from auxData2 (payload[12]) - apps may set volume to 0 for auto-mute
+    // Extract volume from auxData2 - in raw packet it's at data[12]
+    // Since we stripped 5 bytes (header), it's payload[7]
     // mainVol = upper nibble, muteVol = lower nibble
-    // If mainVol is 0, treat as effectively muted even if mute flag isn't set
-    if (length > 12) {
-        uint8_t auxData2 = payload[12];
-        uint8_t mainVol = (auxData2 & 0xF0) >> 4;
-        // uint8_t muteVol = auxData2 & 0x0F;  // Available if needed
+    if (length > 7) {
+        uint8_t auxData2 = payload[7];
+        displayState.mainVolume = (auxData2 & 0xF0) >> 4;
+        displayState.muteVolume = auxData2 & 0x0F;
+        displayState.hasVolumeData = true;  // Mark that we've received volume data
         
         // Consider muted if mute flag is set OR if main volume is zero
-        if (mainVol == 0) {
+        if (displayState.mainVolume == 0) {
             displayState.muted = true;
         }
     }
@@ -225,6 +266,13 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
     static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
     constexpr unsigned long DROP_INTERVAL_MS = 100;  // Reduced from 150ms for snappier response
+    
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetSignalBarDecayFlag) {
+        lastBarsKa = lastBarsK = lastBarsX = 0;
+        lastDropTimeKa = lastDropTimeK = lastDropTimeX = 0;
+        s_resetSignalBarDecayFlag = false;
+    }
     
     uint8_t* lastBarsPtr = nullptr;
     unsigned long* lastDropTimePtr = nullptr;
@@ -292,6 +340,15 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // Each alert row is 7-8 bytes in V1G2 captures; require at least 7
     if (length < 7) {
         return false;
+    }
+
+    // Track expected alert count - if it changes mid-assembly, reset to avoid stale data
+    // This handles the case where alerts change while we're still collecting chunks
+    static uint8_t lastExpectedCount = 0;
+    if (receivedAlertCount != lastExpectedCount) {
+        // Alert count changed - discard any partial assembly and start fresh
+        chunkCount = 0;
+        lastExpectedCount = receivedAlertCount;
     }
 
     // Add new chunk with strict bounds checking to prevent overflow

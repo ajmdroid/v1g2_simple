@@ -10,6 +10,7 @@
 #include "settings.h"
 #include "battery_manager.h"
 #include "wifi_manager.h"
+#include "ble_client.h"
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
@@ -27,6 +28,18 @@ static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards 
 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
+
+// Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
+static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
+static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
+static bool volumeZeroWarningShown = false;
+static bool volumeZeroWarningAcknowledged = false;
+static bool appJustDisconnected = false;             // Set by setBLEProxyStatus when app disconnects
+static constexpr unsigned long VOLUME_ZERO_DELAY_MS = 15000;          // Wait 15 seconds before showing warning
+static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show warning for 10 seconds
+
+// External reference to BLE client for checking proxy connection
+extern V1BLEClient bleClient;
 
 // Helper to get effective screen height (reduced when multi-alert cards are shown)
 static inline int getEffectiveScreenHeight() {
@@ -549,6 +562,11 @@ void V1Display::clear() {
 
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
 #if defined(DISPLAY_WAVESHARE_349)
+    // Detect app disconnect - was connected, now isn't
+    if (bleProxyClientConnected && !clientConnected) {
+        appJustDisconnected = true;  // Signal to reset VOL 0 warning
+    }
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
         clientConnected == bleProxyClientConnected) {
@@ -567,6 +585,7 @@ void V1Display::drawBaseFrame() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
+    drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
@@ -887,6 +906,36 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     } else {
         drawTopCounterClassic(symbol, muted, showDot);
     }
+}
+
+void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
+    // Draw volume indicator below bogey counter: "5V  0M" format
+    // Position: below the bogey counter (x=10), between counter and BLE icon
+    // Bogey counter ends around Y=55, BLE icon starts at Y=98
+    const V1Settings& s = settingsManager.get();
+    const int x = 8;
+    const int y = 72;  // Moved lower
+    const int clearW = 75;
+    const int clearH = 28;
+    
+    // Clear the area first
+    FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+    
+    // Draw main volume in blue, mute volume in yellow (user-configurable colors)
+    GFX_setTextDatum(TL_DATUM);  // Top-left alignment
+    TFT_CALL(setTextSize)(2);  // Size 2 = ~16px height
+    
+    // Draw main volume "5V" in main volume color
+    char mainBuf[4];
+    snprintf(mainBuf, sizeof(mainBuf), "%dV", mainVol);
+    TFT_CALL(setTextColor)(s.colorVolumeMain, PALETTE_BG);
+    GFX_drawString(tft, mainBuf, x, y);
+    
+    // Draw mute volume "0M" in mute volume color, offset to the right
+    char muteBuf[4];
+    snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
+    TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
+    GFX_drawString(tft, muteBuf, x + 32, y);  // Reduced spacing
 }
 
 void V1Display::drawMuteIcon(bool muted) {
@@ -1358,6 +1407,7 @@ void V1Display::showResting() {
         // Draw idle state: dimmed UI elements showing V1 is ready
         // Top counter showing "0" (no bogeys)
         drawTopCounter('0', false, true);
+        // Volume indicator not shown in resting state (no DisplayState available)
         
         // Band indicators all dimmed (no active bands)
         drawBandIndicators(0, false);
@@ -1422,6 +1472,7 @@ void V1Display::showScanning() {
     
     // Draw idle state elements
     drawTopCounter('0', false, true);
+    // Volume indicator not shown in scanning state (no DisplayState available)
     drawBandIndicators(0, false);
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     drawDirectionArrow(DIR_NONE, false);
@@ -1663,19 +1714,17 @@ void V1Display::update(const DisplayState& state) {
     if ((now - restingBandLastSeen[2]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_K;
     if ((now - restingBandLastSeen[3]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_X;
 
-    // Override mute when laser active or strong signal present
-    bool effectiveMuted = state.muted;
-    bool laserActive = (restingDebouncedBands & BAND_LASER) != 0;
-    if (laserActive) {
-        effectiveMuted = false;
-    } else if (effectiveMuted && state.signalBars >= STRONG_SIGNAL_UNMUTE_THRESHOLD) {
-        effectiveMuted = false;
-    }
+    // In resting mode (no alerts), never show muted visual - just normal display
+    // Apps commonly set main volume to 0 when idle, adjusting on new alerts
+    // The muted state should only affect active alert display, not resting
+    bool effectiveMuted = false;
 
     // Track last debounced bands for change detection
     static uint8_t lastRestingDebouncedBands = 0;
     static uint8_t lastRestingSignalBars = 0;
     static uint8_t lastRestingArrows = 0;
+    static uint8_t lastRestingMainVol = 255;
+    static uint8_t lastRestingMuteVol = 255;
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1689,12 +1738,31 @@ void V1Display::update(const DisplayState& state) {
     
     bool arrowsChanged = (state.arrows != lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
+    bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged) {
+    // Check if volume zero warning should be active (for flashing effect)
+    // Use current proxy state for accurate check
+    bool currentProxyConnected = bleClient.isProxyClientConnected();
+    bool volumeWarningActive = false;
+    if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged) {
+        // Warning is active if we're past the delay and within the warning duration
+        if (volumeZeroDetectedMs > 0 && (millis() - volumeZeroDetectedMs) >= VOLUME_ZERO_DELAY_MS) {
+            if (volumeZeroWarningStartMs == 0 || (millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
+                volumeWarningActive = true;
+            }
+        }
+    }
+    
+    // Force full redraw when warning is active (for flashing effect) or when warning state changes
+    if (volumeWarningActive || volumeZeroWarningShown) {
+        needsFullRedraw = true;
+    }
+    
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -1709,6 +1777,12 @@ void V1Display::update(const DisplayState& state) {
             else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
             drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
         }
+        const V1Settings& s = settingsManager.get();
+        if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
+            lastRestingMainVol = state.mainVolume;
+            lastRestingMuteVol = state.muteVolume;
+            drawVolumeIndicator(state.mainVolume, state.muteVolume);
+        }
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1721,10 +1795,16 @@ void V1Display::update(const DisplayState& state) {
     lastRestingDebouncedBands = restingDebouncedBands;
     lastRestingArrows = state.arrows;
     lastRestingSignalBars = state.signalBars;
+    lastRestingMainVol = state.mainVolume;
+    lastRestingMuteVol = state.muteVolume;
     
     drawBaseFrame();
     char topChar = state.hasMode ? state.modeChar : '0';
     drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+    const V1Settings& s = settingsManager.get();
+    if (state.supportsVolume() && !s.hideVolumeIndicator) {
+        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
+    }
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
     
@@ -1735,10 +1815,71 @@ void V1Display::update(const DisplayState& state) {
     else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
     else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
     
-    drawFrequency(0, primaryBand, effectiveMuted);
+    // Check if we should show volume zero warning:
+    // - Main volume is 0
+    // - No BLE proxy client (app) connected
+    // - We have volume data
+    // - Wait 15 seconds before showing (to let JBV1 connect)
+    // - Warning shown for 10 seconds after delay
+    // - Also trigger if app just disconnected with volume=0
+    bool showVolumeWarning = false;
+    bool proxyConnected = bleClient.isProxyClientConnected();
+    
+    // Check if app just disconnected - reset warning state so it can trigger again
+    if (appJustDisconnected) {
+        appJustDisconnected = false;  // Clear the flag
+        volumeZeroDetectedMs = 0;     // Will be set below if volume==0
+        volumeZeroWarningStartMs = 0;
+        volumeZeroWarningShown = false;
+        volumeZeroWarningAcknowledged = false;
+    }
+    
+    if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected) {
+        if (!volumeZeroWarningAcknowledged) {
+            if (volumeZeroDetectedMs == 0) {
+                // First time detecting volume=0, start the delay timer
+                volumeZeroDetectedMs = millis();
+            }
+            
+            unsigned long elapsed = millis() - volumeZeroDetectedMs;
+            
+            // Check if delay period has passed
+            if (elapsed >= VOLUME_ZERO_DELAY_MS) {
+                if (volumeZeroWarningStartMs == 0) {
+                    // Delay passed, start the actual warning display
+                    volumeZeroWarningStartMs = millis();
+                    volumeZeroWarningShown = true;
+                }
+                
+                // Check if warning period has expired
+                if ((millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
+                    showVolumeWarning = true;
+                } else {
+                    // Warning period expired, acknowledge it
+                    volumeZeroWarningAcknowledged = true;
+                    volumeZeroWarningShown = false;
+                }
+            }
+        }
+    } else {
+        // Volume is non-zero or app connected - reset warning state
+        volumeZeroDetectedMs = 0;
+        volumeZeroWarningStartMs = 0;
+        volumeZeroWarningShown = false;
+        volumeZeroWarningAcknowledged = false;
+    }
+    
+    if (showVolumeWarning) {
+        drawVolumeZeroWarning();
+    } else {
+        drawFrequency(0, primaryBand, effectiveMuted);
+    }
     
     drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
-    drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
+    // Never draw arrows in resting display - arrows should only appear in live mode
+    // when we have actual alert data with frequency. If display packet has arrows but
+    // no alert packet arrived, we shouldn't show arrows without frequency.
+    drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
     
@@ -1779,6 +1920,10 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // Bogey counter shows V1 mode (truth from V1) - NOT greyed, always visible
     char topChar = state.hasMode ? state.modeChar : '0';
     drawTopCounter(topChar, false, true);  // muted=false to keep it visible
+    const V1Settings& s = settingsManager.get();
+    if (state.supportsVolume() && !s.hideVolumeIndicator) {
+        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
+    }
     
     // Band indicator in persisted color
     uint8_t bandMask = alert.band;
@@ -1897,6 +2042,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
     
+    // Volume tracking
+    static uint8_t lastMainVol = 255;
+    static uint8_t lastMuteVol = 255;
+    bool volumeChanged = (state.mainVolume != lastMainVol || state.muteVolume != lastMuteVol);
+    
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
@@ -1910,7 +2060,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1919,7 +2069,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged)) {
         // Only arrows, signal bars, or bands changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -1933,6 +2083,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         if (bandsChanged || (needsFlashUpdate && state.bandFlashBits != 0)) {
             lastActiveBands = state.activeBands;
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
+        }
+        if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
+            lastMainVol = state.mainVolume;
+            lastMuteVol = state.muteVolume;
+            drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -1950,6 +2105,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastArrows = arrowsToShow;
     lastSignalBars = state.signalBars;
     lastActiveBands = state.activeBands;
+    lastMainVol = state.mainVolume;
+    lastMuteVol = state.muteVolume;
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
@@ -1974,6 +2131,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     if (!skipTopCounter) {
         drawTopCounter(countChar, state.muted, true);
+    }
+    if (state.supportsVolume() && !settings.hideVolumeIndicator) {
+        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
     }
     
     // Main alert display (frequency, bands, arrows, signal bars)
@@ -2610,6 +2770,52 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     
     ofr.setCursor(x, freqY);
     ofr.printf("%s", freqStr);
+}
+
+// Draw volume zero warning in the frequency area (flashing red text)
+void V1Display::drawVolumeZeroWarning() {
+    // Flash at ~2Hz
+    static unsigned long lastFlashTime = 0;
+    static bool flashOn = true;
+    unsigned long now = millis();
+    if (now - lastFlashTime >= 250) {
+        flashOn = !flashOn;
+        lastFlashTime = now;
+    }
+    
+    // Position warning centered in frequency area
+#if defined(DISPLAY_WAVESHARE_349)
+    const int leftMargin = 120;
+    const int rightMargin = 200;
+    const int textScale = 6;  // Large for visibility
+#else
+    const int leftMargin = 0;
+    const int rightMargin = 120;
+    const int textScale = 4;
+#endif
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    int centerX = leftMargin + maxWidth / 2;
+    int centerY = getEffectiveScreenHeight() / 2 + 10;
+    
+    // Use default built-in font (NULL) - has all ASCII characters
+    // Each char is 6x8 pixels at scale 1, so "VOL 0" = 5 chars * 6 * scale wide
+    const char* warningStr = "VOL 0";
+    int charW = 6 * textScale;
+    int charH = 8 * textScale;
+    int textW = 5 * charW;  // 5 characters
+    int textX = centerX - textW / 2;
+    int textY = centerY - charH / 2;
+    
+    // Clear the frequency area
+    FILL_RECT(leftMargin, textY - 5, maxWidth, charH + 10, PALETTE_BG);
+    
+    if (flashOn) {
+        tft->setFont(NULL);  // Default built-in font
+        tft->setTextSize(textScale);
+        tft->setTextColor(0xF800, PALETTE_BG);  // Bright red on background
+        tft->setCursor(textX, textY);
+        tft->print(warningStr);
+    }
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
