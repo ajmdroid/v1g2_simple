@@ -2070,7 +2070,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
-    // Don't trigger redraw just for alertCount change - V1 blink can cause momentary count changes
+    // Note: alertCount changes are handled via incremental update (alertCountChanged) for rapid response
     
     // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
     if (!needsRedraw) {
@@ -2097,6 +2097,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
+    bool alertCountChanged = (alertCount != lastAlertCount);
     
     // Volume tracking
     static uint8_t lastMainVol = 255;
@@ -2116,7 +2117,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !alertCountChanged) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2125,8 +2126,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged)) {
-        // Only arrows, signal bars, or bands changed - do incremental update without full redraw
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || alertCountChanged)) {
+        // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
             lastArrows = arrowsToShow;
@@ -2144,6 +2145,15 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMainVol = state.mainVolume;
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
+        }
+        if (alertCountChanged) {
+            // Bogey counter update - rapidly follow V1's alert count
+            lastAlertCount = alertCount;
+            char countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
+            if (priority.band == BAND_LASER) {
+                countChar = '=';  // Laser shows '=' instead of count
+            }
+            drawTopCounter(countChar, state.muted, true);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
