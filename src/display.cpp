@@ -914,15 +914,17 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 
 void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     // Draw volume indicator below bogey counter: "5V  0M" format
-    // Position: below the bogey counter (x=10), between counter and BLE icon
-    // Bogey counter ends around Y=55, BLE icon starts at Y=98
+    // Position: below the bogey counter (x=10), between counter and BLE icon (BLE at y=98)
+    // Classic 7-seg bogey counter is taller than Modern font, so adjust Y accordingly
     const V1Settings& s = settingsManager.get();
     const int x = 8;
-    const int y = 72;  // Moved lower
+    // Classic style: bogey counter ends ~y=67 (scale 2.2), needs more gap
+    // Modern style: bogey counter ends ~y=50 (fontSize 60), fits at y=72
+    const int y = (s.displayStyle == DISPLAY_STYLE_CLASSIC) ? 80 : 72;
     const int clearW = 75;
-    const int clearH = 28;
+    const int clearH = 18;  // Text is ~16px, keep well above BLE icon at y=98
     
-    // Clear the area first
+    // Clear the area first - only clear what we need, BLE icon is at y=98
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
     
     // Draw main volume in blue, mute volume in yellow (user-configurable colors)
