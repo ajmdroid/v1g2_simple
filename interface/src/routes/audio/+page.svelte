@@ -3,7 +3,8 @@
 	
 	let settings = $state({
 		voiceAlertsEnabled: true,
-		muteVoiceIfVolZero: false
+		muteVoiceIfVolZero: false,
+		voiceVolume: 75  // Speaker volume (0-100)
 	});
 	
 	let loading = $state(true);
@@ -22,6 +23,7 @@
 				const data = await res.json();
 				settings.voiceAlertsEnabled = data.voiceAlertsEnabled ?? true;
 				settings.muteVoiceIfVolZero = data.muteVoiceIfVolZero ?? false;
+				settings.voiceVolume = data.voiceVolume ?? 75;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -38,6 +40,7 @@
 			const params = new URLSearchParams();
 			params.append('voiceAlertsEnabled', settings.voiceAlertsEnabled);
 			params.append('muteVoiceIfVolZero', settings.muteVoiceIfVolZero);
+			params.append('voiceVolume', settings.voiceVolume);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -112,6 +115,28 @@
 								disabled={!settings.voiceAlertsEnabled}
 							/>
 						</label>
+					</div>
+					
+					<div class="divider my-2"></div>
+					
+					<div class="form-control">
+						<label class="label" for="voice-volume-slider">
+							<span class="label-text font-medium">Speaker Volume</span>
+							<span class="label-text-alt">{settings.voiceVolume}%</span>
+						</label>
+						<div class="flex items-center gap-3">
+							<span class="text-lg">🔈</span>
+							<input 
+								id="voice-volume-slider"
+								type="range" 
+								min="0" 
+								max="100" 
+								bind:value={settings.voiceVolume}
+								class="range range-primary flex-1" 
+							/>
+							<span class="text-lg">🔊</span>
+						</div>
+						<p class="text-xs text-base-content/50 mt-1">Controls the Waveshare ES8311 DAC output level</p>
 					</div>
 				</div>
 			</div>

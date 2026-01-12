@@ -33,8 +33,8 @@ generate "band_laser" "Laser"
 
 # Directions
 echo "--- Directions ---"
-generate "dir_front" "front"
-generate "dir_rear" "rear"
+generate "dir_ahead" "ahead"
+generate "dir_behind" "behind"
 generate "dir_side" "side"
 
 # GHz integers (spoken naturally)

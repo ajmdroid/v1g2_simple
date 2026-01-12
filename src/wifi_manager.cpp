@@ -11,6 +11,7 @@
 #include "ble_client.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
+#include "audio_beep.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
@@ -1280,6 +1281,18 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("muteVoiceIfVolZero")) {
         settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
     }
+    if (server.hasArg("brightness")) {
+        int brightness = server.arg("brightness").toInt();
+        brightness = std::max(0, std::min(brightness, 255));
+        settingsManager.updateBrightness((uint8_t)brightness);
+        display.setBrightness((uint8_t)brightness);
+    }
+    if (server.hasArg("voiceVolume")) {
+        int volume = server.arg("voiceVolume").toInt();
+        volume = std::max(0, std::min(volume, 100));
+        settingsManager.updateVoiceVolume((uint8_t)volume);
+        audio_set_volume((uint8_t)volume);
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1348,6 +1361,8 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["voiceAlertsEnabled"] = s.voiceAlertsEnabled;
     doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
+    doc["brightness"] = s.brightness;
+    doc["voiceVolume"] = s.voiceVolume;
     
     String json;
     serializeJson(doc, json);

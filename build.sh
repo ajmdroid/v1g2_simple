@@ -168,6 +168,15 @@ if [ "$SKIP_WEB" = false ]; then
     
     cd ..
     echo -e "${GREEN}✅ Web files deployed to data/${NC}"
+    
+    # Copy audio files (deploy script clears data/, so we restore audio)
+    if [ -d "tools/freq_audio/mulaw" ]; then
+        echo -e "${YELLOW}🔊 Copying audio files to data/audio/...${NC}"
+        mkdir -p data/audio
+        cp tools/freq_audio/mulaw/*.mul data/audio/
+        AUDIO_COUNT=$(ls -1 data/audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
+        echo -e "${GREEN}✅ Copied $AUDIO_COUNT audio clips${NC}"
+    fi
     echo ""
 else
     echo -e "${YELLOW}⏭️  Skipping web interface build${NC}"

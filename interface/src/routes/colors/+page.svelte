@@ -30,7 +30,8 @@
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
 		hideBleIcon: false,
-		hideVolumeIndicator: false
+		hideVolumeIndicator: false,
+		brightness: 200  // Display brightness (0-255)
 	});
 	
 	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern
@@ -143,6 +144,7 @@
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
+			params.append('brightness', colors.brightness);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -694,6 +696,29 @@
 							onchange={(e) => colors.hideVolumeIndicator = e.target.checked}
 						/>
 					</label>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Display Brightness -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">☀️ Display Brightness</h2>
+				<p class="text-xs text-base-content/50 mb-2">Adjust the AMOLED screen brightness (0-255)</p>
+				<div class="form-control">
+					<div class="flex items-center gap-4">
+						<label for="brightness-slider" class="text-sm">🌑</label>
+						<input 
+							id="brightness-slider"
+							type="range" 
+							min="0" 
+							max="255" 
+							bind:value={colors.brightness}
+							class="range range-primary flex-1" 
+						/>
+						<span class="text-sm">☀️</span>
+						<span class="text-sm font-mono w-12 text-right">{colors.brightness}</span>
+					</div>
 				</div>
 			</div>
 		</div>

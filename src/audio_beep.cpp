@@ -683,7 +683,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     
     if (i2s_tx_chan == NULL) {
         i2s_init();
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
     }
     
     if (!i2s_initialized) {
@@ -695,10 +695,10 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
     
     es8311_init();
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(20));  // Reduced from 50ms
     
     set_speaker_amp(true);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(50));  // Reduced from 100ms - amp needs time to stabilize
     
     // Use audioFS (LittleFS) which contains the audio files
     if (!audioFS) {
@@ -749,8 +749,8 @@ static void sd_audio_playback_task(void* pvParameters) {
         audioFile.close();
     }
     
-    // Wait for DMA to finish
-    vTaskDelay(pdMS_TO_TICKS(150));
+    // Brief delay for DMA buffer to flush
+    vTaskDelay(pdMS_TO_TICKS(50));  // Reduced from 150ms
     
     set_speaker_amp(false);
     audio_playing = false;
@@ -839,8 +839,8 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     // 5. Direction clip
     const char* dirFile = nullptr;
     switch (direction) {
-        case AlertDirection::AHEAD:  dirFile = "dir_front.mul"; break;
-        case AlertDirection::BEHIND: dirFile = "dir_rear.mul"; break;
+        case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
+        case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
         case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
     }
     if (dirFile) {
