@@ -41,17 +41,19 @@ pio run -e waveshare-349 -t upload
 
 ## Button Controls
 
-The **BOOT** button (top right, looking at the display) controls WiFi and brightness:
+The **BOOT** button (top right, looking at the display) controls WiFi and settings:
 
 | Action | Function |
 |--------|----------|
-| **Short press** | Enter brightness adjustment mode |
+| **Short press** | Enter settings mode (brightness + voice volume) |
 | **Long press (~4s)** | Toggle WiFi AP on/off |
 
-### Brightness Adjustment
-1. Short press BOOT → brightness slider appears
-2. Touch/swipe the slider to adjust (left = dim, right = bright)
-3. Short press BOOT again to save and exit
+### Settings Mode
+1. Short press BOOT → settings sliders appear
+2. **Top slider (green):** Display brightness (left = dim, right = bright)
+3. **Bottom slider (blue):** Voice alert volume (left = quiet, right = loud)
+   - Releases the slider to hear a test voice ("Ka ahead")
+4. Short press BOOT again to save and exit
 
 ### WiFi Access Point
 WiFi is **off by default** to save power. To access web settings:
@@ -71,6 +73,20 @@ WiFi is **off by default** to save power. To access web settings:
 |---------|------|----------|
 | **Single tap** | Alert active | Mute/unmute the alert |
 | **Triple tap** | No alert | Cycle profile slots (0→1→2→0) |
+
+---
+
+## Voice Alerts
+
+The display has a built-in speaker that announces alerts:
+
+- **When active:** Announces priority alert (e.g., "Ka ahead", "Laser behind")
+- **When disabled:** Silent operation (use web UI to enable/disable)
+- **Auto-disable:** Voice alerts mute when a phone app (JBV1) is connected
+
+**Volume:** Adjust via the **blue slider** in settings mode (short press BOOT).
+
+**Enable/Disable:** Go to `http://192.168.35.5/audio` to toggle voice alerts on/off.
 
 ---
 
@@ -134,6 +150,13 @@ General configuration:
 - **AP Name/Password:** Change WiFi network name and password
 - **BLE Proxy:** Enable to relay V1 data to JBV1 app (advertises as "V1C-LE-S3")
 - **Proxy Name:** Change BLE advertised name
+
+### Audio (/audio)
+
+Voice alert options:
+
+- **Enable Voice Alerts:** Toggle spoken announcements on/off
+- **Mute Voice at Volume 0:** Silence alerts when V1 volume is 0 (warning still plays)
 
 ---
 

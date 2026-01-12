@@ -16,16 +16,17 @@
 4. [Boot Flow](#d-boot-flow)
 5. [Bluetooth / Protocol](#e-bluetooth--protocol)
 6. [Display / UI](#f-display--ui)
-7. [Storage](#g-storage)
-8. [Web UI Pages](#g2-web-ui-pages)
-9. [Auto-Push System](#h-auto-push-system)
-10. [Configuration & Build Options](#i-configuration--build-options)
-11. [Troubleshooting](#j-troubleshooting)
-12. [Developer Guide](#k-developer-guide)
-13. [Reference](#l-reference)
-14. [Known Limitations](#known-limitations--todos)
-15. [Known Issues / Risks](#known-issues--risks)
-16. [Pre-Merge Checklist](#pre-merge-checklist)
+7. [Voice Alerts / Audio](#f2-voice-alerts--audio-system)
+8. [Storage](#g-storage)
+9. [Web UI Pages](#g2-web-ui-pages)
+10. [Auto-Push System](#h-auto-push-system)
+11. [Configuration & Build Options](#i-configuration--build-options)
+12. [Troubleshooting](#j-troubleshooting)
+13. [Developer Guide](#k-developer-guide)
+14. [Reference](#l-reference)
+15. [Known Limitations](#known-limitations--todos)
+16. [Known Issues / Risks](#known-issues--risks)
+17. [Pre-Merge Checklist](#pre-merge-checklist)
 
 ---
 
@@ -157,6 +158,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `settings.cpp` | ~600 | Preferences (NVS) storage |
 | `v1_profiles.cpp` | ~575 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
+| `audio_beep.cpp` | ~600 | ES8311 DAC, I2S audio, voice alerts |
 | `storage_manager.cpp` | ~65 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~145 | AXS15231B I2C touch polling |
 | `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
@@ -272,7 +274,7 @@ V1 Gen2 (BLE)
 ### WiFi AP Control & Timeout
 
 - **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
-- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/main.cpp](src/main.cpp#L1038-L1098).
 - **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
@@ -572,6 +574,88 @@ display.flush();  // Push to screen
 
 ---
 
+## F2. Voice Alerts / Audio System
+
+The display includes a built-in speaker (ES8311 DAC) that announces radar alerts when no phone app is connected.
+
+### Hardware
+
+| Component | Address | Purpose |
+|-----------|---------|---------|
+| ES8311 | 0x18 (I2C) | Audio codec / DAC |
+| TCA9554 | 0x20 (I2C) | IO expander, pin 7 controls speaker amplifier |
+
+**I2C Bus:** SDA=47, SCL=48 (shared with battery manager)
+**I2S Pins:** MCLK=7, BCLK=15, WS=46, DOUT=45
+
+**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L1-L50)
+
+### Voice Announcement Logic
+
+Voice alerts trigger when:
+1. **voiceAlertsEnabled** is true (default: on)
+2. **No phone app is connected** (BLE proxy has no subscribers)
+3. **Priority alert changes** (band or direction changed)
+4. **Cooldown passed** (2+ seconds since last announcement)
+
+Announcement format: `"[Band] [Direction]"` (e.g., "Ka ahead", "Laser behind")
+
+**Source:** [src/main.cpp](src/main.cpp#L794-L840) (voice alert logic)
+
+### Audio Files
+
+Pre-recorded TTS clips stored as C arrays (22.05kHz mono PCM):
+
+| File | Content | Duration |
+|------|---------|----------|
+| voice_ka_ahead.h | "Ka ahead" | ~822ms |
+| voice_ka_behind.h | "Ka behind" | ~822ms |
+| voice_ka_side.h | "Ka side" | ~822ms |
+| voice_k_ahead.h | "K ahead" | ~822ms |
+| voice_k_behind.h | "K behind" | ~822ms |
+| voice_k_side.h | "K side" | ~822ms |
+| voice_x_ahead.h | "X ahead" | ~822ms |
+| voice_x_behind.h | "X behind" | ~822ms |
+| voice_x_side.h | "X side" | ~822ms |
+| voice_laser_ahead.h | "Laser ahead" | ~1s |
+| voice_laser_behind.h | "Laser behind" | ~1s |
+| voice_laser_side.h | "Laser side" | ~1s |
+| vol0_warning.h | "Warning, volume zero" | ~1.5s |
+
+**Source:** [include/voice_*.h](include/) (audio data)
+
+### Volume Control
+
+**ES8311 Register 0x32** controls DAC volume:
+- 0x00 = Mute
+- 0x90-0xBF = Usable range (~-24dB to 0dB)
+
+Volume mapping: `0% = mute, 1-100% maps to 0x90-0xBF`
+
+**Adjustment:** Short-press BOOT → use bottom blue slider → release to hear test voice ("Ka ahead")
+
+**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L270-L290) (audio_set_volume)
+
+### Settings Screen
+
+The settings screen shows two sliders:
+1. **Top (green):** Display brightness (0-255)
+2. **Bottom (blue):** Voice volume (0-100%)
+
+On volume slider release, plays "Ka ahead" test clip after 1 second delay.
+
+**Source:** [src/display.cpp](src/display.cpp#L493-L590) (showSettingsSliders)
+
+### Web Configuration
+
+Voice alerts can be enabled/disabled at `/audio`:
+- **Enable Voice Alerts:** Master toggle
+- **Mute Voice at Volume 0:** Skip announcements when V1 volume is 0
+
+**API:** `POST /api/displaycolors` with `voiceAlertsEnabled=true|false`
+
+---
+
 ## G. Storage
 
 ### Filesystem Hierarchy
@@ -615,6 +699,9 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
+| voiceVol | uint8 | 75 | Voice alert volume 0-100% |
+| voiceAlerts | bool | true | Voice alerts enabled |
+| muteVoiceZero | bool | false | Mute voice when V1 volume is 0 |
 | autoPush | bool | false | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
@@ -689,9 +776,11 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 |-------|------|---------|
 | `/` | `+page.svelte` | Home - connection status, quick links |
 | `/settings` | `settings/+page.svelte` | WiFi AP, BLE proxy settings |
+| `/audio` | `audio/+page.svelte` | Voice alert settings |
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
+| `/devices` | `devices/+page.svelte` | Known V1 device management |
 
 ### Settings Page (`/settings`)
 
@@ -701,6 +790,16 @@ Controls:
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 
 **Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
+
+### Audio Page (`/audio`)
+
+Controls:
+- **Enable Voice Alerts:** Master toggle for spoken alert announcements
+- **Mute Voice at Volume 0:** Skip voice alerts when V1 volume is set to 0 (warning still plays)
+
+Voice alerts announce the priority alert's band and direction (e.g., "Ka ahead") through the built-in speaker when no phone app is connected via BLE proxy.
+
+**Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -891,13 +990,15 @@ Auto-push sends these V1 ESP commands:
 
 ### PlatformIO Environments
 
-Two environments available:
-- `waveshare-349` - Mac/Linux (GFX 1.6.4, 16MB partitions)
-- `waveshare-349-windows` - Windows (GFX 1.4.9, 8MB partitions)
+Two environments available (both use the same pioarduino platform):
+- `waveshare-349` - Mac/Linux (16MB flash)
+- `waveshare-349-windows` - Windows (8MB flash for compatibility with some hardware variants)
+
+Both environments use identical toolchain and libraries. The only difference is flash partition size.
 
 ```ini
 [env:waveshare-349]
-platform = espressif32
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.11/platform-espressif32.zip
 board = esp32-s3-devkitc-1
 framework = arduino
 
@@ -913,25 +1014,22 @@ lib_deps =
     moononournation/GFX Library for Arduino@1.6.4
     h2zero/NimBLE-Arduino@2.3.7
     bblanchon/ArduinoJson@7.4.2
+    https://github.com/takkaO/OpenFontRender.git
 
 board_build.partitions = default_16MB.csv
 board_build.filesystem = littlefs
 
 [env:waveshare-349-windows]
-# Same as above but with:
-lib_deps = 
-    moononournation/GFX Library for Arduino@1.4.9  # ESP32 2.x compatible
-    # ... same other libs
-build_flags = 
-    # ... same flags plus:
-    -D WINDOWS_BUILD=1
-board_build.partitions = default_8MB.csv  # 8MB flash variant
+# Same as waveshare-349, but with 8MB partitions for some hardware variants
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.11/platform-espressif32.zip
+# ... identical build_flags and lib_deps ...
+board_build.partitions = default_8MB.csv
 ```
 
 **Windows users:** Use `--env waveshare-349-windows` with all PlatformIO commands.
 See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 
-**Source:** [platformio.ini](platformio.ini#L1-L50)
+**Source:** [platformio.ini](platformio.ini#L1-L100)
 
 ### Compile-Time Flags
 
@@ -953,6 +1051,7 @@ See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 All settings modifiable via web UI at `http://192.168.35.5`:
 
 - **Settings page:** WiFi AP name/password, BLE proxy
+- **Audio page:** Voice alerts enable/disable
 - **Colors page:** Display style, custom per-element colors
 - **Profiles page:** Pull V1 settings, save as profiles
 - **Auto-push page:** Configure 3 profile slots
