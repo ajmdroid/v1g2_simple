@@ -105,6 +105,9 @@ struct V1Settings {
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     
+    // Voice alerts (when no app connected)
+    bool voiceAlertsEnabled;     // Speak alert band/direction when no app connected
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -173,6 +176,7 @@ struct V1Settings {
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
+        voiceAlertsEnabled(true),  // Voice alerts enabled by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -243,6 +247,7 @@ public:
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
+    void setVoiceAlertsEnabled(bool enabled);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

@@ -324,11 +324,13 @@ static void i2s_init() {
 
 // Include pre-recorded TTS audio
 #include "../include/warning_audio.h"
+#include "../include/alert_audio.h"
 
-// Play "Warning Volume Zero" speech
-void play_vol0_beep() {
-    Serial.println("[AUDIO_BEEP] play_vol0_beep() called");
-    
+// Track if audio is currently playing to prevent overlapping
+static volatile bool audio_playing = false;
+
+// Helper to play any PCM audio (mono input, converts to stereo for I2S)
+static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duration_ms) {
     if (i2s_tx_chan == NULL) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
         i2s_init();
@@ -348,8 +350,7 @@ void play_vol0_beep() {
     delay(100);
     
     // Convert mono PCM to stereo for I2S Philips format
-    const int mono_samples = WARNING_VOLUME_ZERO_PCM_SAMPLES;
-    const int stereo_samples = mono_samples * 2;
+    const int stereo_samples = num_samples * 2;
     int16_t* buf = (int16_t*)malloc(stereo_samples * sizeof(int16_t));
     if (!buf) {
         Serial.println("[AUDIO_BEEP] ERROR: malloc failed!");
@@ -358,31 +359,162 @@ void play_vol0_beep() {
     }
     
     // Copy mono to stereo (both channels)
-    for (int i = 0; i < mono_samples; ++i) {
-        int16_t sample = pgm_read_word(&warning_volume_zero_pcm[i]);
+    for (int i = 0; i < num_samples; ++i) {
+        int16_t sample = pgm_read_word(&pcm_data[i]);
         buf[i * 2] = sample;       // Left channel
         buf[i * 2 + 1] = sample;   // Right channel
     }
-    
-    Serial.print("[AUDIO_BEEP] Playing 'Warning Volume Zero' (");
-    Serial.print(WARNING_VOLUME_ZERO_PCM_DURATION_MS);
-    Serial.println("ms)");
     
     size_t bytes_written = 0;
     esp_err_t err = i2s_channel_write(i2s_tx_chan, buf, stereo_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
     
     if (err != ESP_OK) {
         Serial.print("[AUDIO_BEEP] i2s_channel_write failed: "); Serial.println(err);
-    } else {
-        Serial.print("[AUDIO_BEEP] Wrote "); Serial.print(bytes_written); Serial.println(" bytes");
     }
     
     // Wait for audio to finish playing through DMA
-    delay(WARNING_VOLUME_ZERO_PCM_DURATION_MS + 100);
+    delay(duration_ms + 100);
     
     free(buf);
     set_speaker_amp(false);
+}
+
+// Play "Warning Volume Zero" speech
+void play_vol0_beep() {
+    Serial.println("[AUDIO_BEEP] play_vol0_beep() called");
+    
+    if (audio_playing) {
+        Serial.println("[AUDIO_BEEP] Audio already playing, skipping");
+        return;
+    }
+    audio_playing = true;
+    
+    Serial.print("[AUDIO_BEEP] Playing 'Warning Volume Zero' (");
+    Serial.print(WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+    Serial.println("ms)");
+    
+    play_pcm_audio(warning_volume_zero_pcm, WARNING_VOLUME_ZERO_PCM_SAMPLES, WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+    
+    audio_playing = false;
     Serial.println("[AUDIO_BEEP] Speech complete");
+}
+
+// Play voice alert for band/direction
+void play_alert_voice(AlertBand band, AlertDirection direction) {
+    Serial.print("[AUDIO_BEEP] play_alert_voice() band="); Serial.print((int)band);
+    Serial.print(" dir="); Serial.println((int)direction);
+    
+    if (audio_playing) {
+        Serial.println("[AUDIO_BEEP] Audio already playing, skipping");
+        return;
+    }
+    audio_playing = true;
+    
+    const int16_t* pcm_data = nullptr;
+    int num_samples = 0;
+    int duration_ms = 0;
+    const char* phrase = "";
+    
+    // Select the appropriate audio clip
+    switch (band) {
+        case AlertBand::LASER:
+            switch (direction) {
+                case AlertDirection::AHEAD:
+                    pcm_data = alert_laser_ahead;
+                    num_samples = ALERT_LASER_AHEAD_SAMPLES;
+                    duration_ms = ALERT_LASER_AHEAD_DURATION_MS;
+                    phrase = "Laser ahead";
+                    break;
+                case AlertDirection::BEHIND:
+                    pcm_data = alert_laser_behind;
+                    num_samples = ALERT_LASER_BEHIND_SAMPLES;
+                    duration_ms = ALERT_LASER_BEHIND_DURATION_MS;
+                    phrase = "Laser behind";
+                    break;
+                case AlertDirection::SIDE:
+                    pcm_data = alert_laser_side;
+                    num_samples = ALERT_LASER_SIDE_SAMPLES;
+                    duration_ms = ALERT_LASER_SIDE_DURATION_MS;
+                    phrase = "Laser side";
+                    break;
+            }
+            break;
+        case AlertBand::KA:
+            switch (direction) {
+                case AlertDirection::AHEAD:
+                    pcm_data = alert_ka_ahead;
+                    num_samples = ALERT_KA_AHEAD_SAMPLES;
+                    duration_ms = ALERT_KA_AHEAD_DURATION_MS;
+                    phrase = "Ka ahead";
+                    break;
+                case AlertDirection::BEHIND:
+                    pcm_data = alert_ka_behind;
+                    num_samples = ALERT_KA_BEHIND_SAMPLES;
+                    duration_ms = ALERT_KA_BEHIND_DURATION_MS;
+                    phrase = "Ka behind";
+                    break;
+                case AlertDirection::SIDE:
+                    pcm_data = alert_ka_side;
+                    num_samples = ALERT_KA_SIDE_SAMPLES;
+                    duration_ms = ALERT_KA_SIDE_DURATION_MS;
+                    phrase = "Ka side";
+                    break;
+            }
+            break;
+        case AlertBand::K:
+            switch (direction) {
+                case AlertDirection::AHEAD:
+                    pcm_data = alert_k_ahead;
+                    num_samples = ALERT_K_AHEAD_SAMPLES;
+                    duration_ms = ALERT_K_AHEAD_DURATION_MS;
+                    phrase = "K ahead";
+                    break;
+                case AlertDirection::BEHIND:
+                    pcm_data = alert_k_behind;
+                    num_samples = ALERT_K_BEHIND_SAMPLES;
+                    duration_ms = ALERT_K_BEHIND_DURATION_MS;
+                    phrase = "K behind";
+                    break;
+                case AlertDirection::SIDE:
+                    pcm_data = alert_k_side;
+                    num_samples = ALERT_K_SIDE_SAMPLES;
+                    duration_ms = ALERT_K_SIDE_DURATION_MS;
+                    phrase = "K side";
+                    break;
+            }
+            break;
+        case AlertBand::X:
+            switch (direction) {
+                case AlertDirection::AHEAD:
+                    pcm_data = alert_x_ahead;
+                    num_samples = ALERT_X_AHEAD_SAMPLES;
+                    duration_ms = ALERT_X_AHEAD_DURATION_MS;
+                    phrase = "X ahead";
+                    break;
+                case AlertDirection::BEHIND:
+                    pcm_data = alert_x_behind;
+                    num_samples = ALERT_X_BEHIND_SAMPLES;
+                    duration_ms = ALERT_X_BEHIND_DURATION_MS;
+                    phrase = "X behind";
+                    break;
+                case AlertDirection::SIDE:
+                    pcm_data = alert_x_side;
+                    num_samples = ALERT_X_SIDE_SAMPLES;
+                    duration_ms = ALERT_X_SIDE_DURATION_MS;
+                    phrase = "X side";
+                    break;
+            }
+            break;
+    }
+    
+    if (pcm_data && num_samples > 0) {
+        Serial.print("[AUDIO_BEEP] Playing '"); Serial.print(phrase);
+        Serial.print("' ("); Serial.print(duration_ms); Serial.println("ms)");
+        play_pcm_audio(pcm_data, num_samples, duration_ms);
+    }
+    
+    audio_playing = false;
+    Serial.println("[AUDIO_BEEP] Alert voice complete");
 }
 
 // Test beep on startup (for debugging audio hardware)

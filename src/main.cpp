@@ -32,6 +32,7 @@
 #include "v1_profiles.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include "audio_beep.h"
 #include "../include/config.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
@@ -103,6 +104,12 @@ enum class DisplayMode {
     LIVE
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
+
+// Voice alerts tracking - announces priority alert when no app is connected
+static Band lastVoiceAlertBand = BAND_NONE;
+static Direction lastVoiceAlertDirection = DIR_NONE;
+static unsigned long lastVoiceAlertTime = 0;
+static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 2000;  // Min 2s between announcements
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -780,6 +787,53 @@ void processBLEData() {
                 
                 displayMode = DisplayMode::LIVE;
 
+                // Voice alerts: announce new priority alert when no phone app connected
+                const V1Settings& settings = settingsManager.get();
+                if (settings.voiceAlertsEnabled && 
+                    !bleClient.isProxyClientConnected() &&
+                    priority.isValid &&
+                    priority.band != BAND_NONE) {
+                    
+                    unsigned long now = millis();
+                    bool bandChanged = (priority.band != lastVoiceAlertBand);
+                    bool directionChanged = (priority.direction != lastVoiceAlertDirection);
+                    bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+                    
+                    // Announce when band or direction changes (with cooldown to prevent spam)
+                    if ((bandChanged || directionChanged) && cooldownPassed) {
+                        // Convert V1 band to audio band
+                        AlertBand audioBand;
+                        bool validBand = true;
+                        switch (priority.band) {
+                            case BAND_LASER: audioBand = AlertBand::LASER; break;
+                            case BAND_KA:    audioBand = AlertBand::KA;    break;
+                            case BAND_K:     audioBand = AlertBand::K;     break;
+                            case BAND_X:     audioBand = AlertBand::X;     break;
+                            default:         validBand = false;            break;
+                        }
+                        
+                        // Convert V1 direction to audio direction
+                        // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
+                        AlertDirection audioDir;
+                        if (priority.direction & DIR_FRONT) {
+                            audioDir = AlertDirection::AHEAD;
+                        } else if (priority.direction & DIR_REAR) {
+                            audioDir = AlertDirection::BEHIND;
+                        } else {
+                            audioDir = AlertDirection::SIDE;
+                        }
+                        
+                        if (validBand) {
+                            SerialLog.printf("[VoiceAlert] Announcing: band=%d dir=%d\n", 
+                                           (int)audioBand, (int)audioDir);
+                            play_alert_voice(audioBand, audioDir);
+                            lastVoiceAlertBand = priority.band;
+                            lastVoiceAlertDirection = priority.direction;
+                            lastVoiceAlertTime = millis();
+                        }
+                    }
+                }
+
                 // V1 is source of truth for mute state - no auto-unmute logic
                 // Display just shows what V1 reports
 
@@ -795,6 +849,10 @@ void processBLEData() {
             } else {
                 // No alerts from V1
                 displayMode = DisplayMode::IDLE;
+                
+                // Reset voice alert tracking when alerts clear
+                lastVoiceAlertBand = BAND_NONE;
+                lastVoiceAlertDirection = DIR_NONE;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();

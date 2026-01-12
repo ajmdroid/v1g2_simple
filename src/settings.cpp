@@ -113,6 +113,7 @@ void SettingsManager::load() {
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
+    settings.voiceAlertsEnabled = preferences.getBool("voiceAlerts", true);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -213,6 +214,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    written += preferences.putBool("voiceAlerts", settings.voiceAlertsEnabled);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -433,6 +435,11 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
     save();
 }
 
+void SettingsManager::setVoiceAlertsEnabled(bool enabled) {
+    settings.voiceAlertsEnabled = enabled;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -611,6 +618,7 @@ void SettingsManager::backupToSD() {
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
+    doc["voiceAlertsEnabled"] = settings.voiceAlertsEnabled;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -694,6 +702,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    if (doc["voiceAlertsEnabled"].is<bool>()) settings.voiceAlertsEnabled = doc["voiceAlertsEnabled"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
@@ -731,6 +740,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
     preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    preferences.putBool("voiceAlerts", settings.voiceAlertsEnabled);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);
