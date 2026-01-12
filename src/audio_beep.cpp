@@ -1,0 +1,394 @@
+// audio_beep.cpp
+// Simple beep playback for VOL 0 warning using ES8311 DAC on Waveshare ESP32-S3-Touch-LCD-3.49
+// Hardware: ES8311 (I2C/I2S), TCA9554 IO expander (I2C, pin 7 = speaker amp enable)
+//
+// I2C bus: SDA=47, SCL=48 (shared with battery manager TCA9554)
+// I2S pins: MCLK=7, BCLK=15, WS=46, DOUT=45 (for playback)
+// TCA9554 address: 0x20 (ESP_IO_EXPANDER_I2C_TCA9554_ADDRESS_000)
+// ES8311 address: 0x18
+
+#include "audio_beep.h"
+#include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
+#include <Arduino.h>
+#include <Wire.h>
+#include <math.h>
+#include "driver/i2s_std.h"   // New I2S standard driver (not legacy)
+#include "driver/gpio.h"
+
+// ES8311 I2C address
+#define ES8311_ADDR 0x18
+
+// TCA9554 I2C address (same chip as battery manager, address 0x20)
+#define TCA9554_ADDR 0x20
+#define TCA9554_SPK_AMP_PIN 7
+
+// I2S pins (from Waveshare board_cfg.txt for S3_LCD_3_49)
+#define I2S_MCLK_PIN GPIO_NUM_7
+#define I2S_BCLK_PIN GPIO_NUM_15
+#define I2S_WS_PIN   GPIO_NUM_46
+#define I2S_DOUT_PIN GPIO_NUM_45   // Data OUT for playback (not DIN=6 which is for recording)
+
+// Beep parameters
+#define BEEP_FREQ_HZ 500
+#define BEEP_DURATION_MS 500
+#define SAMPLE_RATE 22050  // Match Waveshare BSP default (22.05kHz)
+
+// Use battery manager's TwoWire instance (already initialized on SDA=47, SCL=48)
+// ES8311 codec and TCA9554 IO expander are both on this bus
+static TwoWire& audioWire = tca9554Wire;
+static bool es8311_initialized = false;
+static bool i2s_initialized = false;
+static i2s_chan_handle_t i2s_tx_chan = NULL;  // New I2S driver handle
+
+// Write a register to ES8311
+static void es8311_write_reg(uint8_t reg, uint8_t val) {
+    audioWire.beginTransmission(ES8311_ADDR);
+    audioWire.write(reg);
+    audioWire.write(val);
+    uint8_t result = audioWire.endTransmission();
+    if (result != 0) {
+        Serial.print("[AUDIO_BEEP][I2C] ES8311 reg 0x"); Serial.print(reg, HEX);
+        Serial.print(" <= 0x"); Serial.print(val, HEX);
+        Serial.print(" FAILED result: "); Serial.println(result);
+    }
+}
+
+// Enable/disable speaker amp via TCA9554 pin 7
+// Note: Battery manager uses pin 6 for power latch, we use pin 7 for speaker amp
+// Per ESP-ADF and Waveshare examples, PA_EN is active-HIGH
+static void set_speaker_amp(bool enable) {
+    // Step 1: Read current config register
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x03); // Configuration register
+    audioWire.endTransmission(false);
+    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
+    uint8_t config = 0xFF;
+    if (audioWire.available()) {
+        config = audioWire.read();
+    }
+    
+    // Step 2: Read current output state
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x01); // Output port register
+    audioWire.endTransmission(false);
+    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
+    uint8_t output = 0xFF;
+    if (audioWire.available()) {
+        output = audioWire.read();
+    }
+    
+    Serial.print("[AUDIO_BEEP] TCA9554 BEFORE: config=0x"); Serial.print(config, HEX);
+    Serial.print(" output=0x"); Serial.println(output, HEX);
+    
+    // Step 3: Set the output value FIRST (before configuring as output)
+    // Active HIGH per Waveshare esp_io_expander example: set_level(pin, 1) to enable
+    if (enable) {
+        output |= (1 << TCA9554_SPK_AMP_PIN);   // HIGH to enable
+    } else {
+        output &= ~(1 << TCA9554_SPK_AMP_PIN);  // LOW to disable
+    }
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x01); // Output port register
+    audioWire.write(output);
+    audioWire.endTransmission();
+    
+    // Step 4: Configure pin 7 as output (if not already)
+    config &= ~(1 << TCA9554_SPK_AMP_PIN); // Bit = 0 means output
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x03); // Configuration register
+    audioWire.write(config);
+    audioWire.endTransmission();
+    
+    // Verify
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x03);
+    audioWire.endTransmission(false);
+    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
+    config = audioWire.available() ? audioWire.read() : 0xFF;
+    
+    audioWire.beginTransmission(TCA9554_ADDR);
+    audioWire.write(0x01);
+    audioWire.endTransmission(false);
+    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
+    output = audioWire.available() ? audioWire.read() : 0xFF;
+    
+    Serial.print("[AUDIO_BEEP] TCA9554 AFTER: config=0x"); Serial.print(config, HEX);
+    Serial.print(" output=0x"); Serial.println(output, HEX);
+    Serial.print("[AUDIO_BEEP] Speaker amp "); Serial.println(enable ? "ENABLED" : "DISABLED");
+}
+
+// ES8311 Register definitions (from ESP-ADF)
+#define ES8311_RESET_REG00        0x00
+#define ES8311_CLK_MANAGER_REG01  0x01
+#define ES8311_CLK_MANAGER_REG02  0x02
+#define ES8311_CLK_MANAGER_REG03  0x03
+#define ES8311_CLK_MANAGER_REG04  0x04
+#define ES8311_CLK_MANAGER_REG05  0x05
+#define ES8311_CLK_MANAGER_REG06  0x06
+#define ES8311_CLK_MANAGER_REG07  0x07
+#define ES8311_CLK_MANAGER_REG08  0x08
+#define ES8311_SDPIN_REG09        0x09
+#define ES8311_SDPOUT_REG0A       0x0A
+#define ES8311_SYSTEM_REG0B       0x0B
+#define ES8311_SYSTEM_REG0C       0x0C
+#define ES8311_SYSTEM_REG0D       0x0D
+#define ES8311_SYSTEM_REG0E       0x0E
+#define ES8311_SYSTEM_REG0F       0x0F
+#define ES8311_SYSTEM_REG10       0x10
+#define ES8311_SYSTEM_REG11       0x11
+#define ES8311_SYSTEM_REG12       0x12
+#define ES8311_SYSTEM_REG13       0x13
+#define ES8311_SYSTEM_REG14       0x14
+#define ES8311_ADC_REG15          0x15
+#define ES8311_ADC_REG16          0x16
+#define ES8311_ADC_REG17          0x17
+#define ES8311_ADC_REG1B          0x1B
+#define ES8311_ADC_REG1C          0x1C
+#define ES8311_DAC_REG31          0x31
+#define ES8311_DAC_REG32          0x32
+#define ES8311_DAC_REG37          0x37
+#define ES8311_GPIO_REG44         0x44
+#define ES8311_GP_REG45           0x45
+
+// Read a register from ES8311
+static uint8_t es8311_read_reg(uint8_t reg) {
+    audioWire.beginTransmission(ES8311_ADDR);
+    audioWire.write(reg);
+    audioWire.endTransmission(false);
+    audioWire.requestFrom((uint8_t)ES8311_ADDR, (uint8_t)1);
+    if (audioWire.available()) {
+        return audioWire.read();
+    }
+    return 0;
+}
+
+// Full ES8311 initialization - exact copy of ESP-ADF es8311_codec_init
+// For 24kHz, MCLK=6.144MHz (256*fs), slave mode, DAC output
+static void es8311_init() {
+    if (es8311_initialized) return;
+    
+    Serial.println("[AUDIO_BEEP] ES8311 init (ESP-ADF pattern)");
+    
+    // Coefficient for 24kHz with 6.144MHz MCLK from coeff_div table:
+    // {6144000 , 24000, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0xff, 0x04, 0x10, 0x10}
+    // pre_div=1, pre_multi=1, adc_div=1, dac_div=1, fs_mode=0, lrck_h=0, lrck_l=0xff, bclk_div=4, adc_osr=0x10, dac_osr=0x10
+    
+    // Step 1: Enhance I2C noise immunity (write twice per ESP-ADF)
+    es8311_write_reg(ES8311_GPIO_REG44, 0x08);
+    es8311_write_reg(ES8311_GPIO_REG44, 0x08);
+    
+    // Step 2: Initial clock setup
+    es8311_write_reg(ES8311_CLK_MANAGER_REG01, 0x30);  // Clock setup initial
+    es8311_write_reg(ES8311_CLK_MANAGER_REG02, 0x00);  // Divider reset
+    es8311_write_reg(ES8311_CLK_MANAGER_REG03, 0x10);  // ADC OSR
+    es8311_write_reg(ES8311_ADC_REG16, 0x24);         // MIC gain
+    es8311_write_reg(ES8311_CLK_MANAGER_REG04, 0x10);  // DAC OSR
+    es8311_write_reg(ES8311_CLK_MANAGER_REG05, 0x00);  // ADC/DAC dividers
+    es8311_write_reg(ES8311_SYSTEM_REG0B, 0x00);
+    es8311_write_reg(ES8311_SYSTEM_REG0C, 0x00);
+    es8311_write_reg(ES8311_SYSTEM_REG10, 0x1F);
+    es8311_write_reg(ES8311_SYSTEM_REG11, 0x7F);
+    
+    // Step 3: Enable CSM (clock state machine) in slave mode
+    es8311_write_reg(ES8311_RESET_REG00, 0x80);  // CSM_ON=1, slave mode (bit6=0)
+    
+    // Step 4: Enable all clocks, MCLK from external pin
+    es8311_write_reg(ES8311_CLK_MANAGER_REG01, 0x3F);  // bit7=0 (MCLK from pin), enable all clocks
+    
+    // Step 5: Configure clock dividers for 24kHz @ 6.144MHz MCLK
+    // pre_div=1, pre_multi=1 => REG02 = ((1-1)<<5) | (0<<3) = 0x00
+    es8311_write_reg(ES8311_CLK_MANAGER_REG02, 0x00);
+    
+    // adc_div=1, dac_div=1 => REG05 = ((1-1)<<4) | ((1-1)<<0) = 0x00
+    es8311_write_reg(ES8311_CLK_MANAGER_REG05, 0x00);
+    
+    // fs_mode=0, adc_osr=0x10 => REG03 = (0<<6) | 0x10 = 0x10
+    es8311_write_reg(ES8311_CLK_MANAGER_REG03, 0x10);
+    
+    // dac_osr=0x10 => REG04 = 0x10
+    es8311_write_reg(ES8311_CLK_MANAGER_REG04, 0x10);
+    
+    // lrck_h=0x00, lrck_l=0xff => LRCK divider = 256
+    es8311_write_reg(ES8311_CLK_MANAGER_REG07, 0x00);
+    es8311_write_reg(ES8311_CLK_MANAGER_REG08, 0xFF);
+    
+    // bclk_div=4 => REG06 = (4-1)<<0 = 0x03
+    es8311_write_reg(ES8311_CLK_MANAGER_REG06, 0x03);
+    
+    // Step 6: Additional setup from ESP-ADF
+    es8311_write_reg(ES8311_SYSTEM_REG13, 0x10);
+    es8311_write_reg(ES8311_ADC_REG1B, 0x0A);
+    es8311_write_reg(ES8311_ADC_REG1C, 0x6A);
+    
+    // Step 7: START the DAC (from es8311_start)
+    // REG09: DAC input config - bit6=0 for DAC enabled
+    uint8_t dac_iface = es8311_read_reg(ES8311_SDPIN_REG09) & 0xBF;  // Clear bit 6 to enable
+    dac_iface |= 0x0C;  // 16-bit samples (bits 4:2 = 0b11)
+    es8311_write_reg(ES8311_SDPIN_REG09, dac_iface);
+    
+    es8311_write_reg(ES8311_ADC_REG17, 0xBF);
+    es8311_write_reg(ES8311_SYSTEM_REG0E, 0x02);  // Power up DAC
+    es8311_write_reg(ES8311_SYSTEM_REG12, 0x00);  // DAC output enable
+    es8311_write_reg(ES8311_SYSTEM_REG14, 0x1A);  // Output routing (no DMIC)
+    es8311_write_reg(ES8311_SYSTEM_REG0D, 0x01);  // Power up analog
+    es8311_write_reg(ES8311_ADC_REG15, 0x40);
+    es8311_write_reg(ES8311_DAC_REG37, 0x08);
+    es8311_write_reg(ES8311_GP_REG45, 0x00);
+    
+    // Step 8: Set internal reference signal
+    es8311_write_reg(ES8311_GPIO_REG44, 0x58);
+    
+    // Step 9: Set DAC volume to 0dB
+    es8311_write_reg(ES8311_DAC_REG32, 0xBF);  // 0dB
+    
+    // Step 10: Unmute DAC (clear bits 6:5 of REG31)
+    uint8_t regv = es8311_read_reg(ES8311_DAC_REG31) & 0x9F;
+    es8311_write_reg(ES8311_DAC_REG31, regv);
+    
+    es8311_initialized = true;
+    
+    delay(50);  // Let clocks stabilize
+    
+    // Debug: Dump key registers
+    Serial.println("[AUDIO_BEEP] ES8311 registers after init:");
+    Serial.print("  REG00: 0x"); Serial.println(es8311_read_reg(ES8311_RESET_REG00), HEX);
+    Serial.print("  REG01: 0x"); Serial.println(es8311_read_reg(ES8311_CLK_MANAGER_REG01), HEX);
+    Serial.print("  REG06: 0x"); Serial.println(es8311_read_reg(ES8311_CLK_MANAGER_REG06), HEX);
+    Serial.print("  REG09: 0x"); Serial.println(es8311_read_reg(ES8311_SDPIN_REG09), HEX);
+    Serial.print("  REG0D: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG0D), HEX);
+    Serial.print("  REG0E: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG0E), HEX);
+    Serial.print("  REG12: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG12), HEX);
+    Serial.print("  REG14: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG14), HEX);
+    Serial.print("  REG31: 0x"); Serial.println(es8311_read_reg(ES8311_DAC_REG31), HEX);
+    Serial.print("  REG32: 0x"); Serial.println(es8311_read_reg(ES8311_DAC_REG32), HEX);
+    Serial.print("  REG44: 0x"); Serial.println(es8311_read_reg(ES8311_GPIO_REG44), HEX);
+}
+
+// I2S init for playback using NEW I2S STD driver (like Waveshare BSP)
+static void i2s_init() {
+    if (i2s_initialized) return;
+    
+    Serial.println("[AUDIO_BEEP] Initializing I2S (new STD driver)...");
+    
+    // Step 1: Create I2S channel
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    chan_cfg.auto_clear = true;  // Auto clear legacy data in DMA buffer
+    
+    esp_err_t err = i2s_new_channel(&chan_cfg, &i2s_tx_chan, NULL);  // TX only, no RX
+    if (err != ESP_OK) {
+        Serial.print("[AUDIO_BEEP] i2s_new_channel failed: "); Serial.println(err);
+        return;
+    }
+    
+    // Step 2: Configure I2S standard mode (Philips format, STEREO, 16-bit)
+    // Note: ES8311 may expect stereo I2S even for mono output
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = I2S_MCLK_PIN,
+            .bclk = I2S_BCLK_PIN,
+            .ws = I2S_WS_PIN,
+            .dout = I2S_DOUT_PIN,
+            .din = GPIO_NUM_NC,  // Not using input
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
+    };
+    
+    err = i2s_channel_init_std_mode(i2s_tx_chan, &std_cfg);
+    if (err != ESP_OK) {
+        Serial.print("[AUDIO_BEEP] i2s_channel_init_std_mode failed: "); Serial.println(err);
+        i2s_del_channel(i2s_tx_chan);
+        i2s_tx_chan = NULL;
+        return;
+    }
+    
+    // Step 3: Enable the channel
+    err = i2s_channel_enable(i2s_tx_chan);
+    if (err != ESP_OK) {
+        Serial.print("[AUDIO_BEEP] i2s_channel_enable failed: "); Serial.println(err);
+        i2s_del_channel(i2s_tx_chan);
+        i2s_tx_chan = NULL;
+        return;
+    }
+    
+    i2s_initialized = true;
+    Serial.println("[AUDIO_BEEP] I2S initialized (STD driver, Philips format, stereo)");
+    Serial.print("[AUDIO_BEEP] Sample rate: "); Serial.print(SAMPLE_RATE); Serial.println(" Hz");
+    Serial.print("[AUDIO_BEEP] Pins: MCLK="); Serial.print(I2S_MCLK_PIN);
+    Serial.print(", BCLK="); Serial.print(I2S_BCLK_PIN);
+    Serial.print(", WS="); Serial.print(I2S_WS_PIN);
+    Serial.print(", DOUT="); Serial.println(I2S_DOUT_PIN);
+}
+
+// Generate and play a simple beep
+void play_vol0_beep() {
+    Serial.println("[AUDIO_BEEP] play_vol0_beep() called");
+    
+    if (i2s_tx_chan == NULL) {
+        // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
+        i2s_init();
+        delay(50);  // Let clocks stabilize
+    }
+    
+    if (!i2s_initialized) {
+        Serial.println("[AUDIO_BEEP] ERROR: I2S init failed!");
+        return;
+    }
+    
+    es8311_init();
+    delay(50);  // Let ES8311 lock to MCLK
+    
+    // Enable speaker amp - let it fully stabilize
+    set_speaker_amp(true);
+    delay(200); // Give amp more time to stabilize
+    
+    // Generate 16-bit PCM sine wave (STEREO for Philips I2S format)
+    const int samples = SAMPLE_RATE * BEEP_DURATION_MS / 1000;
+    const int stereo_samples = samples * 2;  // Left + Right
+    int16_t* buf = (int16_t*)malloc(stereo_samples * sizeof(int16_t));
+    if (!buf) {
+        Serial.println("[AUDIO_BEEP] ERROR: malloc failed!");
+        set_speaker_amp(false);
+        return;
+    }
+    
+    // Generate sine wave at high amplitude for audibility
+    const float pi = 3.14159265f;
+    for (int i = 0; i < samples; ++i) {
+        float t = (float)i / SAMPLE_RATE;
+        int16_t sample = (int16_t)(28000.0f * sinf(2.0f * pi * BEEP_FREQ_HZ * t));
+        buf[i * 2] = sample;       // Left channel
+        buf[i * 2 + 1] = sample;   // Right channel
+    }
+    
+    Serial.print("[AUDIO_BEEP] Playing "); Serial.print(BEEP_DURATION_MS);
+    Serial.print("ms beep at "); Serial.print(BEEP_FREQ_HZ); Serial.println("Hz");
+    Serial.print("[AUDIO_BEEP] Buffer: "); Serial.print(stereo_samples); Serial.println(" samples (stereo)");
+    
+    size_t bytes_written = 0;
+    esp_err_t err = i2s_channel_write(i2s_tx_chan, buf, stereo_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    
+    if (err != ESP_OK) {
+        Serial.print("[AUDIO_BEEP] i2s_channel_write failed: "); Serial.println(err);
+    } else {
+        Serial.print("[AUDIO_BEEP] Wrote "); Serial.print(bytes_written); Serial.println(" bytes");
+    }
+    
+    // Wait for audio to finish playing through DMA
+    delay(BEEP_DURATION_MS + 100);
+    
+    free(buf);
+    set_speaker_amp(false);
+    Serial.println("[AUDIO_BEEP] Beep complete");
+}
+
+// Test beep on startup (for debugging audio hardware)
+void play_test_beep() {
+    Serial.println("[AUDIO_BEEP] === TEST BEEP ON STARTUP ===");
+    play_vol0_beep();
+}

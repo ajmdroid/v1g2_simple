@@ -11,6 +11,7 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include "ble_client.h"
+#include "audio_beep.h"
 #include <esp_heap_caps.h>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
@@ -34,7 +35,6 @@ static unsigned long volumeZeroDetectedMs = 0;       // When we first detected v
 static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
 static bool volumeZeroWarningShown = false;
 static bool volumeZeroWarningAcknowledged = false;
-static bool appJustDisconnected = false;             // Set by setBLEProxyStatus when app disconnects
 static constexpr unsigned long VOLUME_ZERO_DELAY_MS = 15000;          // Wait 15 seconds before showing warning
 static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show warning for 10 seconds
 
@@ -563,8 +563,12 @@ void V1Display::clear() {
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
 #if defined(DISPLAY_WAVESHARE_349)
     // Detect app disconnect - was connected, now isn't
+    // Reset VOL 0 warning state immediately so it can trigger again
     if (bleProxyClientConnected && !clientConnected) {
-        appJustDisconnected = true;  // Signal to reset VOL 0 warning
+        volumeZeroDetectedMs = 0;
+        volumeZeroWarningStartMs = 0;
+        volumeZeroWarningShown = false;
+        volumeZeroWarningAcknowledged = false;
     }
     
     if (bleProxyDrawn &&
@@ -1744,17 +1748,22 @@ void V1Display::update(const DisplayState& state) {
     // Use current proxy state for accurate check
     bool currentProxyConnected = bleClient.isProxyClientConnected();
     bool volumeWarningActive = false;
+    bool shouldStartVolWarningTimer = false;
+    
     if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged) {
-        // Warning is active if we're past the delay and within the warning duration
-        if (volumeZeroDetectedMs > 0 && (millis() - volumeZeroDetectedMs) >= VOLUME_ZERO_DELAY_MS) {
+        if (volumeZeroDetectedMs == 0) {
+            // Need to start the timer - force full redraw to reach timer-start code
+            shouldStartVolWarningTimer = true;
+        } else if ((millis() - volumeZeroDetectedMs) >= VOLUME_ZERO_DELAY_MS) {
+            // Warning is active if we're past the delay and within the warning duration
             if (volumeZeroWarningStartMs == 0 || (millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
                 volumeWarningActive = true;
             }
         }
     }
     
-    // Force full redraw when warning is active (for flashing effect) or when warning state changes
-    if (volumeWarningActive || volumeZeroWarningShown) {
+    // Force full redraw when warning is active, shown, or needs to start timer
+    if (volumeWarningActive || volumeZeroWarningShown || shouldStartVolWarningTimer) {
         needsFullRedraw = true;
     }
     
@@ -1825,15 +1834,6 @@ void V1Display::update(const DisplayState& state) {
     bool showVolumeWarning = false;
     bool proxyConnected = bleClient.isProxyClientConnected();
     
-    // Check if app just disconnected - reset warning state so it can trigger again
-    if (appJustDisconnected) {
-        appJustDisconnected = false;  // Clear the flag
-        volumeZeroDetectedMs = 0;     // Will be set below if volume==0
-        volumeZeroWarningStartMs = 0;
-        volumeZeroWarningShown = false;
-        volumeZeroWarningAcknowledged = false;
-    }
-    
     if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected) {
         if (!volumeZeroWarningAcknowledged) {
             if (volumeZeroDetectedMs == 0) {
@@ -1849,6 +1849,8 @@ void V1Display::update(const DisplayState& state) {
                     // Delay passed, start the actual warning display
                     volumeZeroWarningStartMs = millis();
                     volumeZeroWarningShown = true;
+                    // Play beep when VOL 0 warning first appears
+                    play_vol0_beep();
                 }
                 
                 // Check if warning period has expired

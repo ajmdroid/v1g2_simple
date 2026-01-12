@@ -41,8 +41,8 @@ static adc_oneshot_unit_handle_t adc1_handle = NULL;
 static adc_cali_handle_t adc_cali_handle = NULL;
 #endif
 
-// I2C for TCA9554 (separate from touch I2C)
-static TwoWire tca9554Wire(1);  // Use I2C port 1
+// I2C for TCA9554 (separate from touch I2C) - also used by ES8311 codec
+TwoWire tca9554Wire(1);  // Use I2C port 1
 
 BatteryManager::BatteryManager() 
     : initialized(false)

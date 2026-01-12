@@ -771,7 +771,7 @@ void processBLEData() {
                 continue; // Skip this draw
             }
             lastDisplayDraw = now;
-
+            
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
