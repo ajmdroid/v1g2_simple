@@ -210,13 +210,11 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {
         displayState.signalBars = 6; // Full bars for laser
-    } else if (displayState.activeBands == BAND_NONE) {
-        // No active bands from display data - clear alerts immediately
-        // Don't wait for alert packet with 0 count - display packet is authoritative
-        displayState.signalBars = 0;
-        alertCount = 0;
-        chunkCount = 0;
     }
+    // Note: Don't clear alertCount here based on activeBands being BAND_NONE
+    // During V1's blink cycle, image1 band bits toggle off momentarily (creating the blink)
+    // This would incorrectly clear alerts during blink. Let parseAlertData() be source of truth
+    // for alert count - it receives explicit alert count from V1's alert table packets.
     
     return true;
 }
@@ -332,7 +330,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         chunkCount = 0;
         displayState.signalBars = 0;
         displayState.arrows = DIR_NONE;
-        displayState.activeBands = BAND_NONE;
+        // Note: Don't clear displayState.activeBands here - let parseDisplayData() handle it
+        // The display packet's image1 will show no bands when alerts truly clear
         displayState.muted = false;
         return true;
     }
@@ -370,7 +369,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     }
 
     alertCount = 0;
-    displayState.activeBands = BAND_NONE;
+    // Note: Don't reset displayState.activeBands here - let parseDisplayData() be source of truth
+    // for what bands are visually shown (including blink behavior). We just extract alert details.
     bool anyMuted = false;
 
     for (size_t i = 0; i < chunkCount && i < receivedAlertCount; ++i) {
@@ -390,9 +390,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
 
-            if (band != BAND_NONE) {
-                displayState.activeBands |= band;
-            }
+            // Note: We no longer update displayState.activeBands here
+            // The display packet (image1) is authoritative for band indicators
             anyMuted |= ((bandArrow & 0x10) != 0);
         }
     }
