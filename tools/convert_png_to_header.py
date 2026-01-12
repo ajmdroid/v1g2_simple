@@ -62,6 +62,26 @@ def prepare_image(input_png, target_width=None, target_height=None, background=(
         cropped = resized.crop((0, top, target_width, bottom))
         return cropped, target_width, target_height
 
+    if mode == "fit-width-crop-top":
+        # Scale to target width, preserve aspect, crop from top (keep top visible)
+        scale = target_width / width
+        new_size = (target_width, int(height * scale))
+        resized = img.resize(new_size, Image.LANCZOS)
+        top = 0  # Start from top
+        bottom = target_height
+        cropped = resized.crop((0, top, target_width, bottom))
+        return cropped, target_width, target_height
+
+    if mode == "fit-width-crop-bottom":
+        # Scale to target width, preserve aspect, crop from bottom (keep bottom visible)
+        scale = target_width / width
+        new_size = (target_width, int(height * scale))
+        resized = img.resize(new_size, Image.LANCZOS)
+        top = max(0, resized.height - target_height)
+        bottom = resized.height
+        cropped = resized.crop((0, top, target_width, bottom))
+        return cropped, target_width, target_height
+
     if mode == "fit-height-crop":
         # Scale to target height, preserve aspect, then center-crop width
         scale = target_height / height
@@ -144,7 +164,7 @@ def main():
     parser.add_argument("logo_name", help="Base name for symbols (e.g. rdf_logo)")
     parser.add_argument("--target-width", type=int, default=None, help="Target width in pixels")
     parser.add_argument("--target-height", type=int, default=None, help="Target height in pixels")
-    parser.add_argument("--mode", choices=["letterbox", "fit-width-crop", "fit-height-crop"], default="letterbox", help="Resize mode")
+    parser.add_argument("--mode", choices=["letterbox", "fit-width-crop", "fit-width-crop-top", "fit-width-crop-bottom", "fit-height-crop"], default="letterbox", help="Resize mode")
     parser.add_argument("--background", type=parse_hex_color, default=(0, 0, 0), help="Background color for letterboxing (hex)")
     parser.add_argument("--trim", action="store_true", help="Trim transparent borders before resizing")
 

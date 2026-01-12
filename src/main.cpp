@@ -979,9 +979,9 @@ void setup() {
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
-        // True cold boot - show splash (shorter duration for faster boot)
+        // True cold boot - show splash
         display.showBootSplash();
-        delay(1500);  // Reduced from 2000ms
+        delay(2500);  // Show logo for 2.5 seconds
     }
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
