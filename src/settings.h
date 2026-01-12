@@ -107,6 +107,7 @@ struct V1Settings {
     
     // Voice alerts (when no app connected)
     bool voiceAlertsEnabled;     // Speak alert band/direction when no app connected
+    bool muteVoiceIfVolZero;     // Mute voice alerts (not VOL0 warning) when V1 volume is 0
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -177,6 +178,7 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         voiceAlertsEnabled(true),  // Voice alerts enabled by default
+        muteVoiceIfVolZero(false), // Don't mute voice alerts at vol 0 by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -248,6 +250,7 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setVoiceAlertsEnabled(bool enabled);
+    void setMuteVoiceIfVolZero(bool mute);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

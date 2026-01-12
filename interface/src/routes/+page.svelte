@@ -185,6 +185,7 @@
 				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
 				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
 				<a href="/colors" class="btn btn-info btn-sm">🎨 Colors</a>
+				<a href="/audio" class="btn btn-secondary btn-sm">🔊 Audio</a>
 				<a href="/settings" class="btn btn-ghost btn-sm">⚙️ Settings</a>
 			</div>
 		</div>

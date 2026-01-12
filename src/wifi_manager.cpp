@@ -1277,6 +1277,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("voiceAlertsEnabled")) {
         settingsManager.setVoiceAlertsEnabled(server.arg("voiceAlertsEnabled") == "true" || server.arg("voiceAlertsEnabled") == "1");
     }
+    if (server.hasArg("muteVoiceIfVolZero")) {
+        settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1344,6 +1347,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["voiceAlertsEnabled"] = s.voiceAlertsEnabled;
+    doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
     
     String json;
     serializeJson(doc, json);
