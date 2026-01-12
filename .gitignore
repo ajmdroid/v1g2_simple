@@ -52,6 +52,12 @@ docs/ARCHIVE.md
 *.png
 !docs/*.png
 
+# Audio source files (keep generated headers, not source audio)
+*.aiff
+*.raw
+*.wav
+*.mp3
+
 # Local reference repos (kept out of version control)
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/

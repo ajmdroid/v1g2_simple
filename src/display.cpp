@@ -3059,8 +3059,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     };
 
 #if defined(DISPLAY_WAVESHARE_349)
-    // Scale from Lilygo 320x170 to Waveshare 640x172
-    // Width is 2x, height is similar - make bars wider but keep height similar
+    // Waveshare 640x172 bar dimensions
     const int barWidth = 44;   // Narrower bars
     const int barHeight = 14;  // Similar to original
     const int barSpacing = 10; // Tighter spacing
