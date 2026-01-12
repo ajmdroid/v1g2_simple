@@ -2,9 +2,22 @@
 
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
-**Version:** 2.0.5  
+
+**Version:** 2.0.6  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
+
+---
+
+## Recent Changes (v2.0.6)
+
+- **Volume Indicator:** V1 main volume (0-9) is now shown below the bogey counter. If volume is set to 0 and the phone app disconnects, a "VOL 0 WARNING" message appears after 15s (for 10s) to alert the user.
+- **VOL 0 Warning:** If V1's main volume is zero and the phone app disconnects, a warning is shown after 15s delay for 10s duration. This is to prevent missed audio alerts. (See Display States)
+- **Band/Arrow Blinking:** Band indicators and arrows now blink in sync with V1 hardware, using V1's image1/image2 flash bits. Blink rate is ~100ms (5Hz). Local timers removed; V1 is source of truth for blinking.
+- **Signal Bar Decay Reset:** Signal bar decay statics are now reset on V1 disconnect to prevent stale bar display after reconnect.
+- **Alert Chunk Assembly Reset:** If the expected alert count changes mid-transmission, chunk assembly is reset to avoid stale or mixed alert data.
+- **Arrow Display Behavior:** Arrows are never shown in the resting display (only when a valid frequency is present). Fixes bug where arrows could appear without an alert.
+
 
 ---
 
@@ -430,6 +443,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ 1.              HIGHWAY                                                      │
 │ (bogey)       (profile name)                                                 │
+│   VOLUME                                                                  │
 │                                                                              │
 │     L                                  ████                    ▲             │
 │              ┌─────────┐               ████                  (front)         │
@@ -438,6 +452,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 │     K                      ████        ████                    ▼             │
 │                            ████        ████                  (rear)          │
 │     X          35.500      ████        ████                                  │
+│                (vol: 5)                                                    │
 │             (7-seg freq)  (bars)    (bars x6)              (arrows)          │
 │                                                                              │
 │ [WiFi]                                                                       │
@@ -457,19 +472,28 @@ Layout zones (left to right):
 
 **Source:** [src/display.cpp](src/display.cpp#L700-L760) (drawProfileIndicator), [src/display.cpp](src/display.cpp#L1330-L1400) (drawFrequency), [src/display.cpp](src/display.cpp#L1270-L1310) (drawBandIndicators), [src/display.cpp](src/display.cpp#L1506-L1560) (drawVerticalSignalBars), [src/display.cpp](src/display.cpp#L1390-L1500) (drawDirectionArrow)
 
+
 ### Display States
 
-| State | Trigger | Appearance |
-|-------|---------|------------|
-| Boot splash | Power-on reset | Full-screen logo image |
-| Scanning | Not connected | "SCAN" in 7-segment |
-| Resting | Connected, no alerts | Dim gray segments |
-| Alert | Alert data received | Band color, frequency, bars |
-| Muted | Muted alert | Gray color override |
-| Low battery | Critical voltage | Warning screen |
-| Shutdown | Power off | "Goodbye" message |
+| State           | Trigger                                 | Appearance/Notes                                                                 |
+|-----------------|-----------------------------------------|---------------------------------------------------------------------------------|
+| Boot splash     | Power-on reset                          | Full-screen logo image                                                           |
+| Scanning        | Not connected                           | "SCAN" in 7-segment                                                             |
+| Resting         | Connected, no alerts                    | Dim gray segments, **arrows never shown**                                        |
+| Alert           | Alert data received                     | Band color, frequency, bars, arrows (blink per V1)                              |
+| Muted           | Muted alert                             | Gray color override                                                              |
+| Low battery     | Critical voltage                        | Warning screen                                                                   |
+| VOL 0 Warning   | Volume=0, phone app disconnect, 15s     | "VOL 0 WARNING" message for 10s, triggers app reconnect prompt                   |
+| Shutdown        | Power off                               | "Goodbye" message                                                               |
 
-**Source:** [src/display.h](src/display.h#L40-L55), [src/display.cpp](src/display.cpp) various show*() methods
+**Notes:**
+- **Volume Indicator:** Main volume (0-9) shown below bogey counter. If volume is 0 and phone app disconnects, triggers VOL 0 warning.
+- **Arrow Behavior:** Arrows are only shown when a valid frequency is present (never in resting state).
+- **Blinking:** Band indicators and arrows blink in sync with V1 hardware (5Hz, ~100ms), using V1's image1/image2 flash bits.
+- **Signal Bar Decay Reset:** On V1 disconnect, signal bar decay statics are reset to prevent stale display.
+- **Alert Chunk Assembly Reset:** If alert count changes mid-transmission, chunk assembly is reset to avoid stale/mixed data.
+
+**Source:** [src/display.h](src/display.h#L40-L55), [src/display.cpp](src/display.cpp) various show*() methods, [src/packet_parser.cpp](src/packet_parser.cpp)
 
 ### Multi-Alert Display
 
