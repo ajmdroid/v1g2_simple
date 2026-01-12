@@ -106,6 +106,9 @@ public:
     
     // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
     static void resetPriorityState();
+    
+    // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
+    static void resetSignalBarDecay();
 
 private:
     DisplayState displayState;

@@ -55,6 +55,13 @@ void PacketParser::resetPriorityState() {
     s_resetPriorityStateFlag = true;
 }
 
+// Static flag to signal signal bar decay reset on next call
+static bool s_resetSignalBarDecayFlag = false;
+
+void PacketParser::resetSignalBarDecay() {
+    s_resetSignalBarDecayFlag = true;
+}
+
 bool PacketParser::parse(const uint8_t* data, size_t length) {
     if (!validatePacket(data, length)) {
         return false;
@@ -260,6 +267,13 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
     constexpr unsigned long DROP_INTERVAL_MS = 100;  // Reduced from 150ms for snappier response
     
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetSignalBarDecayFlag) {
+        lastBarsKa = lastBarsK = lastBarsX = 0;
+        lastDropTimeKa = lastDropTimeK = lastDropTimeX = 0;
+        s_resetSignalBarDecayFlag = false;
+    }
+    
     uint8_t* lastBarsPtr = nullptr;
     unsigned long* lastDropTimePtr = nullptr;
     switch (band) {
@@ -326,6 +340,15 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // Each alert row is 7-8 bytes in V1G2 captures; require at least 7
     if (length < 7) {
         return false;
+    }
+
+    // Track expected alert count - if it changes mid-assembly, reset to avoid stale data
+    // This handles the case where alerts change while we're still collecting chunks
+    static uint8_t lastExpectedCount = 0;
+    if (receivedAlertCount != lastExpectedCount) {
+        // Alert count changed - discard any partial assembly and start fresh
+        chunkCount = 0;
+        lastExpectedCount = receivedAlertCount;
     }
 
     // Add new chunk with strict bounds checking to prevent overflow

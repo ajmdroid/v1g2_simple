@@ -1238,6 +1238,7 @@ void loop() {
                 } else {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
+                    PacketParser::resetSignalBarDecay();
                     V1Display::resetChangeTracking();
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");
