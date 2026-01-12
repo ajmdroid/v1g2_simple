@@ -44,6 +44,9 @@ static bool es8311_initialized = false;
 static bool i2s_initialized = false;
 static i2s_chan_handle_t i2s_tx_chan = NULL;  // New I2S driver handle
 
+// Current volume level (0-100%) - must be declared before es8311_init() uses it
+static uint8_t current_volume_percent = 75;
+
 // Write a register to ES8311
 static void es8311_write_reg(uint8_t reg, uint8_t val) {
     audioWire.beginTransmission(ES8311_ADDR);
@@ -224,8 +227,15 @@ static void es8311_init() {
     // Step 8: Set internal reference signal
     es8311_write_reg(ES8311_GPIO_REG44, 0x58);
     
-    // Step 9: Set DAC volume to 0dB
-    es8311_write_reg(ES8311_DAC_REG32, 0xBF);  // 0dB
+    // Step 9: Set DAC volume based on saved setting
+    // Use same mapping as audio_set_volume(): 0%=mute, 1-100%=0x90-0xBF
+    uint8_t volReg;
+    if (current_volume_percent == 0) {
+        volReg = 0x00;
+    } else {
+        volReg = 0x90 + ((current_volume_percent - 1) * (0xBF - 0x90)) / 99;
+    }
+    es8311_write_reg(ES8311_DAC_REG32, volReg);
     
     // Step 10: Unmute DAC (clear bits 6:5 of REG31)
     uint8_t regv = es8311_read_reg(ES8311_DAC_REG31) & 0x9F;
@@ -252,11 +262,37 @@ static void es8311_init() {
     }
 }
 
+// Set audio volume (0-100%)
+// ES8311 DAC register 0x32: 0x00 = -95.5dB (mute), 0xBF = 0dB, 0xFF = +32dB
+// The lower range (-95dB to -30dB) is inaudible, so we remap:
+//   0% = 0x00 (mute)
+//   1-100% = 0x90-0xBF (usable range: ~-24dB to 0dB)
+void audio_set_volume(uint8_t volumePercent) {
+    if (volumePercent > 100) volumePercent = 100;
+    current_volume_percent = volumePercent;
+    
+    uint8_t regVal;
+    if (volumePercent == 0) {
+        regVal = 0x00;  // Mute
+    } else {
+        // Map 1-100% to 0x90-0xBF (144-191, a 47-step usable range)
+        // This gives audible volume across the full slider
+        regVal = 0x90 + ((volumePercent - 1) * (0xBF - 0x90)) / 99;
+    }
+    
+    // Apply volume if ES8311 is initialized
+    if (es8311_initialized) {
+        es8311_write_reg(ES8311_DAC_REG32, regVal);
+        AUDIO_LOGF("[AUDIO] Volume set to %d%% (reg=0x%02X)\n", volumePercent, regVal);
+    }
+}
+
 // I2S init for playback using NEW I2S STD driver (like Waveshare BSP)
 static void i2s_init() {
     if (i2s_initialized) return;
     
     AUDIO_LOGLN("[AUDIO] Initializing I2S (new STD driver)...");
+
     
     // Step 1: Create I2S channel
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
@@ -554,4 +590,17 @@ void play_alert_voice(AlertBand band, AlertDirection direction) {
 void play_test_beep() {
     AUDIO_LOGLN("[AUDIO] === TEST SPEECH ON STARTUP ===");
     play_vol0_beep();
+}
+
+// Play test voice for volume adjustment (short "Ka ahead" clip)
+void play_test_voice() {
+    AUDIO_LOGLN("[AUDIO] play_test_voice() called");
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    // Use "Ka ahead" as test phrase - short and recognizable (~822ms)
+    play_pcm_audio(alert_ka_ahead, ALERT_KA_AHEAD_SAMPLES, ALERT_KA_AHEAD_DURATION_MS);
 }

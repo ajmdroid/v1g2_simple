@@ -115,6 +115,7 @@ void SettingsManager::load() {
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.voiceAlertsEnabled = preferences.getBool("voiceAlerts", true);
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
+    settings.voiceVolume = preferences.getUChar("voiceVol", 75);
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -217,6 +218,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putBool("voiceAlerts", settings.voiceAlertsEnabled);
     written += preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
+    written += preferences.putUChar("voiceVol", settings.voiceVolume);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -627,6 +629,7 @@ void SettingsManager::backupToSD() {
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["voiceAlertsEnabled"] = settings.voiceAlertsEnabled;
     doc["muteVoiceIfVolZero"] = settings.muteVoiceIfVolZero;
+    doc["voiceVolume"] = settings.voiceVolume;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -712,6 +715,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["voiceAlertsEnabled"].is<bool>()) settings.voiceAlertsEnabled = doc["voiceAlertsEnabled"];
     if (doc["muteVoiceIfVolZero"].is<bool>()) settings.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
+    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = doc["voiceVolume"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();

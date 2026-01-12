@@ -222,12 +222,16 @@ const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 
 // Brightness adjustment mode (BOOT button triggered)
 static bool brightnessAdjustMode = false;
-static uint8_t brightnessAdjustValue = 200;  // Current slider value
+static uint8_t brightnessAdjustValue = 200;  // Current brightness slider value
+static uint8_t volumeAdjustValue = 75;       // Current voice volume slider value
+static int activeSlider = 0;                 // 0=brightness, 1=volume
+static unsigned long lastVolumeChangeMs = 0; // Debounce for test voice playback
 static unsigned long bootPressStart = 0;     // For long-press detection
 static bool bootWasPressed = false;
 static bool wifiToggleTriggered = false;     // Track if WiFi toggle already fired during this press
 const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
 const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
+const unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;  // Debounce for test voice after volume change
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -1020,8 +1024,11 @@ void setup() {
 #if defined(DISPLAY_WAVESHARE_349)
     pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
     brightnessAdjustValue = settingsManager.get().brightness;
+    volumeAdjustValue = settingsManager.get().voiceVolume;
     display.setBrightness(brightnessAdjustValue);  // Apply saved brightness
-    SerialLog.printf("[Brightness] Applied saved brightness: %d\n", brightnessAdjustValue);
+    audio_set_volume(volumeAdjustValue);           // Apply saved voice volume
+    SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n", 
+                    brightnessAdjustValue, volumeAdjustValue);
 #endif
 
 #ifndef REPLAY_MODE
@@ -1129,49 +1136,78 @@ void loop() {
         if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
             // Only handle short press actions (not already handled by long press)
             if (brightnessAdjustMode) {
-                // Exit brightness adjustment mode and save
+                // Exit settings adjustment mode and save both values
                 brightnessAdjustMode = false;
                 settingsManager.updateBrightness(brightnessAdjustValue);
+                settingsManager.updateVoiceVolume(volumeAdjustValue);
                 settingsManager.save();
+                audio_set_volume(volumeAdjustValue);  // Apply new volume
                 display.hideBrightnessSlider();
                 display.showResting();  // Return to normal display
-                SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+                SerialLog.printf("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue, volumeAdjustValue);
             } else {
-                // Enter brightness adjustment mode (short press)
+                // Enter settings adjustment mode (short press)
                 brightnessAdjustMode = true;
                 brightnessAdjustValue = settingsManager.get().brightness;
-                display.showBrightnessSlider(brightnessAdjustValue);
-                SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
+                volumeAdjustValue = settingsManager.get().voiceVolume;
+                activeSlider = 0;  // Start with brightness selected
+                display.showSettingsSliders(brightnessAdjustValue, volumeAdjustValue);
+                SerialLog.printf("[Settings] Entering adjustment mode (brightness: %d, volume: %d)\n", 
+                                brightnessAdjustValue, volumeAdjustValue);
             }
         }
     }
 
     bootWasPressed = bootPressed;
     
-    // If in brightness adjustment mode, handle touch for slider
+    // If in settings adjustment mode, handle touch for both sliders
     if (brightnessAdjustMode) {
         int16_t touchX, touchY;
         if (touchHandler.getTouchPoint(touchX, touchY)) {
-            // Map touch X to brightness (40 to 600 pixels = slider area)
+            // Map touch X to slider value (40 to 600 pixels = slider area)
             // Note: Touch coordinates are inverted relative to display
             const int sliderX = 40;
             const int sliderWidth = SCREEN_WIDTH - 80;  // 560 pixels
             
-            if (touchX >= sliderX && touchX <= sliderX + sliderWidth) {
-                // Touch X is inverted: swipe right = lower X, swipe left = higher X
-                // Map so swipe right = brighter, swipe left = dimmer
-                int newLevel = 255 - (((touchX - sliderX) * 175) / sliderWidth);
-                // Clamp to valid range (minimum 80 ~31% to keep display visible)
-                if (newLevel < 80) newLevel = 80;
-                if (newLevel > 255) newLevel = 255;
+            // Determine which slider was touched based on Y coordinate
+            int touchedSlider = display.getActiveSliderFromTouch(touchY);
+            
+            if (touchedSlider >= 0 && touchX >= sliderX && touchX <= sliderX + sliderWidth) {
+                activeSlider = touchedSlider;
                 
-                if (newLevel != brightnessAdjustValue) {
-                    brightnessAdjustValue = newLevel;
-                    display.updateBrightnessSlider(brightnessAdjustValue);
+                if (activeSlider == 0) {
+                    // Brightness slider (range 80-255)
+                    // Touch X is inverted: swipe right = lower X, swipe left = higher X
+                    int newLevel = 255 - (((touchX - sliderX) * 175) / sliderWidth);
+                    if (newLevel < 80) newLevel = 80;
+                    if (newLevel > 255) newLevel = 255;
+                    
+                    if (newLevel != brightnessAdjustValue) {
+                        brightnessAdjustValue = newLevel;
+                        display.updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                    }
+                } else if (activeSlider == 1) {
+                    // Voice volume slider (range 0-100)
+                    int newVolume = 100 - (((touchX - sliderX) * 100) / sliderWidth);
+                    if (newVolume < 0) newVolume = 0;
+                    if (newVolume > 100) newVolume = 100;
+                    
+                    if (newVolume != volumeAdjustValue) {
+                        volumeAdjustValue = newVolume;
+                        audio_set_volume(volumeAdjustValue);  // Apply immediately for feedback
+                        display.updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                        lastVolumeChangeMs = now;  // Track for test playback
+                    }
                 }
             }
+        } else {
+            // No touch - check if volume was recently changed and play test voice
+            if (lastVolumeChangeMs > 0 && (now - lastVolumeChangeMs) >= VOLUME_TEST_DEBOUNCE_MS) {
+                play_test_voice();
+                lastVolumeChangeMs = 0;  // Reset so we don't play again
+            }
         }
-        return;  // Skip normal loop processing while in brightness mode
+        return;  // Skip normal loop processing while in settings mode
     }
 #endif
 

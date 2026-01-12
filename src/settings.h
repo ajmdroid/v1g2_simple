@@ -108,6 +108,7 @@ struct V1Settings {
     // Voice alerts (when no app connected)
     bool voiceAlertsEnabled;     // Speak alert band/direction when no app connected
     bool muteVoiceIfVolZero;     // Mute voice alerts (not VOL0 warning) when V1 volume is 0
+    uint8_t voiceVolume;         // Voice alert volume (0-100%)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -179,6 +180,7 @@ struct V1Settings {
         hideVolumeIndicator(false), // Show volume indicator by default
         voiceAlertsEnabled(true),  // Voice alerts enabled by default
         muteVoiceIfVolZero(false), // Don't mute voice alerts at vol 0 by default
+        voiceVolume(75),           // Voice alerts at 75% volume by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -274,6 +276,7 @@ public:
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
+    void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
     void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
     
     // Save all settings to flash
