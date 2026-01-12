@@ -6,6 +6,10 @@
 
 #include "touch_handler.h"
 
+// Debug logging - set to false for production
+static constexpr bool TOUCH_DEBUG_LOGS = false;
+#define TOUCH_LOGF(...) do { if (TOUCH_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while(0)
+
 // AXS15231B touch read command sequence
 static const uint8_t AXS_TOUCH_READ_CMD[] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0};
 
@@ -22,7 +26,7 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     i2cAddr = addr;
     rstPin = rst;
     
-    Serial.printf("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
+    TOUCH_LOGF("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
     
     // Initialize I2C with specified pins
     Wire.begin(sda, scl);
@@ -36,18 +40,16 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     }
     
     // Try to communicate with touch controller
-    Serial.println("[Touch] Scanning for device...");
     Wire.beginTransmission(i2cAddr);
     uint8_t error = Wire.endTransmission();
     
     if (error == 0) {
-        Serial.printf("[Touch] Device found at 0x%02X\n", i2cAddr);
+        TOUCH_LOGF("[Touch] Device found at 0x%02X\n", i2cAddr);
         
         // Try to read status register
         uint8_t status = readRegister(AXS_REG_STATUS);
-        Serial.printf("[Touch] Status register: 0x%02X\n", status);
+        TOUCH_LOGF("[Touch] Status register: 0x%02X\n", status);
         
-        Serial.printf("[Touch] Controller initialized successfully\n");
         return true;
     } else {
         Serial.printf("[Touch] ERROR: Device not found at 0x%02X (error=%d)\n", i2cAddr, error);
@@ -58,15 +60,13 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
 void TouchHandler::reset() {
     if (rstPin >= 0) {
         pinMode(rstPin, OUTPUT);
-        Serial.printf("[Touch] Reset: Setting GPIO%d LOW\n", rstPin);
+        TOUCH_LOGF("[Touch] Reset: Setting GPIO%d LOW\n", rstPin);
         digitalWrite(rstPin, LOW);
         delay(30);
-        Serial.printf("[Touch] Reset: Setting GPIO%d HIGH\n", rstPin);
+        TOUCH_LOGF("[Touch] Reset: Setting GPIO%d HIGH\n", rstPin);
         digitalWrite(rstPin, HIGH);
         delay(50);
-        Serial.println("[Touch] Reset complete");
-    } else {
-        Serial.println("[Touch] Reset pin not configured");
+        TOUCH_LOGF("[Touch] Reset complete\n");
     }
 }
 
@@ -124,7 +124,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     if (!touchActive) {
         touchActive = true;
         lastTouchTime = now;
-        Serial.printf("[Touch] *** TAP DETECTED at (%d, %d) ***\n", x, y);
+        TOUCH_LOGF("[Touch] TAP at (%d, %d)\n", x, y);
         return true;  // New touch event
     }
     
@@ -137,7 +137,7 @@ uint8_t TouchHandler::readRegister(uint8_t reg) {
     uint8_t err = Wire.endTransmission(false);  // Send restart
     
     if (err != 0) {
-        Serial.printf("[Touch] I2C error writing reg 0x%02X: %d\n", reg, err);
+        TOUCH_LOGF("[Touch] I2C error writing reg 0x%02X: %d\n", reg, err);
         return 0;
     }
     
