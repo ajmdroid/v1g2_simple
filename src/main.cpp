@@ -826,8 +826,8 @@ void processBLEData() {
                         }
                         
                         if (validBand) {
-                            SerialLog.printf("[VoiceAlert] Announcing: band=%d dir=%d\n", 
-                                           (int)audioBand, (int)audioDir);
+                            DEBUG_LOGF("[VoiceAlert] Announcing: band=%d dir=%d\n", 
+                                       (int)audioBand, (int)audioDir);
                             play_alert_voice(audioBand, audioDir);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;

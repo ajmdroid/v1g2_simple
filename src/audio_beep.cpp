@@ -13,6 +13,13 @@
 #include <Wire.h>
 #include "driver/i2s_std.h"   // New I2S standard driver (not legacy)
 #include "driver/gpio.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+// Debug logging control - set to false for production to reduce serial overhead
+static constexpr bool AUDIO_DEBUG_LOGS = false;
+#define AUDIO_LOGF(...) do { if (AUDIO_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while(0)
+#define AUDIO_LOGLN(msg) do { if (AUDIO_DEBUG_LOGS) Serial.println(msg); } while(0)
 
 // ES8311 I2C address
 #define ES8311_ADDR 0x18
@@ -44,9 +51,7 @@ static void es8311_write_reg(uint8_t reg, uint8_t val) {
     audioWire.write(val);
     uint8_t result = audioWire.endTransmission();
     if (result != 0) {
-        Serial.print("[AUDIO_BEEP][I2C] ES8311 reg 0x"); Serial.print(reg, HEX);
-        Serial.print(" <= 0x"); Serial.print(val, HEX);
-        Serial.print(" FAILED result: "); Serial.println(result);
+        AUDIO_LOGF("[AUDIO][I2C] ES8311 reg 0x%02X <= 0x%02X FAILED: %d\n", reg, val, result);
     }
 }
 
@@ -74,8 +79,7 @@ static void set_speaker_amp(bool enable) {
         output = audioWire.read();
     }
     
-    Serial.print("[AUDIO_BEEP] TCA9554 BEFORE: config=0x"); Serial.print(config, HEX);
-    Serial.print(" output=0x"); Serial.println(output, HEX);
+    AUDIO_LOGF("[AUDIO] TCA9554 BEFORE: config=0x%02X output=0x%02X\n", config, output);
     
     // Step 3: Set the output value FIRST (before configuring as output)
     // Active HIGH per Waveshare esp_io_expander example: set_level(pin, 1) to enable
@@ -96,22 +100,7 @@ static void set_speaker_amp(bool enable) {
     audioWire.write(config);
     audioWire.endTransmission();
     
-    // Verify
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x03);
-    audioWire.endTransmission(false);
-    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
-    config = audioWire.available() ? audioWire.read() : 0xFF;
-    
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x01);
-    audioWire.endTransmission(false);
-    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
-    output = audioWire.available() ? audioWire.read() : 0xFF;
-    
-    Serial.print("[AUDIO_BEEP] TCA9554 AFTER: config=0x"); Serial.print(config, HEX);
-    Serial.print(" output=0x"); Serial.println(output, HEX);
-    Serial.print("[AUDIO_BEEP] Speaker amp "); Serial.println(enable ? "ENABLED" : "DISABLED");
+    AUDIO_LOGF("[AUDIO] Speaker amp %s\n", enable ? "ENABLED" : "DISABLED");
 }
 
 // ES8311 Register definitions (from ESP-ADF)
@@ -164,7 +153,7 @@ static uint8_t es8311_read_reg(uint8_t reg) {
 static void es8311_init() {
     if (es8311_initialized) return;
     
-    Serial.println("[AUDIO_BEEP] ES8311 init (ESP-ADF pattern)");
+    AUDIO_LOGLN("[AUDIO] ES8311 init (ESP-ADF pattern)");
     
     // Coefficient for 24kHz with 6.144MHz MCLK from coeff_div table:
     // {6144000 , 24000, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0xff, 0x04, 0x10, 0x10}
@@ -246,26 +235,28 @@ static void es8311_init() {
     
     delay(50);  // Let clocks stabilize
     
-    // Debug: Dump key registers
-    Serial.println("[AUDIO_BEEP] ES8311 registers after init:");
-    Serial.print("  REG00: 0x"); Serial.println(es8311_read_reg(ES8311_RESET_REG00), HEX);
-    Serial.print("  REG01: 0x"); Serial.println(es8311_read_reg(ES8311_CLK_MANAGER_REG01), HEX);
-    Serial.print("  REG06: 0x"); Serial.println(es8311_read_reg(ES8311_CLK_MANAGER_REG06), HEX);
-    Serial.print("  REG09: 0x"); Serial.println(es8311_read_reg(ES8311_SDPIN_REG09), HEX);
-    Serial.print("  REG0D: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG0D), HEX);
-    Serial.print("  REG0E: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG0E), HEX);
-    Serial.print("  REG12: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG12), HEX);
-    Serial.print("  REG14: 0x"); Serial.println(es8311_read_reg(ES8311_SYSTEM_REG14), HEX);
-    Serial.print("  REG31: 0x"); Serial.println(es8311_read_reg(ES8311_DAC_REG31), HEX);
-    Serial.print("  REG32: 0x"); Serial.println(es8311_read_reg(ES8311_DAC_REG32), HEX);
-    Serial.print("  REG44: 0x"); Serial.println(es8311_read_reg(ES8311_GPIO_REG44), HEX);
+    // Debug: Dump key registers (only when debug logging enabled)
+    if (AUDIO_DEBUG_LOGS) {
+        Serial.println("[AUDIO] ES8311 registers after init:");
+        Serial.printf("  REG00: 0x%02X\n", es8311_read_reg(ES8311_RESET_REG00));
+        Serial.printf("  REG01: 0x%02X\n", es8311_read_reg(ES8311_CLK_MANAGER_REG01));
+        Serial.printf("  REG06: 0x%02X\n", es8311_read_reg(ES8311_CLK_MANAGER_REG06));
+        Serial.printf("  REG09: 0x%02X\n", es8311_read_reg(ES8311_SDPIN_REG09));
+        Serial.printf("  REG0D: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG0D));
+        Serial.printf("  REG0E: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG0E));
+        Serial.printf("  REG12: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG12));
+        Serial.printf("  REG14: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG14));
+        Serial.printf("  REG31: 0x%02X\n", es8311_read_reg(ES8311_DAC_REG31));
+        Serial.printf("  REG32: 0x%02X\n", es8311_read_reg(ES8311_DAC_REG32));
+        Serial.printf("  REG44: 0x%02X\n", es8311_read_reg(ES8311_GPIO_REG44));
+    }
 }
 
 // I2S init for playback using NEW I2S STD driver (like Waveshare BSP)
 static void i2s_init() {
     if (i2s_initialized) return;
     
-    Serial.println("[AUDIO_BEEP] Initializing I2S (new STD driver)...");
+    AUDIO_LOGLN("[AUDIO] Initializing I2S (new STD driver)...");
     
     // Step 1: Create I2S channel
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
@@ -273,7 +264,7 @@ static void i2s_init() {
     
     esp_err_t err = i2s_new_channel(&chan_cfg, &i2s_tx_chan, NULL);  // TX only, no RX
     if (err != ESP_OK) {
-        Serial.print("[AUDIO_BEEP] i2s_new_channel failed: "); Serial.println(err);
+        AUDIO_LOGF("[AUDIO] i2s_new_channel failed: %d\\n", err);
         return;
     }
     
@@ -298,7 +289,7 @@ static void i2s_init() {
     
     err = i2s_channel_init_std_mode(i2s_tx_chan, &std_cfg);
     if (err != ESP_OK) {
-        Serial.print("[AUDIO_BEEP] i2s_channel_init_std_mode failed: "); Serial.println(err);
+        AUDIO_LOGF("[AUDIO] i2s_channel_init_std_mode failed: %d\\n", err);
         i2s_del_channel(i2s_tx_chan);
         i2s_tx_chan = NULL;
         return;
@@ -307,19 +298,15 @@ static void i2s_init() {
     // Step 3: Enable the channel
     err = i2s_channel_enable(i2s_tx_chan);
     if (err != ESP_OK) {
-        Serial.print("[AUDIO_BEEP] i2s_channel_enable failed: "); Serial.println(err);
+        AUDIO_LOGF("[AUDIO] i2s_channel_enable failed: %d\\n", err);
         i2s_del_channel(i2s_tx_chan);
         i2s_tx_chan = NULL;
         return;
     }
     
     i2s_initialized = true;
-    Serial.println("[AUDIO_BEEP] I2S initialized (STD driver, Philips format, stereo)");
-    Serial.print("[AUDIO_BEEP] Sample rate: "); Serial.print(SAMPLE_RATE); Serial.println(" Hz");
-    Serial.print("[AUDIO_BEEP] Pins: MCLK="); Serial.print(I2S_MCLK_PIN);
-    Serial.print(", BCLK="); Serial.print(I2S_BCLK_PIN);
-    Serial.print(", WS="); Serial.print(I2S_WS_PIN);
-    Serial.print(", DOUT="); Serial.println(I2S_DOUT_PIN);
+    AUDIO_LOGF("[AUDIO] I2S initialized: %dHz, MCLK=%d BCLK=%d WS=%d DOUT=%d\\n",
+               SAMPLE_RATE, I2S_MCLK_PIN, I2S_BCLK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
 }
 
 // Include pre-recorded TTS audio
@@ -329,38 +316,54 @@ static void i2s_init() {
 // Track if audio is currently playing to prevent overlapping
 static volatile bool audio_playing = false;
 
-// Helper to play any PCM audio (mono input, converts to stereo for I2S)
-static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duration_ms) {
+// Audio task parameters for non-blocking playback
+struct AudioTaskParams {
+    const int16_t* pcm_data;
+    int num_samples;
+    int duration_ms;
+};
+static TaskHandle_t audioTaskHandle = NULL;
+
+// Background task for audio playback - runs on separate core to avoid blocking main loop
+static void audio_playback_task(void* pvParameters) {
+    AudioTaskParams* params = (AudioTaskParams*)pvParameters;
+    
     if (i2s_tx_chan == NULL) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
         i2s_init();
-        delay(50);  // Let clocks stabilize
+        vTaskDelay(pdMS_TO_TICKS(50));  // Let clocks stabilize
     }
     
     if (!i2s_initialized) {
-        Serial.println("[AUDIO_BEEP] ERROR: I2S init failed!");
+        AUDIO_LOGLN("[AUDIO] ERROR: I2S init failed!");
+        audio_playing = false;
+        free(params);
+        vTaskDelete(NULL);
         return;
     }
     
     es8311_init();
-    delay(50);  // Let ES8311 lock to MCLK
+    vTaskDelay(pdMS_TO_TICKS(50));  // Let ES8311 lock to MCLK
     
     // Enable speaker amp - let it fully stabilize
     set_speaker_amp(true);
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     // Convert mono PCM to stereo for I2S Philips format
-    const int stereo_samples = num_samples * 2;
+    const int stereo_samples = params->num_samples * 2;
     int16_t* buf = (int16_t*)malloc(stereo_samples * sizeof(int16_t));
     if (!buf) {
-        Serial.println("[AUDIO_BEEP] ERROR: malloc failed!");
+        AUDIO_LOGLN("[AUDIO] ERROR: malloc failed!");
         set_speaker_amp(false);
+        audio_playing = false;
+        free(params);
+        vTaskDelete(NULL);
         return;
     }
     
     // Copy mono to stereo (both channels)
-    for (int i = 0; i < num_samples; ++i) {
-        int16_t sample = pgm_read_word(&pcm_data[i]);
+    for (int i = 0; i < params->num_samples; ++i) {
+        int16_t sample = pgm_read_word(&params->pcm_data[i]);
         buf[i * 2] = sample;       // Left channel
         buf[i * 2 + 1] = sample;   // Right channel
     }
@@ -369,46 +372,80 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     esp_err_t err = i2s_channel_write(i2s_tx_chan, buf, stereo_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
     
     if (err != ESP_OK) {
-        Serial.print("[AUDIO_BEEP] i2s_channel_write failed: "); Serial.println(err);
+        AUDIO_LOGF("[AUDIO] i2s_channel_write failed: %d\\n", err);
     }
     
     // Wait for audio to finish playing through DMA
-    delay(duration_ms + 100);
+    vTaskDelay(pdMS_TO_TICKS(params->duration_ms + 100));
     
     free(buf);
     set_speaker_amp(false);
-}
-
-// Play "Warning Volume Zero" speech
-void play_vol0_beep() {
-    Serial.println("[AUDIO_BEEP] play_vol0_beep() called");
-    
-    if (audio_playing) {
-        Serial.println("[AUDIO_BEEP] Audio already playing, skipping");
-        return;
-    }
-    audio_playing = true;
-    
-    Serial.print("[AUDIO_BEEP] Playing 'Warning Volume Zero' (");
-    Serial.print(WARNING_VOLUME_ZERO_PCM_DURATION_MS);
-    Serial.println("ms)");
-    
-    play_pcm_audio(warning_volume_zero_pcm, WARNING_VOLUME_ZERO_PCM_SAMPLES, WARNING_VOLUME_ZERO_PCM_DURATION_MS);
-    
     audio_playing = false;
-    Serial.println("[AUDIO_BEEP] Speech complete");
+    free(params);
+    
+    audioTaskHandle = NULL;
+    vTaskDelete(NULL);
 }
 
-// Play voice alert for band/direction
-void play_alert_voice(AlertBand band, AlertDirection direction) {
-    Serial.print("[AUDIO_BEEP] play_alert_voice() band="); Serial.print((int)band);
-    Serial.print(" dir="); Serial.println((int)direction);
-    
+// Helper to play any PCM audio (mono input, converts to stereo for I2S)
+// Now non-blocking - starts a FreeRTOS task for playback
+static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duration_ms) {
     if (audio_playing) {
-        Serial.println("[AUDIO_BEEP] Audio already playing, skipping");
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
         return;
     }
+    
+    // Allocate params for the task (task will free it)
+    AudioTaskParams* params = (AudioTaskParams*)malloc(sizeof(AudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        return;
+    }
+    params->pcm_data = pcm_data;
+    params->num_samples = num_samples;
+    params->duration_ms = duration_ms;
+    
     audio_playing = true;
+    
+    // Create task on core 1 (core 0 is for WiFi/BLE) with adequate stack
+    BaseType_t result = xTaskCreatePinnedToCore(
+        audio_playback_task,
+        "audio_play",
+        4096,           // Stack size
+        params,
+        1,              // Priority (low)
+        &audioTaskHandle,
+        1               // Core 1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create audio task!");
+        audio_playing = false;
+        free(params);
+    }
+}
+
+// Play "Warning Volume Zero" speech (non-blocking)
+void play_vol0_beep() {
+    AUDIO_LOGLN("[AUDIO] play_vol0_beep() called");
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    AUDIO_LOGF("[AUDIO] Playing 'Warning Volume Zero' (%dms)\\n", WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+    play_pcm_audio(warning_volume_zero_pcm, WARNING_VOLUME_ZERO_PCM_SAMPLES, WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+}
+
+// Play voice alert for band/direction (non-blocking)
+void play_alert_voice(AlertBand band, AlertDirection direction) {
+    AUDIO_LOGF("[AUDIO] play_alert_voice() band=%d dir=%d\\n", (int)band, (int)direction);
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
     
     const int16_t* pcm_data = nullptr;
     int num_samples = 0;
@@ -508,17 +545,13 @@ void play_alert_voice(AlertBand band, AlertDirection direction) {
     }
     
     if (pcm_data && num_samples > 0) {
-        Serial.print("[AUDIO_BEEP] Playing '"); Serial.print(phrase);
-        Serial.print("' ("); Serial.print(duration_ms); Serial.println("ms)");
+        AUDIO_LOGF("[AUDIO] Playing '%s' (%dms)\\n", phrase, duration_ms);
         play_pcm_audio(pcm_data, num_samples, duration_ms);
     }
-    
-    audio_playing = false;
-    Serial.println("[AUDIO_BEEP] Alert voice complete");
 }
 
 // Test beep on startup (for debugging audio hardware)
 void play_test_beep() {
-    Serial.println("[AUDIO_BEEP] === TEST SPEECH ON STARTUP ===");
+    AUDIO_LOGLN("[AUDIO] === TEST SPEECH ON STARTUP ===");
     play_vol0_beep();
 }
