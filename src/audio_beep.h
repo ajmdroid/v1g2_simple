@@ -31,5 +31,14 @@ void play_vol0_beep();
 // Returns immediately if already playing or audio disabled
 void play_alert_voice(AlertBand band, AlertDirection direction);
 
+// Play frequency announcement from SD card audio clips
+// Format: "K A 34 7 49 rear" for Ka 34.749 rear
+// freqMHz: frequency in MHz (e.g., 34749 for 34.749 GHz)
+// Returns immediately if already playing, audio disabled, or SD not available
+void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction);
+
+// Initialize SD audio (call after storage manager is ready)
+void audio_init_sd();
+
 // Test beep on startup (for debugging)
 void play_test_beep();

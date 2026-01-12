@@ -109,7 +109,7 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 static Band lastVoiceAlertBand = BAND_NONE;
 static Direction lastVoiceAlertDirection = DIR_NONE;
 static unsigned long lastVoiceAlertTime = 0;
-static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 2000;  // Min 2s between announcements
+static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between announcements
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -832,9 +832,10 @@ void processBLEData() {
                         }
                         
                         if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] Announcing: band=%d dir=%d\n", 
-                                       (int)audioBand, (int)audioDir);
-                            play_alert_voice(audioBand, audioDir);
+                            DEBUG_LOGF("[VoiceAlert] Announcing: band=%d freq=%lu dir=%d\n", 
+                                       (int)audioBand, priority.frequency, (int)audioDir);
+                            // Use frequency voice if available (SD card), falls back to simple alert
+                            play_frequency_voice(audioBand, (uint16_t)priority.frequency, audioDir);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertTime = millis();
@@ -998,6 +999,7 @@ void setup() {
     if (storageManager.begin()) {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem());
+        audio_init_sd();  // Initialize SD-based frequency voice audio
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
