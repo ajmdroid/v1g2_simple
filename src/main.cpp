@@ -111,7 +111,8 @@ static Direction lastVoiceAlertDirection = DIR_NONE;
 static uint16_t lastVoiceAlertFrequency = 0;  // Track frequency to avoid re-announcing same alert
 static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce when it changes
 static unsigned long lastVoiceAlertTime = 0;
-static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between announcements
+static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
+static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -830,10 +831,14 @@ void processBLEData() {
                         audioDir = AlertDirection::SIDE;
                     }
                     
+                    // Track bogey count changes
+                    bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
+                    bool bogeyCountCooldownPassed = (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
+                    
                     // Logic:
-                    // - New frequency (or first alert): announcement based on voice mode setting
-                    // - Same frequency but direction changed: direction-only announcement (if direction enabled)
-                    // - Same frequency, same direction: no announcement (already announced this alert)
+                    // - New frequency (or first alert): full announcement based on voice mode setting
+                    // - Same frequency but direction changed: direction + bogey count if changed
+                    // - Same frequency, same direction, but bogey count changed: direction + new count (shorter cooldown)
                     if (frequencyChanged && cooldownPassed) {
                         // New alert - full announcement based on mode
                         AlertBand audioBand;
@@ -861,9 +866,7 @@ void processBLEData() {
                         }
                     } else if (!frequencyChanged && directionChanged && cooldownPassed && 
                                settings.voiceDirectionEnabled) {
-                        // Same alert changed direction - announce direction
-                        // Also include bogey count if it changed and setting is enabled
-                        bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
+                        // Same alert changed direction - announce direction + bogey count if changed
                         uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
                         DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
                                    currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
@@ -871,8 +874,17 @@ void processBLEData() {
                         lastVoiceAlertDirection = priority.direction;
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                         lastVoiceAlertTime = millis();
+                    } else if (!frequencyChanged && !directionChanged && bogeyCountChanged && 
+                               bogeyCountCooldownPassed && settings.announceBogeyCount) {
+                        // Same alert, same direction, but bogey count changed - announce direction + new count
+                        // Uses shorter cooldown (2s) to be more responsive to count changes
+                        DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
+                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
+                        play_direction_only(audioDir, (uint8_t)alertCount);
+                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
+                        lastVoiceAlertTime = millis();
                     }
-                    // else: same alert, same direction - no announcement needed
+                    // else: same alert, same direction, same count - no announcement needed
                 }
 
                 // V1 is source of truth for mute state - no auto-unmute logic
