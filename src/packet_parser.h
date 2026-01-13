@@ -110,6 +110,9 @@ public:
     // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
     static void resetSignalBarDecay();
     
+    // Reset display signal bar decay (call on V1 disconnect)
+    static void resetDisplaySignalDecay();
+    
     // Reset alert count tracker (call on V1 disconnect to clear stale assembly state)
     static void resetAlertCountTracker();
 
@@ -129,6 +132,7 @@ private:
     Band decodeBand(uint8_t bandArrow) const;
     Direction decodeDirection(uint8_t bandArrow) const;
     uint8_t mapStrengthToBars(Band band, uint8_t raw) const;
+    uint8_t applySignalBarDecay(uint8_t newBars);  // V1-style gradual signal bar decay
     void decodeMode(const uint8_t* payload, size_t length);
 };
 

@@ -1388,6 +1388,7 @@ void loop() {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
                     PacketParser::resetSignalBarDecay();
+                    PacketParser::resetDisplaySignalDecay();
                     PacketParser::resetAlertCountTracker();
                     parser.resetAlertAssembly();
                     V1Display::resetChangeTracking();

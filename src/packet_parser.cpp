@@ -69,6 +69,16 @@ void PacketParser::resetAlertCountTracker() {
     s_resetAlertCountFlag = true;
 }
 
+// Global display signal bar decay state
+static uint8_t s_displayedSignalBars = 0;
+static unsigned long s_lastSignalBarDropTime = 0;
+static bool s_resetDisplaySignalDecayFlag = false;
+constexpr unsigned long SIGNAL_BAR_DROP_INTERVAL_MS = 350;  // V1 drops ~3 bars/sec
+
+void PacketParser::resetDisplaySignalDecay() {
+    s_resetDisplaySignalDecayFlag = true;
+}
+
 bool PacketParser::parse(const uint8_t* data, size_t length) {
     if (!validatePacket(data, length)) {
         return false;
@@ -226,6 +236,40 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     return true;
 }
 
+// Apply V1-style decay to displayed signal bars
+// Instant rise, gradual fall (~3 bars/sec)
+uint8_t PacketParser::applySignalBarDecay(uint8_t newBars) {
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetDisplaySignalDecayFlag) {
+        s_displayedSignalBars = 0;
+        s_lastSignalBarDropTime = 0;
+        s_resetDisplaySignalDecayFlag = false;
+    }
+    
+    unsigned long now = millis();
+    
+    if (newBars >= s_displayedSignalBars) {
+        // Going up or same - instant response
+        s_displayedSignalBars = newBars;
+        s_lastSignalBarDropTime = now;
+    } else {
+        // Going down - limit drop rate to match V1
+        unsigned long elapsed = now - s_lastSignalBarDropTime;
+        uint8_t allowedDrops = elapsed / SIGNAL_BAR_DROP_INTERVAL_MS;
+        
+        if (allowedDrops > 0) {
+            uint8_t targetBars = (s_displayedSignalBars > allowedDrops) 
+                               ? (s_displayedSignalBars - allowedDrops) : 0;
+            // Don't go below actual signal
+            if (targetBars < newBars) targetBars = newBars;
+            s_displayedSignalBars = targetBars;
+            s_lastSignalBarDropTime = now;
+        }
+    }
+    
+    return s_displayedSignalBars;
+}
+
 Band PacketParser::decodeBand(uint8_t bandArrow) const {
     if (bandArrow & 0b00000001) return BAND_LASER;
     if (bandArrow & 0b00000010) return BAND_KA;
@@ -335,7 +379,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     if (receivedAlertCount == 0) {
         alertCount = 0;
         chunkCount = 0;
-        displayState.signalBars = 0;
+        // Apply decay even when alerts clear - V1 bars fade down gradually
+        displayState.signalBars = applySignalBarDecay(0);
         displayState.arrows = DIR_NONE;
         // Note: Don't clear displayState.activeBands here - let parseDisplayData() handle it
         // The display packet's image1 will show no bands when alerts truly clear
@@ -426,14 +471,16 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
                 priorityIdx = i;
             }
         }
-        displayState.signalBars = maxSignal;
+        // Apply decay - instant rise, gradual fall like V1
+        displayState.signalBars = applySignalBarDecay(maxSignal);
         
         // Set priority arrow from the strongest alert (for multi-alert display)
         displayState.priorityArrow = alerts[priorityIdx].direction;
         
         // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
     } else {
-        displayState.signalBars = 0;
+        // Apply decay even when alerts clear
+        displayState.signalBars = applySignalBarDecay(0);
         displayState.arrows = DIR_NONE;
     }
 
