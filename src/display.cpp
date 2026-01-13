@@ -950,10 +950,10 @@ void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
     // Clear area - use fixed width to handle all digits/symbols (avoids ghosting when digit changes)
     // OFR renders with baseline at 'y', text extends upward from there
     // For y = textH - 50, the top of text is near Y=0 and bottom at roughly y
-    const int clearW = 50;  // Fixed width to cover any digit
+    const int clearW = 55;  // Fixed width to cover any digit plus margin for antialiasing
     const int clearY = 0;   // Start from top of screen where text begins
-    const int clearH = textH + 10;  // Cover full text height plus margin
-    FILL_RECT(x - 2, clearY, clearW, clearH, PALETTE_BG);
+    const int clearH = textH + 12;  // Cover full text height plus margin
+    FILL_RECT(x - 4, clearY, clearW, clearH, PALETTE_BG);
     
     ofr.setCursor(x, y);
     ofr.printf("%s", buf);

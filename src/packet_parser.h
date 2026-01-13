@@ -45,8 +45,8 @@ struct AlertData {
 struct DisplayState {
     uint8_t activeBands;    // Bitmap of active bands
     Direction arrows;       // Bitmap of arrow directions (from display packet - all active)
-    Direction priorityArrow; // Arrow from priority (strongest) alert only
-    uint8_t signalBars;     // 0-6 signal strength (V1 Gen2)
+    Direction priorityArrow; // Arrow from V1's priority alert (alerts[0])
+    uint8_t signalBars;     // 0-8 signal strength (from V1's LED bitmap)
     bool muted;
     bool systemTest;
     char modeChar;
@@ -106,7 +106,7 @@ public:
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
     
-    // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
+    // Reset priority selection state (no-op now that we trust V1's priority)
     static void resetPriorityState();
     
     // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
@@ -133,9 +133,8 @@ private:
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
     Direction decodeDirection(uint8_t bandArrow) const;
-    uint8_t decodeLEDBitmap(uint8_t bitmap) const;  // Convert V1 LED bitmap to bar count
-    uint8_t mapStrengthToBars(Band band, uint8_t raw) const;
-    uint8_t applySignalBarDecay(uint8_t newBars);  // V1-style gradual signal bar decay
+    uint8_t decodeLEDBitmap(uint8_t bitmap) const;  // Convert V1 LED bitmap to bar count (1-8)
+    uint8_t mapStrengthToBars(Band band, uint8_t raw) const;  // Fallback if LED bitmap unavailable
     void decodeMode(const uint8_t* payload, size_t length);
 };
 

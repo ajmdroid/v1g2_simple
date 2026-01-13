@@ -72,14 +72,9 @@ void PacketParser::resetAlertCountTracker() {
     s_resetAlertCountFlag = true;
 }
 
-// Global display signal bar decay state
-static uint8_t s_displayedSignalBars = 0;
-static unsigned long s_lastSignalBarDropTime = 0;
-static bool s_resetDisplaySignalDecayFlag = false;
-constexpr unsigned long SIGNAL_BAR_DROP_INTERVAL_MS = 350;  // V1 drops ~3 bars/sec
-
+// No longer needed - V1's LED bitmap includes decay/smoothing
 void PacketParser::resetDisplaySignalDecay() {
-    s_resetDisplaySignalDecayFlag = true;
+    // No-op now that we trust V1's LED bitmap for signal bars
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
@@ -226,51 +221,41 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         }
     }
     
+    // V1 sends LED bar state directly in the display packet at payload[2]
+    // This is the authoritative signal strength from V1's own display
+    // Bitmap: 0x01=1bar, 0x03=2bars, 0x07=3bars, 0x0F=4bars, 0x1F=5bars, 0x3F=6bars
+    // V1 blinks by toggling values - use time-based peak hold to filter
+    if (length > 2) {
+        uint8_t ledBitmap = payload[2];
+        uint8_t newBars = decodeLEDBitmap(ledBitmap);
+        
+        static uint8_t peakBars = 0;
+        static unsigned long peakTime = 0;
+        unsigned long now = millis();
+        
+        // New peak or same level - update and refresh timestamp
+        if (newBars >= peakBars) {
+            peakBars = newBars;
+            peakTime = now;
+        }
+        
+        // Only allow drops after 600ms since last peak
+        // This filters V1's ~200ms blink cycle completely
+        if (now - peakTime > 600) {
+            peakBars = newBars;
+            peakTime = now;
+        }
+        
+        displayState.signalBars = peakBars;
+    }
+    
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {
         displayState.signalBars = 6; // Full bars for laser
     }
-    // Note: Don't clear alertCount here based on activeBands being BAND_NONE
-    // During V1's blink cycle, image1 band bits toggle off momentarily (creating the blink)
-    // This would incorrectly clear alerts during blink. Let parseAlertData() be source of truth
-    // for alert count - it receives explicit alert count from V1's alert table packets.
     
     return true;
-}
-
-// Apply V1-style decay to displayed signal bars
-// Instant rise, gradual fall (~3 bars/sec)
-uint8_t PacketParser::applySignalBarDecay(uint8_t newBars) {
-    // Check if reset was requested (e.g., on V1 disconnect)
-    if (s_resetDisplaySignalDecayFlag) {
-        s_displayedSignalBars = 0;
-        s_lastSignalBarDropTime = 0;
-        s_resetDisplaySignalDecayFlag = false;
-    }
-    
-    unsigned long now = millis();
-    
-    if (newBars >= s_displayedSignalBars) {
-        // Going up or same - instant response
-        s_displayedSignalBars = newBars;
-        s_lastSignalBarDropTime = now;
-    } else {
-        // Going down - limit drop rate to match V1
-        unsigned long elapsed = now - s_lastSignalBarDropTime;
-        uint8_t allowedDrops = elapsed / SIGNAL_BAR_DROP_INTERVAL_MS;
-        
-        if (allowedDrops > 0) {
-            uint8_t targetBars = (s_displayedSignalBars > allowedDrops) 
-                               ? (s_displayedSignalBars - allowedDrops) : 0;
-            // Don't go below actual signal
-            if (targetBars < newBars) targetBars = newBars;
-            s_displayedSignalBars = targetBars;
-            s_lastSignalBarDropTime = now;
-        }
-    }
-    
-    return s_displayedSignalBars;
 }
 
 Band PacketParser::decodeBand(uint8_t bandArrow) const {
@@ -290,7 +275,9 @@ Direction PacketParser::decodeDirection(uint8_t bandArrow) const {
 
 // Decode V1's LED bitmap to bar count (0-8)
 // V1 sends signal strength as consecutive bits from LSB: 1=1bar, 3=2bars, 7=3bars, etc.
+// But if that doesn't match, try counting set bits (popcount)
 uint8_t PacketParser::decodeLEDBitmap(uint8_t bitmap) const {
+    // First try the expected bitmap pattern
     switch (bitmap) {
         case 1:   return 1;
         case 3:   return 2;
@@ -300,7 +287,11 @@ uint8_t PacketParser::decodeLEDBitmap(uint8_t bitmap) const {
         case 63:  return 6;
         case 127: return 7;
         case 255: return 8;
-        default:  return 0;  // No signal or invalid
+        case 0:   return 0;
+        default:
+            // Not a standard bitmap - try popcount (number of set bits)
+            // This handles cases where V1 sends non-standard patterns
+            return __builtin_popcount(bitmap);
     }
 }
 
@@ -329,63 +320,20 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
             return 0;
     }
 
-    // Time-based decay for signal bar smoothing
-    // Match V1's signal bar decay rate
-    static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
-    static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
-    constexpr unsigned long DROP_INTERVAL_MS = 300;  // Match V1's decay rate
-    
-    // Check if reset was requested (e.g., on V1 disconnect)
-    if (s_resetSignalBarDecayFlag) {
-        lastBarsKa = lastBarsK = lastBarsX = 0;
-        lastDropTimeKa = lastDropTimeK = lastDropTimeX = 0;
-        s_resetSignalBarDecayFlag = false;
-    }
-    
-    uint8_t* lastBarsPtr = nullptr;
-    unsigned long* lastDropTimePtr = nullptr;
-    switch (band) {
-        case BAND_KA: lastBarsPtr = &lastBarsKa; lastDropTimePtr = &lastDropTimeKa; break;
-        case BAND_K:  lastBarsPtr = &lastBarsK;  lastDropTimePtr = &lastDropTimeK;  break;
-        case BAND_X:  lastBarsPtr = &lastBarsX;  lastDropTimePtr = &lastDropTimeX;  break;
-        default: break;
-    }
-
-    // Map raw to bars
-    uint8_t newBars = 0;
+    // Map raw RSSI to bars - no decay, just direct mapping
+    // V1 handles its own display smoothing internally
+    uint8_t bars = 0;
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
-            newBars = i;
+            bars = i;
             break;
         }
     }
-    if (newBars == 0 && raw > table[0]) {
-        newBars = 6;
+    if (bars == 0 && raw > table[0]) {
+        bars = 6;
     }
 
-    if (lastBarsPtr && lastDropTimePtr) {
-        unsigned long now = millis();
-        
-        if (newBars >= *lastBarsPtr) {
-            // Going up or same - instant response
-            *lastBarsPtr = newBars;
-            *lastDropTimePtr = now;
-        } else {
-            // Going down - limit drop rate to match V1
-            unsigned long elapsed = now - *lastDropTimePtr;
-            uint8_t allowedDrops = elapsed / DROP_INTERVAL_MS;
-            
-            if (allowedDrops > 0) {
-                uint8_t targetBars = (*lastBarsPtr > allowedDrops) ? (*lastBarsPtr - allowedDrops) : 0;
-                if (targetBars < newBars) targetBars = newBars;  // Don't go below actual signal
-                *lastBarsPtr = targetBars;
-                *lastDropTimePtr = now;
-            }
-            newBars = *lastBarsPtr;
-        }
-    }
-
-    return newBars;
+    return bars;
 }
 
 bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
@@ -400,11 +348,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     if (receivedAlertCount == 0) {
         alertCount = 0;
         chunkCount = 0;
-        // Apply decay even when alerts clear - V1 bars fade down gradually
-        displayState.signalBars = applySignalBarDecay(0);
+        // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
+        // The V1 continues sending updates and our decay will match its behavior
         displayState.arrows = DIR_NONE;
-        // Note: Don't clear displayState.activeBands here - let parseDisplayData() handle it
-        // The display packet's image1 will show no bands when alerts truly clear
         displayState.muted = false;
         return true;
     }
@@ -466,15 +412,10 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.band = band;
             alert.direction = dir;
             
-            // V1 sends signal bars as LED bitmap in bytes 6 (front) and 7 (rear)
-            // Bitmap: 1=1bar, 3=2bars, 7=3bars, 15=4bars, 31=5bars, 63=6bars, 127=7bars, 255=8bars
-            // Fall back to raw RSSI mapping if bitmap is 0 (shouldn't happen with valid alerts)
-            uint8_t frontLEDs = decodeLEDBitmap(a[6]);
-            uint8_t rearLEDs = decodeLEDBitmap(a[7]);
-            
-            // Use LED bitmap if valid, otherwise fall back to raw RSSI mapping
-            alert.frontStrength = (frontLEDs > 0) ? frontLEDs : mapStrengthToBars(band, a[3]);
-            alert.rearStrength = (rearLEDs > 0) ? rearLEDs : mapStrengthToBars(band, a[4]);
+            // Bytes 3 and 4 are raw RSSI values for front/rear antennas
+            // Use our RSSI-to-bars mapping with band-specific thresholds
+            alert.frontStrength = mapStrengthToBars(band, a[3]);
+            alert.rearStrength = mapStrengthToBars(band, a[4]);
             
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
@@ -495,27 +436,16 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         // Store that for getPriorityAlert() to use
         displayState.v1PriorityIndex = (alertChunks[0][0] >> 4) & 0x0F;
         
-        // Find MAX signal strength across ALL alerts for signal bar display
-        uint8_t maxSignal = 0;
-        for (size_t i = 0; i < alertCount; ++i) {
-            uint8_t sig = std::max(alerts[i].frontStrength, alerts[i].rearStrength);
-            if (sig > maxSignal) {
-                maxSignal = sig;
-            }
-        }
-        // Apply decay - instant rise, gradual fall like V1
-        displayState.signalBars = applySignalBarDecay(maxSignal);
+        // Signal bars are now read from V1's LED bitmap in parseDisplayData()
+        // Don't overwrite here - that would bypass the flicker filtering
         
         // Set priority arrow from V1's reported priority alert (index 0 in our array)
         // Alerts are stored in the order received, with priority (index 0) first
         displayState.priorityArrow = alerts[0].direction;
         
         // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
-    } else {
-        // Apply decay even when alerts clear
-        displayState.signalBars = applySignalBarDecay(0);
-        displayState.arrows = DIR_NONE;
     }
+    // When alertCount == 0, DON'T clear signalBars - parseDisplayData handles it
 
     chunkCount = 0; // Clear chunks after processing
     return true;
