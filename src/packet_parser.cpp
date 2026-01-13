@@ -58,23 +58,11 @@ void PacketParser::resetPriorityState() {
     s_resetPriorityStateFlag = true;
 }
 
-// Static flag to signal signal bar decay reset on next call
-static bool s_resetSignalBarDecayFlag = false;
-
-void PacketParser::resetSignalBarDecay() {
-    s_resetSignalBarDecayFlag = true;
-}
-
 // Static flag to signal alert count tracker reset on next call
 static bool s_resetAlertCountFlag = false;
 
 void PacketParser::resetAlertCountTracker() {
     s_resetAlertCountFlag = true;
-}
-
-// No longer needed - V1's LED bitmap includes decay/smoothing
-void PacketParser::resetDisplaySignalDecay() {
-    // No-op now that we trust V1's LED bitmap for signal bars
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
@@ -296,9 +284,9 @@ uint8_t PacketParser::decodeLEDBitmap(uint8_t bitmap) const {
 }
 
 uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
-    // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
-    // Use threshold tables to convert to 0-6 bar display
-    // Match V1's visual decay rate - instant up, gradual down
+    // Convert raw RSSI to 0-6 bars for individual alert strength tracking
+    // Note: Main display signal bars come from V1's LED bitmap in parseDisplayData()
+    // This is used for per-alert strength in the alerts array
     
     // Threshold tables for raw RSSI -> 0..6 bars
     // Values below 0x80 typically mean "no signal" on that antenna
@@ -320,8 +308,7 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
             return 0;
     }
 
-    // Map raw RSSI to bars - no decay, just direct mapping
-    // V1 handles its own display smoothing internally
+    // Map raw RSSI to bars using threshold table
     uint8_t bars = 0;
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
@@ -349,7 +336,6 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         alertCount = 0;
         chunkCount = 0;
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
-        // The V1 continues sending updates and our decay will match its behavior
         displayState.arrows = DIR_NONE;
         displayState.muted = false;
         return true;

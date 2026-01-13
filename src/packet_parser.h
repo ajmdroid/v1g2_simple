@@ -109,11 +109,7 @@ public:
     // Reset priority selection state (no-op now that we trust V1's priority)
     static void resetPriorityState();
     
-    // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
-    static void resetSignalBarDecay();
-    
-    // Reset display signal bar decay (call on V1 disconnect)
-    static void resetDisplaySignalDecay();
+
     
     // Reset alert count tracker (call on V1 disconnect to clear stale assembly state)
     static void resetAlertCountTracker();
