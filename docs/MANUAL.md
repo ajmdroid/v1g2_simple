@@ -590,18 +590,35 @@ The display includes a built-in speaker (ES8311 DAC) that announces radar alerts
 
 **Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L1-L50)
 
+### Voice Mode Settings
+
+The `voiceAlertMode` setting controls what information is announced:
+
+| Mode | Value | Announcement |
+|------|-------|--------------|
+| `VOICE_MODE_DISABLED` | 0 | Voice alerts disabled |
+| `VOICE_MODE_BAND_ONLY` | 1 | Band name only ("Ka") |
+| `VOICE_MODE_FREQ_ONLY` | 2 | Frequency only ("34.7") |
+| `VOICE_MODE_BAND_FREQ` | 3 | Full: band + frequency ("Ka 34.7") |
+
+**Default:** `VOICE_MODE_BAND_FREQ` (3) - full announcements
+
+**Settings key:** `voiceMode` (uint8_t, stored in Preferences)
+
+**Migration:** Old `voiceAlerts` boolean is automatically migrated: `true` → `VOICE_MODE_BAND_FREQ`, `false` → `VOICE_MODE_DISABLED`
+
 ### Voice Announcement Logic
 
 Voice alerts trigger when:
-1. **voiceAlertsEnabled** is true (default: on)
+1. **voiceAlertMode** is not `VOICE_MODE_DISABLED`
 2. **No phone app is connected** (BLE proxy has no subscribers)
 3. **Alert is not muted** on the V1 (user hasn't dismissed it)
 4. **Priority alert changes:**
-   - **New frequency:** Full announcement (band + frequency + direction)
+   - **New frequency:** Full announcement based on voiceAlertMode
    - **Direction change only:** Direction-only announcement ("ahead", "behind", "side")
 5. **Cooldown passed** (5 seconds since last announcement)
 
-Announcement format examples:
+Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 - New alert: `"Ka 34.712 ahead"` (band, frequency in GHz, direction)
 - Direction change: `"behind"` (direction only, same alert moved)
 

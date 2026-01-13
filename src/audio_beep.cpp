@@ -15,6 +15,7 @@
 #include "driver/gpio.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <atomic>
 
 // Debug logging control - set to false for production to reduce serial overhead
 static constexpr bool AUDIO_DEBUG_LOGS = false;
@@ -350,7 +351,7 @@ static void i2s_init() {
 #include "../include/alert_audio.h"
 
 // Track if audio is currently playing to prevent overlapping
-static volatile bool audio_playing = false;
+static std::atomic<bool> audio_playing{false};
 
 // Amp warm-keeping: keep amp on for a few seconds after playback for faster subsequent plays
 static volatile bool amp_is_warm = false;
@@ -431,7 +432,8 @@ static void audio_playback_task(void* pvParameters) {
 // Helper to play any PCM audio (mono input, converts to stereo for I2S)
 // Now non-blocking - starts a FreeRTOS task for playback
 static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duration_ms) {
-    if (audio_playing) {
+    // Atomic exchange: if already true, return; otherwise set to true
+    if (audio_playing.exchange(true)) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
         return;
     }
@@ -440,13 +442,12 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     AudioTaskParams* params = (AudioTaskParams*)malloc(sizeof(AudioTaskParams));
     if (!params) {
         AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        audio_playing = false;
         return;
     }
     params->pcm_data = pcm_data;
     params->num_samples = num_samples;
     params->duration_ms = duration_ms;
-    
-    audio_playing = true;
     
     // Create task on core 1 (core 0 is for WiFi/BLE) with adequate stack
     BaseType_t result = xTaskCreatePinnedToCore(
@@ -806,7 +807,7 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     AUDIO_LOGF("[AUDIO] play_frequency_voice() band=%d freq=%d dir=%d mode=%d incDir=%d\n", 
                (int)band, freqMHz, (int)direction, (int)mode, includeDirection);
     
-    if (audio_playing) {
+    if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
         return;
     }
@@ -891,7 +892,12 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params->filePaths[i]);
     }
     
-    audio_playing = true;
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
     
     BaseType_t result = xTaskCreatePinnedToCore(
         sd_audio_playback_task,
@@ -914,7 +920,7 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
 void play_band_only(AlertBand band) {
     AUDIO_LOGF("[AUDIO] play_band_only() band=%d\n", (int)band);
     
-    if (audio_playing) {
+    if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
         return;
     }
@@ -943,7 +949,12 @@ void play_band_only(AlertBand band) {
         snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
     }
     
-    audio_playing = true;
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
     
     BaseType_t result = xTaskCreatePinnedToCore(
         sd_audio_playback_task,
@@ -967,7 +978,7 @@ void play_band_only(AlertBand band) {
 void play_direction_only(AlertDirection direction) {
     AUDIO_LOGF("[AUDIO] play_direction_only() dir=%d\n", (int)direction);
     
-    if (audio_playing) {
+    if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
         return;
     }
@@ -1003,7 +1014,12 @@ void play_direction_only(AlertDirection direction) {
     
     AUDIO_LOGF("[AUDIO] Playing direction-only: %s\n", params->filePaths[0]);
     
-    audio_playing = true;
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
     
     BaseType_t result = xTaskCreatePinnedToCore(
         sd_audio_playback_task,

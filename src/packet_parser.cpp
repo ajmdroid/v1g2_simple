@@ -62,6 +62,13 @@ void PacketParser::resetSignalBarDecay() {
     s_resetSignalBarDecayFlag = true;
 }
 
+// Static flag to signal alert count tracker reset on next call
+static bool s_resetAlertCountFlag = false;
+
+void PacketParser::resetAlertCountTracker() {
+    s_resetAlertCountFlag = true;
+}
+
 bool PacketParser::parse(const uint8_t* data, size_t length) {
     if (!validatePacket(data, length)) {
         return false;
@@ -344,6 +351,13 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // Track expected alert count - if it changes mid-assembly, reset to avoid stale data
     // This handles the case where alerts change while we're still collecting chunks
     static uint8_t lastExpectedCount = 0;
+    
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetAlertCountFlag) {
+        lastExpectedCount = 0;
+        s_resetAlertCountFlag = false;
+    }
+    
     if (receivedAlertCount != lastExpectedCount) {
         // Alert count changed - discard any partial assembly and start fresh
         chunkCount = 0;

@@ -686,6 +686,8 @@ void WiFiManager::handleV1ProfileGet() {
 }
 
 void WiFiManager::handleV1ProfileSave() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
         return;
@@ -745,6 +747,8 @@ void WiFiManager::handleV1ProfileSave() {
 }
 
 void WiFiManager::handleV1ProfileDelete() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
         return;
@@ -756,7 +760,11 @@ void WiFiManager::handleV1ProfileDelete() {
         return;
     }
     JsonDocument doc;
-    deserializeJson(doc, body);
+    DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
     
     String name = doc["name"] | "";
     if (name.isEmpty()) {
@@ -795,6 +803,8 @@ void WiFiManager::handleV1CurrentSettings() {
 }
 
 void WiFiManager::handleV1SettingsPull() {
+    if (!checkRateLimit()) return;
+    
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
@@ -810,6 +820,8 @@ void WiFiManager::handleV1SettingsPull() {
 }
 
 void WiFiManager::handleV1SettingsPush() {
+    if (!checkRateLimit()) return;
+    
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
@@ -989,6 +1001,8 @@ void WiFiManager::handleAutoPushSlotsApi() {
 }
 
 void WiFiManager::handleAutoPushSlotSave() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot") || !server.hasArg("profile") || !server.hasArg("mode")) {
         server.send(400, "application/json", "{\"error\":\"Missing parameters\"}");
         return;
@@ -1072,6 +1086,8 @@ void WiFiManager::handleAutoPushSlotSave() {
 }
 
 void WiFiManager::handleAutoPushActivate() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
         return;
@@ -1092,6 +1108,8 @@ void WiFiManager::handleAutoPushActivate() {
 }
 
 void WiFiManager::handleAutoPushPushNow() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
         return;
@@ -1187,6 +1205,8 @@ void WiFiManager::handleAutoPushStatus() {
 // ============= Display Colors Handlers =============
 
 void WiFiManager::handleDisplayColorsSave() {
+    if (!checkRateLimit()) return;
+    
     Serial.println("[HTTP] POST /api/displaycolors");
     Serial.printf("[HTTP] Args count: %d\n", server.args());
     for (int i = 0; i < server.args(); i++) {
@@ -1312,6 +1332,8 @@ void WiFiManager::handleDisplayColorsSave() {
 }
 
 void WiFiManager::handleDisplayColorsReset() {
+    if (!checkRateLimit()) return;
+    
     // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan

@@ -107,6 +107,7 @@ constexpr uint32_t SLOW_PROXY_THRESHOLD_MS = 10;  // Proxy > 10ms
 extern Event eventRing[EVENT_RING_SIZE];
 extern volatile uint32_t eventRingHead;  // Next write position
 extern volatile uint32_t eventRingCount; // Total events logged (for overflow detection)
+extern portMUX_TYPE eventRingMux;        // Spinlock for thread safety
 
 // ============================================================================
 // API
@@ -115,14 +116,16 @@ extern volatile uint32_t eventRingCount; // Total events logged (for overflow de
 // Initialize ring buffer
 void eventRingInit();
 
-// Log an event (constant-time, no blocking)
+// Log an event (constant-time, thread-safe with spinlock)
 inline void eventRingLog(EventType type, uint16_t data = 0) {
+    portENTER_CRITICAL(&eventRingMux);
     uint32_t idx = eventRingHead & (EVENT_RING_SIZE - 1);
     eventRing[idx].timestampMs = millis();
     eventRing[idx].data = data;
     eventRing[idx].type = type;
     eventRingHead++;
     eventRingCount++;
+    portEXIT_CRITICAL(&eventRingMux);
 }
 
 // Convenience macro

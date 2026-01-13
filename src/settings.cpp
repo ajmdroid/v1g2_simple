@@ -116,16 +116,28 @@ void SettingsManager::load() {
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
-    if (preferences.isKey("voiceAlerts")) {
+    bool needsMigration = preferences.isKey("voiceAlerts");
+    if (needsMigration) {
         // Migrate old setting: true -> BAND_FREQ, false -> DISABLED
         bool oldEnabled = preferences.getBool("voiceAlerts", true);
         settings.voiceAlertMode = oldEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
         settings.voiceDirectionEnabled = true;  // Old behavior always included direction
-        // Remove old key after migration
-        preferences.remove("voiceAlerts");
     } else {
         settings.voiceAlertMode = (VoiceAlertMode)preferences.getUChar("voiceMode", VOICE_MODE_BAND_FREQ);
         settings.voiceDirectionEnabled = preferences.getBool("voiceDir", true);
+    }
+    
+    // Close read-only preferences before migration cleanup
+    if (needsMigration) {
+        preferences.end();
+        // Re-open in write mode to remove old key
+        if (preferences.begin("v1settings", false)) {
+            preferences.remove("voiceAlerts");
+            Serial.println("[Settings] Migrated voiceAlerts -> voiceMode");
+            preferences.end();
+        }
+        // Re-open in read-only to continue loading
+        preferences.begin("v1settings", true);
     }
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
     settings.voiceVolume = preferences.getUChar("voiceVol", 75);

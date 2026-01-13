@@ -9,6 +9,7 @@
 Event eventRing[EVENT_RING_SIZE];
 volatile uint32_t eventRingHead = 0;
 volatile uint32_t eventRingCount = 0;
+portMUX_TYPE eventRingMux = portMUX_INITIALIZER_UNLOCKED;
 
 void eventRingInit() {
     eventRingHead = 0;

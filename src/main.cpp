@@ -242,6 +242,7 @@ enum AutoPushStep {
     AUTO_PUSH_STEP_IDLE = 0,
     AUTO_PUSH_STEP_WAIT_READY,
     AUTO_PUSH_STEP_PROFILE,
+    AUTO_PUSH_STEP_PROFILE_READBACK,  // Wait before requesting user bytes read-back
     AUTO_PUSH_STEP_DISPLAY,
     AUTO_PUSH_STEP_MODE,
     AUTO_PUSH_STEP_VOLUME,
@@ -346,10 +347,10 @@ static void processAutoPush() {
                     if (bleClient.writeUserBytes(modifiedSettings.bytes)) {
                         AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n", 
                                         slotMuteToZero ? "ON" : "OFF");
-                        // Request read-back to verify V1 accepted the settings
-                        delay(100);
-                        bleClient.requestUserBytes();
-                        AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
+                        // Schedule read-back request after 100ms (non-blocking)
+                        autoPushState.step = AUTO_PUSH_STEP_PROFILE_READBACK;
+                        autoPushState.nextStepAtMs = now + 100;
+                        return;
                     } else {
                         AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
@@ -367,6 +368,14 @@ static void processAutoPush() {
             autoPushState.nextStepAtMs = now + 100;
             return;
         }
+
+        case AUTO_PUSH_STEP_PROFILE_READBACK:
+            // Request user bytes read-back to verify V1 accepted the settings
+            bleClient.requestUserBytes();
+            AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
+            autoPushState.step = AUTO_PUSH_STEP_DISPLAY;
+            autoPushState.nextStepAtMs = now + 100;
+            return;
 
         case AUTO_PUSH_STEP_DISPLAY: {
             // Use slot-level dark mode setting (inverted: darkMode=true means display OFF)
@@ -1359,6 +1368,8 @@ void loop() {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
                     PacketParser::resetSignalBarDecay();
+                    PacketParser::resetAlertCountTracker();
+                    parser.resetAlertAssembly();
                     V1Display::resetChangeTracking();
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");

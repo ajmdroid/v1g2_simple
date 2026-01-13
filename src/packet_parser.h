@@ -109,6 +109,9 @@ public:
     
     // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
     static void resetSignalBarDecay();
+    
+    // Reset alert count tracker (call on V1 disconnect to clear stale assembly state)
+    static void resetAlertCountTracker();
 
 private:
     DisplayState displayState;
