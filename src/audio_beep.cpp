@@ -870,3 +870,63 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         free(params);
     }
 }
+
+// Play direction-only announcement (used when same alert changes direction)
+// Just says "ahead", "behind", or "side"
+void play_direction_only(AlertDirection direction) {
+    AUDIO_LOGF("[AUDIO] play_direction_only() dir=%d\n", (int)direction);
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping direction-only");
+        return;
+    }
+    
+    // Allocate params for the task
+    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        return;
+    }
+    params->numClips = 0;
+    
+    // Just the direction clip
+    const char* dirFile = nullptr;
+    switch (direction) {
+        case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
+        case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
+        case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
+    }
+    if (dirFile) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+    }
+    
+    if (params->numClips == 0) {
+        free(params);
+        return;
+    }
+    
+    AUDIO_LOGF("[AUDIO] Playing direction-only: %s\n", params->filePaths[0]);
+    
+    audio_playing = true;
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
+        params,
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        free(params);
+    }
+}

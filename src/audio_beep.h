@@ -37,6 +37,10 @@ void play_alert_voice(AlertBand band, AlertDirection direction);
 // Returns immediately if already playing, audio disabled, or SD not available
 void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction);
 
+// Play direction-only announcement (used when same alert changes direction)
+// Just says "ahead", "behind", or "side"
+void play_direction_only(AlertDirection direction);
+
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();
 

@@ -108,6 +108,7 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 // Voice alerts tracking - announces priority alert when no app is connected
 static Band lastVoiceAlertBand = BAND_NONE;
 static Direction lastVoiceAlertDirection = DIR_NONE;
+static uint16_t lastVoiceAlertFrequency = 0;  // Track frequency to avoid re-announcing same alert
 static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between announcements
 
@@ -803,13 +804,28 @@ void processBLEData() {
                     priority.band != BAND_NONE) {
                     
                     unsigned long now = millis();
-                    bool bandChanged = (priority.band != lastVoiceAlertBand);
+                    uint16_t currentFreq = (uint16_t)priority.frequency;
+                    bool frequencyChanged = (currentFreq != lastVoiceAlertFrequency);
                     bool directionChanged = (priority.direction != lastVoiceAlertDirection);
                     bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
                     
-                    // Announce when band or direction changes (with cooldown to prevent spam)
-                    if ((bandChanged || directionChanged) && cooldownPassed) {
-                        // Convert V1 band to audio band
+                    // Convert V1 direction to audio direction
+                    // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
+                    AlertDirection audioDir;
+                    if (priority.direction & DIR_FRONT) {
+                        audioDir = AlertDirection::AHEAD;
+                    } else if (priority.direction & DIR_REAR) {
+                        audioDir = AlertDirection::BEHIND;
+                    } else {
+                        audioDir = AlertDirection::SIDE;
+                    }
+                    
+                    // Logic:
+                    // - New frequency (or first alert): full announcement with band/freq/direction
+                    // - Same frequency but direction changed: direction-only announcement
+                    // - Same frequency, same direction: no announcement (already announced this alert)
+                    if (frequencyChanged && cooldownPassed) {
+                        // New alert - full announcement
                         AlertBand audioBand;
                         bool validBand = true;
                         switch (priority.band) {
@@ -820,27 +836,24 @@ void processBLEData() {
                             default:         validBand = false;            break;
                         }
                         
-                        // Convert V1 direction to audio direction
-                        // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
-                        AlertDirection audioDir;
-                        if (priority.direction & DIR_FRONT) {
-                            audioDir = AlertDirection::AHEAD;
-                        } else if (priority.direction & DIR_REAR) {
-                            audioDir = AlertDirection::BEHIND;
-                        } else {
-                            audioDir = AlertDirection::SIDE;
-                        }
-                        
                         if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] Announcing: band=%d freq=%lu dir=%d\n", 
-                                       (int)audioBand, priority.frequency, (int)audioDir);
-                            // Use frequency voice if available (SD card), falls back to simple alert
-                            play_frequency_voice(audioBand, (uint16_t)priority.frequency, audioDir);
+                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d\n", 
+                                       (int)audioBand, currentFreq, (int)audioDir);
+                            play_frequency_voice(audioBand, currentFreq, audioDir);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
+                            lastVoiceAlertFrequency = currentFreq;
                             lastVoiceAlertTime = millis();
                         }
+                    } else if (!frequencyChanged && directionChanged && cooldownPassed) {
+                        // Same alert changed direction - announce direction only
+                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d\n", 
+                                   currentFreq, (int)audioDir);
+                        play_direction_only(audioDir);
+                        lastVoiceAlertDirection = priority.direction;
+                        lastVoiceAlertTime = millis();
                     }
+                    // else: same alert, same direction - no announcement needed
                 }
 
                 // V1 is source of truth for mute state - no auto-unmute logic
@@ -862,6 +875,7 @@ void processBLEData() {
                 // Reset voice alert tracking when alerts clear
                 lastVoiceAlertBand = BAND_NONE;
                 lastVoiceAlertDirection = DIR_NONE;
+                lastVoiceAlertFrequency = 0;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();

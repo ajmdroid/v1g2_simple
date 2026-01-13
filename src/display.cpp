@@ -947,8 +947,10 @@ void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
     int x = 12;
     int y = textH - 50;  // Moved up 50 pixels total from baseline
     
-    // Clear area (text renders above baseline)
-    FILL_RECT(x - 2, y - textH - 2, textW + 8, textH + 8, PALETTE_BG);
+    // Clear area - use fixed width to handle all digits/symbols (avoids ghosting when digit changes)
+    // "2" is typically widest digit, use enough space to cover any character
+    const int clearW = 50;  // Fixed width to cover any digit
+    FILL_RECT(x - 2, y - textH - 2, clearW, textH + 8, PALETTE_BG);
     
     ofr.setCursor(x, y);
     ofr.printf("%s", buf);
@@ -2064,19 +2066,18 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (firstRun) { needsRedraw = true; firstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
-    // Only trigger redraw for frequency change if band also changed (avoids redraw during V1 blink)
-    else if (priority.frequency != lastPriority.frequency && priority.band != lastPriority.band) { 
-        needsRedraw = true;
-    }
+    // V1 is source of truth - always redraw when priority alert changes
+    else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
     // Note: alertCount changes are handled via incremental update (alertCountChanged) for rapid response
     
-    // Also check if any secondary alert changed (but not signal strength or direction - those fluctuate)
+    // Also check if any secondary alert changed
     if (!needsRedraw) {
         for (int i = 0; i < alertCount && i < 4; i++) {
-            // Only check band changes for secondary alerts, not frequency (avoids blink flicker)
-            if (allAlerts[i].band != lastSecondary[i].band) {
+            // Check both band and frequency for secondary alerts
+            if (allAlerts[i].band != lastSecondary[i].band ||
+                allAlerts[i].frequency != lastSecondary[i].frequency) {
                 needsRedraw = true;
                 break;
             }
