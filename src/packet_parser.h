@@ -60,12 +60,14 @@ struct DisplayState {
     uint32_t v1FirmwareVersion;  // V1 firmware version as integer (e.g., 41028 for 4.1028)
     bool hasV1Version;      // True if we've received version from V1
     bool hasVolumeData;     // True if we've received volume data in display packet
+    uint8_t v1PriorityIndex; // V1's reported priority alert index (0-based)
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
                      modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
                      flashBits(0), bandFlashBits(0), mainVolume(0), muteVolume(0),
-                     v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false) {}
+                     v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false),
+                     v1PriorityIndex(0) {}
     
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+
@@ -131,6 +133,7 @@ private:
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
     Direction decodeDirection(uint8_t bandArrow) const;
+    uint8_t decodeLEDBitmap(uint8_t bitmap) const;  // Convert V1 LED bitmap to bar count
     uint8_t mapStrengthToBars(Band band, uint8_t raw) const;
     uint8_t applySignalBarDecay(uint8_t newBars);  // V1-style gradual signal bar decay
     void decodeMode(const uint8_t* payload, size_t length);
