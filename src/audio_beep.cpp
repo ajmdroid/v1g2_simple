@@ -352,6 +352,11 @@ static void i2s_init() {
 // Track if audio is currently playing to prevent overlapping
 static volatile bool audio_playing = false;
 
+// Amp warm-keeping: keep amp on for a few seconds after playback for faster subsequent plays
+static volatile bool amp_is_warm = false;
+static volatile unsigned long amp_last_used_ms = 0;
+static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;  // Keep amp on for 3 seconds after last audio
+
 // Audio task parameters for non-blocking playback
 struct AudioTaskParams {
     const int16_t* pcm_data;
@@ -695,15 +700,24 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
     
     es8311_init();
-    vTaskDelay(pdMS_TO_TICKS(20));  // Reduced from 50ms
     
-    set_speaker_amp(true);
-    vTaskDelay(pdMS_TO_TICKS(50));  // Reduced from 100ms - amp needs time to stabilize
+    // Amp warm-keeping: skip stabilization delay if amp is already warm
+    if (!amp_is_warm) {
+        vTaskDelay(pdMS_TO_TICKS(20));  // ES8311 lock time
+        set_speaker_amp(true);
+        vTaskDelay(pdMS_TO_TICKS(50));  // Amp stabilization (only on cold start)
+        amp_is_warm = true;
+        AUDIO_LOGLN("[AUDIO] Amp cold start - full init");
+    } else {
+        // Amp already warm - just ensure it's on (no delay needed)
+        set_speaker_amp(true);
+        AUDIO_LOGLN("[AUDIO] Amp warm - skipping stabilization");
+    }
     
     // Use audioFS (LittleFS) which contains the audio files
     if (!audioFS) {
         AUDIO_LOGLN("[AUDIO] ERROR: audioFS is null!");
-        set_speaker_amp(false);
+        // Don't disable amp here - let timeout handle it
         audio_playing = false;
         free(params);
         vTaskDelete(NULL);
@@ -750,9 +764,13 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
     
     // Brief delay for DMA buffer to flush
-    vTaskDelay(pdMS_TO_TICKS(50));  // Reduced from 150ms
+    vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
     
-    set_speaker_amp(false);
+    // Don't disable amp immediately - keep it warm for faster subsequent plays
+    // Record when we finished so timeout can disable it later
+    amp_last_used_ms = millis();
+    // Amp stays on - will be disabled by audio_process_timeout() after AMP_WARM_TIMEOUT_MS
+    
     audio_playing = false;
     free(params);
     audioTaskHandle = NULL;
@@ -928,5 +946,18 @@ void play_direction_only(AlertDirection direction) {
         AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
         audio_playing = false;
         free(params);
+    }
+}
+
+// Call from main loop to handle amp warm timeout
+// Disables amp after AMP_WARM_TIMEOUT_MS of inactivity to save power
+void audio_process_amp_timeout() {
+    if (amp_is_warm && !audio_playing) {
+        unsigned long now = millis();
+        if (now - amp_last_used_ms >= AMP_WARM_TIMEOUT_MS) {
+            set_speaker_amp(false);
+            amp_is_warm = false;
+            AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
+        }
     }
 }

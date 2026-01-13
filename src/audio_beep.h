@@ -44,5 +44,9 @@ void play_direction_only(AlertDirection direction);
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();
 
+// Process amp warm timeout - call from main loop
+// Disables speaker amp after 3 seconds of inactivity to save power
+void audio_process_amp_timeout();
+
 // Test beep on startup (for debugging)
 void play_test_beep();

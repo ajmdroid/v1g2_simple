@@ -2112,7 +2112,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool needsFlashUpdate = false;
     if (hasFlashing) {
         unsigned long now = millis();
-        if (now - lastFlashRedraw >= 100) {  // Redraw at ~10Hz for smooth blink
+        if (now - lastFlashRedraw >= 75) {  // Redraw at ~13Hz for smoother blink
             needsFlashUpdate = true;
             lastFlashRedraw = now;
         }

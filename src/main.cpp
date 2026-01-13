@@ -70,7 +70,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
+const unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
@@ -756,7 +756,7 @@ void processBLEData() {
             // Recovery: display shows bands but no alert table arrived
             if (!hasAlerts && state.activeBands != BAND_NONE) {
                 unsigned long gapNow = millis();
-                if (gapNow - lastAlertGapRecoverMs > 100) {  // 100ms - quick recovery for lost alert packets
+                if (gapNow - lastAlertGapRecoverMs > 50) {  // 50ms - quick recovery for lost alert packets
                     DEBUG_LOGLN("Alert gap: bands active but no alerts; re-requesting alert data");
                     parser.resetAlertAssembly();
                     bleClient.requestAlertData();
@@ -1084,6 +1084,9 @@ void setup() {
 void loop() {
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
     display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
+    
+    // Process audio amp timeout (disables amp after 3s of inactivity)
+    audio_process_amp_timeout();
 
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {

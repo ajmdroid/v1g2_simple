@@ -263,7 +263,7 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
     // Faster decay for snappier response (was 150ms to match V1)
     static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
     static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
-    constexpr unsigned long DROP_INTERVAL_MS = 100;  // Reduced from 150ms for snappier response
+    constexpr unsigned long DROP_INTERVAL_MS = 75;  // Reduced from 100ms for snappier response
     
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetSignalBarDecayFlag) {
