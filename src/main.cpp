@@ -796,7 +796,7 @@ void processBLEData() {
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
                 const V1Settings& settings = settingsManager.get();
                 bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
-                if (settings.voiceAlertsEnabled && 
+                if (settings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
                     !state.muted &&  // Don't announce muted alerts
                     !bleClient.isProxyClientConnected() &&
@@ -821,11 +821,11 @@ void processBLEData() {
                     }
                     
                     // Logic:
-                    // - New frequency (or first alert): full announcement with band/freq/direction
-                    // - Same frequency but direction changed: direction-only announcement
+                    // - New frequency (or first alert): announcement based on voice mode setting
+                    // - Same frequency but direction changed: direction-only announcement (if direction enabled)
                     // - Same frequency, same direction: no announcement (already announced this alert)
                     if (frequencyChanged && cooldownPassed) {
-                        // New alert - full announcement
+                        // New alert - full announcement based on mode
                         AlertBand audioBand;
                         bool validBand = true;
                         switch (priority.band) {
@@ -837,16 +837,19 @@ void processBLEData() {
                         }
                         
                         if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d\n", 
-                                       (int)audioBand, currentFreq, (int)audioDir);
-                            play_frequency_voice(audioBand, currentFreq, audioDir);
+                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d mode=%d dirEnabled=%d\n", 
+                                       (int)audioBand, currentFreq, (int)audioDir,
+                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled);
+                            play_frequency_voice(audioBand, currentFreq, audioDir,
+                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertFrequency = currentFreq;
                             lastVoiceAlertTime = millis();
                         }
-                    } else if (!frequencyChanged && directionChanged && cooldownPassed) {
-                        // Same alert changed direction - announce direction only
+                    } else if (!frequencyChanged && directionChanged && cooldownPassed && 
+                               settings.voiceDirectionEnabled) {
+                        // Same alert changed direction - announce direction only (if direction enabled)
                         DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d\n", 
                                    currentFreq, (int)audioDir);
                         play_direction_only(audioDir);

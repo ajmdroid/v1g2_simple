@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	
 	let settings = $state({
-		voiceAlertsEnabled: true,
+		voiceAlertMode: 3,  // 0=disabled, 1=band, 2=freq, 3=band+freq
+		voiceDirectionEnabled: true,
 		muteVoiceIfVolZero: false,
 		voiceVolume: 75  // Speaker volume (0-100)
 	});
@@ -10,6 +11,14 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
+	
+	// Voice mode options for dropdown
+	const voiceModes = [
+		{ value: 0, label: 'Disabled', desc: 'No voice announcements' },
+		{ value: 1, label: 'Band Only', desc: '"Ka", "K", "Laser"' },
+		{ value: 2, label: 'Frequency Only', desc: '"34.712"' },
+		{ value: 3, label: 'Band + Frequency', desc: '"Ka 34.712"' }
+	];
 	
 	onMount(async () => {
 		await fetchSettings();
@@ -21,7 +30,14 @@
 			const res = await fetch('/api/displaycolors');
 			if (res.ok) {
 				const data = await res.json();
-				settings.voiceAlertsEnabled = data.voiceAlertsEnabled ?? true;
+				// Support both old and new API format
+				if (data.voiceAlertMode !== undefined) {
+					settings.voiceAlertMode = data.voiceAlertMode;
+				} else if (data.voiceAlertsEnabled !== undefined) {
+					// Migrate old setting
+					settings.voiceAlertMode = data.voiceAlertsEnabled ? 3 : 0;
+				}
+				settings.voiceDirectionEnabled = data.voiceDirectionEnabled ?? true;
 				settings.muteVoiceIfVolZero = data.muteVoiceIfVolZero ?? false;
 				settings.voiceVolume = data.voiceVolume ?? 75;
 			}
@@ -38,7 +54,8 @@
 		
 		try {
 			const params = new URLSearchParams();
-			params.append('voiceAlertsEnabled', settings.voiceAlertsEnabled);
+			params.append('voiceAlertMode', settings.voiceAlertMode);
+			params.append('voiceDirectionEnabled', settings.voiceDirectionEnabled);
 			params.append('muteVoiceIfVolZero', settings.muteVoiceIfVolZero);
 			params.append('voiceVolume', settings.voiceVolume);
 			
@@ -58,6 +75,17 @@
 		} finally {
 			saving = false;
 		}
+	}
+	
+	// Build preview text based on current settings
+	function getPreviewText() {
+		if (settings.voiceAlertMode === 0) return '(silent)';
+		let parts = [];
+		if (settings.voiceAlertMode === 1) parts.push('Ka');
+		else if (settings.voiceAlertMode === 2) parts.push('34.712');
+		else if (settings.voiceAlertMode === 3) parts.push('Ka 34.712');
+		if (settings.voiceDirectionEnabled && settings.voiceAlertMode > 0) parts.push('ahead');
+		return `"${parts.join(' ')}"`;
 	}
 </script>
 
@@ -84,23 +112,50 @@
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">🔊 Voice Alerts</h2>
-				<p class="text-xs text-base-content/50 mb-4">Speak alert band and direction through the built-in speaker when no phone app is connected</p>
+				<p class="text-xs text-base-content/50 mb-4">Speak alert information through the built-in speaker when no phone app is connected</p>
 				
 				<div class="space-y-4">
+					<!-- Voice Content Mode Dropdown -->
+					<div class="form-control">
+						<label class="label" for="voice-mode">
+							<span class="label-text font-medium">Voice Content</span>
+						</label>
+						<select 
+							id="voice-mode"
+							class="select select-bordered w-full"
+							bind:value={settings.voiceAlertMode}
+						>
+							{#each voiceModes as mode}
+								<option value={mode.value}>{mode.label} - {mode.desc}</option>
+							{/each}
+						</select>
+					</div>
+					
+					<!-- Direction Toggle -->
 					<div class="form-control">
 						<label class="label cursor-pointer">
 							<div>
-								<span class="label-text font-medium">Enable Voice Alerts</span>
-								<p class="text-xs text-base-content/50">Announces "Ka ahead", "Laser behind", etc.</p>
+								<span class="label-text font-medium">Include Direction</span>
+								<p class="text-xs text-base-content/50">Append "ahead", "side", or "behind" to announcement</p>
 							</div>
 							<input 
 								type="checkbox" 
 								class="toggle toggle-primary" 
-								bind:checked={settings.voiceAlertsEnabled}
+								bind:checked={settings.voiceDirectionEnabled}
+								disabled={settings.voiceAlertMode === 0}
 							/>
 						</label>
 					</div>
 					
+					<!-- Preview -->
+					<div class="bg-base-300 rounded-lg p-3">
+						<p class="text-xs text-base-content/50 mb-1">Preview:</p>
+						<p class="text-lg font-mono">{getPreviewText()}</p>
+					</div>
+					
+					<div class="divider my-2"></div>
+					
+					<!-- Mute at Vol 0 -->
 					<div class="form-control">
 						<label class="label cursor-pointer">
 							<div>
@@ -112,13 +167,14 @@
 								type="checkbox" 
 								class="toggle toggle-primary" 
 								bind:checked={settings.muteVoiceIfVolZero}
-								disabled={!settings.voiceAlertsEnabled}
+								disabled={settings.voiceAlertMode === 0}
 							/>
 						</label>
 					</div>
 					
 					<div class="divider my-2"></div>
 					
+					<!-- Speaker Volume -->
 					<div class="form-control">
 						<label class="label" for="voice-volume-slider">
 							<span class="label-text font-medium">Speaker Volume</span>
@@ -148,8 +204,8 @@
 				<h2 class="card-title text-lg">ℹ️ How It Works</h2>
 				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
 					<li>Voice alerts only play when <strong>no phone app</strong> (JBV1) is connected</li>
-					<li>New alert: full announcement (band + frequency + direction, e.g., "Ka 34.712 ahead")</li>
-					<li>Direction change: direction-only announcement (e.g., "behind")</li>
+					<li>New alert: full announcement based on your content settings</li>
+					<li>Direction change: direction-only announcement (e.g., "behind") if direction is enabled</li>
 					<li>5-second cooldown between announcements to prevent spam</li>
 				</ul>
 			</div>

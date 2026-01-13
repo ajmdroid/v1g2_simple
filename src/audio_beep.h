@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "settings.h"  // For VoiceAlertMode enum
 
 // Band types for voice alerts
 enum class AlertBand : uint8_t {
@@ -32,14 +33,22 @@ void play_vol0_beep();
 void play_alert_voice(AlertBand band, AlertDirection direction);
 
 // Play frequency announcement from SD card audio clips
-// Format: "K A 34 7 49 rear" for Ka 34.749 rear
+// Format depends on mode:
+//   BAND_ONLY: "Ka"
+//   FREQ_ONLY: "34 7 49"
+//   BAND_FREQ: "Ka 34 7 49"
+// direction appended if includeDirection is true: "ahead", "behind", "side"
 // freqMHz: frequency in MHz (e.g., 34749 for 34.749 GHz)
 // Returns immediately if already playing, audio disabled, or SD not available
-void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction);
+void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction, 
+                          VoiceAlertMode mode, bool includeDirection);
 
 // Play direction-only announcement (used when same alert changes direction)
 // Just says "ahead", "behind", or "side"
 void play_direction_only(AlertDirection direction);
+
+// Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
+void play_band_only(AlertBand band);
 
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();

@@ -1275,8 +1275,15 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideVolumeIndicator")) {
         settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
     }
-    if (server.hasArg("voiceAlertsEnabled")) {
-        settingsManager.setVoiceAlertsEnabled(server.arg("voiceAlertsEnabled") == "true" || server.arg("voiceAlertsEnabled") == "1");
+    // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
+    if (server.hasArg("voiceAlertMode")) {
+        int mode = server.arg("voiceAlertMode").toInt();
+        mode = std::max(0, std::min(mode, 3));
+        settingsManager.setVoiceAlertMode((VoiceAlertMode)mode);
+    }
+    // Voice direction toggle (separate from mode)
+    if (server.hasArg("voiceDirectionEnabled")) {
+        settingsManager.setVoiceDirectionEnabled(server.arg("voiceDirectionEnabled") == "true" || server.arg("voiceDirectionEnabled") == "1");
     }
     if (server.hasArg("muteVoiceIfVolZero")) {
         settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
@@ -1359,7 +1366,8 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
-    doc["voiceAlertsEnabled"] = s.voiceAlertsEnabled;
+    doc["voiceAlertMode"] = (int)s.voiceAlertMode;
+    doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
     doc["brightness"] = s.brightness;
     doc["voiceVolume"] = s.voiceVolume;

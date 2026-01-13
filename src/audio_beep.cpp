@@ -796,12 +796,23 @@ static int getGHz(AlertBand band, uint16_t freqMHz) {
 }
 
 // Play frequency voice announcement from SD card
-// Format: "K A 34 7 49 rear" for Ka band, 34.749 GHz, rear direction
-void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction) {
-    AUDIO_LOGF("[AUDIO] play_frequency_voice() band=%d freq=%d dir=%d\n", (int)band, freqMHz, (int)direction);
+// Format depends on mode:
+//   BAND_ONLY: "Ka"
+//   FREQ_ONLY: "34 7 49"
+//   BAND_FREQ: "Ka 34 7 49"
+// direction appended if includeDirection is true
+void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction,
+                          VoiceAlertMode mode, bool includeDirection) {
+    AUDIO_LOGF("[AUDIO] play_frequency_voice() band=%d freq=%d dir=%d mode=%d incDir=%d\n", 
+               (int)band, freqMHz, (int)direction, (int)mode, includeDirection);
     
     if (audio_playing) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (mode == VOICE_MODE_DISABLED) {
+        AUDIO_LOGLN("[AUDIO] Voice alerts disabled");
         return;
     }
     
@@ -811,9 +822,14 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         return;
     }
     
-    // Laser doesn't have frequency - use simple alert
+    // Laser doesn't have frequency - use band-only or full alert
     if (band == AlertBand::LASER) {
-        play_alert_voice(band, direction);
+        if (mode == VOICE_MODE_FREQ_ONLY) {
+            // Can't speak frequency for laser, just say "Laser"
+            play_band_only(band);
+        } else {
+            play_alert_voice(band, direction);
+        }
         return;
     }
     
@@ -825,44 +841,49 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     }
     params->numClips = 0;
     
-    // 1. Band clip
-    const char* bandFile = nullptr;
-    switch (band) {
-        case AlertBand::KA: bandFile = "band_ka.mul"; break;
-        case AlertBand::K:  bandFile = "band_k.mul"; break;
-        case AlertBand::X:  bandFile = "band_x.mul"; break;
-        default: break;
-    }
-    if (bandFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
-    }
-    
-    // 2. GHz clip
-    int ghz = getGHz(band, freqMHz);
-    if (ghz > 0) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+    // 1. Band clip (if mode includes band)
+    if (mode == VOICE_MODE_BAND_ONLY || mode == VOICE_MODE_BAND_FREQ) {
+        const char* bandFile = nullptr;
+        switch (band) {
+            case AlertBand::KA: bandFile = "band_ka.mul"; break;
+            case AlertBand::K:  bandFile = "band_k.mul"; break;
+            case AlertBand::X:  bandFile = "band_x.mul"; break;
+            default: break;
+        }
+        if (bandFile) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+        }
     }
     
-    // 3. Hundreds digit of MHz (first digit after decimal point)
-    // freqMHz is like 34749 for 34.749 GHz, so MHz part is 749
-    // We want the hundreds digit: 7
-    int mhz = freqMHz % 1000;  // Get last 3 digits (MHz portion)
-    int hundredsDigit = mhz / 100;  // 749 -> 7
-    snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
-    
-    // 4. Last two digits as natural number (tens file)
-    int lastTwo = mhz % 100;  // 749 -> 49
-    snprintf(params->filePaths[params->numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
-    
-    // 5. Direction clip
-    const char* dirFile = nullptr;
-    switch (direction) {
-        case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
-        case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
-        case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
+    // 2-4. Frequency clips (if mode includes frequency)
+    if (mode == VOICE_MODE_FREQ_ONLY || mode == VOICE_MODE_BAND_FREQ) {
+        // GHz clip
+        int ghz = getGHz(band, freqMHz);
+        if (ghz > 0) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+        }
+        
+        // Hundreds digit of MHz (first digit after decimal point)
+        int mhz = freqMHz % 1000;
+        int hundredsDigit = mhz / 100;
+        snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
+        
+        // Last two digits as natural number (tens file)
+        int lastTwo = mhz % 100;
+        snprintf(params->filePaths[params->numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
     }
-    if (dirFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+    
+    // 5. Direction clip (if enabled)
+    if (includeDirection) {
+        const char* dirFile = nullptr;
+        switch (direction) {
+            case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
+            case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
+            case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
+        }
+        if (dirFile) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+        }
     }
     
     AUDIO_LOGF("[AUDIO] Playing %d clips for freq announcement\n", params->numClips);
@@ -875,7 +896,59 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     BaseType_t result = xTaskCreatePinnedToCore(
         sd_audio_playback_task,
         "sd_audio",
-        8192,           // Larger stack for file I/O
+        8192,
+        params,
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        free(params);
+    }
+}
+
+// Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
+void play_band_only(AlertBand band) {
+    AUDIO_LOGF("[AUDIO] play_band_only() band=%d\n", (int)band);
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready");
+        return;
+    }
+    
+    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        return;
+    }
+    params->numClips = 0;
+    
+    const char* bandFile = nullptr;
+    switch (band) {
+        case AlertBand::LASER: bandFile = "band_laser.mul"; break;
+        case AlertBand::KA:    bandFile = "band_ka.mul"; break;
+        case AlertBand::K:     bandFile = "band_k.mul"; break;
+        case AlertBand::X:     bandFile = "band_x.mul"; break;
+    }
+    
+    if (bandFile) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+    }
+    
+    audio_playing = true;
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
         params,
         1,
         &audioTaskHandle,
