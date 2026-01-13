@@ -620,23 +620,25 @@ Voice alerts trigger when:
 
 Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 - New alert: `"Ka 34.712 ahead"` (band, frequency in GHz, direction)
+- Multiple bogeys: `"Ka 34.712 ahead 2 bogeys"` (includes count when > 1)
 - Direction change: `"behind"` (direction only, same alert moved)
 
 **Source:** [src/main.cpp](src/main.cpp#L795-L860) (voice alert logic)
 
 ### Audio Files
 
-124 pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 8kHz sample rate:
+125 pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 22kHz sample rate:
 
 | Category | Files | Example |
 |----------|-------|---------|
 | Band names | 4 | `band_ka.mul`, `band_k.mul`, `band_x.mul`, `band_laser.mul` |
 | Directions | 3 | `dir_ahead.mul`, `dir_behind.mul`, `dir_side.mul` |
 | Digits | 10 | `digit_0.mul` through `digit_9.mul` |
-| Frequency words | ~100 | `freq_point.mul`, `freq_33.mul`, `freq_34.mul`, etc. |
+| Number words | 100 | `tens_00.mul` through `tens_99.mul` |
+| Bogey count | 1 | `bogeys.mul` - spoken "bogeys" for multi-alert announcements |
 | Special | 1 | `vol0_warning.mul` - "Warning, volume zero" |
 
-**Audio format:** 8-bit mu-law encoded, 8kHz mono, loaded from LittleFS at runtime.
+**Audio format:** 8-bit mu-law encoded, 22kHz mono, loaded from LittleFS at runtime.
 
 **Source:** [data/audio/](data/audio/) (audio files), [src/audio_beep.cpp](src/audio_beep.cpp#L400-L500) (playback)
 

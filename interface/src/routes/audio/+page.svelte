@@ -4,6 +4,7 @@
 	let settings = $state({
 		voiceAlertMode: 3,  // 0=disabled, 1=band, 2=freq, 3=band+freq
 		voiceDirectionEnabled: true,
+		announceBogeyCount: true,
 		muteVoiceIfVolZero: false,
 		voiceVolume: 75  // Speaker volume (0-100)
 	});
@@ -38,6 +39,7 @@
 					settings.voiceAlertMode = data.voiceAlertsEnabled ? 3 : 0;
 				}
 				settings.voiceDirectionEnabled = data.voiceDirectionEnabled ?? true;
+				settings.announceBogeyCount = data.announceBogeyCount ?? true;
 				settings.muteVoiceIfVolZero = data.muteVoiceIfVolZero ?? false;
 				settings.voiceVolume = data.voiceVolume ?? 75;
 			}
@@ -56,6 +58,7 @@
 			const params = new URLSearchParams();
 			params.append('voiceAlertMode', settings.voiceAlertMode);
 			params.append('voiceDirectionEnabled', settings.voiceDirectionEnabled);
+			params.append('announceBogeyCount', settings.announceBogeyCount);
 			params.append('muteVoiceIfVolZero', settings.muteVoiceIfVolZero);
 			params.append('voiceVolume', settings.voiceVolume);
 			
@@ -85,6 +88,7 @@
 		else if (settings.voiceAlertMode === 2) parts.push('34.712');
 		else if (settings.voiceAlertMode === 3) parts.push('Ka 34.712');
 		if (settings.voiceDirectionEnabled && settings.voiceAlertMode > 0) parts.push('ahead');
+		if (settings.announceBogeyCount && settings.voiceAlertMode > 0) parts.push('2 bogeys');
 		return `"${parts.join(' ')}"`;
 	}
 </script>
@@ -142,6 +146,22 @@
 								type="checkbox" 
 								class="toggle toggle-primary" 
 								bind:checked={settings.voiceDirectionEnabled}
+								disabled={settings.voiceAlertMode === 0}
+							/>
+						</label>
+					</div>
+					
+					<!-- Bogey Count Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Announce Bogey Count</span>
+								<p class="text-xs text-base-content/50">Append "2 bogeys", "3 bogeys", etc. when multiple alerts active</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.announceBogeyCount}
 								disabled={settings.voiceAlertMode === 0}
 							/>
 						</label>

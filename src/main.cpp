@@ -109,6 +109,7 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 static Band lastVoiceAlertBand = BAND_NONE;
 static Direction lastVoiceAlertDirection = DIR_NONE;
 static uint16_t lastVoiceAlertFrequency = 0;  // Track frequency to avoid re-announcing same alert
+static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce when it changes
 static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between announcements
 
@@ -846,23 +847,29 @@ void processBLEData() {
                         }
                         
                         if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d mode=%d dirEnabled=%d\n", 
+                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
                                        (int)audioBand, currentFreq, (int)audioDir,
-                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled);
+                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled, alertCount);
                             play_frequency_voice(audioBand, currentFreq, audioDir,
-                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled);
+                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled,
+                                                 settings.announceBogeyCount ? (uint8_t)alertCount : 1);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertFrequency = currentFreq;
+                            lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                             lastVoiceAlertTime = millis();
                         }
                     } else if (!frequencyChanged && directionChanged && cooldownPassed && 
                                settings.voiceDirectionEnabled) {
-                        // Same alert changed direction - announce direction only (if direction enabled)
-                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d\n", 
-                                   currentFreq, (int)audioDir);
-                        play_direction_only(audioDir);
+                        // Same alert changed direction - announce direction
+                        // Also include bogey count if it changed and setting is enabled
+                        bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
+                        uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
+                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
+                        play_direction_only(audioDir, bogeyCountToAnnounce);
                         lastVoiceAlertDirection = priority.direction;
+                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                         lastVoiceAlertTime = millis();
                     }
                     // else: same alert, same direction - no announcement needed
@@ -888,6 +895,7 @@ void processBLEData() {
                 lastVoiceAlertBand = BAND_NONE;
                 lastVoiceAlertDirection = DIR_NONE;
                 lastVoiceAlertFrequency = 0;
+                lastVoiceAlertBogeyCount = 0;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();

@@ -139,6 +139,7 @@ void SettingsManager::load() {
         // Re-open in read-only to continue loading
         preferences.begin("v1settings", true);
     }
+    settings.announceBogeyCount = preferences.getBool("voiceBogeys", true);
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
     settings.voiceVolume = preferences.getUChar("voiceVol", 75);
     
@@ -244,6 +245,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
+    written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
     written += preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
     written += preferences.putUChar("voiceVol", settings.voiceVolume);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
@@ -473,6 +475,11 @@ void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
 
 void SettingsManager::setVoiceDirectionEnabled(bool enabled) {
     settings.voiceDirectionEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setAnnounceBogeyCount(bool enabled) {
+    settings.announceBogeyCount = enabled;
     save();
 }
 

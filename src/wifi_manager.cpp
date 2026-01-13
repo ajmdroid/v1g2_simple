@@ -1305,6 +1305,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("voiceDirectionEnabled")) {
         settingsManager.setVoiceDirectionEnabled(server.arg("voiceDirectionEnabled") == "true" || server.arg("voiceDirectionEnabled") == "1");
     }
+    if (server.hasArg("announceBogeyCount")) {
+        settingsManager.setAnnounceBogeyCount(server.arg("announceBogeyCount") == "true" || server.arg("announceBogeyCount") == "1");
+    }
     if (server.hasArg("muteVoiceIfVolZero")) {
         settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
     }
@@ -1390,6 +1393,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
+    doc["announceBogeyCount"] = s.announceBogeyCount;
     doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
     doc["brightness"] = s.brightness;
     doc["voiceVolume"] = s.voiceVolume;

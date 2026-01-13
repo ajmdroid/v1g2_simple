@@ -679,7 +679,7 @@ static const int16_t mulaw_decode_table[256] = {
 
 // Structure for SD audio playback task
 struct SDAudioTaskParams {
-    char filePaths[5][48];  // Up to 5 clips: band, ghz, digit, tens, direction
+    char filePaths[7][48];  // Up to 7 clips: band, ghz, digit, tens, direction, count, "bogeys"
     int numClips;
 };
 
@@ -802,10 +802,11 @@ static int getGHz(AlertBand band, uint16_t freqMHz) {
 //   FREQ_ONLY: "34 7 49"
 //   BAND_FREQ: "Ka 34 7 49"
 // direction appended if includeDirection is true
+// bogeyCount appended if > 1: "2 bogeys", "3 bogeys", etc.
 void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction,
-                          VoiceAlertMode mode, bool includeDirection) {
-    AUDIO_LOGF("[AUDIO] play_frequency_voice() band=%d freq=%d dir=%d mode=%d incDir=%d\n", 
-               (int)band, freqMHz, (int)direction, (int)mode, includeDirection);
+                          VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount) {
+    AUDIO_LOGF("[AUDIO] play_frequency_voice() band=%d freq=%d dir=%d mode=%d incDir=%d bogeys=%d\n", 
+               (int)band, freqMHz, (int)direction, (int)mode, includeDirection, bogeyCount);
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
@@ -885,6 +886,19 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         if (dirFile) {
             snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
         }
+    }
+    
+    // 6-7. Bogey count (if > 1): "<count> bogeys"
+    if (bogeyCount > 1 && bogeyCount <= 10 && params->numClips < 6) {
+        // Add count clip: use digit_X for 2-9, tens_10 for 10
+        if (bogeyCount == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
+        }
+        // Add "bogeys" clip
+        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        AUDIO_LOGF("[AUDIO] Adding bogey count: %d bogeys\n", bogeyCount);
     }
     
     AUDIO_LOGF("[AUDIO] Playing %d clips for freq announcement\n", params->numClips);
@@ -974,9 +988,9 @@ void play_band_only(AlertBand band) {
 }
 
 // Play direction-only announcement (used when same alert changes direction)
-// Just says "ahead", "behind", or "side"
-void play_direction_only(AlertDirection direction) {
-    AUDIO_LOGF("[AUDIO] play_direction_only() dir=%d\n", (int)direction);
+// Says "ahead", "behind", or "side", optionally with bogey count if > 1
+void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
+    AUDIO_LOGF("[AUDIO] play_direction_only() dir=%d bogeys=%d\n", (int)direction, bogeyCount);
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
@@ -1005,6 +1019,17 @@ void play_direction_only(AlertDirection direction) {
     }
     if (dirFile) {
         snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+    }
+    
+    // Add bogey count if provided and > 1
+    if (bogeyCount > 1 && bogeyCount <= 10) {
+        if (bogeyCount == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        AUDIO_LOGF("[AUDIO] Adding bogey count: %d bogeys\n", bogeyCount);
     }
     
     if (params->numClips == 0) {

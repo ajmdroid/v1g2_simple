@@ -38,14 +38,15 @@ void play_alert_voice(AlertBand band, AlertDirection direction);
 //   FREQ_ONLY: "34 7 49"
 //   BAND_FREQ: "Ka 34 7 49"
 // direction appended if includeDirection is true: "ahead", "behind", "side"
+// bogeyCount appended if > 1: "2 bogeys", "3 bogeys", etc.
 // freqMHz: frequency in MHz (e.g., 34749 for 34.749 GHz)
 // Returns immediately if already playing, audio disabled, or SD not available
 void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction, 
-                          VoiceAlertMode mode, bool includeDirection);
+                          VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount = 1);
 
 // Play direction-only announcement (used when same alert changes direction)
-// Just says "ahead", "behind", or "side"
-void play_direction_only(AlertDirection direction);
+// Says "ahead", "behind", or "side", optionally with bogey count if > 1
+void play_direction_only(AlertDirection direction, uint8_t bogeyCount = 0);
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);

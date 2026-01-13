@@ -116,6 +116,7 @@ struct V1Settings {
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
     bool voiceDirectionEnabled;     // Append direction ("ahead"/"side"/"behind") to voice
+    bool announceBogeyCount;        // Announce bogey count after direction ("2 bogeys")
     bool muteVoiceIfVolZero;        // Mute voice alerts (not VOL0 warning) when V1 volume is 0
     uint8_t voiceVolume;            // Voice alert volume (0-100%)
     
@@ -189,6 +190,7 @@ struct V1Settings {
         hideVolumeIndicator(false), // Show volume indicator by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
+        announceBogeyCount(true),              // Announce bogey count by default
         muteVoiceIfVolZero(false), // Don't mute voice alerts at vol 0 by default
         voiceVolume(75),           // Voice alerts at 75% volume by default
         autoPushEnabled(false),
@@ -263,6 +265,7 @@ public:
     void setHideVolumeIndicator(bool hide);
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
+    void setAnnounceBogeyCount(bool enabled);
     void setMuteVoiceIfVolZero(bool mute);
     void setLastV1Address(const String& addr);
     
