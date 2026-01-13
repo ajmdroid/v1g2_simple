@@ -80,9 +80,10 @@ WiFi is **off by default** to save power. To access web settings:
 
 The display has a built-in speaker that announces alerts:
 
-- **When active:** Announces priority alert (e.g., "Ka ahead", "Laser behind")
-- **When disabled:** Silent operation (use web UI to enable/disable)
+- **New alert:** Full announcement with band, frequency, and direction (e.g., "Ka 34.712 ahead")
+- **Direction change:** Direction-only announcement when same alert moves (e.g., "behind")
 - **Auto-disable:** Voice alerts mute when a phone app (JBV1) is connected
+- **5-second cooldown:** Prevents chatty rapid-fire announcements
 
 **Volume:** Adjust via the **blue slider** in settings mode (short press BOOT).
 

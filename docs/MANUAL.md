@@ -150,19 +150,19 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~1375 | Application entry, loop, touch handling |
-| `ble_client.cpp` | ~1730 | NimBLE client/server, V1 connection |
-| `display.cpp` | ~2760 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | ~1360 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `packet_parser.cpp` | ~475 | ESP packet framing and decoding |
-| `settings.cpp` | ~600 | Preferences (NVS) storage |
+| `main.cpp` | ~1395 | Application entry, loop, touch handling |
+| `ble_client.cpp` | ~1735 | NimBLE client/server, V1 connection |
+| `display.cpp` | ~3155 | Arduino_GFX drawing, 7/14-segment digits |
+| `wifi_manager.cpp` | ~1395 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `packet_parser.cpp` | ~540 | ESP packet framing and decoding |
+| `settings.cpp` | ~770 | Preferences (NVS) storage |
 | `v1_profiles.cpp` | ~575 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
-| `audio_beep.cpp` | ~600 | ES8311 DAC, I2S audio, voice alerts |
+| `audio_beep.cpp` | ~930 | ES8311 DAC, I2S audio, voice alerts |
 | `storage_manager.cpp` | ~65 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | ~145 | AXS15231B I2C touch polling |
+| `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
 | `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
-| `perf_metrics.cpp` | ~160 | Latency tracking (ArduinoJson) |
+| `perf_metrics.cpp` | ~155 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -595,34 +595,33 @@ The display includes a built-in speaker (ES8311 DAC) that announces radar alerts
 Voice alerts trigger when:
 1. **voiceAlertsEnabled** is true (default: on)
 2. **No phone app is connected** (BLE proxy has no subscribers)
-3. **Priority alert changes** (band or direction changed)
-4. **Cooldown passed** (2+ seconds since last announcement)
+3. **Alert is not muted** on the V1 (user hasn't dismissed it)
+4. **Priority alert changes:**
+   - **New frequency:** Full announcement (band + frequency + direction)
+   - **Direction change only:** Direction-only announcement ("ahead", "behind", "side")
+5. **Cooldown passed** (5 seconds since last announcement)
 
-Announcement format: `"[Band] [Direction]"` (e.g., "Ka ahead", "Laser behind")
+Announcement format examples:
+- New alert: `"Ka 34.712 ahead"` (band, frequency in GHz, direction)
+- Direction change: `"behind"` (direction only, same alert moved)
 
-**Source:** [src/main.cpp](src/main.cpp#L794-L840) (voice alert logic)
+**Source:** [src/main.cpp](src/main.cpp#L795-L860) (voice alert logic)
 
 ### Audio Files
 
-Pre-recorded TTS clips stored as C arrays (22.05kHz mono PCM):
+124 pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 8kHz sample rate:
 
-| File | Content | Duration |
-|------|---------|----------|
-| voice_ka_ahead.h | "Ka ahead" | ~822ms |
-| voice_ka_behind.h | "Ka behind" | ~822ms |
-| voice_ka_side.h | "Ka side" | ~822ms |
-| voice_k_ahead.h | "K ahead" | ~822ms |
-| voice_k_behind.h | "K behind" | ~822ms |
-| voice_k_side.h | "K side" | ~822ms |
-| voice_x_ahead.h | "X ahead" | ~822ms |
-| voice_x_behind.h | "X behind" | ~822ms |
-| voice_x_side.h | "X side" | ~822ms |
-| voice_laser_ahead.h | "Laser ahead" | ~1s |
-| voice_laser_behind.h | "Laser behind" | ~1s |
-| voice_laser_side.h | "Laser side" | ~1s |
-| vol0_warning.h | "Warning, volume zero" | ~1.5s |
+| Category | Files | Example |
+|----------|-------|---------|
+| Band names | 4 | `band_ka.mul`, `band_k.mul`, `band_x.mul`, `band_laser.mul` |
+| Directions | 3 | `dir_ahead.mul`, `dir_behind.mul`, `dir_side.mul` |
+| Digits | 10 | `digit_0.mul` through `digit_9.mul` |
+| Frequency words | ~100 | `freq_point.mul`, `freq_33.mul`, `freq_34.mul`, etc. |
+| Special | 1 | `vol0_warning.mul` - "Warning, volume zero" |
 
-**Source:** [include/voice_*.h](include/) (audio data)
+**Audio format:** 8-bit mu-law encoded, 8kHz mono, loaded from LittleFS at runtime.
+
+**Source:** [data/audio/](data/audio/) (audio files), [src/audio_beep.cpp](src/audio_beep.cpp#L400-L500) (playback)
 
 ### Volume Control
 
@@ -635,6 +634,25 @@ Volume mapping: `0% = mute, 1-100% maps to 0x90-0xBF`
 **Adjustment:** Short-press BOOT → use bottom blue slider → release to hear test voice ("Ka ahead")
 
 **Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L270-L290) (audio_set_volume)
+
+### Audio API Functions
+
+```cpp
+// Full frequency announcement: "Ka 34.712 ahead"
+void play_frequency_voice(AlertBand band, uint16_t freqMhz, AlertDirection dir);
+
+// Direction-only announcement: "ahead", "behind", "side"
+// Used when same alert changes direction (avoids re-announcing band/freq)
+void play_direction_only(AlertDirection dir);
+
+// Set volume (0=mute, 1-100 maps to DAC range)
+void audio_set_volume(int level);
+
+// Initialize ES8311 DAC and I2S
+bool audio_init();
+```
+
+**Source:** [src/audio_beep.h](src/audio_beep.h#L1-L47)
 
 ### Settings Screen
 
@@ -1507,4 +1525,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v1.3.0.*
+*Document generated from source code analysis. Last verified against v2.0.5.*

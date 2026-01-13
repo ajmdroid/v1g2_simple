@@ -148,9 +148,9 @@
 				<h2 class="card-title text-lg">ℹ️ How It Works</h2>
 				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
 					<li>Voice alerts only play when <strong>no phone app</strong> (JBV1) is connected</li>
-					<li>Announces priority alert: band (Laser, Ka, K, X) + direction (ahead, behind, side)</li>
-					<li>2-second cooldown between announcements to prevent spam</li>
-					<li>Re-announces when band or direction changes</li>
+					<li>New alert: full announcement (band + frequency + direction, e.g., "Ka 34.712 ahead")</li>
+					<li>Direction change: direction-only announcement (e.g., "behind")</li>
+					<li>5-second cooldown between announcements to prevent spam</li>
 				</ul>
 			</div>
 		</div>
