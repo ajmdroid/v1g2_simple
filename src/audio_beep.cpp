@@ -827,13 +827,15 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         return;
     }
     
-    // Laser doesn't have frequency - use band-only or full alert
+    // Laser doesn't have frequency - always include direction if enabled
+    // Since there's no frequency to announce, direction is especially important
     if (band == AlertBand::LASER) {
-        if (mode == VOICE_MODE_FREQ_ONLY) {
-            // Can't speak frequency for laser, just say "Laser"
-            play_band_only(band);
-        } else {
+        if (includeDirection) {
+            // Use embedded PCM clips for "Laser ahead/behind/side"
             play_alert_voice(band, direction);
+        } else {
+            // Just say "Laser" without direction
+            play_band_only(band);
         }
         return;
     }
