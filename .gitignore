@@ -1,6 +1,7 @@
 # PlatformIO
 .pio/
 .vscode/
+compile_commands.json
 
 # Python virtual environment
 .venv/
