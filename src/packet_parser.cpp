@@ -48,12 +48,12 @@ void PacketParser::resetAlertAssembly() {
     chunkCount = 0;
 }
 
-// Static flag for priority state reset - no longer used since we trust V1's priority
+// Static flag for priority state reset - no longer used since we use V1's isPriority flag
 // Kept for API compatibility
 static bool s_resetPriorityStateFlag = false;
 
 void PacketParser::resetPriorityState() {
-    // No-op: We now trust V1's priority ordering directly (alerts[0])
+    // No-op: We now use V1's isPriority flag (aux0 bit 7) to determine priority
     // No local state to reset
     s_resetPriorityStateFlag = true;
 }
