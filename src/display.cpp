@@ -2238,7 +2238,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 // With persistence: cards stay visible (greyed) for a grace period after alert disappears
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const int cardH = SECONDARY_ROW_HEIGHT;  // 56px (taller for signal meter)
+    const int cardH = SECONDARY_ROW_HEIGHT;  // 57px (compact with uniform signal bars)
     const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=116
     const int cardW = 145;     // Card width (wider to fit freq + band)
     const int cardSpacing = 10;  // Increased spacing between cards
@@ -2611,12 +2611,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             settings.colorBar4, settings.colorBar5, settings.colorBar6
         };
         
-        // Draw signal bars with color-coded gradient
+        // Draw signal bars with uniform height (cleaner look)
         for (int b = 0; b < barCount; b++) {
             int barX = meterX + b * (barWidth + barSpacing);
-            // Variable height bars (progressively taller)
-            int barH = 5 + (b * 2);  // 5, 7, 9, 11, 13, 15 pixels tall (slightly bigger)
-            int barY = meterY + meterH - barH - 1;  // Align to bottom
+            // All bars same height for compact card design
+            int barH = 10;  // Uniform height
+            int barY = meterY + (meterH - barH) / 2;  // Center vertically (4px above and below)
             
             if (b < bars) {
                 // Filled bar - use color-coded colors, or muted grey
