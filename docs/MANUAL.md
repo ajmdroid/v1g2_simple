@@ -647,12 +647,20 @@ When enabled, non-priority alerts are announced after the priority stabilizes:
 - Wait additional 1.5 seconds since last voice alert
 - Announce each qualifying secondary alert once
 
-**Threat Escalation:**
-When a secondary alert signal strength ramps up to 3+ bars, a direction breakdown is announced:
-- Format: `"[N] bogeys, [X] ahead, [Y] behind, [Z] side"` (skips directions with zero count)
-- Example: `"2 bogeys, 1 ahead, 1 behind"`
-- Each alert only triggers escalation once (tracked by band + frequency)
-- Respects global mute state from V1
+**Smart Threat Escalation:**
+When a secondary alert ramps up from weak to strong, a full announcement provides context:
+- **Trigger conditions (all must be met):**
+  - Signal was ever weak (≤2 bars) at any point since detection
+  - Signal is now strong (≥4 bars)
+  - Strong signal sustained for at least 500ms (filters multipath spikes)
+  - Total bogeys ≤4 (skips noisy environments like shopping centers)
+  - Not already announced for escalation
+  - Not muted by V1
+  - Not laser (laser is handled by priority detection)
+- **Announcement format:** `"[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"`
+- **Example:** `"K 24.150 behind 2 bogeys, 1 ahead, 1 behind"`
+- The "was weak" flag is permanent - even if you're stopped for 60+ seconds at 1 bar, then drive toward the source, escalation will trigger when it ramps to 4+ bars
+- Direction breakdown always included for situational awareness
 
 **Source:** [src/main.cpp](src/main.cpp#L1000-L1100) (secondary alert logic)
 
@@ -699,8 +707,12 @@ void play_band_only(AlertBand band);
 // Direction-only announcement: "ahead", "behind", "side" (optional bogey count)
 void play_direction_only(AlertDirection dir, uint8_t bogeyCount = 0);
 
-// Bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (for threat escalation)
+// Bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (for simple breakdown)
 void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
+
+// Threat escalation: "K 24.150 behind 2 bogeys, 1 ahead, 1 behind" (full context)
+void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
+                            uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 
 // Set volume (0=mute, 1-100 maps to DAC range)
 void audio_set_volume(int level);
@@ -885,7 +897,7 @@ Controls:
 - **Announce Secondary Alerts:** Master toggle for non-priority alert announcements
 - **Per-band filters:** When secondary enabled, choose which bands to announce (Laser, Ka, K, X)
 
-Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. When secondary alerts ramp up to 3+ bars, a direction breakdown is announced (e.g., "2 bogeys, 1 ahead, 1 behind").
+Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. Smart threat escalation detects when secondary alerts ramp up from weak (≤2 bars) to strong (≥4 bars sustained) and announces with full context.
 
 **Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 

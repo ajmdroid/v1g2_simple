@@ -49,8 +49,14 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount = 0);
 
 // Play bogey breakdown announcement: "2 bogeys, 1 ahead, 1 behind"
-// Used for threat escalation when secondary alert reaches 3+ bars
+// Note: play_threat_escalation() is preferred as it includes band/freq/direction context
 void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
+
+// Play threat escalation announcement with full context:
+// "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
+// Used when a secondary alert ramps up from weak (≤2 bars) to strong (≥4 bars)
+void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
+                            uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);

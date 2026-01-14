@@ -118,13 +118,29 @@ static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s betwee
 // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
 static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
 static uint8_t announcedAlertCount = 0;
-static uint32_t strongAnnouncedIds[10] = {0};  // Alerts announced as "strong" (3+ bars)
-static uint8_t strongAnnouncedCount = 0;
 static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
 static unsigned long priorityStableSince = 0;  // When priority alert became stable
 static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
 static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
-static constexpr int STRONG_SIGNAL_THRESHOLD = 3;  // 3+ bars = strong signal
+
+// Smart threat escalation tracking - detect signals ramping up over time
+// Trigger: was weak + now strong + sustained + not too many bogeys
+static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
+static constexpr int STRONG_THRESHOLD = 4;         // "Now strong" = 4+ bars
+static constexpr unsigned long SUSTAINED_MS = 500; // Must stay strong for 500ms (filter spikes)
+static constexpr unsigned long HISTORY_STALE_MS = 5000;  // Clear history if no update in 5s
+static constexpr int MAX_BOGEYS_FOR_ESCALATION = 4;      // Skip escalation in noisy environments
+
+struct AlertHistory {
+    uint32_t alertId;           // (band << 16) | freq
+    uint8_t currentBars;        // Latest reading
+    uint32_t lastUpdateMs;      // For staleness check
+    uint32_t strongSinceMs;     // When first hit strong threshold (0 = not strong)
+    bool wasWeak;               // True if ever seen at ≤2 bars (never cleared)
+    bool escalationAnnounced;   // One-shot flag
+};
+static AlertHistory alertHistories[10];
+static uint8_t alertHistoryCount = 0;
 
 // Helper functions for secondary alert tracking
 // Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
@@ -150,22 +166,126 @@ static void markAlertAnnounced(Band band, uint16_t freq) {
 static void clearAnnouncedAlerts() {
     announcedAlertCount = 0;
     memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
-    strongAnnouncedCount = 0;
-    memset(strongAnnouncedIds, 0, sizeof(strongAnnouncedIds));
+    alertHistoryCount = 0;
+    memset(alertHistories, 0, sizeof(alertHistories));
 }
 
-static bool isStrongAnnounced(Band band, uint16_t freq) {
-    uint32_t id = makeAlertId(band, freq);
-    for (int i = 0; i < strongAnnouncedCount; i++) {
-        if (strongAnnouncedIds[i] == id) return true;
+// Alert history tracking for smart threat escalation
+static AlertHistory* findAlertHistory(uint32_t alertId) {
+    for (int i = 0; i < alertHistoryCount; i++) {
+        if (alertHistories[i].alertId == alertId) {
+            return &alertHistories[i];
+        }
+    }
+    return nullptr;
+}
+
+static AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now) {
+    // Find existing
+    AlertHistory* h = findAlertHistory(alertId);
+    if (h) return h;
+    
+    // Create new if space available
+    if (alertHistoryCount < 10) {
+        h = &alertHistories[alertHistoryCount++];
+        h->alertId = alertId;
+        h->currentBars = 0;
+        h->lastUpdateMs = now;
+        h->strongSinceMs = 0;  // Not strong yet
+        h->wasWeak = false;    // Will be set if bars <= WEAK_THRESHOLD
+        h->escalationAnnounced = false;
+        return h;
+    }
+    
+    // No space - find oldest stale entry to recycle
+    unsigned long oldestTime = now;
+    int oldestIdx = -1;
+    for (int i = 0; i < alertHistoryCount; i++) {
+        if (alertHistories[i].lastUpdateMs < oldestTime) {
+            oldestTime = alertHistories[i].lastUpdateMs;
+            oldestIdx = i;
+        }
+    }
+    if (oldestIdx >= 0) {
+        h = &alertHistories[oldestIdx];
+        h->alertId = alertId;
+        h->currentBars = 0;
+        h->lastUpdateMs = now;
+        h->strongSinceMs = 0;
+        h->wasWeak = false;
+        h->escalationAnnounced = false;
+        return h;
+    }
+    
+    return nullptr;
+}
+
+static void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
+    if (band == BAND_LASER) return;  // Laser excluded from smart tracking
+    
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = getOrCreateAlertHistory(alertId, now);
+    if (!h) return;
+    
+    // Track if ever weak (permanent flag - never cleared)
+    if (bars <= WEAK_THRESHOLD) {
+        h->wasWeak = true;
+    }
+    
+    // Track sustained strong signal
+    if (bars >= STRONG_THRESHOLD) {
+        if (h->strongSinceMs == 0) {
+            h->strongSinceMs = now;  // Just became strong
+        }
+    } else {
+        h->strongSinceMs = 0;  // Dropped below strong, reset
+    }
+    
+    h->currentBars = bars;
+    h->lastUpdateMs = now;
+}
+
+static void cleanupStaleHistories(unsigned long now) {
+    for (int i = alertHistoryCount - 1; i >= 0; i--) {
+        if (now - alertHistories[i].lastUpdateMs > HISTORY_STALE_MS) {
+            // Remove by shifting
+            for (int j = i; j < alertHistoryCount - 1; j++) {
+                alertHistories[j] = alertHistories[j + 1];
+            }
+            alertHistoryCount--;
+        }
+    }
+}
+
+// Check if alert should trigger threat escalation announcement
+// Trigger: wasWeak + nowStrong + sustained 500ms + bogeys <= 4 + not muted + not announced
+static bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now) {
+    if (band == BAND_LASER) return false;  // Laser excluded
+    
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = findAlertHistory(alertId);
+    if (!h) return false;
+    
+    // Check all conditions
+    bool wasWeak = h->wasWeak;
+    bool nowStrong = (h->currentBars >= STRONG_THRESHOLD);
+    bool sustained = (h->strongSinceMs > 0) && (now - h->strongSinceMs >= SUSTAINED_MS);
+    bool notNoisy = (totalBogeys <= MAX_BOGEYS_FOR_ESCALATION);
+    bool notAnnounced = !h->escalationAnnounced;
+    
+    if (wasWeak && nowStrong && sustained && notNoisy && notAnnounced) {
+        DEBUG_LOGF("[ThreatEscalation] TRIGGERED: band=%d freq=%u wasWeak=%d cur=%d strongFor=%lums bogeys=%d\n",
+                   (int)band, freq, h->wasWeak, h->currentBars, now - h->strongSinceMs, totalBogeys);
+        return true;
     }
     return false;
 }
 
-static void markStrongAnnounced(Band band, uint16_t freq) {
-    uint32_t id = makeAlertId(band, freq);
-    if (strongAnnouncedCount < 10 && !isStrongAnnounced(band, freq)) {
-        strongAnnouncedIds[strongAnnouncedCount++] = id;
+static void markThreatEscalationAnnounced(Band band, uint16_t freq) {
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = findAlertHistory(alertId);
+    if (h) {
+        h->escalationAnnounced = true;
     }
 }
 
@@ -1036,65 +1156,95 @@ void processBLEData() {
                         }
                     }
                     
-                    // THREAT ESCALATION: Announce direction breakdown when secondary crosses 3+ bars
-                    // Only if: secondary alerts enabled, not muted, not already announced as strong
-                    if (!priorityAnnounced && 
-                        settings.announceSecondaryAlerts &&
-                        alertCount > 1 &&
-                        (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS)) {
-                        
-                        // Check for any secondary alert that just crossed the strong threshold
-                        bool hasNewStrong = false;
+                    // SMART THREAT ESCALATION: Track signal history and announce when weak signals ramp up
+                    // Update all secondary alert histories and check for escalation triggers
+                    if (settings.announceSecondaryAlerts && alertCount > 1) {
+                        // First pass: update all alert histories with current signal strengths
                         for (int i = 0; i < alertCount; i++) {
                             const AlertData& alert = currentAlerts[i];
                             if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            if (alert.band == BAND_LASER) continue;  // Laser excluded from smart tracking
                             
                             uint16_t alertFreq = (uint16_t)alert.frequency;
-                            
-                            // Skip priority alert
-                            if (alert.band == priority.band && alertFreq == currentFreq) continue;
-                            
-                            // Skip if global mute active (V1 mute state is global, not per-alert)
-                            if (state.muted) continue;
-                            
-                            // Skip if band not enabled for secondary
-                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
-                            
-                            // Skip if already announced as strong
-                            if (isStrongAnnounced(alert.band, alertFreq)) continue;
-                            
-                            // Check if this alert is now 3+ bars (strong)
                             uint8_t bars = getAlertBars(alert);
-                            if (bars >= STRONG_SIGNAL_THRESHOLD) {
-                                hasNewStrong = true;
-                                markStrongAnnounced(alert.band, alertFreq);
-                                DEBUG_LOGF("[VoiceAlert] Strong secondary detected: band=%d freq=%u bars=%d\n", 
-                                           (int)alert.band, alertFreq, bars);
-                            }
+                            updateAlertHistory(alert.band, alertFreq, bars, now);
                         }
                         
-                        // If we found a new strong signal, announce direction breakdown
-                        if (hasNewStrong) {
-                            // Count all alerts by direction
-                            uint8_t aheadCount = 0, behindCount = 0, sideCount = 0;
+                        // Cleanup stale histories (alerts that disappeared)
+                        cleanupStaleHistories(now);
+                        
+                        // Second pass: check for any alert triggering smart escalation
+                        // Only announce if cooldown has passed
+                        if (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS) {
                             for (int i = 0; i < alertCount; i++) {
                                 const AlertData& alert = currentAlerts[i];
                                 if (!alert.isValid || alert.band == BAND_NONE) continue;
+                                if (alert.band == BAND_LASER) continue;
                                 
-                                if (alert.direction & DIR_FRONT) {
-                                    aheadCount++;
-                                } else if (alert.direction & DIR_REAR) {
-                                    behindCount++;
-                                } else {
-                                    sideCount++;
+                                uint16_t alertFreq = (uint16_t)alert.frequency;
+                                
+                                // Skip priority alert
+                                if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                                
+                                // Skip if muted
+                                if (state.muted) continue;
+                                
+                                // Skip if band not enabled for secondary
+                                if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                                
+                                // Check smart escalation criteria (pass alertCount for bogey filter)
+                                if (shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
+                                    // Mark as announced before building the message
+                                    markThreatEscalationAnnounced(alert.band, alertFreq);
+                                    
+                                    // Convert to audio types
+                                    AlertBand audioBand;
+                                    switch (alert.band) {
+                                        case BAND_KA: audioBand = AlertBand::KA; break;
+                                        case BAND_K:  audioBand = AlertBand::K; break;
+                                        case BAND_X:  audioBand = AlertBand::X; break;
+                                        default: continue;  // Skip unknown bands
+                                    }
+                                    
+                                    AlertDirection alertDir;
+                                    if (alert.direction & DIR_FRONT) {
+                                        alertDir = AlertDirection::AHEAD;
+                                    } else if (alert.direction & DIR_REAR) {
+                                        alertDir = AlertDirection::BEHIND;
+                                    } else {
+                                        alertDir = AlertDirection::SIDE;
+                                    }
+                                    
+                                    // Count all alerts by direction for breakdown
+                                    uint8_t aheadCount = 0, behindCount = 0, sideCount = 0;
+                                    for (int j = 0; j < alertCount; j++) {
+                                        const AlertData& a = currentAlerts[j];
+                                        if (!a.isValid || a.band == BAND_NONE) continue;
+                                        
+                                        if (a.direction & DIR_FRONT) {
+                                            aheadCount++;
+                                        } else if (a.direction & DIR_REAR) {
+                                            behindCount++;
+                                        } else {
+                                            sideCount++;
+                                        }
+                                    }
+                                    
+                                    uint8_t total = aheadCount + behindCount + sideCount;
+                                    DEBUG_LOGF("[VoiceAlert] Smart threat escalation: %s %u %s - %d bogeys (%d ahead, %d behind, %d side)\n",
+                                               alert.band == BAND_KA ? "Ka" : (alert.band == BAND_K ? "K" : "X"),
+                                               alertFreq, 
+                                               (alertDir == AlertDirection::AHEAD) ? "ahead" : 
+                                                   ((alertDir == AlertDirection::BEHIND) ? "behind" : "side"),
+                                               total, aheadCount, behindCount, sideCount);
+                                    
+                                    // Play full announcement: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
+                                    play_threat_escalation(audioBand, alertFreq, alertDir, 
+                                                          total, aheadCount, behindCount, sideCount);
+                                    lastVoiceAlertTime = now;
+                                    break;  // Only one escalation announcement per cycle
                                 }
                             }
-                            
-                            uint8_t total = aheadCount + behindCount + sideCount;
-                            DEBUG_LOGF("[VoiceAlert] Threat escalation: %d bogeys (%d ahead, %d behind, %d side)\n",
-                                       total, aheadCount, behindCount, sideCount);
-                            play_bogey_breakdown(total, aheadCount, behindCount, sideCount);
-                            lastVoiceAlertTime = now;
                         }
                     }
                 }

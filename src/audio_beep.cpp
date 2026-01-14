@@ -678,11 +678,11 @@ static const int16_t mulaw_decode_table[256] = {
 };
 
 // Max clips for multi-segment audio playback
-static constexpr int MAX_AUDIO_CLIPS = 10;
+static constexpr int MAX_AUDIO_CLIPS = 12;
 
 // Structure for SD audio playback task
 struct SDAudioTaskParams {
-    char filePaths[MAX_AUDIO_CLIPS][48];  // Up to 10 clips for complex announcements
+    char filePaths[MAX_AUDIO_CLIPS][48];  // Up to 12 clips for threat escalation announcements
     int numClips;
 };
 
@@ -1082,7 +1082,7 @@ void audio_process_amp_timeout() {
 }
 
 // Play bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (skips directions with 0 count)
-// Used for threat escalation when a secondary alert reaches 3+ bars
+// Note: play_threat_escalation() is preferred as it includes band/freq context
 void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side) {
     AUDIO_LOGF("[AUDIO] play_bogey_breakdown() total=%d ahead=%d behind=%d side=%d\n", 
                total, ahead, behind, side);
@@ -1153,6 +1153,140 @@ void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t 
     }
     
     AUDIO_LOGF("[AUDIO] Playing bogey breakdown: %d clips\n", params->numClips);
+    
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
+        params,
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        free(params);
+    }
+}
+
+// Play threat escalation: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
+// Used when secondary alert ramps up from weak (≤2 bars) to strong (≥4 bars) over time
+void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
+                            uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side) {
+    AUDIO_LOGF("[AUDIO] play_threat_escalation() band=%d freq=%d dir=%d total=%d\n", 
+               (int)band, freqMHz, (int)direction, total);
+    
+    if (audio_playing.load()) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping threat escalation");
+        return;
+    }
+    
+    // Laser excluded - shouldn't happen but guard anyway
+    if (band == AlertBand::LASER) {
+        AUDIO_LOGLN("[AUDIO] Laser excluded from threat escalation");
+        return;
+    }
+    
+    // Allocate params for the task
+    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        return;
+    }
+    params->numClips = 0;
+    
+    // 1. Band clip
+    const char* bandFile = nullptr;
+    switch (band) {
+        case AlertBand::KA: bandFile = "band_ka.mul"; break;
+        case AlertBand::K:  bandFile = "band_k.mul"; break;
+        case AlertBand::X:  bandFile = "band_x.mul"; break;
+        default: break;
+    }
+    if (bandFile) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+    }
+    
+    // 2-4. Frequency clips
+    int ghz = getGHz(band, freqMHz);
+    if (ghz > 0) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+    }
+    int mhz = freqMHz % 1000;
+    int hundredsDigit = mhz / 100;
+    snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
+    int lastTwo = mhz % 100;
+    snprintf(params->filePaths[params->numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
+    
+    // 5. Direction clip
+    const char* dirFile = nullptr;
+    switch (direction) {
+        case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
+        case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
+        case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
+    }
+    if (dirFile) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+    }
+    
+    // 6-7. Total bogey count if >= 2: "[N] bogeys"
+    if (total >= 2 && total <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (total == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+    }
+    
+    // 8-9. Direction breakdown: "[N] ahead" (only if > 0)
+    if (ahead > 0 && ahead <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (ahead == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+    }
+    
+    // 10-11. "[N] behind" (only if > 0)
+    if (behind > 0 && behind <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (behind == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
+    }
+    
+    // 12. "[N] side" (only if > 0, may be truncated if clips exhausted)
+    if (side > 0 && side <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (side == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
+    }
+    
+    AUDIO_LOGF("[AUDIO] Playing threat escalation: %d clips\n", params->numClips);
+    for (int i = 0; i < params->numClips; i++) {
+        AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params->filePaths[i]);
+    }
     
     // Atomic exchange: if already true, abort; otherwise set to true
     if (audio_playing.exchange(true)) {
