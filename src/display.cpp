@@ -1546,10 +1546,11 @@ void V1Display::showScanning() {
         int textWidth = bbox.xMax - bbox.xMin;
         int textHeight = bbox.yMax - bbox.yMin;
         
-        // Center in frequency area (left of right panel)
-        const int rightMargin = 120;
-        int maxWidth = SCREEN_WIDTH - rightMargin;
-        int x = (maxWidth - textWidth) / 2;
+        // Center between band indicators and signal bars (match frequency positioning)
+        const int leftMargin = 120;   // After band indicators
+        const int rightMargin = 200;  // Before signal bars
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - textWidth) / 2;
         int y = getEffectiveScreenHeight() - 72;  // Match frequency positioning
         
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
@@ -1558,19 +1559,26 @@ void V1Display::showScanning() {
     } else {
         // Classic style: use 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
-        const float scale = 2.2f;
+        const float scale = 2.3f;  // Match frequency scale
 #else
         const float scale = 1.7f;
 #endif
         SegMetrics m = segMetrics(scale);
-        int y = getEffectiveScreenHeight() - m.digitH - 8;
+        
+        // Position to match frequency display (centered between mute area and bottom)
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
         
         const char* text = "SCAN";
-        int width = measureSevenSegmentText("00.000", scale);
-        const int rightMargin = 120;
-        int maxWidth = SCREEN_WIDTH - rightMargin;
-        int x = (maxWidth - width) / 2;
-        if (x < 0) x = 0;
+        int width = measureSevenSegmentText(text, scale);  // Same measurement for 14-seg
+        
+        // Center between band indicators and signal bars
+        const int leftMargin = 120;   // After band indicators
+        const int rightMargin = 200;  // Before signal bars
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - width) / 2;
+        if (x < leftMargin) x = leftMargin;
         
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
         draw14SegmentText(text, x, y, scale, s.colorBandKa, PALETTE_BG);
@@ -2746,14 +2754,17 @@ void V1Display::drawSignalBars(uint8_t bars) {
 // Classic 7-segment frequency display (original V1 style)
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.0f; // Scaled to fit fixed primary zone (was 2.75)
+    const float scale = 2.3f; // Sized to fit between mute icon and bottom of primary zone
 #else
     const float scale = 1.7f; // ~15% smaller than the counter digits
 #endif
     SegMetrics m = segMetrics(scale);
     
-    // Position frequency in middle of primary zone
-    int y = getEffectiveScreenHeight() - m.digitH - 8;
+    // Position frequency below mute icon area (mute badge is at y=5, h=26, ends at y=31)
+    // Shift down slightly to center between mute icon and secondary cards
+    const int muteIconBottom = 33;  // Mute icon ends at y=31, add 2px gap
+    int effectiveHeight = getEffectiveScreenHeight();
+    int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;  // +5 shift toward cards
     
     if (band == BAND_LASER) {
         // Draw "LASER" centered between band indicators and signal bars
