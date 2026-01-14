@@ -142,7 +142,7 @@ private:
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    static constexpr int SECONDARY_ROW_HEIGHT = 30;  // Height reserved for secondary alert cards
+    static constexpr int SECONDARY_ROW_HEIGHT = 62;  // Height reserved for secondary alert cards (with signal meter)
 
     int currentProfileSlot = 0;  // Track current profile for display
     ScreenMode currentScreen = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws

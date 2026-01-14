@@ -23,9 +23,9 @@
 static OpenFontRender ofr;
 static bool ofrInitialized = false;
 
-// Multi-alert mode tracking (extern from V1Display class)
+// Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
-static constexpr int MULTI_ALERT_OFFSET = 40;  // Pixels to shift up when cards are shown
+static constexpr int PRIMARY_ZONE_HEIGHT = 95;  // Fixed height for primary display (with gap above cards)
 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
@@ -41,9 +41,9 @@ static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show
 // External reference to BLE client for checking proxy connection
 extern V1BLEClient bleClient;
 
-// Helper to get effective screen height (reduced when multi-alert cards are shown)
+// Helper to get effective screen height (fixed primary zone, cards below)
 static inline int getEffectiveScreenHeight() {
-    return g_multiAlertMode ? (SCREEN_HEIGHT - MULTI_ALERT_OFFSET) : SCREEN_HEIGHT;
+    return PRIMARY_ZONE_HEIGHT;  // Always use fixed primary zone height
 }
 
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
@@ -1002,43 +1002,35 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
 }
 
 void V1Display::drawMuteIcon(bool muted) {
-    // Draw centered badge above frequency display
+    // Draw badge at fixed top position (top ~10% of screen)
 #if defined(DISPLAY_WAVESHARE_349)
-    const float freqScale = 2.75f;  // Match Classic frequency scale
     const int leftMargin = 120;    // After band indicators
     const int rightMargin = 200;   // Before signal bars (at X=440)
 #else
-    const float freqScale = 1.7f;
     const int leftMargin = 0;
     const int rightMargin = 120;
 #endif
-    SegMetrics mFreq = segMetrics(freqScale);
-
-    // Frequency Y position (from drawFrequency) - use effective height for multi-alert
-    int freqY = getEffectiveScreenHeight() - mFreq.digitH - 8;
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
-    // Badge dimensions (slightly smaller to avoid crowding top UI)
-    int w = 92;
+    // Badge dimensions
+    int w = 110;
     int h = 26;
     int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
-    // Position badge above frequency with more gap
-    int y = freqY - h - 16;  // Increased gap from 4 to 16
-    if (y < 5) y = 5;  // Lower minimum to allow badge to move up
+    int y = 5;  // Fixed near top of screen
     
     if (muted) {
         // Draw badge with muted styling
         uint16_t outline = PALETTE_MUTED;
         uint16_t fill = PALETTE_MUTED;
         
-        FILL_ROUND_RECT(x, y, w, h, 6, fill);
-        DRAW_ROUND_RECT(x, y, w, h, 6, outline);
+        FILL_ROUND_RECT(x, y, w, h, 5, fill);
+        DRAW_ROUND_RECT(x, y, w, h, 5, outline);
         
         GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);  // Boost readability in compact badge
+        TFT_CALL(setTextSize)(2);  // Larger text for visibility
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
         int cx = x + w / 2;
-        int cy = y + h / 2 + 1;
+        int cy = y + h / 2;
         // Pseudo-bold: draw twice with slight offset
         GFX_drawString(tft, "MUTED", cx, cy);
         GFX_drawString(tft, "MUTED", cx + 1, cy);
@@ -2238,8 +2230,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 // With persistence: cards stay visible (greyed) for a grace period after alert disappears
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const int cardH = SECONDARY_ROW_HEIGHT;  // 30px
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=142
+    const int cardH = SECONDARY_ROW_HEIGHT;  // 56px (taller for signal meter)
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=116
     const int cardW = 145;     // Card width (wider to fit freq + band)
     const int cardSpacing = 10;  // Increased spacing between cards
     const int leftMargin = 120;   // After band indicators
@@ -2276,6 +2268,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint32_t frequency = 0;
         bool isGraced = false;
         bool wasMuted = false;
+        uint8_t bars = 0;  // Signal strength bars (0-6)
     } lastDrawnCards[2];
     static int lastDrawnCount = 0;
     
@@ -2289,6 +2282,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             cards[c].lastSeen = 0;
             lastDrawnCards[c].band = BAND_NONE;
             lastDrawnCards[c].frequency = 0;
+            lastDrawnCards[c].bars = 0;
         }
         lastDrawnCount = 0;
         lastPriorityForCards = AlertData();
@@ -2425,10 +2419,18 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // For debug logging if needed
     bool doDebug = false;
     
+    // Helper: get signal bars for an alert based on direction
+    auto getAlertBars = [](const AlertData& a) -> uint8_t {
+        if (a.direction & DIR_FRONT) return a.frontStrength;
+        if (a.direction & DIR_REAR) return a.rearStrength;
+        return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
+    };
+    
     // Build list of cards to draw this frame
     struct CardToDraw {
         int slot;
         bool isGraced;
+        uint8_t bars;  // Signal strength for this card
     } cardsToDraw[2];
     int cardsToDrawCount = 0;
     
@@ -2436,6 +2438,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         if (cards[c].lastSeen == 0) continue;
         if (isSameAsPriority(cards[c].alert)) continue;
         cardsToDraw[cardsToDrawCount].slot = c;
+        cardsToDraw[cardsToDrawCount].bars = getAlertBars(cards[c].alert);
         // Check if live or graced
         bool isLive = false;
         if (alerts != nullptr) {
@@ -2458,6 +2461,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             if (cards[slot].alert.band != lastDrawnCards[i].band ||
                 cards[slot].alert.frequency != lastDrawnCards[i].frequency ||
                 cardsToDraw[i].isGraced != lastDrawnCards[i].isGraced ||
+                cardsToDraw[i].bars != lastDrawnCards[i].bars ||
                 muted != lastDrawnCards[i].wasMuted) {
                 cardsChanged = true;
                 break;
@@ -2487,11 +2491,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             lastDrawnCards[i].frequency = cards[slot].alert.frequency;
             lastDrawnCards[i].isGraced = cardsToDraw[i].isGraced;
             lastDrawnCards[i].wasMuted = muted;
+            lastDrawnCards[i].bars = cardsToDraw[i].bars;
         } else {
             lastDrawnCards[i].band = BAND_NONE;
             lastDrawnCards[i].frequency = 0;
             lastDrawnCards[i].isGraced = false;
             lastDrawnCards[i].wasMuted = false;
+            lastDrawnCards[i].bars = 0;
         }
     }
     
@@ -2501,12 +2507,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         const AlertData& alert = cards[c].alert;
         bool isGraced = cardsToDraw[i].isGraced;
         bool drawMuted = muted || isGraced;
+        uint8_t bars = cardsToDraw[i].bars;
         
         int cardX = startX + i * (cardW + cardSpacing);
         
         if (doDebug) {
-            Serial.printf("[CARDS] DRAW slot%d b%d f%d graced=%d X=%d\n", 
-                          c, alert.band, alert.frequency, isGraced, cardX);
+            Serial.printf("[CARDS] DRAW slot%d b%d f%d bars=%d graced=%d X=%d\n", 
+                          c, alert.band, alert.frequency, bars, isGraced, cardX);
         }
         
         // Card background and border colors
@@ -2537,41 +2544,79 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t contentCol = (isGraced || drawMuted) ? PALETTE_MUTED : TFT_WHITE;
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
+        // === TOP ROW: Direction arrow + Band + Frequency ===
+        int topRowY = cardY + 8;  // Top row starts 8px from card top (more room for text)
+        
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
-        int arrowCY = cardY + cardH / 2;
+        int arrowCY = topRowY + 10;  // Center arrow vertically in top row
         
         if (alert.direction & DIR_FRONT) {
-            tft->fillTriangle(arrowX, arrowCY - 8, arrowX - 7, arrowCY + 8, arrowX + 7, arrowCY + 8, contentCol);
+            tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
         } else if (alert.direction & DIR_REAR) {
-            tft->fillTriangle(arrowX, arrowCY + 8, arrowX - 7, arrowCY - 8, arrowX + 7, arrowCY - 8, contentCol);
+            tft->fillTriangle(arrowX, arrowCY + 7, arrowX - 6, arrowCY - 5, arrowX + 6, arrowCY - 5, contentCol);
         } else if (alert.direction & DIR_SIDE) {
-            FILL_RECT(arrowX - 8, arrowCY - 3, 16, 6, contentCol);
+            FILL_RECT(arrowX - 6, arrowCY - 2, 12, 4, contentCol);
         }
         
-        // Band indicator (colored dot or short label) on left after arrow
+        // Band indicator + frequency on top row
         int labelX = cardX + 36;
         tft->setTextColor(bandLabelCol);
         tft->setTextSize(2);
         if (alert.band == BAND_LASER) {
-            tft->setCursor(labelX, cardY + (cardH - 16) / 2);
+            tft->setCursor(labelX, topRowY);
             tft->print("LASER");
         } else {
             // Band letter + frequency: "Ka 34.740" or "K 24.150"
             const char* bandStr = bandToString(alert.band);
-            tft->setCursor(labelX, cardY + (cardH - 16) / 2);
+            tft->setCursor(labelX, topRowY);
             tft->print(bandStr);
             
             // Frequency after band
             tft->setTextColor(contentCol);
             int freqX = labelX + strlen(bandStr) * 12 + 4;
-            tft->setCursor(freqX, cardY + (cardH - 16) / 2);
+            tft->setCursor(freqX, topRowY);
             if (alert.frequency > 0) {
                 char freqStr[10];
                 snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
                 tft->print(freqStr);
             } else {
                 tft->print("---");
+            }
+        }
+        
+        // === BOTTOM ROW: Signal strength meter ===
+        const int meterY = cardY + 34;      // Bottom row Y position (adjusted for taller card)
+        const int meterX = cardX + 10;      // Start of meter
+        const int meterW = cardW - 20;      // Meter width (with padding)
+        const int meterH = 18;              // Meter height (slightly taller)
+        const int barCount = 6;             // 6 bars like main signal meter
+        const int barSpacing = 2;           // Gap between bars
+        const int barWidth = (meterW - (barCount - 1) * barSpacing) / barCount;
+        
+        // Draw meter background (dark outline)
+        FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);  // Very dark grey
+        
+        // Get signal bar colors from settings (same as main signal bars)
+        uint16_t barColors[6] = {
+            settings.colorBar1, settings.colorBar2, settings.colorBar3,
+            settings.colorBar4, settings.colorBar5, settings.colorBar6
+        };
+        
+        // Draw signal bars with color-coded gradient
+        for (int b = 0; b < barCount; b++) {
+            int barX = meterX + b * (barWidth + barSpacing);
+            // Variable height bars (progressively taller)
+            int barH = 5 + (b * 2);  // 5, 7, 9, 11, 13, 15 pixels tall (slightly bigger)
+            int barY = meterY + meterH - barH - 1;  // Align to bottom
+            
+            if (b < bars) {
+                // Filled bar - use color-coded colors, or muted grey
+                uint16_t fillColor = (isGraced || drawMuted) ? PALETTE_MUTED : barColors[b];
+                FILL_RECT(barX, barY, barWidth, barH, fillColor);
+            } else {
+                // Empty bar outline
+                DRAW_RECT(barX, barY, barWidth, barH, dimColor(barColors[b], 30));
             }
         }
     }
@@ -2701,13 +2746,13 @@ void V1Display::drawSignalBars(uint8_t bars) {
 // Classic 7-segment frequency display (original V1 style)
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.75f; // Larger for wider screen (+25%)
+    const float scale = 2.0f; // Scaled to fit fixed primary zone (was 2.75)
 #else
     const float scale = 1.7f; // ~15% smaller than the counter digits
 #endif
     SegMetrics m = segMetrics(scale);
     
-    // Position frequency at bottom with proper margin (shifted up in multi-alert mode)
+    // Position frequency in middle of primary zone
     int y = getEffectiveScreenHeight() - m.digitH - 8;
     
     if (band == BAND_LASER) {
@@ -2788,11 +2833,11 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     }
     
     // OpenFontRender antialiased rendering
-    const int fontSize = 82;  // Larger font size (+25%)
+    const int fontSize = 69;  // 15% larger for better visibility
     const int leftMargin = 120;   // After band indicators
     const int rightMargin = 200;  // Before signal bars (at X=440)
     const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 88;  // Position based on effective height (moved up)
+    const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
     
     ofr.setFontSize(fontSize);
     ofr.setBackgroundColor(0, 0, 0);  // Black background
@@ -2944,8 +2989,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     }
 #endif
     
-    // Use full-size arrows in both layouts
-    float scale = 1.0f;
+    // Use slightly smaller arrows to give profile indicator more room
+    float scale = 0.98f;
     
     // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
     // Wider/shallower angle to match V1 reference
