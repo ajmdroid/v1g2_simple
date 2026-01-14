@@ -48,6 +48,10 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
 // Says "ahead", "behind", or "side", optionally with bogey count if > 1
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount = 0);
 
+// Play bogey breakdown announcement: "2 bogeys, 1 ahead, 1 behind"
+// Used for threat escalation when secondary alert reaches 3+ bars
+void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
+
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);
 

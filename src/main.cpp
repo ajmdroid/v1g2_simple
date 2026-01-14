@@ -118,10 +118,13 @@ static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s betwee
 // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
 static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
 static uint8_t announcedAlertCount = 0;
+static uint32_t strongAnnouncedIds[10] = {0};  // Alerts announced as "strong" (3+ bars)
+static uint8_t strongAnnouncedCount = 0;
 static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
 static unsigned long priorityStableSince = 0;  // When priority alert became stable
 static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
 static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
+static constexpr int STRONG_SIGNAL_THRESHOLD = 3;  // 3+ bars = strong signal
 
 // Helper functions for secondary alert tracking
 // Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
@@ -147,6 +150,23 @@ static void markAlertAnnounced(Band band, uint16_t freq) {
 static void clearAnnouncedAlerts() {
     announcedAlertCount = 0;
     memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+    strongAnnouncedCount = 0;
+    memset(strongAnnouncedIds, 0, sizeof(strongAnnouncedIds));
+}
+
+static bool isStrongAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    for (int i = 0; i < strongAnnouncedCount; i++) {
+        if (strongAnnouncedIds[i] == id) return true;
+    }
+    return false;
+}
+
+static void markStrongAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    if (strongAnnouncedCount < 10 && !isStrongAnnounced(band, freq)) {
+        strongAnnouncedIds[strongAnnouncedCount++] = id;
+    }
 }
 
 static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
@@ -157,6 +177,13 @@ static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
         case BAND_X:     return settings.secondaryX;
         default:         return false;
     }
+}
+
+// Helper: get signal bars for an alert based on direction (0-8 scale from V1)
+static uint8_t getAlertBars(const AlertData& a) {
+    if (a.direction & DIR_FRONT) return a.frontStrength;
+    if (a.direction & DIR_REAR) return a.rearStrength;
+    return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
 }
 
 // WiFi manual startup - user must long-press BOOT to start AP
@@ -1006,6 +1033,68 @@ void processBLEData() {
                                 lastVoiceAlertTime = now;  // Use same cooldown
                                 break;  // Only announce one secondary per cycle
                             }
+                        }
+                    }
+                    
+                    // THREAT ESCALATION: Announce direction breakdown when secondary crosses 3+ bars
+                    // Only if: secondary alerts enabled, not muted, not already announced as strong
+                    if (!priorityAnnounced && 
+                        settings.announceSecondaryAlerts &&
+                        alertCount > 1 &&
+                        (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS)) {
+                        
+                        // Check for any secondary alert that just crossed the strong threshold
+                        bool hasNewStrong = false;
+                        for (int i = 0; i < alertCount; i++) {
+                            const AlertData& alert = currentAlerts[i];
+                            if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            
+                            uint16_t alertFreq = (uint16_t)alert.frequency;
+                            
+                            // Skip priority alert
+                            if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                            
+                            // Skip if global mute active (V1 mute state is global, not per-alert)
+                            if (state.muted) continue;
+                            
+                            // Skip if band not enabled for secondary
+                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                            
+                            // Skip if already announced as strong
+                            if (isStrongAnnounced(alert.band, alertFreq)) continue;
+                            
+                            // Check if this alert is now 3+ bars (strong)
+                            uint8_t bars = getAlertBars(alert);
+                            if (bars >= STRONG_SIGNAL_THRESHOLD) {
+                                hasNewStrong = true;
+                                markStrongAnnounced(alert.band, alertFreq);
+                                DEBUG_LOGF("[VoiceAlert] Strong secondary detected: band=%d freq=%u bars=%d\n", 
+                                           (int)alert.band, alertFreq, bars);
+                            }
+                        }
+                        
+                        // If we found a new strong signal, announce direction breakdown
+                        if (hasNewStrong) {
+                            // Count all alerts by direction
+                            uint8_t aheadCount = 0, behindCount = 0, sideCount = 0;
+                            for (int i = 0; i < alertCount; i++) {
+                                const AlertData& alert = currentAlerts[i];
+                                if (!alert.isValid || alert.band == BAND_NONE) continue;
+                                
+                                if (alert.direction & DIR_FRONT) {
+                                    aheadCount++;
+                                } else if (alert.direction & DIR_REAR) {
+                                    behindCount++;
+                                } else {
+                                    sideCount++;
+                                }
+                            }
+                            
+                            uint8_t total = aheadCount + behindCount + sideCount;
+                            DEBUG_LOGF("[VoiceAlert] Threat escalation: %d bogeys (%d ahead, %d behind, %d side)\n",
+                                       total, aheadCount, behindCount, sideCount);
+                            play_bogey_breakdown(total, aheadCount, behindCount, sideCount);
+                            lastVoiceAlertTime = now;
                         }
                     }
                 }

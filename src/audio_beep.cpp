@@ -677,9 +677,12 @@ static const int16_t mulaw_decode_table[256] = {
         56,    48,    40,    32,    24,    16,     8,     0
 };
 
+// Max clips for multi-segment audio playback
+static constexpr int MAX_AUDIO_CLIPS = 10;
+
 // Structure for SD audio playback task
 struct SDAudioTaskParams {
-    char filePaths[7][48];  // Up to 7 clips: band, ghz, digit, tens, direction, count, "bogeys"
+    char filePaths[MAX_AUDIO_CLIPS][48];  // Up to 10 clips for complex announcements
     int numClips;
 };
 
@@ -1073,5 +1076,102 @@ void audio_process_amp_timeout() {
             amp_is_warm = false;
             AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
         }
+    }
+}
+
+// Play bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (skips directions with 0 count)
+// Used for threat escalation when a secondary alert reaches 3+ bars
+void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side) {
+    AUDIO_LOGF("[AUDIO] play_bogey_breakdown() total=%d ahead=%d behind=%d side=%d\n", 
+               total, ahead, behind, side);
+    
+    if (audio_playing.load()) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping bogey breakdown");
+        return;
+    }
+    
+    // Allocate params for the task
+    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        return;
+    }
+    params->numClips = 0;
+    
+    // Total count: "[N]"
+    if (total >= 2 && total <= 10) {
+        if (total == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
+        }
+        // "bogeys"
+        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+    }
+    
+    // Add direction breakdown for non-zero counts
+    // "[N] ahead" - only if ahead > 0
+    if (ahead > 0 && ahead <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (ahead == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+    }
+    
+    // "[N] behind" - only if behind > 0
+    if (behind > 0 && behind <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (behind == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
+    }
+    
+    // "[N] side" - only if side > 0
+    if (side > 0 && side <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+        if (side == 10) {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+        } else {
+            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
+        }
+        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
+    }
+    
+    if (params->numClips == 0) {
+        free(params);
+        return;
+    }
+    
+    AUDIO_LOGF("[AUDIO] Playing bogey breakdown: %d clips\n", params->numClips);
+    
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
+        params,
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        free(params);
     }
 }
