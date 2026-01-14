@@ -227,9 +227,9 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
             peakTime = now;
         }
         
-        // Only allow drops after 600ms since last peak
-        // This filters V1's ~200ms blink cycle completely
-        if (now - peakTime > 600) {
+        // Only allow drops after 200ms since last peak
+        // This filters V1's blink pattern while keeping response snappy
+        if (now - peakTime > 200) {
             peakBars = newBars;
             peakTime = now;
         }
@@ -388,15 +388,18 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     for (size_t i = 0; i < chunkCount && i < receivedAlertCount; ++i) {
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
+        uint8_t aux0 = a[6];       // aux0 - bit 7 (0x80) = isPriority per JB's Java code
 
         Band band = decodeBand(bandArrow);
         Direction dir = decodeDirection(bandArrow);
+        bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
 
         // Add new alert, checking for overflow
         if (alertCount < MAX_ALERTS) {
             AlertData& alert = alerts[alertCount++];
             alert.band = band;
             alert.direction = dir;
+            alert.isPriority = isPriority;
             
             // Bytes 3 and 4 are raw RSSI values for front/rear antennas
             // Use our RSSI-to-bars mapping with band-specific thresholds
@@ -417,17 +420,18 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     displayState.muted = displayState.muted || anyMuted;
 
     if (alertCount > 0) {
-        // V1 sends alerts with index 0 being the priority alert
-        // The first chunk received has the priority index in its high nibble
-        // Store that for getPriorityAlert() to use
-        displayState.v1PriorityIndex = (alertChunks[0][0] >> 4) & 0x0F;
+        // Find the priority alert using isPriority flag (aux0 bit 7)
+        // JB's Java: (aux0 & 128) != 0
+        int priorityIdx = 0;  // Default to first if none marked
+        for (size_t i = 0; i < alertCount; ++i) {
+            if (alerts[i].isPriority) {
+                priorityIdx = i;
+                break;
+            }
+        }
         
-        // Signal bars are now read from V1's LED bitmap in parseDisplayData()
-        // Don't overwrite here - that would bypass the flicker filtering
-        
-        // Set priority arrow from V1's reported priority alert (index 0 in our array)
-        // Alerts are stored in the order received, with priority (index 0) first
-        displayState.priorityArrow = alerts[0].direction;
+        displayState.v1PriorityIndex = priorityIdx;
+        displayState.priorityArrow = alerts[priorityIdx].direction;
         
         // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
     }

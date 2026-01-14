@@ -35,10 +35,11 @@ struct AlertData {
     uint8_t rearStrength;   // 0-6
     uint32_t frequency;     // MHz
     bool isValid;
+    bool isPriority;        // aux0 bit 7 - V1's priority flag
     
     AlertData() : band(BAND_NONE), direction(DIR_NONE), 
                   frontStrength(0), rearStrength(0), 
-                  frequency(0), isValid(false) {}
+                  frequency(0), isValid(false), isPriority(false) {}
 };
 
 // Display state
