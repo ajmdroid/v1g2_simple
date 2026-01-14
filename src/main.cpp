@@ -70,7 +70,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-const unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
+static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
@@ -412,8 +412,8 @@ static bool alertPersistenceActive = false;
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
 static int tapCount = 0;
-const unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
-const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
+static constexpr unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
+static constexpr unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 
 // Brightness adjustment mode (BOOT button triggered)
 static bool brightnessAdjustMode = false;
@@ -424,9 +424,9 @@ static unsigned long lastVolumeChangeMs = 0; // Debounce for test voice playback
 static unsigned long bootPressStart = 0;     // For long-press detection
 static bool bootWasPressed = false;
 static bool wifiToggleTriggered = false;     // Track if WiFi toggle already fired during this press
-const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
-const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
-const unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;  // Debounce for test voice after volume change
+static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
+static constexpr unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
+static constexpr unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;  // Debounce for test voice after volume change
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -990,7 +990,6 @@ void processBLEData() {
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
-                uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
                 const auto& currentAlerts = parser.getAllAlerts();
                 
                 displayMode = DisplayMode::LIVE;
