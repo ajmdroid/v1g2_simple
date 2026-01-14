@@ -443,11 +443,11 @@ AlertData PacketParser::getPriorityAlert() const {
         return AlertData();
     }
 
-    // V1 sends alerts in priority order - index 0 is always the priority alert
-    // The V1 already handles priority determination including:
-    // - Laser always being highest priority
-    // - Signal strength comparison
-    // - Its own hysteresis logic
-    // Trust the V1's priority decision rather than recomputing it ourselves
-    return alerts[0];
+    // Use V1's isPriority flag (aux0 bit 7) to determine which alert is priority
+    // displayState.v1PriorityIndex is set in parseAlertData() by scanning for isPriority
+    uint8_t idx = displayState.v1PriorityIndex;
+    if (idx < alertCount) {
+        return alerts[idx];
+    }
+    return alerts[0];  // Fallback
 }
