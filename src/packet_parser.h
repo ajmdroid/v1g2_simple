@@ -77,7 +77,7 @@ struct DisplayState {
 
 class PacketParser {
 public:
-    static constexpr size_t MAX_ALERTS = 10;
+    static constexpr size_t MAX_ALERTS = 15;  // V1 spec supports up to 15 simultaneous alerts
 
     PacketParser();
     
