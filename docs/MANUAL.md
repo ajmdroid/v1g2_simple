@@ -221,7 +221,6 @@ V1 Gen2 (BLE)
 | Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h:64 |
 | Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h:65 |
 | Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
-| Signal bar peak hold | 200ms | Peak-hold filter in packet_parser.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in main.cpp:167 |
 | Local mute timeout | 2000ms | `LOCAL_MUTE_TIMEOUT_MS` in main.cpp:155 |

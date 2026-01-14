@@ -212,29 +212,10 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // V1 sends LED bar state directly in the display packet at payload[2]
     // This is the authoritative signal strength from V1's own display
     // Bitmap: 0x01=1bar, 0x03=2bars, 0x07=3bars, 0x0F=4bars, 0x1F=5bars, 0x3F=6bars
-    // V1 blinks by toggling values - use time-based peak hold to filter
+    // Pass through directly - no filtering needed (matches arrow behavior)
     if (length > 2) {
         uint8_t ledBitmap = payload[2];
-        uint8_t newBars = decodeLEDBitmap(ledBitmap);
-        
-        static uint8_t peakBars = 0;
-        static unsigned long peakTime = 0;
-        unsigned long now = millis();
-        
-        // New peak or same level - update and refresh timestamp
-        if (newBars >= peakBars) {
-            peakBars = newBars;
-            peakTime = now;
-        }
-        
-        // Only allow drops after 200ms since last peak
-        // This filters V1's blink pattern while keeping response snappy
-        if (now - peakTime > 200) {
-            peakBars = newBars;
-            peakTime = now;
-        }
-        
-        displayState.signalBars = peakBars;
+        displayState.signalBars = decodeLEDBitmap(ledBitmap);
     }
     
     // If laser is detected via display data, set full signal bars
