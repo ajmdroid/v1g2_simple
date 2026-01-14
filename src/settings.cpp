@@ -143,6 +143,13 @@ void SettingsManager::load() {
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
     settings.voiceVolume = preferences.getUChar("voiceVol", 75);
     
+    // Secondary alert settings
+    settings.announceSecondaryAlerts = preferences.getBool("secAlerts", false);
+    settings.secondaryLaser = preferences.getBool("secLaser", true);
+    settings.secondaryKa = preferences.getBool("secKa", true);
+    settings.secondaryK = preferences.getBool("secK", false);
+    settings.secondaryX = preferences.getBool("secX", false);
+    
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -248,6 +255,11 @@ void SettingsManager::save() {
     written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
     written += preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
     written += preferences.putUChar("voiceVol", settings.voiceVolume);
+    written += preferences.putBool("secAlerts", settings.announceSecondaryAlerts);
+    written += preferences.putBool("secLaser", settings.secondaryLaser);
+    written += preferences.putBool("secKa", settings.secondaryKa);
+    written += preferences.putBool("secK", settings.secondaryK);
+    written += preferences.putBool("secX", settings.secondaryX);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -488,6 +500,31 @@ void SettingsManager::setMuteVoiceIfVolZero(bool mute) {
     save();
 }
 
+void SettingsManager::setAnnounceSecondaryAlerts(bool enabled) {
+    settings.announceSecondaryAlerts = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryLaser(bool enabled) {
+    settings.secondaryLaser = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryKa(bool enabled) {
+    settings.secondaryKa = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryK(bool enabled) {
+    settings.secondaryK = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryX(bool enabled) {
+    settings.secondaryX = enabled;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -670,6 +707,11 @@ void SettingsManager::backupToSD() {
     doc["voiceDirectionEnabled"] = settings.voiceDirectionEnabled;
     doc["muteVoiceIfVolZero"] = settings.muteVoiceIfVolZero;
     doc["voiceVolume"] = settings.voiceVolume;
+    doc["announceSecondaryAlerts"] = settings.announceSecondaryAlerts;
+    doc["secondaryLaser"] = settings.secondaryLaser;
+    doc["secondaryKa"] = settings.secondaryKa;
+    doc["secondaryK"] = settings.secondaryK;
+    doc["secondaryX"] = settings.secondaryX;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -763,6 +805,11 @@ bool SettingsManager::restoreFromSD() {
     if (doc["voiceDirectionEnabled"].is<bool>()) settings.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
     if (doc["muteVoiceIfVolZero"].is<bool>()) settings.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
     if (doc["voiceVolume"].is<int>()) settings.voiceVolume = doc["voiceVolume"];
+    if (doc["announceSecondaryAlerts"].is<bool>()) settings.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
+    if (doc["secondaryLaser"].is<bool>()) settings.secondaryLaser = doc["secondaryLaser"];
+    if (doc["secondaryKa"].is<bool>()) settings.secondaryKa = doc["secondaryKa"];
+    if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
+    if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();

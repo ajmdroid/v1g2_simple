@@ -120,6 +120,13 @@ struct V1Settings {
     bool muteVoiceIfVolZero;        // Mute voice alerts (not VOL0 warning) when V1 volume is 0
     uint8_t voiceVolume;            // Voice alert volume (0-100%)
     
+    // Secondary alert announcements (non-priority alerts)
+    bool announceSecondaryAlerts;   // Master toggle for secondary announcements
+    bool secondaryLaser;            // Announce secondary Laser alerts
+    bool secondaryKa;               // Announce secondary Ka alerts
+    bool secondaryK;                // Announce secondary K alerts
+    bool secondaryX;                // Announce secondary X alerts
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -193,6 +200,11 @@ struct V1Settings {
         announceBogeyCount(true),              // Announce bogey count by default
         muteVoiceIfVolZero(false), // Don't mute voice alerts at vol 0 by default
         voiceVolume(75),           // Voice alerts at 75% volume by default
+        announceSecondaryAlerts(false),  // Secondary alerts off by default (opt-in)
+        secondaryLaser(true),            // Laser always important
+        secondaryKa(true),               // Ka usually real threats
+        secondaryK(false),               // K has more false positives
+        secondaryX(false),               // X is rare
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -267,6 +279,11 @@ public:
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);
     void setMuteVoiceIfVolZero(bool mute);
+    void setAnnounceSecondaryAlerts(bool enabled);
+    void setSecondaryLaser(bool enabled);
+    void setSecondaryKa(bool enabled);
+    void setSecondaryK(bool enabled);
+    void setSecondaryX(bool enabled);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

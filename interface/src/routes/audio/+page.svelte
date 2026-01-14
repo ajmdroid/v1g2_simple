@@ -6,7 +6,13 @@
 		voiceDirectionEnabled: true,
 		announceBogeyCount: true,
 		muteVoiceIfVolZero: false,
-		voiceVolume: 75  // Speaker volume (0-100)
+		voiceVolume: 75,  // Speaker volume (0-100)
+		// Secondary alert settings
+		announceSecondaryAlerts: false,
+		secondaryLaser: true,
+		secondaryKa: true,
+		secondaryK: false,
+		secondaryX: false
 	});
 	
 	let loading = $state(true);
@@ -42,6 +48,12 @@
 				settings.announceBogeyCount = data.announceBogeyCount ?? true;
 				settings.muteVoiceIfVolZero = data.muteVoiceIfVolZero ?? false;
 				settings.voiceVolume = data.voiceVolume ?? 75;
+				// Secondary alert settings
+				settings.announceSecondaryAlerts = data.announceSecondaryAlerts ?? false;
+				settings.secondaryLaser = data.secondaryLaser ?? true;
+				settings.secondaryKa = data.secondaryKa ?? true;
+				settings.secondaryK = data.secondaryK ?? false;
+				settings.secondaryX = data.secondaryX ?? false;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -61,6 +73,12 @@
 			params.append('announceBogeyCount', settings.announceBogeyCount);
 			params.append('muteVoiceIfVolZero', settings.muteVoiceIfVolZero);
 			params.append('voiceVolume', settings.voiceVolume);
+			// Secondary alert settings
+			params.append('announceSecondaryAlerts', settings.announceSecondaryAlerts);
+			params.append('secondaryLaser', settings.secondaryLaser);
+			params.append('secondaryKa', settings.secondaryKa);
+			params.append('secondaryK', settings.secondaryK);
+			params.append('secondaryX', settings.secondaryX);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -191,29 +209,110 @@
 							/>
 						</label>
 					</div>
-					
-					<div class="divider my-2"></div>
-					
-					<!-- Speaker Volume -->
+				</div>
+			</div>
+		</div>
+		
+		<!-- Secondary Alerts -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">📢 Secondary Alert Announcements</h2>
+				<p class="text-xs text-base-content/50 mb-4">Optionally announce non-priority alerts (lower bars) after priority stabilizes</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
 					<div class="form-control">
-						<label class="label" for="voice-volume-slider">
-							<span class="label-text font-medium">Speaker Volume</span>
-							<span class="label-text-alt">{settings.voiceVolume}%</span>
-						</label>
-						<div class="flex items-center gap-3">
-							<span class="text-lg">🔈</span>
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Announce Secondary Alerts</span>
+								<p class="text-xs text-base-content/50">Speak non-priority alerts once after 1s priority stability + 1.5s gap</p>
+							</div>
 							<input 
-								id="voice-volume-slider"
-								type="range" 
-								min="0" 
-								max="100" 
-								bind:value={settings.voiceVolume}
-								class="range range-primary flex-1" 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.announceSecondaryAlerts}
+								disabled={settings.voiceAlertMode === 0}
 							/>
-							<span class="text-lg">🔊</span>
-						</div>
-						<p class="text-xs text-base-content/50 mt-1">Controls the Waveshare ES8311 DAC output level</p>
+						</label>
 					</div>
+					
+					<!-- Band Filters (nested, only shown when master enabled) -->
+					{#if settings.announceSecondaryAlerts && settings.voiceAlertMode !== 0}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-2">
+							<p class="text-xs text-base-content/50 mb-2">Which bands to announce:</p>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<span class="label-text">Laser</span>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.secondaryLaser}
+									/>
+								</label>
+							</div>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<span class="label-text">Ka Band</span>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.secondaryKa}
+									/>
+								</label>
+							</div>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<span class="label-text">K Band</span>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.secondaryK}
+									/>
+								</label>
+							</div>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<span class="label-text">X Band</span>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.secondaryX}
+									/>
+								</label>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Speaker Volume -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🔈 Speaker Volume</h2>
+				
+				<div class="form-control">
+					<label class="label" for="voice-volume-slider">
+						<span class="label-text font-medium">Volume Level</span>
+						<span class="label-text-alt">{settings.voiceVolume}%</span>
+					</label>
+					<div class="flex items-center gap-3">
+						<span class="text-lg">🔈</span>
+						<input 
+							id="voice-volume-slider"
+							type="range" 
+							min="0" 
+							max="100" 
+							bind:value={settings.voiceVolume}
+							class="range range-primary flex-1" 
+						/>
+						<span class="text-lg">🔊</span>
+					</div>
+					<p class="text-xs text-base-content/50 mt-1">Controls the Waveshare ES8311 DAC output level</p>
 				</div>
 			</div>
 		</div>

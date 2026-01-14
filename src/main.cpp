@@ -108,11 +108,56 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 // Voice alerts tracking - announces priority alert when no app is connected
 static Band lastVoiceAlertBand = BAND_NONE;
 static Direction lastVoiceAlertDirection = DIR_NONE;
-static uint16_t lastVoiceAlertFrequency = 0;  // Track frequency to avoid re-announcing same alert
+static uint16_t lastVoiceAlertFrequency = 0xFFFF;  // Track frequency to avoid re-announcing same alert (0xFFFF = none)
 static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce when it changes
 static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
 static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
+
+// Secondary alert tracking - announce non-priority alerts once
+// Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
+static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
+static uint8_t announcedAlertCount = 0;
+static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
+static unsigned long priorityStableSince = 0;  // When priority alert became stable
+static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
+static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
+
+// Helper functions for secondary alert tracking
+// Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
+static uint32_t makeAlertId(Band band, uint16_t freq) {
+    return ((uint32_t)band << 16) | freq;
+}
+
+static bool isAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    for (int i = 0; i < announcedAlertCount; i++) {
+        if (announcedAlertIds[i] == id) return true;
+    }
+    return false;
+}
+
+static void markAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    if (announcedAlertCount < 10 && !isAlertAnnounced(band, freq)) {
+        announcedAlertIds[announcedAlertCount++] = id;
+    }
+}
+
+static void clearAnnouncedAlerts() {
+    announcedAlertCount = 0;
+    memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+}
+
+static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
+    switch (band) {
+        case BAND_LASER: return settings.secondaryLaser;
+        case BAND_KA:    return settings.secondaryKa;
+        case BAND_K:     return settings.secondaryK;
+        case BAND_X:     return settings.secondaryX;
+        default:         return false;
+    }
+}
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -816,9 +861,21 @@ void processBLEData() {
                     
                     unsigned long now = millis();
                     uint16_t currentFreq = (uint16_t)priority.frequency;
+                    // Check if this is a different alert (band OR frequency changed)
+                    // This handles Laser correctly - even though freq=0, band change triggers new announcement
+                    bool bandChanged = (priority.band != lastVoiceAlertBand);
                     bool frequencyChanged = (currentFreq != lastVoiceAlertFrequency);
+                    bool alertChanged = bandChanged || frequencyChanged;
                     bool directionChanged = (priority.direction != lastVoiceAlertDirection);
                     bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+                    
+                    // Track priority stability for secondary alerts (use band+freq combo)
+                    uint32_t currentAlertId = makeAlertId(priority.band, currentFreq);
+                    static uint32_t lastPriorityAlertId = 0xFFFFFFFF;
+                    if (currentAlertId != lastPriorityAlertId) {
+                        lastPriorityAlertId = currentAlertId;
+                        priorityStableSince = now;
+                    }
                     
                     // Convert V1 direction to audio direction
                     // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
@@ -835,11 +892,13 @@ void processBLEData() {
                     bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
                     bool bogeyCountCooldownPassed = (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
                     
+                    // PRIORITY ALERT ANNOUNCEMENTS
                     // Logic:
-                    // - New frequency (or first alert): full announcement based on voice mode setting
-                    // - Same frequency but direction changed: direction + bogey count if changed
-                    // - Same frequency, same direction, but bogey count changed: direction + new count (shorter cooldown)
-                    if (frequencyChanged && cooldownPassed) {
+                    // - New alert (band or freq changed): full announcement based on voice mode setting
+                    // - Same alert but direction changed: direction + bogey count if changed
+                    // - Same alert, same direction, but bogey count changed: direction + new count (shorter cooldown)
+                    bool priorityAnnounced = false;
+                    if (alertChanged && cooldownPassed) {
                         // New alert - full announcement based on mode
                         AlertBand audioBand;
                         bool validBand = true;
@@ -852,7 +911,7 @@ void processBLEData() {
                         }
                         
                         if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] New alert: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
+                            DEBUG_LOGF("[VoiceAlert] New priority: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
                                        (int)audioBand, currentFreq, (int)audioDir,
                                        (int)settings.voiceAlertMode, settings.voiceDirectionEnabled, alertCount);
                             play_frequency_voice(audioBand, currentFreq, audioDir,
@@ -862,9 +921,12 @@ void processBLEData() {
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertFrequency = currentFreq;
                             lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                            lastVoiceAlertTime = millis();
+                            lastVoiceAlertTime = now;
+                            lastPriorityAnnouncementTime = now;
+                            markAlertAnnounced(priority.band, currentFreq);
+                            priorityAnnounced = true;
                         }
-                    } else if (!frequencyChanged && directionChanged && cooldownPassed && 
+                    } else if (!alertChanged && directionChanged && cooldownPassed && 
                                settings.voiceDirectionEnabled) {
                         // Same alert changed direction - announce direction + bogey count if changed
                         uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
@@ -873,8 +935,10 @@ void processBLEData() {
                         play_direction_only(audioDir, bogeyCountToAnnounce);
                         lastVoiceAlertDirection = priority.direction;
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                        lastVoiceAlertTime = millis();
-                    } else if (!frequencyChanged && !directionChanged && bogeyCountChanged && 
+                        lastVoiceAlertTime = now;
+                        lastPriorityAnnouncementTime = now;
+                        priorityAnnounced = true;
+                    } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
                                bogeyCountCooldownPassed && settings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
                         // Uses shorter cooldown (2s) to be more responsive to count changes
@@ -882,9 +946,68 @@ void processBLEData() {
                                    currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
                         play_direction_only(audioDir, (uint8_t)alertCount);
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                        lastVoiceAlertTime = millis();
+                        lastVoiceAlertTime = now;
+                        lastPriorityAnnouncementTime = now;
+                        priorityAnnounced = true;
                     }
-                    // else: same alert, same direction, same count - no announcement needed
+                    
+                    // SECONDARY ALERT ANNOUNCEMENTS
+                    // Only if: master toggle enabled, priority stable, gap after priority announcement
+                    // Secondary alerts are announced once when they appear - no direction/bogey updates
+                    if (!priorityAnnounced && 
+                        settings.announceSecondaryAlerts &&
+                        alertCount > 1 &&
+                        (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
+                        (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS)) {
+                        
+                        // Check non-priority alerts for unannounced frequencies
+                        for (int i = 0; i < alertCount; i++) {
+                            const AlertData& alert = currentAlerts[i];
+                            if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            
+                            uint16_t alertFreq = (uint16_t)alert.frequency;
+                            
+                            // Skip priority alert (compare band+freq combo, not just freq)
+                            if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                            
+                            // Skip if already announced
+                            if (isAlertAnnounced(alert.band, alertFreq)) continue;
+                            
+                            // Check band filter
+                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                            
+                            // Announce this secondary alert
+                            AlertBand audioBand;
+                            bool validBand = true;
+                            switch (alert.band) {
+                                case BAND_LASER: audioBand = AlertBand::LASER; break;
+                                case BAND_KA:    audioBand = AlertBand::KA;    break;
+                                case BAND_K:     audioBand = AlertBand::K;     break;
+                                case BAND_X:     audioBand = AlertBand::X;     break;
+                                default:         validBand = false;            break;
+                            }
+                            
+                            if (validBand) {
+                                AlertDirection secDir;
+                                if (alert.direction & DIR_FRONT) {
+                                    secDir = AlertDirection::AHEAD;
+                                } else if (alert.direction & DIR_REAR) {
+                                    secDir = AlertDirection::BEHIND;
+                                } else {
+                                    secDir = AlertDirection::SIDE;
+                                }
+                                
+                                DEBUG_LOGF("[VoiceAlert] Secondary: band=%d freq=%u dir=%d\n", 
+                                           (int)audioBand, alertFreq, (int)secDir);
+                                // Secondary alerts: same voice mode, but no bogey count (keep it brief)
+                                play_frequency_voice(audioBand, alertFreq, secDir,
+                                                     settings.voiceAlertMode, settings.voiceDirectionEnabled, 1);
+                                markAlertAnnounced(alert.band, alertFreq);
+                                lastVoiceAlertTime = now;  // Use same cooldown
+                                break;  // Only announce one secondary per cycle
+                            }
+                        }
+                    }
                 }
 
                 // V1 is source of truth for mute state - no auto-unmute logic
@@ -906,8 +1029,10 @@ void processBLEData() {
                 // Reset voice alert tracking when alerts clear
                 lastVoiceAlertBand = BAND_NONE;
                 lastVoiceAlertDirection = DIR_NONE;
-                lastVoiceAlertFrequency = 0;
+                lastVoiceAlertFrequency = 0xFFFF;
                 lastVoiceAlertBogeyCount = 0;
+                clearAnnouncedAlerts();
+                priorityStableSince = 0;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();

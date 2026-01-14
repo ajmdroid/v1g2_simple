@@ -1311,6 +1311,22 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("muteVoiceIfVolZero")) {
         settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
     }
+    // Secondary alert settings
+    if (server.hasArg("announceSecondaryAlerts")) {
+        settingsManager.setAnnounceSecondaryAlerts(server.arg("announceSecondaryAlerts") == "true" || server.arg("announceSecondaryAlerts") == "1");
+    }
+    if (server.hasArg("secondaryLaser")) {
+        settingsManager.setSecondaryLaser(server.arg("secondaryLaser") == "true" || server.arg("secondaryLaser") == "1");
+    }
+    if (server.hasArg("secondaryKa")) {
+        settingsManager.setSecondaryKa(server.arg("secondaryKa") == "true" || server.arg("secondaryKa") == "1");
+    }
+    if (server.hasArg("secondaryK")) {
+        settingsManager.setSecondaryK(server.arg("secondaryK") == "true" || server.arg("secondaryK") == "1");
+    }
+    if (server.hasArg("secondaryX")) {
+        settingsManager.setSecondaryX(server.arg("secondaryX") == "true" || server.arg("secondaryX") == "1");
+    }
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -1397,6 +1413,11 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
     doc["brightness"] = s.brightness;
     doc["voiceVolume"] = s.voiceVolume;
+    doc["announceSecondaryAlerts"] = s.announceSecondaryAlerts;
+    doc["secondaryLaser"] = s.secondaryLaser;
+    doc["secondaryKa"] = s.secondaryKa;
+    doc["secondaryK"] = s.secondaryK;
+    doc["secondaryX"] = s.secondaryX;
     
     String json;
     serializeJson(doc, json);
