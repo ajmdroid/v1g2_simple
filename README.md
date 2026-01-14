@@ -80,14 +80,24 @@ WiFi is **off by default** to save power. To access web settings:
 
 The display has a built-in speaker that announces alerts:
 
+### Priority Alerts
 - **New alert:** Full announcement with band, frequency, and direction (e.g., "Ka 34.712 ahead")
 - **Direction change:** Direction-only announcement when same alert moves (e.g., "behind")
+- **Bogey count:** Optionally append "2 bogeys", "3 bogeys" when multiple alerts active
+- **Laser:** Always includes direction ("Laser ahead") since there's no frequency to announce
+
+### Secondary Alerts (Optional)
+When enabled, non-priority alerts are announced after the priority stabilizes:
+- **Per-band filters:** Choose which bands (Ka, K, X, Laser) to announce as secondary
+- **Threat escalation:** When a secondary alert ramps up to 3+ bars, announces direction breakdown (e.g., "2 bogeys, 1 ahead, 1 behind")
+
+### General
 - **Auto-disable:** Voice alerts mute when a phone app (JBV1) is connected
-- **5-second cooldown:** Prevents chatty rapid-fire announcements
+- **5-second cooldown:** Prevents rapid-fire announcements
 
 **Volume:** Adjust via the **blue slider** in settings mode (short press BOOT).
 
-**Enable/Disable:** Go to `http://192.168.35.5/audio` to toggle voice alerts on/off.
+**Configure:** Go to `http://192.168.35.5/audio` to customize voice content, direction, bogey count, and secondary alerts.
 
 ---
 

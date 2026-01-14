@@ -150,19 +150,19 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~1395 | Application entry, loop, touch handling |
-| `ble_client.cpp` | ~1735 | NimBLE client/server, V1 connection |
-| `display.cpp` | ~3155 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | ~1395 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `packet_parser.cpp` | ~540 | ESP packet framing and decoding |
-| `settings.cpp` | ~770 | Preferences (NVS) storage |
-| `v1_profiles.cpp` | ~575 | Profile JSON on SD/LittleFS |
+| `main.cpp` | ~1645 | Application entry, loop, touch handling, voice alert logic |
+| `ble_client.cpp` | ~1743 | NimBLE client/server, V1 connection |
+| `display.cpp` | ~3204 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
+| `wifi_manager.cpp` | ~1451 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `audio_beep.cpp` | ~1178 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` | ~863 | Preferences (NVS) storage |
+| `v1_profiles.cpp` | ~574 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
-| `audio_beep.cpp` | ~930 | ES8311 DAC, I2S audio, voice alerts |
-| `storage_manager.cpp` | ~65 | SD/LittleFS mount abstraction |
+| `packet_parser.cpp` | ~453 | ESP packet framing and decoding |
+| `storage_manager.cpp` | ~63 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
 | `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
-| `perf_metrics.cpp` | ~155 | Latency tracking (ArduinoJson) |
+| `perf_metrics.cpp` | ~156 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -476,9 +476,14 @@ Layout zones (left to right):
 
 When multiple alerts are active simultaneously, secondary alerts appear as compact cards below the main alert:
 
-- **Main alert:** Full-size display (frequency, bars, direction)
-- **Secondary alerts:** Compact cards showing band, direction, and signal strength
-- **Automatic:** Mode activates automatically when 2+ alerts are present
+- **Main alert:** Full-size display (frequency, 8-bar signal meter, direction arrows)
+- **Secondary alerts:** Compact cards showing:
+  - Band indicator (color-coded: Laser/Ka/K/X)
+  - Frequency in MHz (e.g., "34712")
+  - Direction arrow (front/side/rear)
+  - Signal strength meter (color-coded bars matching main display)
+- **Fixed layout:** Secondary row has fixed height; cards don't cause layout shifts
+- **Automatic:** Mode activates when 2+ alerts are present
 
 **Source:** [src/display.cpp](src/display.cpp#L1690-L1880) (drawSecondaryAlerts)
 
@@ -606,27 +611,54 @@ The `voiceAlertMode` setting controls what information is announced:
 
 **Migration:** Old `voiceAlerts` boolean is automatically migrated: `true` → `VOICE_MODE_BAND_FREQ`, `false` → `VOICE_MODE_DISABLED`
 
-### Voice Announcement Logic
+### Priority Alert Announcements
 
-Voice alerts trigger when:
+Voice alerts for the priority (strongest) alert trigger when:
 1. **voiceAlertMode** is not `VOICE_MODE_DISABLED`
 2. **No phone app is connected** (BLE proxy has no subscribers)
-3. **Alert is not muted** on the V1 (user hasn't dismissed it)
+3. **Alert is not muted** on the V1
 4. **Priority alert changes:**
    - **New frequency:** Full announcement based on voiceAlertMode
    - **Direction change only:** Direction-only announcement ("ahead", "behind", "side")
+   - **Bogey count change:** Direction + new count (if announceBogeyCount enabled)
 5. **Cooldown passed** (5 seconds since last announcement)
 
 Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 - New alert: `"Ka 34.712 ahead"` (band, frequency in GHz, direction)
 - Multiple bogeys: `"Ka 34.712 ahead 2 bogeys"` (includes count when > 1)
 - Direction change: `"behind"` (direction only, same alert moved)
+- Laser alert: `"Laser ahead"` (no frequency, always includes direction when enabled)
 
-**Source:** [src/main.cpp](src/main.cpp#L795-L860) (voice alert logic)
+**Source:** [src/main.cpp](src/main.cpp#L880-L980) (voice alert logic)
+
+### Secondary Alert Announcements
+
+When enabled, non-priority alerts are announced after the priority stabilizes:
+
+**Settings:**
+- `announceSecondaryAlerts` - Master toggle (default: false)
+- `secondaryLaser` - Announce secondary Laser alerts (default: true)
+- `secondaryKa` - Announce secondary Ka alerts (default: true)
+- `secondaryK` - Announce secondary K alerts (default: false)
+- `secondaryX` - Announce secondary X alerts (default: false)
+
+**Timing:**
+- Wait 1 second after priority alert stabilizes
+- Wait additional 1.5 seconds since last voice alert
+- Announce each qualifying secondary alert once
+
+**Threat Escalation:**
+When a secondary alert signal strength ramps up to 3+ bars, a direction breakdown is announced:
+- Format: `"[N] bogeys, [X] ahead, [Y] behind, [Z] side"` (skips directions with zero count)
+- Example: `"2 bogeys, 1 ahead, 1 behind"`
+- Each alert only triggers escalation once (tracked by band + frequency)
+- Respects global mute state from V1
+
+**Source:** [src/main.cpp](src/main.cpp#L1000-L1100) (secondary alert logic)
 
 ### Audio Files
 
-125 pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 22kHz sample rate:
+Pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 22kHz sample rate:
 
 | Category | Files | Example |
 |----------|-------|---------|
@@ -634,6 +666,7 @@ Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 | Directions | 3 | `dir_ahead.mul`, `dir_behind.mul`, `dir_side.mul` |
 | Digits | 10 | `digit_0.mul` through `digit_9.mul` |
 | Number words | 100 | `tens_00.mul` through `tens_99.mul` |
+| GHz prefixes | 3 | `ghz_10.mul`, `ghz_24.mul`, `ghz_34.mul` (X, K, Ka bands) |
 | Bogey count | 1 | `bogeys.mul` - spoken "bogeys" for multi-alert announcements |
 | Special | 1 | `vol0_warning.mul` - "Warning, volume zero" |
 
@@ -656,12 +689,18 @@ Volume mapping: `0% = mute, 1-100% maps to 0x90-0xBF`
 ### Audio API Functions
 
 ```cpp
-// Full frequency announcement: "Ka 34.712 ahead"
-void play_frequency_voice(AlertBand band, uint16_t freqMhz, AlertDirection dir);
+// Full frequency announcement: "Ka 34.712 ahead 2 bogeys"
+void play_frequency_voice(AlertBand band, uint16_t freqMhz, AlertDirection dir,
+                          VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount);
 
-// Direction-only announcement: "ahead", "behind", "side"
-// Used when same alert changes direction (avoids re-announcing band/freq)
-void play_direction_only(AlertDirection dir);
+// Band-only announcement: "Ka", "Laser"
+void play_band_only(AlertBand band);
+
+// Direction-only announcement: "ahead", "behind", "side" (optional bogey count)
+void play_direction_only(AlertDirection dir, uint8_t bogeyCount = 0);
+
+// Bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (for threat escalation)
+void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 
 // Set volume (0=mute, 1-100 maps to DAC range)
 void audio_set_volume(int level);
@@ -670,7 +709,7 @@ void audio_set_volume(int level);
 bool audio_init();
 ```
 
-**Source:** [src/audio_beep.h](src/audio_beep.h#L1-L47)
+**Source:** [src/audio_beep.h](src/audio_beep.h#L1-L60)
 
 ### Settings Screen
 
@@ -736,8 +775,15 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
 | voiceVol | uint8 | 75 | Voice alert volume 0-100% |
-| voiceAlerts | bool | true | Voice alerts enabled |
+| voiceMode | uint8 | 3 | Voice mode: 0=off, 1=band, 2=freq, 3=band+freq |
+| voiceDir | bool | true | Include direction in voice announcements |
+| bogeyCount | bool | true | Announce bogey count ("2 bogeys") |
 | muteVoiceZero | bool | false | Mute voice when V1 volume is 0 |
+| secAlerts | bool | false | Announce secondary (non-priority) alerts |
+| secLaser | bool | true | Announce secondary Laser alerts |
+| secKa | bool | true | Announce secondary Ka alerts |
+| secK | bool | false | Announce secondary K alerts |
+| secX | bool | false | Announce secondary X alerts |
 | autoPush | bool | false | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
@@ -830,10 +876,16 @@ Controls:
 ### Audio Page (`/audio`)
 
 Controls:
-- **Enable Voice Alerts:** Master toggle for spoken alert announcements
+- **Voice Content:** Dropdown to select announcement style (Disabled / Band Only / Frequency Only / Band + Frequency)
+- **Include Direction:** Toggle to append "ahead", "side", or "behind" to announcements
+- **Announce Bogey Count:** Toggle to append "2 bogeys", "3 bogeys" when multiple alerts active
 - **Mute Voice at Volume 0:** Skip voice alerts when V1 volume is set to 0 (warning still plays)
 
-Voice alerts announce the priority alert's band and direction (e.g., "Ka ahead") through the built-in speaker when no phone app is connected via BLE proxy.
+**Secondary Alert Announcements:**
+- **Announce Secondary Alerts:** Master toggle for non-priority alert announcements
+- **Per-band filters:** When secondary enabled, choose which bands to announce (Laser, Ka, K, X)
+
+Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. When secondary alerts ramp up to 3+ bars, a direction breakdown is announced (e.g., "2 bogeys, 1 ahead, 1 behind").
 
 **Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 
