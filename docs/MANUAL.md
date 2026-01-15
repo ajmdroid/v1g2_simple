@@ -3,13 +3,13 @@
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
 
-**Version:** 2.3.1  
+**Version:** 2.3.3  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
 ---
 
-## Recent Changes (v2.3.1)
+## Recent Changes (v2.3.3)
 
 - **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) to JSON and restore from backup via web UI (`/settings` page).
 - **Volume Indicator Centered:** Volume indicator now vertically centered between bogey counter and BLE icon for better visual balance.
@@ -1663,4 +1663,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v2.3.1.*
+*Document generated from source code analysis. Last verified against v2.3.3.*
