@@ -1,0 +1,142 @@
+name: Auto Version & Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'interface/src/**'
+      - 'platformio.ini'
+
+permissions:
+  contents: write
+
+jobs:
+  # First, verify the build passes before any version changes
+  verify-build:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Check if this is a version bump commit
+        id: check
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if [[ "$COMMIT_MSG" == "chore: bump version"* ]] || [[ "$COMMIT_MSG" == "chore(release):"* ]]; then
+            echo "This is a version bump commit, skipping release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "This is a regular commit, proceeding with release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Setup Node.js
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+      
+      - name: Setup Python
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          pip install platformio
+          cd interface && npm ci
+      
+      - name: Build web interface
+        if: steps.check.outputs.should_release == 'true'
+        run: cd interface && npm run deploy
+      
+      - name: Build firmware (Mac/Linux)
+        if: steps.check.outputs.should_release == 'true'
+        run: pio run -e waveshare-349
+      
+      - name: Build firmware (Windows)
+        if: steps.check.outputs.should_release == 'true'
+        run: pio run -e waveshare-349-windows
+      
+      - name: All checks passed
+        if: steps.check.outputs.should_release == 'true'
+        run: echo "✅ Build verification passed - safe to release"
+
+  # If build passes, bump version and create tag
+  version-and-tag:
+    needs: verify-build
+    if: needs.verify-build.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Get current version and calculate next
+        id: version
+        run: |
+          # Get the latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Parse version components
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          
+          # Increment patch version
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+          
+          echo "New version: $NEW_VERSION"
+          echo "New tag: $NEW_TAG"
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+      
+      - name: Update version in config.h
+        run: |
+          sed -i 's/#define FIRMWARE_VERSION ".*"/#define FIRMWARE_VERSION "${{ steps.version.outputs.version }}"/' include/config.h
+      
+      - name: Update version in manifest.json
+        run: |
+          sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
+      
+      - name: Update version in MANUAL.md
+        run: |
+          sed -i 's/## V1 Simple Display - Version .*/## V1 Simple Display - Version ${{ steps.version.outputs.version }}/' docs/MANUAL.md
+      
+      - name: Commit version bump
+        run: |
+          git add include/config.h docs/install/manifest.json docs/MANUAL.md
+          git commit -m "chore(release): bump version to ${{ steps.version.outputs.version }}"
+          git push origin main
+      
+      - name: Create and push tag
+        run: |
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+      
+      - name: Release triggered
+        run: |
+          echo "✅ Version bumped to ${{ steps.version.outputs.version }}"
+          echo "✅ Tag ${{ steps.version.outputs.tag }} pushed"
+          echo "➡️ Release workflow will now build and deploy"

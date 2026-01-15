@@ -1,38 +1,23 @@
-name: Build Firmware & Web Interface
+name: CI Build Check
 
 on:
   # Manual trigger from GitHub Actions tab
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build type'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
   
-  # Auto-trigger on push to main/master/dev
+  # Build on dev branch pushes  
   push:
     branches:
-      - main
-      - master
       - dev
     paths:
       - 'src/**'
       - 'include/**'
       - 'interface/**'
       - 'platformio.ini'
-      - '.github/workflows/build.yml'
-      - 'package-lock.json'
-      - 'interface/package-lock.json'
   
-  # Auto-trigger on pull requests
+  # Validate all PRs to main (gate for merging)
   pull_request:
     branches:
       - main
-      - master
 
 jobs:
   build:
@@ -199,31 +184,3 @@ jobs:
         chmod +x build.sh
         ./build.sh
         echo "✅ Windows build.sh completed successfully"
-
-  # Optional: Create a release when tagged
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, build-windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    steps:
-    - name: 📥 Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: firmware-${{ github.sha }}
-        path: artifacts/
-    
-    - name: 📦 Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          artifacts/firmware.bin
-          artifacts/bootloader.bin
-          artifacts/partitions.bin
-          artifacts/littlefs.bin
-          artifacts/BUILD_INFO.txt
-        draft: false
-        prerelease: false
-        generate_release_notes: true
