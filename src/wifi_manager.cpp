@@ -401,6 +401,10 @@ void WiFiManager::setupWebServer() {
         server.send(200, "application/json", "{\"success\":true,\"active\":false}");
     });
     
+    // Settings backup/restore API routes
+    server.on("/api/settings/backup", HTTP_GET, [this]() { handleSettingsBackup(); });
+    server.on("/api/settings/restore", HTTP_POST, [this]() { handleSettingsRestore(); });
+    
     // Debug API routes (performance metrics and event ring)
     server.on("/api/debug/metrics", HTTP_GET, [this]() { handleDebugMetrics(); });
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
@@ -1448,4 +1452,227 @@ void WiFiManager::handleDebugEnable() {
     }
     perfMetricsSetDebug(enable);
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
+}
+
+// ============= Settings Backup/Restore API Handlers =============
+
+void WiFiManager::handleSettingsBackup() {
+    markUiActivity();
+    Serial.println("[HTTP] GET /api/settings/backup");
+    
+    const V1Settings& s = settingsManager.get();
+    JsonDocument doc;
+    
+    // Metadata
+    doc["_version"] = 2;  // Backup format version
+    doc["_type"] = "v1simple_backup";
+    doc["_timestamp"] = millis();
+    
+    // WiFi settings (exclude password for security)
+    doc["apSSID"] = s.apSSID;
+    // Note: password not included in backup for security
+    
+    // BLE settings
+    doc["proxyBLE"] = s.proxyBLE;
+    doc["proxyName"] = s.proxyName;
+    
+    // Display settings
+    doc["brightness"] = s.brightness;
+    doc["displayStyle"] = (int)s.displayStyle;
+    doc["turnOffDisplay"] = s.turnOffDisplay;
+    
+    // All colors (RGB565)
+    doc["colorBogey"] = s.colorBogey;
+    doc["colorFrequency"] = s.colorFrequency;
+    doc["colorArrowFront"] = s.colorArrowFront;
+    doc["colorArrowSide"] = s.colorArrowSide;
+    doc["colorArrowRear"] = s.colorArrowRear;
+    doc["colorBandL"] = s.colorBandL;
+    doc["colorBandKa"] = s.colorBandKa;
+    doc["colorBandK"] = s.colorBandK;
+    doc["colorBandX"] = s.colorBandX;
+    doc["colorWiFiIcon"] = s.colorWiFiIcon;
+    doc["colorBleConnected"] = s.colorBleConnected;
+    doc["colorBleDisconnected"] = s.colorBleDisconnected;
+    doc["colorBar1"] = s.colorBar1;
+    doc["colorBar2"] = s.colorBar2;
+    doc["colorBar3"] = s.colorBar3;
+    doc["colorBar4"] = s.colorBar4;
+    doc["colorBar5"] = s.colorBar5;
+    doc["colorBar6"] = s.colorBar6;
+    doc["colorMuted"] = s.colorMuted;
+    doc["colorPersisted"] = s.colorPersisted;
+    doc["colorVolumeMain"] = s.colorVolumeMain;
+    doc["colorVolumeMute"] = s.colorVolumeMute;
+    doc["freqUseBandColor"] = s.freqUseBandColor;
+    
+    // Display visibility
+    doc["hideWifiIcon"] = s.hideWifiIcon;
+    doc["hideProfileIndicator"] = s.hideProfileIndicator;
+    doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["hideBleIcon"] = s.hideBleIcon;
+    doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    
+    // Voice settings
+    doc["voiceAlertMode"] = (int)s.voiceAlertMode;
+    doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
+    doc["announceBogeyCount"] = s.announceBogeyCount;
+    doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
+    doc["voiceVolume"] = s.voiceVolume;
+    doc["announceSecondaryAlerts"] = s.announceSecondaryAlerts;
+    doc["secondaryLaser"] = s.secondaryLaser;
+    doc["secondaryKa"] = s.secondaryKa;
+    doc["secondaryK"] = s.secondaryK;
+    doc["secondaryX"] = s.secondaryX;
+    
+    // Auto-push slot settings
+    doc["autoPushEnabled"] = s.autoPushEnabled;
+    doc["activeSlot"] = s.activeSlot;
+    doc["slot0Name"] = s.slot0Name;
+    doc["slot1Name"] = s.slot1Name;
+    doc["slot2Name"] = s.slot2Name;
+    doc["slot0Color"] = s.slot0Color;
+    doc["slot1Color"] = s.slot1Color;
+    doc["slot2Color"] = s.slot2Color;
+    doc["slot0Volume"] = s.slot0Volume;
+    doc["slot1Volume"] = s.slot1Volume;
+    doc["slot2Volume"] = s.slot2Volume;
+    doc["slot0MuteVolume"] = s.slot0MuteVolume;
+    doc["slot1MuteVolume"] = s.slot1MuteVolume;
+    doc["slot2MuteVolume"] = s.slot2MuteVolume;
+    doc["slot0DarkMode"] = s.slot0DarkMode;
+    doc["slot1DarkMode"] = s.slot1DarkMode;
+    doc["slot2DarkMode"] = s.slot2DarkMode;
+    doc["slot0MuteToZero"] = s.slot0MuteToZero;
+    doc["slot1MuteToZero"] = s.slot1MuteToZero;
+    doc["slot2MuteToZero"] = s.slot2MuteToZero;
+    doc["slot0AlertPersist"] = s.slot0AlertPersist;
+    doc["slot1AlertPersist"] = s.slot1AlertPersist;
+    doc["slot2AlertPersist"] = s.slot2AlertPersist;
+    doc["slot0PriorityArrow"] = s.slot0PriorityArrow;
+    doc["slot1PriorityArrow"] = s.slot1PriorityArrow;
+    doc["slot2PriorityArrow"] = s.slot2PriorityArrow;
+    
+    String json;
+    serializeJsonPretty(doc, json);
+    
+    // Send with Content-Disposition header for download
+    server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleSettingsRestore() {
+    markUiActivity();
+    Serial.println("[HTTP] POST /api/settings/restore");
+    
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"No JSON body provided\"}");
+        return;
+    }
+    
+    String body = server.arg("plain");
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, body);
+    
+    if (err) {
+        Serial.printf("[Settings] Restore parse error: %s\n", err.c_str());
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    // Verify backup format
+    if (!doc["_type"].is<const char*>() || String(doc["_type"].as<const char*>()) != "v1simple_backup") {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid backup format\"}");
+        return;
+    }
+    
+    // Restore settings (same logic as restoreFromSD but from JSON body)
+    V1Settings& s = const_cast<V1Settings&>(settingsManager.get());
+    
+    // BLE settings
+    if (doc["proxyBLE"].is<bool>()) settingsManager.setProxyBLE(doc["proxyBLE"]);
+    if (doc["proxyName"].is<const char*>()) settingsManager.setProxyName(doc["proxyName"].as<String>());
+    
+    // Display settings
+    if (doc["brightness"].is<int>()) s.brightness = doc["brightness"];
+    if (doc["displayStyle"].is<int>()) s.displayStyle = (DisplayStyle)doc["displayStyle"].as<int>();
+    if (doc["turnOffDisplay"].is<bool>()) s.turnOffDisplay = doc["turnOffDisplay"];
+    
+    // All colors
+    if (doc["colorBogey"].is<int>()) s.colorBogey = doc["colorBogey"];
+    if (doc["colorFrequency"].is<int>()) s.colorFrequency = doc["colorFrequency"];
+    if (doc["colorArrowFront"].is<int>()) s.colorArrowFront = doc["colorArrowFront"];
+    if (doc["colorArrowSide"].is<int>()) s.colorArrowSide = doc["colorArrowSide"];
+    if (doc["colorArrowRear"].is<int>()) s.colorArrowRear = doc["colorArrowRear"];
+    if (doc["colorBandL"].is<int>()) s.colorBandL = doc["colorBandL"];
+    if (doc["colorBandKa"].is<int>()) s.colorBandKa = doc["colorBandKa"];
+    if (doc["colorBandK"].is<int>()) s.colorBandK = doc["colorBandK"];
+    if (doc["colorBandX"].is<int>()) s.colorBandX = doc["colorBandX"];
+    if (doc["colorWiFiIcon"].is<int>()) s.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorBleConnected"].is<int>()) s.colorBleConnected = doc["colorBleConnected"];
+    if (doc["colorBleDisconnected"].is<int>()) s.colorBleDisconnected = doc["colorBleDisconnected"];
+    if (doc["colorBar1"].is<int>()) s.colorBar1 = doc["colorBar1"];
+    if (doc["colorBar2"].is<int>()) s.colorBar2 = doc["colorBar2"];
+    if (doc["colorBar3"].is<int>()) s.colorBar3 = doc["colorBar3"];
+    if (doc["colorBar4"].is<int>()) s.colorBar4 = doc["colorBar4"];
+    if (doc["colorBar5"].is<int>()) s.colorBar5 = doc["colorBar5"];
+    if (doc["colorBar6"].is<int>()) s.colorBar6 = doc["colorBar6"];
+    if (doc["colorMuted"].is<int>()) s.colorMuted = doc["colorMuted"];
+    if (doc["colorPersisted"].is<int>()) s.colorPersisted = doc["colorPersisted"];
+    if (doc["colorVolumeMain"].is<int>()) s.colorVolumeMain = doc["colorVolumeMain"];
+    if (doc["colorVolumeMute"].is<int>()) s.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
+    
+    // Display visibility
+    if (doc["hideWifiIcon"].is<bool>()) s.hideWifiIcon = doc["hideWifiIcon"];
+    if (doc["hideProfileIndicator"].is<bool>()) s.hideProfileIndicator = doc["hideProfileIndicator"];
+    if (doc["hideBatteryIcon"].is<bool>()) s.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
+    if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    
+    // Voice settings
+    if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
+    if (doc["voiceDirectionEnabled"].is<bool>()) s.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
+    if (doc["announceBogeyCount"].is<bool>()) s.announceBogeyCount = doc["announceBogeyCount"];
+    if (doc["muteVoiceIfVolZero"].is<bool>()) s.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
+    if (doc["voiceVolume"].is<int>()) s.voiceVolume = doc["voiceVolume"];
+    if (doc["announceSecondaryAlerts"].is<bool>()) s.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
+    if (doc["secondaryLaser"].is<bool>()) s.secondaryLaser = doc["secondaryLaser"];
+    if (doc["secondaryKa"].is<bool>()) s.secondaryKa = doc["secondaryKa"];
+    if (doc["secondaryK"].is<bool>()) s.secondaryK = doc["secondaryK"];
+    if (doc["secondaryX"].is<bool>()) s.secondaryX = doc["secondaryX"];
+    
+    // Auto-push slot settings
+    if (doc["autoPushEnabled"].is<bool>()) s.autoPushEnabled = doc["autoPushEnabled"];
+    if (doc["activeSlot"].is<int>()) s.activeSlot = doc["activeSlot"];
+    if (doc["slot0Name"].is<const char*>()) s.slot0Name = doc["slot0Name"].as<String>();
+    if (doc["slot1Name"].is<const char*>()) s.slot1Name = doc["slot1Name"].as<String>();
+    if (doc["slot2Name"].is<const char*>()) s.slot2Name = doc["slot2Name"].as<String>();
+    if (doc["slot0Color"].is<int>()) s.slot0Color = doc["slot0Color"];
+    if (doc["slot1Color"].is<int>()) s.slot1Color = doc["slot1Color"];
+    if (doc["slot2Color"].is<int>()) s.slot2Color = doc["slot2Color"];
+    if (doc["slot0Volume"].is<int>()) s.slot0Volume = doc["slot0Volume"];
+    if (doc["slot1Volume"].is<int>()) s.slot1Volume = doc["slot1Volume"];
+    if (doc["slot2Volume"].is<int>()) s.slot2Volume = doc["slot2Volume"];
+    if (doc["slot0MuteVolume"].is<int>()) s.slot0MuteVolume = doc["slot0MuteVolume"];
+    if (doc["slot1MuteVolume"].is<int>()) s.slot1MuteVolume = doc["slot1MuteVolume"];
+    if (doc["slot2MuteVolume"].is<int>()) s.slot2MuteVolume = doc["slot2MuteVolume"];
+    if (doc["slot0DarkMode"].is<bool>()) s.slot0DarkMode = doc["slot0DarkMode"];
+    if (doc["slot1DarkMode"].is<bool>()) s.slot1DarkMode = doc["slot1DarkMode"];
+    if (doc["slot2DarkMode"].is<bool>()) s.slot2DarkMode = doc["slot2DarkMode"];
+    if (doc["slot0MuteToZero"].is<bool>()) s.slot0MuteToZero = doc["slot0MuteToZero"];
+    if (doc["slot1MuteToZero"].is<bool>()) s.slot1MuteToZero = doc["slot1MuteToZero"];
+    if (doc["slot2MuteToZero"].is<bool>()) s.slot2MuteToZero = doc["slot2MuteToZero"];
+    if (doc["slot0AlertPersist"].is<int>()) s.slot0AlertPersist = doc["slot0AlertPersist"];
+    if (doc["slot1AlertPersist"].is<int>()) s.slot1AlertPersist = doc["slot1AlertPersist"];
+    if (doc["slot2AlertPersist"].is<int>()) s.slot2AlertPersist = doc["slot2AlertPersist"];
+    if (doc["slot0PriorityArrow"].is<bool>()) s.slot0PriorityArrow = doc["slot0PriorityArrow"];
+    if (doc["slot1PriorityArrow"].is<bool>()) s.slot1PriorityArrow = doc["slot1PriorityArrow"];
+    if (doc["slot2PriorityArrow"].is<bool>()) s.slot2PriorityArrow = doc["slot2PriorityArrow"];
+    
+    // Save to flash
+    settingsManager.save();
+    
+    Serial.println("[Settings] Restored from uploaded backup");
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings restored successfully\"}");
 }

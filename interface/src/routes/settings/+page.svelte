@@ -11,6 +11,8 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
+	let restoreFile = $state(null);
+	let restoring = $state(false);
 	
 	onMount(async () => {
 		await fetchSettings();
@@ -55,6 +57,68 @@
 			message = { type: 'error', text: 'Connection error' };
 		} finally {
 			saving = false;
+		}
+	}
+	
+	async function downloadBackup() {
+		try {
+			const res = await fetch('/api/settings/backup');
+			if (res.ok) {
+				const blob = await res.blob();
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = 'v1simple_backup.json';
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				window.URL.revokeObjectURL(url);
+				message = { type: 'success', text: 'Backup downloaded!' };
+			} else {
+				message = { type: 'error', text: 'Failed to download backup' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
+	function handleFileSelect(e) {
+		const file = e.target.files[0];
+		if (file) {
+			restoreFile = file;
+		}
+	}
+	
+	async function restoreBackup() {
+		if (!restoreFile) {
+			message = { type: 'error', text: 'Please select a backup file first' };
+			return;
+		}
+		
+		restoring = true;
+		message = null;
+		
+		try {
+			const text = await restoreFile.text();
+			const res = await fetch('/api/settings/restore', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: text
+			});
+			
+			const data = await res.json();
+			if (res.ok && data.success) {
+				message = { type: 'success', text: 'Settings restored! Refresh to see changes.' };
+				restoreFile = null;
+				// Refresh settings
+				await fetchSettings();
+			} else {
+				message = { type: 'error', text: data.error || 'Failed to restore backup' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Failed to read backup file' };
+		} finally {
+			restoring = false;
 		}
 	}
 	
@@ -145,5 +209,39 @@
 			{/if}
 			Save Settings
 		</button>
+		
+		<!-- Backup & Restore -->
+		<div class="card bg-base-200">
+			<div class="card-body space-y-4">
+				<h2 class="card-title">💾 Backup & Restore</h2>
+				<p class="text-sm text-base-content/60">Download your settings or restore from a backup file.</p>
+				
+				<div class="flex flex-col gap-3">
+					<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
+						⬇️ Download Backup
+					</button>
+					
+					<div class="divider my-0">OR</div>
+					
+					<input 
+						type="file" 
+						accept=".json,application/json"
+						class="file-input file-input-bordered file-input-sm w-full"
+						onchange={handleFileSelect}
+					/>
+					
+					<button 
+						class="btn btn-warning btn-sm" 
+						onclick={restoreBackup}
+						disabled={!restoreFile || restoring}
+					>
+						{#if restoring}
+							<span class="loading loading-spinner loading-sm"></span>
+						{/if}
+						⬆️ Restore from Backup
+					</button>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>

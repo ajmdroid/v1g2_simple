@@ -112,6 +112,8 @@ private:
     void handleDebugEvents();
     void handleDebugEventsClear();
     void handleDebugEnable();
+    void handleSettingsBackup();
+    void handleSettingsRestore();
     void handleNotFound();
     
     // LittleFS file serving (new UI)
