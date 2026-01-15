@@ -1,15 +1,19 @@
 {
   "name": "V1-Simple",
-  "version": "dev",
+  "version": "v2.3.1",
   "home_assistant_domain": "",
   "funding_url": "",
   "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
   "builds": [
     {
       "chipFamily": "ESP32-S3",
       "parts": [
         { "path": "merged-firmware.bin", "offset": 0 }
-      ]
+      ],
+      "post_install": {
+        "message": "Installation complete! Press the RESET button on your device to start V1-Simple."
+      }
     }
   ]
 }

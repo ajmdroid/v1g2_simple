@@ -225,9 +225,26 @@
         <li>Connect your Waveshare ESP32-S3-Touch-LCD-3.49 via USB-C</li>
         <li>Use a data-capable USB cable (not charge-only)</li>
         <li>Close any serial monitors or other apps using the port</li>
-        <li><strong>Put device in bootloader mode:</strong> Hold BOOT → Press RESET → Release BOOT</li>
+        <li><strong>Put device in bootloader mode</strong> (see below)</li>
         <li>Click the Install button below and select your device</li>
       </ol>
+      
+      <div class="warning" style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; margin-top: 1rem;">
+        <strong>⚡ IMPORTANT: Bootloader Mode Required</strong>
+        <div style="margin-top: 0.75rem; font-size: 0.95rem;">
+          <strong style="color: #fbbf24;">🔋 If using battery power:</strong><br>
+          <span style="opacity: 0.9;">Disconnect battery first, then hold BOOT while plugging in USB</span>
+        </div>
+        <div style="margin-top: 0.75rem; font-size: 1rem;">
+          <strong>USB only:</strong><br>
+          1. <strong>Hold BOOT button</strong> (small button on back)<br>
+          2. While holding BOOT, <strong>press RESET button</strong><br>
+          3. <strong>Release BOOT</strong> after pressing RESET
+        </div>
+        <div style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">
+          ✓ The screen will stay blank — this is normal!
+        </div>
+      </div>
       
       <div class="requirements">
         <h3>Requirements</h3>
@@ -254,14 +271,18 @@
       <p class="version">Version: <span id="version">loading...</span></p>
       
       <div class="warning">
-        ⚠️ First install takes ~60 seconds. Don't disconnect! Press RESET after install completes.
+        ⚠️ Install takes ~60 seconds. Don't disconnect!
+      </div>
+      <div class="warning" style="background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e; margin-top: 0.5rem;">
+        ✅ When complete, <strong>press the RESET button</strong> on your device to boot.
       </div>
     </div>
     
     <div class="card">
       <h2>🚀 After Installation</h2>
       <ol class="steps">
-        <li>Device will reboot and show the "SCAN" animation</li>
+        <li><strong>Press RESET button</strong> on the device to boot the firmware</li>
+        <li>Device will show the "SCAN" animation</li>
         <li>Connect to WiFi: <strong>V1-Simple</strong> (password: <strong>setupv1g2</strong>)</li>
         <li>Open <strong>http://192.168.35.5</strong> to configure</li>
         <li>Pair with your V1 Gen2 via the Devices page</li>
