@@ -95,6 +95,11 @@
 			return;
 		}
 		
+		// Confirm before overwriting
+		if (!confirm('⚠️ This will overwrite all your current settings and profiles.\n\nAre you sure you want to restore from this backup?')) {
+			return;
+		}
+		
 		restoring = true;
 		message = null;
 		
