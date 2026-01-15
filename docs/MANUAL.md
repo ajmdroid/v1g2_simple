@@ -52,7 +52,17 @@
 
 ## A. Quick Start
 
-### Build & Flash
+### Web Installer (Easiest)
+
+No development tools needed — just a Chrome browser and USB cable:
+
+👉 **[Install via Web](https://ajmdroid.github.io/v1g2_simple/)**
+
+1. Put device in bootloader mode (hold POWER + GEAR while plugging in USB)
+2. Click "Install V1-Simple" and select your device
+3. Wait for install to complete, then press RESET
+
+### Build from Source
 
 ```bash
 # 1. Clone repository

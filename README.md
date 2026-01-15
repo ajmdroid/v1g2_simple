@@ -8,12 +8,24 @@ A touchscreen display for the Valentine One Gen2 radar detector.
 
 ## Quick Install
 
-### Prerequisites
+### Option 1: Web Installer (Easiest)
+
+No tools needed — just a Chrome browser and USB cable:
+
+👉 **[Install via Web](https://ajmdroid.github.io/v1g2_simple/)**
+
+1. Put device in bootloader mode (hold POWER + GEAR while plugging in USB)
+2. Click "Install V1-Simple" and select your device
+3. Wait for install to complete, then press RESET
+
+### Option 2: Build from Source
+
+#### Prerequisites
 - Visual Studio Code with [PlatformIO extension](https://platformio.org/install/ide?install=vscode)
 - Node.js 18+ (for building web UI)
 - USB-C data cable (not charge-only)
 
-### Build & Flash
+#### Build & Flash
 
 ```bash
 git clone https://github.com/ajmdroid/v1g2_simple
