@@ -4,16 +4,6 @@ on:
   # Manual trigger from GitHub Actions tab
   workflow_dispatch:
   
-  # Build on dev branch pushes  
-  push:
-    branches:
-      - dev
-    paths:
-      - 'src/**'
-      - 'include/**'
-      - 'interface/**'
-      - 'platformio.ini'
-  
   # Validate all PRs to main (gate for merging)
   pull_request:
     branches:
