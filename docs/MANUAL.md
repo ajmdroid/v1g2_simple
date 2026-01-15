@@ -52,6 +52,8 @@
 
 ## A. Quick Start
 
+> ⚠️ **Before updating firmware:** Download a backup of your settings from the Settings page (`/settings` → Download Backup). This preserves your colors, profiles, and configuration.
+
 ### Web Installer (Easiest)
 
 No development tools needed — just a Chrome browser and USB cable:

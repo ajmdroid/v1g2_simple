@@ -8,6 +8,8 @@ A touchscreen display for the Valentine One Gen2 radar detector.
 
 ## Quick Install
 
+> ⚠️ **Before updating firmware:** Download a backup of your settings from the Settings page (`/settings` → Download Backup). This preserves your colors, profiles, and configuration.
+
 ### Option 1: Web Installer (Easiest)
 
 No tools needed — just a Chrome browser and USB cable:
