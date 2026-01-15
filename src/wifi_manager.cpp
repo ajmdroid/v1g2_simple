@@ -1552,6 +1552,12 @@ void WiFiManager::handleSettingsBackup() {
     doc["slot0PriorityArrow"] = s.slot0PriorityArrow;
     doc["slot1PriorityArrow"] = s.slot1PriorityArrow;
     doc["slot2PriorityArrow"] = s.slot2PriorityArrow;
+    doc["slot0ProfileName"] = s.slot0_default.profileName;
+    doc["slot0Mode"] = s.slot0_default.mode;
+    doc["slot1ProfileName"] = s.slot1_highway.profileName;
+    doc["slot1Mode"] = s.slot1_highway.mode;
+    doc["slot2ProfileName"] = s.slot2_comfort.profileName;
+    doc["slot2Mode"] = s.slot2_comfort.mode;
     
     // V1 Profiles backup
     JsonArray profilesArr = doc["profiles"].to<JsonArray>();
@@ -1689,6 +1695,12 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["slot0PriorityArrow"].is<bool>()) s.slot0PriorityArrow = doc["slot0PriorityArrow"];
     if (doc["slot1PriorityArrow"].is<bool>()) s.slot1PriorityArrow = doc["slot1PriorityArrow"];
     if (doc["slot2PriorityArrow"].is<bool>()) s.slot2PriorityArrow = doc["slot2PriorityArrow"];
+    if (doc["slot0ProfileName"].is<const char*>()) s.slot0_default.profileName = doc["slot0ProfileName"].as<String>();
+    if (doc["slot0Mode"].is<int>()) s.slot0_default.mode = static_cast<V1Mode>(doc["slot0Mode"].as<int>());
+    if (doc["slot1ProfileName"].is<const char*>()) s.slot1_highway.profileName = doc["slot1ProfileName"].as<String>();
+    if (doc["slot1Mode"].is<int>()) s.slot1_highway.mode = static_cast<V1Mode>(doc["slot1Mode"].as<int>());
+    if (doc["slot2ProfileName"].is<const char*>()) s.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
+    if (doc["slot2Mode"].is<int>()) s.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
     
     // Restore V1 profiles if present
     int profilesRestored = 0;
