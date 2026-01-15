@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install PlatformIO
+        run: pip install platformio
+      
+      - name: Build web interface
+        run: |
+          cd interface
+          npm ci
+          npm run build
+          cd ..
+      
+      - name: Build firmware
+        run: pio run -e waveshare-349
+      
+      - name: Build filesystem
+        run: pio run -e waveshare-349 -t buildfs
+      
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release
+          cp .pio/build/waveshare-349/bootloader.bin release/
+          cp .pio/build/waveshare-349/partitions.bin release/
+          cp .pio/build/waveshare-349/firmware.bin release/
+          cp .pio/build/waveshare-349/littlefs.bin release/
+          
+          # Update manifest with correct version
+          VERSION=${GITHUB_REF#refs/tags/}
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" docs/install/manifest.json
+          cp docs/install/manifest.json release/
+      
+      - name: Upload artifacts to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/bootloader.bin
+            release/partitions.bin
+            release/firmware.bin
+            release/littlefs.bin
+            release/manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update web installer
+        run: |
+          # Copy binaries to docs/install for GitHub Pages
+          cp release/*.bin docs/install/
+          cp release/manifest.json docs/install/
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/install
+          destination_dir: install
