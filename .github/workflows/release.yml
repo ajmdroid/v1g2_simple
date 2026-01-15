@@ -68,9 +68,13 @@ jobs:
             0x10000 release/firmware.bin \
             0xc90000 release/littlefs.bin
           
-          # Update manifest with correct version
-          VERSION=${GITHUB_REF#refs/tags/}
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" docs/install/manifest.json
+          # Update manifest with correct version (handle tags vs manual triggers)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="dev"
+          fi
+          sed -i "s|\"version\": \".*\"|\"version\": \"$VERSION\"|" docs/install/manifest.json
           cp docs/install/manifest.json release/
       
       - name: Upload artifacts to release
