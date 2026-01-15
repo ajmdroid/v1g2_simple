@@ -19,7 +19,8 @@
 #include <algorithm>
 
 // SD backup file path
-static const char* SETTINGS_BACKUP_PATH = "/v1settings_backup.json";
+static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
+static const int SD_BACKUP_VERSION = 2;  // Increment when adding new fields to backup
 
 // Global instance
 SettingsManager settingsManager;
@@ -669,15 +670,25 @@ void SettingsManager::backupToSD() {
     if (!fs) return;
     
     JsonDocument doc;
-    doc["version"] = 1;
+    doc["_type"] = "v1simple_sd_backup";
+    doc["_version"] = SD_BACKUP_VERSION;
     doc["timestamp"] = millis();
     
-    // Display settings
+    // === WiFi/Network Settings ===
+    // Note: AP password intentionally NOT stored on SD card for security
+    // (SD cards can be removed and read elsewhere)
+    doc["enableWifi"] = settings.enableWifi;
+    doc["apSSID"] = settings.apSSID;
+    doc["proxyBLE"] = settings.proxyBLE;
+    doc["proxyName"] = settings.proxyName;
+    doc["lastV1Address"] = settings.lastV1Address;
+    
+    // === Display Settings ===
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     
-    // All colors (RGB565)
+    // === All Colors (RGB565) ===
     doc["colorBogey"] = settings.colorBogey;
     doc["colorFrequency"] = settings.colorFrequency;
     doc["colorArrowFront"] = settings.colorArrowFront;
@@ -696,15 +707,23 @@ void SettingsManager::backupToSD() {
     doc["colorBar4"] = settings.colorBar4;
     doc["colorBar5"] = settings.colorBar5;
     doc["colorBar6"] = settings.colorBar6;
+    doc["colorMuted"] = settings.colorMuted;
+    doc["colorPersisted"] = settings.colorPersisted;
+    doc["colorVolumeMain"] = settings.colorVolumeMain;
+    doc["colorVolumeMute"] = settings.colorVolumeMute;
+    doc["freqUseBandColor"] = settings.freqUseBandColor;
     
-    // Display toggles
+    // === UI Toggle Settings ===
     doc["hideWifiIcon"] = settings.hideWifiIcon;
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
+    
+    // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
     doc["voiceDirectionEnabled"] = settings.voiceDirectionEnabled;
+    doc["announceBogeyCount"] = settings.announceBogeyCount;
     doc["muteVoiceIfVolZero"] = settings.muteVoiceIfVolZero;
     doc["voiceVolume"] = settings.voiceVolume;
     doc["announceSecondaryAlerts"] = settings.announceSecondaryAlerts;
@@ -713,13 +732,45 @@ void SettingsManager::backupToSD() {
     doc["secondaryK"] = settings.secondaryK;
     doc["secondaryX"] = settings.secondaryX;
     
-    // Slot customizations
+    // === Auto-Push Settings ===
+    doc["autoPushEnabled"] = settings.autoPushEnabled;
+    doc["activeSlot"] = settings.activeSlot;
+    
+    // === Slot 0 Settings ===
     doc["slot0Name"] = settings.slot0Name;
-    doc["slot1Name"] = settings.slot1Name;
-    doc["slot2Name"] = settings.slot2Name;
     doc["slot0Color"] = settings.slot0Color;
+    doc["slot0Volume"] = settings.slot0Volume;
+    doc["slot0MuteVolume"] = settings.slot0MuteVolume;
+    doc["slot0DarkMode"] = settings.slot0DarkMode;
+    doc["slot0MuteToZero"] = settings.slot0MuteToZero;
+    doc["slot0AlertPersist"] = settings.slot0AlertPersist;
+    doc["slot0PriorityArrow"] = settings.slot0PriorityArrow;
+    doc["slot0ProfileName"] = settings.slot0_default.profileName;
+    doc["slot0Mode"] = settings.slot0_default.mode;
+    
+    // === Slot 1 Settings ===
+    doc["slot1Name"] = settings.slot1Name;
     doc["slot1Color"] = settings.slot1Color;
+    doc["slot1Volume"] = settings.slot1Volume;
+    doc["slot1MuteVolume"] = settings.slot1MuteVolume;
+    doc["slot1DarkMode"] = settings.slot1DarkMode;
+    doc["slot1MuteToZero"] = settings.slot1MuteToZero;
+    doc["slot1AlertPersist"] = settings.slot1AlertPersist;
+    doc["slot1PriorityArrow"] = settings.slot1PriorityArrow;
+    doc["slot1ProfileName"] = settings.slot1_highway.profileName;
+    doc["slot1Mode"] = settings.slot1_highway.mode;
+    
+    // === Slot 2 Settings ===
+    doc["slot2Name"] = settings.slot2Name;
     doc["slot2Color"] = settings.slot2Color;
+    doc["slot2Volume"] = settings.slot2Volume;
+    doc["slot2MuteVolume"] = settings.slot2MuteVolume;
+    doc["slot2DarkMode"] = settings.slot2DarkMode;
+    doc["slot2MuteToZero"] = settings.slot2MuteToZero;
+    doc["slot2AlertPersist"] = settings.slot2AlertPersist;
+    doc["slot2PriorityArrow"] = settings.slot2PriorityArrow;
+    doc["slot2ProfileName"] = settings.slot2_comfort.profileName;
+    doc["slot2Mode"] = settings.slot2_comfort.mode;
     
     // Write to file
     File file = fs->open(SETTINGS_BACKUP_PATH, FILE_WRITE);
@@ -732,10 +783,10 @@ void SettingsManager::backupToSD() {
     file.flush();
     file.close();
     
-    Serial.println("[Settings] Backed up to SD card");
+    Serial.println("[Settings] Full backup saved to SD card");
 }
 
-// Restore display/color settings from SD card
+// Restore ALL settings from SD card
 bool SettingsManager::restoreFromSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return false;
@@ -744,12 +795,19 @@ bool SettingsManager::restoreFromSD() {
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
     
-    if (!fs->exists(SETTINGS_BACKUP_PATH)) {
-        Serial.println("[Settings] No SD backup found");
-        return false;
+    // Check both old and new backup paths for compatibility
+    const char* backupPath = SETTINGS_BACKUP_PATH;
+    if (!fs->exists(backupPath)) {
+        // Try legacy path
+        if (fs->exists("/v1settings_backup.json")) {
+            backupPath = "/v1settings_backup.json";
+        } else {
+            Serial.println("[Settings] No SD backup found");
+            return false;
+        }
     }
     
-    File file = fs->open(SETTINGS_BACKUP_PATH, FILE_READ);
+    File file = fs->open(backupPath, FILE_READ);
     if (!file) {
         Serial.println("[Settings] Failed to open SD backup");
         return false;
@@ -764,12 +822,23 @@ bool SettingsManager::restoreFromSD() {
         return false;
     }
     
-    // Restore display settings (using is<T>() for ArduinoJson v7 compatibility)
+    int backupVersion = doc["_version"] | doc["version"] | 1;
+    Serial.printf("[Settings] Restoring from SD backup (version %d)\n", backupVersion);
+    
+    // === WiFi/Network Settings (v2+) ===
+    // Note: AP password NOT restored from SD for security - user must re-enter after restore
+    if (doc["enableWifi"].is<bool>()) settings.enableWifi = doc["enableWifi"];
+    if (doc["apSSID"].is<const char*>()) settings.apSSID = doc["apSSID"].as<String>();
+    if (doc["proxyBLE"].is<bool>()) settings.proxyBLE = doc["proxyBLE"];
+    if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
+    if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
+    
+    // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
     if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
     
-    // Restore all colors
+    // === All Colors ===
     if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
     if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
     if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
@@ -788,21 +857,27 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorBar4"].is<int>()) settings.colorBar4 = doc["colorBar4"];
     if (doc["colorBar5"].is<int>()) settings.colorBar5 = doc["colorBar5"];
     if (doc["colorBar6"].is<int>()) settings.colorBar6 = doc["colorBar6"];
+    if (doc["colorMuted"].is<int>()) settings.colorMuted = doc["colorMuted"];
+    if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
+    if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
+    if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
-    // Restore display toggles
+    // === UI Toggles ===
     if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
-    // Support old voiceAlertsEnabled boolean and new voiceAlertMode
+    
+    // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
         settings.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
     } else if (doc["voiceAlertsEnabled"].is<bool>()) {
-        // Migrate old format
         settings.voiceAlertMode = doc["voiceAlertsEnabled"].as<bool>() ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
     }
     if (doc["voiceDirectionEnabled"].is<bool>()) settings.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
+    if (doc["announceBogeyCount"].is<bool>()) settings.announceBogeyCount = doc["announceBogeyCount"];
     if (doc["muteVoiceIfVolZero"].is<bool>()) settings.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
     if (doc["voiceVolume"].is<int>()) settings.voiceVolume = doc["voiceVolume"];
     if (doc["announceSecondaryAlerts"].is<bool>()) settings.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
@@ -811,16 +886,55 @@ bool SettingsManager::restoreFromSD() {
     if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
     if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
     
-    // Restore slot customizations
-    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
-    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = doc["slot1Name"].as<String>();
-    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = doc["slot2Name"].as<String>();
-    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
-    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
-    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
+    // === Auto-Push Settings (v2+) ===
+    if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
+    if (doc["activeSlot"].is<int>()) settings.activeSlot = doc["activeSlot"];
     
-    // Save restored settings to NVS (without backing up again - avoid loop)
+    // === Slot 0 Full Settings ===
+    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
+    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
+    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = doc["slot0Volume"];
+    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = doc["slot0MuteVolume"];
+    if (doc["slot0DarkMode"].is<bool>()) settings.slot0DarkMode = doc["slot0DarkMode"];
+    if (doc["slot0MuteToZero"].is<bool>()) settings.slot0MuteToZero = doc["slot0MuteToZero"];
+    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = doc["slot0AlertPersist"];
+    if (doc["slot0PriorityArrow"].is<bool>()) settings.slot0PriorityArrow = doc["slot0PriorityArrow"];
+    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = doc["slot0ProfileName"].as<String>();
+    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = static_cast<V1Mode>(doc["slot0Mode"].as<int>());
+    
+    // === Slot 1 Full Settings ===
+    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = doc["slot1Name"].as<String>();
+    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
+    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = doc["slot1Volume"];
+    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = doc["slot1MuteVolume"];
+    if (doc["slot1DarkMode"].is<bool>()) settings.slot1DarkMode = doc["slot1DarkMode"];
+    if (doc["slot1MuteToZero"].is<bool>()) settings.slot1MuteToZero = doc["slot1MuteToZero"];
+    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = doc["slot1AlertPersist"];
+    if (doc["slot1PriorityArrow"].is<bool>()) settings.slot1PriorityArrow = doc["slot1PriorityArrow"];
+    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = doc["slot1ProfileName"].as<String>();
+    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = static_cast<V1Mode>(doc["slot1Mode"].as<int>());
+    
+    // === Slot 2 Full Settings ===
+    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = doc["slot2Name"].as<String>();
+    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
+    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = doc["slot2Volume"];
+    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = doc["slot2MuteVolume"];
+    if (doc["slot2DarkMode"].is<bool>()) settings.slot2DarkMode = doc["slot2DarkMode"];
+    if (doc["slot2MuteToZero"].is<bool>()) settings.slot2MuteToZero = doc["slot2MuteToZero"];
+    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = doc["slot2AlertPersist"];
+    if (doc["slot2PriorityArrow"].is<bool>()) settings.slot2PriorityArrow = doc["slot2PriorityArrow"];
+    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
+    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
+    
+    // Save ALL restored settings to NVS
     preferences.begin("v1settings", false);
+    preferences.putInt("settingsVer", SETTINGS_VERSION);
+    preferences.putBool("enableWifi", settings.enableWifi);
+    preferences.putString("apSSID", settings.apSSID);
+    preferences.putString("apPassword", xorObfuscate(settings.apPassword));
+    preferences.putBool("proxyBLE", settings.proxyBLE);
+    preferences.putString("proxyName", settings.proxyName);
+    preferences.putString("lastV1Addr", settings.lastV1Address);
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
     preferences.putInt("dispStyle", settings.displayStyle);
@@ -842,6 +956,11 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUShort("colorBar4", settings.colorBar4);
     preferences.putUShort("colorBar5", settings.colorBar5);
     preferences.putUShort("colorBar6", settings.colorBar6);
+    preferences.putUShort("colorMuted", settings.colorMuted);
+    preferences.putUShort("colorPersist", settings.colorPersisted);
+    preferences.putUShort("colorVolMain", settings.colorVolumeMain);
+    preferences.putUShort("colorVolMute", settings.colorVolumeMute);
+    preferences.putBool("freqBandCol", settings.freqUseBandColor);
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
@@ -849,15 +968,48 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideVol", settings.hideVolumeIndicator);
     preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
+    preferences.putBool("voiceBogeys", settings.announceBogeyCount);
     preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
+    preferences.putUChar("voiceVol", settings.voiceVolume);
+    preferences.putBool("secAlerts", settings.announceSecondaryAlerts);
+    preferences.putBool("secLaser", settings.secondaryLaser);
+    preferences.putBool("secKa", settings.secondaryKa);
+    preferences.putBool("secK", settings.secondaryK);
+    preferences.putBool("secX", settings.secondaryX);
+    preferences.putBool("autoPush", settings.autoPushEnabled);
+    preferences.putInt("activeSlot", settings.activeSlot);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);
     preferences.putUShort("slot0color", settings.slot0Color);
     preferences.putUShort("slot1color", settings.slot1Color);
     preferences.putUShort("slot2color", settings.slot2Color);
+    preferences.putUChar("slot0vol", settings.slot0Volume);
+    preferences.putUChar("slot1vol", settings.slot1Volume);
+    preferences.putUChar("slot2vol", settings.slot2Volume);
+    preferences.putUChar("slot0mute", settings.slot0MuteVolume);
+    preferences.putUChar("slot1mute", settings.slot1MuteVolume);
+    preferences.putUChar("slot2mute", settings.slot2MuteVolume);
+    preferences.putBool("slot0dark", settings.slot0DarkMode);
+    preferences.putBool("slot1dark", settings.slot1DarkMode);
+    preferences.putBool("slot2dark", settings.slot2DarkMode);
+    preferences.putBool("slot0mz", settings.slot0MuteToZero);
+    preferences.putBool("slot1mz", settings.slot1MuteToZero);
+    preferences.putBool("slot2mz", settings.slot2MuteToZero);
+    preferences.putUChar("slot0persist", settings.slot0AlertPersist);
+    preferences.putUChar("slot1persist", settings.slot1AlertPersist);
+    preferences.putUChar("slot2persist", settings.slot2AlertPersist);
+    preferences.putBool("slot0prio", settings.slot0PriorityArrow);
+    preferences.putBool("slot1prio", settings.slot1PriorityArrow);
+    preferences.putBool("slot2prio", settings.slot2PriorityArrow);
+    preferences.putString("slot0prof", settings.slot0_default.profileName);
+    preferences.putInt("slot0mode", settings.slot0_default.mode);
+    preferences.putString("slot1prof", settings.slot1_highway.profileName);
+    preferences.putInt("slot1mode", settings.slot1_highway.mode);
+    preferences.putString("slot2prof", settings.slot2_comfort.profileName);
+    preferences.putInt("slot2mode", settings.slot2_comfort.mode);
     preferences.end();
     
-    Serial.println("[Settings] Restored from SD backup and saved to NVS");
+    Serial.println("[Settings] ✅ Full restore from SD backup complete!");
     return true;
 }
