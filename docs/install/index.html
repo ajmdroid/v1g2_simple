@@ -220,29 +220,27 @@
     </header>
     
     <div class="card">
-      <h2>📋 Before You Begin</h2>
+      <h2>📋 Web Install Steps</h2>
       <ol class="steps">
-        <li>Connect your Waveshare ESP32-S3-Touch-LCD-3.49 via USB-C</li>
-        <li>Use a data-capable USB cable (not charge-only)</li>
-        <li>Close any serial monitors or other apps using the port</li>
-        <li><strong>Put device in bootloader mode</strong> (see below)</li>
-        <li>Click the Install button below and select your device</li>
+        <li>Have a <strong>data-capable</strong> USB-C cable ready (not charge-only)</li>
+        <li>Close any serial monitors or other apps that may use the port</li>
+        <li>Put device in <strong>bootloader mode</strong> (instructions below)</li>
+        <li>Click <strong>Install</strong> on this page and select your device</li>
       </ol>
       
-      <div class="warning" style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; margin-top: 1rem;">
-        <strong>⚡ IMPORTANT: Bootloader Mode Required</strong>
+      <div class="warning" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #f87171; margin-top: 1rem;">
+        <strong>⚠️ IMPORTANT: Bootloader Mode Required</strong>
+        <div style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.9;">
+          If you're on battery power and already have Simple installed: hold the power button until the device says "Goodbye", then proceed with the steps below.
+        </div>
+      </div>
+      
+      <div class="warning" style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; margin-top: 0.75rem;">
+        <strong>🔌 Bootloader Mode (USB Plug-In Method)</strong>
         <div style="margin-top: 0.75rem; font-size: 0.95rem;">
-          <strong style="color: #fbbf24;">🔋 If using battery power:</strong><br>
-          <span style="opacity: 0.9;">Hold power button until "Goodbye" appears, then hold BOOT while plugging in USB</span>
-        </div>
-        <div style="margin-top: 0.75rem; font-size: 1rem;">
-          <strong>USB only:</strong><br>
-          1. <strong>Hold BOOT button</strong> (small button on back)<br>
-          2. While holding BOOT, <strong>press RESET button</strong><br>
-          3. <strong>Release BOOT</strong> after pressing RESET
-        </div>
-        <div style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">
-          ✓ The screen will stay blank — this is normal!
+          1. Press and hold the <strong>Power</strong> button and <strong>GEAR</strong> button at the same time<br>
+          2. While holding them, plug in the USB-C cable to your computer<br>
+          3. The screen will look "fuzzy" / "pixelated" — <strong>this is normal</strong>
         </div>
       </div>
       
@@ -282,10 +280,10 @@
       <h2>🚀 After Installation</h2>
       <ol class="steps">
         <li><strong>Press RESET button</strong> on the device to boot the firmware</li>
-        <li>Device will show the "SCAN" animation</li>
+        <li>Device will show the "SCAN" animation — <strong>plug in your V1 Gen2</strong> and it will pair automatically</li>
+        <li><strong>Hold the GEAR button</strong> to enable WiFi for configuration</li>
         <li>Connect to WiFi: <strong>V1-Simple</strong> (password: <strong>setupv1g2</strong>)</li>
-        <li>Open <strong>http://192.168.35.5</strong> to configure</li>
-        <li>Pair with your V1 Gen2 via the Devices page</li>
+        <li>Open <strong>http://192.168.35.5</strong> to configure settings</li>
       </ol>
     </div>
     
