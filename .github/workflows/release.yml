@@ -22,8 +22,8 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Install PlatformIO
-        run: pip install platformio
+      - name: Install PlatformIO and esptool
+        run: pip install platformio esptool
       
       - name: Build web interface
         run: |
@@ -43,8 +43,21 @@ jobs:
           mkdir -p release
           cp .pio/build/waveshare-349/bootloader.bin release/
           cp .pio/build/waveshare-349/partitions.bin release/
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin release/
           cp .pio/build/waveshare-349/firmware.bin release/
           cp .pio/build/waveshare-349/littlefs.bin release/
+          
+          # Create merged firmware for web installer
+          esptool --chip esp32s3 merge-bin \
+            -o release/merged-firmware.bin \
+            --flash-mode dio \
+            --flash-freq 80m \
+            --flash-size 16MB \
+            0x0000 release/bootloader.bin \
+            0x8000 release/partitions.bin \
+            0xe000 release/boot_app0.bin \
+            0x10000 release/firmware.bin \
+            0xc90000 release/littlefs.bin
           
           # Update manifest with correct version
           VERSION=${GITHUB_REF#refs/tags/}
@@ -55,10 +68,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release/bootloader.bin
-            release/partitions.bin
-            release/firmware.bin
-            release/littlefs.bin
+            release/merged-firmware.bin
             release/manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
