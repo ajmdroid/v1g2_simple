@@ -784,6 +784,8 @@ void SettingsManager::backupToSD() {
     file.close();
     
     Serial.println("[Settings] Full backup saved to SD card");
+    Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
+                  settings.slot0_default.mode, settings.slot1_highway.mode, settings.slot2_comfort.mode);
 }
 
 // Restore ALL settings from SD card
@@ -925,6 +927,12 @@ bool SettingsManager::restoreFromSD() {
     if (doc["slot2PriorityArrow"].is<bool>()) settings.slot2PriorityArrow = doc["slot2PriorityArrow"];
     if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
     if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
+    
+    // Debug: log what modes were restored
+    Serial.printf("[Settings] Restored modes from backup: slot0Mode=%d (in json: %s), slot1Mode=%d (in json: %s), slot2Mode=%d (in json: %s)\n",
+                  settings.slot0_default.mode, doc["slot0Mode"].is<int>() ? "yes" : "NO",
+                  settings.slot1_highway.mode, doc["slot1Mode"].is<int>() ? "yes" : "NO",
+                  settings.slot2_comfort.mode, doc["slot2Mode"].is<int>() ? "yes" : "NO");
     
     // Save ALL restored settings to NVS
     preferences.begin("v1settings", false);
