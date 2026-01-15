@@ -960,26 +960,24 @@ void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
 }
 
 // Router: calls appropriate bogey counter draw method based on display style
+// Note: Modern style now uses Classic 7-segment for bogey counter (for laser flag support)
+// but keeps Montserrat Bold for frequency display
 void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
-    const V1Settings& s = settingsManager.get();
-    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
-        drawTopCounterModern(symbol, muted, showDot);
-    } else {
-        drawTopCounterClassic(symbol, muted, showDot);
-    }
+    // Always use Classic 7-segment for bogey counter (both styles)
+    // This ensures laser flag ('=') and all symbols render correctly
+    drawTopCounterClassic(symbol, muted, showDot);
 }
 
 void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     // Draw volume indicator below bogey counter: "5V  0M" format
-    // Position: below the bogey counter (x=10), between counter and BLE icon (BLE at y=98)
-    // Classic 7-seg bogey counter is taller than Modern font, so adjust Y accordingly
+    // Position: centered between bogey counter bottom (y=67) and BLE icon top (y=98)
     const V1Settings& s = settingsManager.get();
     const int x = 8;
-    // Classic style: bogey counter ends ~y=67 (scale 2.2), needs more gap
-    // Modern style: bogey counter ends ~y=50 (fontSize 60), fits at y=72
-    const int y = (s.displayStyle == DISPLAY_STYLE_CLASSIC) ? 80 : 72;
+    // Bogey counter ends ~y=67, BLE icon starts ~y=98, text is ~16px tall
+    // Center: 67 + (98-67-16)/2 = 67 + 7.5 ≈ 75
+    const int y = 75;
     const int clearW = 75;
-    const int clearH = 18;  // Text is ~16px, keep well above BLE icon at y=98
+    const int clearH = 18;
     
     // Clear the area first - only clear what we need, BLE icon is at y=98
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
@@ -2187,21 +2185,15 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     uint8_t bandMask = state.activeBands;
     
     // Bogey counter
-    const V1Settings& settings = settingsManager.get();
     char countChar;
-    bool skipTopCounter = false;
     if (priority.band == BAND_LASER) {
-        if (settings.displayStyle == DISPLAY_STYLE_MODERN) {
-            skipTopCounter = true;
-        } else {
-            countChar = '=';
-        }
+        countChar = '=';  // Laser shows 3 horizontal bars
     } else {
         countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
     }
-    if (!skipTopCounter) {
-        drawTopCounter(countChar, state.muted, true);
-    }
+    drawTopCounter(countChar, state.muted, true);
+    
+    const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
     }
