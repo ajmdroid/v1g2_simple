@@ -34,11 +34,11 @@ jobs:
       - name: Install PlatformIO and esptool
         run: pip install platformio esptool
       
-      - name: Build web interface
+      - name: Build and deploy web interface
         run: |
           cd interface
           npm ci
-          npm run build
+          npm run deploy
           cd ..
       
       - name: Build firmware
