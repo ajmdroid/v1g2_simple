@@ -4,7 +4,13 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to build from'
+        required: false
+        default: 'dev'
+        type: string
 
 jobs:
   build:
@@ -12,6 +18,8 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
       
       - name: Set up Python
         uses: actions/setup-python@v5
