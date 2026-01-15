@@ -78,6 +78,7 @@ jobs:
           cp docs/install/manifest.json release/
       
       - name: Upload artifacts to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
