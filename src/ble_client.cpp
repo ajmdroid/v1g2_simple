@@ -1647,6 +1647,9 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
         return;
     }
     
+    // Protect queue operations from concurrent access (BLE callback vs main loop)
+    SemaphoreGuard lock(bleNotifyMutex);
+    
     // Queue packet for async send (non-blocking)
     // Use simple ring buffer with drop-oldest backpressure
     if (proxyQueueCount >= PROXY_QUEUE_SIZE) {
@@ -1706,6 +1709,9 @@ int V1BLEClient::processProxyQueue() {
     if (!proxyEnabled || !proxyClientConnected || proxyQueueCount == 0) {
         return 0;
     }
+    
+    // Protect queue operations from concurrent access (BLE callback vs main loop)
+    SemaphoreGuard lock(bleNotifyMutex);
     
     int sent = 0;
     

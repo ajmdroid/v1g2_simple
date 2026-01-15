@@ -11,6 +11,7 @@
 #include "ble_client.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
+#include "audio_beep.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
@@ -685,6 +686,8 @@ void WiFiManager::handleV1ProfileGet() {
 }
 
 void WiFiManager::handleV1ProfileSave() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
         return;
@@ -744,6 +747,8 @@ void WiFiManager::handleV1ProfileSave() {
 }
 
 void WiFiManager::handleV1ProfileDelete() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
         return;
@@ -755,7 +760,11 @@ void WiFiManager::handleV1ProfileDelete() {
         return;
     }
     JsonDocument doc;
-    deserializeJson(doc, body);
+    DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
     
     String name = doc["name"] | "";
     if (name.isEmpty()) {
@@ -794,6 +803,8 @@ void WiFiManager::handleV1CurrentSettings() {
 }
 
 void WiFiManager::handleV1SettingsPull() {
+    if (!checkRateLimit()) return;
+    
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
@@ -809,6 +820,8 @@ void WiFiManager::handleV1SettingsPull() {
 }
 
 void WiFiManager::handleV1SettingsPush() {
+    if (!checkRateLimit()) return;
+    
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
@@ -988,6 +1001,8 @@ void WiFiManager::handleAutoPushSlotsApi() {
 }
 
 void WiFiManager::handleAutoPushSlotSave() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot") || !server.hasArg("profile") || !server.hasArg("mode")) {
         server.send(400, "application/json", "{\"error\":\"Missing parameters\"}");
         return;
@@ -1071,6 +1086,8 @@ void WiFiManager::handleAutoPushSlotSave() {
 }
 
 void WiFiManager::handleAutoPushActivate() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
         return;
@@ -1091,6 +1108,8 @@ void WiFiManager::handleAutoPushActivate() {
 }
 
 void WiFiManager::handleAutoPushPushNow() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
         return;
@@ -1186,6 +1205,8 @@ void WiFiManager::handleAutoPushStatus() {
 // ============= Display Colors Handlers =============
 
 void WiFiManager::handleDisplayColorsSave() {
+    if (!checkRateLimit()) return;
+    
     Serial.println("[HTTP] POST /api/displaycolors");
     Serial.printf("[HTTP] Args count: %d\n", server.args());
     for (int i = 0; i < server.args(); i++) {
@@ -1274,6 +1295,50 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideVolumeIndicator")) {
         settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
     }
+    // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
+    if (server.hasArg("voiceAlertMode")) {
+        int mode = server.arg("voiceAlertMode").toInt();
+        mode = std::max(0, std::min(mode, 3));
+        settingsManager.setVoiceAlertMode((VoiceAlertMode)mode);
+    }
+    // Voice direction toggle (separate from mode)
+    if (server.hasArg("voiceDirectionEnabled")) {
+        settingsManager.setVoiceDirectionEnabled(server.arg("voiceDirectionEnabled") == "true" || server.arg("voiceDirectionEnabled") == "1");
+    }
+    if (server.hasArg("announceBogeyCount")) {
+        settingsManager.setAnnounceBogeyCount(server.arg("announceBogeyCount") == "true" || server.arg("announceBogeyCount") == "1");
+    }
+    if (server.hasArg("muteVoiceIfVolZero")) {
+        settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
+    }
+    // Secondary alert settings
+    if (server.hasArg("announceSecondaryAlerts")) {
+        settingsManager.setAnnounceSecondaryAlerts(server.arg("announceSecondaryAlerts") == "true" || server.arg("announceSecondaryAlerts") == "1");
+    }
+    if (server.hasArg("secondaryLaser")) {
+        settingsManager.setSecondaryLaser(server.arg("secondaryLaser") == "true" || server.arg("secondaryLaser") == "1");
+    }
+    if (server.hasArg("secondaryKa")) {
+        settingsManager.setSecondaryKa(server.arg("secondaryKa") == "true" || server.arg("secondaryKa") == "1");
+    }
+    if (server.hasArg("secondaryK")) {
+        settingsManager.setSecondaryK(server.arg("secondaryK") == "true" || server.arg("secondaryK") == "1");
+    }
+    if (server.hasArg("secondaryX")) {
+        settingsManager.setSecondaryX(server.arg("secondaryX") == "true" || server.arg("secondaryX") == "1");
+    }
+    if (server.hasArg("brightness")) {
+        int brightness = server.arg("brightness").toInt();
+        brightness = std::max(0, std::min(brightness, 255));
+        settingsManager.updateBrightness((uint8_t)brightness);
+        display.setBrightness((uint8_t)brightness);
+    }
+    if (server.hasArg("voiceVolume")) {
+        int volume = server.arg("voiceVolume").toInt();
+        volume = std::max(0, std::min(volume, 100));
+        settingsManager.updateVoiceVolume((uint8_t)volume);
+        audio_set_volume((uint8_t)volume);
+    }
 
     // Persist all color/visibility changes
     settingsManager.save();
@@ -1286,6 +1351,8 @@ void WiFiManager::handleDisplayColorsSave() {
 }
 
 void WiFiManager::handleDisplayColorsReset() {
+    if (!checkRateLimit()) return;
+    
     // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
     settingsManager.setWiFiIconColor(0x07FF);  // Cyan
@@ -1340,6 +1407,17 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    doc["voiceAlertMode"] = (int)s.voiceAlertMode;
+    doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
+    doc["announceBogeyCount"] = s.announceBogeyCount;
+    doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
+    doc["brightness"] = s.brightness;
+    doc["voiceVolume"] = s.voiceVolume;
+    doc["announceSecondaryAlerts"] = s.announceSecondaryAlerts;
+    doc["secondaryLaser"] = s.secondaryLaser;
+    doc["secondaryKa"] = s.secondaryKa;
+    doc["secondaryK"] = s.secondaryK;
+    doc["secondaryX"] = s.secondaryX;
     
     String json;
     serializeJson(doc, json);

@@ -35,18 +35,19 @@ struct AlertData {
     uint8_t rearStrength;   // 0-6
     uint32_t frequency;     // MHz
     bool isValid;
+    bool isPriority;        // aux0 bit 7 - V1's priority flag
     
     AlertData() : band(BAND_NONE), direction(DIR_NONE), 
                   frontStrength(0), rearStrength(0), 
-                  frequency(0), isValid(false) {}
+                  frequency(0), isValid(false), isPriority(false) {}
 };
 
 // Display state
 struct DisplayState {
     uint8_t activeBands;    // Bitmap of active bands
     Direction arrows;       // Bitmap of arrow directions (from display packet - all active)
-    Direction priorityArrow; // Arrow from priority (strongest) alert only
-    uint8_t signalBars;     // 0-6 signal strength (V1 Gen2)
+    Direction priorityArrow; // Arrow from V1's priority alert (alerts[0])
+    uint8_t signalBars;     // 0-8 signal strength (from V1's LED bitmap)
     bool muted;
     bool systemTest;
     char modeChar;
@@ -60,12 +61,14 @@ struct DisplayState {
     uint32_t v1FirmwareVersion;  // V1 firmware version as integer (e.g., 41028 for 4.1028)
     bool hasV1Version;      // True if we've received version from V1
     bool hasVolumeData;     // True if we've received volume data in display packet
+    uint8_t v1PriorityIndex; // V1's reported priority alert index (0-based)
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
                      modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
                      flashBits(0), bandFlashBits(0), mainVolume(0), muteVolume(0),
-                     v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false) {}
+                     v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false),
+                     v1PriorityIndex(0) {}
     
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+
@@ -74,7 +77,7 @@ struct DisplayState {
 
 class PacketParser {
 public:
-    static constexpr size_t MAX_ALERTS = 10;
+    static constexpr size_t MAX_ALERTS = 15;  // V1 spec supports up to 15 simultaneous alerts
 
     PacketParser();
     
@@ -104,11 +107,13 @@ public:
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
     
-    // Reset priority selection state (call on V1 disconnect to clear stale hysteresis)
+    // Reset priority selection state (no-op now that we trust V1's priority)
     static void resetPriorityState();
     
-    // Reset signal bar decay state (call on V1 disconnect to clear stale smoothing)
-    static void resetSignalBarDecay();
+
+    
+    // Reset alert count tracker (call on V1 disconnect to clear stale assembly state)
+    static void resetAlertCountTracker();
 
 private:
     DisplayState displayState;
@@ -125,7 +130,8 @@ private:
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
     Direction decodeDirection(uint8_t bandArrow) const;
-    uint8_t mapStrengthToBars(Band band, uint8_t raw) const;
+    uint8_t decodeLEDBitmap(uint8_t bitmap) const;  // Convert V1 LED bitmap to bar count (1-8)
+    uint8_t mapStrengthToBars(Band band, uint8_t raw) const;  // Fallback if LED bitmap unavailable
     void decodeMode(const uint8_t* payload, size_t length);
 };
 

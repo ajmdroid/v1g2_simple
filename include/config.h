@@ -54,7 +54,7 @@
 #define BAND_Y              20
 #define BAND_SPACING        80
 #define ARROW_Y             70
-#define BARS_Y              110
+#define BARS_Y              110   // Legacy - not used (vertical bars positioned separately)
 #define BAR_WIDTH           30
 #define BAR_HEIGHT          40
 #define BAR_SPACING         5

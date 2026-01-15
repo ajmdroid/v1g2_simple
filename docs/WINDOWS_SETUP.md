@@ -227,11 +227,12 @@ pio run -e waveshare-349-windows -t uploadfs
 **Note:** Replace `COM4` with your actual port (use `pio device list` to find it). After erase, the device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
 ## 12) Why Windows Uses a Different Environment
-Windows PlatformIO doesn't fully support the newer Arduino ESP32 3.x framework required by GFX Library 1.6.4. The `waveshare-349-windows` environment uses:
-- **GFX Library 1.4.9** (older, stable, ESP32 2.x compatible)
-- **8MB flash partition table** (auto-detected by esptool)
-- Conditional compilation via `WINDOWS_BUILD=1` flag
+
+Both the Mac/Linux (`waveshare-349`) and Windows (`waveshare-349-windows`) environments now use the same pioarduino platform (ESP-IDF 5.x based). The only difference is partition size:
+
+- **waveshare-349:** 16MB flash partitions
+- **waveshare-349-windows:** 8MB flash partitions (for hardware compatibility)
 
 **Flash size note:** The Waveshare ESP32-S3-Touch-LCD-3.49 is advertised as 16MB flash, but esptool detects some units as 8MB. The Windows build uses 8MB partitions to ensure compatibility with all units.
 
-The source code includes `#ifdef WINDOWS_BUILD` blocks to handle API differences between ESP32 Arduino 2.x (Windows) and 3.x (Mac/Linux). Both environments produce functionally identical firmware.
+Both environments produce identical firmware. Use whichever matches your hardware's flash size.

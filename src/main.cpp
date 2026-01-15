@@ -32,6 +32,7 @@
 #include "v1_profiles.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include "audio_beep.h"
 #include "../include/config.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
@@ -69,7 +70,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-const unsigned long DISPLAY_DRAW_MIN_MS = 20;  // Min 20ms between draws (~50fps) to reduce display lag
+static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
@@ -103,6 +104,207 @@ enum class DisplayMode {
     LIVE
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
+
+// Voice alerts tracking - announces priority alert when no app is connected
+static Band lastVoiceAlertBand = BAND_NONE;
+static Direction lastVoiceAlertDirection = DIR_NONE;
+static uint16_t lastVoiceAlertFrequency = 0xFFFF;  // Track frequency to avoid re-announcing same alert (0xFFFF = none)
+static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce when it changes
+static unsigned long lastVoiceAlertTime = 0;
+static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
+static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
+
+// Secondary alert tracking - announce non-priority alerts once
+// Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
+static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
+static uint8_t announcedAlertCount = 0;
+static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
+static unsigned long priorityStableSince = 0;  // When priority alert became stable
+static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
+static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
+
+// Smart threat escalation tracking - detect signals ramping up over time
+// Trigger: was weak + now strong + sustained + not too many bogeys
+static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
+static constexpr int STRONG_THRESHOLD = 4;         // "Now strong" = 4+ bars
+static constexpr unsigned long SUSTAINED_MS = 500; // Must stay strong for 500ms (filter spikes)
+static constexpr unsigned long HISTORY_STALE_MS = 5000;  // Clear history if no update in 5s
+static constexpr int MAX_BOGEYS_FOR_ESCALATION = 4;      // Skip escalation in noisy environments
+
+struct AlertHistory {
+    uint32_t alertId;           // (band << 16) | freq
+    uint8_t currentBars;        // Latest reading
+    uint32_t lastUpdateMs;      // For staleness check
+    uint32_t strongSinceMs;     // When first hit strong threshold (0 = not strong)
+    bool wasWeak;               // True if ever seen at ≤2 bars (never cleared)
+    bool escalationAnnounced;   // One-shot flag
+};
+static AlertHistory alertHistories[10];
+static uint8_t alertHistoryCount = 0;
+
+// Helper functions for secondary alert tracking
+// Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
+static uint32_t makeAlertId(Band band, uint16_t freq) {
+    return ((uint32_t)band << 16) | freq;
+}
+
+static bool isAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    for (int i = 0; i < announcedAlertCount; i++) {
+        if (announcedAlertIds[i] == id) return true;
+    }
+    return false;
+}
+
+static void markAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    if (announcedAlertCount < 10 && !isAlertAnnounced(band, freq)) {
+        announcedAlertIds[announcedAlertCount++] = id;
+    }
+}
+
+static void clearAnnouncedAlerts() {
+    announcedAlertCount = 0;
+    memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+    alertHistoryCount = 0;
+    memset(alertHistories, 0, sizeof(alertHistories));
+}
+
+// Alert history tracking for smart threat escalation
+static AlertHistory* findAlertHistory(uint32_t alertId) {
+    for (int i = 0; i < alertHistoryCount; i++) {
+        if (alertHistories[i].alertId == alertId) {
+            return &alertHistories[i];
+        }
+    }
+    return nullptr;
+}
+
+static AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now) {
+    // Find existing
+    AlertHistory* h = findAlertHistory(alertId);
+    if (h) return h;
+    
+    // Create new if space available
+    if (alertHistoryCount < 10) {
+        h = &alertHistories[alertHistoryCount++];
+        h->alertId = alertId;
+        h->currentBars = 0;
+        h->lastUpdateMs = now;
+        h->strongSinceMs = 0;  // Not strong yet
+        h->wasWeak = false;    // Will be set if bars <= WEAK_THRESHOLD
+        h->escalationAnnounced = false;
+        return h;
+    }
+    
+    // No space - find oldest stale entry to recycle
+    unsigned long oldestTime = now;
+    int oldestIdx = -1;
+    for (int i = 0; i < alertHistoryCount; i++) {
+        if (alertHistories[i].lastUpdateMs < oldestTime) {
+            oldestTime = alertHistories[i].lastUpdateMs;
+            oldestIdx = i;
+        }
+    }
+    if (oldestIdx >= 0) {
+        h = &alertHistories[oldestIdx];
+        h->alertId = alertId;
+        h->currentBars = 0;
+        h->lastUpdateMs = now;
+        h->strongSinceMs = 0;
+        h->wasWeak = false;
+        h->escalationAnnounced = false;
+        return h;
+    }
+    
+    return nullptr;
+}
+
+static void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
+    if (band == BAND_LASER) return;  // Laser excluded from smart tracking
+    
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = getOrCreateAlertHistory(alertId, now);
+    if (!h) return;
+    
+    // Track if ever weak (permanent flag - never cleared)
+    if (bars <= WEAK_THRESHOLD) {
+        h->wasWeak = true;
+    }
+    
+    // Track sustained strong signal
+    if (bars >= STRONG_THRESHOLD) {
+        if (h->strongSinceMs == 0) {
+            h->strongSinceMs = now;  // Just became strong
+        }
+    } else {
+        h->strongSinceMs = 0;  // Dropped below strong, reset
+    }
+    
+    h->currentBars = bars;
+    h->lastUpdateMs = now;
+}
+
+static void cleanupStaleHistories(unsigned long now) {
+    for (int i = alertHistoryCount - 1; i >= 0; i--) {
+        if (now - alertHistories[i].lastUpdateMs > HISTORY_STALE_MS) {
+            // Remove by shifting
+            for (int j = i; j < alertHistoryCount - 1; j++) {
+                alertHistories[j] = alertHistories[j + 1];
+            }
+            alertHistoryCount--;
+        }
+    }
+}
+
+// Check if alert should trigger threat escalation announcement
+// Trigger: wasWeak + nowStrong + sustained 500ms + bogeys <= 4 + not muted + not announced
+static bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now) {
+    if (band == BAND_LASER) return false;  // Laser excluded
+    
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = findAlertHistory(alertId);
+    if (!h) return false;
+    
+    // Check all conditions
+    bool wasWeak = h->wasWeak;
+    bool nowStrong = (h->currentBars >= STRONG_THRESHOLD);
+    bool sustained = (h->strongSinceMs > 0) && (now - h->strongSinceMs >= SUSTAINED_MS);
+    bool notNoisy = (totalBogeys <= MAX_BOGEYS_FOR_ESCALATION);
+    bool notAnnounced = !h->escalationAnnounced;
+    
+    if (wasWeak && nowStrong && sustained && notNoisy && notAnnounced) {
+        DEBUG_LOGF("[ThreatEscalation] TRIGGERED: band=%d freq=%u wasWeak=%d cur=%d strongFor=%lums bogeys=%d\n",
+                   (int)band, freq, h->wasWeak, h->currentBars, now - h->strongSinceMs, totalBogeys);
+        return true;
+    }
+    return false;
+}
+
+static void markThreatEscalationAnnounced(Band band, uint16_t freq) {
+    uint32_t alertId = makeAlertId(band, freq);
+    AlertHistory* h = findAlertHistory(alertId);
+    if (h) {
+        h->escalationAnnounced = true;
+    }
+}
+
+static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
+    switch (band) {
+        case BAND_LASER: return settings.secondaryLaser;
+        case BAND_KA:    return settings.secondaryKa;
+        case BAND_K:     return settings.secondaryK;
+        case BAND_X:     return settings.secondaryX;
+        default:         return false;
+    }
+}
+
+// Helper: get signal bars for an alert based on direction (0-8 scale from V1)
+static uint8_t getAlertBars(const AlertData& a) {
+    if (a.direction & DIR_FRONT) return a.frontStrength;
+    if (a.direction & DIR_REAR) return a.rearStrength;
+    return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
+}
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -210,17 +412,21 @@ static bool alertPersistenceActive = false;
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
 static int tapCount = 0;
-const unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
-const unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
+static constexpr unsigned long TAP_WINDOW_MS = 600;  // Window for 3 taps
+static constexpr unsigned long TAP_DEBOUNCE_MS = 150; // Minimum time between taps
 
 // Brightness adjustment mode (BOOT button triggered)
 static bool brightnessAdjustMode = false;
-static uint8_t brightnessAdjustValue = 200;  // Current slider value
+static uint8_t brightnessAdjustValue = 200;  // Current brightness slider value
+static uint8_t volumeAdjustValue = 75;       // Current voice volume slider value
+static int activeSlider = 0;                 // 0=brightness, 1=volume
+static unsigned long lastVolumeChangeMs = 0; // Debounce for test voice playback
 static unsigned long bootPressStart = 0;     // For long-press detection
 static bool bootWasPressed = false;
 static bool wifiToggleTriggered = false;     // Track if WiFi toggle already fired during this press
-const unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
-const unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
+static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;  // Debounce for BOOT button
+static constexpr unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;  // Long press duration for WiFi toggle
+static constexpr unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;  // Debounce for test voice after volume change
 
 
 // Buffer for accumulating BLE data in main loop context
@@ -230,6 +436,7 @@ enum AutoPushStep {
     AUTO_PUSH_STEP_IDLE = 0,
     AUTO_PUSH_STEP_WAIT_READY,
     AUTO_PUSH_STEP_PROFILE,
+    AUTO_PUSH_STEP_PROFILE_READBACK,  // Wait before requesting user bytes read-back
     AUTO_PUSH_STEP_DISPLAY,
     AUTO_PUSH_STEP_MODE,
     AUTO_PUSH_STEP_VOLUME,
@@ -334,10 +541,10 @@ static void processAutoPush() {
                     if (bleClient.writeUserBytes(modifiedSettings.bytes)) {
                         AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n", 
                                         slotMuteToZero ? "ON" : "OFF");
-                        // Request read-back to verify V1 accepted the settings
-                        delay(100);
-                        bleClient.requestUserBytes();
-                        AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
+                        // Schedule read-back request after 100ms (non-blocking)
+                        autoPushState.step = AUTO_PUSH_STEP_PROFILE_READBACK;
+                        autoPushState.nextStepAtMs = now + 100;
+                        return;
                     } else {
                         AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
@@ -355,6 +562,14 @@ static void processAutoPush() {
             autoPushState.nextStepAtMs = now + 100;
             return;
         }
+
+        case AUTO_PUSH_STEP_PROFILE_READBACK:
+            // Request user bytes read-back to verify V1 accepted the settings
+            bleClient.requestUserBytes();
+            AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
+            autoPushState.step = AUTO_PUSH_STEP_DISPLAY;
+            autoPushState.nextStepAtMs = now + 100;
+            return;
 
         case AUTO_PUSH_STEP_DISPLAY: {
             // Use slot-level dark mode setting (inverted: darkMode=true means display OFF)
@@ -744,7 +959,7 @@ void processBLEData() {
             // Recovery: display shows bands but no alert table arrived
             if (!hasAlerts && state.activeBands != BAND_NONE) {
                 unsigned long gapNow = millis();
-                if (gapNow - lastAlertGapRecoverMs > 100) {  // 100ms - quick recovery for lost alert packets
+                if (gapNow - lastAlertGapRecoverMs > 50) {  // 50ms - quick recovery for lost alert packets
                     DEBUG_LOGLN("Alert gap: bands active but no alerts; re-requesting alert data");
                     parser.resetAlertAssembly();
                     bleClient.requestAlertData();
@@ -771,14 +986,267 @@ void processBLEData() {
                 continue; // Skip this draw
             }
             lastDisplayDraw = now;
-
+            
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
-                uint8_t currentStrength = std::max(priority.frontStrength, priority.rearStrength);
                 const auto& currentAlerts = parser.getAllAlerts();
                 
                 displayMode = DisplayMode::LIVE;
+
+                // Voice alerts: announce new priority alert when no phone app connected
+                // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
+                const V1Settings& settings = settingsManager.get();
+                bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
+                if (settings.voiceAlertMode != VOICE_MODE_DISABLED && 
+                    !muteForVolZero &&
+                    !state.muted &&  // Don't announce muted alerts
+                    !bleClient.isProxyClientConnected() &&
+                    priority.isValid &&
+                    priority.band != BAND_NONE) {
+                    
+                    unsigned long now = millis();
+                    uint16_t currentFreq = (uint16_t)priority.frequency;
+                    // Check if this is a different alert (band OR frequency changed)
+                    // This handles Laser correctly - even though freq=0, band change triggers new announcement
+                    bool bandChanged = (priority.band != lastVoiceAlertBand);
+                    bool frequencyChanged = (currentFreq != lastVoiceAlertFrequency);
+                    bool alertChanged = bandChanged || frequencyChanged;
+                    bool directionChanged = (priority.direction != lastVoiceAlertDirection);
+                    bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+                    
+                    // Track priority stability for secondary alerts (use band+freq combo)
+                    uint32_t currentAlertId = makeAlertId(priority.band, currentFreq);
+                    static uint32_t lastPriorityAlertId = 0xFFFFFFFF;
+                    if (currentAlertId != lastPriorityAlertId) {
+                        lastPriorityAlertId = currentAlertId;
+                        priorityStableSince = now;
+                    }
+                    
+                    // Convert V1 direction to audio direction
+                    // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
+                    AlertDirection audioDir;
+                    if (priority.direction & DIR_FRONT) {
+                        audioDir = AlertDirection::AHEAD;
+                    } else if (priority.direction & DIR_REAR) {
+                        audioDir = AlertDirection::BEHIND;
+                    } else {
+                        audioDir = AlertDirection::SIDE;
+                    }
+                    
+                    // Track bogey count changes
+                    bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
+                    bool bogeyCountCooldownPassed = (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
+                    
+                    // PRIORITY ALERT ANNOUNCEMENTS
+                    // Logic:
+                    // - New alert (band or freq changed): full announcement based on voice mode setting
+                    // - Same alert but direction changed: direction + bogey count if changed
+                    // - Same alert, same direction, but bogey count changed: direction + new count (shorter cooldown)
+                    bool priorityAnnounced = false;
+                    if (alertChanged && cooldownPassed) {
+                        // New alert - full announcement based on mode
+                        AlertBand audioBand;
+                        bool validBand = true;
+                        switch (priority.band) {
+                            case BAND_LASER: audioBand = AlertBand::LASER; break;
+                            case BAND_KA:    audioBand = AlertBand::KA;    break;
+                            case BAND_K:     audioBand = AlertBand::K;     break;
+                            case BAND_X:     audioBand = AlertBand::X;     break;
+                            default:         validBand = false;            break;
+                        }
+                        
+                        if (validBand) {
+                            DEBUG_LOGF("[VoiceAlert] New priority: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
+                                       (int)audioBand, currentFreq, (int)audioDir,
+                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled, alertCount);
+                            play_frequency_voice(audioBand, currentFreq, audioDir,
+                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled,
+                                                 settings.announceBogeyCount ? (uint8_t)alertCount : 1);
+                            lastVoiceAlertBand = priority.band;
+                            lastVoiceAlertDirection = priority.direction;
+                            lastVoiceAlertFrequency = currentFreq;
+                            lastVoiceAlertBogeyCount = (uint8_t)alertCount;
+                            lastVoiceAlertTime = now;
+                            lastPriorityAnnouncementTime = now;
+                            markAlertAnnounced(priority.band, currentFreq);
+                            priorityAnnounced = true;
+                        }
+                    } else if (!alertChanged && directionChanged && cooldownPassed && 
+                               settings.voiceDirectionEnabled) {
+                        // Same alert changed direction - announce direction + bogey count if changed
+                        uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
+                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
+                        play_direction_only(audioDir, bogeyCountToAnnounce);
+                        lastVoiceAlertDirection = priority.direction;
+                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
+                        lastVoiceAlertTime = now;
+                        lastPriorityAnnouncementTime = now;
+                        priorityAnnounced = true;
+                    } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
+                               bogeyCountCooldownPassed && settings.announceBogeyCount) {
+                        // Same alert, same direction, but bogey count changed - announce direction + new count
+                        // Uses shorter cooldown (2s) to be more responsive to count changes
+                        DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
+                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
+                        play_direction_only(audioDir, (uint8_t)alertCount);
+                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
+                        lastVoiceAlertTime = now;
+                        lastPriorityAnnouncementTime = now;
+                        priorityAnnounced = true;
+                    }
+                    
+                    // SECONDARY ALERT ANNOUNCEMENTS
+                    // Only if: master toggle enabled, priority stable, gap after priority announcement
+                    // Secondary alerts are announced once when they appear - no direction/bogey updates
+                    if (!priorityAnnounced && 
+                        settings.announceSecondaryAlerts &&
+                        alertCount > 1 &&
+                        (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
+                        (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS)) {
+                        
+                        // Check non-priority alerts for unannounced frequencies
+                        for (int i = 0; i < alertCount; i++) {
+                            const AlertData& alert = currentAlerts[i];
+                            if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            
+                            uint16_t alertFreq = (uint16_t)alert.frequency;
+                            
+                            // Skip priority alert (compare band+freq combo, not just freq)
+                            if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                            
+                            // Skip if already announced
+                            if (isAlertAnnounced(alert.band, alertFreq)) continue;
+                            
+                            // Check band filter
+                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                            
+                            // Announce this secondary alert
+                            AlertBand audioBand;
+                            bool validBand = true;
+                            switch (alert.band) {
+                                case BAND_LASER: audioBand = AlertBand::LASER; break;
+                                case BAND_KA:    audioBand = AlertBand::KA;    break;
+                                case BAND_K:     audioBand = AlertBand::K;     break;
+                                case BAND_X:     audioBand = AlertBand::X;     break;
+                                default:         validBand = false;            break;
+                            }
+                            
+                            if (validBand) {
+                                AlertDirection secDir;
+                                if (alert.direction & DIR_FRONT) {
+                                    secDir = AlertDirection::AHEAD;
+                                } else if (alert.direction & DIR_REAR) {
+                                    secDir = AlertDirection::BEHIND;
+                                } else {
+                                    secDir = AlertDirection::SIDE;
+                                }
+                                
+                                DEBUG_LOGF("[VoiceAlert] Secondary: band=%d freq=%u dir=%d\n", 
+                                           (int)audioBand, alertFreq, (int)secDir);
+                                // Secondary alerts: same voice mode, but no bogey count (keep it brief)
+                                play_frequency_voice(audioBand, alertFreq, secDir,
+                                                     settings.voiceAlertMode, settings.voiceDirectionEnabled, 1);
+                                markAlertAnnounced(alert.band, alertFreq);
+                                lastVoiceAlertTime = now;  // Use same cooldown
+                                break;  // Only announce one secondary per cycle
+                            }
+                        }
+                    }
+                    
+                    // SMART THREAT ESCALATION: Track signal history and announce when weak signals ramp up
+                    // Update all secondary alert histories and check for escalation triggers
+                    if (settings.announceSecondaryAlerts && alertCount > 1) {
+                        // First pass: update all alert histories with current signal strengths
+                        for (int i = 0; i < alertCount; i++) {
+                            const AlertData& alert = currentAlerts[i];
+                            if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            if (alert.band == BAND_LASER) continue;  // Laser excluded from smart tracking
+                            
+                            uint16_t alertFreq = (uint16_t)alert.frequency;
+                            uint8_t bars = getAlertBars(alert);
+                            updateAlertHistory(alert.band, alertFreq, bars, now);
+                        }
+                        
+                        // Cleanup stale histories (alerts that disappeared)
+                        cleanupStaleHistories(now);
+                        
+                        // Second pass: check for any alert triggering smart escalation
+                        // Only announce if cooldown has passed
+                        if (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS) {
+                            for (int i = 0; i < alertCount; i++) {
+                                const AlertData& alert = currentAlerts[i];
+                                if (!alert.isValid || alert.band == BAND_NONE) continue;
+                                if (alert.band == BAND_LASER) continue;
+                                
+                                uint16_t alertFreq = (uint16_t)alert.frequency;
+                                
+                                // Skip priority alert
+                                if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                                
+                                // Skip if muted
+                                if (state.muted) continue;
+                                
+                                // Skip if band not enabled for secondary
+                                if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                                
+                                // Check smart escalation criteria (pass alertCount for bogey filter)
+                                if (shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
+                                    // Mark as announced before building the message
+                                    markThreatEscalationAnnounced(alert.band, alertFreq);
+                                    
+                                    // Convert to audio types
+                                    AlertBand audioBand;
+                                    switch (alert.band) {
+                                        case BAND_KA: audioBand = AlertBand::KA; break;
+                                        case BAND_K:  audioBand = AlertBand::K; break;
+                                        case BAND_X:  audioBand = AlertBand::X; break;
+                                        default: continue;  // Skip unknown bands
+                                    }
+                                    
+                                    AlertDirection alertDir;
+                                    if (alert.direction & DIR_FRONT) {
+                                        alertDir = AlertDirection::AHEAD;
+                                    } else if (alert.direction & DIR_REAR) {
+                                        alertDir = AlertDirection::BEHIND;
+                                    } else {
+                                        alertDir = AlertDirection::SIDE;
+                                    }
+                                    
+                                    // Count all alerts by direction for breakdown
+                                    uint8_t aheadCount = 0, behindCount = 0, sideCount = 0;
+                                    for (int j = 0; j < alertCount; j++) {
+                                        const AlertData& a = currentAlerts[j];
+                                        if (!a.isValid || a.band == BAND_NONE) continue;
+                                        
+                                        if (a.direction & DIR_FRONT) {
+                                            aheadCount++;
+                                        } else if (a.direction & DIR_REAR) {
+                                            behindCount++;
+                                        } else {
+                                            sideCount++;
+                                        }
+                                    }
+                                    
+                                    uint8_t total = aheadCount + behindCount + sideCount;
+                                    DEBUG_LOGF("[VoiceAlert] Smart threat escalation: %s %u %s - %d bogeys (%d ahead, %d behind, %d side)\n",
+                                               alert.band == BAND_KA ? "Ka" : (alert.band == BAND_K ? "K" : "X"),
+                                               alertFreq, 
+                                               (alertDir == AlertDirection::AHEAD) ? "ahead" : 
+                                                   ((alertDir == AlertDirection::BEHIND) ? "behind" : "side"),
+                                               total, aheadCount, behindCount, sideCount);
+                                    
+                                    // Play full announcement: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
+                                    play_threat_escalation(audioBand, alertFreq, alertDir, 
+                                                          total, aheadCount, behindCount, sideCount);
+                                    lastVoiceAlertTime = now;
+                                    break;  // Only one escalation announcement per cycle
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // V1 is source of truth for mute state - no auto-unmute logic
                 // Display just shows what V1 reports
@@ -795,6 +1263,14 @@ void processBLEData() {
             } else {
                 // No alerts from V1
                 displayMode = DisplayMode::IDLE;
+                
+                // Reset voice alert tracking when alerts clear
+                lastVoiceAlertBand = BAND_NONE;
+                lastVoiceAlertDirection = DIR_NONE;
+                lastVoiceAlertFrequency = 0xFFFF;
+                lastVoiceAlertBogeyCount = 0;
+                clearAnnouncedAlerts();
+                priorityStableSince = 0;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
@@ -913,9 +1389,9 @@ void setup() {
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
-        // True cold boot - show splash (shorter duration for faster boot)
+        // True cold boot - show splash
         display.showBootSplash();
-        delay(1500);  // Reduced from 2000ms
+        delay(2500);  // Show logo for 2.5 seconds
     }
     // After splash (or skipping it), show scanning screen until connected
     display.showScanning();
@@ -932,6 +1408,7 @@ void setup() {
     if (storageManager.begin()) {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem());
+        audio_init_sd();  // Initialize SD-based frequency voice audio
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
@@ -958,8 +1435,11 @@ void setup() {
 #if defined(DISPLAY_WAVESHARE_349)
     pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
     brightnessAdjustValue = settingsManager.get().brightness;
+    volumeAdjustValue = settingsManager.get().voiceVolume;
     display.setBrightness(brightnessAdjustValue);  // Apply saved brightness
-    SerialLog.printf("[Brightness] Applied saved brightness: %d\n", brightnessAdjustValue);
+    audio_set_volume(volumeAdjustValue);           // Apply saved voice volume
+    SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n", 
+                    brightnessAdjustValue, volumeAdjustValue);
 #endif
 
 #ifndef REPLAY_MODE
@@ -999,6 +1479,9 @@ void setup() {
 void loop() {
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
     display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
+    
+    // Process audio amp timeout (disables amp after 3s of inactivity)
+    audio_process_amp_timeout();
 
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
@@ -1067,49 +1550,78 @@ void loop() {
         if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
             // Only handle short press actions (not already handled by long press)
             if (brightnessAdjustMode) {
-                // Exit brightness adjustment mode and save
+                // Exit settings adjustment mode and save both values
                 brightnessAdjustMode = false;
                 settingsManager.updateBrightness(brightnessAdjustValue);
+                settingsManager.updateVoiceVolume(volumeAdjustValue);
                 settingsManager.save();
+                audio_set_volume(volumeAdjustValue);  // Apply new volume
                 display.hideBrightnessSlider();
                 display.showResting();  // Return to normal display
-                SerialLog.printf("[Brightness] Saved brightness: %d\n", brightnessAdjustValue);
+                SerialLog.printf("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue, volumeAdjustValue);
             } else {
-                // Enter brightness adjustment mode (short press)
+                // Enter settings adjustment mode (short press)
                 brightnessAdjustMode = true;
                 brightnessAdjustValue = settingsManager.get().brightness;
-                display.showBrightnessSlider(brightnessAdjustValue);
-                SerialLog.printf("[Brightness] Entering adjustment mode (current: %d)\n", brightnessAdjustValue);
+                volumeAdjustValue = settingsManager.get().voiceVolume;
+                activeSlider = 0;  // Start with brightness selected
+                display.showSettingsSliders(brightnessAdjustValue, volumeAdjustValue);
+                SerialLog.printf("[Settings] Entering adjustment mode (brightness: %d, volume: %d)\n", 
+                                brightnessAdjustValue, volumeAdjustValue);
             }
         }
     }
 
     bootWasPressed = bootPressed;
     
-    // If in brightness adjustment mode, handle touch for slider
+    // If in settings adjustment mode, handle touch for both sliders
     if (brightnessAdjustMode) {
         int16_t touchX, touchY;
         if (touchHandler.getTouchPoint(touchX, touchY)) {
-            // Map touch X to brightness (40 to 600 pixels = slider area)
+            // Map touch X to slider value (40 to 600 pixels = slider area)
             // Note: Touch coordinates are inverted relative to display
             const int sliderX = 40;
             const int sliderWidth = SCREEN_WIDTH - 80;  // 560 pixels
             
-            if (touchX >= sliderX && touchX <= sliderX + sliderWidth) {
-                // Touch X is inverted: swipe right = lower X, swipe left = higher X
-                // Map so swipe right = brighter, swipe left = dimmer
-                int newLevel = 255 - (((touchX - sliderX) * 175) / sliderWidth);
-                // Clamp to valid range (minimum 80 ~31% to keep display visible)
-                if (newLevel < 80) newLevel = 80;
-                if (newLevel > 255) newLevel = 255;
+            // Determine which slider was touched based on Y coordinate
+            int touchedSlider = display.getActiveSliderFromTouch(touchY);
+            
+            if (touchedSlider >= 0 && touchX >= sliderX && touchX <= sliderX + sliderWidth) {
+                activeSlider = touchedSlider;
                 
-                if (newLevel != brightnessAdjustValue) {
-                    brightnessAdjustValue = newLevel;
-                    display.updateBrightnessSlider(brightnessAdjustValue);
+                if (activeSlider == 0) {
+                    // Brightness slider (range 80-255)
+                    // Touch X is inverted: swipe right = lower X, swipe left = higher X
+                    int newLevel = 255 - (((touchX - sliderX) * 175) / sliderWidth);
+                    if (newLevel < 80) newLevel = 80;
+                    if (newLevel > 255) newLevel = 255;
+                    
+                    if (newLevel != brightnessAdjustValue) {
+                        brightnessAdjustValue = newLevel;
+                        display.updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                    }
+                } else if (activeSlider == 1) {
+                    // Voice volume slider (range 0-100)
+                    int newVolume = 100 - (((touchX - sliderX) * 100) / sliderWidth);
+                    if (newVolume < 0) newVolume = 0;
+                    if (newVolume > 100) newVolume = 100;
+                    
+                    if (newVolume != volumeAdjustValue) {
+                        volumeAdjustValue = newVolume;
+                        audio_set_volume(volumeAdjustValue);  // Apply immediately for feedback
+                        display.updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                        lastVolumeChangeMs = now;  // Track for test playback
+                    }
                 }
             }
+        } else {
+            // No touch - check if volume was recently changed and play test voice
+            if (lastVolumeChangeMs > 0 && (now - lastVolumeChangeMs) >= VOLUME_TEST_DEBOUNCE_MS) {
+                play_test_voice();
+                lastVolumeChangeMs = 0;  // Reset so we don't play again
+            }
         }
-        return;  // Skip normal loop processing while in brightness mode
+        return;  // Skip normal loop processing while in settings mode
     }
 #endif
 
@@ -1238,7 +1750,8 @@ void loop() {
                 } else {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
-                    PacketParser::resetSignalBarDecay();
+                    PacketParser::resetAlertCountTracker();
+                    parser.resetAlertAssembly();
                     V1Display::resetChangeTracking();
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");

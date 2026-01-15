@@ -47,6 +47,14 @@ enum DisplayStyle {
     DISPLAY_STYLE_MODERN = 1     // Montserrat Bold font
 };
 
+// Voice alert content mode
+enum VoiceAlertMode {
+    VOICE_MODE_DISABLED = 0,     // Voice alerts disabled
+    VOICE_MODE_BAND_ONLY = 1,    // Just band name ("Ka")
+    VOICE_MODE_FREQ_ONLY = 2,    // Just frequency ("34.7")
+    VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
+};
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -104,6 +112,20 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
+    
+    // Voice alerts (when no app connected)
+    VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
+    bool voiceDirectionEnabled;     // Append direction ("ahead"/"side"/"behind") to voice
+    bool announceBogeyCount;        // Announce bogey count after direction ("2 bogeys")
+    bool muteVoiceIfVolZero;        // Mute voice alerts (not VOL0 warning) when V1 volume is 0
+    uint8_t voiceVolume;            // Voice alert volume (0-100%)
+    
+    // Secondary alert announcements (non-priority alerts)
+    bool announceSecondaryAlerts;   // Master toggle for secondary announcements
+    bool secondaryLaser;            // Announce secondary Laser alerts
+    bool secondaryKa;               // Announce secondary Ka alerts
+    bool secondaryK;                // Announce secondary K alerts
+    bool secondaryX;                // Announce secondary X alerts
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -173,6 +195,16 @@ struct V1Settings {
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
+        voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
+        voiceDirectionEnabled(true),           // Include direction by default
+        announceBogeyCount(true),              // Announce bogey count by default
+        muteVoiceIfVolZero(false), // Don't mute voice alerts at vol 0 by default
+        voiceVolume(75),           // Voice alerts at 75% volume by default
+        announceSecondaryAlerts(false),  // Secondary alerts off by default (opt-in)
+        secondaryLaser(true),            // Laser always important
+        secondaryKa(true),               // Ka usually real threats
+        secondaryK(false),               // K has more false positives
+        secondaryX(false),               // X is rare
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -243,6 +275,15 @@ public:
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
+    void setVoiceAlertMode(VoiceAlertMode mode);
+    void setVoiceDirectionEnabled(bool enabled);
+    void setAnnounceBogeyCount(bool enabled);
+    void setMuteVoiceIfVolZero(bool mute);
+    void setAnnounceSecondaryAlerts(bool enabled);
+    void setSecondaryLaser(bool enabled);
+    void setSecondaryKa(bool enabled);
+    void setSecondaryK(bool enabled);
+    void setSecondaryX(bool enabled);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
@@ -266,6 +307,7 @@ public:
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
+    void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
     void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
     
     // Save all settings to flash

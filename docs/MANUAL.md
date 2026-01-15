@@ -29,16 +29,17 @@
 4. [Boot Flow](#d-boot-flow)
 5. [Bluetooth / Protocol](#e-bluetooth--protocol)
 6. [Display / UI](#f-display--ui)
-7. [Storage](#g-storage)
-8. [Web UI Pages](#g2-web-ui-pages)
-9. [Auto-Push System](#h-auto-push-system)
-10. [Configuration & Build Options](#i-configuration--build-options)
-11. [Troubleshooting](#j-troubleshooting)
-12. [Developer Guide](#k-developer-guide)
-13. [Reference](#l-reference)
-14. [Known Limitations](#known-limitations--todos)
-15. [Known Issues / Risks](#known-issues--risks)
-16. [Pre-Merge Checklist](#pre-merge-checklist)
+7. [Voice Alerts / Audio](#f2-voice-alerts--audio-system)
+8. [Storage](#g-storage)
+9. [Web UI Pages](#g2-web-ui-pages)
+10. [Auto-Push System](#h-auto-push-system)
+11. [Configuration & Build Options](#i-configuration--build-options)
+12. [Troubleshooting](#j-troubleshooting)
+13. [Developer Guide](#k-developer-guide)
+14. [Reference](#l-reference)
+15. [Known Limitations](#known-limitations--todos)
+16. [Known Issues / Risks](#known-issues--risks)
+17. [Pre-Merge Checklist](#pre-merge-checklist)
 
 ---
 
@@ -162,18 +163,19 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~1375 | Application entry, loop, touch handling |
-| `ble_client.cpp` | ~1730 | NimBLE client/server, V1 connection |
-| `display.cpp` | ~2760 | Arduino_GFX drawing, 7/14-segment digits |
-| `wifi_manager.cpp` | ~1360 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `packet_parser.cpp` | ~475 | ESP packet framing and decoding |
-| `settings.cpp` | ~600 | Preferences (NVS) storage |
-| `v1_profiles.cpp` | ~575 | Profile JSON on SD/LittleFS |
+| `main.cpp` | ~1645 | Application entry, loop, touch handling, voice alert logic |
+| `ble_client.cpp` | ~1743 | NimBLE client/server, V1 connection |
+| `display.cpp` | ~3204 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
+| `wifi_manager.cpp` | ~1451 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `audio_beep.cpp` | ~1178 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` | ~863 | Preferences (NVS) storage |
+| `v1_profiles.cpp` | ~574 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
-| `storage_manager.cpp` | ~65 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | ~145 | AXS15231B I2C touch polling |
+| `packet_parser.cpp` | ~453 | ESP packet framing and decoding |
+| `storage_manager.cpp` | ~63 | SD/LittleFS mount abstraction |
+| `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
 | `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
-| `perf_metrics.cpp` | ~160 | Latency tracking (ArduinoJson) |
+| `perf_metrics.cpp` | ~156 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -232,7 +234,6 @@ V1 Gen2 (BLE)
 | Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h:64 |
 | Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h:65 |
 | Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
-| Signal bar decay | 100ms | `DROP_INTERVAL_MS` in packet_parser.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in main.cpp:167 |
 | Local mute timeout | 2000ms | `LOCAL_MUTE_TIMEOUT_MS` in main.cpp:155 |
@@ -285,7 +286,7 @@ V1 Gen2 (BLE)
 ### WiFi AP Control & Timeout
 
 - **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
-- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press still enters brightness adjustment. See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/main.cpp](src/main.cpp#L1038-L1098).
 - **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
@@ -499,9 +500,14 @@ Layout zones (left to right):
 
 When multiple alerts are active simultaneously, secondary alerts appear as compact cards below the main alert:
 
-- **Main alert:** Full-size display (frequency, bars, direction)
-- **Secondary alerts:** Compact cards showing band, direction, and signal strength
-- **Automatic:** Mode activates automatically when 2+ alerts are present
+- **Main alert:** Full-size display (frequency, 8-bar signal meter, direction arrows)
+- **Secondary alerts:** Compact cards showing:
+  - Band indicator (color-coded: Laser/Ka/K/X)
+  - Frequency in MHz (e.g., "34712")
+  - Direction arrow (front/side/rear)
+  - Signal strength meter (color-coded bars matching main display)
+- **Fixed layout:** Secondary row has fixed height; cards don't cause layout shifts
+- **Automatic:** Mode activates when 2+ alerts are present
 
 **Source:** [src/display.cpp](src/display.cpp#L1690-L1880) (drawSecondaryAlerts)
 
@@ -596,6 +602,171 @@ display.flush();  // Push to screen
 
 ---
 
+## F2. Voice Alerts / Audio System
+
+The display includes a built-in speaker (ES8311 DAC) that announces radar alerts when no phone app is connected.
+
+### Hardware
+
+| Component | Address | Purpose |
+|-----------|---------|---------|
+| ES8311 | 0x18 (I2C) | Audio codec / DAC |
+| TCA9554 | 0x20 (I2C) | IO expander, pin 7 controls speaker amplifier |
+
+**I2C Bus:** SDA=47, SCL=48 (shared with battery manager)
+**I2S Pins:** MCLK=7, BCLK=15, WS=46, DOUT=45
+
+**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L1-L50)
+
+### Voice Mode Settings
+
+The `voiceAlertMode` setting controls what information is announced:
+
+| Mode | Value | Announcement |
+|------|-------|--------------|
+| `VOICE_MODE_DISABLED` | 0 | Voice alerts disabled |
+| `VOICE_MODE_BAND_ONLY` | 1 | Band name only ("Ka") |
+| `VOICE_MODE_FREQ_ONLY` | 2 | Frequency only ("34.7") |
+| `VOICE_MODE_BAND_FREQ` | 3 | Full: band + frequency ("Ka 34.7") |
+
+**Default:** `VOICE_MODE_BAND_FREQ` (3) - full announcements
+
+**Settings key:** `voiceMode` (uint8_t, stored in Preferences)
+
+**Migration:** Old `voiceAlerts` boolean is automatically migrated: `true` → `VOICE_MODE_BAND_FREQ`, `false` → `VOICE_MODE_DISABLED`
+
+### Priority Alert Announcements
+
+Voice alerts for the priority (strongest) alert trigger when:
+1. **voiceAlertMode** is not `VOICE_MODE_DISABLED`
+2. **No phone app is connected** (BLE proxy has no subscribers)
+3. **Alert is not muted** on the V1
+4. **Priority alert changes:**
+   - **New frequency:** Full announcement based on voiceAlertMode
+   - **Direction change only:** Direction-only announcement ("ahead", "behind", "side")
+   - **Bogey count change:** Direction + new count (if announceBogeyCount enabled)
+5. **Cooldown passed** (5 seconds since last announcement)
+
+Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
+- New alert: `"Ka 34.712 ahead"` (band, frequency in GHz, direction)
+- Multiple bogeys: `"Ka 34.712 ahead 2 bogeys"` (includes count when > 1)
+- Direction change: `"behind"` (direction only, same alert moved)
+- Laser alert: `"Laser ahead"` (no frequency, always includes direction when enabled)
+
+**Source:** [src/main.cpp](src/main.cpp#L880-L980) (voice alert logic)
+
+### Secondary Alert Announcements
+
+When enabled, non-priority alerts are announced after the priority stabilizes:
+
+**Settings:**
+- `announceSecondaryAlerts` - Master toggle (default: false)
+- `secondaryLaser` - Announce secondary Laser alerts (default: true)
+- `secondaryKa` - Announce secondary Ka alerts (default: true)
+- `secondaryK` - Announce secondary K alerts (default: false)
+- `secondaryX` - Announce secondary X alerts (default: false)
+
+**Timing:**
+- Wait 1 second after priority alert stabilizes
+- Wait additional 1.5 seconds since last voice alert
+- Announce each qualifying secondary alert once
+
+**Smart Threat Escalation:**
+When a secondary alert ramps up from weak to strong, a full announcement provides context:
+- **Trigger conditions (all must be met):**
+  - Signal was ever weak (≤2 bars) at any point since detection
+  - Signal is now strong (≥4 bars)
+  - Strong signal sustained for at least 500ms (filters multipath spikes)
+  - Total bogeys ≤4 (skips noisy environments like shopping centers)
+  - Not already announced for escalation
+  - Not muted by V1
+  - Not laser (laser is handled by priority detection)
+- **Announcement format:** `"[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"`
+- **Example:** `"K 24.150 behind 2 bogeys, 1 ahead, 1 behind"`
+- The "was weak" flag is permanent - even if you're stopped for 60+ seconds at 1 bar, then drive toward the source, escalation will trigger when it ramps to 4+ bars
+- Direction breakdown always included for situational awareness
+
+**Source:** [src/main.cpp](src/main.cpp#L1000-L1100) (secondary alert logic)
+
+### Audio Files
+
+Pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*.mul`), 22kHz sample rate:
+
+| Category | Files | Example |
+|----------|-------|---------|
+| Band names | 4 | `band_ka.mul`, `band_k.mul`, `band_x.mul`, `band_laser.mul` |
+| Directions | 3 | `dir_ahead.mul`, `dir_behind.mul`, `dir_side.mul` |
+| Digits | 10 | `digit_0.mul` through `digit_9.mul` |
+| Number words | 100 | `tens_00.mul` through `tens_99.mul` |
+| GHz prefixes | 3 | `ghz_10.mul`, `ghz_24.mul`, `ghz_34.mul` (X, K, Ka bands) |
+| Bogey count | 1 | `bogeys.mul` - spoken "bogeys" for multi-alert announcements |
+| Special | 1 | `vol0_warning.mul` - "Warning, volume zero" |
+
+**Audio format:** 8-bit mu-law encoded, 22kHz mono, loaded from LittleFS at runtime.
+
+**Source:** [data/audio/](data/audio/) (audio files), [src/audio_beep.cpp](src/audio_beep.cpp#L400-L500) (playback)
+
+### Volume Control
+
+**ES8311 Register 0x32** controls DAC volume:
+- 0x00 = Mute
+- 0x90-0xBF = Usable range (~-24dB to 0dB)
+
+Volume mapping: `0% = mute, 1-100% maps to 0x90-0xBF`
+
+**Adjustment:** Short-press BOOT → use bottom blue slider → release to hear test voice ("Ka ahead")
+
+**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L270-L290) (audio_set_volume)
+
+### Audio API Functions
+
+```cpp
+// Full frequency announcement: "Ka 34.712 ahead 2 bogeys"
+void play_frequency_voice(AlertBand band, uint16_t freqMhz, AlertDirection dir,
+                          VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount);
+
+// Band-only announcement: "Ka", "Laser"
+void play_band_only(AlertBand band);
+
+// Direction-only announcement: "ahead", "behind", "side" (optional bogey count)
+void play_direction_only(AlertDirection dir, uint8_t bogeyCount = 0);
+
+// Bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (for simple breakdown)
+void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
+
+// Threat escalation: "K 24.150 behind 2 bogeys, 1 ahead, 1 behind" (full context)
+void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
+                            uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
+
+// Set volume (0=mute, 1-100 maps to DAC range)
+void audio_set_volume(int level);
+
+// Initialize ES8311 DAC and I2S
+bool audio_init();
+```
+
+**Source:** [src/audio_beep.h](src/audio_beep.h#L1-L60)
+
+### Settings Screen
+
+The settings screen shows two sliders:
+1. **Top (green):** Display brightness (0-255)
+2. **Bottom (blue):** Voice volume (0-100%)
+
+On volume slider release, plays "Ka ahead" test clip after 1 second delay.
+
+**Source:** [src/display.cpp](src/display.cpp#L493-L590) (showSettingsSliders)
+
+### Web Configuration
+
+Voice alerts can be enabled/disabled at `/audio`:
+- **Enable Voice Alerts:** Master toggle
+- **Mute Voice at Volume 0:** Skip announcements when V1 volume is 0
+
+**API:** `POST /api/displaycolors` with `voiceAlertsEnabled=true|false`
+
+---
+
 ## G. Storage
 
 ### Filesystem Hierarchy
@@ -639,6 +810,16 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
+| voiceVol | uint8 | 75 | Voice alert volume 0-100% |
+| voiceMode | uint8 | 3 | Voice mode: 0=off, 1=band, 2=freq, 3=band+freq |
+| voiceDir | bool | true | Include direction in voice announcements |
+| bogeyCount | bool | true | Announce bogey count ("2 bogeys") |
+| muteVoiceZero | bool | false | Mute voice when V1 volume is 0 |
+| secAlerts | bool | false | Announce secondary (non-priority) alerts |
+| secLaser | bool | true | Announce secondary Laser alerts |
+| secKa | bool | true | Announce secondary Ka alerts |
+| secK | bool | false | Announce secondary K alerts |
+| secX | bool | false | Announce secondary X alerts |
 | autoPush | bool | false | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
@@ -713,9 +894,11 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 |-------|------|---------|
 | `/` | `+page.svelte` | Home - connection status, quick links |
 | `/settings` | `settings/+page.svelte` | WiFi AP, BLE proxy settings |
+| `/audio` | `audio/+page.svelte` | Voice alert settings |
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
+| `/devices` | `devices/+page.svelte` | Known V1 device management |
 
 ### Settings Page (`/settings`)
 
@@ -725,6 +908,22 @@ Controls:
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 
 **Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
+
+### Audio Page (`/audio`)
+
+Controls:
+- **Voice Content:** Dropdown to select announcement style (Disabled / Band Only / Frequency Only / Band + Frequency)
+- **Include Direction:** Toggle to append "ahead", "side", or "behind" to announcements
+- **Announce Bogey Count:** Toggle to append "2 bogeys", "3 bogeys" when multiple alerts active
+- **Mute Voice at Volume 0:** Skip voice alerts when V1 volume is set to 0 (warning still plays)
+
+**Secondary Alert Announcements:**
+- **Announce Secondary Alerts:** Master toggle for non-priority alert announcements
+- **Per-band filters:** When secondary enabled, choose which bands to announce (Laser, Ka, K, X)
+
+Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. Smart threat escalation detects when secondary alerts ramp up from weak (≤2 bars) to strong (≥4 bars sustained) and announces with full context.
+
+**Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -915,13 +1114,15 @@ Auto-push sends these V1 ESP commands:
 
 ### PlatformIO Environments
 
-Two environments available:
-- `waveshare-349` - Mac/Linux (GFX 1.6.4, 16MB partitions)
-- `waveshare-349-windows` - Windows (GFX 1.4.9, 8MB partitions)
+Two environments available (both use the same pioarduino platform):
+- `waveshare-349` - Mac/Linux (16MB flash)
+- `waveshare-349-windows` - Windows (8MB flash for compatibility with some hardware variants)
+
+Both environments use identical toolchain and libraries. The only difference is flash partition size.
 
 ```ini
 [env:waveshare-349]
-platform = espressif32
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.11/platform-espressif32.zip
 board = esp32-s3-devkitc-1
 framework = arduino
 
@@ -937,25 +1138,22 @@ lib_deps =
     moononournation/GFX Library for Arduino@1.6.4
     h2zero/NimBLE-Arduino@2.3.7
     bblanchon/ArduinoJson@7.4.2
+    https://github.com/takkaO/OpenFontRender.git
 
 board_build.partitions = default_16MB.csv
 board_build.filesystem = littlefs
 
 [env:waveshare-349-windows]
-# Same as above but with:
-lib_deps = 
-    moononournation/GFX Library for Arduino@1.4.9  # ESP32 2.x compatible
-    # ... same other libs
-build_flags = 
-    # ... same flags plus:
-    -D WINDOWS_BUILD=1
-board_build.partitions = default_8MB.csv  # 8MB flash variant
+# Same as waveshare-349, but with 8MB partitions for some hardware variants
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.11/platform-espressif32.zip
+# ... identical build_flags and lib_deps ...
+board_build.partitions = default_8MB.csv
 ```
 
 **Windows users:** Use `--env waveshare-349-windows` with all PlatformIO commands.
 See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 
-**Source:** [platformio.ini](platformio.ini#L1-L50)
+**Source:** [platformio.ini](platformio.ini#L1-L100)
 
 ### Compile-Time Flags
 
@@ -977,6 +1175,7 @@ See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 All settings modifiable via web UI at `http://192.168.35.5`:
 
 - **Settings page:** WiFi AP name/password, BLE proxy
+- **Audio page:** Voice alerts enable/disable
 - **Colors page:** Display style, custom per-element colors
 - **Profiles page:** Pull V1 settings, save as profiles
 - **Auto-push page:** Configure 3 profile slots
@@ -1432,4 +1631,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v1.3.0.*
+*Document generated from source code analysis. Last verified against v2.0.5.*

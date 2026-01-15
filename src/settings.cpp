@@ -105,14 +105,51 @@ void SettingsManager::load() {
     settings.colorBar6 = preferences.getUShort("colorBar6", 0xF800);
     settings.colorMuted = preferences.getUShort("colorMuted", 0x3186);  // Dark grey muted color
     settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
-    settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0x001F);  // Blue for main volume
-    settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0xFFE0);  // Yellow for mute volume
+    settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0xF800);  // Red for main volume
+    settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
+    
+    // Voice alert settings - migrate from old boolean to new mode
+    // If old voiceAlerts key exists, migrate it; otherwise use new defaults
+    bool needsMigration = preferences.isKey("voiceAlerts");
+    if (needsMigration) {
+        // Migrate old setting: true -> BAND_FREQ, false -> DISABLED
+        bool oldEnabled = preferences.getBool("voiceAlerts", true);
+        settings.voiceAlertMode = oldEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
+        settings.voiceDirectionEnabled = true;  // Old behavior always included direction
+    } else {
+        settings.voiceAlertMode = (VoiceAlertMode)preferences.getUChar("voiceMode", VOICE_MODE_BAND_FREQ);
+        settings.voiceDirectionEnabled = preferences.getBool("voiceDir", true);
+    }
+    
+    // Close read-only preferences before migration cleanup
+    if (needsMigration) {
+        preferences.end();
+        // Re-open in write mode to remove old key
+        if (preferences.begin("v1settings", false)) {
+            preferences.remove("voiceAlerts");
+            Serial.println("[Settings] Migrated voiceAlerts -> voiceMode");
+            preferences.end();
+        }
+        // Re-open in read-only to continue loading
+        preferences.begin("v1settings", true);
+    }
+    settings.announceBogeyCount = preferences.getBool("voiceBogeys", true);
+    settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
+    settings.voiceVolume = preferences.getUChar("voiceVol", 75);
+    
+    // Secondary alert settings
+    settings.announceSecondaryAlerts = preferences.getBool("secAlerts", false);
+    settings.secondaryLaser = preferences.getBool("secLaser", true);
+    settings.secondaryKa = preferences.getBool("secKa", true);
+    settings.secondaryK = preferences.getBool("secK", false);
+    settings.secondaryX = preferences.getBool("secX", false);
+    
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -213,6 +250,16 @@ void SettingsManager::save() {
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
+    written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
+    written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
+    written += preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
+    written += preferences.putUChar("voiceVol", settings.voiceVolume);
+    written += preferences.putBool("secAlerts", settings.announceSecondaryAlerts);
+    written += preferences.putBool("secLaser", settings.secondaryLaser);
+    written += preferences.putBool("secKa", settings.secondaryKa);
+    written += preferences.putBool("secK", settings.secondaryK);
+    written += preferences.putBool("secX", settings.secondaryX);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -433,6 +480,51 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
     save();
 }
 
+void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
+    settings.voiceAlertMode = mode;
+    save();
+}
+
+void SettingsManager::setVoiceDirectionEnabled(bool enabled) {
+    settings.voiceDirectionEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setAnnounceBogeyCount(bool enabled) {
+    settings.announceBogeyCount = enabled;
+    save();
+}
+
+void SettingsManager::setMuteVoiceIfVolZero(bool mute) {
+    settings.muteVoiceIfVolZero = mute;
+    save();
+}
+
+void SettingsManager::setAnnounceSecondaryAlerts(bool enabled) {
+    settings.announceSecondaryAlerts = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryLaser(bool enabled) {
+    settings.secondaryLaser = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryKa(bool enabled) {
+    settings.secondaryKa = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryK(bool enabled) {
+    settings.secondaryK = enabled;
+    save();
+}
+
+void SettingsManager::setSecondaryX(bool enabled) {
+    settings.secondaryX = enabled;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -611,6 +703,15 @@ void SettingsManager::backupToSD() {
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
+    doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
+    doc["voiceDirectionEnabled"] = settings.voiceDirectionEnabled;
+    doc["muteVoiceIfVolZero"] = settings.muteVoiceIfVolZero;
+    doc["voiceVolume"] = settings.voiceVolume;
+    doc["announceSecondaryAlerts"] = settings.announceSecondaryAlerts;
+    doc["secondaryLaser"] = settings.secondaryLaser;
+    doc["secondaryKa"] = settings.secondaryKa;
+    doc["secondaryK"] = settings.secondaryK;
+    doc["secondaryX"] = settings.secondaryX;
     
     // Slot customizations
     doc["slot0Name"] = settings.slot0Name;
@@ -694,6 +795,21 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    // Support old voiceAlertsEnabled boolean and new voiceAlertMode
+    if (doc["voiceAlertMode"].is<int>()) {
+        settings.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
+    } else if (doc["voiceAlertsEnabled"].is<bool>()) {
+        // Migrate old format
+        settings.voiceAlertMode = doc["voiceAlertsEnabled"].as<bool>() ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
+    }
+    if (doc["voiceDirectionEnabled"].is<bool>()) settings.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
+    if (doc["muteVoiceIfVolZero"].is<bool>()) settings.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
+    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = doc["voiceVolume"];
+    if (doc["announceSecondaryAlerts"].is<bool>()) settings.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
+    if (doc["secondaryLaser"].is<bool>()) settings.secondaryLaser = doc["secondaryLaser"];
+    if (doc["secondaryKa"].is<bool>()) settings.secondaryKa = doc["secondaryKa"];
+    if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
+    if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
     
     // Restore slot customizations
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
@@ -731,6 +847,9 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
     preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
+    preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
+    preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
     preferences.putString("slot0name", settings.slot0Name);
     preferences.putString("slot1name", settings.slot1Name);
     preferences.putString("slot2name", settings.slot2Name);

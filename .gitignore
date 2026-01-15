@@ -1,6 +1,7 @@
 # PlatformIO
 .pio/
 .vscode/
+compile_commands.json
 
 # Python virtual environment
 .venv/
@@ -51,6 +52,12 @@ docs/ARCHIVE.md
 # Images (unless needed for docs)
 *.png
 !docs/*.png
+
+# Audio source files (keep generated headers, not source audio)
+*.aiff
+*.raw
+*.wav
+*.mp3
 
 # Local reference repos (kept out of version control)
 ESP32-S3-Touch-LCD-3.49/

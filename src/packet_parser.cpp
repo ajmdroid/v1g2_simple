@@ -48,18 +48,21 @@ void PacketParser::resetAlertAssembly() {
     chunkCount = 0;
 }
 
-// Static flag to signal priority state reset on next call
+// Static flag for priority state reset - no longer used since we use V1's isPriority flag
+// Kept for API compatibility
 static bool s_resetPriorityStateFlag = false;
 
 void PacketParser::resetPriorityState() {
+    // No-op: We now use V1's isPriority flag (aux0 bit 7) to determine priority
+    // No local state to reset
     s_resetPriorityStateFlag = true;
 }
 
-// Static flag to signal signal bar decay reset on next call
-static bool s_resetSignalBarDecayFlag = false;
+// Static flag to signal alert count tracker reset on next call
+static bool s_resetAlertCountFlag = false;
 
-void PacketParser::resetSignalBarDecay() {
-    s_resetSignalBarDecayFlag = true;
+void PacketParser::resetAlertCountTracker() {
+    s_resetAlertCountFlag = true;
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
@@ -206,16 +209,19 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         }
     }
     
+    // V1 sends LED bar state directly in the display packet at payload[2]
+    // This is the authoritative signal strength from V1's own display
+    // Bitmap: 0x01=1bar, 0x03=2bars, 0x07=3bars, 0x0F=4bars, 0x1F=5bars, 0x3F=6bars
+    // Pass through directly - no filtering needed (matches arrow behavior)
+    if (length > 2) {
+        uint8_t ledBitmap = payload[2];
+        displayState.signalBars = decodeLEDBitmap(ledBitmap);
+    }
+    
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {
         displayState.signalBars = 6; // Full bars for laser
-    } else if (displayState.activeBands == BAND_NONE) {
-        // No active bands from display data - clear alerts immediately
-        // Don't wait for alert packet with 0 count - display packet is authoritative
-        displayState.signalBars = 0;
-        alertCount = 0;
-        chunkCount = 0;
     }
     
     return true;
@@ -236,10 +242,32 @@ Direction PacketParser::decodeDirection(uint8_t bandArrow) const {
     return DIR_NONE;
 }
 
+// Decode V1's LED bitmap to bar count (0-8)
+// V1 sends signal strength as consecutive bits from LSB: 1=1bar, 3=2bars, 7=3bars, etc.
+// But if that doesn't match, try counting set bits (popcount)
+uint8_t PacketParser::decodeLEDBitmap(uint8_t bitmap) const {
+    // First try the expected bitmap pattern
+    switch (bitmap) {
+        case 1:   return 1;
+        case 3:   return 2;
+        case 7:   return 3;
+        case 15:  return 4;
+        case 31:  return 5;
+        case 63:  return 6;
+        case 127: return 7;
+        case 255: return 8;
+        case 0:   return 0;
+        default:
+            // Not a standard bitmap - try popcount (number of set bits)
+            // This handles cases where V1 sends non-standard patterns
+            return __builtin_popcount(bitmap);
+    }
+}
+
 uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
-    // V1 Gen2 sends raw RSSI values (typically 0x80-0xC0 range)
-    // Use threshold tables to convert to 0-6 bar display
-    // Match V1's visual decay rate - instant up, gradual down
+    // Convert raw RSSI to 0-6 bars for individual alert strength tracking
+    // Note: Main display signal bars come from V1's LED bitmap in parseDisplayData()
+    // This is used for per-alert strength in the alerts array
     
     // Threshold tables for raw RSSI -> 0..6 bars
     // Values below 0x80 typically mean "no signal" on that antenna
@@ -261,63 +289,19 @@ uint8_t PacketParser::mapStrengthToBars(Band band, uint8_t raw) const {
             return 0;
     }
 
-    // Time-based decay for signal bar smoothing
-    // Faster decay for snappier response (was 150ms to match V1)
-    static uint8_t lastBarsKa = 0, lastBarsK = 0, lastBarsX = 0;
-    static unsigned long lastDropTimeKa = 0, lastDropTimeK = 0, lastDropTimeX = 0;
-    constexpr unsigned long DROP_INTERVAL_MS = 100;  // Reduced from 150ms for snappier response
-    
-    // Check if reset was requested (e.g., on V1 disconnect)
-    if (s_resetSignalBarDecayFlag) {
-        lastBarsKa = lastBarsK = lastBarsX = 0;
-        lastDropTimeKa = lastDropTimeK = lastDropTimeX = 0;
-        s_resetSignalBarDecayFlag = false;
-    }
-    
-    uint8_t* lastBarsPtr = nullptr;
-    unsigned long* lastDropTimePtr = nullptr;
-    switch (band) {
-        case BAND_KA: lastBarsPtr = &lastBarsKa; lastDropTimePtr = &lastDropTimeKa; break;
-        case BAND_K:  lastBarsPtr = &lastBarsK;  lastDropTimePtr = &lastDropTimeK;  break;
-        case BAND_X:  lastBarsPtr = &lastBarsX;  lastDropTimePtr = &lastDropTimeX;  break;
-        default: break;
-    }
-
-    // Map raw to bars
-    uint8_t newBars = 0;
+    // Map raw RSSI to bars using threshold table
+    uint8_t bars = 0;
     for (uint8_t i = 0; i < 7; ++i) {
         if (raw <= table[i]) {
-            newBars = i;
+            bars = i;
             break;
         }
     }
-    if (newBars == 0 && raw > table[0]) {
-        newBars = 6;
+    if (bars == 0 && raw > table[0]) {
+        bars = 6;
     }
 
-    if (lastBarsPtr && lastDropTimePtr) {
-        unsigned long now = millis();
-        
-        if (newBars >= *lastBarsPtr) {
-            // Going up or same - instant response
-            *lastBarsPtr = newBars;
-            *lastDropTimePtr = now;
-        } else {
-            // Going down - limit drop rate to match V1
-            unsigned long elapsed = now - *lastDropTimePtr;
-            uint8_t allowedDrops = elapsed / DROP_INTERVAL_MS;
-            
-            if (allowedDrops > 0) {
-                uint8_t targetBars = (*lastBarsPtr > allowedDrops) ? (*lastBarsPtr - allowedDrops) : 0;
-                if (targetBars < newBars) targetBars = newBars;  // Don't go below actual signal
-                *lastBarsPtr = targetBars;
-                *lastDropTimePtr = now;
-            }
-            newBars = *lastBarsPtr;
-        }
-    }
-
-    return newBars;
+    return bars;
 }
 
 bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
@@ -325,14 +309,15 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    // Byte0: low nibble = alert count; rest of row carries frequency/strength/arrow
+    // Byte0: high nibble = alert index (0-based), low nibble = alert count
+    // The first alert sent (index 0) is the V1's priority alert
+    uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
         alertCount = 0;
         chunkCount = 0;
-        displayState.signalBars = 0;
+        // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
         displayState.arrows = DIR_NONE;
-        displayState.activeBands = BAND_NONE;
         displayState.muted = false;
         return true;
     }
@@ -345,6 +330,13 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // Track expected alert count - if it changes mid-assembly, reset to avoid stale data
     // This handles the case where alerts change while we're still collecting chunks
     static uint8_t lastExpectedCount = 0;
+    
+    // Check if reset was requested (e.g., on V1 disconnect)
+    if (s_resetAlertCountFlag) {
+        lastExpectedCount = 0;
+        s_resetAlertCountFlag = false;
+    }
+    
     if (receivedAlertCount != lastExpectedCount) {
         // Alert count changed - discard any partial assembly and start fresh
         chunkCount = 0;
@@ -370,29 +362,36 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     }
 
     alertCount = 0;
-    displayState.activeBands = BAND_NONE;
+    // Note: Don't reset displayState.activeBands here - let parseDisplayData() be source of truth
+    // for what bands are visually shown (including blink behavior). We just extract alert details.
     bool anyMuted = false;
 
     for (size_t i = 0; i < chunkCount && i < receivedAlertCount; ++i) {
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
+        uint8_t aux0 = a[6];       // aux0 - bit 7 (0x80) = isPriority per JB's Java code
 
         Band band = decodeBand(bandArrow);
         Direction dir = decodeDirection(bandArrow);
+        bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
 
         // Add new alert, checking for overflow
         if (alertCount < MAX_ALERTS) {
             AlertData& alert = alerts[alertCount++];
             alert.band = band;
             alert.direction = dir;
+            alert.isPriority = isPriority;
+            
+            // Bytes 3 and 4 are raw RSSI values for front/rear antennas
+            // Use our RSSI-to-bars mapping with band-specific thresholds
             alert.frontStrength = mapStrengthToBars(band, a[3]);
             alert.rearStrength = mapStrengthToBars(band, a[4]);
+            
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
 
-            if (band != BAND_NONE) {
-                displayState.activeBands |= band;
-            }
+            // Note: We no longer update displayState.activeBands here
+            // The display packet (image1) is authoritative for band indicators
             anyMuted |= ((bandArrow & 0x10) != 0);
         }
     }
@@ -402,27 +401,22 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     displayState.muted = displayState.muted || anyMuted;
 
     if (alertCount > 0) {
-        // Find MAX signal strength across ALL alerts (not just priority)
-        // V1 display shows the strongest signal from any alert
-        uint8_t maxSignal = 0;
-        size_t priorityIdx = 0;
+        // Find the priority alert using isPriority flag (aux0 bit 7)
+        // JB's Java: (aux0 & 128) != 0
+        int priorityIdx = 0;  // Default to first if none marked
         for (size_t i = 0; i < alertCount; ++i) {
-            uint8_t sig = std::max(alerts[i].frontStrength, alerts[i].rearStrength);
-            if (sig > maxSignal) {
-                maxSignal = sig;
+            if (alerts[i].isPriority) {
                 priorityIdx = i;
+                break;
             }
         }
-        displayState.signalBars = maxSignal;
         
-        // Set priority arrow from the strongest alert (for multi-alert display)
+        displayState.v1PriorityIndex = priorityIdx;
         displayState.priorityArrow = alerts[priorityIdx].direction;
         
         // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
-    } else {
-        displayState.signalBars = 0;
-        displayState.arrows = DIR_NONE;
     }
+    // When alertCount == 0, DON'T clear signalBars - parseDisplayData handles it
 
     chunkCount = 0; // Clear chunks after processing
     return true;
@@ -449,91 +443,11 @@ AlertData PacketParser::getPriorityAlert() const {
         return AlertData();
     }
 
-    // Priority rules:
-    // 1. Laser ALWAYS wins (it's always 6 bars and highest threat)
-    // 2. Otherwise, strongest signal wins
-    // 3. Use hysteresis only for close calls to prevent flickering
-    
-    // First check if any alert is Laser - it always takes priority
-    for (size_t i = 0; i < alertCount; ++i) {
-        if (alerts[i].band == BAND_LASER && alerts[i].isValid) {
-            return alerts[i];  // Laser always wins, no stickiness needed
-        }
+    // Use V1's isPriority flag (aux0 bit 7) to determine which alert is priority
+    // displayState.v1PriorityIndex is set in parseAlertData() by scanning for isPriority
+    uint8_t idx = displayState.v1PriorityIndex;
+    if (idx < alertCount) {
+        return alerts[idx];
     }
-    
-    // No Laser - find strongest radar alert
-    AlertData strongest = alerts[0];
-    for (size_t i = 1; i < alertCount; ++i) {
-        const auto& alert = alerts[i];
-        uint8_t strength = std::max(alert.frontStrength, alert.rearStrength);
-        uint8_t strongestStrength = std::max(strongest.frontStrength, strongest.rearStrength);
-        if (strength > strongestStrength) {
-            strongest = alert;
-        }
-    }
-    
-    // For radar alerts, use mild hysteresis to prevent flickering
-    // Only stick with last priority if it's still present and not much weaker
-    static AlertData lastPriority;
-    static unsigned long lastPriorityTime = 0;
-    
-    // Check if reset was requested (e.g., on V1 disconnect)
-    if (s_resetPriorityStateFlag) {
-        lastPriority = AlertData();
-        lastPriorityTime = 0;
-        s_resetPriorityStateFlag = false;
-    }
-    
-    constexpr unsigned long PRIORITY_STICK_MS = 300;   // Reduced from 500ms
-    constexpr uint8_t PRIORITY_HYSTERESIS = 1;         // Reduced from 2 bars
-    
-    unsigned long now = millis();
-    
-    // Check if last priority is still present
-    bool lastStillPresent = false;
-    AlertData currentLastMatch;
-    if (lastPriority.isValid && lastPriority.band != BAND_NONE && lastPriority.band != BAND_LASER) {
-        for (size_t i = 0; i < alertCount; ++i) {
-            if (alerts[i].band == lastPriority.band) {
-                if (lastPriority.frequency == 0 || alerts[i].frequency == 0 ||
-                    ((lastPriority.frequency > alerts[i].frequency) ? 
-                     (lastPriority.frequency - alerts[i].frequency) : 
-                     (alerts[i].frequency - lastPriority.frequency)) < 50) {
-                    lastStillPresent = true;
-                    currentLastMatch = alerts[i];
-                    break;
-                }
-            }
-        }
-    }
-    
-    // Determine if we should switch
-    bool shouldSwitch = true;  // Default to switching
-    
-    if (lastStillPresent) {
-        uint8_t strongestStrength = std::max(strongest.frontStrength, strongest.rearStrength);
-        uint8_t lastStrength = std::max(currentLastMatch.frontStrength, currentLastMatch.rearStrength);
-        
-        // Only stick if: same alert OR (within time window AND not much weaker)
-        bool sameAlert = (strongest.band == lastPriority.band && 
-                         (strongest.frequency == 0 || lastPriority.frequency == 0 ||
-                          strongest.frequency == lastPriority.frequency));
-        
-        if (sameAlert) {
-            shouldSwitch = false;  // Same alert, just update it
-            lastPriority = strongest;
-        } else if ((now - lastPriorityTime) < PRIORITY_STICK_MS && 
-                   strongestStrength <= lastStrength + PRIORITY_HYSTERESIS) {
-            // Within time window and new alert isn't significantly stronger
-            shouldSwitch = false;
-            lastPriority = currentLastMatch;  // Update with current strength
-        }
-    }
-    
-    if (shouldSwitch) {
-        lastPriority = strongest;
-        lastPriorityTime = now;
-    }
-
-    return lastPriority;
+    return alerts[0];  // Fallback
 }

@@ -61,10 +61,13 @@ public:
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
     
-    // Brightness adjustment overlay
-    void showBrightnessSlider(uint8_t currentLevel);  // Show slider overlay
-    void updateBrightnessSlider(uint8_t level);       // Update slider position
-    void hideBrightnessSlider();                      // Hide slider and restore display
+    // Settings adjustment overlay (brightness + voice volume)
+    void showBrightnessSlider(uint8_t brightnessLevel);                    // Show slider overlay
+    void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel); // Show both sliders
+    void updateBrightnessSlider(uint8_t level);                            // Update brightness slider
+    void updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider);  // Update both sliders
+    void hideBrightnessSlider();                                           // Hide slider and restore display
+    int getActiveSliderFromTouch(int16_t touchY);                          // Returns 0=brightness, 1=volume, -1=none
     
     // Get canvas for direct access (testing)
     Arduino_Canvas* getCanvas() { return tft; }
@@ -139,7 +142,7 @@ private:
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    static constexpr int SECONDARY_ROW_HEIGHT = 30;  // Height reserved for secondary alert cards
+    static constexpr int SECONDARY_ROW_HEIGHT = 54;  // Height reserved for secondary alert cards (with signal meter)
 
     int currentProfileSlot = 0;  // Track current profile for display
     ScreenMode currentScreen = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws
