@@ -62,13 +62,17 @@ struct DisplayState {
     bool hasV1Version;      // True if we've received version from V1
     bool hasVolumeData;     // True if we've received volume data in display packet
     uint8_t v1PriorityIndex; // V1's reported priority alert index (0-based)
+    uint8_t bogeyCounterByte;  // Raw 7-segment byte from V1 display (for decoding J, P, volume, etc)
+    char bogeyCounterChar;     // Decoded character from bogeyCounterByte
+    bool bogeyCounterDot;      // Decimal point from bogeyCounterByte (bit 7)
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
                      modeChar(0), hasMode(false), displayOn(true), hasDisplayOn(false),
                      flashBits(0), bandFlashBits(0), mainVolume(0), muteVolume(0),
                      v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false),
-                     v1PriorityIndex(0) {}
+                     v1PriorityIndex(0), bogeyCounterByte(0), bogeyCounterChar('0'), 
+                     bogeyCounterDot(false) {}
     
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+

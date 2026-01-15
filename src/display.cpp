@@ -655,8 +655,9 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
         }
     } else if (c == '-') {
         segments[6] = true; // Middle bar only
-    } else if (c == '=') {
+    } else if (c == '=' || c == '#') {
         // Three horizontal bars for laser alert (top, middle, bottom)
+        // '#' is the decoded byte value for laser (73)
         segments[0] = segments[6] = segments[3] = true;
     } else if (c == 'A' || c == 'a') {
         // A = all but bottom segment
@@ -664,18 +665,49 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
     } else if (c == 'L') {
         // Full L: bottom + lower-left + upper-left
         segments[3] = segments[4] = segments[5] = true;
-    } else if (c == 'l') {
+    } else if (c == 'l' || c == '&') {
         // Logic (lowercase) L: bottom + lower-left only
+        // '&' is used in decoder for little L (logic mode, byte value 24)
         segments[3] = segments[4] = true;
     } else if (c == 'S' || c == 's') {
         // S = top, upper-left, middle, lower-right, bottom (like 5)
         segments[0] = segments[5] = segments[6] = segments[2] = segments[3] = true;
-    } else if (c == 'E' || c == 'e') {
+    } else if (c == 'E') {
         // E = top, upper-left, middle, lower-left, bottom
         segments[0] = segments[5] = segments[6] = segments[4] = segments[3] = true;
     } else if (c == 'R' || c == 'r') {
         // r = middle, lower-left (lowercase r style)
         segments[6] = segments[4] = true;
+    } else if (c == 'J') {
+        // J = Junk: upper-right, lower-right, bottom, lower-left
+        segments[1] = segments[2] = segments[3] = segments[4] = true;
+    } else if (c == 'P') {
+        // P = Photo radar: top, upper-right, upper-left, middle, lower-left
+        segments[0] = segments[1] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'F') {
+        // F = top, upper-left, middle, lower-left
+        segments[0] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'C') {
+        // C = top, upper-left, lower-left, bottom
+        segments[0] = segments[5] = segments[4] = segments[3] = true;
+    } else if (c == 'U') {
+        // U = upper-right, lower-right, bottom, lower-left, upper-left
+        segments[1] = segments[2] = segments[3] = segments[4] = segments[5] = true;
+    } else if (c == 'u') {
+        // lowercase u = lower-right, bottom, lower-left
+        segments[2] = segments[3] = segments[4] = true;
+    } else if (c == 'b') {
+        // b = upper-left, lower-left, bottom, lower-right, middle
+        segments[5] = segments[4] = segments[3] = segments[2] = segments[6] = true;
+    } else if (c == 'c') {
+        // lowercase c = middle, lower-left, bottom
+        segments[6] = segments[4] = segments[3] = true;
+    } else if (c == 'd') {
+        // d = upper-right, lower-right, bottom, lower-left, middle
+        segments[1] = segments[2] = segments[3] = segments[4] = segments[6] = true;
+    } else if (c == 'e') {
+        // e = top, upper-left, lower-left, bottom, middle, upper-right (differs from capital E by having bottom right)
+        segments[0] = segments[5] = segments[4] = segments[3] = segments[6] = true;
     }
 
     auto drawSeg = [&](int sx, int sy, int w, int h, bool on) {
@@ -1786,6 +1818,7 @@ void V1Display::update(const DisplayState& state) {
     static uint8_t lastRestingArrows = 0;
     static uint8_t lastRestingMainVol = 255;
     static uint8_t lastRestingMuteVol = 255;
+    static uint8_t lastRestingBogeyByte = 0;  // Track V1's bogey counter for change detection
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1793,13 +1826,12 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         restingDebouncedBands != lastRestingDebouncedBands ||
-        effectiveMuted != lastState.muted ||
-        state.modeChar != lastState.modeChar ||
-        state.hasMode != lastState.hasMode;
+        effectiveMuted != lastState.muted;
     
     bool arrowsChanged = (state.arrows != lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
     bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != lastRestingBogeyByte);
     
     // Check if volume zero warning should be active (for flashing effect)
     // Use current proxy state for accurate check
@@ -1824,11 +1856,11 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged) {
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -1849,6 +1881,10 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
+        if (bogeyCounterChanged) {
+            lastRestingBogeyByte = state.bogeyCounterByte;
+            drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
+        }
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1863,10 +1899,12 @@ void V1Display::update(const DisplayState& state) {
     lastRestingSignalBars = state.signalBars;
     lastRestingMainVol = state.mainVolume;
     lastRestingMuteVol = state.muteVolume;
+    lastRestingBogeyByte = state.bogeyCounterByte;
     
     drawBaseFrame();
-    char topChar = state.hasMode ? state.modeChar : '0';
-    drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+    // Use V1's decoded bogey counter byte - shows mode, volume, etc.
+    char topChar = state.bogeyCounterChar;
+    drawTopCounter(topChar, effectiveMuted, state.bogeyCounterDot);
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
@@ -1976,9 +2014,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     drawBaseFrame();
     
-    // Bogey counter shows V1 mode (truth from V1) - NOT greyed, always visible
-    char topChar = state.hasMode ? state.modeChar : '0';
-    drawTopCounter(topChar, false, true);  // muted=false to keep it visible
+    // Bogey counter shows V1's decoded display - NOT greyed, always visible
+    char topChar = state.bogeyCounterChar;
+    drawTopCounter(topChar, false, state.bogeyCounterDot);  // muted=false to keep it visible
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
@@ -2040,7 +2078,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     // Change detection: check if we need to redraw
     static AlertData lastPriority;
-    static int lastAlertCount = 0;
+    static uint8_t lastBogeyByte = 0;  // Track V1's bogey counter byte for change detection
     static DisplayState lastMultiState;
     static bool firstRun = true;
     static AlertData lastSecondary[4];
@@ -2051,7 +2089,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetChangeTrackingFlag) {
         lastPriority = AlertData();
-        lastAlertCount = 0;
+        lastBogeyByte = 0;
         lastMultiState = DisplayState();
         firstRun = true;
         for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
@@ -2071,7 +2109,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
-    // Note: alertCount changes are handled via incremental update (alertCountChanged) for rapid response
+    // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
     
     // Also check if any secondary alert changed
     if (!needsRedraw) {
@@ -2099,7 +2137,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
-    bool alertCountChanged = (alertCount != lastAlertCount);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
     
     // Volume tracking
     static uint8_t lastMainVol = 255;
@@ -2119,7 +2157,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !alertCountChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2128,7 +2166,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || alertCountChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged)) {
         // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -2148,14 +2186,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
-        if (alertCountChanged) {
-            // Bogey counter update - rapidly follow V1's alert count
-            lastAlertCount = alertCount;
-            char countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
-            if (priority.band == BAND_LASER) {
-                countChar = '=';  // Laser shows '=' instead of count
-            }
-            drawTopCounter(countChar, state.muted, true);
+        if (bogeyCounterChanged) {
+            // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
+            lastBogeyByte = state.bogeyCounterByte;
+            drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -2167,7 +2201,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Full redraw needed - store current state for next comparison
     lastPriority = priority;
-    lastAlertCount = alertCount;
+    lastBogeyByte = state.bogeyCounterByte;
     lastMultiState = state;
     // Use same arrowsToShow logic as computed above for change detection
     lastArrows = arrowsToShow;
@@ -2184,14 +2218,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
     
-    // Bogey counter
-    char countChar;
-    if (priority.band == BAND_LASER) {
-        countChar = '=';  // Laser shows 3 horizontal bars
-    } else {
-        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
-    }
-    drawTopCounter(countChar, state.muted, true);
+    // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
+    drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
     
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {

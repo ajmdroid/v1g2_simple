@@ -38,6 +38,43 @@ BandArrowData processBandArrow(uint8_t v) {
     d.rear  = (v & 0b10000000) != 0;
     return d;
 }
+
+// Decode V1's 7-segment bogey counter byte to a character
+// Based on V1 protocol - shows J=Junk, P=Photo, volume digits, L=Logic, etc.
+// Bit 7 = decimal point (returned separately)
+// Returns: character to display, hasDot = true if decimal point should show
+char decodeBogeyCounterByte(uint8_t bogeyImage, bool& hasDot) {
+    hasDot = (bogeyImage & 0x80) != 0;  // Bit 7 = decimal point
+    
+    switch (bogeyImage & 0x7F) {
+        case 6:   return '1';
+        case 7:   return '7';
+        case 24:  return '&';  // Little L (logic mode)
+        case 28:  return 'u';
+        case 30:  return 'J';  // Junk
+        case 56:  return 'L';  // Logic
+        case 57:  return 'C';
+        case 62:  return 'U';
+        case 63:  return '0';
+        case 73:  return '#';  // LASER bars
+        case 79:  return '3';
+        case 88:  return 'c';
+        case 91:  return '2';
+        case 94:  return 'd';
+        case 102: return '4';
+        case 109: return '5';
+        case 111: return '9';
+        case 113: return 'F';
+        case 115: return 'P';  // Photo radar
+        case 119: return 'A';
+        case 121: return 'E';
+        case 124: return 'b';
+        case 125: return '6';
+        case 127: return '8';
+        default:  return ' ';  // Blank/unknown
+    }
+}
+
 } // namespace
 
 PacketParser::PacketParser() : alertCount(0), chunkCount(0) {
@@ -157,10 +194,24 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     }
 
     // Display packet structure:
-    // payload[3] = image1 (currently ON bits)
+    // payload[0] = bogey counter image1 (7-segment: 0-9, J=Junk, P=Photo, etc.)
+    // payload[1] = bogey counter image2 (unused for now)
+    // payload[2] = LED bar bitmap
+    // payload[3] = image1 (currently ON bits - bands/arrows)
     // payload[4] = image2 (steady/NOT-flashing bits)
+    // payload[5] = auxData0 (priority index)
+    // payload[6] = auxData1 (reserved)
+    // payload[7] = auxData2 (volume: upper=main, lower=mute)
     // Bits in image1 but NOT in image2 = FLASHING
     // V1 hardware handles the actual blink animation internally - we must do the same
+    
+    // Decode bogey counter byte - shows what V1's display shows (J, P, volume, etc.)
+    uint8_t bogeyByte = payload[0];
+    bool hasDot = false;
+    char bogeyChar = decodeBogeyCounterByte(bogeyByte, hasDot);
+    displayState.bogeyCounterByte = bogeyByte;
+    displayState.bogeyCounterChar = bogeyChar;
+    displayState.bogeyCounterDot = hasDot;
     
     uint8_t image1 = payload[3];
     uint8_t image2 = payload[4];
