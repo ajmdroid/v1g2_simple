@@ -1553,6 +1553,26 @@ void WiFiManager::handleSettingsBackup() {
     doc["slot1PriorityArrow"] = s.slot1PriorityArrow;
     doc["slot2PriorityArrow"] = s.slot2PriorityArrow;
     
+    // V1 Profiles backup
+    JsonArray profilesArr = doc["profiles"].to<JsonArray>();
+    std::vector<String> profileNames = v1ProfileManager.listProfiles();
+    for (const String& name : profileNames) {
+        V1Profile profile;
+        if (v1ProfileManager.loadProfile(name, profile)) {
+            JsonObject p = profilesArr.add<JsonObject>();
+            p["name"] = profile.name;
+            p["description"] = profile.description;
+            p["displayOn"] = profile.displayOn;
+            p["mainVolume"] = profile.mainVolume;
+            p["mutedVolume"] = profile.mutedVolume;
+            // Store raw bytes array
+            JsonArray bytes = p["bytes"].to<JsonArray>();
+            for (int i = 0; i < 6; i++) {
+                bytes.add(profile.settings.bytes[i]);
+            }
+        }
+    }
+    
     String json;
     serializeJsonPretty(doc, json);
     
@@ -1670,9 +1690,50 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["slot1PriorityArrow"].is<bool>()) s.slot1PriorityArrow = doc["slot1PriorityArrow"];
     if (doc["slot2PriorityArrow"].is<bool>()) s.slot2PriorityArrow = doc["slot2PriorityArrow"];
     
+    // Restore V1 profiles if present
+    int profilesRestored = 0;
+    if (doc["profiles"].is<JsonArray>()) {
+        JsonArray profilesArr = doc["profiles"].as<JsonArray>();
+        for (JsonObject p : profilesArr) {
+            if (!p["name"].is<const char*>() || !p["bytes"].is<JsonArray>()) {
+                continue;  // Skip invalid profile entries
+            }
+            
+            V1Profile profile;
+            profile.name = p["name"].as<String>();
+            if (p["description"].is<const char*>()) profile.description = p["description"].as<String>();
+            if (p["displayOn"].is<bool>()) profile.displayOn = p["displayOn"];
+            if (p["mainVolume"].is<int>()) profile.mainVolume = p["mainVolume"];
+            if (p["mutedVolume"].is<int>()) profile.mutedVolume = p["mutedVolume"];
+            
+            JsonArray bytes = p["bytes"].as<JsonArray>();
+            if (bytes.size() == 6) {
+                for (int i = 0; i < 6; i++) {
+                    profile.settings.bytes[i] = bytes[i].as<uint8_t>();
+                }
+                
+                ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
+                if (result.success) {
+                    profilesRestored++;
+                    Serial.printf("[Settings] Restored profile: %s\n", profile.name.c_str());
+                } else {
+                    Serial.printf("[Settings] Failed to restore profile: %s - %s\n", 
+                                  profile.name.c_str(), result.error.c_str());
+                }
+            }
+        }
+    }
+    
     // Save to flash
     settingsManager.save();
     
-    Serial.println("[Settings] Restored from uploaded backup");
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings restored successfully\"}");
+    Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
+    
+    // Build response with profile count
+    String response = "{\"success\":true,\"message\":\"Settings restored successfully";
+    if (profilesRestored > 0) {
+        response += " (" + String(profilesRestored) + " profiles)";
+    }
+    response += "\"}";
+    server.send(200, "application/json", response);
 }

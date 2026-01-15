@@ -11,7 +11,7 @@
 
 ## Recent Changes (v2.3.3)
 
-- **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) to JSON and restore from backup via web UI (`/settings` page).
+- **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) and V1 profiles to JSON and restore from backup via web UI (`/settings` page).
 - **Volume Indicator Centered:** Volume indicator now vertically centered between bogey counter and BLE icon for better visual balance.
 - **Display Style Refinement:** Modern style now uses Classic 7-segment for bogey counter (supports laser '=' flag) while keeping Montserrat Bold for frequency display.
 - **Laser Display Fix:** Laser '=' symbol now displays correctly in Modern mode (previously hidden).
@@ -928,8 +928,8 @@ Controls:
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 
 **Backup & Restore:**
-- **Download Backup:** Export all settings (colors, slot configs, voice settings) to a JSON file
-- **Restore from Backup:** Upload a previously saved backup file to restore all settings
+- **Download Backup:** Export all settings (colors, slot configs, voice settings) and V1 profiles to a JSON file
+- **Restore from Backup:** Upload a previously saved backup file to restore all settings and profiles
 
 **Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
 
