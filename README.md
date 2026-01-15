@@ -161,6 +161,7 @@ General configuration:
 - **AP Name/Password:** Change WiFi network name and password
 - **BLE Proxy:** Enable to relay V1 data to JBV1 app (advertises as "V1C-LE-S3")
 - **Proxy Name:** Change BLE advertised name
+- **Backup & Restore:** Download all settings to JSON file, or restore from a previous backup
 
 ### Audio (/audio)
 

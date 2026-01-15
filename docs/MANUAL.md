@@ -3,13 +3,20 @@
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
 
-**Version:** 2.0.6  
+**Version:** 2.2.9  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
 ---
 
-## Recent Changes (v2.0.6)
+## Recent Changes (v2.2.9)
+
+- **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) to JSON and restore from backup via web UI (`/settings` page).
+- **Volume Indicator Centered:** Volume indicator now vertically centered between bogey counter and BLE icon for better visual balance.
+- **Display Style Refinement:** Modern style now uses Classic 7-segment for bogey counter (supports laser '=' flag) while keeping Montserrat Bold for frequency display.
+- **Laser Display Fix:** Laser '=' symbol now displays correctly in Modern mode (previously hidden).
+
+### Previous Changes (v2.0.x)
 
 - **Volume Indicator:** V1 main volume (0-9) is now shown below the bogey counter. If volume is set to 0 and the phone app disconnects, a "VOL 0 WARNING" message appears after 15s (for 10s) to alert the user.
 - **VOL 0 Warning:** If V1's main volume is zero and the phone app disconnects, a warning is shown after 15s delay for 10s duration. This is to prevent missed audio alerts. (See Display States)
@@ -528,14 +535,16 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 
 ### Display Styles
 
-| Style | Font | Description |
-|-------|------|-------------|
-| Retro | 7/14-segment | Classic LED-style segmented digits with ghost segments |
-| Modern | Montserrat Bold | Antialiased TrueType font via OpenFontRender |
+| Style | Bogey Counter | Frequency | Description |
+|-------|---------------|-----------|-------------|
+| Classic | 7-segment | 7-segment | Full retro LED-style with ghost segments |
+| Modern | 7-segment | Montserrat Bold | Hybrid: LED bogey counter, antialiased frequency |
+
+**Note:** Both styles use 7-segment for the bogey counter to ensure proper display of the laser '=' flag and all numeric symbols. The Modern style applies Montserrat Bold only to the frequency display.
 
 Toggle via web UI: **Colors → Display Style**
 
-**Source:** [src/display.cpp](src/display.cpp#L1993-L2050) (drawFrequencyModern), [include/FreeSansBold24pt7b.h](include/FreeSansBold24pt7b.h)
+**Source:** [src/display.cpp](src/display.cpp#L963-L969) (drawTopCounter router), [src/display.cpp](src/display.cpp#L1993-L2050) (drawFrequencyModern)
 
 ### 7-Segment Digit Rendering
 
@@ -833,6 +842,7 @@ ESP32 Preferences API with namespace `v1settings`:
 | hideProf | bool | false | Hide profile indicator |
 | hideBatt | bool | false | Hide battery icon |
 | hideBle | bool | false | Hide BLE icon |
+| hideVol | bool | false | Hide volume indicator |
 | freqBandCol | bool | false | Use band color for frequency display |
 | colorArrF | uint16 | theme | Front arrow color |
 | colorArrS | uint16 | theme | Side arrow color |
@@ -907,6 +917,10 @@ Controls:
 - **BLE Proxy:** Enable/disable JBV1 forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 
+**Backup & Restore:**
+- **Download Backup:** Export all settings (colors, slot configs, voice settings) to a JSON file
+- **Restore from Backup:** Upload a previously saved backup file to restore all settings
+
 **Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
 
 ### Audio Page (`/audio`)
@@ -928,7 +942,7 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 ### Colors Page (`/colors`)
 
 Controls:
-- **Display Style:** Classic (7-segment) or Modern font
+- **Display Style:** Classic (full 7-segment) or Modern (7-seg bogey + Montserrat frequency)
 - **Custom Colors:** Per-element RGB565 colors
   - Bogey counter, Frequency display
   - Individual arrow colors (Front, Side, Rear separately)
@@ -937,8 +951,9 @@ Controls:
   - WiFi icon color
   - BLE icon colors (Connected, Disconnected states)
   - Muted alert color, Persisted alert color
+  - Volume indicator colors (Main volume, Mute volume)
 - **Use Band Color for Frequency:** When enabled, frequency display uses the detected band's color instead of custom frequency color
-- **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon
+- **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon, Hide volume indicator
 - **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
@@ -1277,6 +1292,13 @@ Enable verbose logging by checking serial output for:
 | POST | `/api/profile/push` | Push profile to V1 |
 | POST | `/darkmode` | Toggle display dark mode |
 | POST | `/mute` | Toggle mute |
+
+**Settings Backup/Restore:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/settings/backup` | Download all settings as JSON file |
+| POST | `/api/settings/restore` | Restore settings from uploaded JSON |
 
 **V1 Profile Management:**
 
@@ -1631,4 +1653,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v2.0.5.*
+*Document generated from source code analysis. Last verified against v2.2.9.*
