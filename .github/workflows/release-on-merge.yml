@@ -1,0 +1,211 @@
+name: Release on Merge
+
+# Single workflow: PR merge → version bump → build → release → deploy
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'interface/src/**'
+      - 'platformio.ini'
+  workflow_dispatch:
+    inputs:
+      skip_version_bump:
+        description: 'Skip version bump (use current version)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    
+    steps:
+      - name: Check if version bump commit
+        id: check
+        run: |
+          # For workflow_dispatch, always proceed
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Get commit message
+          COMMIT_MSG=$(cat << 'EOF'
+          ${{ github.event.head_commit.message }}
+          EOF
+          )
+          
+          if [[ "$COMMIT_MSG" == "chore(release):"* ]]; then
+            echo "This is a version bump commit, skipping"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Proceeding with release"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Checkout
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+      
+      - name: Setup Python
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          pip install platformio esptool
+          cd interface && npm ci
+      
+      # ========== VERSION BUMP ==========
+      - name: Calculate next version
+        if: steps.check.outputs.should_release == 'true'
+        id: version
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          
+          if [[ "${{ inputs.skip_version_bump }}" == "true" ]]; then
+            NEW_VERSION="$VERSION"
+            NEW_TAG="$LATEST_TAG"
+            echo "Keeping current version: $NEW_VERSION"
+          else
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            NEW_TAG="v${NEW_VERSION}"
+            echo "New version: $NEW_VERSION"
+          fi
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+      
+      - name: Update version files
+        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        run: |
+          sed -i 's/#define FIRMWARE_VERSION ".*"/#define FIRMWARE_VERSION "${{ steps.version.outputs.version }}"/' include/config.h
+          sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
+          sed -i 's/## V1 Simple Display - Version .*/## V1 Simple Display - Version ${{ steps.version.outputs.version }}/' docs/MANUAL.md
+      
+      # ========== BUILD ==========
+      - name: Build web interface
+        if: steps.check.outputs.should_release == 'true'
+        run: cd interface && npm run deploy
+      
+      - name: Build firmware
+        if: steps.check.outputs.should_release == 'true'
+        run: pio run -e waveshare-349
+      
+      - name: Build filesystem
+        if: steps.check.outputs.should_release == 'true'
+        run: pio run -e waveshare-349 -t buildfs
+      
+      - name: Create merged firmware
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          mkdir -p release
+          cp .pio/build/waveshare-349/bootloader.bin release/
+          cp .pio/build/waveshare-349/partitions.bin release/
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin release/
+          cp .pio/build/waveshare-349/firmware.bin release/
+          cp .pio/build/waveshare-349/littlefs.bin release/
+          
+          esptool.py --chip esp32s3 merge_bin \
+            -o release/merged-firmware.bin \
+            --flash_mode dio \
+            --flash_freq 80m \
+            --flash_size 16MB \
+            0x0000 release/bootloader.bin \
+            0x8000 release/partitions.bin \
+            0xe000 release/boot_app0.bin \
+            0x10000 release/firmware.bin \
+            0xc90000 release/littlefs.bin
+          
+          # Update manifest with version
+          sed -i "s|\"version\": \".*\"|\"version\": \"${{ steps.version.outputs.tag }}\"|" docs/install/manifest.json
+          cp docs/install/manifest.json release/
+      
+      # ========== COMMIT & TAG ==========
+      - name: Configure Git
+        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Commit version bump
+        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        run: |
+          git add include/config.h docs/install/manifest.json docs/MANUAL.md
+          git diff --staged --quiet || git commit -m "chore(release): bump version to ${{ steps.version.outputs.version }}"
+          git push origin main
+      
+      - name: Create tag
+        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        run: |
+          git tag -f ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }} --force
+      
+      # ========== RELEASE ==========
+      - name: Create GitHub Release
+        if: steps.check.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release/merged-firmware.bin
+            release/manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # ========== DEPLOY TO FLASHER ==========
+      - name: Prepare web installer files
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          cp release/*.bin docs/install/
+          cp release/manifest.json docs/install/
+      
+      - name: Deploy to GitHub Pages
+        if: steps.check.outputs.should_release == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/install
+          destination_dir: install
+      
+      - name: Summary
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          echo "## 🚀 Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Version bumped and committed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
+          echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Web flasher updated" >> $GITHUB_STEP_SUMMARY
