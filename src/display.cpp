@@ -18,10 +18,13 @@
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
 #include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+#include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
 
-// Global OpenFontRender instance for Modern style
-static OpenFontRender ofr;
+// Global OpenFontRender instances
+static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
+static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
 static bool ofrInitialized = false;
+static bool ofrSegment7Initialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -462,6 +465,19 @@ bool V1Display::begin() {
         ofrInitialized = true;
     }
     
+    // Initialize Segment7 font for Classic style (JBV1)
+    Serial.printf("Loading Segment7 font (%d bytes)...\n", sizeof(Segment7Font));
+    ofrSegment7.setSerial(Serial);
+    ofrSegment7.setDrawer(*tft);
+    FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
+    if (ftErr2) {
+        Serial.printf("ERROR: Failed to load Segment7 font! FT_Error: 0x%02X\n", ftErr2);
+        ofrSegment7Initialized = false;
+    } else {
+        Serial.println("Segment7 font initialized (JBV1 Classic style)");
+        ofrSegment7Initialized = true;
+    }
+    
     // Load color theme from settings
     updateColorTheme();
     
@@ -855,26 +871,11 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
 }
 
 // Classic 7-segment bogey counter (original V1 style)
+// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
-#if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.2f;  // Match frequency counter size
-#else
-    const float scale = 2.0f;
-#endif
-    SegMetrics m = segMetrics(scale);
-    int x = 12;
-    int y = 10;
-
-    // Clear the area and render the single-digit counter or mode letter
-    FILL_RECT(x - 2, y - 2, m.digitW + m.dot + 12, m.digitH + 8, PALETTE_BG);
-
-    char buf[3] = {symbol, 0, 0};
-    if (showDot) {
-        buf[1] = '.';
-    }
+    const V1Settings& s = settingsManager.get();
     
     // Use bogey color for digits, muted color if muted, otherwise bogey color
-    const V1Settings& s = settingsManager.get();
     bool isDigit = (symbol >= '0' && symbol <= '9');
     uint16_t color;
     if (isDigit) {
@@ -882,7 +883,44 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     } else {
         color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
     }
-    drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+    
+    // Build display string
+    char buf[3] = {symbol, 0, 0};
+    if (showDot) {
+        buf[1] = '.';
+    }
+    
+    if (ofrSegment7Initialized) {
+        // Use Segment7 TTF font (JBV1 style)
+        const int fontSize = 60;
+        const int x = 18;
+        const int y = 8;
+        
+        // Clear area
+        FILL_RECT(x - 2, y - 2, 55, fontSize + 8, PALETTE_BG);
+        
+        // Convert RGB565 to RGB888 for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", buf);
+    } else {
+        // Fallback to software 7-segment renderer
+#if defined(DISPLAY_WAVESHARE_349)
+        const float scale = 2.2f;
+#else
+        const float scale = 2.0f;
+#endif
+        SegMetrics m = segMetrics(scale);
+        int x = 12;
+        int y = 10;
+        FILL_RECT(x - 2, y - 2, m.digitW + m.dot + 12, m.digitH + 8, PALETTE_BG);
+        drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+    }
 }
 
 // Modern Montserrat Bold bogey counter
@@ -1586,8 +1624,33 @@ void V1Display::showScanning() {
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofr.setCursor(x, y);
         ofr.printf("%s", text);
+    } else if (ofrSegment7Initialized) {
+        // Classic style: use Segment7 TTF font (JBV1 style)
+        const int fontSize = 65;
+        const int leftMargin = 135;  // Match frequency positioning
+        const int rightMargin = 200;
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 8;
+        
+        const char* text = "SCAN";
+        int approxWidth = 4 * 32;  // 4 chars ~32px each
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - approxWidth) / 2;
+        
+        FILL_RECT(x - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+        
+        // Convert color for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((s.colorBandKa >> 11) << 3, ((s.colorBandKa >> 5) & 0x3F) << 2, (s.colorBandKa & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", text);
     } else {
-        // Classic style: use 14-segment display
+        // Fallback: software 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.3f;  // Match frequency scale
 #else
@@ -1774,9 +1837,10 @@ void V1Display::update(const DisplayState& state) {
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
     
-    // Track screen mode - this is "resting with bands" (between alerts)
-    // Set to Resting so that entering Live mode triggers full redraw
-    currentScreen = ScreenMode::Resting;
+    // Don't process resting update if we're in Scanning mode - wait for showResting() to be called
+    if (currentScreen == ScreenMode::Scanning) {
+        return;
+    }
     
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
@@ -1819,6 +1883,18 @@ void V1Display::update(const DisplayState& state) {
     static uint8_t lastRestingMainVol = 255;
     static uint8_t lastRestingMuteVol = 255;
     static uint8_t lastRestingBogeyByte = 0;  // Track V1's bogey counter for change detection
+    
+    // Reset resting statics when change tracking reset is requested (on V1 disconnect)
+    if (s_resetChangeTrackingFlag) {
+        firstUpdate = true;
+        lastRestingDebouncedBands = 0;
+        lastRestingSignalBars = 0;
+        lastRestingArrows = 0;
+        lastRestingMainVol = 255;
+        lastRestingMuteVol = 255;
+        lastRestingBogeyByte = 0;
+        // Don't clear the flag here - let the alert update() clear it
+    }
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1988,6 +2064,7 @@ void V1Display::update(const DisplayState& state) {
     tft->flush();  // Push canvas to display
 #endif
 
+    currentScreen = ScreenMode::Resting;  // Set screen mode after redraw complete
     lastState = state;
 }
 
@@ -2772,27 +2849,134 @@ void V1Display::drawSignalBars(uint8_t bars) {
 }
 
 // Classic 7-segment frequency display (original V1 style)
+// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
-#if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.3f; // Sized to fit between mute icon and bottom of primary zone
-#else
-    const float scale = 1.7f; // ~15% smaller than the counter digits
-#endif
-    SegMetrics m = segMetrics(scale);
+    const V1Settings& s = settingsManager.get();
     
-    // Position frequency below mute icon area (mute badge is at y=5, h=26, ends at y=31)
-    // Shift down slightly to center between mute icon and secondary cards
-    const int muteIconBottom = 33;  // Mute icon ends at y=31, add 2px gap
-    int effectiveHeight = getEffectiveScreenHeight();
-    int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;  // +5 shift toward cards
-    
-    if (band == BAND_LASER) {
-        // Draw "LASER" centered between band indicators and signal bars
-        const char* laserStr = "LASER";
-        int width = measureSevenSegmentText(laserStr, scale);  // measurement is same for both
+    if (ofrSegment7Initialized) {
+        // Use Segment7 TTF font (JBV1 style)
+        const int fontSize = 65;
+        
 #if defined(DISPLAY_WAVESHARE_349)
-        const int leftMargin = 120;   // After band indicators
+        const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
         const int rightMargin = 200;  // Before signal bars (at X=440)
+#else
+        const int leftMargin = 0;
+        const int rightMargin = 120;
+#endif
+        
+        // Position frequency in middle of primary zone
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 8;
+        
+        if (band == BAND_LASER) {
+            // Draw "LASER" using Segment7 font
+            const char* laserStr = "LASER";
+            int approxWidth = 5 * 32;  // 5 chars ~32px each
+            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+            int lx = leftMargin + (maxWidth - approxWidth) / 2;
+            
+            // Clear area
+            FILL_RECT(lx - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+            
+            uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+            
+            // Convert RGB565 to RGB888 for OpenFontRender
+            uint8_t bgR = (PALETTE_BG >> 11) << 3;
+            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+            ofrSegment7.setFontSize(fontSize);
+            ofrSegment7.setFontColor((laserColor >> 11) << 3, ((laserColor >> 5) & 0x3F) << 2, (laserColor & 0x1F) << 3);
+            ofrSegment7.setCursor(lx, y);
+            ofrSegment7.printf("%s", laserStr);
+            return;
+        }
+
+        bool hasFreq = freqMHz > 0;
+        char freqStr[16];
+        if (hasFreq) {
+            float freqGhz = freqMHz / 1000.0f;
+            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "--.---");
+        }
+
+        int charCount = strlen(freqStr);
+        int approxWidth = charCount * 32;  // ~32px per char
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - approxWidth) / 2;
+        if (x < leftMargin) x = leftMargin;
+        
+        // Clear area - only clear text area
+        FILL_RECT(x - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+        
+        // Determine frequency color
+        uint16_t freqColor;
+        if (muted) {
+            freqColor = PALETTE_MUTED_OR_PERSISTED;
+        } else if (!hasFreq) {
+            freqColor = PALETTE_GRAY;
+        } else if (s.freqUseBandColor && band != BAND_NONE) {
+            freqColor = getBandColor(band);
+        } else {
+            freqColor = s.colorFrequency;
+        }
+        
+        // Convert RGB565 to RGB888 for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", freqStr);
+    } else {
+        // Fallback to software 7-segment renderer
+#if defined(DISPLAY_WAVESHARE_349)
+        const float scale = 2.3f;
+#else
+        const float scale = 1.7f;
+#endif
+        SegMetrics m = segMetrics(scale);
+        
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
+        
+        if (band == BAND_LASER) {
+            const char* laserStr = "LASER";
+            int width = measureSevenSegmentText(laserStr, scale);
+#if defined(DISPLAY_WAVESHARE_349)
+            const int leftMargin = 120;
+            const int rightMargin = 200;
+#else
+            const int leftMargin = 0;
+            const int rightMargin = 120;
+#endif
+            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+            int x = leftMargin + (maxWidth - width) / 2;
+            if (x < leftMargin) x = leftMargin;
+            FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+            draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL, PALETTE_BG);
+            return;
+        }
+
+        bool hasFreq = freqMHz > 0;
+        char freqStr[16];
+        if (hasFreq) {
+            float freqGhz = freqMHz / 1000.0f;
+            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "--.---");
+        }
+
+        int width = measureSevenSegmentText(freqStr, scale);
+#if defined(DISPLAY_WAVESHARE_349)
+        const int leftMargin = 120;
+        const int rightMargin = 200;
 #else
         const int leftMargin = 0;
         const int rightMargin = 120;
@@ -2801,51 +2985,20 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
         
-        // Clear area before drawing
-        FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-        // Use muted grey for LASER when muted; otherwise custom laser color
-        const V1Settings& set = settingsManager.get();
-        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : set.colorBandL, PALETTE_BG);
-        return;
+        FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
+        
+        uint16_t freqColor;
+        if (muted) {
+            freqColor = PALETTE_MUTED_OR_PERSISTED;
+        } else if (!hasFreq) {
+            freqColor = PALETTE_GRAY;
+        } else if (s.freqUseBandColor && band != BAND_NONE) {
+            freqColor = getBandColor(band);
+        } else {
+            freqColor = s.colorFrequency;
+        }
+        drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
     }
-
-    bool hasFreq = freqMHz > 0;
-    char freqStr[16];
-    if (hasFreq) {
-        float freqGhz = freqMHz / 1000.0f;
-        snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz); // XX.XXX layout
-    } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
-    }
-
-    int width = measureSevenSegmentText(freqStr, scale);
-#if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 120;   // After band indicators
-    const int rightMargin = 200;  // Before signal bars (at X=440)
-#else
-    const int leftMargin = 0;
-    const int rightMargin = 120;  // leave room on the right for the arrow stack
-#endif
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    int x = leftMargin + (maxWidth - width) / 2;
-    if (x < leftMargin) x = leftMargin;
-    
-    // Clear area before drawing (minimal padding to avoid cutting into numbers)
-    const V1Settings& s = settingsManager.get();
-    FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
-    
-    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
-    uint16_t freqColor;
-    if (muted) {
-        freqColor = PALETTE_MUTED_OR_PERSISTED;
-    } else if (!hasFreq) {
-        freqColor = PALETTE_GRAY;
-    } else if (s.freqUseBandColor && band != BAND_NONE) {
-        freqColor = getBandColor(band);
-    } else {
-        freqColor = s.colorFrequency;
-    }
-    drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
 // Modern frequency display - Antialiased with OpenFontRender
