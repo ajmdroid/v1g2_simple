@@ -91,7 +91,8 @@ struct V1Settings {
     uint16_t colorBandKa;        // Ka band color
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
-    uint16_t colorWiFiIcon;      // WiFi indicator icon color
+    uint16_t colorWiFiIcon;      // WiFi indicator icon color (no client)
+    uint16_t colorWiFiConnected;  // WiFi icon when client connected
     uint16_t colorBleConnected;   // Bluetooth icon when client connected
     uint16_t colorBleDisconnected; // Bluetooth icon when no client
     uint16_t colorBar1;          // Signal bar 1 (bottom/weakest)
@@ -180,7 +181,8 @@ struct V1Settings {
         colorBandKa(0xF800),     // Red
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
-        colorWiFiIcon(0x07FF),   // Cyan (WiFi icon)
+        colorWiFiIcon(0x07FF),   // Cyan (WiFi icon, no client)
+        colorWiFiConnected(0x07E0), // Green (WiFi client connected)
         colorBleConnected(0x07E0),   // Green (BLE connected)
         colorBleDisconnected(0x001F), // Blue (BLE disconnected)
         colorBar1(0x07E0),       // Green (weakest)
@@ -262,7 +264,7 @@ public:
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
                           uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
-    void setWiFiIconColor(uint16_t color);
+    void setWiFiIconColors(uint16_t icon, uint16_t connected);
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);

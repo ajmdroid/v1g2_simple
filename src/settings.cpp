@@ -96,6 +96,7 @@ void SettingsManager::load() {
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
     settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
+    settings.colorWiFiConnected = preferences.getUShort("colorWiFiC", 0x07E0);
     settings.colorBleConnected = preferences.getUShort("colorBleC", 0x07E0);
     settings.colorBleDisconnected = preferences.getUShort("colorBleD", 0x001F);
     settings.colorBar1 = preferences.getUShort("colorBar1", 0x07E0);
@@ -233,6 +234,7 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorBandK", settings.colorBandK);
     written += preferences.putUShort("colorBandX", settings.colorBandX);
     written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    written += preferences.putUShort("colorWiFiC", settings.colorWiFiConnected);
     written += preferences.putUShort("colorBleC", settings.colorBleConnected);
     written += preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     written += preferences.putUShort("colorBar1", settings.colorBar1);
@@ -410,8 +412,9 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
     save();
 }
 
-void SettingsManager::setWiFiIconColor(uint16_t color) {
-    settings.colorWiFiIcon = color;
+void SettingsManager::setWiFiIconColors(uint16_t icon, uint16_t connected) {
+    settings.colorWiFiIcon = icon;
+    settings.colorWiFiConnected = connected;
     save();
 }
 
@@ -699,6 +702,7 @@ void SettingsManager::backupToSD() {
     doc["colorBandK"] = settings.colorBandK;
     doc["colorBandX"] = settings.colorBandX;
     doc["colorWiFiIcon"] = settings.colorWiFiIcon;
+    doc["colorWiFiConnected"] = settings.colorWiFiConnected;
     doc["colorBleConnected"] = settings.colorBleConnected;
     doc["colorBleDisconnected"] = settings.colorBleDisconnected;
     doc["colorBar1"] = settings.colorBar1;
@@ -851,6 +855,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
     if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorWiFiConnected"].is<int>()) settings.colorWiFiConnected = doc["colorWiFiConnected"];
     if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
     if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
     if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
@@ -956,6 +961,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUShort("colorBandK", settings.colorBandK);
     preferences.putUShort("colorBandX", settings.colorBandX);
     preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
+    preferences.putUShort("colorWiFiC", settings.colorWiFiConnected);
     preferences.putUShort("colorBleC", settings.colorBleConnected);
     preferences.putUShort("colorBleD", settings.colorBleDisconnected);
     preferences.putUShort("colorBar1", settings.colorBar1);

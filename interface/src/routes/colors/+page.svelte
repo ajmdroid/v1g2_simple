@@ -14,6 +14,7 @@
 		bandK: 0x001F,   // Blue
 		bandX: 0x07E0,   // Green
 		wifiIcon: 0x07FF, // Cyan
+		wifiConnected: 0x07E0, // Green (client connected)
 		bleConnected: 0x07E0,    // Green
 		bleDisconnected: 0x001F, // Blue
 		bar1: 0x07E0,    // Green (weakest)
@@ -127,6 +128,7 @@
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
 			params.append('wifiIcon', colors.wifiIcon);
+			params.append('wifiConnected', colors.wifiConnected);
 			params.append('bleConnected', colors.bleConnected);
 			params.append('bleDisconnected', colors.bleDisconnected);
 			params.append('bar1', colors.bar1);
@@ -196,6 +198,7 @@
 					bandK: 0x001F,
 					bandX: 0x07E0,
 					wifiIcon: 0x07FF,
+					wifiConnected: 0x07E0,
 					bleConnected: 0x07E0,
 					bleDisconnected: 0x001F,
 					bar1: 0x07E0,
@@ -559,23 +562,45 @@
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Status Indicators</h2>
-				<div class="form-control">
-					<label class="label" for="wifiIcon-color">
-						<span class="label-text">WiFi Icon</span>
-					</label>
-					<div class="flex items-center gap-3">
-						<input 
-							id="wifiIcon-color"
-							type="color" 
-							aria-label="WiFi icon color"
-							class="w-12 h-10 cursor-pointer rounded border-0"
-							value={rgb565ToHex(colors.wifiIcon)}
-							onchange={(e) => updateColor('wifiIcon', e.target.value)}
-						/>
-						<span 
-							class="text-2xl font-bold"
-							style="color: {rgb565ToHex(colors.wifiIcon)}"
-						>📶</span>
+				
+				<div class="grid grid-cols-2 gap-4">
+					<div class="form-control">
+						<label class="label" for="wifiConnected-color">
+							<span class="label-text">WiFi Connected</span>
+						</label>
+						<div class="flex items-center gap-3">
+							<input 
+								id="wifiConnected-color"
+								type="color" 
+								aria-label="WiFi connected color"
+								class="w-12 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.wifiConnected)}
+								onchange={(e) => updateColor('wifiConnected', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.wifiConnected)}"
+							>📶</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="wifiIcon-color">
+							<span class="label-text">WiFi (No Client)</span>
+						</label>
+						<div class="flex items-center gap-3">
+							<input 
+								id="wifiIcon-color"
+								type="color" 
+								aria-label="WiFi icon color"
+								class="w-12 h-10 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.wifiIcon)}
+								onchange={(e) => updateColor('wifiIcon', e.target.value)}
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.wifiIcon)}"
+							>📶</span>
+						</div>
 					</div>
 				</div>
 				

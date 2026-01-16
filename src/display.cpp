@@ -1434,8 +1434,12 @@ void V1Display::drawWiFiIndicator() {
         return;
     }
     
-    // Get WiFi icon color from settings (default cyan 0x07FF)
-    uint16_t wifiColor = dimColor(s.colorWiFiIcon);
+    // Check if any clients are connected to the AP
+    bool hasClients = WiFi.softAPgetStationNum() > 0;
+    
+    // WiFi icon color: connected vs disconnected (like BLE icon)
+    uint16_t wifiColor = hasClients ? dimColor(s.colorWiFiConnected, 85)
+                                    : dimColor(s.colorWiFiIcon, 85);
     
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
