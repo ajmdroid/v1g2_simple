@@ -691,7 +691,10 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
     } else if (c == 'E') {
         // E = top, upper-left, middle, lower-left, bottom
         segments[0] = segments[5] = segments[6] = segments[4] = segments[3] = true;
-    } else if (c == 'R' || c == 'r') {
+    } else if (c == 'R') {
+        // R = top, upper-left, middle, lower-left (fuller capital R)
+        segments[0] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'r') {
         // r = middle, lower-left (lowercase r style)
         segments[6] = segments[4] = true;
     } else if (c == 'J') {
@@ -2872,13 +2875,17 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
         
         if (band == BAND_LASER) {
             // Draw "LASER" using Segment7 font
-            const char* laserStr = "LASER";
-            int approxWidth = 5 * 32;  // 5 chars ~32px each
+            const char* text = "LASER";
+            
+            // Get actual text dimensions
+            FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+            int textWidth = bbox.xMax - bbox.xMin;
+            
             int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-            int lx = leftMargin + (maxWidth - approxWidth) / 2;
+            int lx = leftMargin + (maxWidth - textWidth) / 2;
             
             // Clear area
-            FILL_RECT(lx - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+            FILL_RECT(lx - 5, y - 5, textWidth + 15, fontSize + 10, PALETTE_BG);
             
             uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
             
@@ -2889,8 +2896,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
             ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
             ofrSegment7.setFontSize(fontSize);
             ofrSegment7.setFontColor((laserColor >> 11) << 3, ((laserColor >> 5) & 0x3F) << 2, (laserColor & 0x1F) << 3);
+            
             ofrSegment7.setCursor(lx, y);
-            ofrSegment7.printf("%s", laserStr);
+            ofrSegment7.printf("%s", text);
             return;
         }
 
