@@ -12,6 +12,7 @@
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
+#include "battery_manager.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
@@ -480,6 +481,13 @@ void WiFiManager::handleStatus() {
     device["uptime"] = millis() / 1000;
     device["heap_free"] = ESP.getFreeHeap();
     device["hostname"] = "v1g2";
+    
+    // Battery info
+    JsonObject battery = doc["battery"].to<JsonObject>();
+    battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
+    battery["percentage"] = batteryManager.getPercentage();
+    battery["on_battery"] = batteryManager.isOnBattery();
+    battery["has_battery"] = batteryManager.hasBattery();
     
     // BLE/V1 connection state
     doc["v1_connected"] = bleClient.isConnected();

@@ -1253,25 +1253,19 @@ void V1Display::drawBatteryIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // Don't draw anything if no battery is present
-    if (!batteryManager.hasBattery()) {
-        return;
-    }
-    
     // Battery icon position - bottom left (use actual screen height, not effective)
     const int battX = 12;   // Align with bogey counter left edge
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
     const int battY = SCREEN_HEIGHT - battH - 8;  // Stay at actual bottom, not raised area
+    const int capW = 3;     // Positive terminal cap width
     
-    // Check if user explicitly hides the battery icon
-    if (s.hideBatteryIcon) {
-        const int capW = 3;
+    // Don't draw if no battery present or user hides it
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon) {
         FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
         return;
     }
     
-    const int capW = 3;     // Positive terminal cap width
     const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
