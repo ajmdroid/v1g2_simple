@@ -2862,7 +2862,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
     
     if (ofrSegment7Initialized) {
         // Use Segment7 TTF font (JBV1 style)
-        const int fontSize = 65;
+        const int fontSize = 75;
         
 #if defined(DISPLAY_WAVESHARE_349)
         const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
@@ -2872,10 +2872,10 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
         const int rightMargin = 120;
 #endif
         
-        // Position frequency in middle of primary zone
+        // Position frequency centered between mute icon and cards
         const int muteIconBottom = 33;
         int effectiveHeight = getEffectiveScreenHeight();
-        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 8;
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
         
         if (band == BAND_LASER) {
             // Draw "LASER" using Segment7 font
@@ -2888,8 +2888,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
             int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
             int lx = leftMargin + (maxWidth - textWidth) / 2;
             
-            // Clear area
-            FILL_RECT(lx - 5, y - 5, textWidth + 15, fontSize + 10, PALETTE_BG);
+            // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+            const int clearLeft = leftMargin + 10;
+            FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
             
             uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
             
@@ -2916,13 +2917,14 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
         }
 
         int charCount = strlen(freqStr);
-        int approxWidth = charCount * 32;  // ~32px per char
+        int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - approxWidth) / 2;
         if (x < leftMargin) x = leftMargin;
         
-        // Clear area - only clear text area
-        FILL_RECT(x - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+        // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+        const int clearLeft = leftMargin + 10;
+        FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
         
         // Determine frequency color
         uint16_t freqColor;
