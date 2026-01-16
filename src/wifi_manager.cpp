@@ -481,6 +481,7 @@ void WiFiManager::handleStatus() {
     device["uptime"] = millis() / 1000;
     device["heap_free"] = ESP.getFreeHeap();
     device["hostname"] = "v1g2";
+    device["firmware_version"] = FIRMWARE_VERSION;
     
     // Battery info
     JsonObject battery = doc["battery"].to<JsonObject>();

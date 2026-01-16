@@ -1749,6 +1749,12 @@ void V1Display::showBootSplash() {
             TFT_CALL(drawPixel)(sx, sy, pixel);
         }
     }
+    
+    // Draw version number in bottom-right corner
+    GFX_setTextDatum(BR_DATUM);  // Bottom-right alignment
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(0x7BEF, PALETTE_BG);  // Gray text (mid-gray RGB565)
+    GFX_drawString(tft, "v" FIRMWARE_VERSION, SCREEN_WIDTH - 8, SCREEN_HEIGHT - 6);
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display before enabling backlight
