@@ -12,6 +12,7 @@
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
+#include "battery_manager.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
@@ -480,6 +481,13 @@ void WiFiManager::handleStatus() {
     device["uptime"] = millis() / 1000;
     device["heap_free"] = ESP.getFreeHeap();
     device["hostname"] = "v1g2";
+    
+    // Battery info
+    JsonObject battery = doc["battery"].to<JsonObject>();
+    battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
+    battery["percentage"] = batteryManager.getPercentage();
+    battery["on_battery"] = batteryManager.isOnBattery();
+    battery["has_battery"] = batteryManager.hasBattery();
     
     // BLE/V1 connection state
     doc["v1_connected"] = bleClient.isConnected();
@@ -1231,10 +1239,11 @@ void WiFiManager::handleDisplayColorsSave() {
     
     settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX);
     
-    // Handle WiFi icon color separately if provided
-    if (server.hasArg("wifiIcon")) {
-        uint16_t wifiIcon = server.arg("wifiIcon").toInt();
-        settingsManager.setWiFiIconColor(wifiIcon);
+    // Handle WiFi icon colors if provided
+    if (server.hasArg("wifiIcon") || server.hasArg("wifiConnected")) {
+        uint16_t wifiIcon = server.hasArg("wifiIcon") ? server.arg("wifiIcon").toInt() : 0x07FF;
+        uint16_t wifiConn = server.hasArg("wifiConnected") ? server.arg("wifiConnected").toInt() : 0x07E0;
+        settingsManager.setWiFiIconColors(wifiIcon, wifiConn);
     }
     
     // Handle BLE icon colors if provided
@@ -1359,7 +1368,7 @@ void WiFiManager::handleDisplayColorsReset() {
     
     // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
-    settingsManager.setWiFiIconColor(0x07FF);  // Cyan
+    settingsManager.setWiFiIconColors(0x07FF, 0x07E0);  // Cyan (no client), Green (connected)
     // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
     settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
     // Reset muted color to default dark grey
@@ -1393,6 +1402,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bandK"] = s.colorBandK;
     doc["bandX"] = s.colorBandX;
     doc["wifiIcon"] = s.colorWiFiIcon;
+    doc["wifiConnected"] = s.colorWiFiConnected;
     doc["bleConnected"] = s.colorBleConnected;
     doc["bleDisconnected"] = s.colorBleDisconnected;
     doc["bar1"] = s.colorBar1;

@@ -18,10 +18,13 @@
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
 #include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+#include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
 
-// Global OpenFontRender instance for Modern style
-static OpenFontRender ofr;
+// Global OpenFontRender instances
+static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
+static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
 static bool ofrInitialized = false;
+static bool ofrSegment7Initialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -462,6 +465,19 @@ bool V1Display::begin() {
         ofrInitialized = true;
     }
     
+    // Initialize Segment7 font for Classic style (JBV1)
+    Serial.printf("Loading Segment7 font (%d bytes)...\n", sizeof(Segment7Font));
+    ofrSegment7.setSerial(Serial);
+    ofrSegment7.setDrawer(*tft);
+    FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
+    if (ftErr2) {
+        Serial.printf("ERROR: Failed to load Segment7 font! FT_Error: 0x%02X\n", ftErr2);
+        ofrSegment7Initialized = false;
+    } else {
+        Serial.println("Segment7 font initialized (JBV1 Classic style)");
+        ofrSegment7Initialized = true;
+    }
+    
     // Load color theme from settings
     updateColorTheme();
     
@@ -655,8 +671,9 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
         }
     } else if (c == '-') {
         segments[6] = true; // Middle bar only
-    } else if (c == '=') {
+    } else if (c == '=' || c == '#') {
         // Three horizontal bars for laser alert (top, middle, bottom)
+        // '#' is the decoded byte value for laser (73)
         segments[0] = segments[6] = segments[3] = true;
     } else if (c == 'A' || c == 'a') {
         // A = all but bottom segment
@@ -664,18 +681,52 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
     } else if (c == 'L') {
         // Full L: bottom + lower-left + upper-left
         segments[3] = segments[4] = segments[5] = true;
-    } else if (c == 'l') {
+    } else if (c == 'l' || c == '&') {
         // Logic (lowercase) L: bottom + lower-left only
+        // '&' is used in decoder for little L (logic mode, byte value 24)
         segments[3] = segments[4] = true;
     } else if (c == 'S' || c == 's') {
         // S = top, upper-left, middle, lower-right, bottom (like 5)
         segments[0] = segments[5] = segments[6] = segments[2] = segments[3] = true;
-    } else if (c == 'E' || c == 'e') {
+    } else if (c == 'E') {
         // E = top, upper-left, middle, lower-left, bottom
         segments[0] = segments[5] = segments[6] = segments[4] = segments[3] = true;
-    } else if (c == 'R' || c == 'r') {
+    } else if (c == 'R') {
+        // R = top, upper-left, middle, lower-left (fuller capital R)
+        segments[0] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'r') {
         // r = middle, lower-left (lowercase r style)
         segments[6] = segments[4] = true;
+    } else if (c == 'J') {
+        // J = Junk: upper-right, lower-right, bottom, lower-left
+        segments[1] = segments[2] = segments[3] = segments[4] = true;
+    } else if (c == 'P') {
+        // P = Photo radar: top, upper-right, upper-left, middle, lower-left
+        segments[0] = segments[1] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'F') {
+        // F = top, upper-left, middle, lower-left
+        segments[0] = segments[5] = segments[6] = segments[4] = true;
+    } else if (c == 'C') {
+        // C = top, upper-left, lower-left, bottom
+        segments[0] = segments[5] = segments[4] = segments[3] = true;
+    } else if (c == 'U') {
+        // U = upper-right, lower-right, bottom, lower-left, upper-left
+        segments[1] = segments[2] = segments[3] = segments[4] = segments[5] = true;
+    } else if (c == 'u') {
+        // lowercase u = lower-right, bottom, lower-left
+        segments[2] = segments[3] = segments[4] = true;
+    } else if (c == 'b') {
+        // b = upper-left, lower-left, bottom, lower-right, middle
+        segments[5] = segments[4] = segments[3] = segments[2] = segments[6] = true;
+    } else if (c == 'c') {
+        // lowercase c = middle, lower-left, bottom
+        segments[6] = segments[4] = segments[3] = true;
+    } else if (c == 'd') {
+        // d = upper-right, lower-right, bottom, lower-left, middle
+        segments[1] = segments[2] = segments[3] = segments[4] = segments[6] = true;
+    } else if (c == 'e') {
+        // e = top, upper-left, lower-left, bottom, middle, upper-right (differs from capital E by having bottom right)
+        segments[0] = segments[5] = segments[4] = segments[3] = segments[6] = true;
     }
 
     auto drawSeg = [&](int sx, int sy, int w, int h, bool on) {
@@ -823,26 +874,11 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
 }
 
 // Classic 7-segment bogey counter (original V1 style)
+// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
-#if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.2f;  // Match frequency counter size
-#else
-    const float scale = 2.0f;
-#endif
-    SegMetrics m = segMetrics(scale);
-    int x = 12;
-    int y = 10;
-
-    // Clear the area and render the single-digit counter or mode letter
-    FILL_RECT(x - 2, y - 2, m.digitW + m.dot + 12, m.digitH + 8, PALETTE_BG);
-
-    char buf[3] = {symbol, 0, 0};
-    if (showDot) {
-        buf[1] = '.';
-    }
+    const V1Settings& s = settingsManager.get();
     
     // Use bogey color for digits, muted color if muted, otherwise bogey color
-    const V1Settings& s = settingsManager.get();
     bool isDigit = (symbol >= '0' && symbol <= '9');
     uint16_t color;
     if (isDigit) {
@@ -850,7 +886,44 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     } else {
         color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
     }
-    drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+    
+    // Build display string
+    char buf[3] = {symbol, 0, 0};
+    if (showDot) {
+        buf[1] = '.';
+    }
+    
+    if (ofrSegment7Initialized) {
+        // Use Segment7 TTF font (JBV1 style)
+        const int fontSize = 60;
+        const int x = 18;
+        const int y = 8;
+        
+        // Clear area
+        FILL_RECT(x - 2, y - 2, 55, fontSize + 8, PALETTE_BG);
+        
+        // Convert RGB565 to RGB888 for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", buf);
+    } else {
+        // Fallback to software 7-segment renderer
+#if defined(DISPLAY_WAVESHARE_349)
+        const float scale = 2.2f;
+#else
+        const float scale = 2.0f;
+#endif
+        SegMetrics m = segMetrics(scale);
+        int x = 12;
+        int y = 10;
+        FILL_RECT(x - 2, y - 2, m.digitW + m.dot + 12, m.digitH + 8, PALETTE_BG);
+        drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+    }
 }
 
 // Modern Montserrat Bold bogey counter
@@ -1180,25 +1253,29 @@ void V1Display::drawBatteryIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // Don't draw anything if no battery is present
-    if (!batteryManager.hasBattery()) {
-        return;
-    }
-    
     // Battery icon position - bottom left (use actual screen height, not effective)
     const int battX = 12;   // Align with bogey counter left edge
     const int battW = 24;   // Battery body width
     const int battH = 14;   // Battery body height
     const int battY = SCREEN_HEIGHT - battH - 8;  // Stay at actual bottom, not raised area
+    const int capW = 3;     // Positive terminal cap width
     
-    // Check if user explicitly hides the battery icon
-    if (s.hideBatteryIcon) {
-        const int capW = 3;
+    // Voltage-based auto-hide: >4100mV = USB (hide), <4095mV = battery (show)
+    static bool showingBattery = false;
+    uint16_t voltage = batteryManager.getVoltageMillivolts();
+    if (voltage > 4100) {
+        showingBattery = false;
+    } else if (voltage < 4095) {
+        showingBattery = true;
+    }
+    // else: voltage 4095-4100, keep current state (hysteresis)
+    
+    // Don't draw if no battery, user hides it, or voltage says USB
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showingBattery) {
         FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
         return;
     }
     
-    const int capW = 3;     // Positive terminal cap width
     const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
@@ -1357,8 +1434,12 @@ void V1Display::drawWiFiIndicator() {
         return;
     }
     
-    // Get WiFi icon color from settings (default cyan 0x07FF)
-    uint16_t wifiColor = dimColor(s.colorWiFiIcon);
+    // Check if any clients are connected to the AP
+    bool hasClients = WiFi.softAPgetStationNum() > 0;
+    
+    // WiFi icon color: connected vs disconnected (like BLE icon)
+    uint16_t wifiColor = hasClients ? dimColor(s.colorWiFiConnected, 85)
+                                    : dimColor(s.colorWiFiIcon, 85);
     
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
@@ -1554,8 +1635,33 @@ void V1Display::showScanning() {
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofr.setCursor(x, y);
         ofr.printf("%s", text);
+    } else if (ofrSegment7Initialized) {
+        // Classic style: use Segment7 TTF font (JBV1 style)
+        const int fontSize = 65;
+        const int leftMargin = 135;  // Match frequency positioning
+        const int rightMargin = 200;
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 8;
+        
+        const char* text = "SCAN";
+        int approxWidth = 4 * 32;  // 4 chars ~32px each
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - approxWidth) / 2;
+        
+        FILL_RECT(x - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
+        
+        // Convert color for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((s.colorBandKa >> 11) << 3, ((s.colorBandKa >> 5) & 0x3F) << 2, (s.colorBandKa & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", text);
     } else {
-        // Classic style: use 14-segment display
+        // Fallback: software 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.3f;  // Match frequency scale
 #else
@@ -1742,9 +1848,10 @@ void V1Display::update(const DisplayState& state) {
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
     
-    // Track screen mode - this is "resting with bands" (between alerts)
-    // Set to Resting so that entering Live mode triggers full redraw
-    currentScreen = ScreenMode::Resting;
+    // Don't process resting update if we're in Scanning mode - wait for showResting() to be called
+    if (currentScreen == ScreenMode::Scanning) {
+        return;
+    }
     
     static bool firstUpdate = true;
     static bool wasInFlashPeriod = false;
@@ -1786,6 +1893,19 @@ void V1Display::update(const DisplayState& state) {
     static uint8_t lastRestingArrows = 0;
     static uint8_t lastRestingMainVol = 255;
     static uint8_t lastRestingMuteVol = 255;
+    static uint8_t lastRestingBogeyByte = 0;  // Track V1's bogey counter for change detection
+    
+    // Reset resting statics when change tracking reset is requested (on V1 disconnect)
+    if (s_resetChangeTrackingFlag) {
+        firstUpdate = true;
+        lastRestingDebouncedBands = 0;
+        lastRestingSignalBars = 0;
+        lastRestingArrows = 0;
+        lastRestingMainVol = 255;
+        lastRestingMuteVol = 255;
+        lastRestingBogeyByte = 0;
+        // Don't clear the flag here - let the alert update() clear it
+    }
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1793,13 +1913,12 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         restingDebouncedBands != lastRestingDebouncedBands ||
-        effectiveMuted != lastState.muted ||
-        state.modeChar != lastState.modeChar ||
-        state.hasMode != lastState.hasMode;
+        effectiveMuted != lastState.muted;
     
     bool arrowsChanged = (state.arrows != lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
     bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != lastRestingBogeyByte);
     
     // Check if volume zero warning should be active (for flashing effect)
     // Use current proxy state for accurate check
@@ -1824,11 +1943,11 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged) {
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -1849,6 +1968,10 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
+        if (bogeyCounterChanged) {
+            lastRestingBogeyByte = state.bogeyCounterByte;
+            drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
+        }
 #if defined(DISPLAY_WAVESHARE_349)
         tft->flush();
 #endif
@@ -1863,10 +1986,12 @@ void V1Display::update(const DisplayState& state) {
     lastRestingSignalBars = state.signalBars;
     lastRestingMainVol = state.mainVolume;
     lastRestingMuteVol = state.muteVolume;
+    lastRestingBogeyByte = state.bogeyCounterByte;
     
     drawBaseFrame();
-    char topChar = state.hasMode ? state.modeChar : '0';
-    drawTopCounter(topChar, effectiveMuted, true);  // Always show dot
+    // Use V1's decoded bogey counter byte - shows mode, volume, etc.
+    char topChar = state.bogeyCounterChar;
+    drawTopCounter(topChar, effectiveMuted, state.bogeyCounterDot);
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
@@ -1950,6 +2075,7 @@ void V1Display::update(const DisplayState& state) {
     tft->flush();  // Push canvas to display
 #endif
 
+    currentScreen = ScreenMode::Resting;  // Set screen mode after redraw complete
     lastState = state;
 }
 
@@ -1976,9 +2102,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     drawBaseFrame();
     
-    // Bogey counter shows V1 mode (truth from V1) - NOT greyed, always visible
-    char topChar = state.hasMode ? state.modeChar : '0';
-    drawTopCounter(topChar, false, true);  // muted=false to keep it visible
+    // Bogey counter shows V1's decoded display - NOT greyed, always visible
+    char topChar = state.bogeyCounterChar;
+    drawTopCounter(topChar, false, state.bogeyCounterDot);  // muted=false to keep it visible
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
@@ -2040,7 +2166,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     // Change detection: check if we need to redraw
     static AlertData lastPriority;
-    static int lastAlertCount = 0;
+    static uint8_t lastBogeyByte = 0;  // Track V1's bogey counter byte for change detection
     static DisplayState lastMultiState;
     static bool firstRun = true;
     static AlertData lastSecondary[4];
@@ -2051,7 +2177,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetChangeTrackingFlag) {
         lastPriority = AlertData();
-        lastAlertCount = 0;
+        lastBogeyByte = 0;
         lastMultiState = DisplayState();
         firstRun = true;
         for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
@@ -2071,7 +2197,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
-    // Note: alertCount changes are handled via incremental update (alertCountChanged) for rapid response
+    // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
     
     // Also check if any secondary alert changed
     if (!needsRedraw) {
@@ -2099,7 +2225,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool arrowsChanged = (arrowsToShow != lastArrows);
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
-    bool alertCountChanged = (alertCount != lastAlertCount);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
     
     // Volume tracking
     static uint8_t lastMainVol = 255;
@@ -2119,7 +2245,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !alertCountChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2128,7 +2254,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || alertCountChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged)) {
         // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -2148,14 +2274,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
         }
-        if (alertCountChanged) {
-            // Bogey counter update - rapidly follow V1's alert count
-            lastAlertCount = alertCount;
-            char countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
-            if (priority.band == BAND_LASER) {
-                countChar = '=';  // Laser shows '=' instead of count
-            }
-            drawTopCounter(countChar, state.muted, true);
+        if (bogeyCounterChanged) {
+            // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
+            lastBogeyByte = state.bogeyCounterByte;
+            drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -2167,7 +2289,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Full redraw needed - store current state for next comparison
     lastPriority = priority;
-    lastAlertCount = alertCount;
+    lastBogeyByte = state.bogeyCounterByte;
     lastMultiState = state;
     // Use same arrowsToShow logic as computed above for change detection
     lastArrows = arrowsToShow;
@@ -2184,14 +2306,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
     
-    // Bogey counter
-    char countChar;
-    if (priority.band == BAND_LASER) {
-        countChar = '=';  // Laser shows 3 horizontal bars
-    } else {
-        countChar = (alertCount > 9) ? '9' : ('0' + alertCount);
-    }
-    drawTopCounter(countChar, state.muted, true);
+    // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
+    drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
     
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
@@ -2744,27 +2860,141 @@ void V1Display::drawSignalBars(uint8_t bars) {
 }
 
 // Classic 7-segment frequency display (original V1 style)
+// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
-#if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.3f; // Sized to fit between mute icon and bottom of primary zone
-#else
-    const float scale = 1.7f; // ~15% smaller than the counter digits
-#endif
-    SegMetrics m = segMetrics(scale);
+    const V1Settings& s = settingsManager.get();
     
-    // Position frequency below mute icon area (mute badge is at y=5, h=26, ends at y=31)
-    // Shift down slightly to center between mute icon and secondary cards
-    const int muteIconBottom = 33;  // Mute icon ends at y=31, add 2px gap
-    int effectiveHeight = getEffectiveScreenHeight();
-    int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;  // +5 shift toward cards
-    
-    if (band == BAND_LASER) {
-        // Draw "LASER" centered between band indicators and signal bars
-        const char* laserStr = "LASER";
-        int width = measureSevenSegmentText(laserStr, scale);  // measurement is same for both
+    if (ofrSegment7Initialized) {
+        // Use Segment7 TTF font (JBV1 style)
+        const int fontSize = 75;
+        
 #if defined(DISPLAY_WAVESHARE_349)
-        const int leftMargin = 120;   // After band indicators
+        const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
         const int rightMargin = 200;  // Before signal bars (at X=440)
+#else
+        const int leftMargin = 0;
+        const int rightMargin = 120;
+#endif
+        
+        // Position frequency centered between mute icon and cards
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
+        
+        if (band == BAND_LASER) {
+            // Draw "LASER" using Segment7 font
+            const char* text = "LASER";
+            
+            // Get actual text dimensions
+            FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+            int textWidth = bbox.xMax - bbox.xMin;
+            
+            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+            int lx = leftMargin + (maxWidth - textWidth) / 2;
+            
+            // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+            const int clearLeft = leftMargin + 10;
+            FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
+            
+            uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+            
+            // Convert RGB565 to RGB888 for OpenFontRender
+            uint8_t bgR = (PALETTE_BG >> 11) << 3;
+            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+            ofrSegment7.setFontSize(fontSize);
+            ofrSegment7.setFontColor((laserColor >> 11) << 3, ((laserColor >> 5) & 0x3F) << 2, (laserColor & 0x1F) << 3);
+            
+            ofrSegment7.setCursor(lx, y);
+            ofrSegment7.printf("%s", text);
+            return;
+        }
+
+        bool hasFreq = freqMHz > 0;
+        char freqStr[16];
+        if (hasFreq) {
+            float freqGhz = freqMHz / 1000.0f;
+            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "--.---");
+        }
+
+        int charCount = strlen(freqStr);
+        int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - approxWidth) / 2;
+        if (x < leftMargin) x = leftMargin;
+        
+        // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+        const int clearLeft = leftMargin + 10;
+        FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
+        
+        // Determine frequency color
+        uint16_t freqColor;
+        if (muted) {
+            freqColor = PALETTE_MUTED_OR_PERSISTED;
+        } else if (!hasFreq) {
+            freqColor = PALETTE_GRAY;
+        } else if (s.freqUseBandColor && band != BAND_NONE) {
+            freqColor = getBandColor(band);
+        } else {
+            freqColor = s.colorFrequency;
+        }
+        
+        // Convert RGB565 to RGB888 for OpenFontRender
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+        ofrSegment7.setCursor(x, y);
+        ofrSegment7.printf("%s", freqStr);
+    } else {
+        // Fallback to software 7-segment renderer
+#if defined(DISPLAY_WAVESHARE_349)
+        const float scale = 2.3f;
+#else
+        const float scale = 1.7f;
+#endif
+        SegMetrics m = segMetrics(scale);
+        
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
+        
+        if (band == BAND_LASER) {
+            const char* laserStr = "LASER";
+            int width = measureSevenSegmentText(laserStr, scale);
+#if defined(DISPLAY_WAVESHARE_349)
+            const int leftMargin = 120;
+            const int rightMargin = 200;
+#else
+            const int leftMargin = 0;
+            const int rightMargin = 120;
+#endif
+            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+            int x = leftMargin + (maxWidth - width) / 2;
+            if (x < leftMargin) x = leftMargin;
+            FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+            draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL, PALETTE_BG);
+            return;
+        }
+
+        bool hasFreq = freqMHz > 0;
+        char freqStr[16];
+        if (hasFreq) {
+            float freqGhz = freqMHz / 1000.0f;
+            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
+        } else {
+            snprintf(freqStr, sizeof(freqStr), "--.---");
+        }
+
+        int width = measureSevenSegmentText(freqStr, scale);
+#if defined(DISPLAY_WAVESHARE_349)
+        const int leftMargin = 120;
+        const int rightMargin = 200;
 #else
         const int leftMargin = 0;
         const int rightMargin = 120;
@@ -2773,51 +3003,20 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
         
-        // Clear area before drawing
-        FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-        // Use muted grey for LASER when muted; otherwise custom laser color
-        const V1Settings& set = settingsManager.get();
-        draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : set.colorBandL, PALETTE_BG);
-        return;
+        FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
+        
+        uint16_t freqColor;
+        if (muted) {
+            freqColor = PALETTE_MUTED_OR_PERSISTED;
+        } else if (!hasFreq) {
+            freqColor = PALETTE_GRAY;
+        } else if (s.freqUseBandColor && band != BAND_NONE) {
+            freqColor = getBandColor(band);
+        } else {
+            freqColor = s.colorFrequency;
+        }
+        drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
     }
-
-    bool hasFreq = freqMHz > 0;
-    char freqStr[16];
-    if (hasFreq) {
-        float freqGhz = freqMHz / 1000.0f;
-        snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz); // XX.XXX layout
-    } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
-    }
-
-    int width = measureSevenSegmentText(freqStr, scale);
-#if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 120;   // After band indicators
-    const int rightMargin = 200;  // Before signal bars (at X=440)
-#else
-    const int leftMargin = 0;
-    const int rightMargin = 120;  // leave room on the right for the arrow stack
-#endif
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    int x = leftMargin + (maxWidth - width) / 2;
-    if (x < leftMargin) x = leftMargin;
-    
-    // Clear area before drawing (minimal padding to avoid cutting into numbers)
-    const V1Settings& s = settingsManager.get();
-    FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
-    
-    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
-    uint16_t freqColor;
-    if (muted) {
-        freqColor = PALETTE_MUTED_OR_PERSISTED;
-    } else if (!hasFreq) {
-        freqColor = PALETTE_GRAY;
-    } else if (s.freqUseBandColor && band != BAND_NONE) {
-        freqColor = getBandColor(band);
-    } else {
-        freqColor = s.colorFrequency;
-    }
-    drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
 }
 
 // Modern frequency display - Antialiased with OpenFontRender

@@ -18,7 +18,9 @@ TouchHandler::TouchHandler()
     , rstPin(-1)
     , touchActive(false)
     , lastTouchTime(0)
+    , lastReleaseTime(0)
     , touchDebounceMs(200)  // 200ms debounce for touch detection
+    , releaseDebounceMs(100) // 100ms of no-touch required before new tap can register
 {
 }
 
@@ -76,11 +78,7 @@ bool TouchHandler::isTouched() {
 }
 
 bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
-    // Check for debounce (handles millis() rollover at 49 days)
     unsigned long now = millis();
-    if ((long)(now - lastTouchTime) < (long)touchDebounceMs) {
-        return false;  // Still in debounce period
-    }
     
     // AXS15231B requires special command sequence to read touch data
     // Send command: {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0}
@@ -112,7 +110,11 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     uint8_t numPoints = buff[1];
     
     if (numPoints == 0 || numPoints > 4) {
-        touchActive = false;
+        // No touch - track when finger was released
+        if (touchActive) {
+            lastReleaseTime = now;
+            touchActive = false;
+        }
         return false;
     }
     
@@ -120,14 +122,25 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     x = ((buff[2] & 0x0F) << 8) | buff[3];
     y = ((buff[4] & 0x0F) << 8) | buff[5];
     
-    // Detect new touch (rising edge)
-    if (!touchActive) {
-        touchActive = true;
-        lastTouchTime = now;
-        TOUCH_LOGF("[Touch] TAP at (%d, %d)\n", x, y);
-        return true;  // New touch event
+    // Check if we're still within debounce period from last tap
+    if ((long)(now - lastTouchTime) < (long)touchDebounceMs) {
+        touchActive = true;  // Keep tracking that finger is down
+        return false;  // Still in debounce period
     }
     
+    // Detect new touch (rising edge) - require finger to have been lifted
+    // for at least releaseDebounceMs to prevent false taps from noisy readings
+    if (!touchActive) {
+        // Check if finger was released long enough for this to be a real new tap
+        if ((long)(now - lastReleaseTime) >= (long)releaseDebounceMs) {
+            touchActive = true;
+            lastTouchTime = now;
+            TOUCH_LOGF("[Touch] TAP at (%d, %d)\n", x, y);
+            return true;  // New touch event
+        }
+    }
+    
+    touchActive = true;  // Finger is down
     return false;  // Touch held, not a new tap
 }
 

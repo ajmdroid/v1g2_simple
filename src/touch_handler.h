@@ -56,7 +56,9 @@ private:
     int rstPin;
     bool touchActive;
     unsigned long lastTouchTime;
+    unsigned long lastReleaseTime;      // When finger was last released
     unsigned long touchDebounceMs;
+    unsigned long releaseDebounceMs;    // Time finger must be lifted before new tap
     
     // I2C communication
     uint8_t readRegister(uint8_t reg);

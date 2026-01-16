@@ -413,10 +413,10 @@ void BatteryManager::update() {
         lastPowerCheckMs = now;
     }
     
-    // Update cached voltage/percentage every 30 seconds (battery changes slowly)
-    // Power source detection above remains at 1Hz for responsive icon updates
+    // Update cached voltage/percentage every 10 seconds
+    // Faster polling needed for USB/battery auto-detection via voltage
     // Force immediate read on first call (cachedVoltage == 0) so battery icon shows at boot
-    if (cachedVoltage == 0 || (now - lastUpdateMs >= 30000)) {
+    if (cachedVoltage == 0 || (now - lastUpdateMs >= 10000)) {
         uint16_t voltage = readADCMillivolts();
         cachedVoltage = voltage;
         
