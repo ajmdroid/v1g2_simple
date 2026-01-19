@@ -167,6 +167,12 @@ struct V1Settings {
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     
+    // ALP (AntiLaserPriority) integration - Phase 1: Discovery & Logging
+    bool alpEnabled;             // Enable ALP BLE integration
+    String alpPairingCode;       // 6-digit ALP pairing code
+    bool alpLogToSerial;         // Log ALP BLE traffic to USB serial
+    bool alpLogToSD;             // Log ALP BLE traffic to SD card
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -243,7 +249,11 @@ struct V1Settings {
         slot1_highway(),
         slot2_comfort(),
         lastV1Address(""),
-        autoPowerOffMinutes(0) {}  // Default: disabled
+        autoPowerOffMinutes(0),  // Default: disabled
+        alpEnabled(false),       // ALP disabled by default
+        alpPairingCode(""),      // No pairing code set
+        alpLogToSerial(true),    // Log to serial by default for debugging
+        alpLogToSD(true) {}      // Log to SD by default for capture
 };
 
 class SettingsManager {
@@ -298,6 +308,12 @@ public:
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
     void setLastV1Address(const String& addr);
+    
+    // ALP integration settings
+    void setAlpEnabled(bool enabled);
+    void setAlpPairingCode(const String& code);
+    void setAlpLogToSerial(bool enabled);
+    void setAlpLogToSD(bool enabled);
     
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;

@@ -203,6 +203,12 @@ void SettingsManager::load() {
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
     
+    // ALP settings
+    settings.alpEnabled = preferences.getBool("alpEnabled", false);
+    settings.alpPairingCode = preferences.getString("alpCode", "");
+    settings.alpLogToSerial = preferences.getBool("alpSerial", true);
+    settings.alpLogToSD = preferences.getBool("alpSD", true);
+    
     preferences.end();
     
     Serial.println("Settings loaded:");
@@ -314,6 +320,12 @@ void SettingsManager::save() {
     written += preferences.putInt("slot2mode", settings.slot2_comfort.mode);
     written += preferences.putString("lastV1Addr", settings.lastV1Address);
     written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
+    
+    // ALP settings
+    written += preferences.putBool("alpEnabled", settings.alpEnabled);
+    written += preferences.putString("alpCode", settings.alpPairingCode);
+    written += preferences.putBool("alpSerial", settings.alpLogToSerial);
+    written += preferences.putBool("alpSD", settings.alpLogToSD);
     
     preferences.end();
     
@@ -688,6 +700,29 @@ void SettingsManager::setLastV1Address(const String& addr) {
         Serial.printf("Saved new V1 address: %s\n", addr.c_str());
     }
 }
+
+void SettingsManager::setAlpEnabled(bool enabled) {
+    settings.alpEnabled = enabled;
+    save();
+    Serial.printf("ALP integration %s\n", enabled ? "ENABLED" : "disabled");
+}
+
+void SettingsManager::setAlpPairingCode(const String& code) {
+    settings.alpPairingCode = code;
+    save();
+    Serial.println("ALP pairing code updated");
+}
+
+void SettingsManager::setAlpLogToSerial(bool enabled) {
+    settings.alpLogToSerial = enabled;
+    save();
+}
+
+void SettingsManager::setAlpLogToSD(bool enabled) {
+    settings.alpLogToSD = enabled;
+    save();
+}
+
 // Check if NVS appears to be in default state (likely erased during reflash)
 bool SettingsManager::checkNeedsRestore() {
     // If brightness is default (200) AND all colors are default, NVS was likely erased
@@ -747,6 +782,12 @@ void SettingsManager::backupToSD() {
     doc["proxyName"] = settings.proxyName;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    
+    // === ALP Integration Settings ===
+    doc["alpEnabled"] = settings.alpEnabled;
+    // Note: ALP pairing code NOT stored on SD for security (like AP password)
+    doc["alpLogToSerial"] = settings.alpLogToSerial;
+    doc["alpLogToSD"] = settings.alpLogToSD;
     
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
@@ -904,6 +945,12 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
+    
+    // === ALP Integration Settings ===
+    // Note: ALP pairing code NOT restored from SD for security
+    if (doc["alpEnabled"].is<bool>()) settings.alpEnabled = doc["alpEnabled"];
+    if (doc["alpLogToSerial"].is<bool>()) settings.alpLogToSerial = doc["alpLogToSerial"];
+    if (doc["alpLogToSD"].is<bool>()) settings.alpLogToSD = doc["alpLogToSD"];
     
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
@@ -1094,6 +1141,11 @@ bool SettingsManager::restoreFromSD() {
     preferences.putInt("slot1mode", settings.slot1_highway.mode);
     preferences.putString("slot2prof", settings.slot2_comfort.profileName);
     preferences.putInt("slot2mode", settings.slot2_comfort.mode);
+    // ALP settings
+    preferences.putBool("alpEnabled", settings.alpEnabled);
+    preferences.putString("alpCode", settings.alpPairingCode);
+    preferences.putBool("alpSerial", settings.alpLogToSerial);
+    preferences.putBool("alpSD", settings.alpLogToSD);
     preferences.end();
     
     Serial.println("[Settings] ✅ Full restore from SD backup complete!");
