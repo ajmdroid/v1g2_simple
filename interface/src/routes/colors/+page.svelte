@@ -1218,7 +1218,18 @@
 			<button class="btn btn-primary" onclick={applyPickerColor}>Apply</button>
 		</div>
 	</div>
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="modal-backdrop" onclick={cancelPicker}></div>
+	<div
+		class="modal-backdrop"
+		onclick={cancelPicker}
+		onkeydown={(event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				cancelPicker();
+			}
+		}}
+		role="button"
+		tabindex="0"
+		aria-label="Close color picker"
+	></div>
 </div>
 {/if}
