@@ -164,6 +164,9 @@ struct V1Settings {
     
     String lastV1Address;  // Last known V1 BLE address for fast reconnect
     
+    // Auto power-off on V1 disconnect
+    uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -239,7 +242,8 @@ struct V1Settings {
         slot0_default(),
         slot1_highway(),
         slot2_comfort(),
-        lastV1Address("") {}
+        lastV1Address(""),
+        autoPowerOffMinutes(0) {}  // Default: disabled
 };
 
 class SettingsManager {
@@ -257,6 +261,7 @@ public:
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
+    void setAutoPowerOffMinutes(uint8_t minutes);
     void setBrightness(uint8_t brightness);
     void setDisplayOff(bool off);
     void setAutoPushEnabled(bool enabled);

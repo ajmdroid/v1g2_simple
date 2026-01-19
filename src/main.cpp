@@ -123,6 +123,10 @@ static unsigned long priorityStableSince = 0;  // When priority alert became sta
 static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
 static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
 
+// Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
+static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
+static bool autoPowerOffArmed = false;  // True once V1 was connected at least once
+
 // Smart threat escalation tracking - detect signals ramping up over time
 // Trigger: was weak + now strong + sustained + not too many bogeys
 static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
@@ -1781,6 +1785,12 @@ void loop() {
                 if (isConnected) {
                     display.showResting(); // stay on resting view until data arrives
                     SerialLog.println("V1 connected!");
+                    // Cancel any pending auto power-off timer
+                    if (autoPowerOffTimerStart != 0) {
+                        SerialLog.println("[AutoPowerOff] Timer cancelled - V1 reconnected");
+                        autoPowerOffTimerStart = 0;
+                    }
+                    autoPowerOffArmed = true;  // Now armed for future disconnects
                 } else {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
@@ -1790,6 +1800,13 @@ void loop() {
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");
                     displayMode = DisplayMode::IDLE;
+                    
+                    // Start auto power-off timer if enabled and was previously connected
+                    const V1Settings& s = settingsManager.get();
+                    if (autoPowerOffArmed && s.autoPowerOffMinutes > 0) {
+                        autoPowerOffTimerStart = millis();
+                        SerialLog.printf("[AutoPowerOff] Timer started: %d minutes\n", s.autoPowerOffMinutes);
+                    }
                 }
                 wasConnected = isConnected;
             }
@@ -1820,6 +1837,19 @@ void loop() {
             if (parser.hasAlerts()) {
                 SerialLog.printf("Active alerts: %d\n", parser.getAlertCount());
             }
+        }
+    }
+    
+    // Auto power-off timer check
+    if (autoPowerOffTimerStart != 0) {
+        const V1Settings& s = settingsManager.get();
+        unsigned long elapsedMs = now - autoPowerOffTimerStart;
+        unsigned long timeoutMs = (unsigned long)s.autoPowerOffMinutes * 60UL * 1000UL;
+        
+        if (elapsedMs >= timeoutMs) {
+            SerialLog.printf("[AutoPowerOff] Timer expired after %d minutes - powering off\n", s.autoPowerOffMinutes);
+            autoPowerOffTimerStart = 0;  // Clear timer
+            batteryManager.powerOff();
         }
     }
 
