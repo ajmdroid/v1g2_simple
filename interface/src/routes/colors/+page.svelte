@@ -38,7 +38,7 @@
 		brightness: 200  // Display brightness (0-255)
 	});
 	
-	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern
+	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern, 2 = Hemi
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
@@ -369,7 +369,8 @@
 						onchange={saveDisplayStyle}
 					>
 						<option value={0}>Classic (7-Segment)</option>
-						<option value={1}>Modern</option>
+						<option value={1}>Modern (Montserrat)</option>
+						<option value={2}>Hemi (Speedometer)</option>
 					</select>
 				</div>
 			</div>

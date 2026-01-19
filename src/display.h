@@ -124,6 +124,7 @@ private:
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted);   // 7-segment style
     void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted);    // Montserrat Bold font
+    void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted);      // Hemi Head font (retro speedometer)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();

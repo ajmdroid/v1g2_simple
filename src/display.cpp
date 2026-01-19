@@ -18,13 +18,16 @@
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
 #include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+#include "../include/HemiHead.h"             // Hemi Head TTF (subset: 0-9, -, ., LASER, SCAN)
 #include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
 
 // Global OpenFontRender instances
 static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
 static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
+static OpenFontRender ofrHemi;               // For Hemi style (Hemi Head - retro speedometer)
 static bool ofrInitialized = false;
 static bool ofrSegment7Initialized = false;
+static bool ofrHemiInitialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -476,6 +479,19 @@ bool V1Display::begin() {
     } else {
         Serial.println("Segment7 font initialized (JBV1 Classic style)");
         ofrSegment7Initialized = true;
+    }
+    
+    // Initialize Hemi Head font for Hemi style (retro speedometer)
+    Serial.printf("Loading Hemi Head font (%d bytes)...\n", sizeof(HemiHead));
+    ofrHemi.setSerial(Serial);
+    ofrHemi.setDrawer(*tft);
+    FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
+    if (ftErr3) {
+        Serial.printf("ERROR: Failed to load Hemi Head font! FT_Error: 0x%02X\n", ftErr3);
+        ofrHemiInitialized = false;
+    } else {
+        Serial.println("Hemi Head font initialized (retro speedometer style)");
+        ofrHemiInitialized = true;
     }
     
     // Load color theme from settings
@@ -1733,6 +1749,26 @@ void V1Display::showScanning() {
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofr.setCursor(x, y);
         ofr.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
+        // Hemi style: use Hemi Head via OFR (retro speedometer look)
+        const int fontSize = 66;
+        ofrHemi.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofrHemi.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        const int leftMargin = 120;
+        const int rightMargin = 200;
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - textWidth) / 2;
+        int y = getEffectiveScreenHeight() - 72;
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofrHemi.setCursor(x, y);
+        ofrHemi.printf("%s", text);
     } else if (ofrSegment7Initialized) {
         // Classic style: use Segment7 TTF font (JBV1 style)
         const int fontSize = 65;
@@ -3225,6 +3261,78 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     ofr.printf("%s", freqStr);
 }
 
+// Hemi frequency display - Retro speedometer style with Hemi Head font
+void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if Hemi OFR not initialized
+    if (!ofrHemiInitialized) {
+        drawFrequencyClassic(freqMHz, band, muted);
+        return;
+    }
+    
+    // Hemi style: show nothing when no frequency (resting/idle state)
+    if (freqMHz == 0 && band != BAND_LASER) {
+        return;
+    }
+    
+    // OpenFontRender with Hemi Head font (retro speedometer style)
+    const int fontSize = 69;  // Match Modern style size
+    const int leftMargin = 120;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
+    
+    ofrHemi.setFontSize(fontSize);
+    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (band == BAND_LASER) {
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        ofrHemi.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = leftMargin + (maxWidth - textW) / 2;
+        
+        ofrHemi.setCursor(x, freqY);
+        ofrHemi.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    // Determine frequency color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (freqMHz == 0) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
+    ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = leftMargin + (maxWidth - textW) / 2;
+    
+    ofrHemi.setCursor(x, freqY);
+    ofrHemi.printf("%s", freqStr);
+}
+
 // Draw volume zero warning in the frequency area (flashing red text)
 void V1Display::drawVolumeZeroWarning() {
     // Flash at ~2Hz
@@ -3276,6 +3384,8 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
         drawFrequencyModern(freqMHz, band, muted);
+    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
+        drawFrequencyHemi(freqMHz, band, muted);
     } else {
         drawFrequencyClassic(freqMHz, band, muted);
     }

@@ -611,7 +611,7 @@ void WiFiManager::handleSettingsSave() {
     // Display style setting
     if (server.hasArg("displayStyle")) {
         int style = server.arg("displayStyle").toInt();
-        style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
+        style = std::max(0, std::min(style, 2));  // Clamp to valid range (0=Classic, 1=Modern, 2=Hemi)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
     }
     
