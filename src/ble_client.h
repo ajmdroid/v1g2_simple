@@ -79,6 +79,12 @@ public:
     // Check connection status
     bool isConnected();
     
+    // Get RSSI of connected V1 device (returns 0 if not connected)
+    int getConnectionRssi();
+    
+    // Get RSSI of connected proxy client (JBV1/phone) (returns 0 if not connected)
+    int getProxyClientRssi();
+    
     // Check if proxy client (JBV1) is connected
     bool isProxyClientConnected();
     

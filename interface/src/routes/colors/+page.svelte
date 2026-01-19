@@ -27,6 +27,8 @@
 		persisted: 0x18C3, // Darker grey (persisted alerts)
 		volumeMain: 0x001F, // Blue (main volume)
 		volumeMute: 0xFFE0, // Yellow (mute volume)
+		rssiV1: 0x07E0,  // Green (V1 RSSI label)
+		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -141,6 +143,8 @@
 			params.append('persisted', colors.persisted);
 			params.append('volumeMain', colors.volumeMain);
 			params.append('volumeMute', colors.volumeMute);
+			params.append('rssiV1', colors.rssiV1);
+			params.append('rssiProxy', colors.rssiProxy);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -211,6 +215,8 @@
 					persisted: 0x18C3,
 					volumeMain: 0x001F,
 					volumeMute: 0xFFE0,
+					rssiV1: 0x07E0,
+					rssiProxy: 0x001F,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -401,6 +407,51 @@
 								class="text-lg font-bold font-mono"
 								style="color: {rgb565ToHex(colors.volumeMute)}"
 							>0M</span>
+						</div>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
+				<p class="text-sm text-base-content/50 mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<div class="grid grid-cols-2 gap-4">
+					<div class="form-control">
+						<label class="label" for="rssiV1-color">
+							<span class="label-text">V1 RSSI (V)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="rssiV1-color"
+								type="color" 
+								aria-label="V1 RSSI label color"
+								class="w-10 h-8 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.rssiV1)}
+								onchange={(e) => updateColor('rssiV1', e.target.value)}
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.rssiV1)}"
+							>V</span>
+							<span class="text-lg font-mono text-success">-55</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="rssiProxy-color">
+							<span class="label-text">Proxy RSSI (P)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<input 
+								id="rssiProxy-color"
+								type="color" 
+								aria-label="Proxy RSSI label color"
+								class="w-10 h-8 cursor-pointer rounded border-0"
+								value={rgb565ToHex(colors.rssiProxy)}
+								onchange={(e) => updateColor('rssiProxy', e.target.value)}
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.rssiProxy)}"
+							>P</span>
+							<span class="text-lg font-mono text-success">-62</span>
 						</div>
 					</div>
 				</div>

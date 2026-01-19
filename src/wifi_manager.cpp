@@ -1288,6 +1288,16 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setVolumeMuteColor(volMuteColor);
     }
     
+    // Handle RSSI label colors
+    if (server.hasArg("rssiV1")) {
+        uint16_t rssiV1Color = server.arg("rssiV1").toInt();
+        settingsManager.setRssiV1Color(rssiV1Color);
+    }
+    if (server.hasArg("rssiProxy")) {
+        uint16_t rssiProxyColor = server.arg("rssiProxy").toInt();
+        settingsManager.setRssiProxyColor(rssiProxyColor);
+    }
+    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -1379,6 +1389,9 @@ void WiFiManager::handleDisplayColorsReset() {
     // Reset volume indicator colors: Main=Blue, Mute=Yellow
     settingsManager.setVolumeMainColor(0x001F);
     settingsManager.setVolumeMuteColor(0xFFE0);
+    // Reset RSSI label colors: V1=Green, Proxy=Blue
+    settingsManager.setRssiV1Color(0x07E0);
+    settingsManager.setRssiProxyColor(0x001F);
     // Reset frequency use band color to off
     settingsManager.setFreqUseBandColor(false);
     
@@ -1416,6 +1429,8 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["persisted"] = s.colorPersisted;
     doc["volumeMain"] = s.colorVolumeMain;
     doc["volumeMute"] = s.colorVolumeMute;
+    doc["rssiV1"] = s.colorRssiV1;
+    doc["rssiProxy"] = s.colorRssiProxy;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;

@@ -379,6 +379,29 @@ bool V1BLEClient::isConnected() {
     return pClient->isConnected();
 }
 
+int V1BLEClient::getConnectionRssi() {
+    // Return RSSI of connected V1 device, or 0 if not connected
+    if (!connected || !pClient || !pClient->isConnected()) {
+        return 0;
+    }
+    return pClient->getRssi();
+}
+
+int V1BLEClient::getProxyClientRssi() {
+    // Return RSSI of connected proxy client (JBV1/phone), or 0 if not connected
+    if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
+        return 0;
+    }
+    // Get connection handle of first connected peer
+    NimBLEConnInfo peerInfo = pServer->getPeerInfo(0);
+    uint16_t connHandle = peerInfo.getConnHandle();
+    int8_t rssi = 0;
+    if (ble_gap_conn_rssi(connHandle, &rssi) == 0) {
+        return rssi;
+    }
+    return 0;
+}
+
 bool V1BLEClient::isProxyClientConnected() {
     return proxyClientConnected;
 }

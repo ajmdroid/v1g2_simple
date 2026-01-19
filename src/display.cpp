@@ -639,6 +639,9 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
         volumeZeroWarningAcknowledged = false;
     }
     
+    // Check if proxy client connection changed - update RSSI display
+    bool proxyChanged = (clientConnected != bleProxyClientConnected);
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
         clientConnected == bleProxyClientConnected) {
@@ -648,6 +651,12 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
     bleProxyEnabled = proxyEnabled;
     bleProxyClientConnected = clientConnected;
     drawBLEProxyIndicator();
+    
+    // Update RSSI display when proxy connection changes
+    if (proxyChanged) {
+        drawRssiIndicator(bleClient.getConnectionRssi());
+    }
+    
     flush();
 #endif
 }
@@ -1045,10 +1054,10 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     // Draw volume indicator below bogey counter: "5V  0M" format
     const V1Settings& s = settingsManager.get();
     const int x = 8;
-    // Bogey counter ends ~y=67, position volume just below with small gap
-    const int y = 71;
+    // Evenly spaced layout from bogey(67) to bottom(172)
+    const int y = 75;
     const int clearW = 75;
-    const int clearH = 18;
+    const int clearH = 16;
     
     // Clear the area first - only clear what we need, BLE icon is at y=98
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
@@ -1067,7 +1076,75 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     char muteBuf[4];
     snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
     TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
-    GFX_drawString(tft, muteBuf, x + 32, y);  // Reduced spacing
+    GFX_drawString(tft, muteBuf, x + 36, y);  // Aligned with RSSI number
+}
+
+void V1Display::drawRssiIndicator(int rssi) {
+    // Draw BLE RSSI below volume indicator
+    // Shows V1 RSSI and JBV1 RSSI (if connected) stacked vertically
+    const int x = 8;
+    // Evenly spaced: volume at y=75, height 16, gap 8 -> y=99
+    const int y = 99;
+    const int lineHeight = 22;  // Increased spacing between V and P lines
+    const int clearW = 70;
+    const int clearH = lineHeight * 2;  // Room for two lines
+    
+    // Clear the area first
+    FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+    
+    // Get both RSSIs
+    int v1Rssi = rssi;  // V1 RSSI passed in
+    int jbv1Rssi = bleClient.getProxyClientRssi();  // JBV1/phone RSSI
+    
+    // Get settings for label colors
+    const V1Settings& s = settingsManager.get();
+    
+    GFX_setTextDatum(TL_DATUM);
+    TFT_CALL(setTextSize)(2);  // Match volume text size
+    
+    // Draw V1 RSSI if connected
+    if (v1Rssi != 0) {
+        // Draw "V " label with configurable color
+        TFT_CALL(setTextColor)(s.colorRssiV1, PALETTE_BG);
+        GFX_drawString(tft, "V ", x, y);
+        
+        // Color code RSSI value: green >= -60, yellow -60 to -80, red < -80
+        uint16_t rssiColor;
+        if (v1Rssi >= -60) {
+            rssiColor = COLOR_GREEN;
+        } else if (v1Rssi >= -80) {
+            rssiColor = COLOR_YELLOW;
+        } else {
+            rssiColor = COLOR_RED;
+        }
+        
+        TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", v1Rssi);
+        GFX_drawString(tft, buf, x + 24, y);  // Offset for "V " width
+    }
+    
+    // Draw JBV1 RSSI below V1 RSSI if connected
+    if (jbv1Rssi != 0) {
+        // Draw "P " label with configurable color
+        TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
+        GFX_drawString(tft, "P ", x, y + lineHeight);
+        
+        // Color code RSSI value
+        uint16_t rssiColor;
+        if (jbv1Rssi >= -60) {
+            rssiColor = COLOR_GREEN;
+        } else if (jbv1Rssi >= -80) {
+            rssiColor = COLOR_YELLOW;
+        } else {
+            rssiColor = COLOR_RED;
+        }
+        
+        TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", jbv1Rssi);
+        GFX_drawString(tft, buf, x + 24, y + lineHeight);  // Offset for "P " width
+    }
 }
 
 void V1Display::drawMuteIcon(bool muted) {
@@ -1323,9 +1400,9 @@ void V1Display::drawBatteryIndicator() {
 void V1Display::drawBLEProxyIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     // Position to the right of WiFi indicator (side-by-side at bottom-left)
-    // Battery is now at bottom-right, so icons can sit at very bottom
+    // Evenly spaced with volume and RSSI above
     const int iconSize = 20;
-    const int iconY = SCREEN_HEIGHT - iconSize - 8;  // Bottom of screen
+    const int iconY = 145;  // Moved up 2px from 147
     const int iconGap = 6;  // Gap between icons
     
     const int wifiX = 14;
@@ -1412,10 +1489,10 @@ void V1Display::drawWiFiIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // WiFi icon position - bottom left (battery moved to bottom-right)
+    // WiFi icon position - evenly spaced below RSSI
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int wifiY = SCREEN_HEIGHT - wifiSize - 8;  // Bottom of screen
+    const int wifiY = 145;  // Moved up 2px from 147
     
     // Check if user explicitly hides the WiFi icon
     if (s.hideWifiIcon) {
@@ -1971,6 +2048,7 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMainVol = state.mainVolume;
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
+            drawRssiIndicator(bleClient.getConnectionRssi());
         }
         if (bogeyCounterChanged) {
             lastRestingBogeyByte = state.bogeyCounterByte;
@@ -1999,6 +2077,7 @@ void V1Display::update(const DisplayState& state) {
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
@@ -2112,6 +2191,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     
     // Band indicator in persisted color
@@ -2277,6 +2357,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMainVol = state.mainVolume;
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
+            drawRssiIndicator(bleClient.getConnectionRssi());
         }
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
@@ -2316,6 +2397,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     
     // Main alert display (frequency, bands, arrows, signal bars)

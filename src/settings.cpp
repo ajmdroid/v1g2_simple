@@ -109,6 +109,8 @@ void SettingsManager::load() {
     settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
     settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0xF800);  // Red for main volume
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
+    settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
+    settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -247,6 +249,8 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorPersist", settings.colorPersisted);
     written += preferences.putUShort("colorVolMain", settings.colorVolumeMain);
     written += preferences.putUShort("colorVolMute", settings.colorVolumeMute);
+    written += preferences.putUShort("colorRssiV1", settings.colorRssiV1);
+    written += preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
     written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
@@ -451,6 +455,16 @@ void SettingsManager::setVolumeMainColor(uint16_t color) {
 
 void SettingsManager::setVolumeMuteColor(uint16_t color) {
     settings.colorVolumeMute = color;
+    save();
+}
+
+void SettingsManager::setRssiV1Color(uint16_t color) {
+    settings.colorRssiV1 = color;
+    save();
+}
+
+void SettingsManager::setRssiProxyColor(uint16_t color) {
+    settings.colorRssiProxy = color;
     save();
 }
 
@@ -715,6 +729,8 @@ void SettingsManager::backupToSD() {
     doc["colorPersisted"] = settings.colorPersisted;
     doc["colorVolumeMain"] = settings.colorVolumeMain;
     doc["colorVolumeMute"] = settings.colorVolumeMute;
+    doc["colorRssiV1"] = settings.colorRssiV1;
+    doc["colorRssiProxy"] = settings.colorRssiProxy;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -868,6 +884,8 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
     if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
+    if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
     // === UI Toggles ===
@@ -974,6 +992,8 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUShort("colorPersist", settings.colorPersisted);
     preferences.putUShort("colorVolMain", settings.colorVolumeMain);
     preferences.putUShort("colorVolMute", settings.colorVolumeMute);
+    preferences.putUShort("colorRssiV1", settings.colorRssiV1);
+    preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
     preferences.putBool("freqBandCol", settings.freqUseBandColor);
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);

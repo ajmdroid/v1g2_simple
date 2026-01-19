@@ -105,6 +105,8 @@ struct V1Settings {
     uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
     uint16_t colorVolumeMain;    // Volume indicator main volume color
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
+    uint16_t colorRssiV1;        // RSSI indicator V1 label color
+    uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -271,6 +273,8 @@ public:
     void setPersistedColor(uint16_t color);
     void setVolumeMainColor(uint16_t color);
     void setVolumeMuteColor(uint16_t color);
+    void setRssiV1Color(uint16_t color);
+    void setRssiProxyColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
