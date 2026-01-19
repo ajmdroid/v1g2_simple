@@ -1,6 +1,7 @@
 name: Release on Merge
 
-# Single workflow: PR merge → version bump → build → release → deploy
+# Single workflow: PR merge → build → release → deploy
+# Version is read from include/config.h (set it before merging PR)
 on:
   push:
     branches:
@@ -11,12 +12,6 @@ on:
       - 'interface/src/**'
       - 'platformio.ini'
   workflow_dispatch:
-    inputs:
-      skip_version_bump:
-        description: 'Skip version bump (use current version)'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -79,35 +74,22 @@ jobs:
           pip install platformio esptool
           cd interface && npm ci
       
-      # ========== VERSION BUMP ==========
-      - name: Calculate next version
+      # ========== VERSION ==========
+      - name: Get version from config.h
         if: steps.check.outputs.should_release == 'true'
         id: version
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
+          # Read version from config.h (source of truth)
+          VERSION=$(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')
+          echo "Version from config.h: $VERSION"
           
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          
-          if [[ "${{ inputs.skip_version_bump }}" == "true" ]]; then
-            NEW_VERSION="$VERSION"
-            NEW_TAG="$LATEST_TAG"
-            echo "Keeping current version: $NEW_VERSION"
-          else
-            PATCH=$((PATCH + 1))
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-            NEW_TAG="v${NEW_VERSION}"
-            echo "New version: $NEW_VERSION"
-          fi
-          
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          NEW_TAG="v${VERSION}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
       
-      - name: Update version files
-        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+      - name: Update other version files
+        if: steps.check.outputs.should_release == 'true'
         run: |
-          sed -i 's/#define FIRMWARE_VERSION ".*"/#define FIRMWARE_VERSION "${{ steps.version.outputs.version }}"/' include/config.h
           sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
           sed -i 's/## V1 Simple Display - Version .*/## V1 Simple Display - Version ${{ steps.version.outputs.version }}/' docs/MANUAL.md
       
