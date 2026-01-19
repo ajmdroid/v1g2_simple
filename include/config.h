@@ -1,6 +1,7 @@
 /**
  * Configuration file for V1 Gen2 Simple Display
  * Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640x172)
+ * Build trigger: audio files fix
  */
 
 #ifndef CONFIG_H
@@ -10,7 +11,7 @@
 #include "display_driver.h"
 
 // Firmware Version
-#define FIRMWARE_VERSION "2.4.2"
+#define FIRMWARE_VERSION "2.3.9"
 
 // Board-specific Power Management (Waveshare only)
 // Waveshare ESP32-S3-Touch-LCD-3.49

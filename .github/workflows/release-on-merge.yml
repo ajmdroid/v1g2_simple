@@ -116,6 +116,13 @@ jobs:
         if: steps.check.outputs.should_release == 'true'
         run: cd interface && npm run deploy
       
+      - name: Copy audio files
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          mkdir -p data/audio
+          cp tools/freq_audio/mulaw/*.mul data/audio/
+          echo "Copied $(ls -1 data/audio/*.mul | wc -l) audio clips"
+      
       - name: Build firmware
         if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349
