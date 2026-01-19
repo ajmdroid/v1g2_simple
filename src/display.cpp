@@ -3382,6 +3382,15 @@ void V1Display::drawVolumeZeroWarning() {
 // Router: calls appropriate frequency draw method based on display style setting
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
+    
+    // Debug: log which style is being used
+    static int lastStyleLogged = -1;
+    if (s.displayStyle != lastStyleLogged) {
+        Serial.printf("[Display] Style changed: %d (0=Classic, 1=Modern, 2=Hemi), ofrHemiInit=%d\n", 
+                      s.displayStyle, ofrHemiInitialized);
+        lastStyleLogged = s.displayStyle;
+    }
+    
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
         drawFrequencyModern(freqMHz, band, muted);
     } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
