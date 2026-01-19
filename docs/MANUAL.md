@@ -286,9 +286,11 @@ V1 Gen2 (BLE)
 
 ### Boot Splash Logic
 
-- **Power-on reset (`ESP_RST_POWERON`):** Show 640×172 logo for 1500ms
+- **Power-on reset (`ESP_RST_POWERON`):** Show 640×172 logo with firmware version for 1500ms
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
+
+The firmware version (e.g., "v2.4.3") is displayed on the boot splash screen and in the web UI header.
 
 **Source:** [src/main.cpp](src/main.cpp#L810-L820), [src/display.cpp](src/display.cpp) showBootSplash()
 
@@ -508,6 +510,7 @@ Layout zones (left to right):
 
 **Notes:**
 - **Volume Indicator:** Main volume (0-9) shown below bogey counter. If volume is 0 and phone app disconnects, triggers VOL 0 warning.
+- **RSSI Indicator:** BLE signal strength shown as "V:-XXdBm" (V1 connection) and "P:-XXdBm" (Proxy connection) in top-right area. Can be hidden via Colors page.
 - **Arrow Behavior:** Arrows are only shown when a valid frequency is present (never in resting state).
 - **Blinking:** Band indicators and arrows blink in sync with V1 hardware (5Hz, ~100ms), using V1's image1/image2 flash bits.
 - **Signal Bar Decay Reset:** On V1 disconnect, signal bar decay statics are reset to prevent stale display.
@@ -541,7 +544,10 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 | Signal Bars | 6 levels (weak to strong) |
 | Text | Bogey counter, frequency display |
 | States | Muted alerts, persisted alerts |
-| Icons | WiFi, BLE (connected/disconnected) |
+| Icons | WiFi (AP mode, client connected), BLE (connected/disconnected) |
+| Status | RSSI labels (V1 signal strength, Proxy signal strength), Volume indicator |
+
+**Note:** The color picker uses a custom modal with RGB sliders for Android Chrome compatibility (native color inputs don't work reliably on mobile).
 
 **Source:** [include/color_themes.h](include/color_themes.h#L1-L30), [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
 
@@ -955,17 +961,18 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 
 Controls:
 - **Display Style:** Classic (full 7-segment) or Modern (7-seg bogey + Montserrat frequency)
-- **Custom Colors:** Per-element RGB565 colors
+- **Custom Colors:** Per-element RGB565 colors (via custom RGB slider picker for Android compatibility)
   - Bogey counter, Frequency display
   - Individual arrow colors (Front, Side, Rear separately)
   - Band colors (L, Ka, K, X individually)
   - Signal bar gradient (6 levels)
-  - WiFi icon color
+  - WiFi icon colors (AP mode, Client connected)
   - BLE icon colors (Connected, Disconnected states)
+  - RSSI label colors (V1 connection, Proxy connection)
   - Muted alert color, Persisted alert color
   - Volume indicator colors (Main volume, Mute volume)
 - **Use Band Color for Frequency:** When enabled, frequency display uses the detected band's color instead of custom frequency color
-- **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon, Hide volume indicator
+- **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon, Hide volume indicator, Hide RSSI indicator
 - **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)

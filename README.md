@@ -158,14 +158,16 @@ Customize every color on the display:
 
 1. Go to `http://192.168.35.5/colors`
 2. **Display Style:** Classic (7-segment) or Modern font
-3. **Custom colors:** Click any color swatch to customize:
+3. **Custom colors:** Click any color swatch to open the color picker:
    - Band indicators (L, Ka, K, X)
    - Direction arrows (Front, Side, Rear)
    - Signal bars (6 levels, weak to strong)
    - Bogey counter, frequency, muted/persisted states
-   - WiFi/BLE icons
+   - WiFi icons (AP mode, client connected)
+   - BLE icons (connected, disconnected)
+   - RSSI labels (V1 signal, Proxy signal)
 4. **Test:** Click "Test" to preview colors on display
-5. **Hide icons:** Toggle off WiFi, battery, BLE, or profile indicator
+5. **Hide icons:** Toggle off WiFi, battery, BLE, RSSI, or profile indicator
 6. Click **Save**
 
 ### Settings (/settings)
