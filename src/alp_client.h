@@ -98,6 +98,8 @@ public:
     String getDeviceName() const { return deviceName_; }
     String getDeviceAddress() const { return deviceAddress_; }
     int getRSSI() const { return rssi_; }
+    uint16_t getServicesCount() const { return servicesCount_; }
+    uint16_t getNotificationsCount() const { return notificationsCount_; }
     
     // Logging control
     void setLogToSerial(bool enabled) { logToSerial_ = enabled; }
@@ -129,6 +131,8 @@ private:
     String deviceAddress_;
     NimBLEAddress* targetAddress_ = nullptr;
     int rssi_ = 0;
+    uint16_t servicesCount_ = 0;
+    uint16_t notificationsCount_ = 0;
     
     // BLE objects
     NimBLEClient* pClient_ = nullptr;

@@ -20,6 +20,7 @@
 					<li><a href="/devices">Saved V1s</a></li>
 					<li><a href="/colors">Colors</a></li>
 					<li><a href="/audio">Audio</a></li>
+					<li><a href="/alp">ALP</a></li>
 					<li><a href="/settings">Settings</a></li>
 				</ul>
 			</div>
@@ -32,6 +33,7 @@
 				<li><a href="/profiles" class="hover:text-primary">Profiles</a></li>
 				<li><a href="/colors" class="hover:text-primary">Colors</a></li>
 				<li><a href="/audio" class="hover:text-primary">Audio</a></li>
+				<li><a href="/alp" class="hover:text-primary">ALP</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
 			</ul>
 		</div>

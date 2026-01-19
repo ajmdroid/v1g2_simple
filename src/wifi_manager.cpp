@@ -9,6 +9,7 @@
 #include "storage_manager.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
+#include "alp_client.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -411,6 +412,13 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
+    
+    // ALP API routes
+    server.on("/api/alp/settings", HTTP_GET, [this]() { handleAlpSettingsGet(); });
+    server.on("/api/alp/settings", HTTP_POST, [this]() { handleAlpSettingsSave(); });
+    server.on("/api/alp/status", HTTP_GET, [this]() { handleAlpStatus(); });
+    server.on("/api/alp/scan", HTTP_POST, [this]() { handleAlpScan(); });
+    server.on("/api/alp/disconnect", HTTP_POST, [this]() { handleAlpDisconnect(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -1786,4 +1794,128 @@ void WiFiManager::handleSettingsRestore() {
     }
     response += "\"}";
     server.send(200, "application/json", response);
+}
+
+// ============================================================================
+// ALP API Handlers
+// ============================================================================
+
+void WiFiManager::handleAlpSettingsGet() {
+    markUiActivity();
+    Serial.println("[HTTP] GET /api/alp/settings");
+    
+    const V1Settings& s = settingsManager.get();
+    
+    JsonDocument doc;
+    doc["alpEnabled"] = s.alpEnabled;
+    doc["alpPairingCode"] = s.alpPairingCode;
+    doc["alpLogToSerial"] = s.alpLogToSerial;
+    doc["alpLogToSD"] = s.alpLogToSD;
+    
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleAlpSettingsSave() {
+    markUiActivity();
+    Serial.println("[HTTP] POST /api/alp/settings");
+    
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"error\":\"No body\"}");
+        return;
+    }
+    
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server.arg("plain"));
+    if (err) {
+        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    // Update settings
+    if (doc["alpEnabled"].is<bool>()) {
+        settingsManager.setAlpEnabled(doc["alpEnabled"]);
+    }
+    if (doc["alpPairingCode"].is<const char*>()) {
+        settingsManager.setAlpPairingCode(doc["alpPairingCode"].as<String>());
+    }
+    if (doc["alpLogToSerial"].is<bool>()) {
+        settingsManager.setAlpLogToSerial(doc["alpLogToSerial"]);
+    }
+    if (doc["alpLogToSD"].is<bool>()) {
+        settingsManager.setAlpLogToSD(doc["alpLogToSD"]);
+    }
+    
+    settingsManager.save();
+    
+    // Apply settings to ALP client
+    const V1Settings& s = settingsManager.get();
+    alpClient.setEnabled(s.alpEnabled);
+    alpClient.setPairingCode(s.alpPairingCode);
+    alpClient.setLogToSerial(s.alpLogToSerial);
+    alpClient.setLogToSD(s.alpLogToSD);
+    
+    Serial.printf("[ALP] Settings updated: enabled=%d, code=%s, serial=%d, sd=%d\n",
+                  s.alpEnabled, s.alpPairingCode.c_str(), s.alpLogToSerial, s.alpLogToSD);
+    
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleAlpStatus() {
+    markUiActivity();
+    // Don't log every status poll - too noisy
+    
+    JsonDocument doc;
+    
+    // Map internal state to string for UI
+    ALPState state = alpClient.getState();
+    const char* stateStr = "ALP_DISABLED";
+    switch (state) {
+        case ALPState::ALP_DISABLED: stateStr = "ALP_DISABLED"; break;
+        case ALPState::ALP_SCANNING: stateStr = "ALP_SCANNING"; break;
+        case ALPState::ALP_FOUND: stateStr = "ALP_FOUND"; break;
+        case ALPState::ALP_CONNECTING: stateStr = "ALP_CONNECTING"; break;
+        case ALPState::ALP_CONNECTED: stateStr = "ALP_CONNECTED"; break;
+        case ALPState::ALP_DISCONNECTED: stateStr = "ALP_DISCONNECTED"; break;
+        case ALPState::ALP_ERROR: stateStr = "ALP_ERROR"; break;
+    }
+    
+    doc["state"] = stateStr;
+    doc["deviceName"] = alpClient.getDeviceName();
+    doc["deviceAddress"] = alpClient.getDeviceAddress();
+    doc["servicesDiscovered"] = alpClient.getServicesCount();
+    doc["notificationsSubscribed"] = alpClient.getNotificationsCount();
+    doc["packetsLogged"] = alpClient.getPacketCount();
+    
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleAlpScan() {
+    markUiActivity();
+    Serial.println("[HTTP] POST /api/alp/scan");
+    
+    if (!settingsManager.get().alpEnabled) {
+        server.send(400, "application/json", "{\"error\":\"ALP is not enabled\"}");
+        return;
+    }
+    
+    ALPState state = alpClient.getState();
+    if (state == ALPState::ALP_SCANNING || state == ALPState::ALP_CONNECTING) {
+        server.send(400, "application/json", "{\"error\":\"Already scanning or connecting\"}");
+        return;
+    }
+    
+    alpClient.startScan();
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleAlpDisconnect() {
+    markUiActivity();
+    Serial.println("[HTTP] POST /api/alp/disconnect");
+    
+    alpClient.disconnect();
+    server.send(200, "application/json", "{\"success\":true}");
 }

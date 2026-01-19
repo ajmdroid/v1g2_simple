@@ -262,6 +262,7 @@ void ALPClient::dumpServices() {
     
     // Get all services
     auto& services = pClient_->getServices(true);
+    servicesCount_ = services.size();
     
     ALP_LOG("Found %d services:", services.size());
     
@@ -335,6 +336,7 @@ bool ALPClient::subscribeToAllNotifications() {
     }
     
     ALP_LOG("Subscribed to %d characteristics", subscribed);
+    notificationsCount_ = subscribed;
     return subscribed > 0;
 }
 

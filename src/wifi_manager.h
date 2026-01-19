@@ -116,6 +116,13 @@ private:
     void handleSettingsRestore();
     void handleNotFound();
     
+    // ALP API endpoints
+    void handleAlpSettingsGet();
+    void handleAlpSettingsSave();
+    void handleAlpStatus();
+    void handleAlpScan();
+    void handleAlpDisconnect();
+    
     // LittleFS file serving (new UI)
     bool serveLittleFSFile(const char* path, const char* contentType);
 };
