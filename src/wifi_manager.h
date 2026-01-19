@@ -73,6 +73,11 @@ private:
     int rateLimitRequestCount;
     bool checkRateLimit();  // Returns true if request allowed, false if rate limited
     
+    // Status JSON caching (Option 2 optimization)
+    static constexpr unsigned long STATUS_CACHE_TTL_MS = 500;  // 500ms cache
+    String cachedStatusJson;
+    unsigned long lastStatusJsonTime = 0;
+    
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
