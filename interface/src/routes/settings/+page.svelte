@@ -5,7 +5,8 @@
         ap_ssid: '',
         ap_password: '',
         proxy_ble: true,
-        proxy_name: 'V1C-LE-S3'
+        proxy_name: 'V1C-LE-S3',
+        autoPowerOffMinutes: 0
     });
 	
 	let loading = $state(true);
@@ -42,6 +43,7 @@
 			formData.append('ap_password', settings.ap_password);
 			formData.append('proxy_ble', settings.proxy_ble);
             formData.append('proxy_name', settings.proxy_name);
+            formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -199,6 +201,37 @@
 						placeholder="V1C-LE-S3"
 						disabled={!settings.proxy_ble}
 					/>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Auto Power Off -->
+		<div class="card bg-base-200">
+			<div class="card-body space-y-4">
+				<h2 class="card-title">🔌 Auto Power Off</h2>
+				<p class="text-sm text-base-content/60">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
+				<div class="form-control">
+					<label class="label" for="auto-power-off">
+						<span class="label-text">Minutes after disconnect (0 = disabled)</span>
+					</label>
+					<input
+						id="auto-power-off"
+						type="number"
+						class="input input-bordered w-24"
+						bind:value={settings.autoPowerOffMinutes}
+						min="0"
+						max="60"
+						placeholder="0"
+					/>
+					<label class="label">
+						<span class="label-text-alt">
+							{#if settings.autoPowerOffMinutes > 0}
+								Device will power off {settings.autoPowerOffMinutes} minute{settings.autoPowerOffMinutes !== 1 ? 's' : ''} after V1 disconnects
+							{:else}
+								Auto power-off is disabled
+							{/if}
+						</span>
+					</label>
 				</div>
 			</div>
 		</div>

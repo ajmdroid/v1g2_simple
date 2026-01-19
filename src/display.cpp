@@ -1493,7 +1493,7 @@ void V1Display::drawWiFiIndicator() {
     const V1Settings& s = settingsManager.get();
     
     // WiFi icon position - evenly spaced below RSSI
-    const int wifiX = 14;
+    const int wifiX = 8;
     const int wifiSize = 20;
     const int wifiY = 145;  // Moved up 2px from 147
     

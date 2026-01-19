@@ -201,6 +201,7 @@ void SettingsManager::load() {
     settings.slot2_comfort.profileName = preferences.getString("slot2prof", "");
     settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
+    settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
     
     preferences.end();
     
@@ -312,6 +313,7 @@ void SettingsManager::save() {
     written += preferences.putString("slot2prof", settings.slot2_comfort.profileName);
     written += preferences.putInt("slot2mode", settings.slot2_comfort.mode);
     written += preferences.putString("lastV1Addr", settings.lastV1Address);
+    written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     
     preferences.end();
     
@@ -339,6 +341,11 @@ void SettingsManager::setProxyBLE(bool enabled) {
 
 void SettingsManager::setProxyName(const String& name) {
     settings.proxyName = name;
+    save();
+}
+
+void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
+    settings.autoPowerOffMinutes = minutes;
     save();
 }
 
@@ -739,6 +746,7 @@ void SettingsManager::backupToSD() {
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
     doc["lastV1Address"] = settings.lastV1Address;
+    doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
@@ -895,6 +903,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyBLE"].is<bool>()) settings.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
+    if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
     
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
@@ -1008,6 +1017,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("proxyBLE", settings.proxyBLE);
     preferences.putString("proxyName", settings.proxyName);
     preferences.putString("lastV1Addr", settings.lastV1Address);
+    preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     preferences.putUChar("brightness", settings.brightness);
     preferences.putBool("displayOff", settings.turnOffDisplay);
     preferences.putInt("dispStyle", settings.displayStyle);

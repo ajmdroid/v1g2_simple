@@ -551,6 +551,7 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
+    doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     
     String json;
     serializeJson(doc, json);
@@ -592,6 +593,11 @@ void WiFiManager::handleSettingsSave() {
     }
     if (server.hasArg("proxy_name")) {
         settingsManager.setProxyName(server.arg("proxy_name"));
+    }
+    if (server.hasArg("autoPowerOffMinutes")) {
+        int minutes = server.arg("autoPowerOffMinutes").toInt();
+        minutes = std::max(0, std::min(minutes, 60));  // Clamp 0-60 minutes
+        settingsManager.setAutoPowerOffMinutes(minutes);
     }
 
     // Display style setting

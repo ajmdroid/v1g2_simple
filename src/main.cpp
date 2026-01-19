@@ -123,6 +123,10 @@ static unsigned long priorityStableSince = 0;  // When priority alert became sta
 static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
 static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
 
+// Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
+static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
+static bool autoPowerOffArmed = false;  // True once V1 data has been received (not just connected)
+
 // Smart threat escalation tracking - detect signals ramping up over time
 // Trigger: was weak + now strong + sustained + not too many bogeys
 static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
@@ -993,6 +997,12 @@ void processBLEData() {
                 const auto& currentAlerts = parser.getAllAlerts();
                 
                 displayMode = DisplayMode::LIVE;
+                
+                // Arm auto power-off once we've received actual V1 data
+                if (!autoPowerOffArmed) {
+                    autoPowerOffArmed = true;
+                    SerialLog.println("[AutoPowerOff] Armed - V1 data received");
+                }
 
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
@@ -1781,15 +1791,28 @@ void loop() {
                 if (isConnected) {
                     display.showResting(); // stay on resting view until data arrives
                     SerialLog.println("V1 connected!");
+                    // Cancel any pending auto power-off timer
+                    if (autoPowerOffTimerStart != 0) {
+                        SerialLog.println("[AutoPowerOff] Timer cancelled - V1 reconnected");
+                        autoPowerOffTimerStart = 0;
+                    }
+                    // Note: autoPowerOffArmed is set when we receive actual V1 data, not just on connect
                 } else {
                     // Reset stale state from previous connection
                     PacketParser::resetPriorityState();
                     PacketParser::resetAlertCountTracker();
                     parser.resetAlertAssembly();
-                    V1Display::resetChangeTracking();
+                    V1Display::resetChangeTracking();;
                     display.showScanning();
                     SerialLog.println("V1 disconnected - Scanning...");
                     displayMode = DisplayMode::IDLE;
+                    
+                    // Start auto power-off timer if enabled and was previously connected
+                    const V1Settings& s = settingsManager.get();
+                    if (autoPowerOffArmed && s.autoPowerOffMinutes > 0) {
+                        autoPowerOffTimerStart = millis();
+                        SerialLog.printf("[AutoPowerOff] Timer started: %d minutes\n", s.autoPowerOffMinutes);
+                    }
                 }
                 wasConnected = isConnected;
             }
@@ -1820,6 +1843,20 @@ void loop() {
             if (parser.hasAlerts()) {
                 SerialLog.printf("Active alerts: %d\n", parser.getAlertCount());
             }
+        }
+    }
+    
+    // Auto power-off timer check
+    if (autoPowerOffTimerStart != 0) {
+        const V1Settings& s = settingsManager.get();
+        unsigned long currentMs = millis();
+        unsigned long elapsedMs = currentMs - autoPowerOffTimerStart;
+        unsigned long timeoutMs = (unsigned long)s.autoPowerOffMinutes * 60UL * 1000UL;
+        
+        if (elapsedMs >= timeoutMs) {
+            SerialLog.printf("[AutoPowerOff] Timer expired after %d minutes - powering off\n", s.autoPowerOffMinutes);
+            autoPowerOffTimerStart = 0;  // Clear timer
+            batteryManager.powerOff();
         }
     }
 
