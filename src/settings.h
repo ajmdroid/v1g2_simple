@@ -115,6 +115,7 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
+    bool hideRssiIndicator;      // Hide RSSI signal strength indicator
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -281,6 +282,7 @@ public:
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
+    void setHideRssiIndicator(bool hide);
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);
@@ -328,6 +330,7 @@ public:
     // SD card backup/restore for display settings
     void backupToSD();
     bool restoreFromSD();
+    bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
 
 private:
     V1Settings settings;

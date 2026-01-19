@@ -1080,6 +1080,12 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
 }
 
 void V1Display::drawRssiIndicator(int rssi) {
+    // Check if RSSI indicator is hidden
+    const V1Settings& s = settingsManager.get();
+    if (s.hideRssiIndicator) {
+        return;  // Don't draw anything
+    }
+    
     // Draw BLE RSSI below volume indicator
     // Shows V1 RSSI and JBV1 RSSI (if connected) stacked vertically
     const int x = 8;
@@ -1095,9 +1101,6 @@ void V1Display::drawRssiIndicator(int rssi) {
     // Get both RSSIs
     int v1Rssi = rssi;  // V1 RSSI passed in
     int jbv1Rssi = bleClient.getProxyClientRssi();  // JBV1/phone RSSI
-    
-    // Get settings for label colors
-    const V1Settings& s = settingsManager.get();
     
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);  // Match volume text size
@@ -1597,25 +1600,35 @@ void V1Display::showDisconnected() {
     drawBatteryIndicator();
 }
 
-void V1Display::showResting() {
+void V1Display::showResting(bool forceRedraw) {
     // Always use multi-alert layout positioning
     g_multiAlertMode = true;
     multiAlertMode = false;
 
+    // Save the last known bogey counter before potentially resetting
+    // This preserves the mode indicator (A/L/c) when V1 is connected
+    char savedBogeyChar = lastState.bogeyCounterChar;
+    bool savedBogeyDot = lastState.bogeyCounterDot;
+    
     // Avoid redundant full-screen clears/flushes when already resting and nothing changed
     bool paletteChanged = (lastRestingPaletteRevision != paletteRevision);
     bool screenChanged = (currentScreen != ScreenMode::Resting);
     int profileSlot = currentProfileSlot;
     bool profileChanged = (profileSlot != lastRestingProfileSlot);
     
-    if (screenChanged || paletteChanged) {
-        // Full redraw when coming from another screen or after theme change
+    if (forceRedraw || screenChanged || paletteChanged) {
+        // Full redraw when forced, coming from another screen, or after theme change
         TFT_CALL(fillScreen)(PALETTE_BG);
         drawBaseFrame();
         
-        // Draw idle state: dimmed UI elements showing V1 is ready
-        // Top counter showing "0" (no bogeys)
-        drawTopCounter('0', false, true);
+        // Draw idle state: if V1 is connected, show last known mode; otherwise show "0"
+        char topChar = '0';
+        bool topDot = true;
+        if (bleClient.isConnected() && savedBogeyChar != 0) {
+            topChar = savedBogeyChar;
+            topDot = savedBogeyDot;
+        }
+        drawTopCounter(topChar, false, topDot);
         // Volume indicator not shown in resting state (no DisplayState available)
         
         // Band indicators all dimmed (no active bands)
@@ -1666,6 +1679,16 @@ void V1Display::showResting() {
 
     // Reset lastState so next update() detects changes from this "resting" state
     lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
+}
+
+void V1Display::forceNextRedraw() {
+    // Reset lastState to force next update() to detect all changes and redraw
+    lastState = DisplayState();
+    // Also reset screen mode so next update knows we need full redraw
+    currentScreen = ScreenMode::Resting;
+    // Reset all static change tracking variables (volume, mode, arrows, etc.)
+    // This ensures the next update() does a full redraw with fresh data
+    resetChangeTracking();
 }
 
 void V1Display::showScanning() {
@@ -1776,6 +1799,10 @@ void V1Display::showScanning() {
 
 // Static flag to signal display change tracking reset on next update
 static bool s_resetChangeTrackingFlag = false;
+
+// RSSI periodic update timer (shared between resting and alert modes)
+static unsigned long s_lastRssiUpdateMs = 0;
+static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;  // Update RSSI every 2 seconds
 
 void V1Display::resetChangeTracking() {
     s_resetChangeTrackingFlag = true;
@@ -1985,8 +2012,12 @@ void V1Display::update(const DisplayState& state) {
         lastRestingMainVol = 255;
         lastRestingMuteVol = 255;
         lastRestingBogeyByte = 0;
+        s_lastRssiUpdateMs = 0;
         // Don't clear the flag here - let the alert update() clear it
     }
+    
+    // Check if RSSI needs periodic refresh (every 2 seconds)
+    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -2024,11 +2055,11 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged) {
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -2049,6 +2080,12 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
             drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+        }
+        if (rssiNeedsUpdate && !volumeChanged) {
+            // Periodic RSSI-only update
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;
         }
         if (bogeyCounterChanged) {
             lastRestingBogeyByte = state.bogeyCounterByte;
@@ -2069,6 +2106,7 @@ void V1Display::update(const DisplayState& state) {
     lastRestingMainVol = state.mainVolume;
     lastRestingMuteVol = state.muteVolume;
     lastRestingBogeyByte = state.bogeyCounterByte;
+    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
     
     drawBaseFrame();
     // Use V1's decoded bogey counter byte - shows mode, volume, etc.
@@ -2316,20 +2354,23 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static uint8_t lastMuteVol = 255;
     bool volumeChanged = (state.mainVolume != lastMainVol || state.muteVolume != lastMuteVol);
     
+    // Check if RSSI needs periodic refresh (every 2 seconds)
+    unsigned long now = millis();
+    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
+    
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
     static unsigned long lastFlashRedraw = 0;
     bool needsFlashUpdate = false;
     if (hasFlashing) {
-        unsigned long now = millis();
         if (now - lastFlashRedraw >= 75) {  // Redraw at ~13Hz for smoother blink
             needsFlashUpdate = true;
             lastFlashRedraw = now;
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2338,7 +2379,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -2358,6 +2399,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
             drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+        }
+        if (rssiNeedsUpdate && !volumeChanged) {
+            // Periodic RSSI-only update
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;
         }
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
@@ -2382,6 +2429,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastActiveBands = state.activeBands;
     lastMainVol = state.mainVolume;
     lastMuteVol = state.muteVolume;
+    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }

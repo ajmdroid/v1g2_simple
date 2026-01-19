@@ -1319,6 +1319,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideVolumeIndicator")) {
         settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
     }
+    if (server.hasArg("hideRssiIndicator")) {
+        settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
+    }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();
@@ -1437,6 +1440,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -1538,6 +1542,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    doc["hideRssiIndicator"] = s.hideRssiIndicator;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -1681,6 +1686,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideBatteryIcon"].is<bool>()) s.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
     
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();

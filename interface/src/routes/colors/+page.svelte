@@ -34,6 +34,7 @@
 		hideBatteryIcon: false,
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
+		hideRssiIndicator: false,
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -150,6 +151,7 @@
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
+			params.append('hideRssiIndicator', colors.hideRssiIndicator);
 			params.append('brightness', colors.brightness);
 			
 			const res = await fetch('/api/displaycolors', {
@@ -221,7 +223,8 @@
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
 					hideBleIcon: false,
-					hideVolumeIndicator: false
+					hideVolumeIndicator: false,
+					hideRssiIndicator: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -770,6 +773,21 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideVolumeIndicator}
 							onchange={(e) => colors.hideVolumeIndicator = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide RSSI Indicator</span>
+							<p class="text-xs text-base-content/50">Hide the BLE signal strength display</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideRssiIndicator}
+							onchange={(e) => colors.hideRssiIndicator = e.target.checked}
 						/>
 					</label>
 				</div>

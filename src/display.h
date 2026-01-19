@@ -46,8 +46,11 @@ public:
 
     // Show connection status
     void showDisconnected();
-    void showResting(); // idle/rest screen
+    void showResting(bool forceRedraw = false); // idle/rest screen
     void showScanning(); // scanning screen (like resting but with SCAN text)
+    
+    // Force next update() call to fully redraw (use after settings change)
+    void forceNextRedraw();
     
     // Reset change tracking statics (call on V1 disconnect to ensure clean state on reconnect)
     static void resetChangeTracking();
