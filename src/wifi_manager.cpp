@@ -481,6 +481,7 @@ void WiFiManager::handleStatus() {
     device["uptime"] = millis() / 1000;
     device["heap_free"] = ESP.getFreeHeap();
     device["hostname"] = "v1g2";
+    device["firmware_version"] = FIRMWARE_VERSION;
     
     // Battery info
     JsonObject battery = doc["battery"].to<JsonObject>();
@@ -1287,6 +1288,16 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setVolumeMuteColor(volMuteColor);
     }
     
+    // Handle RSSI label colors
+    if (server.hasArg("rssiV1")) {
+        uint16_t rssiV1Color = server.arg("rssiV1").toInt();
+        settingsManager.setRssiV1Color(rssiV1Color);
+    }
+    if (server.hasArg("rssiProxy")) {
+        uint16_t rssiProxyColor = server.arg("rssiProxy").toInt();
+        settingsManager.setRssiProxyColor(rssiProxyColor);
+    }
+    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -1307,6 +1318,9 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("hideVolumeIndicator")) {
         settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
+    }
+    if (server.hasArg("hideRssiIndicator")) {
+        settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
     }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
@@ -1378,6 +1392,9 @@ void WiFiManager::handleDisplayColorsReset() {
     // Reset volume indicator colors: Main=Blue, Mute=Yellow
     settingsManager.setVolumeMainColor(0x001F);
     settingsManager.setVolumeMuteColor(0xFFE0);
+    // Reset RSSI label colors: V1=Green, Proxy=Blue
+    settingsManager.setRssiV1Color(0x07E0);
+    settingsManager.setRssiProxyColor(0x001F);
     // Reset frequency use band color to off
     settingsManager.setFreqUseBandColor(false);
     
@@ -1415,12 +1432,15 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["persisted"] = s.colorPersisted;
     doc["volumeMain"] = s.colorVolumeMain;
     doc["volumeMute"] = s.colorVolumeMute;
+    doc["rssiV1"] = s.colorRssiV1;
+    doc["rssiProxy"] = s.colorRssiProxy;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -1522,6 +1542,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
+    doc["hideRssiIndicator"] = s.hideRssiIndicator;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -1665,6 +1686,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideBatteryIcon"].is<bool>()) s.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
     
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();

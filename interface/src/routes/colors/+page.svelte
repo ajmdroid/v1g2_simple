@@ -27,11 +27,14 @@
 		persisted: 0x18C3, // Darker grey (persisted alerts)
 		volumeMain: 0x001F, // Blue (main volume)
 		volumeMute: 0xFFE0, // Yellow (mute volume)
+		rssiV1: 0x07E0,  // Green (V1 RSSI label)
+		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
+		hideRssiIndicator: false,
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -39,6 +42,47 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
+	
+	// Custom color picker state
+	let pickerOpen = $state(false);
+	let pickerKey = $state(null);
+	let pickerLabel = $state('');
+	let pickerR = $state(0);
+	let pickerG = $state(0);
+	let pickerB = $state(0);
+	
+	// Open the custom color picker
+	function openPicker(key, label) {
+		pickerKey = key;
+		pickerLabel = label;
+		// Convert RGB565 to RGB888 for sliders
+		const rgb565 = colors[key] || 0;
+		pickerR = ((rgb565 >> 11) & 0x1F) << 3;
+		pickerG = ((rgb565 >> 5) & 0x3F) << 2;
+		pickerB = (rgb565 & 0x1F) << 3;
+		pickerOpen = true;
+	}
+	
+	// Apply color from picker
+	function applyPickerColor() {
+		if (pickerKey) {
+			const r = pickerR >> 3;
+			const g = pickerG >> 2;
+			const b = pickerB >> 3;
+			colors[pickerKey] = (r << 11) | (g << 5) | b;
+		}
+		pickerOpen = false;
+	}
+	
+	// Cancel picker
+	function cancelPicker() {
+		pickerOpen = false;
+	}
+	
+	// Get hex color from picker RGB values
+	function getPickerHex() {
+		return '#' + [pickerR, pickerG, pickerB].map(x => Math.min(255, x).toString(16).padStart(2, '0')).join('');
+	}
 	
 	onMount(async () => {
 		await Promise.all([fetchColors(), fetchDisplayStyle()]);
@@ -50,6 +94,12 @@
 			const res = await fetch('/api/displaycolors');
 			if (res.ok) {
 				const data = await res.json();
+				// Ensure all color values are parsed as integers (API might return strings)
+				for (const key of Object.keys(data)) {
+					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator'].includes(key)) {
+						data[key] = parseInt(data[key], 10);
+					}
+				}
 				colors = data;
 			}
 		} catch (e) {
@@ -93,18 +143,73 @@
 	
 	// Convert RGB565 to hex color for input
 	function rgb565ToHex(rgb565) {
-		const r = ((rgb565 >> 11) & 0x1F) << 3;
-		const g = ((rgb565 >> 5) & 0x3F) << 2;
-		const b = (rgb565 & 0x1F) << 3;
+		// Ensure we have a valid number, default to black if not
+		const val = typeof rgb565 === 'number' ? rgb565 : 0;
+		const r = ((val >> 11) & 0x1F) << 3;
+		const g = ((val >> 5) & 0x3F) << 2;
+		const b = (val & 0x1F) << 3;
 		return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
 	}
 	
 	// Convert hex color to RGB565
 	function hexToRgb565(hex) {
+		if (!hex || hex.length < 7) return 0;
 		const r = parseInt(hex.slice(1, 3), 16) >> 3;
 		const g = parseInt(hex.slice(3, 5), 16) >> 2;
 		const b = parseInt(hex.slice(5, 7), 16) >> 3;
 		return (r << 11) | (g << 5) | b;
+	}
+	
+	// Format RGB565 as hex string for display (e.g., "F800")
+	function rgb565ToHexStr(rgb565) {
+		const val = typeof rgb565 === 'number' ? rgb565 : 0;
+		return val.toString(16).toUpperCase().padStart(4, '0');
+	}
+	
+	// Parse user input - accepts RGB565 (F800, 0xF800) or RGB888 (#FF0000, FF0000)
+	function parseColorInput(input) {
+		let clean = input.trim().toUpperCase();
+		
+		// Remove common prefixes
+		if (clean.startsWith('0X')) clean = clean.slice(2);
+		if (clean.startsWith('#')) clean = clean.slice(1);
+		
+		// Validate hex characters
+		if (!/^[0-9A-F]+$/.test(clean)) return null;
+		
+		if (clean.length <= 4) {
+			// RGB565 format (1-4 hex digits)
+			const value = parseInt(clean, 16);
+			if (value > 0xFFFF) return null;
+			return value;
+		} else if (clean.length === 5) {
+			// 5 digits - treat as RGB565 with leading digit
+			const value = parseInt(clean, 16);
+			if (value > 0xFFFF) return null;
+			return value;
+		} else if (clean.length === 6) {
+			// RGB888 format - convert to RGB565
+			const r = parseInt(clean.slice(0, 2), 16) >> 3;
+			const g = parseInt(clean.slice(2, 4), 16) >> 2;
+			const b = parseInt(clean.slice(4, 6), 16) >> 3;
+			return (r << 11) | (g << 5) | b;
+		}
+		
+		return null;
+	}
+	
+	// Handle hex input change
+	function handleHexInput(key, value) {
+		const parsed = parseColorInput(value);
+		if (parsed !== null) {
+			colors[key] = parsed;
+		}
+	}
+	
+	// Force the native input value before picker opens (fixes macOS color picker issue)
+	function syncColorInput(event, key) {
+		const hex = rgb565ToHex(colors[key]);
+		event.target.value = hex;
 	}
 	
 	function updateColor(key, hexValue) {
@@ -141,11 +246,14 @@
 			params.append('persisted', colors.persisted);
 			params.append('volumeMain', colors.volumeMain);
 			params.append('volumeMute', colors.volumeMute);
+			params.append('rssiV1', colors.rssiV1);
+			params.append('rssiProxy', colors.rssiProxy);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
+			params.append('hideRssiIndicator', colors.hideRssiIndicator);
 			params.append('brightness', colors.brightness);
 			
 			const res = await fetch('/api/displaycolors', {
@@ -211,11 +319,14 @@
 					persisted: 0x18C3,
 					volumeMain: 0x001F,
 					volumeMute: 0xFFE0,
+					rssiV1: 0x07E0,
+					rssiProxy: 0x001F,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
 					hideBleIcon: false,
-					hideVolumeIndicator: false
+					hideVolumeIndicator: false,
+					hideRssiIndicator: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -273,14 +384,22 @@
 						<label class="label" for="bogey-color">
 							<span class="label-text">Bogey Counter</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bogey-color"
-								type="color" 
+								type="button"
 								aria-label="Bogey counter color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bogey)}
-								onchange={(e) => updateColor('bogey', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bogey)}"
+								onclick={() => openPicker('bogey', 'Bogey Counter')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-sm w-20 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bogey)}
+								onchange={(e) => handleHexInput('bogey', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+								placeholder="F800"
 							/>
 							<span 
 								class="text-2xl font-bold font-mono"
@@ -292,14 +411,23 @@
 						<label class="label" for="freq-color">
 							<span class="label-text">Frequency Display</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="freq-color"
-								type="color" 
+								type="button"
 								aria-label="Frequency display color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.freq)}
-								onchange={(e) => updateColor('freq', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.freq)}"
+								onclick={() => openPicker('freq', 'Frequency Display')}
+								disabled={colors.freqUseBandColor}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-sm w-20 font-mono text-xs"
+								value={rgb565ToHexStr(colors.freq)}
+								onchange={(e) => handleHexInput('freq', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+								placeholder="F800"
 								disabled={colors.freqUseBandColor}
 							/>
 							<span 
@@ -324,14 +452,22 @@
 						<span class="label-text">Muted Alert Color</span>
 						<span class="label-text-alt text-base-content/50">When alert is muted</span>
 					</label>
-					<div class="flex items-center gap-3">
-						<input 
+					<div class="flex items-center gap-2">
+						<button 
 							id="muted-color"
-							type="color" 
+							type="button"
 							aria-label="Muted alert color"
-							class="w-12 h-10 cursor-pointer rounded border-0"
-							value={rgb565ToHex(colors.muted)}
-							onchange={(e) => updateColor('muted', e.target.value)}
+							class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+							style="background-color: {rgb565ToHex(colors.muted)}"
+							onclick={() => openPicker('muted', 'Muted Alert')}
+						></button>
+						<input 
+							type="text"
+							class="input input-bordered input-sm w-20 font-mono text-xs"
+							value={rgb565ToHexStr(colors.muted)}
+							onchange={(e) => handleHexInput('muted', e.target.value)}
+							title="RGB565 hex (or RGB888)"
+							placeholder="3186"
 						/>
 						<span 
 							class="text-2xl font-bold font-mono"
@@ -346,14 +482,22 @@
 						<span class="label-text">Persisted Alert Color</span>
 						<span class="label-text-alt text-base-content/50">Ghost alert after V1 clears</span>
 					</label>
-					<div class="flex items-center gap-3">
-						<input 
+					<div class="flex items-center gap-2">
+						<button 
 							id="persisted-color"
-							type="color" 
+							type="button"
 							aria-label="Persisted alert color"
-							class="w-12 h-10 cursor-pointer rounded border-0"
-							value={rgb565ToHex(colors.persisted)}
-							onchange={(e) => updateColor('persisted', e.target.value)}
+							class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+							style="background-color: {rgb565ToHex(colors.persisted)}"
+							onclick={() => openPicker('persisted', 'Persisted Alert')}
+						></button>
+						<input 
+							type="text"
+							class="input input-bordered input-sm w-20 font-mono text-xs"
+							value={rgb565ToHexStr(colors.persisted)}
+							onchange={(e) => handleHexInput('persisted', e.target.value)}
+							title="RGB565 hex (or RGB888)"
+							placeholder="18C3"
 						/>
 						<span 
 							class="text-2xl font-bold font-mono"
@@ -370,13 +514,20 @@
 							<span class="label-text">Main Volume</span>
 						</label>
 						<div class="flex items-center gap-2">
-							<input 
+							<button 
 								id="volumeMain-color"
-								type="color" 
+								type="button"
 								aria-label="Main volume color"
-								class="w-10 h-8 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.volumeMain)}
-								onchange={(e) => updateColor('volumeMain', e.target.value)}
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.volumeMain)}"
+								onclick={() => openPicker('volumeMain', 'Main Volume')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.volumeMain)}
+								onchange={(e) => handleHexInput('volumeMain', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-lg font-bold font-mono"
@@ -389,18 +540,84 @@
 							<span class="label-text">Mute Volume</span>
 						</label>
 						<div class="flex items-center gap-2">
-							<input 
+							<button 
 								id="volumeMute-color"
-								type="color" 
+								type="button"
 								aria-label="Mute volume color"
-								class="w-10 h-8 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.volumeMute)}
-								onchange={(e) => updateColor('volumeMute', e.target.value)}
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.volumeMute)}"
+								onclick={() => openPicker('volumeMute', 'Mute Volume')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.volumeMute)}
+								onchange={(e) => handleHexInput('volumeMute', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-lg font-bold font-mono"
 								style="color: {rgb565ToHex(colors.volumeMute)}"
 							>0M</span>
+						</div>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
+				<p class="text-sm text-base-content/50 mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<div class="grid grid-cols-2 gap-4">
+					<div class="form-control">
+						<label class="label" for="rssiV1-color">
+							<span class="label-text">V1 RSSI (V)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="rssiV1-color"
+								type="button"
+								aria-label="V1 RSSI label color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.rssiV1)}"
+								onclick={() => openPicker('rssiV1', 'V1 RSSI Label')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.rssiV1)}
+								onchange={(e) => handleHexInput('rssiV1', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.rssiV1)}"
+							>V</span>
+							<span class="text-lg font-mono text-success">-55</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="rssiProxy-color">
+							<span class="label-text">Proxy RSSI (P)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="rssiProxy-color"
+								type="button"
+								aria-label="Proxy RSSI label color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.rssiProxy)}"
+								onclick={() => openPicker('rssiProxy', 'Proxy RSSI Label')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.rssiProxy)}
+								onchange={(e) => handleHexInput('rssiProxy', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.rssiProxy)}"
+							>P</span>
+							<span class="text-lg font-mono text-success">-62</span>
 						</div>
 					</div>
 				</div>
@@ -416,14 +633,21 @@
 						<label class="label" for="bandL-color">
 							<span class="label-text">Laser (L)</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bandL-color"
-								type="color" 
+								type="button"
 								aria-label="Laser band color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bandL)}
-								onchange={(e) => updateColor('bandL', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandL)}"
+								onclick={() => openPicker('bandL', 'Laser Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandL)}
+								onchange={(e) => handleHexInput('bandL', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -435,14 +659,21 @@
 						<label class="label" for="bandKa-color">
 							<span class="label-text">Ka Band</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bandKa-color"
-								type="color" 
+								type="button"
 								aria-label="Ka band color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bandKa)}
-								onchange={(e) => updateColor('bandKa', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandKa)}"
+								onclick={() => openPicker('bandKa', 'Ka Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandKa)}
+								onchange={(e) => handleHexInput('bandKa', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -454,14 +685,21 @@
 						<label class="label" for="bandK-color">
 							<span class="label-text">K Band</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bandK-color"
-								type="color" 
+								type="button"
 								aria-label="K band color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bandK)}
-								onchange={(e) => updateColor('bandK', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandK)}"
+								onclick={() => openPicker('bandK', 'K Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandK)}
+								onchange={(e) => handleHexInput('bandK', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -473,14 +711,21 @@
 						<label class="label" for="bandX-color">
 							<span class="label-text">X Band</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bandX-color"
-								type="color" 
+								type="button"
 								aria-label="X band color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bandX)}
-								onchange={(e) => updateColor('bandX', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandX)}"
+								onclick={() => openPicker('bandX', 'X Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandX)}
+								onchange={(e) => handleHexInput('bandX', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -502,13 +747,20 @@
 							<span class="label-text">Front</span>
 						</label>
 						<div class="flex items-center gap-2">
-							<input 
+							<button 
 								id="arrow-front-color"
-								type="color" 
+								type="button"
 								aria-label="Front arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.arrowFront)}
-								onchange={(e) => updateColor('arrowFront', e.target.value)}
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.arrowFront)}"
+								onclick={() => openPicker('arrowFront', 'Front Arrow')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.arrowFront)}
+								onchange={(e) => handleHexInput('arrowFront', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -521,13 +773,20 @@
 							<span class="label-text">Side</span>
 						</label>
 						<div class="flex items-center gap-2">
-							<input 
+							<button 
 								id="arrow-side-color"
-								type="color" 
+								type="button"
 								aria-label="Side arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.arrowSide)}
-								onchange={(e) => updateColor('arrowSide', e.target.value)}
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.arrowSide)}"
+								onclick={() => openPicker('arrowSide', 'Side Arrows')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.arrowSide)}
+								onchange={(e) => handleHexInput('arrowSide', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -540,13 +799,20 @@
 							<span class="label-text">Rear</span>
 						</label>
 						<div class="flex items-center gap-2">
-							<input 
+							<button 
 								id="arrow-rear-color"
-								type="color" 
+								type="button"
 								aria-label="Rear arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.arrowRear)}
-								onchange={(e) => updateColor('arrowRear', e.target.value)}
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.arrowRear)}"
+								onclick={() => openPicker('arrowRear', 'Rear Arrow')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.arrowRear)}
+								onchange={(e) => handleHexInput('arrowRear', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -568,14 +834,21 @@
 						<label class="label" for="wifiConnected-color">
 							<span class="label-text">WiFi Connected</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="wifiConnected-color"
-								type="color" 
+								type="button"
 								aria-label="WiFi connected color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.wifiConnected)}
-								onchange={(e) => updateColor('wifiConnected', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.wifiConnected)}"
+								onclick={() => openPicker('wifiConnected', 'WiFi Connected')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.wifiConnected)}
+								onchange={(e) => handleHexInput('wifiConnected', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -587,14 +860,21 @@
 						<label class="label" for="wifiIcon-color">
 							<span class="label-text">WiFi (No Client)</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="wifiIcon-color"
-								type="color" 
+								type="button"
 								aria-label="WiFi icon color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.wifiIcon)}
-								onchange={(e) => updateColor('wifiIcon', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.wifiIcon)}"
+								onclick={() => openPicker('wifiIcon', 'WiFi (No Client)')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.wifiIcon)}
+								onchange={(e) => handleHexInput('wifiIcon', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -609,14 +889,21 @@
 						<label class="label" for="bleConnected-color">
 							<span class="label-text">Proxy Connected</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bleConnected-color"
-								type="color" 
+								type="button"
 								aria-label="Bluetooth connected color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bleConnected)}
-								onchange={(e) => updateColor('bleConnected', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bleConnected)}"
+								onclick={() => openPicker('bleConnected', 'Proxy Connected')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bleConnected)}
+								onchange={(e) => handleHexInput('bleConnected', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -628,14 +915,21 @@
 						<label class="label" for="bleDisconnected-color">
 							<span class="label-text">Proxy Ready</span>
 						</label>
-						<div class="flex items-center gap-3">
-							<input 
+						<div class="flex items-center gap-2">
+							<button 
 								id="bleDisconnected-color"
-								type="color" 
+								type="button"
 								aria-label="BLE proxy ready color"
-								class="w-12 h-10 cursor-pointer rounded border-0"
-								value={rgb565ToHex(colors.bleDisconnected)}
-								onchange={(e) => updateColor('bleDisconnected', e.target.value)}
+								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bleDisconnected)}"
+								onclick={() => openPicker('bleDisconnected', 'Proxy Ready')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bleDisconnected)}
+								onchange={(e) => handleHexInput('bleDisconnected', e.target.value)}
+								title="RGB565 hex (or RGB888)"
 							/>
 							<span 
 								class="text-2xl font-bold"
@@ -722,6 +1016,21 @@
 						/>
 					</label>
 				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Hide RSSI Indicator</span>
+							<p class="text-xs text-base-content/50">Hide the BLE signal strength display</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.hideRssiIndicator}
+							onchange={(e) => colors.hideRssiIndicator = e.target.checked}
+						/>
+					</label>
+				</div>
 			</div>
 		</div>
 		
@@ -756,22 +1065,30 @@
 				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
 					{#each [1, 2, 3, 4, 5, 6] as barNum}
 						{@const barId = `bar-${barNum}-color`}
+						{@const barKey = `bar${barNum}`}
 						<div class="form-control">
 							<label class="label py-1" for={barId}>
 								<span class="label-text text-xs">Bar {barNum}</span>
 							</label>
 							<div class="flex flex-col items-center gap-1">
-								<input 
+								<button 
 									id={barId}
-									type="color" 
+									type="button"
 									aria-label="Signal bar {barNum} color"
-									class="w-10 h-8 cursor-pointer rounded border-0"
-									value={rgb565ToHex(colors[`bar${barNum}`])}
-									onchange={(e) => updateColor(`bar${barNum}`, e.target.value)}
+									class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+									style="background-color: {rgb565ToHex(colors[barKey])}"
+									onclick={() => openPicker(barKey, `Signal Bar ${barNum}`)}
+								></button>
+								<input 
+									type="text"
+									class="input input-bordered input-xs w-14 font-mono text-xs text-center"
+									value={rgb565ToHexStr(colors[barKey])}
+									onchange={(e) => handleHexInput(barKey, e.target.value)}
+									title="RGB565 hex (or RGB888)"
 								/>
 								<div 
 									class="w-8 h-3 rounded"
-									style="background-color: {rgb565ToHex(colors[`bar${barNum}`])}"
+									style="background-color: {rgb565ToHex(colors[barKey])}"
 								></div>
 							</div>
 						</div>
@@ -817,3 +1134,91 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Custom Color Picker Modal -->
+{#if pickerOpen}
+<div class="modal modal-open">
+	<div class="modal-box">
+		<h3 class="font-bold text-lg mb-4">{pickerLabel}</h3>
+		
+		<!-- Color preview -->
+		<div 
+			class="w-full h-20 rounded-lg mb-4 border-2 border-base-300"
+			style="background-color: {getPickerHex()}"
+		></div>
+		
+		<!-- RGB Sliders -->
+		<div class="space-y-4">
+			<div class="form-control">
+				<label class="label" for="picker-red">
+					<span class="label-text font-semibold text-error">Red</span>
+					<span class="label-text-alt font-mono">{pickerR}</span>
+				</label>
+				<input 
+					id="picker-red"
+					type="range" 
+					min="0" 
+					max="248" 
+					step="8"
+					bind:value={pickerR}
+					class="range range-error"
+				/>
+			</div>
+			
+			<div class="form-control">
+				<label class="label" for="picker-green">
+					<span class="label-text font-semibold text-success">Green</span>
+					<span class="label-text-alt font-mono">{pickerG}</span>
+				</label>
+				<input 
+					id="picker-green"
+					type="range" 
+					min="0" 
+					max="252" 
+					step="4"
+					bind:value={pickerG}
+					class="range range-success"
+				/>
+			</div>
+			
+			<div class="form-control">
+				<label class="label" for="picker-blue">
+					<span class="label-text font-semibold text-info">Blue</span>
+					<span class="label-text-alt font-mono">{pickerB}</span>
+				</label>
+				<input 
+					id="picker-blue"
+					type="range" 
+					min="0" 
+					max="248" 
+					step="8"
+					bind:value={pickerB}
+					class="range range-info"
+				/>
+			</div>
+		</div>
+		
+		<!-- Quick presets -->
+		<div class="mt-4">
+			<span class="text-sm text-base-content/60">Quick colors:</span>
+			<div class="flex gap-2 mt-2 flex-wrap">
+				<button class="btn btn-sm" style="background-color: #f80000" onclick={() => { pickerR = 248; pickerG = 0; pickerB = 0; }}>Red</button>
+				<button class="btn btn-sm" style="background-color: #00fc00" onclick={() => { pickerR = 0; pickerG = 252; pickerB = 0; }}>Green</button>
+				<button class="btn btn-sm" style="background-color: #0000f8" onclick={() => { pickerR = 0; pickerG = 0; pickerB = 248; }}>Blue</button>
+				<button class="btn btn-sm" style="background-color: #f8fc00" onclick={() => { pickerR = 248; pickerG = 252; pickerB = 0; }}>Yellow</button>
+				<button class="btn btn-sm" style="background-color: #00fcf8" onclick={() => { pickerR = 0; pickerG = 252; pickerB = 248; }}>Cyan</button>
+				<button class="btn btn-sm" style="background-color: #f800f8" onclick={() => { pickerR = 248; pickerG = 0; pickerB = 248; }}>Magenta</button>
+				<button class="btn btn-sm" style="background-color: #f8a000" onclick={() => { pickerR = 248; pickerG = 160; pickerB = 0; }}>Orange</button>
+				<button class="btn btn-sm bg-white text-black" onclick={() => { pickerR = 248; pickerG = 252; pickerB = 248; }}>White</button>
+			</div>
+		</div>
+		
+		<div class="modal-action">
+			<button class="btn btn-ghost" onclick={cancelPicker}>Cancel</button>
+			<button class="btn btn-primary" onclick={applyPickerColor}>Apply</button>
+		</div>
+	</div>
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div class="modal-backdrop" onclick={cancelPicker}></div>
+</div>
+{/if}

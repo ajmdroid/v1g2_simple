@@ -49,13 +49,23 @@ SettingsManager::SettingsManager() {}
 void SettingsManager::begin() {
     load();
     
+    // Note: SD card may not be mounted yet during begin().
+    // checkAndRestoreFromSD() should be called after storage is ready.
+    // We still try here in case storage was already initialized.
+    checkAndRestoreFromSD();
+}
+
+bool SettingsManager::checkAndRestoreFromSD() {
     // Check if NVS was erased (appears default) and backup exists on SD
+    // This can be called after storage is mounted to retry the restore
     if (checkNeedsRestore()) {
         Serial.println("[Settings] NVS appears default, checking for SD backup...");
         if (restoreFromSD()) {
             Serial.println("[Settings] Restored settings from SD backup!");
+            return true;
         }
     }
+    return false;
 }
 
 void SettingsManager::load() {
@@ -109,12 +119,15 @@ void SettingsManager::load() {
     settings.colorPersisted = preferences.getUShort("colorPersist", 0x18C3);  // Darker grey for persisted alerts
     settings.colorVolumeMain = preferences.getUShort("colorVolMain", 0xF800);  // Red for main volume
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
+    settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
+    settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
+    settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -247,12 +260,15 @@ void SettingsManager::save() {
     written += preferences.putUShort("colorPersist", settings.colorPersisted);
     written += preferences.putUShort("colorVolMain", settings.colorVolumeMain);
     written += preferences.putUShort("colorVolMute", settings.colorVolumeMute);
+    written += preferences.putUShort("colorRssiV1", settings.colorRssiV1);
+    written += preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
     written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    written += preferences.putBool("hideRssi", settings.hideRssiIndicator);
     written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -454,6 +470,16 @@ void SettingsManager::setVolumeMuteColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setRssiV1Color(uint16_t color) {
+    settings.colorRssiV1 = color;
+    save();
+}
+
+void SettingsManager::setRssiProxyColor(uint16_t color) {
+    settings.colorRssiProxy = color;
+    save();
+}
+
 void SettingsManager::setFreqUseBandColor(bool use) {
     settings.freqUseBandColor = use;
     save();
@@ -481,6 +507,11 @@ void SettingsManager::setHideBleIcon(bool hide) {
 
 void SettingsManager::setHideVolumeIndicator(bool hide) {
     settings.hideVolumeIndicator = hide;
+    save();
+}
+
+void SettingsManager::setHideRssiIndicator(bool hide) {
+    settings.hideRssiIndicator = hide;
     save();
 }
 
@@ -654,13 +685,36 @@ void SettingsManager::setLastV1Address(const String& addr) {
 bool SettingsManager::checkNeedsRestore() {
     // If brightness is default (200) AND all colors are default, NVS was likely erased
     // We check multiple values to reduce false positives
-    return settings.brightness == 200 &&
-           settings.colorBogey == 0xF800 &&
-           settings.colorBandL == 0x001F &&
-           settings.colorBar1 == 0x07E0 &&
-           settings.hideWifiIcon == false &&
-           settings.hideProfileIndicator == false &&
-           settings.hideBatteryIcon == false;
+    // Must check BOTH display settings AND slot settings - user may have customized
+    // slots but not colors (or vice versa)
+    
+    // If ANY slot has a non-default profile name or mode, NVS has real data
+    bool slotsAreDefault = 
+        settings.slot0_default.profileName.isEmpty() &&
+        settings.slot0_default.mode == V1_MODE_UNKNOWN &&
+        settings.slot1_highway.profileName.isEmpty() &&
+        settings.slot1_highway.mode == V1_MODE_UNKNOWN &&
+        settings.slot2_comfort.profileName.isEmpty() &&
+        settings.slot2_comfort.mode == V1_MODE_UNKNOWN &&
+        settings.slot0DarkMode == false &&
+        settings.slot1DarkMode == false &&
+        settings.slot2DarkMode == false &&
+        settings.slot0AlertPersist == 0 &&
+        settings.slot1AlertPersist == 0 &&
+        settings.slot2AlertPersist == 0;
+    
+    bool colorsAreDefault = 
+        settings.brightness == 200 &&
+        settings.colorBogey == 0xF800 &&
+        settings.colorBandL == 0x001F &&
+        settings.colorBar1 == 0x07E0 &&
+        settings.hideWifiIcon == false &&
+        settings.hideProfileIndicator == false &&
+        settings.hideBatteryIcon == false;
+    
+    // Only restore if BOTH slots AND colors are at defaults
+    // If either has been customized, NVS has real user data
+    return slotsAreDefault && colorsAreDefault;
 }
 
 // Backup display/color settings to SD card
@@ -715,6 +769,8 @@ void SettingsManager::backupToSD() {
     doc["colorPersisted"] = settings.colorPersisted;
     doc["colorVolumeMain"] = settings.colorVolumeMain;
     doc["colorVolumeMute"] = settings.colorVolumeMute;
+    doc["colorRssiV1"] = settings.colorRssiV1;
+    doc["colorRssiProxy"] = settings.colorRssiProxy;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -723,6 +779,7 @@ void SettingsManager::backupToSD() {
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
+    doc["hideRssiIndicator"] = settings.hideRssiIndicator;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -868,6 +925,8 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
     if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
+    if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
     // === UI Toggles ===
@@ -876,6 +935,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
+    if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
@@ -974,6 +1034,8 @@ bool SettingsManager::restoreFromSD() {
     preferences.putUShort("colorPersist", settings.colorPersisted);
     preferences.putUShort("colorVolMain", settings.colorVolumeMain);
     preferences.putUShort("colorVolMute", settings.colorVolumeMute);
+    preferences.putUShort("colorRssiV1", settings.colorRssiV1);
+    preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
     preferences.putBool("freqBandCol", settings.freqUseBandColor);
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);

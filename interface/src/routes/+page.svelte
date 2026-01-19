@@ -82,6 +82,7 @@
 		<div class="hero-content text-center">
 			<div>
 				<h1 class="text-3xl font-bold text-primary">V1 Gen2 Display</h1>
+				<p class="text-xs text-base-content/50 mb-1">v{status.device?.firmware_version || '...'}</p>
 				<p class="text-sm text-base-content/70">
 					{#if status.wifi.sta_connected}
 						{status.wifi.ssid} • {status.wifi.sta_ip}

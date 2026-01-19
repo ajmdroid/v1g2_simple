@@ -1409,6 +1409,13 @@ void setup() {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem());
         audio_init_sd();  // Initialize SD-based frequency voice audio
+        
+        // Retry settings restore now that SD is mounted
+        // (settings.begin() runs before storage, so restore may have failed)
+        if (settingsManager.checkAndRestoreFromSD()) {
+            // Settings were restored from SD - update display with restored brightness
+            display.setBrightness(settingsManager.get().brightness);
+        }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
@@ -1487,9 +1494,23 @@ void loop() {
     if (colorPreviewActive) {
         driveColorPreview();
     } else if (colorPreviewEnded) {
-        // Preview finished - restore resting UI so it doesn't stick
+        // Preview finished - restore normal display with fresh V1 data
         colorPreviewEnded = false;
-        display.showResting();
+        // Force full redraw and immediately update with current parser state
+        display.forceNextRedraw();
+        if (bleClient.isConnected()) {
+            // Immediately refresh with current V1 state (don't wait for next packet)
+            DisplayState state = parser.getDisplayState();
+            if (parser.hasAlerts()) {
+                AlertData priority = parser.getPriorityAlert();
+                const auto& alerts = parser.getAllAlerts();
+                display.update(priority, alerts.data(), parser.getAlertCount(), state);
+            } else {
+                display.update(state);
+            }
+        } else {
+            display.showResting();
+        }
     }
 
     // Process battery manager (updates cached readings at 1Hz, handles power button)
@@ -1557,7 +1578,20 @@ void loop() {
                 settingsManager.save();
                 audio_set_volume(volumeAdjustValue);  // Apply new volume
                 display.hideBrightnessSlider();
-                display.showResting();  // Return to normal display
+                // Restore display with fresh V1 data
+                display.forceNextRedraw();
+                if (bleClient.isConnected()) {
+                    DisplayState state = parser.getDisplayState();
+                    if (parser.hasAlerts()) {
+                        AlertData priority = parser.getPriorityAlert();
+                        const auto& alerts = parser.getAllAlerts();
+                        display.update(priority, alerts.data(), parser.getAlertCount(), state);
+                    } else {
+                        display.update(state);
+                    }
+                } else {
+                    display.showResting();
+                }
                 SerialLog.printf("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue, volumeAdjustValue);
             } else {
                 // Enter settings adjustment mode (short press)

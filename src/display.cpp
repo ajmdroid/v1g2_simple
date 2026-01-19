@@ -639,6 +639,9 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
         volumeZeroWarningAcknowledged = false;
     }
     
+    // Check if proxy client connection changed - update RSSI display
+    bool proxyChanged = (clientConnected != bleProxyClientConnected);
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
         clientConnected == bleProxyClientConnected) {
@@ -648,6 +651,12 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
     bleProxyEnabled = proxyEnabled;
     bleProxyClientConnected = clientConnected;
     drawBLEProxyIndicator();
+    
+    // Update RSSI display when proxy connection changes
+    if (proxyChanged) {
+        drawRssiIndicator(bleClient.getConnectionRssi());
+    }
+    
     flush();
 #endif
 }
@@ -1043,14 +1052,12 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 
 void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     // Draw volume indicator below bogey counter: "5V  0M" format
-    // Position: centered between bogey counter bottom (y=67) and BLE icon top (y=98)
     const V1Settings& s = settingsManager.get();
     const int x = 8;
-    // Bogey counter ends ~y=67, BLE icon starts ~y=98, text is ~16px tall
-    // Center: 67 + (98-67-16)/2 = 67 + 7.5 ≈ 75
+    // Evenly spaced layout from bogey(67) to bottom(172)
     const int y = 75;
     const int clearW = 75;
-    const int clearH = 18;
+    const int clearH = 16;
     
     // Clear the area first - only clear what we need, BLE icon is at y=98
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
@@ -1069,7 +1076,78 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     char muteBuf[4];
     snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
     TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
-    GFX_drawString(tft, muteBuf, x + 32, y);  // Reduced spacing
+    GFX_drawString(tft, muteBuf, x + 36, y);  // Aligned with RSSI number
+}
+
+void V1Display::drawRssiIndicator(int rssi) {
+    // Check if RSSI indicator is hidden
+    const V1Settings& s = settingsManager.get();
+    if (s.hideRssiIndicator) {
+        return;  // Don't draw anything
+    }
+    
+    // Draw BLE RSSI below volume indicator
+    // Shows V1 RSSI and JBV1 RSSI (if connected) stacked vertically
+    const int x = 8;
+    // Evenly spaced: volume at y=75, height 16, gap 8 -> y=99
+    const int y = 99;
+    const int lineHeight = 22;  // Increased spacing between V and P lines
+    const int clearW = 70;
+    const int clearH = lineHeight * 2;  // Room for two lines
+    
+    // Clear the area first
+    FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+    
+    // Get both RSSIs
+    int v1Rssi = rssi;  // V1 RSSI passed in
+    int jbv1Rssi = bleClient.getProxyClientRssi();  // JBV1/phone RSSI
+    
+    GFX_setTextDatum(TL_DATUM);
+    TFT_CALL(setTextSize)(2);  // Match volume text size
+    
+    // Draw V1 RSSI if connected
+    if (v1Rssi != 0) {
+        // Draw "V " label with configurable color
+        TFT_CALL(setTextColor)(s.colorRssiV1, PALETTE_BG);
+        GFX_drawString(tft, "V ", x, y);
+        
+        // Color code RSSI value: green >= -60, yellow -60 to -80, red < -80
+        uint16_t rssiColor;
+        if (v1Rssi >= -60) {
+            rssiColor = COLOR_GREEN;
+        } else if (v1Rssi >= -80) {
+            rssiColor = COLOR_YELLOW;
+        } else {
+            rssiColor = COLOR_RED;
+        }
+        
+        TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", v1Rssi);
+        GFX_drawString(tft, buf, x + 24, y);  // Offset for "V " width
+    }
+    
+    // Draw JBV1 RSSI below V1 RSSI if connected
+    if (jbv1Rssi != 0) {
+        // Draw "P " label with configurable color
+        TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
+        GFX_drawString(tft, "P ", x, y + lineHeight);
+        
+        // Color code RSSI value
+        uint16_t rssiColor;
+        if (jbv1Rssi >= -60) {
+            rssiColor = COLOR_GREEN;
+        } else if (jbv1Rssi >= -80) {
+            rssiColor = COLOR_YELLOW;
+        } else {
+            rssiColor = COLOR_RED;
+        }
+        
+        TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", jbv1Rssi);
+        GFX_drawString(tft, buf, x + 24, y + lineHeight);  // Offset for "P " width
+    }
 }
 
 void V1Display::drawMuteIcon(bool muted) {
@@ -1253,12 +1331,14 @@ void V1Display::drawBatteryIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // Battery icon position - bottom left (use actual screen height, not effective)
-    const int battX = 12;   // Align with bogey counter left edge
-    const int battW = 24;   // Battery body width
-    const int battH = 14;   // Battery body height
-    const int battY = SCREEN_HEIGHT - battH - 8;  // Stay at actual bottom, not raised area
-    const int capW = 3;     // Positive terminal cap width
+    // Battery icon position - VERTICAL at bottom-right
+    // Position to the right of profile indicator area, avoiding direction arrows
+    const int battW = 14;   // Battery body width (was height when horizontal)
+    const int battH = 28;   // Battery body height (was width when horizontal)
+    const int battX = SCREEN_WIDTH - battW - 8;  // Right edge with margin
+    const int battY = SCREEN_HEIGHT - battH - 8; // Bottom with margin (cap above)
+    const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
+    const int capH = 3;     // Positive terminal cap height
     
     // Voltage-based auto-hide: >4100mV = USB (hide), <4095mV = battery (show)
     static bool showingBattery = false;
@@ -1272,11 +1352,10 @@ void V1Display::drawBatteryIndicator() {
     
     // Don't draw if no battery, user hides it, or voltage says USB
     if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showingBattery) {
-        FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+        FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
     
-    const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
     
@@ -1296,24 +1375,26 @@ void V1Display::drawBatteryIndicator() {
         fillColor = 0x07E0;  // Green - good
     }
     
-    // Clear area
-    FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+    // Clear area (including cap above)
+    FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
     
     uint16_t outlineColor = dimColor(PALETTE_TEXT);
 
-    // Draw battery outline (dimmed)
+    // Draw battery outline (dimmed) - vertical orientation
     DRAW_RECT(battX, battY, battW, battH, outlineColor);  // Main body
-    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, outlineColor);  // Positive cap
+    // Positive cap at top, centered
+    FILL_RECT(battX + (battW - capW) / 2, battY - capH, capW, capH, outlineColor);
     
-    // Draw charge sections
-    int sectionW = (battW - 2 * padding - (sections - 1)) / sections;  // Width of each section with 1px gap
+    // Draw charge sections (vertical - bottom to top, filled from bottom)
+    int sectionH = (battH - 2 * padding - (sections - 1)) / sections;  // Height of each section with 1px gap
     for (int i = 0; i < sections; i++) {
-        int sx = battX + padding + i * (sectionW + 1);
-        int sy = battY + padding;
-        int sh = battH - 2 * padding;
+        // Draw from bottom up: section 0 at bottom, section 4 at top
+        int sx = battX + padding;
+        int sy = battY + battH - padding - (i + 1) * sectionH - i;  // Bottom-up
+        int sw = battW - 2 * padding;
         
         if (i < filledSections) {
-            FILL_RECT(sx, sy, sectionW, sh, dimColor(fillColor));
+            FILL_RECT(sx, sy, sw, sectionH, dimColor(fillColor));
         }
     }
 #endif
@@ -1321,16 +1402,15 @@ void V1Display::drawBatteryIndicator() {
 
 void V1Display::drawBLEProxyIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
-    // Stack above WiFi indicator to keep the left column compact
-    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
-    const int battH = 14;
-    const int battY = SCREEN_HEIGHT - battH - 8;
-    const int wifiSize = 20;
-    const int wifiY = battY - wifiSize - 6;
-
-    const int iconSize = 20;  // Match WiFi icon size
-    const int bleX = 14;
-    const int bleY = wifiY - iconSize - 6;
+    // Position to the right of WiFi indicator (side-by-side at bottom-left)
+    // Evenly spaced with volume and RSSI above
+    const int iconSize = 20;
+    const int iconY = 145;  // Moved up 2px from 147
+    const int iconGap = 6;  // Gap between icons
+    
+    const int wifiX = 14;
+    const int bleX = wifiX + iconSize + iconGap;  // Right of WiFi icon
+    const int bleY = iconY;
 
     // Always clear the area before drawing
     FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
@@ -1412,12 +1492,10 @@ void V1Display::drawWiFiIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // WiFi icon position - above battery icon, bottom left
-    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
+    // WiFi icon position - evenly spaced below RSSI
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int battY = SCREEN_HEIGHT - 14 - 8;
-    const int wifiY = battY - wifiSize - 6;
+    const int wifiY = 145;  // Moved up 2px from 147
     
     // Check if user explicitly hides the WiFi icon
     if (s.hideWifiIcon) {
@@ -1522,25 +1600,35 @@ void V1Display::showDisconnected() {
     drawBatteryIndicator();
 }
 
-void V1Display::showResting() {
+void V1Display::showResting(bool forceRedraw) {
     // Always use multi-alert layout positioning
     g_multiAlertMode = true;
     multiAlertMode = false;
 
+    // Save the last known bogey counter before potentially resetting
+    // This preserves the mode indicator (A/L/c) when V1 is connected
+    char savedBogeyChar = lastState.bogeyCounterChar;
+    bool savedBogeyDot = lastState.bogeyCounterDot;
+    
     // Avoid redundant full-screen clears/flushes when already resting and nothing changed
     bool paletteChanged = (lastRestingPaletteRevision != paletteRevision);
     bool screenChanged = (currentScreen != ScreenMode::Resting);
     int profileSlot = currentProfileSlot;
     bool profileChanged = (profileSlot != lastRestingProfileSlot);
     
-    if (screenChanged || paletteChanged) {
-        // Full redraw when coming from another screen or after theme change
+    if (forceRedraw || screenChanged || paletteChanged) {
+        // Full redraw when forced, coming from another screen, or after theme change
         TFT_CALL(fillScreen)(PALETTE_BG);
         drawBaseFrame();
         
-        // Draw idle state: dimmed UI elements showing V1 is ready
-        // Top counter showing "0" (no bogeys)
-        drawTopCounter('0', false, true);
+        // Draw idle state: if V1 is connected, show last known mode; otherwise show "0"
+        char topChar = '0';
+        bool topDot = true;
+        if (bleClient.isConnected() && savedBogeyChar != 0) {
+            topChar = savedBogeyChar;
+            topDot = savedBogeyDot;
+        }
+        drawTopCounter(topChar, false, topDot);
         // Volume indicator not shown in resting state (no DisplayState available)
         
         // Band indicators all dimmed (no active bands)
@@ -1591,6 +1679,16 @@ void V1Display::showResting() {
 
     // Reset lastState so next update() detects changes from this "resting" state
     lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
+}
+
+void V1Display::forceNextRedraw() {
+    // Reset lastState to force next update() to detect all changes and redraw
+    lastState = DisplayState();
+    // Also reset screen mode so next update knows we need full redraw
+    currentScreen = ScreenMode::Resting;
+    // Reset all static change tracking variables (volume, mode, arrows, etc.)
+    // This ensures the next update() does a full redraw with fresh data
+    resetChangeTracking();
 }
 
 void V1Display::showScanning() {
@@ -1702,6 +1800,10 @@ void V1Display::showScanning() {
 // Static flag to signal display change tracking reset on next update
 static bool s_resetChangeTrackingFlag = false;
 
+// RSSI periodic update timer (shared between resting and alert modes)
+static unsigned long s_lastRssiUpdateMs = 0;
+static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;  // Update RSSI every 2 seconds
+
 void V1Display::resetChangeTracking() {
     s_resetChangeTrackingFlag = true;
 }
@@ -1749,6 +1851,12 @@ void V1Display::showBootSplash() {
             TFT_CALL(drawPixel)(sx, sy, pixel);
         }
     }
+    
+    // Draw version number in bottom-right corner
+    GFX_setTextDatum(BR_DATUM);  // Bottom-right alignment
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(0x7BEF, PALETTE_BG);  // Gray text (mid-gray RGB565)
+    GFX_drawString(tft, "v" FIRMWARE_VERSION, SCREEN_WIDTH - 8, SCREEN_HEIGHT - 6);
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display before enabling backlight
@@ -1904,8 +2012,12 @@ void V1Display::update(const DisplayState& state) {
         lastRestingMainVol = 255;
         lastRestingMuteVol = 255;
         lastRestingBogeyByte = 0;
+        s_lastRssiUpdateMs = 0;
         // Don't clear the flag here - let the alert update() clear it
     }
+    
+    // Check if RSSI needs periodic refresh (every 2 seconds)
+    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -1943,11 +2055,11 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged) {
+    if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         return;  // Nothing changed
     }
     
-    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged)) {
+    if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Incremental update - only redraw what changed
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
@@ -1967,6 +2079,13 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMainVol = state.mainVolume;
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+        }
+        if (rssiNeedsUpdate && !volumeChanged) {
+            // Periodic RSSI-only update
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;
         }
         if (bogeyCounterChanged) {
             lastRestingBogeyByte = state.bogeyCounterByte;
@@ -1987,6 +2106,7 @@ void V1Display::update(const DisplayState& state) {
     lastRestingMainVol = state.mainVolume;
     lastRestingMuteVol = state.muteVolume;
     lastRestingBogeyByte = state.bogeyCounterByte;
+    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
     
     drawBaseFrame();
     // Use V1's decoded bogey counter byte - shows mode, volume, etc.
@@ -1995,6 +2115,7 @@ void V1Display::update(const DisplayState& state) {
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
@@ -2108,6 +2229,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     
     // Band indicator in persisted color
@@ -2232,20 +2354,23 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static uint8_t lastMuteVol = 255;
     bool volumeChanged = (state.mainVolume != lastMainVol || state.muteVolume != lastMuteVol);
     
+    // Check if RSSI needs periodic refresh (every 2 seconds)
+    unsigned long now = millis();
+    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
+    
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
     static unsigned long lastFlashRedraw = 0;
     bool needsFlashUpdate = false;
     if (hasFlashing) {
-        unsigned long now = millis();
         if (now - lastFlashRedraw >= 75) {  // Redraw at ~13Hz for smoother blink
             needsFlashUpdate = true;
             lastFlashRedraw = now;
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -2254,7 +2379,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -2273,6 +2398,13 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMainVol = state.mainVolume;
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+        }
+        if (rssiNeedsUpdate && !volumeChanged) {
+            // Periodic RSSI-only update
+            drawRssiIndicator(bleClient.getConnectionRssi());
+            s_lastRssiUpdateMs = now;
         }
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
@@ -2297,6 +2429,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastActiveBands = state.activeBands;
     lastMainVol = state.mainVolume;
     lastMuteVol = state.muteVolume;
+    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
     for (int i = 0; i < alertCount && i < 4; i++) {
         lastSecondary[i] = allAlerts[i];
     }
@@ -2312,6 +2445,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
+        drawRssiIndicator(bleClient.getConnectionRssi());
     }
     
     // Main alert display (frequency, bands, arrows, signal bars)

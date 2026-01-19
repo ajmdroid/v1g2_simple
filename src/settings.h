@@ -105,6 +105,8 @@ struct V1Settings {
     uint16_t colorPersisted;     // Persisted alert color (shown after alert disappears)
     uint16_t colorVolumeMain;    // Volume indicator main volume color
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
+    uint16_t colorRssiV1;        // RSSI indicator V1 label color
+    uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -113,6 +115,7 @@ struct V1Settings {
     bool hideBatteryIcon;        // Hide battery icon
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
+    bool hideRssiIndicator;      // Hide RSSI signal strength indicator
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -271,12 +274,15 @@ public:
     void setPersistedColor(uint16_t color);
     void setVolumeMainColor(uint16_t color);
     void setVolumeMuteColor(uint16_t color);
+    void setRssiV1Color(uint16_t color);
+    void setRssiProxyColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
+    void setHideRssiIndicator(bool hide);
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);
@@ -324,6 +330,7 @@ public:
     // SD card backup/restore for display settings
     void backupToSD();
     bool restoreFromSD();
+    bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
 
 private:
     V1Settings settings;

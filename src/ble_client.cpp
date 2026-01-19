@@ -379,6 +379,53 @@ bool V1BLEClient::isConnected() {
     return pClient->isConnected();
 }
 
+// RSSI caching - only query BLE stack every 2 seconds to reduce overhead
+static int s_cachedV1Rssi = 0;
+static unsigned long s_lastV1RssiQueryMs = 0;
+static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
+
+int V1BLEClient::getConnectionRssi() {
+    // Return RSSI of connected V1 device, or 0 if not connected
+    if (!connected || !pClient || !pClient->isConnected()) {
+        s_cachedV1Rssi = 0;
+        return 0;
+    }
+    
+    // Only query BLE stack every 2 seconds - return cached value otherwise
+    unsigned long now = millis();
+    if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
+        s_cachedV1Rssi = pClient->getRssi();
+        s_lastV1RssiQueryMs = now;
+    }
+    return s_cachedV1Rssi;
+}
+
+// Proxy client RSSI caching
+static int s_cachedProxyRssi = 0;
+static unsigned long s_lastProxyRssiQueryMs = 0;
+
+int V1BLEClient::getProxyClientRssi() {
+    // Return RSSI of connected proxy client (JBV1/phone), or 0 if not connected
+    if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
+        s_cachedProxyRssi = 0;
+        return 0;
+    }
+    
+    // Only query BLE stack every 2 seconds
+    unsigned long now = millis();
+    if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
+        // Get connection handle of first connected peer
+        NimBLEConnInfo peerInfo = pServer->getPeerInfo(0);
+        uint16_t connHandle = peerInfo.getConnHandle();
+        int8_t rssi = 0;
+        if (ble_gap_conn_rssi(connHandle, &rssi) == 0) {
+            s_cachedProxyRssi = rssi;
+        }
+        s_lastProxyRssiQueryMs = now;
+    }
+    return s_cachedProxyRssi;
+}
+
 bool V1BLEClient::isProxyClientConnected() {
     return proxyClientConnected;
 }
