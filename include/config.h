@@ -1,6 +1,7 @@
 /**
  * Configuration file for V1 Gen2 Simple Display
  * Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640x172)
+ * Build trigger: audio files fix
  */
 
 #ifndef CONFIG_H
