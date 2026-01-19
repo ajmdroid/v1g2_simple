@@ -1043,12 +1043,10 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 
 void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     // Draw volume indicator below bogey counter: "5V  0M" format
-    // Position: centered between bogey counter bottom (y=67) and BLE icon top (y=98)
     const V1Settings& s = settingsManager.get();
     const int x = 8;
-    // Bogey counter ends ~y=67, BLE icon starts ~y=98, text is ~16px tall
-    // Center: 67 + (98-67-16)/2 = 67 + 7.5 ≈ 75
-    const int y = 75;
+    // Bogey counter ends ~y=67, position volume just below with small gap
+    const int y = 71;
     const int clearW = 75;
     const int clearH = 18;
     
@@ -1253,12 +1251,14 @@ void V1Display::drawBatteryIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // Battery icon position - bottom left (use actual screen height, not effective)
-    const int battX = 12;   // Align with bogey counter left edge
-    const int battW = 24;   // Battery body width
-    const int battH = 14;   // Battery body height
-    const int battY = SCREEN_HEIGHT - battH - 8;  // Stay at actual bottom, not raised area
-    const int capW = 3;     // Positive terminal cap width
+    // Battery icon position - VERTICAL at bottom-right
+    // Position to the right of profile indicator area, avoiding direction arrows
+    const int battW = 14;   // Battery body width (was height when horizontal)
+    const int battH = 28;   // Battery body height (was width when horizontal)
+    const int battX = SCREEN_WIDTH - battW - 8;  // Right edge with margin
+    const int battY = SCREEN_HEIGHT - battH - 8; // Bottom with margin (cap above)
+    const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
+    const int capH = 3;     // Positive terminal cap height
     
     // Voltage-based auto-hide: >4100mV = USB (hide), <4095mV = battery (show)
     static bool showingBattery = false;
@@ -1272,11 +1272,10 @@ void V1Display::drawBatteryIndicator() {
     
     // Don't draw if no battery, user hides it, or voltage says USB
     if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showingBattery) {
-        FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+        FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
     
-    const int capH = 6;     // Positive terminal cap height
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
     
@@ -1296,24 +1295,26 @@ void V1Display::drawBatteryIndicator() {
         fillColor = 0x07E0;  // Green - good
     }
     
-    // Clear area
-    FILL_RECT(battX - 2, battY - 2, battW + capW + 6, battH + 4, PALETTE_BG);
+    // Clear area (including cap above)
+    FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
     
     uint16_t outlineColor = dimColor(PALETTE_TEXT);
 
-    // Draw battery outline (dimmed)
+    // Draw battery outline (dimmed) - vertical orientation
     DRAW_RECT(battX, battY, battW, battH, outlineColor);  // Main body
-    FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, outlineColor);  // Positive cap
+    // Positive cap at top, centered
+    FILL_RECT(battX + (battW - capW) / 2, battY - capH, capW, capH, outlineColor);
     
-    // Draw charge sections
-    int sectionW = (battW - 2 * padding - (sections - 1)) / sections;  // Width of each section with 1px gap
+    // Draw charge sections (vertical - bottom to top, filled from bottom)
+    int sectionH = (battH - 2 * padding - (sections - 1)) / sections;  // Height of each section with 1px gap
     for (int i = 0; i < sections; i++) {
-        int sx = battX + padding + i * (sectionW + 1);
-        int sy = battY + padding;
-        int sh = battH - 2 * padding;
+        // Draw from bottom up: section 0 at bottom, section 4 at top
+        int sx = battX + padding;
+        int sy = battY + battH - padding - (i + 1) * sectionH - i;  // Bottom-up
+        int sw = battW - 2 * padding;
         
         if (i < filledSections) {
-            FILL_RECT(sx, sy, sectionW, sh, dimColor(fillColor));
+            FILL_RECT(sx, sy, sw, sectionH, dimColor(fillColor));
         }
     }
 #endif
@@ -1321,16 +1322,15 @@ void V1Display::drawBatteryIndicator() {
 
 void V1Display::drawBLEProxyIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
-    // Stack above WiFi indicator to keep the left column compact
-    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
-    const int battH = 14;
-    const int battY = SCREEN_HEIGHT - battH - 8;
-    const int wifiSize = 20;
-    const int wifiY = battY - wifiSize - 6;
-
-    const int iconSize = 20;  // Match WiFi icon size
-    const int bleX = 14;
-    const int bleY = wifiY - iconSize - 6;
+    // Position to the right of WiFi indicator (side-by-side at bottom-left)
+    // Battery is now at bottom-right, so icons can sit at very bottom
+    const int iconSize = 20;
+    const int iconY = SCREEN_HEIGHT - iconSize - 8;  // Bottom of screen
+    const int iconGap = 6;  // Gap between icons
+    
+    const int wifiX = 14;
+    const int bleX = wifiX + iconSize + iconGap;  // Right of WiFi icon
+    const int bleY = iconY;
 
     // Always clear the area before drawing
     FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
@@ -1412,12 +1412,10 @@ void V1Display::drawWiFiIndicator() {
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
     
-    // WiFi icon position - above battery icon, bottom left
-    // Use actual SCREEN_HEIGHT so icons stay at bottom, not raised area
+    // WiFi icon position - bottom left (battery moved to bottom-right)
     const int wifiX = 14;
     const int wifiSize = 20;
-    const int battY = SCREEN_HEIGHT - 14 - 8;
-    const int wifiY = battY - wifiSize - 6;
+    const int wifiY = SCREEN_HEIGHT - wifiSize - 8;  // Bottom of screen
     
     // Check if user explicitly hides the WiFi icon
     if (s.hideWifiIcon) {
