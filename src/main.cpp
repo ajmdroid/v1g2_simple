@@ -116,6 +116,7 @@ static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s betwee
 
 // Secondary alert tracking - announce non-priority alerts once
 // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
+// NOTE: Bounds safety verified January 20, 2026 - all accesses check announcedAlertCount < 10
 static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
 static uint8_t announcedAlertCount = 0;
 static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
@@ -143,6 +144,7 @@ struct AlertHistory {
     bool wasWeak;               // True if ever seen at ≤2 bars (never cleared)
     bool escalationAnnounced;   // One-shot flag
 };
+// NOTE: Bounds safety verified January 20, 2026 - all accesses check alertHistoryCount < 10
 static AlertHistory alertHistories[10];
 static uint8_t alertHistoryCount = 0;
 

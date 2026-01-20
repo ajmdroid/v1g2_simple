@@ -152,6 +152,8 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     }
     
     // Read file content for CRC validation
+    // NOTE: Memory safety verified January 20, 2026 - all return paths after this allocation
+    // have corresponding delete[]. Do not add early returns without cleanup.
     size_t fileSize = file.size();
     uint8_t* fileContent = new uint8_t[fileSize];
     file.read(fileContent, fileSize);

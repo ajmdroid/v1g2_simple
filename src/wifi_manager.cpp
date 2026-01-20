@@ -224,7 +224,9 @@ void WiFiManager::setupAP() {
     IPAddress subnet(255, 255, 255, 0);
     
     if (!WiFi.softAPConfig(apIP, gateway, subnet)) {
-        Serial.println("[SetupMode] softAPConfig failed!");
+        // NOTE: Intentional fallthrough - softAP will still work with default IP (192.168.4.1)
+        // Device remains functional. Reviewed January 20, 2026.
+        Serial.println("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1");
     }
     
     if (!WiFi.softAP(apSSID, apPass)) {

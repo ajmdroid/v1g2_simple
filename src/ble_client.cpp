@@ -124,6 +124,8 @@ V1BLEClient::V1BLEClient()
 
 V1BLEClient::~V1BLEClient() {
     // Delete allocated callback handlers to prevent memory leaks
+    // NOTE: Ownership verified January 20, 2026 - NimBLE does NOT take ownership of callbacks,
+    // caller is responsible for deletion. No double-free risk.
     if (pScanCallbacks) {
         delete pScanCallbacks;
         pScanCallbacks = nullptr;
@@ -1039,6 +1041,8 @@ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
 }
 
 bool V1BLEClient::requestAlertData() {
+    // NOTE: Packet structure intentionally explicit (not abstracted) - January 20, 2026 review.
+    // Matches V1 protocol docs exactly; easier to verify than a builder pattern.
     uint8_t packet[] = {
         ESP_PACKET_START,
         static_cast<uint8_t>(0xD0 + ESP_PACKET_DEST_V1),
