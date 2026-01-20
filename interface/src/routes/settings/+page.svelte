@@ -223,7 +223,7 @@
 						max="60"
 						placeholder="0"
 					/>
-					<div class="label">
+					<label class="label">
 						<span class="label-text-alt">
 							{#if settings.autoPowerOffMinutes > 0}
 								Device will power off {settings.autoPowerOffMinutes} minute{settings.autoPowerOffMinutes !== 1 ? 's' : ''} after V1 disconnects
@@ -231,7 +231,7 @@
 								Auto power-off is disabled
 							{/if}
 						</span>
-					</div>
+					</label>
 				</div>
 			</div>
 		</div>
