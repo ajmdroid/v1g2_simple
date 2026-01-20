@@ -1372,18 +1372,19 @@ void V1Display::drawBatteryIndicator() {
     const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
     const int capH = 3;     // Positive terminal cap height
     
-    // Voltage-based auto-hide: >4100mV = USB (hide), <4095mV = battery (show)
-    static bool showingBattery = false;
+    // Hide battery icon when on USB power (voltage at/near max indicates charging)
+    // Use hysteresis to prevent flickering: hide above 4095, show below 4080
+    static bool showBattery = false;
     uint16_t voltage = batteryManager.getVoltageMillivolts();
-    if (voltage > 4100) {
-        showingBattery = false;
-    } else if (voltage < 4095) {
-        showingBattery = true;
+    if (voltage > 4095) {
+        showBattery = false;  // Definitely on USB
+    } else if (voltage < 4080) {
+        showBattery = true;   // Definitely on battery
     }
-    // else: voltage 4095-4100, keep current state (hysteresis)
+    // Between 4080-4095: keep previous state (hysteresis)
     
-    // Don't draw if no battery, user hides it, or voltage says USB
-    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showingBattery) {
+    // Don't draw if no battery, user hides it, or not on battery power
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBattery) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
