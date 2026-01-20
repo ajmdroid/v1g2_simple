@@ -368,9 +368,9 @@
 						value={displayStyle}
 						onchange={saveDisplayStyle}
 					>
-						<option value={0}>Classic (7-Segment)</option>
-						<option value={1}>Modern (Montserrat)</option>
-						<option value={2}>Hemi (Speedometer)</option>
+						<option value={0}>Classic (V1 tech)</option>
+						<option value={1}>Modern</option>
+						<option value={2}>Hemi</option>
 					</select>
 				</div>
 			</div>

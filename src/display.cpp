@@ -3267,16 +3267,8 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
 void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     
-    // Debug log
-    static int lastFreq = -1;
-    if (freqMHz != lastFreq) {
-        Serial.printf("DEBUG: drawFrequencyHemi called, freq=%u, ofrHemiInit=%d\n", freqMHz, ofrHemiInitialized);
-        lastFreq = freqMHz;
-    }
-    
     // Fall back to Classic style if Hemi OFR not initialized
     if (!ofrHemiInitialized) {
-        Serial.println("DEBUG: Hemi not initialized, falling back to Classic");
         drawFrequencyClassic(freqMHz, band, muted);
         return;
     }
