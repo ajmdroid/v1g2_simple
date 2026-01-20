@@ -3588,11 +3588,19 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
 
     // Clear the entire arrow region using the max dimensions
     // Stop above profile indicator area (profile at Y=152)
+    // Limit right edge to avoid clearing battery icon area (battery starts at X=618)
     const int maxW = (topW > bottomW) ? topW : bottomW;
     const int maxH = (topH > bottomH) ? topH : bottomH;
     int clearTop = topArrowCenterY - topH/2 - 15;
     int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
-    FILL_RECT(cx - maxW/2 - 10, clearTop, maxW + 24, clearBottom - clearTop, PALETTE_BG);
+    int clearLeft = cx - maxW/2 - 10;
+    int clearWidth = maxW + 20;  // Reduced from +24 to avoid battery icon at X=618
+    // Clamp right edge to not overlap battery icon (battery starts at SCREEN_WIDTH - 22 = 618)
+    int maxClearRight = SCREEN_WIDTH - 24;  // Leave margin for battery icon
+    if (clearLeft + clearWidth > maxClearRight) {
+        clearWidth = maxClearRight - clearLeft;
+    }
+    FILL_RECT(clearLeft, clearTop, clearWidth, clearBottom - clearTop, PALETTE_BG);
 
     auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
         uint16_t fillCol = active ? activeCol : offCol;
