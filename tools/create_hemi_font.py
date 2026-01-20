@@ -59,31 +59,84 @@ def download_font():
     print(f"Using font: {ttf_path}")
     return ttf_path
 
-def create_subset(input_ttf, output_ttf, chars):
+def create_subset(input_font, output_ttf, chars):
     """Create a subset font with only the specified characters"""
     from fontTools import subset
+    from fontTools.ttLib import TTFont
     
     print(f"Creating subset with characters: {chars}")
     
-    # Build the subset options
-    options = subset.Options()
-    options.flavor = None  # Keep as TTF
-    options.desubroutinize = True  # Helps with embedded use
-    
     # Load the font
-    font = subset.load_font(str(input_ttf), options)
+    font = TTFont(str(input_font))
     
-    # Create the subset
+    # First, subset the font (while still in original format)
+    options = subset.Options()
+    options.flavor = None
+    options.desubroutinize = True
+    
     subsetter = subset.Subsetter(options)
     subsetter.populate(text=chars)
     subsetter.subset(font)
     
-    # Save the subset
-    subset.save_font(font, str(output_ttf), options)
+    # Now check if this is a CFF/OTF font and convert to TTF
+    if 'CFF ' in font:
+        print("Source font is CFF/OTF format - converting to TrueType...")
+        try:
+            from fontTools.pens.cu2quPen import Cu2QuPen
+            from fontTools.pens.ttGlyphPen import TTGlyphPen
+            from fontTools.ttLib import newTable
+            from fontTools.ttLib.tables._g_l_y_f import Glyph
+            
+            glyphOrder = font.getGlyphOrder()
+            glyphSet = font.getGlyphSet()
+            
+            # Create new glyf table
+            glyf = newTable('glyf')
+            glyf.glyphs = {}
+            glyf.glyphOrder = glyphOrder
+            
+            for glyphName in glyphOrder:
+                pen = TTGlyphPen(None)
+                try:
+                    # Draw glyph through Cu2Qu pen to convert cubic curves to quadratic
+                    cu2quPen = Cu2QuPen(pen, max_err=1.0, reverse_direction=True)
+                    glyphSet[glyphName].draw(cu2quPen)
+                    glyf[glyphName] = pen.glyph()
+                except Exception as e:
+                    # Create empty glyph on error
+                    print(f"  Warning: Failed to convert glyph '{glyphName}': {e}")
+                    glyf[glyphName] = Glyph()
+            
+            font['glyf'] = glyf
+            
+            # Remove CFF table
+            del font['CFF ']
+            
+            # Add loca table (required for TrueType, will be computed on save)
+            font['loca'] = newTable('loca')
+            
+            # IMPORTANT: Change sfntVersion from 'OTTO' to TrueType
+            font.sfntVersion = '\x00\x01\x00\x00'
+            
+            print("Converted CFF outlines to TrueType quadratic curves")
+        except Exception as e:
+            print(f"WARNING: CFF->TTF conversion failed: {e}")
+            print("Proceeding with OTF format - OpenFontRender may not render it correctly!")
+    
+    # Save the font
+    font.save(str(output_ttf))
     print(f"Subset saved to {output_ttf}")
     
+    # Verify output format
+    with open(output_ttf, 'rb') as f:
+        magic = f.read(4)
+        if magic == b'OTTO':
+            print("WARNING: Output is still CFF/OTF format!")
+        else:
+            print("Output is TrueType format - good!")
+    
     # Print size comparison
-    orig_size = os.path.getsize(input_ttf)
+    orig_size = os.path.getsize(input_font)
     new_size = os.path.getsize(output_ttf)
     print(f"Original size: {orig_size:,} bytes")
     print(f"Subset size: {new_size:,} bytes ({100*new_size/orig_size:.1f}%)")
@@ -140,12 +193,18 @@ def main():
     project_root = script_dir.parent
     include_dir = project_root / "include"
     
+    # Check for command-line arguments
+    chars_to_use = CHARS
+    if len(sys.argv) > 1:
+        chars_to_use = sys.argv[1]
+        print(f"Using custom character set: {chars_to_use}")
+    
     # Download the original font
     original_ttf = download_font()
     
     # Create subset
     subset_ttf = Path("/tmp/HemiHead-subset.ttf")
-    create_subset(original_ttf, subset_ttf, CHARS)
+    create_subset(original_ttf, subset_ttf, chars_to_use)
     
     # Convert to header
     header_path = include_dir / "HemiHead.h"

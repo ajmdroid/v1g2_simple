@@ -485,7 +485,9 @@ bool V1Display::begin() {
     Serial.printf("Loading Hemi Head font (%d bytes)...\n", sizeof(HemiHead));
     ofrHemi.setSerial(Serial);
     ofrHemi.setDrawer(*tft);
+    Serial.println("DEBUG: About to load Hemi font...");
     FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
+    Serial.printf("DEBUG: loadFont returned FT_Error: 0x%02X\n", ftErr3);
     if (ftErr3) {
         Serial.printf("ERROR: Failed to load Hemi Head font! FT_Error: 0x%02X\n", ftErr3);
         ofrHemiInitialized = false;
@@ -1751,7 +1753,7 @@ void V1Display::showScanning() {
         ofr.printf("%s", text);
     } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
         // Hemi style: use Hemi Head via OFR (retro speedometer look)
-        const int fontSize = 66;
+        const int fontSize = 76;  // Larger for retro impact
         ofrHemi.setFontColor(s.colorBandKa, PALETTE_BG);
         ofrHemi.setFontSize(fontSize);
         
@@ -3265,8 +3267,16 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
 void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
     
+    // Debug log
+    static int lastFreq = -1;
+    if (freqMHz != lastFreq) {
+        Serial.printf("DEBUG: drawFrequencyHemi called, freq=%u, ofrHemiInit=%d\n", freqMHz, ofrHemiInitialized);
+        lastFreq = freqMHz;
+    }
+    
     // Fall back to Classic style if Hemi OFR not initialized
     if (!ofrHemiInitialized) {
+        Serial.println("DEBUG: Hemi not initialized, falling back to Classic");
         drawFrequencyClassic(freqMHz, band, muted);
         return;
     }
@@ -3277,11 +3287,11 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     }
     
     // OpenFontRender with Hemi Head font (retro speedometer style)
-    const int fontSize = 69;  // Match Modern style size
+    const int fontSize = 80;  // Larger for retro speedometer impact
     const int leftMargin = 120;   // After band indicators
     const int rightMargin = 200;  // Before signal bars
     const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
+    const int freqY = effectiveHeight - 70;  // Centered between mute icon and cards
     
     ofrHemi.setFontSize(fontSize);
     ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
