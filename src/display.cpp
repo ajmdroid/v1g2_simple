@@ -18,13 +18,19 @@
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
 #include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
+#include "../include/HemiHead.h"             // Hemi Head TTF (subset: 0-9, -, ., LASER, SCAN)
 #include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
+#include "../include/Serpentine.h"           // Serpentine TTF (JB's favorite)
 
 // Global OpenFontRender instances
 static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
 static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
+static OpenFontRender ofrHemi;               // For Hemi style (Hemi Head - retro speedometer)
+static OpenFontRender ofrSerpentine;         // For Serpentine style (JB's favorite)
 static bool ofrInitialized = false;
 static bool ofrSegment7Initialized = false;
+static bool ofrHemiInitialized = false;
+static bool ofrSerpentineInitialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -476,6 +482,32 @@ bool V1Display::begin() {
     } else {
         Serial.println("Segment7 font initialized (JBV1 Classic style)");
         ofrSegment7Initialized = true;
+    }
+    
+    // Initialize Hemi Head font for Hemi style (retro speedometer)
+    Serial.printf("Loading Hemi Head font (%d bytes)...\n", sizeof(HemiHead));
+    ofrHemi.setSerial(Serial);
+    ofrHemi.setDrawer(*tft);
+    FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
+    if (ftErr3) {
+        Serial.printf("ERROR: Failed to load Hemi Head font! FT_Error: 0x%02X\n", ftErr3);
+        ofrHemiInitialized = false;
+    } else {
+        Serial.println("Hemi Head font initialized (retro speedometer style)");
+        ofrHemiInitialized = true;
+    }
+    
+    // Initialize Serpentine font (JB's favorite)
+    Serial.printf("Loading Serpentine font (%d bytes)...\n", sizeof(Serpentine));
+    ofrSerpentine.setSerial(Serial);
+    ofrSerpentine.setDrawer(*tft);
+    FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
+    if (ftErr4) {
+        Serial.printf("ERROR: Failed to load Serpentine font! FT_Error: 0x%02X\n", ftErr4);
+        ofrSerpentineInitialized = false;
+    } else {
+        Serial.println("Serpentine font initialized (JB's favorite)");
+        ofrSerpentineInitialized = true;
     }
     
     // Load color theme from settings
@@ -1340,18 +1372,19 @@ void V1Display::drawBatteryIndicator() {
     const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
     const int capH = 3;     // Positive terminal cap height
     
-    // Voltage-based auto-hide: >4100mV = USB (hide), <4095mV = battery (show)
-    static bool showingBattery = false;
+    // Hide battery icon when on USB power (voltage at/near max indicates charging)
+    // Use hysteresis to prevent flickering: hide above 4095, show below 4080
+    static bool showBattery = false;
     uint16_t voltage = batteryManager.getVoltageMillivolts();
-    if (voltage > 4100) {
-        showingBattery = false;
-    } else if (voltage < 4095) {
-        showingBattery = true;
+    if (voltage > 4095) {
+        showBattery = false;  // Definitely on USB
+    } else if (voltage < 4080) {
+        showBattery = true;   // Definitely on battery
     }
-    // else: voltage 4095-4100, keep current state (hysteresis)
+    // Between 4080-4095: keep previous state (hysteresis)
     
-    // Don't draw if no battery, user hides it, or voltage says USB
-    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showingBattery) {
+    // Don't draw if no battery, user hides it, or not on battery power
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBattery) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
@@ -1733,6 +1766,46 @@ void V1Display::showScanning() {
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofr.setCursor(x, y);
         ofr.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
+        // Hemi style: use Hemi Head via OFR (retro speedometer look)
+        const int fontSize = 76;  // Larger for retro impact
+        ofrHemi.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofrHemi.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        const int leftMargin = 120;
+        const int rightMargin = 200;
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - textWidth) / 2;
+        int y = getEffectiveScreenHeight() - 72;
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofrHemi.setCursor(x, y);
+        ofrHemi.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+        // Serpentine style: JB's favorite font
+        const int fontSize = 65;
+        ofrSerpentine.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofrSerpentine.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        const int leftMargin = 120;
+        const int rightMargin = 200;
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - textWidth) / 2;
+        int y = getEffectiveScreenHeight() - 72;
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofrSerpentine.setCursor(x, y);
+        ofrSerpentine.printf("%s", text);
     } else if (ofrSegment7Initialized) {
         // Classic style: use Segment7 TTF font (JBV1 style)
         const int fontSize = 65;
@@ -3225,6 +3298,150 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     ofr.printf("%s", freqStr);
 }
 
+// Hemi frequency display - Retro speedometer style with Hemi Head font
+void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if Hemi OFR not initialized
+    if (!ofrHemiInitialized) {
+        drawFrequencyClassic(freqMHz, band, muted);
+        return;
+    }
+    
+    // Hemi style: show nothing when no frequency (resting/idle state)
+    if (freqMHz == 0 && band != BAND_LASER) {
+        return;
+    }
+    
+    // OpenFontRender with Hemi Head font (retro speedometer style)
+    const int fontSize = 80;  // Larger for retro speedometer impact
+    const int leftMargin = 120;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 70;  // Centered between mute icon and cards
+    
+    ofrHemi.setFontSize(fontSize);
+    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (band == BAND_LASER) {
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        ofrHemi.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = leftMargin + (maxWidth - textW) / 2;
+        
+        ofrHemi.setCursor(x, freqY);
+        ofrHemi.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    // Determine frequency color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (freqMHz == 0) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
+    ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = leftMargin + (maxWidth - textW) / 2;
+    
+    ofrHemi.setCursor(x, freqY);
+    ofrHemi.printf("%s", freqStr);
+}
+
+// Serpentine frequency display - JB's favorite font
+void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if Serpentine OFR not initialized
+    if (!ofrSerpentineInitialized) {
+        drawFrequencyClassic(freqMHz, band, muted);
+        return;
+    }
+    
+    // Serpentine style: show nothing when no frequency (resting/idle state)
+    if (freqMHz == 0 && band != BAND_LASER) {
+        return;
+    }
+    
+    // OpenFontRender with Serpentine font
+    const int fontSize = 65;  // Sized to match display area
+    const int leftMargin = 135;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 55;  // Centered between mute icon and cards
+    
+    ofrSerpentine.setFontSize(fontSize);
+    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (band == BAND_LASER) {
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        ofrSerpentine.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = leftMargin + (maxWidth - textW) / 2;
+        
+        ofrSerpentine.setCursor(x, freqY);
+        ofrSerpentine.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    // Determine frequency color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (freqMHz == 0) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
+    ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = leftMargin + (maxWidth - textW) / 2;
+    
+    ofrSerpentine.setCursor(x, freqY);
+    ofrSerpentine.printf("%s", freqStr);
+}
+
 // Draw volume zero warning in the frequency area (flashing red text)
 void V1Display::drawVolumeZeroWarning() {
     // Flash at ~2Hz
@@ -3274,8 +3491,21 @@ void V1Display::drawVolumeZeroWarning() {
 // Router: calls appropriate frequency draw method based on display style setting
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     const V1Settings& s = settingsManager.get();
+    
+    // Debug: log which style is being used
+    static int lastStyleLogged = -1;
+    if (s.displayStyle != lastStyleLogged) {
+        Serial.printf("[Display] Style changed: %d (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine), ofrHemiInit=%d, ofrSerpentineInit=%d\n", 
+                      s.displayStyle, ofrHemiInitialized, ofrSerpentineInitialized);
+        lastStyleLogged = s.displayStyle;
+    }
+    
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
         drawFrequencyModern(freqMHz, band, muted);
+    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
+        drawFrequencyHemi(freqMHz, band, muted);
+    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+        drawFrequencySerpentine(freqMHz, band, muted);
     } else {
         drawFrequencyClassic(freqMHz, band, muted);
     }
@@ -3359,11 +3589,19 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
 
     // Clear the entire arrow region using the max dimensions
     // Stop above profile indicator area (profile at Y=152)
+    // Limit right edge to avoid clearing battery icon area (battery starts at X=618)
     const int maxW = (topW > bottomW) ? topW : bottomW;
     const int maxH = (topH > bottomH) ? topH : bottomH;
     int clearTop = topArrowCenterY - topH/2 - 15;
     int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
-    FILL_RECT(cx - maxW/2 - 10, clearTop, maxW + 24, clearBottom - clearTop, PALETTE_BG);
+    int clearLeft = cx - maxW/2 - 10;
+    int clearWidth = maxW + 20;  // Reduced from +24 to avoid battery icon at X=618
+    // Clamp right edge to not overlap battery icon (battery starts at SCREEN_WIDTH - 22 = 618)
+    int maxClearRight = SCREEN_WIDTH - 24;  // Leave margin for battery icon
+    if (clearLeft + clearWidth > maxClearRight) {
+        clearWidth = maxClearRight - clearLeft;
+    }
+    FILL_RECT(clearLeft, clearTop, clearWidth, clearBottom - clearTop, PALETTE_BG);
 
     auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
         uint16_t fillCol = active ? activeCol : offCol;

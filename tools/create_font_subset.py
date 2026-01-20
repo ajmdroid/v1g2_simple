@@ -104,18 +104,26 @@ def main():
     project_root = script_dir.parent
     include_dir = project_root / "include"
     
+    # Check for command-line arguments
+    # Usage: python3 create_font_subset.py [chars_to_include]
+    chars_to_use = CHARS
+    if len(sys.argv) > 1:
+        # Assume the first argument (after script name) is the chars
+        chars_to_use = sys.argv[1]
+        print(f"Using custom character set: {chars_to_use}")
+    
     # Download the original font
     original_ttf = download_font()
     
     # Create subset
     subset_ttf = Path("/tmp/MontserratBold-subset.ttf")
-    create_subset(original_ttf, subset_ttf, CHARS)
+    create_subset(original_ttf, subset_ttf, chars_to_use)
     
     # Convert to header
     header_path = include_dir / "MontserratBold.h"
     ttf_to_header(subset_ttf, header_path, "MontserratBold")
     
-    print("\nDone! Font header updated with SCAN characters (C, N)")
+    print("\nDone! Font header updated")
 
 if __name__ == "__main__":
     main()

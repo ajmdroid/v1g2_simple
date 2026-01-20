@@ -83,8 +83,10 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 // Debug log controls
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
 constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
+constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
 #define BLE_LOGF(...) do { if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while (0)
 #define BLE_LOGLN(msg) do { if (BLE_DEBUG_LOGS) Serial.println(msg); } while (0)
+#define BLE_SM_LOGF(...) do { if (BLE_STATE_MACHINE_LOGS) Serial.printf(__VA_ARGS__); } while (0)
 } // namespace
 
 // Static instance for callbacks
@@ -122,6 +124,8 @@ V1BLEClient::V1BLEClient()
 
 V1BLEClient::~V1BLEClient() {
     // Delete allocated callback handlers to prevent memory leaks
+    // NOTE: Ownership verified January 20, 2026 - NimBLE does NOT take ownership of callbacks,
+    // caller is responsible for deletion. No double-free risk.
     if (pScanCallbacks) {
         delete pScanCallbacks;
         pScanCallbacks = nullptr;
@@ -152,7 +156,7 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     bleState = newState;
     stateEnteredMs = now;
     
-    Serial.printf("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
+    BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
                   now,
                   bleStateToString(oldState),
                   stateTime,
@@ -358,10 +362,10 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setDuplicateFilter(true);
     Serial.println("Scan configured: interval=160 (100ms), window=80 (50ms), active=true, 50% duty, 10s duration");
     
-    Serial.println("Scanning for V1 Gen2...");
+    BLE_SM_LOGF("Scanning for V1 Gen2...\n");
     lastScanStart = millis();
     bool started = pScan->start(SCAN_DURATION, false, false);  // duration, isContinuous, restart
-    Serial.printf("Scan started: %s\n", started ? "YES" : "NO");
+    BLE_SM_LOGF("Scan started: %s\n", started ? "YES" : "NO");
     
     if (started) {
         setBLEState(BLEState::SCANNING, "begin()");
@@ -613,7 +617,7 @@ bool V1BLEClient::connectToServer() {
     connectStartMs = millis();  // Track when we started for timeout
     setBLEState(BLEState::CONNECTING, "connectToServer");
     
-    Serial.printf("[BLE] Connecting to %s (async)...\n", addrStr.c_str());
+    BLE_SM_LOGF("[BLE] Connecting to %s (async)...\n", addrStr.c_str());
     
     // Clear any stale bonding info
     if (NimBLEDevice::isBonded(targetAddress)) {
@@ -623,14 +627,14 @@ bool V1BLEClient::connectToServer() {
     
     // CRITICAL: Stop proxy advertising - this competes with client connect!
     if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
-        Serial.println("[BLE] Stopping proxy advertising before connect");
+        BLE_SM_LOGF("[BLE] Stopping proxy advertising before connect\n");
         NimBLEDevice::stopAdvertising();
         vTaskDelay(pdMS_TO_TICKS(200));  // Longer wait for advertising to fully stop
     }
     
     // Extra verify scan is stopped
     if (pScan && pScan->isScanning()) {
-        Serial.println("[BLE] WARNING: Scan still active, stopping again");
+        BLE_SM_LOGF("[BLE] WARNING: Scan still active, stopping again\n");
         pScan->stop();
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -672,7 +676,7 @@ bool V1BLEClient::connectToServer() {
     
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
-            Serial.printf("[BLE] Connect attempt %d/%d\n", attempt, attempts);
+            BLE_SM_LOGF("[BLE] Connect attempt %d/%d\n", attempt, attempts);
         }
         
         // Parameters: address, deleteAttributes=true
@@ -681,13 +685,13 @@ bool V1BLEClient::connectToServer() {
         if (!connectedOk) {
             lastErr = pClient->getLastError();
             if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
-                Serial.printf("[BLE] Attempt %d failed (error: %d)\n", attempt, lastErr);
+                BLE_SM_LOGF("[BLE] Attempt %d failed (error: %d)\n", attempt, lastErr);
             }
             
             // Error 13 = EBUSY - BLE stack busy
             if (lastErr == 13 && attempt < attempts) {
                 if (CONNECT_ATTEMPT_VERBOSE) {
-                    Serial.println("[BLE] Stack busy, waiting 2s before retry...");
+                    BLE_SM_LOGF("[BLE] Stack busy, waiting 2s before retry...\n");
                 }
                 vTaskDelay(pdMS_TO_TICKS(2000));
             } else if (attempt < attempts) {
@@ -697,7 +701,7 @@ bool V1BLEClient::connectToServer() {
     }
     
     if (!connectedOk) {
-        Serial.printf("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
+        BLE_SM_LOGF("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
         
         consecutiveConnectFailures++;
         
@@ -1037,6 +1041,8 @@ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
 }
 
 bool V1BLEClient::requestAlertData() {
+    // NOTE: Packet structure intentionally explicit (not abstracted) - January 20, 2026 review.
+    // Matches V1 protocol docs exactly; easier to verify than a builder pattern.
     uint8_t packet[] = {
         ESP_PACKET_START,
         static_cast<uint8_t>(0xD0 + ESP_PACKET_DEST_V1),

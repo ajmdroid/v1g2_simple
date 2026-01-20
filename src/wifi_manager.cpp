@@ -224,7 +224,9 @@ void WiFiManager::setupAP() {
     IPAddress subnet(255, 255, 255, 0);
     
     if (!WiFi.softAPConfig(apIP, gateway, subnet)) {
-        Serial.println("[SetupMode] softAPConfig failed!");
+        // NOTE: Intentional fallthrough - softAP will still work with default IP (192.168.4.1)
+        // Device remains functional. Reviewed January 20, 2026.
+        Serial.println("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1");
     }
     
     if (!WiFi.softAP(apSSID, apPass)) {
@@ -462,54 +464,62 @@ String WiFiManager::getAPIPAddress() const {
 }
 
 void WiFiManager::handleStatus() {
-    const V1Settings& settings = settingsManager.get();
+    // Option 2 optimization: Cache status JSON for 500ms to avoid repeated serialization
+    unsigned long now = millis();
+    bool cacheValid = (now - lastStatusJsonTime) < STATUS_CACHE_TTL_MS;
     
-    JsonDocument doc;
-    
-    // WiFi info (matches Svelte dashboard expectations)
-    JsonObject wifi = doc["wifi"].to<JsonObject>();
-    wifi["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
-    wifi["ap_active"] = (setupModeState == SETUP_MODE_AP_ON);
-    wifi["sta_connected"] = false;  // AP-only
-    wifi["sta_ip"] = "";
-    wifi["ap_ip"] = getAPIPAddress();
-    wifi["ssid"] = settings.apSSID;
-    wifi["rssi"] = 0;
-    
-    // Device info
-    JsonObject device = doc["device"].to<JsonObject>();
-    device["uptime"] = millis() / 1000;
-    device["heap_free"] = ESP.getFreeHeap();
-    device["hostname"] = "v1g2";
-    device["firmware_version"] = FIRMWARE_VERSION;
-    
-    // Battery info
-    JsonObject battery = doc["battery"].to<JsonObject>();
-    battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
-    battery["percentage"] = batteryManager.getPercentage();
-    battery["on_battery"] = batteryManager.isOnBattery();
-    battery["has_battery"] = batteryManager.hasBattery();
-    
-    // BLE/V1 connection state
-    doc["v1_connected"] = bleClient.isConnected();
-    
-    // Append callback data if available (legacy support)
-    if (getStatusJson) {
-        JsonDocument statusDoc;
-        deserializeJson(statusDoc, getStatusJson());
-        for (JsonPair kv : statusDoc.as<JsonObject>()) {
-            doc[kv.key()] = kv.value();
+    if (!cacheValid) {
+        // Cache expired or uninitialized - rebuild JSON
+        const V1Settings& settings = settingsManager.get();
+        
+        JsonDocument doc;
+        
+        // WiFi info (matches Svelte dashboard expectations)
+        JsonObject wifi = doc["wifi"].to<JsonObject>();
+        wifi["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
+        wifi["ap_active"] = (setupModeState == SETUP_MODE_AP_ON);
+        wifi["sta_connected"] = false;  // AP-only
+        wifi["sta_ip"] = "";
+        wifi["ap_ip"] = getAPIPAddress();
+        wifi["ssid"] = settings.apSSID;
+        wifi["rssi"] = 0;
+        
+        // Device info
+        JsonObject device = doc["device"].to<JsonObject>();
+        device["uptime"] = millis() / 1000;
+        device["heap_free"] = ESP.getFreeHeap();
+        device["hostname"] = "v1g2";
+        device["firmware_version"] = FIRMWARE_VERSION;
+        
+        // Battery info
+        JsonObject battery = doc["battery"].to<JsonObject>();
+        battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
+        battery["percentage"] = batteryManager.getPercentage();
+        battery["on_battery"] = batteryManager.isOnBattery();
+        battery["has_battery"] = batteryManager.hasBattery();
+        
+        // BLE/V1 connection state
+        doc["v1_connected"] = bleClient.isConnected();
+        
+        // Append callback data if available (legacy support)
+        if (getStatusJson) {
+            JsonDocument statusDoc;
+            deserializeJson(statusDoc, getStatusJson());
+            for (JsonPair kv : statusDoc.as<JsonObject>()) {
+                doc[kv.key()] = kv.value();
+            }
         }
-    }
-    if (getAlertJson) {
-        JsonDocument alertDoc;
-        deserializeJson(alertDoc, getAlertJson());
-        doc["alert"] = alertDoc;
+        if (getAlertJson) {
+            JsonDocument alertDoc;
+            deserializeJson(alertDoc, getAlertJson());
+            doc["alert"] = alertDoc;
+        }
+        
+        serializeJson(doc, cachedStatusJson);
+        lastStatusJsonTime = now;
     }
     
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
+    server.send(200, "application/json", cachedStatusJson);
 }
 
 // ==================== API Endpoints ====================
@@ -603,8 +613,9 @@ void WiFiManager::handleSettingsSave() {
     // Display style setting
     if (server.hasArg("displayStyle")) {
         int style = server.arg("displayStyle").toInt();
-        style = std::max(0, std::min(style, 1));  // Clamp to valid range (0=Classic, 1=Modern)
+        style = std::max(0, std::min(style, 3));  // Clamp to valid range (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
+        display.forceNextRedraw();  // Force display update to show new font style
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.

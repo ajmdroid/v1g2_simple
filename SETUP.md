@@ -85,7 +85,7 @@ pio run -e waveshare-349-windows --target upload
 
 ## 7. Connect to WiFi Configuration
 
-WiFi AP is **off by default**. Long-press **BOOT** (~2s) to start the access point, then connect:
+WiFi AP is **off by default**. Long-press **BOOT** (~4s) to start the access point, then connect:
 
 | Setting | Value |
 |---------|-------|
