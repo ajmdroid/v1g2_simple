@@ -371,6 +371,7 @@
 						<option value={0}>Classic (V1 tech)</option>
 						<option value={1}>Modern</option>
 						<option value={2}>Hemi</option>
+						<option value={3}>Serpentine</option>
 					</select>
 				</div>
 			</div>

@@ -20,14 +20,17 @@
 #include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
 #include "../include/HemiHead.h"             // Hemi Head TTF (subset: 0-9, -, ., LASER, SCAN)
 #include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
+#include "../include/Serpentine.h"           // Serpentine TTF (JB's favorite)
 
 // Global OpenFontRender instances
 static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
 static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
 static OpenFontRender ofrHemi;               // For Hemi style (Hemi Head - retro speedometer)
+static OpenFontRender ofrSerpentine;         // For Serpentine style (JB's favorite)
 static bool ofrInitialized = false;
 static bool ofrSegment7Initialized = false;
 static bool ofrHemiInitialized = false;
+static bool ofrSerpentineInitialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -494,6 +497,19 @@ bool V1Display::begin() {
     } else {
         Serial.println("Hemi Head font initialized (retro speedometer style)");
         ofrHemiInitialized = true;
+    }
+    
+    // Initialize Serpentine font (JB's favorite)
+    Serial.printf("Loading Serpentine font (%d bytes)...\n", sizeof(Serpentine));
+    ofrSerpentine.setSerial(Serial);
+    ofrSerpentine.setDrawer(*tft);
+    FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
+    if (ftErr4) {
+        Serial.printf("ERROR: Failed to load Serpentine font! FT_Error: 0x%02X\n", ftErr4);
+        ofrSerpentineInitialized = false;
+    } else {
+        Serial.println("Serpentine font initialized (JB's favorite)");
+        ofrSerpentineInitialized = true;
     }
     
     // Load color theme from settings
@@ -1771,6 +1787,26 @@ void V1Display::showScanning() {
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         ofrHemi.setCursor(x, y);
         ofrHemi.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+        // Serpentine style: JB's favorite font
+        const int fontSize = 65;
+        ofrSerpentine.setFontColor(s.colorBandKa, PALETTE_BG);
+        ofrSerpentine.setFontSize(fontSize);
+        
+        const char* text = "SCAN";
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        int textWidth = bbox.xMax - bbox.xMin;
+        int textHeight = bbox.yMax - bbox.yMin;
+        
+        const int leftMargin = 120;
+        const int rightMargin = 200;
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin + (maxWidth - textWidth) / 2;
+        int y = getEffectiveScreenHeight() - 72;
+        
+        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
+        ofrSerpentine.setCursor(x, y);
+        ofrSerpentine.printf("%s", text);
     } else if (ofrSegment7Initialized) {
         // Classic style: use Segment7 TTF font (JBV1 style)
         const int fontSize = 65;
@@ -3335,6 +3371,78 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     ofrHemi.printf("%s", freqStr);
 }
 
+// Serpentine frequency display - JB's favorite font
+void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted) {
+    const V1Settings& s = settingsManager.get();
+    
+    // Fall back to Classic style if Serpentine OFR not initialized
+    if (!ofrSerpentineInitialized) {
+        drawFrequencyClassic(freqMHz, band, muted);
+        return;
+    }
+    
+    // Serpentine style: show nothing when no frequency (resting/idle state)
+    if (freqMHz == 0 && band != BAND_LASER) {
+        return;
+    }
+    
+    // OpenFontRender with Serpentine font
+    const int fontSize = 65;  // Sized to match display area
+    const int leftMargin = 135;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int freqY = effectiveHeight - 55;  // Centered between mute icon and cards
+    
+    ofrSerpentine.setFontSize(fontSize);
+    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
+    
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    
+    if (band == BAND_LASER) {
+        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        ofrSerpentine.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        // Get text width for centering
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
+        int textW = bbox.xMax - bbox.xMin;
+        int x = leftMargin + (maxWidth - textW) / 2;
+        
+        ofrSerpentine.setCursor(x, freqY);
+        ofrSerpentine.printf("LASER");
+        return;
+    }
+    
+    char freqStr[16];
+    if (freqMHz > 0) {
+        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    } else {
+        snprintf(freqStr, sizeof(freqStr), "--.---");
+    }
+    
+    // Determine frequency color
+    uint16_t freqColor;
+    if (muted) {
+        freqColor = PALETTE_MUTED_OR_PERSISTED;
+    } else if (freqMHz == 0) {
+        freqColor = PALETTE_GRAY;
+    } else if (s.freqUseBandColor && band != BAND_NONE) {
+        freqColor = getBandColor(band);
+    } else {
+        freqColor = s.colorFrequency;
+    }
+    ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    
+    // Get text width for centering
+    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    int textW = bbox.xMax - bbox.xMin;
+    int x = leftMargin + (maxWidth - textW) / 2;
+    
+    ofrSerpentine.setCursor(x, freqY);
+    ofrSerpentine.printf("%s", freqStr);
+}
+
 // Draw volume zero warning in the frequency area (flashing red text)
 void V1Display::drawVolumeZeroWarning() {
     // Flash at ~2Hz
@@ -3388,8 +3496,8 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     // Debug: log which style is being used
     static int lastStyleLogged = -1;
     if (s.displayStyle != lastStyleLogged) {
-        Serial.printf("[Display] Style changed: %d (0=Classic, 1=Modern, 2=Hemi), ofrHemiInit=%d\n", 
-                      s.displayStyle, ofrHemiInitialized);
+        Serial.printf("[Display] Style changed: %d (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine), ofrHemiInit=%d, ofrSerpentineInit=%d\n", 
+                      s.displayStyle, ofrHemiInitialized, ofrSerpentineInitialized);
         lastStyleLogged = s.displayStyle;
     }
     
@@ -3397,6 +3505,8 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
         drawFrequencyModern(freqMHz, band, muted);
     } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
         drawFrequencyHemi(freqMHz, band, muted);
+    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+        drawFrequencySerpentine(freqMHz, band, muted);
     } else {
         drawFrequencyClassic(freqMHz, band, muted);
     }

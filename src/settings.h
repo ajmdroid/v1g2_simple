@@ -45,7 +45,8 @@ enum V1Mode {
 enum DisplayStyle {
     DISPLAY_STYLE_CLASSIC = 0,   // 7-segment style (original V1 look)
     DISPLAY_STYLE_MODERN = 1,    // Montserrat Bold font
-    DISPLAY_STYLE_HEMI = 2       // Hemi Head font (retro speedometer style)
+    DISPLAY_STYLE_HEMI = 2,      // Hemi Head font (retro speedometer style)
+    DISPLAY_STYLE_SERPENTINE = 3 // Serpentine font (JB's favorite)
 };
 
 // Voice alert content mode
