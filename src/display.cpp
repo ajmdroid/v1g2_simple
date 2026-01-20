@@ -488,9 +488,7 @@ bool V1Display::begin() {
     Serial.printf("Loading Hemi Head font (%d bytes)...\n", sizeof(HemiHead));
     ofrHemi.setSerial(Serial);
     ofrHemi.setDrawer(*tft);
-    Serial.println("DEBUG: About to load Hemi font...");
     FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
-    Serial.printf("DEBUG: loadFont returned FT_Error: 0x%02X\n", ftErr3);
     if (ftErr3) {
         Serial.printf("ERROR: Failed to load Hemi Head font! FT_Error: 0x%02X\n", ftErr3);
         ofrHemiInitialized = false;
