@@ -45,10 +45,32 @@
 // Gate verbose logs behind debug switches (keep off in normal builds)
 static constexpr bool DEBUG_LOGS = false;          // General debug logging (packet dumps, status)
 static constexpr bool AUTOPUSH_DEBUG_LOGS = false;  // AutoPush-specific verbose logs
+static constexpr bool PERF_TIMING_LOGS = false;    // Hot path timing measurements (enable for bench testing)
 #define DEBUG_LOGF(...) do { if (DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
 #define DEBUG_LOGLN(msg) do { if (DEBUG_LOGS) SerialLog.println(msg); } while (0)
 #define AUTO_PUSH_LOGF(...) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.println(msg); } while (0)
+
+// Performance timing helpers - measure critical path durations
+static unsigned long perfTimingAccum = 0;
+static unsigned long perfTimingCount = 0;
+static unsigned long perfTimingMax = 0;
+static unsigned long perfLastReport = 0;
+#define V1_PERF_START() unsigned long _perfStart = micros()
+#define V1_PERF_END(label) do { \
+    if (PERF_TIMING_LOGS) { \
+        unsigned long _perfDur = micros() - _perfStart; \
+        perfTimingAccum += _perfDur; \
+        perfTimingCount++; \
+        if (_perfDur > perfTimingMax) perfTimingMax = _perfDur; \
+        if (millis() - perfLastReport > 5000) { \
+            SerialLog.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n", \
+                label, perfTimingAccum/perfTimingCount, perfTimingMax, perfTimingCount); \
+            perfTimingAccum = 0; perfTimingCount = 0; perfTimingMax = 0; \
+            perfLastReport = millis(); \
+        } \
+    } \
+} while(0)
 
 // Global objects
 V1BLEClient bleClient;
@@ -70,7 +92,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
+static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 50;  // Min 50ms between draws (~20fps) - flush alone takes 26ms
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
@@ -1294,7 +1316,9 @@ void processBLEData() {
 
                 // Update display FIRST for lowest latency
                 // Pass all alerts for multi-alert card display
+                V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
+                V1_PERF_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
                 persistedAlert = priority;
@@ -1338,19 +1362,25 @@ void processBLEData() {
                     unsigned long persistMs = persistSec * 1000UL;
                     if (alertPersistenceActive && (now - alertClearedTime) < persistMs) {
                         // Show persisted alert in dark grey
+                        V1_PERF_START();
                         display.updatePersisted(persistedAlert, state);
+                        V1_PERF_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
                         if (alertPersistenceActive) {
                             alertPersistenceActive = false;
                         }
+                        V1_PERF_START();
                         display.update(state);
+                        V1_PERF_END("display.resting");
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
                     alertPersistenceActive = false;
                     alertClearedTime = 0;
+                    V1_PERF_START();
                     display.update(state);
+                    V1_PERF_END("display.resting");
                 }
             }
         }
