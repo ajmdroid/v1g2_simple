@@ -38,6 +38,11 @@ code_review.txt
 
 # Archived docs (keep local, don't track)
 docs/ARCHIVE.md
+docs/GPS_ALERT_LOGGING.md
+docs/M10-25Q_TESTING.md
+docs/MODULE_DETECTION.md
+docs/SD_BACKUP.md
+docs/SD_BACKUP_IMPLEMENTATION.md
 
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/
