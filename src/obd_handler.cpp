@@ -37,6 +37,8 @@ OBDHandler::OBDHandler()
     , pTXChar(nullptr)
     , hasTargetDevice(false)
     , targetDeviceName("")
+    , scanActive(false)
+    , scanStartMs(0)
     , responseComplete(false)
     , lastPollMs(0)
     , obdMutex(nullptr) {
@@ -167,13 +169,32 @@ bool OBDHandler::isELM327Device(const std::string& name) {
 }
 
 void OBDHandler::onELM327Found(const NimBLEAdvertisedDevice* device) {
+    const std::string& name = device->getName();
+    String addrStr = String(device->getAddress().toString().c_str());
+    
+    // Always add to found devices list (for UI display)
+    // Check if already in list
+    bool alreadyFound = false;
+    for (const auto& d : foundDevices) {
+        if (d.address == addrStr) {
+            alreadyFound = true;
+            break;
+        }
+    }
+    if (!alreadyFound) {
+        OBDDeviceInfo info;
+        info.address = addrStr;
+        info.name = String(name.c_str());
+        info.rssi = device->getRSSI();
+        foundDevices.push_back(info);
+        Serial.printf("[OBD] Found ELM327 device: '%s' [%s] RSSI:%d\n", 
+                      name.c_str(), addrStr.c_str(), info.rssi);
+    }
+    
+    // If we're in SCANNING state and auto-connecting, connect to first device found
     if (state != OBDState::SCANNING) {
         return;  // Already found or not looking
     }
-    
-    const std::string& name = device->getName();
-    Serial.printf("[OBD] Found ELM327 device: '%s' [%s]\n", 
-                  name.c_str(), device->getAddress().toString().c_str());
     
     // Save target device info
     targetAddress = device->getAddress();
@@ -591,3 +612,43 @@ void OBDHandler::disconnect() {
     }
 }
 
+void OBDHandler::startScan() {
+    // Clear previous results
+    foundDevices.clear();
+    scanActive = true;
+    scanStartMs = millis();
+    
+    // Reset state to scanning
+    disconnect();
+    hasTargetDevice = false;
+    moduleDetected = false;
+    detectionComplete = false;
+    state = OBDState::SCANNING;
+    detectionStartMs = millis();
+    
+    Serial.println("[OBD] Manual scan started - looking for ELM327 devices");
+    
+    // Note: The actual BLE scan is performed by V1 BLE client
+    // Devices will be reported via onELM327Found() callback
+}
+
+bool OBDHandler::connectToAddress(const String& address, const String& name) {
+    Serial.printf("[OBD] Connecting to specific device: %s (%s)\n", 
+                  address.c_str(), name.length() > 0 ? name.c_str() : "unknown");
+    
+    // Disconnect from current device if any
+    disconnect();
+    
+    // Set target device - NimBLEAddress needs std::string and address type
+    targetAddress = NimBLEAddress(std::string(address.c_str()), BLE_ADDR_PUBLIC);
+    targetDeviceName = name.length() > 0 ? name : address;
+    hasTargetDevice = true;
+    
+    // Mark as detected and start connecting
+    moduleDetected = true;
+    detectionComplete = true;
+    scanActive = false;
+    state = OBDState::CONNECTING;
+    
+    return true;
+}

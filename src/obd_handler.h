@@ -12,6 +12,7 @@
 #pragma once
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <vector>
 
 // Forward declarations
 class NimBLEClient;
@@ -27,6 +28,13 @@ struct OBDData {
     float voltage;          // Battery voltage (AT RV command)
     bool valid;             // True if OBD connection is active and data is fresh
     uint32_t timestamp_ms;  // millis() when data was last updated
+};
+
+// Found OBD device info (for scan results)
+struct OBDDeviceInfo {
+    String address;         // BLE address
+    String name;            // Device name
+    int rssi;              // Signal strength
 };
 
 // ELM327 BLE connection states
@@ -88,6 +96,12 @@ private:
     bool hasTargetDevice;
     String targetDeviceName;
     
+    // Found devices during scan
+    std::vector<OBDDeviceInfo> foundDevices;
+    bool scanActive;
+    uint32_t scanStartMs;
+    static constexpr uint32_t SCAN_DURATION_MS = 10000;  // 10 second scan
+    
     // Response buffer for AT commands
     String responseBuffer;
     static constexpr size_t RESPONSE_BUFFER_SIZE = 256;
@@ -120,6 +134,16 @@ public:
     bool isConnected() const { return state == OBDState::READY || state == OBDState::POLLING; }
     OBDState getState() const { return state; }
     const char* getStateString() const;
+    const String& getConnectedDeviceName() const { return targetDeviceName; }
+    
+    // Manual scan for OBD devices
+    void startScan();
+    bool isScanActive() const { return scanActive; }
+    const std::vector<OBDDeviceInfo>& getFoundDevices() const { return foundDevices; }
+    void clearFoundDevices() { foundDevices.clear(); }
+    
+    // Connect to specific device
+    bool connectToAddress(const String& address, const String& name = "");
     
     // Get OBD data
     OBDData getData() const { return lastData; }

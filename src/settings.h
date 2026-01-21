@@ -188,6 +188,9 @@ struct V1Settings {
     
     // OBD settings  
     bool obdEnabled;          // Enable OBD-II module (default: off, auto-disabled if not found)
+    String obdDeviceAddress;  // Saved OBD device BLE address (e.g., "AA:BB:CC:DD:EE:FF")
+    String obdDeviceName;     // Saved OBD device name (for display)
+    String obdPin;            // PIN code for OBD adapter (typically "1234")
     
     // Auto-Lockout settings (JBV1-style)
     bool lockoutEnabled;            // Master enable for auto-lockout system
@@ -288,6 +291,9 @@ struct V1Settings {
         autoPowerOffMinutes(0),  // Default: disabled
         gpsEnabled(false),       // GPS off by default (opt-in)
         obdEnabled(false),       // OBD off by default (opt-in)
+        obdDeviceAddress(""),    // No saved OBD device
+        obdDeviceName(""),       // No saved OBD device name
+        obdPin("1234"),          // Default ELM327 PIN
         // Auto-lockout defaults (JBV1 defaults)
         lockoutEnabled(true),           // Auto-lockout enabled by default
         lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
@@ -396,6 +402,17 @@ public:
     bool isObdEnabled() const { return settings.obdEnabled; }
     void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
     void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; save(); }
+    
+    // OBD device settings
+    const String& getObdDeviceAddress() const { return settings.obdDeviceAddress; }
+    const String& getObdDeviceName() const { return settings.obdDeviceName; }
+    const String& getObdPin() const { return settings.obdPin; }
+    void setObdDevice(const String& address, const String& name) { 
+        settings.obdDeviceAddress = address; 
+        settings.obdDeviceName = name;
+        save(); 
+    }
+    void setObdPin(const String& pin) { settings.obdPin = pin; save(); }
     
     // Auto-lockout settings (batch update - call save() after)
     void updateLockoutEnabled(bool enabled) { settings.lockoutEnabled = enabled; }

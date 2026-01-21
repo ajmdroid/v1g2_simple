@@ -9,6 +9,7 @@
 #include "storage_manager.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
+#include "obd_handler.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -414,6 +415,12 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
     
+    // OBD-II API routes
+    server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
+    server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
+    server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
+    server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
+    
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
@@ -641,6 +648,9 @@ void WiFiManager::handleSettingsSave() {
     if (server.hasArg("obdEnabled")) {
         bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
         settingsManager.setObdEnabled(enabled);
+    }
+    if (server.hasArg("obdPin")) {
+        settingsManager.setObdPin(server.arg("obdPin"));
     }
     
     // Auto-lockout settings (JBV1-style)
@@ -1932,4 +1942,88 @@ void WiFiManager::handleSettingsRestore() {
     }
     response += "\"}";
     server.send(200, "application/json", response);
+}
+
+// ============== OBD-II API Handlers ==============
+
+void WiFiManager::handleObdStatus() {
+    JsonDocument doc;
+    
+    doc["enabled"] = settingsManager.isObdEnabled();
+    doc["state"] = obdHandler.getStateString();
+    doc["connected"] = obdHandler.isConnected();
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["moduleDetected"] = obdHandler.isModuleDetected();
+    doc["deviceName"] = obdHandler.getConnectedDeviceName();
+    doc["savedDeviceAddress"] = settingsManager.getObdDeviceAddress();
+    doc["savedDeviceName"] = settingsManager.getObdDeviceName();
+    doc["pin"] = settingsManager.getObdPin();
+    
+    if (obdHandler.hasValidData()) {
+        OBDData data = obdHandler.getData();
+        doc["speedMph"] = data.speed_mph;
+        doc["speedKph"] = data.speed_kph;
+        doc["rpm"] = data.rpm;
+        doc["voltage"] = data.voltage;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdScan() {
+    if (!settingsManager.isObdEnabled()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
+        return;
+    }
+    
+    obdHandler.startScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan started\"}");
+}
+
+void WiFiManager::handleObdDevices() {
+    JsonDocument doc;
+    JsonArray devices = doc["devices"].to<JsonArray>();
+    
+    for (const auto& device : obdHandler.getFoundDevices()) {
+        JsonObject d = devices.add<JsonObject>();
+        d["address"] = device.address;
+        d["name"] = device.name;
+        d["rssi"] = device.rssi;
+    }
+    
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["count"] = obdHandler.getFoundDevices().size();
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdConnect() {
+    if (!server.hasArg("address")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing address\"}");
+        return;
+    }
+    
+    String address = server.arg("address");
+    String name = server.hasArg("name") ? server.arg("name") : "";
+    
+    // Save PIN if provided
+    if (server.hasArg("pin")) {
+        settingsManager.setObdPin(server.arg("pin"));
+    }
+    
+    // Save device selection
+    settingsManager.setObdDevice(address, name);
+    
+    // Initiate connection
+    bool started = obdHandler.connectToAddress(address, name);
+    
+    if (started) {
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting to device\"}");
+    } else {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to start connection\"}");
+    }
 }

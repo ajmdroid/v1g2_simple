@@ -119,6 +119,10 @@ private:
     void handleDebugEnable();
     void handleSettingsBackup();
     void handleSettingsRestore();
+    void handleObdStatus();
+    void handleObdScan();
+    void handleObdDevices();
+    void handleObdConnect();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

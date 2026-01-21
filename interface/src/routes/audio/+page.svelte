@@ -490,7 +490,7 @@
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">ℹ️ How It Works</h2>
 				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
-					<li>Voice alerts only play when <strong>no phone app</strong> (JBV1) is connected</li>
+					<li>Voice alerts only play when <strong>no phone app</strong> is connected via BLE proxy</li>
 					<li>New alert: full announcement based on your content settings</li>
 					<li>Direction change: direction-only announcement (e.g., "behind") if direction is enabled</li>
 					<li>5-second cooldown between announcements to prevent spam</li>

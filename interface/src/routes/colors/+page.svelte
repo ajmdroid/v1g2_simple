@@ -995,7 +995,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide BLE Proxy Icon</span>
-							<p class="text-xs text-base-content/50">Hide the JBV1 proxy status indicator</p>
+							<p class="text-xs text-base-content/50">Hide the BLE proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 

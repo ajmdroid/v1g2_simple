@@ -184,7 +184,7 @@
 		<div class="card bg-base-200">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🟦 Bluetooth Proxy</h2>
-				<p class="text-sm text-base-content/60">Relay V1 data to apps like JBV1.</p>
+				<p class="text-sm text-base-content/60">Relay V1 data to phone apps.</p>
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
 					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
