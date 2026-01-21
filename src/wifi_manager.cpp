@@ -1469,6 +1469,25 @@ void WiFiManager::handleDisplayColorsSave() {
         }
         settingsManager.setAlertVolumeFade(enabled, delaySec, volume);
     }
+    // Speed-based volume settings
+    if (server.hasArg("speedVolumeEnabled") || server.hasArg("speedVolumeThresholdMph") || server.hasArg("speedVolumeBoost")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.speedVolumeEnabled;
+        uint8_t threshold = current.speedVolumeThresholdMph;
+        uint8_t boost = current.speedVolumeBoost;
+        if (server.hasArg("speedVolumeEnabled")) {
+            enabled = server.arg("speedVolumeEnabled") == "true" || server.arg("speedVolumeEnabled") == "1";
+        }
+        if (server.hasArg("speedVolumeThresholdMph")) {
+            int val = server.arg("speedVolumeThresholdMph").toInt();
+            threshold = (uint8_t)std::max(10, std::min(val, 100));
+        }
+        if (server.hasArg("speedVolumeBoost")) {
+            int val = server.arg("speedVolumeBoost").toInt();
+            boost = (uint8_t)std::max(1, std::min(val, 5));
+        }
+        settingsManager.setSpeedVolume(enabled, threshold, boost);
+    }
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -1570,6 +1589,9 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = s.speedVolumeBoost;
     
     String json;
     serializeJson(doc, json);
@@ -1676,6 +1698,9 @@ void WiFiManager::handleSettingsBackup() {
     doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = s.speedVolumeBoost;
     
     // Auto-push slot settings
     doc["autoPushEnabled"] = s.autoPushEnabled;

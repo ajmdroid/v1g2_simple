@@ -148,6 +148,10 @@ static bool volumeFadeActive = false;             // True if volume has been fad
 static bool volumeFadeCommandSent = false;        // One-shot flag to send fade command once
 static uint32_t volumeFadeAlertId = 0;            // Track which alert we faded for (band<<16|freq)
 
+// Speed-based volume tracking - boost volume at highway speeds
+static bool speedVolumeBoostActive = false;       // True if volume is currently boosted
+static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before speed boost
+
 // Smart threat escalation tracking - detect signals ramping up over time
 // Trigger: was weak + now strong + sustained + not too many bogeys
 static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
@@ -330,6 +334,19 @@ static uint8_t getAlertBars(const AlertData& a) {
     if (a.direction & DIR_FRONT) return a.frontStrength;
     if (a.direction & DIR_REAR) return a.rearStrength;
     return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
+}
+
+// Helper: get current speed in MPH from OBD (preferred) or GPS
+static float getCurrentSpeedMph() {
+    // Try OBD first (more accurate, faster updates)
+    if (obd != nullptr && obd->isModuleDetected() && obd->hasValidData()) {
+        return obd->getSpeedMph();
+    }
+    // Fall back to GPS
+    if (gps != nullptr && gps->hasValidFix()) {
+        return gps->getSpeed() * 2.237f;  // m/s to mph
+    }
+    return 0.0f;
 }
 
 // WiFi manual startup - user must long-press BOOT to start AP
@@ -1988,6 +2005,42 @@ void loop() {
             delete obd;
             obd = nullptr;
             settingsManager.setObdEnabled(false);
+        }
+    }
+    
+    // Speed-based volume: boost V1 volume at highway speeds
+    // Check periodically (not every loop) to avoid spamming V1
+    static unsigned long lastSpeedVolumeCheck = 0;
+    if (bleClient.isConnected() && now - lastSpeedVolumeCheck > 2000) {  // Check every 2s
+        lastSpeedVolumeCheck = now;
+        const V1Settings& spdSettings = settingsManager.get();
+        
+        if (spdSettings.speedVolumeEnabled) {
+            float speedMph = getCurrentSpeedMph();
+            bool shouldBoost = speedMph >= spdSettings.speedVolumeThresholdMph;
+            
+            if (shouldBoost && !speedVolumeBoostActive) {
+                // Speed crossed threshold - boost volume
+                DisplayState state = parser.getDisplayState();
+                speedVolumeOriginalVol = state.mainVolume;
+                uint8_t boostedVol = std::min((int)state.mainVolume + spdSettings.speedVolumeBoost, 9);
+                if (boostedVol > state.mainVolume) {
+                    DEBUG_LOGF("[SpeedVolume] Speed %.0f mph > %d threshold - boosting volume %d -> %d\n",
+                               speedMph, spdSettings.speedVolumeThresholdMph, state.mainVolume, boostedVol);
+                    bleClient.setVolume(boostedVol, state.muteVolume);
+                    speedVolumeBoostActive = true;
+                }
+            } else if (!shouldBoost && speedVolumeBoostActive) {
+                // Speed dropped below threshold - restore original volume
+                DisplayState state = parser.getDisplayState();
+                if (speedVolumeOriginalVol != 0xFF && state.mainVolume != speedVolumeOriginalVol) {
+                    DEBUG_LOGF("[SpeedVolume] Speed %.0f mph < %d threshold - restoring volume to %d\n",
+                               speedMph, spdSettings.speedVolumeThresholdMph, speedVolumeOriginalVol);
+                    bleClient.setVolume(speedVolumeOriginalVol, state.muteVolume);
+                }
+                speedVolumeBoostActive = false;
+                speedVolumeOriginalVol = 0xFF;
+            }
         }
     }
     

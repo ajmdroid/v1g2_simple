@@ -16,7 +16,11 @@
 		// Volume fade settings
 		alertVolumeFadeEnabled: false,
 		alertVolumeFadeDelaySec: 2,
-		alertVolumeFadeVolume: 1
+		alertVolumeFadeVolume: 1,
+		// Speed-based volume settings
+		speedVolumeEnabled: false,
+		speedVolumeThresholdMph: 45,
+		speedVolumeBoost: 2
 	});
 	
 	let loading = $state(true);
@@ -62,6 +66,10 @@
 				settings.alertVolumeFadeEnabled = data.alertVolumeFadeEnabled ?? false;
 				settings.alertVolumeFadeDelaySec = data.alertVolumeFadeDelaySec ?? 2;
 				settings.alertVolumeFadeVolume = data.alertVolumeFadeVolume ?? 1;
+				// Speed-based volume settings
+				settings.speedVolumeEnabled = data.speedVolumeEnabled ?? false;
+				settings.speedVolumeThresholdMph = data.speedVolumeThresholdMph ?? 45;
+				settings.speedVolumeBoost = data.speedVolumeBoost ?? 2;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -91,6 +99,10 @@
 			params.append('alertVolumeFadeEnabled', settings.alertVolumeFadeEnabled);
 			params.append('alertVolumeFadeDelaySec', settings.alertVolumeFadeDelaySec);
 			params.append('alertVolumeFadeVolume', settings.alertVolumeFadeVolume);
+			// Speed-based volume settings
+			params.append('speedVolumeEnabled', settings.speedVolumeEnabled);
+			params.append('speedVolumeThresholdMph', settings.speedVolumeThresholdMph);
+			params.append('speedVolumeBoost', settings.speedVolumeBoost);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -366,6 +378,78 @@
 									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
 									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
 									alert clears → <strong>restore volume</strong>
+								</p>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Speed-Based Volume -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🚗 Speed-Based Volume</h2>
+				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires OBD or GPS)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Speed Volume</span>
+								<p class="text-xs text-base-content/50">Louder alerts when driving faster (more road noise)</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.speedVolumeEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.speedVolumeEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Speed Threshold -->
+							<div class="form-control">
+								<label class="label" for="speed-threshold">
+									<span class="label-text">Speed Threshold</span>
+									<span class="label-text-alt">{settings.speedVolumeThresholdMph} mph</span>
+								</label>
+								<input 
+									id="speed-threshold"
+									type="range" 
+									min="20" 
+									max="80" 
+									step="5"
+									bind:value={settings.speedVolumeThresholdMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Boost volume when above this speed</p>
+							</div>
+							
+							<!-- Volume Boost -->
+							<div class="form-control">
+								<label class="label" for="speed-boost">
+									<span class="label-text">Volume Boost</span>
+									<span class="label-text-alt">+{settings.speedVolumeBoost} levels</span>
+								</label>
+								<input 
+									id="speed-boost"
+									type="range" 
+									min="1" 
+									max="5" 
+									bind:value={settings.speedVolumeBoost}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Volume levels to add (1-5)</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Speed &gt; {settings.speedVolumeThresholdMph} mph → 
+									<strong>+{settings.speedVolumeBoost} volume</strong> (max 9)
 								</p>
 							</div>
 						</div>

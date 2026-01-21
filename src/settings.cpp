@@ -170,6 +170,11 @@ void SettingsManager::load() {
     settings.alertVolumeFadeDelaySec = preferences.getUChar("volFadeSec", 2);
     settings.alertVolumeFadeVolume = preferences.getUChar("volFadeVol", 1);
     
+    // Speed-based volume settings
+    settings.speedVolumeEnabled = preferences.getBool("spdVolEn", false);
+    settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);
+    settings.speedVolumeBoost = preferences.getUChar("spdVolBoost", 2);
+    
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -303,6 +308,9 @@ void SettingsManager::save() {
     written += preferences.putBool("volFadeEn", settings.alertVolumeFadeEnabled);
     written += preferences.putUChar("volFadeSec", settings.alertVolumeFadeDelaySec);
     written += preferences.putUChar("volFadeVol", settings.alertVolumeFadeVolume);
+    written += preferences.putBool("spdVolEn", settings.speedVolumeEnabled);
+    written += preferences.putUChar("spdVolThr", settings.speedVolumeThresholdMph);
+    written += preferences.putUChar("spdVolBoost", settings.speedVolumeBoost);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -612,6 +620,13 @@ void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t
     save();
 }
 
+void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost) {
+    settings.speedVolumeEnabled = enabled;
+    settings.speedVolumeThresholdMph = thresholdMph;
+    settings.speedVolumeBoost = boost;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -865,6 +880,9 @@ void SettingsManager::backupToSD() {
     doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = settings.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = settings.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = settings.speedVolumeBoost;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;
@@ -1046,6 +1064,9 @@ bool SettingsManager::restoreFromSD() {
     if (doc["alertVolumeFadeEnabled"].is<bool>()) settings.alertVolumeFadeEnabled = doc["alertVolumeFadeEnabled"];
     if (doc["alertVolumeFadeDelaySec"].is<int>()) settings.alertVolumeFadeDelaySec = doc["alertVolumeFadeDelaySec"];
     if (doc["alertVolumeFadeVolume"].is<int>()) settings.alertVolumeFadeVolume = doc["alertVolumeFadeVolume"];
+    if (doc["speedVolumeEnabled"].is<bool>()) settings.speedVolumeEnabled = doc["speedVolumeEnabled"];
+    if (doc["speedVolumeThresholdMph"].is<int>()) settings.speedVolumeThresholdMph = doc["speedVolumeThresholdMph"];
+    if (doc["speedVolumeBoost"].is<int>()) settings.speedVolumeBoost = doc["speedVolumeBoost"];
     
     // === Auto-Push Settings (v2+) ===
     if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];

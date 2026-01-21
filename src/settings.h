@@ -138,6 +138,11 @@ struct V1Settings {
     uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
     uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
     
+    // Speed-based volume (boost V1 volume at highway speeds)
+    bool speedVolumeEnabled;        // Enable speed-based volume boost
+    uint8_t speedVolumeThresholdMph; // Speed threshold to trigger boost (default: 45 mph)
+    uint8_t speedVolumeBoost;       // Volume levels to add when above threshold (1-5)
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -242,6 +247,9 @@ struct V1Settings {
         alertVolumeFadeEnabled(false),   // Volume fade disabled by default
         alertVolumeFadeDelaySec(2),      // 2 seconds at full volume before fade
         alertVolumeFadeVolume(1),        // Fade to volume 1 (quiet but audible)
+        speedVolumeEnabled(false),       // Speed-based volume disabled by default
+        speedVolumeThresholdMph(45),     // Boost above 45 mph (highway speeds)
+        speedVolumeBoost(2),             // Add 2 volume levels when above threshold
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -341,6 +349,7 @@ public:
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
     void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
+    void setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
