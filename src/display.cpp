@@ -3549,13 +3549,13 @@ void V1Display::drawKittScanner() {
     
     const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     const int eyeWidth = 50;       // Width of the bright center
-    const int tailLength = 100;    // Length of the fading trail
-    const int barHeight = 16;      // Height of the scanner bar
+    const int tailLength = 400;    // Length of the fading trail (longer = more "always lit" like KITT)
+    const int barHeight = 25;      // Height of the scanner bar
     // Center vertically in full screen height (172 pixels), not just primary zone
     const int barY = (SCREEN_HEIGHT - barHeight) / 2;
     
-    // Animation speed: faster sweep (~0.7 second full cycle)
-    const float speedPerFrame = 0.040f;
+    // Animation speed: faster sweep (~0.5 second full cycle)
+    const float speedPerFrame = 0.055f;
     
     // Update position
     kittPosition += speedPerFrame * kittDirection;
@@ -3575,6 +3575,23 @@ void V1Display::drawKittScanner() {
     // Clear the scanner area
     FILL_RECT(leftMargin, barY, scannerWidth, barHeight, PALETTE_BG);
     
+    // Draw the leading glow (dimmer, in front of the eye - brightest far away, dimmest near eye)
+    int leadLength = tailLength;  // Same length as trailing for full coverage
+    for (int i = 0; i < leadLength; i += 4) {
+        int leadX = eyeCenter + (kittDirection * (eyeWidth/2 + i));
+        if (leadX < leftMargin || leadX > leftMargin + scannerWidth - 4) continue;
+        
+        // Reverse fade: dim near eye, brighter far away (but still subtle overall)
+        float fade = (float)i / leadLength;  // 0 near eye, 1 far away
+        fade = fade * 0.40f;  // Keep it subtle - max 40% brightness
+        
+        // Red color with fading intensity
+        uint8_t r = (uint8_t)(31 * fade);
+        uint16_t color = (r << 11);
+        
+        FILL_RECT(leadX, barY, 4, barHeight, color);
+    }
+    
     // Draw the trail (fading red segments behind the eye)
     for (int i = 0; i < tailLength; i += 4) {
         int trailX = eyeCenter - (kittDirection * (eyeWidth/2 + i));
@@ -3583,12 +3600,13 @@ void V1Display::drawKittScanner() {
         // Fade from bright to dim based on distance
         float fade = 1.0f - ((float)i / tailLength);
         fade = fade * fade;  // Quadratic falloff for more dramatic effect
+        fade = fade * 0.6f;  // Cap max brightness at 60%
         
         // Red color with fading intensity
         uint8_t r = (uint8_t)(31 * fade);  // 5-bit red for RGB565
         uint16_t color = (r << 11);  // Pure red, varying intensity
         
-        FILL_RECT(trailX, barY + 2, 4, barHeight - 4, color);
+        FILL_RECT(trailX, barY, 4, barHeight, color);
     }
     
     // Draw the bright eye center (gradient effect)
@@ -3607,11 +3625,6 @@ void V1Display::drawKittScanner() {
         
         FILL_RECT(x, barY, 2, barHeight, color);
     }
-    
-    // Draw darker red outline for depth effect
-    uint16_t outlineColor = 0x4000;  // Dark red
-    FILL_RECT(leftMargin, barY, scannerWidth, 1, outlineColor);
-    FILL_RECT(leftMargin, barY + barHeight - 1, scannerWidth, 1, outlineColor);
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
