@@ -133,6 +133,11 @@ struct V1Settings {
     bool secondaryK;                // Announce secondary K alerts
     bool secondaryX;                // Announce secondary X alerts
     
+    // Volume fade (reduce V1 volume after initial alert period)
+    bool alertVolumeFadeEnabled;    // Enable volume fade feature
+    uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
+    uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
+    
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -234,6 +239,9 @@ struct V1Settings {
         secondaryKa(true),               // Ka usually real threats
         secondaryK(false),               // K has more false positives
         secondaryX(false),               // X is rare
+        alertVolumeFadeEnabled(false),   // Volume fade disabled by default
+        alertVolumeFadeDelaySec(2),      // 2 seconds at full volume before fade
+        alertVolumeFadeVolume(1),        // Fade to volume 1 (quiet but audible)
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -332,6 +340,7 @@ public:
     void setSecondaryKa(bool enabled);
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
+    void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

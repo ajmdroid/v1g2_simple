@@ -1450,6 +1450,25 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("secondaryX")) {
         settingsManager.setSecondaryX(server.arg("secondaryX") == "true" || server.arg("secondaryX") == "1");
     }
+    // Volume fade settings
+    if (server.hasArg("alertVolumeFadeEnabled") || server.hasArg("alertVolumeFadeDelaySec") || server.hasArg("alertVolumeFadeVolume")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.alertVolumeFadeEnabled;
+        uint8_t delaySec = current.alertVolumeFadeDelaySec;
+        uint8_t volume = current.alertVolumeFadeVolume;
+        if (server.hasArg("alertVolumeFadeEnabled")) {
+            enabled = server.arg("alertVolumeFadeEnabled") == "true" || server.arg("alertVolumeFadeEnabled") == "1";
+        }
+        if (server.hasArg("alertVolumeFadeDelaySec")) {
+            int val = server.arg("alertVolumeFadeDelaySec").toInt();
+            delaySec = (uint8_t)std::max(1, std::min(val, 10));
+        }
+        if (server.hasArg("alertVolumeFadeVolume")) {
+            int val = server.arg("alertVolumeFadeVolume").toInt();
+            volume = (uint8_t)std::max(0, std::min(val, 9));
+        }
+        settingsManager.setAlertVolumeFade(enabled, delaySec, volume);
+    }
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -1548,6 +1567,9 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["secondaryKa"] = s.secondaryKa;
     doc["secondaryK"] = s.secondaryK;
     doc["secondaryX"] = s.secondaryX;
+    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
     
     String json;
     serializeJson(doc, json);
@@ -1651,6 +1673,9 @@ void WiFiManager::handleSettingsBackup() {
     doc["secondaryKa"] = s.secondaryKa;
     doc["secondaryK"] = s.secondaryK;
     doc["secondaryX"] = s.secondaryX;
+    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
     
     // Auto-push slot settings
     doc["autoPushEnabled"] = s.autoPushEnabled;

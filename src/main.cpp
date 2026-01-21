@@ -140,6 +140,14 @@ static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
 static bool autoPowerOffArmed = false;  // True once V1 data has been received (not just connected)
 
+// Volume fade tracking - reduce V1 volume after X seconds of continuous alert
+static unsigned long volumeFadeAlertStartMs = 0;  // When current alert session started (0 = no active alert)
+static uint8_t volumeFadeOriginalVol = 0xFF;      // Original main volume before fade (0xFF = not faded)
+static uint8_t volumeFadeOriginalMuteVol = 0;     // Original muted volume (to pass to setVolume)
+static bool volumeFadeActive = false;             // True if volume has been faded down
+static bool volumeFadeCommandSent = false;        // One-shot flag to send fade command once
+static uint32_t volumeFadeAlertId = 0;            // Track which alert we faded for (band<<16|freq)
+
 // Smart threat escalation tracking - detect signals ramping up over time
 // Trigger: was weak + now strong + sustained + not too many bogeys
 static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
@@ -1069,6 +1077,69 @@ void processBLEData() {
                     }
                 }
 
+                // Volume Fade: reduce V1 volume after X seconds of continuous unmuted alert
+                // Only applies when not muted - muted alerts should not trigger volume changes
+                const V1Settings& fadeSettings = settingsManager.get();
+                if (fadeSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
+                    unsigned long now = millis();
+                    uint32_t currentAlertId = makeAlertId(priority.band, (uint16_t)priority.frequency);
+                    
+                    // SAFETY: If priority alert changed while faded, restore volume for new threat
+                    if (volumeFadeActive && volumeFadeAlertId != currentAlertId) {
+                        DEBUG_LOGF("[VolumeFade] New priority threat! Restoring volume to %d\n", volumeFadeOriginalVol);
+                        if (volumeFadeOriginalVol != 0xFF) {
+                            bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                        }
+                        // Reset to start fresh fade timer for new alert
+                        volumeFadeAlertStartMs = now;
+                        volumeFadeOriginalVol = state.mainVolume;
+                        volumeFadeOriginalMuteVol = state.muteVolume;
+                        volumeFadeAlertId = currentAlertId;
+                        volumeFadeActive = false;
+                        volumeFadeCommandSent = false;
+                    }
+                    
+                    // Start tracking on first alert of a session
+                    if (volumeFadeAlertStartMs == 0) {
+                        volumeFadeAlertStartMs = now;
+                        volumeFadeOriginalVol = state.mainVolume;  // Capture current volume
+                        volumeFadeOriginalMuteVol = state.muteVolume;  // Capture muted volume too
+                        volumeFadeAlertId = currentAlertId;
+                        volumeFadeActive = false;
+                        volumeFadeCommandSent = false;
+                        DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d, mute: %d\n", volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                    }
+                    
+                    // Check if fade delay has elapsed
+                    unsigned long fadeDelayMs = fadeSettings.alertVolumeFadeDelaySec * 1000UL;
+                    if (!volumeFadeCommandSent && (now - volumeFadeAlertStartMs) >= fadeDelayMs) {
+                        // Time to fade - send reduced volume to V1
+                        uint8_t fadeVol = fadeSettings.alertVolumeFadeVolume;
+                        // Don't fade if already at or below target volume
+                        if (state.mainVolume > fadeVol) {
+                            DEBUG_LOGF("[VolumeFade] Fading volume from %d to %d after %lums\n", 
+                                       state.mainVolume, fadeVol, now - volumeFadeAlertStartMs);
+                            if (bleClient.setVolume(fadeVol, volumeFadeOriginalMuteVol)) {
+                                volumeFadeActive = true;
+                            }
+                        }
+                        volumeFadeCommandSent = true;  // Don't retry even if failed
+                    }
+                } else if (fadeSettings.alertVolumeFadeEnabled && (state.muted || priorityInLockout)) {
+                    // Alert was muted or entered lockout - restore volume if we faded
+                    if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
+                        DEBUG_LOGF("[VolumeFade] Alert muted/lockout - restoring volume to %d\n", volumeFadeOriginalVol);
+                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                    }
+                    // Reset tracking - will re-arm if alert unmutes
+                    volumeFadeAlertStartMs = 0;
+                    volumeFadeOriginalVol = 0xFF;
+                    volumeFadeOriginalMuteVol = 0;
+                    volumeFadeActive = false;
+                    volumeFadeCommandSent = false;
+                    volumeFadeAlertId = 0;
+                }
+
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
                 // Skip if alert is in a GPS lockout zone
@@ -1361,6 +1432,19 @@ void processBLEData() {
                 lastVoiceAlertBogeyCount = 0;
                 clearAnnouncedAlerts();
                 priorityStableSince = 0;
+                
+                // Volume Fade: restore original volume when alerts clear
+                if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
+                    DEBUG_LOGF("[VolumeFade] Restoring volume to %d\n", volumeFadeOriginalVol);
+                    bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                }
+                // Reset fade tracking regardless of whether fade was active
+                volumeFadeAlertStartMs = 0;
+                volumeFadeOriginalVol = 0xFF;
+                volumeFadeOriginalMuteVol = 0;
+                volumeFadeActive = false;
+                volumeFadeCommandSent = false;
+                volumeFadeAlertId = 0;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();

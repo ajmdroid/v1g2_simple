@@ -12,7 +12,11 @@
 		secondaryLaser: true,
 		secondaryKa: true,
 		secondaryK: false,
-		secondaryX: false
+		secondaryX: false,
+		// Volume fade settings
+		alertVolumeFadeEnabled: false,
+		alertVolumeFadeDelaySec: 2,
+		alertVolumeFadeVolume: 1
 	});
 	
 	let loading = $state(true);
@@ -54,6 +58,10 @@
 				settings.secondaryKa = data.secondaryKa ?? true;
 				settings.secondaryK = data.secondaryK ?? false;
 				settings.secondaryX = data.secondaryX ?? false;
+				// Volume fade settings
+				settings.alertVolumeFadeEnabled = data.alertVolumeFadeEnabled ?? false;
+				settings.alertVolumeFadeDelaySec = data.alertVolumeFadeDelaySec ?? 2;
+				settings.alertVolumeFadeVolume = data.alertVolumeFadeVolume ?? 1;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -79,6 +87,10 @@
 			params.append('secondaryKa', settings.secondaryKa);
 			params.append('secondaryK', settings.secondaryK);
 			params.append('secondaryX', settings.secondaryX);
+			// Volume fade settings
+			params.append('alertVolumeFadeEnabled', settings.alertVolumeFadeEnabled);
+			params.append('alertVolumeFadeDelaySec', settings.alertVolumeFadeDelaySec);
+			params.append('alertVolumeFadeVolume', settings.alertVolumeFadeVolume);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -283,6 +295,78 @@
 										bind:checked={settings.secondaryX}
 									/>
 								</label>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Volume Fade -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">📉 V1 Volume Fade</h2>
+				<p class="text-xs text-base-content/50 mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Volume Fade</span>
+								<p class="text-xs text-base-content/50">Lower V1 volume after delay, restore when alert clears</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.alertVolumeFadeEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.alertVolumeFadeEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Delay -->
+							<div class="form-control">
+								<label class="label" for="fade-delay">
+									<span class="label-text">Delay (seconds)</span>
+									<span class="label-text-alt">{settings.alertVolumeFadeDelaySec}s</span>
+								</label>
+								<input 
+									id="fade-delay"
+									type="range" 
+									min="1" 
+									max="10" 
+									bind:value={settings.alertVolumeFadeDelaySec}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Time at full volume before reducing</p>
+							</div>
+							
+							<!-- Reduced Volume -->
+							<div class="form-control">
+								<label class="label" for="fade-volume">
+									<span class="label-text">Reduced Volume</span>
+									<span class="label-text-alt">Level {settings.alertVolumeFadeVolume}</span>
+								</label>
+								<input 
+									id="fade-volume"
+									type="range" 
+									min="0" 
+									max="9" 
+									bind:value={settings.alertVolumeFadeVolume}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">V1 volume to fade to (0-9)</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
+									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
+									alert clears → <strong>restore volume</strong>
+								</p>
 							</div>
 						</div>
 					{/if}

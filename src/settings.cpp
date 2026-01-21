@@ -165,6 +165,11 @@ void SettingsManager::load() {
     settings.secondaryK = preferences.getBool("secK", false);
     settings.secondaryX = preferences.getBool("secX", false);
     
+    // Volume fade settings
+    settings.alertVolumeFadeEnabled = preferences.getBool("volFadeEn", false);
+    settings.alertVolumeFadeDelaySec = preferences.getUChar("volFadeSec", 2);
+    settings.alertVolumeFadeVolume = preferences.getUChar("volFadeVol", 1);
+    
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -295,6 +300,9 @@ void SettingsManager::save() {
     written += preferences.putBool("secKa", settings.secondaryKa);
     written += preferences.putBool("secK", settings.secondaryK);
     written += preferences.putBool("secX", settings.secondaryX);
+    written += preferences.putBool("volFadeEn", settings.alertVolumeFadeEnabled);
+    written += preferences.putUChar("volFadeSec", settings.alertVolumeFadeDelaySec);
+    written += preferences.putUChar("volFadeVol", settings.alertVolumeFadeVolume);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -597,6 +605,13 @@ void SettingsManager::setSecondaryX(bool enabled) {
     save();
 }
 
+void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume) {
+    settings.alertVolumeFadeEnabled = enabled;
+    settings.alertVolumeFadeDelaySec = delaySec;
+    settings.alertVolumeFadeVolume = volume;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -847,6 +862,9 @@ void SettingsManager::backupToSD() {
     doc["secondaryKa"] = settings.secondaryKa;
     doc["secondaryK"] = settings.secondaryK;
     doc["secondaryX"] = settings.secondaryX;
+    doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;
@@ -1025,6 +1043,9 @@ bool SettingsManager::restoreFromSD() {
     if (doc["secondaryKa"].is<bool>()) settings.secondaryKa = doc["secondaryKa"];
     if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
     if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
+    if (doc["alertVolumeFadeEnabled"].is<bool>()) settings.alertVolumeFadeEnabled = doc["alertVolumeFadeEnabled"];
+    if (doc["alertVolumeFadeDelaySec"].is<int>()) settings.alertVolumeFadeDelaySec = doc["alertVolumeFadeDelaySec"];
+    if (doc["alertVolumeFadeVolume"].is<int>()) settings.alertVolumeFadeVolume = doc["alertVolumeFadeVolume"];
     
     // === Auto-Push Settings (v2+) ===
     if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
