@@ -2868,11 +2868,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
         // === TOP ROW: Direction arrow + Band + Frequency ===
-        int topRowY = cardY + 8;  // Top row starts 8px from card top (more room for text)
+        // Center content in the area above the meter (34px height)
+        // Text (~16px) and arrow should be vertically centered
+        const int contentCenterY = cardY + 17;  // Center of 34px area above meter
+        int topRowY = cardY + 9;  // Text top (centered: 17 - 8 = 9)
         
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
-        int arrowCY = topRowY + 10;  // Center arrow vertically in top row
+        int arrowCY = contentCenterY;  // Arrow centered in content area
         
         if (alert.direction & DIR_FRONT) {
             tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
