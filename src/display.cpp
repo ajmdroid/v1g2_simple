@@ -3530,7 +3530,7 @@ void V1Display::drawVolumeZeroWarning() {
 // KITT scanner animation (Knight Rider style scanning LED bar)
 // Draws a red "eye" that sweeps back and forth in the frequency area
 void V1Display::drawKittScanner() {
-    const unsigned long KITT_FRAME_MS = 20;  // ~50fps animation
+    const unsigned long KITT_FRAME_MS = 16;  // ~60fps animation
     unsigned long now = millis();
     
     if (now - lastKittUpdate < KITT_FRAME_MS) {
@@ -3538,10 +3538,10 @@ void V1Display::drawKittScanner() {
     }
     lastKittUpdate = now;
     
-    // Scanner layout in frequency area
+    // Scanner layout - centered in the frequency display area
 #if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 145;   // After band indicators
-    const int rightMargin = 200;  // Before signal bars
+    const int leftMargin = 155;   // After band indicators
+    const int rightMargin = 210;  // Before signal bars
 #else
     const int leftMargin = 10;
     const int rightMargin = 130;
@@ -3549,13 +3549,13 @@ void V1Display::drawKittScanner() {
     
     const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     const int effectiveHeight = getEffectiveScreenHeight();
-    const int eyeWidth = 60;       // Width of the bright center
-    const int tailLength = 120;    // Length of the fading trail
-    const int barHeight = 20;      // Height of the scanner bar
-    const int barY = effectiveHeight - 65;  // Centered in frequency area
+    const int eyeWidth = 50;       // Width of the bright center
+    const int tailLength = 100;    // Length of the fading trail
+    const int barHeight = 16;      // Height of the scanner bar
+    const int barY = effectiveHeight - 62;  // Vertically centered in frequency area
     
-    // Animation speed: complete sweep in ~1.5 seconds
-    const float speedPerFrame = 0.015f;
+    // Animation speed: faster sweep (~1 second full cycle)
+    const float speedPerFrame = 0.025f;
     
     // Update position
     kittPosition += speedPerFrame * kittDirection;
