@@ -3540,8 +3540,8 @@ void V1Display::drawKittScanner() {
     
     // Scanner layout - centered in the frequency display area
 #if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 155;   // After band indicators
-    const int rightMargin = 210;  // Before signal bars
+    const int leftMargin = 160;   // After band indicators  
+    const int rightMargin = 220;  // Before signal bars
 #else
     const int leftMargin = 10;
     const int rightMargin = 130;
@@ -3552,10 +3552,10 @@ void V1Display::drawKittScanner() {
     const int eyeWidth = 50;       // Width of the bright center
     const int tailLength = 100;    // Length of the fading trail
     const int barHeight = 16;      // Height of the scanner bar
-    const int barY = effectiveHeight - 62;  // Vertically centered in frequency area
+    const int barY = effectiveHeight - 60;  // Vertically centered in frequency area
     
-    // Animation speed: faster sweep (~1 second full cycle)
-    const float speedPerFrame = 0.025f;
+    // Animation speed: faster sweep (~0.7 second full cycle)
+    const float speedPerFrame = 0.040f;
     
     // Update position
     kittPosition += speedPerFrame * kittDirection;
