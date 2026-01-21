@@ -118,6 +118,7 @@ struct V1Settings {
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
+    bool kittScannerEnabled;     // KITT scanner animation on resting screen (easter egg)
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -234,6 +235,7 @@ struct V1Settings {
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
+        kittScannerEnabled(false),   // KITT scanner off by default (easter egg)
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -339,6 +341,7 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
+    void setKittScannerEnabled(bool enabled);
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);

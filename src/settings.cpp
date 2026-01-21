@@ -128,6 +128,7 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
+    settings.kittScannerEnabled = preferences.getBool("kittScanner", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -295,6 +296,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putBool("hideRssi", settings.hideRssiIndicator);
+    written += preferences.putBool("kittScanner", settings.kittScannerEnabled);
     written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -565,6 +567,11 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
 
 void SettingsManager::setHideRssiIndicator(bool hide) {
     settings.hideRssiIndicator = hide;
+    save();
+}
+
+void SettingsManager::setKittScannerEnabled(bool enabled) {
+    settings.kittScannerEnabled = enabled;
     save();
 }
 
@@ -865,6 +872,7 @@ void SettingsManager::backupToSD() {
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
+    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1045,6 +1053,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
+    if (doc["kittScannerEnabled"].is<bool>()) settings.kittScannerEnabled = doc["kittScannerEnabled"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

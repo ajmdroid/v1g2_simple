@@ -131,6 +131,7 @@ private:
     void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted);      // Hemi Head font (retro speedometer)
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
+    void drawKittScanner();        // Knight Rider scanner animation for resting screen
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);
@@ -173,6 +174,12 @@ private:
     bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
+    
+    // KITT scanner animation state
+    float kittPosition = 0.0f;              // Current scanner position (0.0 to 1.0)
+    int kittDirection = 1;                  // Scanner direction: 1=right, -1=left
+    unsigned long lastKittUpdate = 0;       // Last scanner animation update time
+    
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

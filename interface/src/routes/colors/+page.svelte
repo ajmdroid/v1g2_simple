@@ -35,6 +35,7 @@
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
+		kittScannerEnabled: false,  // Easter egg: Knight Rider scanner
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -96,7 +97,7 @@
 				const data = await res.json();
 				// Ensure all color values are parsed as integers (API might return strings)
 				for (const key of Object.keys(data)) {
-					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator'].includes(key)) {
+					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator', 'kittScannerEnabled'].includes(key)) {
 						data[key] = parseInt(data[key], 10);
 					}
 				}
@@ -254,6 +255,7 @@
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			params.append('hideRssiIndicator', colors.hideRssiIndicator);
+			params.append('kittScannerEnabled', colors.kittScannerEnabled);
 			params.append('brightness', colors.brightness);
 			
 			const res = await fetch('/api/displaycolors', {
@@ -1030,6 +1032,23 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideRssiIndicator}
 							onchange={(e) => colors.hideRssiIndicator = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<!-- Easter Egg: KITT Scanner -->
+				<div class="divider text-xs text-base-content/30 my-2">🎬 Easter Egg</div>
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">🔴 KITT Scanner Mode</span>
+							<p class="text-xs text-base-content/50">Knight Rider style scanner on idle screen</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-error" 
+							checked={colors.kittScannerEnabled}
+							onchange={(e) => colors.kittScannerEnabled = e.target.checked}
 						/>
 					</label>
 				</div>

@@ -1688,9 +1688,12 @@ void V1Display::showResting(bool forceRedraw) {
         // Direction arrows all dimmed
         drawDirectionArrow(DIR_NONE, false);
         
-        // Frequency display: modern style shows blank, classic shows dashes
+        // Frequency display: KITT scanner if enabled, otherwise normal frequency display
         const V1Settings& s = settingsManager.get();
-        if (s.displayStyle != DISPLAY_STYLE_MODERN) {
+        if (s.kittScannerEnabled) {
+            // KITT scanner will be drawn on each frame in the periodic update
+            // Just clear the area here
+        } else if (s.displayStyle != DISPLAY_STYLE_MODERN) {
             drawFrequency(0, BAND_NONE);
         }
         
@@ -2143,8 +2146,19 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
+    // Check if KITT scanner is enabled and needs continuous animation
+    const V1Settings& sKitt = settingsManager.get();
+    bool kittScannerActive = sKitt.kittScannerEnabled && !volumeWarningActive;
+    
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
-        return;  // Nothing changed
+        // Nothing changed - but KITT scanner needs continuous updates for animation
+        if (kittScannerActive) {
+            drawKittScanner();
+#if defined(DISPLAY_WAVESHARE_349)
+            tft->flush();
+#endif
+        }
+        return;
     }
     
     if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
@@ -2264,6 +2278,8 @@ void V1Display::update(const DisplayState& state) {
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
+    } else if (s.kittScannerEnabled) {
+        drawKittScanner();  // Knight Rider easter egg
     } else {
         drawFrequency(0, primaryBand, effectiveMuted);
     }
@@ -3509,6 +3525,93 @@ void V1Display::drawVolumeZeroWarning() {
         tft->setCursor(textX, textY);
         tft->print(warningStr);
     }
+}
+
+// KITT scanner animation (Knight Rider style scanning LED bar)
+// Draws a red "eye" that sweeps back and forth in the frequency area
+void V1Display::drawKittScanner() {
+    const unsigned long KITT_FRAME_MS = 20;  // ~50fps animation
+    unsigned long now = millis();
+    
+    if (now - lastKittUpdate < KITT_FRAME_MS) {
+        return;  // Not time to update yet
+    }
+    lastKittUpdate = now;
+    
+    // Scanner layout in frequency area
+#if defined(DISPLAY_WAVESHARE_349)
+    const int leftMargin = 145;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+#else
+    const int leftMargin = 10;
+    const int rightMargin = 130;
+#endif
+    
+    const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int eyeWidth = 60;       // Width of the bright center
+    const int tailLength = 120;    // Length of the fading trail
+    const int barHeight = 20;      // Height of the scanner bar
+    const int barY = effectiveHeight - 65;  // Centered in frequency area
+    
+    // Animation speed: complete sweep in ~1.5 seconds
+    const float speedPerFrame = 0.015f;
+    
+    // Update position
+    kittPosition += speedPerFrame * kittDirection;
+    
+    // Bounce at edges
+    if (kittPosition >= 1.0f) {
+        kittPosition = 1.0f;
+        kittDirection = -1;
+    } else if (kittPosition <= 0.0f) {
+        kittPosition = 0.0f;
+        kittDirection = 1;
+    }
+    
+    // Calculate eye center position
+    int eyeCenter = leftMargin + (int)(kittPosition * (scannerWidth - eyeWidth)) + eyeWidth / 2;
+    
+    // Clear the scanner area
+    FILL_RECT(leftMargin, barY, scannerWidth, barHeight, PALETTE_BG);
+    
+    // Draw the trail (fading red segments behind the eye)
+    for (int i = 0; i < tailLength; i += 4) {
+        int trailX = eyeCenter - (kittDirection * (eyeWidth/2 + i));
+        if (trailX < leftMargin || trailX > leftMargin + scannerWidth - 4) continue;
+        
+        // Fade from bright to dim based on distance
+        float fade = 1.0f - ((float)i / tailLength);
+        fade = fade * fade;  // Quadratic falloff for more dramatic effect
+        
+        // Red color with fading intensity
+        uint8_t r = (uint8_t)(31 * fade);  // 5-bit red for RGB565
+        uint16_t color = (r << 11);  // Pure red, varying intensity
+        
+        FILL_RECT(trailX, barY + 2, 4, barHeight - 4, color);
+    }
+    
+    // Draw the bright eye center (gradient effect)
+    for (int i = 0; i < eyeWidth; i += 2) {
+        int x = eyeCenter - eyeWidth/2 + i;
+        if (x < leftMargin || x > leftMargin + scannerWidth - 2) continue;
+        
+        // Brightest in center, dimmer at edges
+        float distFromCenter = fabsf((float)(i - eyeWidth/2) / (eyeWidth/2));
+        float brightness = 1.0f - (distFromCenter * 0.5f);
+        
+        // Bright red/orange at center
+        uint8_t r = 31;  // Full red
+        uint8_t g = (uint8_t)(20 * brightness * brightness);  // Add some orange tint at center
+        uint16_t color = (r << 11) | (g << 5);
+        
+        FILL_RECT(x, barY, 2, barHeight, color);
+    }
+    
+    // Draw darker red outline for depth effect
+    uint16_t outlineColor = 0x4000;  // Dark red
+    FILL_RECT(leftMargin, barY, scannerWidth, 1, outlineColor);
+    FILL_RECT(leftMargin, barY + barHeight - 1, scannerWidth, 1, outlineColor);
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
