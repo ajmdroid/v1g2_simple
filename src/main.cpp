@@ -149,6 +149,9 @@ static bool volumeFadeCommandSent = false;        // One-shot flag to send fade 
 static uint32_t volumeFadeAlertId = 0;            // Track which alert we faded for (band<<16|freq)
 
 // Speed-based volume tracking - boost volume at highway speeds
+// NOTE: Speed boost and volume fade can interact. Speed boost captures the pre-boost volume,
+// and volume fade captures the volume at alert start. When both are active, we need to 
+// restore to the correct "baseline" volume (before both adjustments).
 static bool speedVolumeBoostActive = false;       // True if volume is currently boosted
 static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before speed boost
 
@@ -1107,10 +1110,10 @@ void processBLEData() {
                         if (volumeFadeOriginalVol != 0xFF) {
                             bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
                         }
-                        // Reset to start fresh fade timer for new alert
+                        // Reset to start fresh fade timer for new alert - keep the same original volume
+                        // since we just restored it (don't re-capture state.mainVolume which might not have updated yet)
                         volumeFadeAlertStartMs = now;
-                        volumeFadeOriginalVol = state.mainVolume;
-                        volumeFadeOriginalMuteVol = state.muteVolume;
+                        // Keep volumeFadeOriginalVol - it's the correct baseline
                         volumeFadeAlertId = currentAlertId;
                         volumeFadeActive = false;
                         volumeFadeCommandSent = false;
@@ -1119,12 +1122,19 @@ void processBLEData() {
                     // Start tracking on first alert of a session
                     if (volumeFadeAlertStartMs == 0) {
                         volumeFadeAlertStartMs = now;
-                        volumeFadeOriginalVol = state.mainVolume;  // Capture current volume
+                        // Capture the "true" original volume - if speed boost is active,
+                        // use the pre-boost volume instead of current (boosted) volume
+                        if (speedVolumeBoostActive && speedVolumeOriginalVol != 0xFF) {
+                            volumeFadeOriginalVol = speedVolumeOriginalVol;
+                            DEBUG_LOGF("[VolumeFade] Alert started, using pre-speed-boost volume: %d\n", volumeFadeOriginalVol);
+                        } else {
+                            volumeFadeOriginalVol = state.mainVolume;  // Capture current volume
+                            DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d\n", volumeFadeOriginalVol);
+                        }
                         volumeFadeOriginalMuteVol = state.muteVolume;  // Capture muted volume too
                         volumeFadeAlertId = currentAlertId;
                         volumeFadeActive = false;
                         volumeFadeCommandSent = false;
-                        DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d, mute: %d\n", volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
                     }
                     
                     // Check if fade delay has elapsed
@@ -1451,9 +1461,19 @@ void processBLEData() {
                 priorityStableSince = 0;
                 
                 // Volume Fade: restore original volume when alerts clear
-                if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
-                    DEBUG_LOGF("[VolumeFade] Restoring volume to %d\n", volumeFadeOriginalVol);
-                    bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                // Restore if we either:
+                // 1. Actually faded (volumeFadeActive), OR
+                // 2. Had captured an original but fade was pending (volumeFadeAlertStartMs != 0)
+                //    This handles cases where alert cleared before fade delay elapsed
+                const V1Settings& fadeRestoreSettings = settingsManager.get();
+                if (fadeRestoreSettings.alertVolumeFadeEnabled && volumeFadeOriginalVol != 0xFF) {
+                    // Only send restore command if volume actually changed
+                    DisplayState restoreState = parser.getDisplayState();
+                    if (restoreState.mainVolume != volumeFadeOriginalVol) {
+                        DEBUG_LOGF("[VolumeFade] Alerts cleared - restoring volume from %d to %d\n", 
+                                   restoreState.mainVolume, volumeFadeOriginalVol);
+                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                    }
                 }
                 // Reset fade tracking regardless of whether fade was active
                 volumeFadeAlertStartMs = 0;
@@ -2010,12 +2030,17 @@ void loop() {
     
     // Speed-based volume: boost V1 volume at highway speeds
     // Check periodically (not every loop) to avoid spamming V1
+    // NOTE: If volume fade is active/tracking, let fade handle volume control
     static unsigned long lastSpeedVolumeCheck = 0;
     if (bleClient.isConnected() && now - lastSpeedVolumeCheck > 2000) {  // Check every 2s
         lastSpeedVolumeCheck = now;
         const V1Settings& spdSettings = settingsManager.get();
         
-        if (spdSettings.speedVolumeEnabled) {
+        // Skip speed volume adjustments if volume fade has captured the volume
+        // (either during active fade or while tracking for potential fade)
+        bool fadeTakingControl = volumeFadeOriginalVol != 0xFF;
+        
+        if (spdSettings.speedVolumeEnabled && !fadeTakingControl) {
             float speedMph = getCurrentSpeedMph();
             bool shouldBoost = speedMph >= spdSettings.speedVolumeThresholdMph;
             
