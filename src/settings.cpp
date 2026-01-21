@@ -202,6 +202,8 @@ void SettingsManager::load() {
     settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
+    settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
+    settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
     
     preferences.end();
     
@@ -314,6 +316,8 @@ void SettingsManager::save() {
     written += preferences.putInt("slot2mode", settings.slot2_comfort.mode);
     written += preferences.putString("lastV1Addr", settings.lastV1Address);
     written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
+    written += preferences.putBool("gpsEnabled", settings.gpsEnabled);
+    written += preferences.putBool("obdEnabled", settings.obdEnabled);
     
     preferences.end();
     
@@ -748,6 +752,10 @@ void SettingsManager::backupToSD() {
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     
+    // === GPS/OBD Settings ===
+    doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["obdEnabled"] = settings.obdEnabled;
+    
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
@@ -904,6 +912,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
+    
+    // === GPS/OBD Settings ===
+    if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
+    if (doc["obdEnabled"].is<bool>()) settings.obdEnabled = doc["obdEnabled"];
     
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];

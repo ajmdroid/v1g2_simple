@@ -562,6 +562,8 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["obdEnabled"] = settings.obdEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -616,6 +618,16 @@ void WiFiManager::handleSettingsSave() {
         style = std::max(0, std::min(style, 3));  // Clamp to valid range (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
         display.forceNextRedraw();  // Force display update to show new font style
+    }
+
+    // GPS/OBD module settings
+    if (server.hasArg("gpsEnabled")) {
+        bool enabled = server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1";
+        settingsManager.setGpsEnabled(enabled);
+    }
+    if (server.hasArg("obdEnabled")) {
+        bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
+        settingsManager.setObdEnabled(enabled);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.

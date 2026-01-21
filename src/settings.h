@@ -169,6 +169,12 @@ struct V1Settings {
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     
+    // GPS settings
+    bool gpsEnabled;          // Enable GPS module (default: off, auto-disabled if not found)
+    
+    // OBD settings  
+    bool obdEnabled;          // Enable OBD-II module (default: off, auto-disabled if not found)
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -245,7 +251,9 @@ struct V1Settings {
         slot1_highway(),
         slot2_comfort(),
         lastV1Address(""),
-        autoPowerOffMinutes(0) {}  // Default: disabled
+        autoPowerOffMinutes(0),  // Default: disabled
+        gpsEnabled(false),       // GPS off by default (opt-in)
+        obdEnabled(false) {}     // OBD off by default (opt-in)
 };
 
 class SettingsManager {
@@ -333,6 +341,12 @@ public:
     
     // Reset to defaults
     void resetToDefaults();
+    
+    // GPS/OBD settings
+    bool isGpsEnabled() const { return settings.gpsEnabled; }
+    bool isObdEnabled() const { return settings.obdEnabled; }
+    void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
+    void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; save(); }
     
     // SD card backup/restore for display settings
     void backupToSD();

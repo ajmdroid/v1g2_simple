@@ -33,6 +33,10 @@
 #include "battery_manager.h"
 #include "storage_manager.h"
 #include "audio_beep.h"
+#include "gps_handler.h"
+#include "lockout_manager.h"
+#include "auto_lockout_manager.h"
+#include "obd_handler.h"
 #include "../include/config.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
@@ -55,6 +59,14 @@ V1BLEClient bleClient;
 PacketParser parser;
 V1Display display;
 TouchHandler touchHandler;
+
+// GPS and Lockout managers (optional modules)
+GPSHandler* gps = nullptr;
+LockoutManager lockouts;
+AutoLockoutManager autoLockouts;
+
+// OBD-II handler (optional module)
+OBDHandler* obd = nullptr;
 
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
@@ -1005,14 +1017,64 @@ void processBLEData() {
                     autoPowerOffArmed = true;
                     SerialLog.println("[AutoPowerOff] Armed - V1 data received");
                 }
+                
+                // GPS Lockout Check: Mute V1 and suppress voice for lockout zones
+                // Display still shows alert (V1 is source of truth), but we auto-mute
+                bool priorityInLockout = false;
+                static bool lockoutMuteSent = false;  // Track if we've sent mute for current alert
+                static uint32_t lastLockoutAlertId = 0xFFFFFFFF;  // Track which alert we muted
+                
+                if (gps != nullptr && gps->hasValidFix()) {
+                    GPSFix fix = gps->getFix();
+                    
+                    // Check if priority alert is in a lockout zone
+                    if (priority.isValid && priority.band != BAND_NONE) {
+                        priorityInLockout = lockouts.shouldMuteAlert(fix.latitude, fix.longitude, priority.band);
+                        uint32_t currentAlertId = makeAlertId(priority.band, (uint16_t)priority.frequency);
+                        
+                        // Auto-mute V1 if in lockout zone and not already muted
+                        if (priorityInLockout && !state.muted) {
+                            // Only send mute once per alert (avoid spamming)
+                            if (!lockoutMuteSent || currentAlertId != lastLockoutAlertId) {
+                                DEBUG_LOGF("[Lockout] Auto-muting V1 for lockout zone alert\n");
+                                bleClient.setMute(true);
+                                lockoutMuteSent = true;
+                                lastLockoutAlertId = currentAlertId;
+                            }
+                        } else if (!priorityInLockout) {
+                            // Reset tracking when not in lockout
+                            lockoutMuteSent = false;
+                        }
+                        
+                        // Record alert for auto-learning (even if locked out)
+                        bool isMoving = gps->isMoving();
+                        uint8_t strength = getAlertBars(priority);
+                        autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
+                                                  (uint32_t)priority.frequency, strength, 0, isMoving);
+                    }
+                    
+                    // Record all secondary alerts for auto-learning too
+                    for (int i = 0; i < alertCount; i++) {
+                        const AlertData& alert = currentAlerts[i];
+                        if (!alert.isValid || alert.band == BAND_NONE) continue;
+                        // Skip priority (already recorded above)
+                        if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
+                        
+                        uint8_t strength = getAlertBars(alert);
+                        autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
+                                                  (uint32_t)alert.frequency, strength, 0, gps->isMoving());
+                    }
+                }
 
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
+                // Skip if alert is in a GPS lockout zone
                 const V1Settings& settings = settingsManager.get();
                 bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
                 if (settings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
                     !state.muted &&  // Don't announce muted alerts
+                    !priorityInLockout &&  // Don't announce lockout zone alerts
                     !bleClient.isProxyClientConnected() &&
                     priority.isValid &&
                     priority.band != BAND_NONE) {
@@ -1276,6 +1338,19 @@ void processBLEData() {
                 // No alerts from V1
                 displayMode = DisplayMode::IDLE;
                 
+                // GPS Passthrough Recording: Track when we pass through lockout zones without alerts
+                // This helps demote false lockouts over time
+                static unsigned long lastPassthroughRecordMs = 0;
+                if (gps != nullptr && gps->hasValidFix() && gps->isMoving()) {
+                    unsigned long now = millis();
+                    // Only record passthrough every 5 seconds to avoid spamming
+                    if (now - lastPassthroughRecordMs > 5000) {
+                        GPSFix fix = gps->getFix();
+                        autoLockouts.recordPassthrough(fix.latitude, fix.longitude);
+                        lastPassthroughRecordMs = now;
+                    }
+                }
+                
                 // Reset voice alert tracking when alerts clear
                 lastVoiceAlertBand = BAND_NONE;
                 lastVoiceAlertDirection = DIR_NONE;
@@ -1427,6 +1502,31 @@ void setup() {
         if (settingsManager.checkAndRestoreFromSD()) {
             // Settings were restored from SD - update display with restored brightness
             display.setBrightness(settingsManager.get().brightness);
+        }
+        
+        // Initialize lockout managers (requires storage to be ready)
+        autoLockouts.setLockoutManager(&lockouts);
+        lockouts.loadFromJSON("/v1profiles/lockouts.json");
+        autoLockouts.loadFromJSON("/v1profiles/auto_lockouts.json");
+        SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
+                        lockouts.getLockoutCount(), autoLockouts.getClusterCount());
+        
+        // Initialize GPS if enabled in settings
+        if (settingsManager.isGpsEnabled()) {
+            SerialLog.println("[Setup] GPS enabled - initializing...");
+            gps = new GPSHandler();
+            gps->begin();
+        } else {
+            SerialLog.println("[Setup] GPS disabled in settings");
+        }
+        
+        // Initialize OBD if enabled in settings
+        if (settingsManager.isObdEnabled()) {
+            SerialLog.println("[Setup] OBD enabled - initializing...");
+            obd = new OBDHandler();
+            obd->begin();
+        } else {
+            SerialLog.println("[Setup] OBD disabled in settings");
         }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
@@ -1777,6 +1877,50 @@ void loop() {
 
     // Process WiFi/web server
     wifiManager.process();
+    
+    // Process GPS updates (if enabled)
+    if (gps != nullptr) {
+        gps->update();
+        
+        // Auto-disable GPS if module not detected after timeout
+        if (gps->isDetectionComplete() && !gps->isModuleDetected()) {
+            SerialLog.println("[GPS] Module not detected - disabling GPS");
+            delete gps;
+            gps = nullptr;
+            settingsManager.setGpsEnabled(false);
+        }
+    }
+    
+    // Process OBD updates (if enabled)
+    if (obd != nullptr) {
+        obd->update();
+        
+        // Auto-disable OBD if module not detected after timeout
+        if (obd->isDetectionComplete() && !obd->isModuleDetected()) {
+            SerialLog.println("[OBD] Module not detected - disabling OBD");
+            delete obd;
+            obd = nullptr;
+            settingsManager.setObdEnabled(false);
+        }
+    }
+    
+    // Periodic auto-lockout maintenance (promotion/demotion checks)
+    // Only run every 30 seconds to minimize overhead
+    static unsigned long lastAutoLockoutUpdate = 0;
+    if (now - lastAutoLockoutUpdate > 30000) {
+        autoLockouts.update();
+        lastAutoLockoutUpdate = now;
+    }
+    
+    // Periodic save of auto-lockout learning data (every 5 minutes)
+    // Prevents losing learning progress on unexpected power loss
+    static unsigned long lastAutoLockoutSave = 0;
+    if (now - lastAutoLockoutSave > 300000) {  // 5 minutes
+        if (autoLockouts.getClusterCount() > 0) {
+            autoLockouts.saveToJSON("/v1profiles/auto_lockouts.json");
+        }
+        lastAutoLockoutSave = now;
+    }
     
     // Update display periodically
     now = millis();

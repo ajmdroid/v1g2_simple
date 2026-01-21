@@ -19,6 +19,7 @@
 
 #include "ble_client.h"
 #include "settings.h"
+#include "obd_handler.h"  // For ELM327 device detection during scan
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
@@ -466,6 +467,14 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     //                   debugCount++, addrStr.c_str(), rssi,
     //                   name.length() > 0 ? name.c_str() : "(no name)");
     // }
+    
+    // *** Check for ELM327 OBD-II device (pass to OBD handler) ***
+    // OBD handler will connect separately - don't interrupt V1 scan
+    if (!name.empty() && OBDHandler::isELM327Device(name)) {
+        // Pass to OBD handler - it will handle connection in its own state machine
+        obdHandler.onELM327Found(advertisedDevice);
+        // Continue scanning for V1 - we want both connections
+    }
     
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
     // V1 Gen2 advertises as "V1G*" (like "V1G27B7A") or sometimes "V1-*"
