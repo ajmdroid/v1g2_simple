@@ -1036,6 +1036,9 @@ void processBLEData() {
             }
             lastDisplayDraw = now;
             
+            // Cache settings once for all volume/voice operations in this cycle
+            const V1Settings& alertSettings = settingsManager.get();
+            
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
@@ -1102,8 +1105,7 @@ void processBLEData() {
 
                 // Volume Fade: reduce V1 volume after X seconds of continuous unmuted alert
                 // Only applies when not muted - muted alerts should not trigger volume changes
-                const V1Settings& fadeSettings = settingsManager.get();
-                if (fadeSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
+                if (alertSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
                     unsigned long now = millis();
                     uint16_t currentFreq = (uint16_t)priority.frequency;
                     
@@ -1153,10 +1155,10 @@ void processBLEData() {
                     }
                     
                     // Check if fade delay has elapsed
-                    unsigned long fadeDelayMs = fadeSettings.alertVolumeFadeDelaySec * 1000UL;
+                    unsigned long fadeDelayMs = alertSettings.alertVolumeFadeDelaySec * 1000UL;
                     if (!volumeFadeCommandSent && (now - volumeFadeAlertStartMs) >= fadeDelayMs) {
                         // Time to fade - send reduced volume to V1
-                        uint8_t fadeVol = fadeSettings.alertVolumeFadeVolume;
+                        uint8_t fadeVol = alertSettings.alertVolumeFadeVolume;
                         // Don't fade if already at or below target volume
                         if (state.mainVolume > fadeVol) {
                             DEBUG_LOGF("[VolumeFade] Fading volume from %d to %d after %lums\n", 
@@ -1167,7 +1169,7 @@ void processBLEData() {
                         }
                         volumeFadeCommandSent = true;  // Don't retry even if failed
                     }
-                } else if (fadeSettings.alertVolumeFadeEnabled && (state.muted || priorityInLockout)) {
+                } else if (alertSettings.alertVolumeFadeEnabled && (state.muted || priorityInLockout)) {
                     // Alert was muted or entered lockout - restore volume if we faded
                     if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
                         DEBUG_LOGF("[VolumeFade] Alert muted/lockout - restoring volume to %d\n", volumeFadeOriginalVol);
@@ -1185,9 +1187,8 @@ void processBLEData() {
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
                 // Skip if alert is in a GPS lockout zone
-                const V1Settings& settings = settingsManager.get();
-                bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
-                if (settings.voiceAlertMode != VOICE_MODE_DISABLED && 
+                bool muteForVolZero = alertSettings.muteVoiceIfVolZero && state.mainVolume == 0;
+                if (alertSettings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
                     !state.muted &&  // Don't announce muted alerts
                     !priorityInLockout &&  // Don't announce lockout zone alerts
@@ -1249,10 +1250,10 @@ void processBLEData() {
                         if (validBand) {
                             DEBUG_LOGF("[VoiceAlert] New priority: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
                                        (int)audioBand, currentFreq, (int)audioDir,
-                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled, alertCount);
+                                       (int)alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, alertCount);
                             play_frequency_voice(audioBand, currentFreq, audioDir,
-                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled,
-                                                 settings.announceBogeyCount ? (uint8_t)alertCount : 1);
+                                                 alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled,
+                                                 alertSettings.announceBogeyCount ? (uint8_t)alertCount : 1);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertFrequency = currentFreq;
@@ -1263,9 +1264,9 @@ void processBLEData() {
                             priorityAnnounced = true;
                         }
                     } else if (!alertChanged && directionChanged && cooldownPassed && 
-                               settings.voiceDirectionEnabled) {
+                               alertSettings.voiceDirectionEnabled) {
                         // Same alert changed direction - announce direction + bogey count if changed
-                        uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                        uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
                         DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
                                    currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
                         play_direction_only(audioDir, bogeyCountToAnnounce);
@@ -1275,7 +1276,7 @@ void processBLEData() {
                         lastPriorityAnnouncementTime = now;
                         priorityAnnounced = true;
                     } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
-                               bogeyCountCooldownPassed && settings.announceBogeyCount) {
+                               bogeyCountCooldownPassed && alertSettings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
                         // Uses shorter cooldown (2s) to be more responsive to count changes
                         DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
@@ -1291,7 +1292,7 @@ void processBLEData() {
                     // Only if: master toggle enabled, priority stable, gap after priority announcement
                     // Secondary alerts are announced once when they appear - no direction/bogey updates
                     if (!priorityAnnounced && 
-                        settings.announceSecondaryAlerts &&
+                        alertSettings.announceSecondaryAlerts &&
                         alertCount > 1 &&
                         (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
                         (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS)) {
@@ -1310,7 +1311,7 @@ void processBLEData() {
                             if (isAlertAnnounced(alert.band, alertFreq)) continue;
                             
                             // Check band filter
-                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                            if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                             
                             // Announce this secondary alert
                             AlertBand audioBand;
@@ -1337,7 +1338,7 @@ void processBLEData() {
                                            (int)audioBand, alertFreq, (int)secDir);
                                 // Secondary alerts: same voice mode, but no bogey count (keep it brief)
                                 play_frequency_voice(audioBand, alertFreq, secDir,
-                                                     settings.voiceAlertMode, settings.voiceDirectionEnabled, 1);
+                                                     alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
                                 markAlertAnnounced(alert.band, alertFreq);
                                 lastVoiceAlertTime = now;  // Use same cooldown
                                 break;  // Only announce one secondary per cycle
@@ -1347,7 +1348,7 @@ void processBLEData() {
                     
                     // SMART THREAT ESCALATION: Track signal history and announce when weak signals ramp up
                     // Update all secondary alert histories and check for escalation triggers
-                    if (settings.announceSecondaryAlerts && alertCount > 1) {
+                    if (alertSettings.announceSecondaryAlerts && alertCount > 1) {
                         // First pass: update all alert histories with current signal strengths
                         for (int i = 0; i < alertCount; i++) {
                             const AlertData& alert = currentAlerts[i];
@@ -1379,7 +1380,7 @@ void processBLEData() {
                                 if (state.muted) continue;
                                 
                                 // Skip if band not enabled for secondary
-                                if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                                if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                                 
                                 // Check smart escalation criteria (pass alertCount for bogey filter)
                                 if (shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
@@ -1480,8 +1481,7 @@ void processBLEData() {
                 // 1. Actually faded (volumeFadeActive), OR
                 // 2. Had captured an original but fade was pending (volumeFadeAlertStartMs != 0)
                 //    This handles cases where alert cleared before fade delay elapsed
-                const V1Settings& fadeRestoreSettings = settingsManager.get();
-                if (fadeRestoreSettings.alertVolumeFadeEnabled && volumeFadeOriginalVol != 0xFF) {
+                if (alertSettings.alertVolumeFadeEnabled && volumeFadeOriginalVol != 0xFF) {
                     // Only send restore command if volume actually changed
                     DisplayState restoreState = parser.getDisplayState();
                     if (restoreState.mainVolume != volumeFadeOriginalVol) {
