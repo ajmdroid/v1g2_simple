@@ -19,6 +19,9 @@
 		lockoutMaxDistanceM: 600
 	});
 	
+	// V1 connection state
+	let v1Connected = $state(false);
+	
 	// OBD state
 	let obdStatus = $state({
 		state: 'DISABLED',
@@ -41,13 +44,29 @@
 	onMount(async () => {
 		await fetchSettings();
 		await fetchObdStatus();
+		await fetchV1Status();
 		// Poll OBD status every 2 seconds
-		pollInterval = setInterval(fetchObdStatus, 2000);
+		pollInterval = setInterval(async () => {
+			await fetchObdStatus();
+			await fetchV1Status();
+		}, 2000);
 	});
 	
 	onDestroy(() => {
 		if (pollInterval) clearInterval(pollInterval);
 	});
+	
+	async function fetchV1Status() {
+		try {
+			const res = await fetch('/api/v1/current');
+			if (res.ok) {
+				const data = await res.json();
+				v1Connected = data.connected || false;
+			}
+		} catch (e) {
+			v1Connected = false;
+		}
+	}
 	
 	async function fetchSettings() {
 		loading = true;
@@ -91,28 +110,43 @@
 		}
 	}
 	
+	// Modal state for device selection
+	let showDeviceModal = $state(false);
+	
 	async function startObdScan() {
+		// Warn user if V1 isn't connected yet
+		if (!v1Connected) {
+			const proceed = confirm(
+				'V1 is not connected yet. Scanning for OBD devices will delay V1 connection by ~30 seconds.\n\n' +
+				'For best results, wait for V1 to connect first.\n\n' +
+				'Continue anyway?'
+			);
+			if (!proceed) {
+				return;
+			}
+		}
+		
 		obdScanning = true;
-		obdDevices = [];
+		showDeviceModal = true;  // Open modal when scanning starts
 		message = null;
 		
 		try {
 			const res = await fetch('/api/obd/scan', { method: 'POST' });
 			if (res.ok) {
-				message = { type: 'info', text: 'Scanning for OBD devices... This takes ~10 seconds.' };
+				message = { type: 'info', text: 'Scanning for BLE devices... (~30 seconds)' };
 				// Poll for devices during scan
 				const pollDevices = setInterval(async () => {
 					await fetchObdDevices();
 					if (!obdScanning) {
 						clearInterval(pollDevices);
 					}
-				}, 1500);
-				// Stop polling after 15 seconds max
+				}, 2000);
+				// Stop polling after 35 seconds max
 				setTimeout(() => {
 					clearInterval(pollDevices);
 					obdScanning = false;
 					fetchObdDevices();
-				}, 15000);
+				}, 35000);
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to start scan' };
@@ -122,6 +156,7 @@
 	
 	async function connectToDevice(device) {
 		message = null;
+		showDeviceModal = false;  // Close modal when connecting
 		
 		try {
 			const params = new URLSearchParams();
@@ -144,6 +179,31 @@
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
+	async function forgetSavedDevice() {
+		if (!confirm('Forget the saved OBD device? You will need to scan and connect again.')) return;
+		
+		try {
+			const res = await fetch('/api/obd/forget', { method: 'POST' });
+			if (res.ok) {
+				message = { type: 'success', text: 'Saved device forgotten' };
+				await fetchObdStatus();
+			} else {
+				message = { type: 'error', text: 'Failed to forget device' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
+	async function clearScanResults() {
+		try {
+			await fetch('/api/obd/devices/clear', { method: 'POST' });
+			obdDevices = [];
+		} catch (e) {
+			console.error('Failed to clear devices:', e);
 		}
 	}
 	
@@ -289,9 +349,14 @@
 						{/if}
 					</div>
 					
-					{#if obdStatus.savedDeviceName && !obdStatus.connected}
-						<div class="text-sm text-base-content/60">
-							Saved device: <span class="font-mono">{obdStatus.savedDeviceName}</span>
+					{#if obdStatus.savedDeviceName}
+						<div class="flex items-center justify-between">
+							<div class="text-sm text-base-content/60">
+								Saved device: <span class="font-mono">{obdStatus.savedDeviceName}</span>
+							</div>
+							<button class="btn btn-xs btn-ghost text-error" onclick={forgetSavedDevice}>
+								🗑️ Forget
+							</button>
 						</div>
 					{/if}
 					
@@ -326,45 +391,20 @@
 								🔍 Scan for Devices
 							{/if}
 						</button>
+						{#if obdDevices.length > 0}
+							<button class="btn btn-ghost btn-sm" onclick={() => showDeviceModal = true}>
+								📋 View {obdDevices.length} device{obdDevices.length > 1 ? 's' : ''}
+							</button>
+						{/if}
 					</div>
 					
-					{#if obdDevices.length > 0}
-						<div class="overflow-x-auto">
-							<table class="table table-sm">
-								<thead>
-									<tr>
-										<th>Name</th>
-										<th>Address</th>
-										<th>Signal</th>
-										<th></th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each obdDevices as device}
-										<tr class="hover">
-											<td class="font-mono text-sm">{device.name || 'Unknown'}</td>
-											<td class="font-mono text-xs text-base-content/60">{device.address}</td>
-											<td>
-												<span class="badge badge-sm {device.rssi > -60 ? 'badge-success' : device.rssi > -80 ? 'badge-warning' : 'badge-error'}">
-													{device.rssi} dBm
-												</span>
-											</td>
-											<td>
-												<button 
-													class="btn btn-xs btn-primary"
-													onclick={() => connectToDevice(device)}
-												>
-													Connect
-												</button>
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					{:else if !obdScanning}
-						<p class="text-sm text-base-content/50">No devices found. Click "Scan for Devices" to search.</p>
-					{/if}
+					<p class="text-xs text-base-content/50">
+						{#if obdDevices.length > 0}
+							Found {obdDevices.length} device{obdDevices.length > 1 ? 's' : ''}. Click "View" to select one.
+						{:else}
+							No devices found yet. Click "Scan for Devices" to search.
+						{/if}
+					</p>
 				{/if}
 			</div>
 		</div>
@@ -588,3 +628,68 @@
 		</div>
 	{/if}
 </div>
+
+<!-- OBD Device Selection Modal -->
+{#if showDeviceModal}
+<div class="modal modal-open">
+	<div class="modal-box max-w-lg">
+		<h3 class="font-bold text-lg mb-4">🔍 Found OBD Devices</h3>
+		
+		{#if obdScanning}
+			<div class="flex items-center gap-3 mb-4">
+				<span class="loading loading-spinner loading-md"></span>
+				<span>Scanning for devices...</span>
+			</div>
+		{/if}
+		
+		{#if obdDevices.length > 0}
+			<div class="overflow-x-auto max-h-64">
+				<table class="table table-sm">
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Signal</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each obdDevices as device}
+							<tr class="hover">
+								<td>
+									<div class="font-mono text-sm">{device.name || 'Unknown'}</div>
+									<div class="text-xs text-base-content/50">{device.address}</div>
+								</td>
+								<td>
+									<span class="badge badge-sm {device.rssi > -60 ? 'badge-success' : device.rssi > -80 ? 'badge-warning' : 'badge-error'}">
+										{device.rssi} dBm
+									</span>
+								</td>
+								<td>
+									<button 
+										class="btn btn-sm btn-primary"
+										onclick={() => connectToDevice(device)}
+									>
+										Connect
+									</button>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{:else if !obdScanning}
+			<p class="text-base-content/60 py-4">No devices found. Make sure your OBD adapter is powered on and in range.</p>
+		{/if}
+		
+		<div class="modal-action">
+			{#if obdDevices.length > 0}
+				<button class="btn btn-ghost btn-sm" onclick={clearScanResults}>
+					Clear List
+				</button>
+			{/if}
+			<button class="btn" onclick={() => showDeviceModal = false}>Close</button>
+		</div>
+	</div>
+	<div class="modal-backdrop" onclick={() => showDeviceModal = false}></div>
+</div>
+{/if}

@@ -122,7 +122,9 @@ private:
     void handleObdStatus();
     void handleObdScan();
     void handleObdDevices();
+    void handleObdDevicesClear();
     void handleObdConnect();
+    void handleObdForget();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

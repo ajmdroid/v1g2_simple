@@ -87,8 +87,8 @@ GPSHandler* gps = nullptr;
 LockoutManager lockouts;
 AutoLockoutManager autoLockouts;
 
-// OBD-II handler (optional module)
-OBDHandler* obd = nullptr;
+// OBD-II handler uses global obdHandler from obd_handler.cpp
+// (included via obd_handler.h extern declaration)
 
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
@@ -367,8 +367,8 @@ static uint8_t getAlertBars(const AlertData& a) {
 // Helper: get current speed in MPH from OBD (preferred) or GPS
 static float getCurrentSpeedMph() {
     // Try OBD first (more accurate, faster updates)
-    if (obd != nullptr && obd->isModuleDetected() && obd->hasValidData()) {
-        return obd->getSpeedMph();
+    if (obdHandler.isModuleDetected() && obdHandler.hasValidData()) {
+        return obdHandler.getSpeedMph();
     }
     // Fall back to GPS
     if (gps != nullptr && gps->hasValidFix()) {
@@ -1696,8 +1696,7 @@ void setup() {
         // Initialize OBD if enabled in settings
         if (settingsManager.isObdEnabled()) {
             SerialLog.println("[Setup] OBD enabled - initializing...");
-            obd = new OBDHandler();
-            obd->begin();
+            obdHandler.begin();
         } else {
             SerialLog.println("[Setup] OBD disabled in settings");
         }
@@ -2064,18 +2063,8 @@ void loop() {
         }
     }
     
-    // Process OBD updates (if enabled)
-    if (obd != nullptr) {
-        obd->update();
-        
-        // Auto-disable OBD if module not detected after timeout
-        if (obd->isDetectionComplete() && !obd->isModuleDetected()) {
-            SerialLog.println("[OBD] Module not detected - disabling OBD");
-            delete obd;
-            obd = nullptr;
-            settingsManager.setObdEnabled(false);
-        }
-    }
+    // Process OBD updates (always runs - state machine handles enabled/disabled)
+    obdHandler.update();
     
     // Speed-based volume: boost V1 volume at highway speeds
     // Check periodically (not every loop) to avoid spamming V1

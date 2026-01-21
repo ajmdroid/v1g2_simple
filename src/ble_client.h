@@ -158,6 +158,9 @@ public:
     // Restart scanning for V1
     void startScanning();
     
+    // Start scan for OBD devices (works even when connected to V1)
+    void startOBDScan();
+    
     // Check if currently scanning
     bool isScanning();
     

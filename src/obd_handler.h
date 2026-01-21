@@ -59,7 +59,7 @@ private:
     bool moduleDetected;
     bool detectionComplete;
     uint32_t detectionStartMs;
-    static constexpr uint32_t DETECTION_TIMEOUT_MS = 60000;  // 60 seconds to detect module
+    static constexpr uint32_t DETECTION_TIMEOUT_MS = 120000;  // 120 seconds for auto-reconnect scan
     
     // ELM327 BLE device names typically contain these strings
     // Zurich ZR-BT1 = rebranded Innova 1000 (also Hyper Tough HT500, Blcktec 430)
@@ -162,7 +162,10 @@ public:
     // Disconnect
     void disconnect();
     
-    // Called by V1 BLE scan when an ELM327 device is found
+    // Called by V1 BLE scan when any named device is found during OBD scan
+    void onDeviceFound(const NimBLEAdvertisedDevice* device);
+    
+    // Called by V1 BLE scan when an ELM327 device is found (for auto-connect)
     void onELM327Found(const NimBLEAdvertisedDevice* device);
     
     // Check if a device name matches ELM327 patterns

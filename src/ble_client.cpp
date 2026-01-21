@@ -468,12 +468,12 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     //                   name.length() > 0 ? name.c_str() : "(no name)");
     // }
     
-    // *** Check for ELM327 OBD-II device (pass to OBD handler) ***
-    // OBD handler will connect separately - don't interrupt V1 scan
-    if (!name.empty() && OBDHandler::isELM327Device(name)) {
-        // Pass to OBD handler - it will handle connection in its own state machine
-        obdHandler.onELM327Found(advertisedDevice);
-        // Continue scanning for V1 - we want both connections
+    // *** Check for OBD-II device (pass to OBD handler) ***
+    // When OBD is actively scanning, pass ALL named devices to handler
+    // User can then select which one to connect to from the UI
+    if (!name.empty() && obdHandler.isScanActive()) {
+        // Pass any named device to OBD handler when scanning
+        obdHandler.onDeviceFound(advertisedDevice);
     }
     
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
@@ -501,6 +501,13 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     if (bleClient->bleState == BLEState::CONNECTING || 
         bleClient->bleState == BLEState::CONNECTED) {
         return;
+    }
+    
+    // If OBD scan is active AND we're already connected to V1, let OBD scan continue
+    // If NOT connected to V1, we should still connect - OBD scan can happen after
+    if (obdHandler.isScanActive() && bleClient->connected) {
+        Serial.println("[BLE] OBD scan active (V1 connected) - ignoring additional V1");
+        return;  // Already have V1, let OBD scan continue
     }
     
     // Save this address for future fast reconnects
@@ -1445,6 +1452,25 @@ void V1BLEClient::startScanning() {
                 setBLEState(BLEState::SCANNING, "manual scan start");
             }
         }
+    }
+}
+
+void V1BLEClient::startOBDScan() {
+    // Start a BLE scan for OBD devices - works even when V1 is connected
+    // This allows scanning for ELM327 adapters without disconnecting from V1
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan && !pScan->isScanning()) {
+        Serial.println("[BLE] Starting OBD device scan (30 seconds)...");
+        pScan->clearResults();
+        // 30-second scan for OBD devices - duration is in MILLISECONDS
+        pScan->start(30000, false, false);
+    } else if (pScan && pScan->isScanning()) {
+        Serial.println("[BLE] Scan already in progress - extending for OBD");
+        // Stop and restart with longer duration for OBD scan
+        pScan->stop();
+        delay(100);  // Brief delay for BLE stack
+        pScan->clearResults();
+        pScan->start(30000, false, false);
     }
 }
 

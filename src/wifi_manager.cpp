@@ -419,7 +419,9 @@ void WiFiManager::setupWebServer() {
     server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
     server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
     server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
+    server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
     server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
+    server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -2026,4 +2028,19 @@ void WiFiManager::handleObdConnect() {
     } else {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to start connection\"}");
     }
+}
+
+void WiFiManager::handleObdDevicesClear() {
+    obdHandler.clearFoundDevices();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan results cleared\"}");
+}
+
+void WiFiManager::handleObdForget() {
+    // Clear the saved device from settings
+    settingsManager.setObdDevice("", "");
+    
+    // Disconnect if currently connected
+    obdHandler.disconnect();
+    
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved device forgotten\"}");
 }
