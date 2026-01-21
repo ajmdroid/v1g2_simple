@@ -1040,10 +1040,13 @@ void processBLEData() {
                                 bleClient.setMute(true);
                                 lockoutMuteSent = true;
                                 lastLockoutAlertId = currentAlertId;
+                                // Tell display this is a lockout mute (shows "LOCKOUT" instead of "MUTED")
+                                display.setLockoutMuted(true);
                             }
                         } else if (!priorityInLockout) {
                             // Reset tracking when not in lockout
                             lockoutMuteSent = false;
+                            display.setLockoutMuted(false);
                         }
                         
                         // Record alert for auto-learning (even if locked out)

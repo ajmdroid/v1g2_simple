@@ -1193,8 +1193,8 @@ void V1Display::drawMuteIcon(bool muted) {
 #endif
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
-    // Badge dimensions
-    int w = 110;
+    // Badge dimensions - wider for "LOCKOUT" text
+    int w = lockoutMuted ? 130 : 110;
     int h = 26;
     int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
     int y = 5;  // Fixed near top of screen
@@ -1212,12 +1212,17 @@ void V1Display::drawMuteIcon(bool muted) {
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
         int cx = x + w / 2;
         int cy = y + h / 2;
+        
+        // Show different text for lockout mute vs user mute
+        const char* muteText = lockoutMuted ? "LOCKOUT" : "MUTED";
         // Pseudo-bold: draw twice with slight offset
-        GFX_drawString(tft, "MUTED", cx, cy);
-        GFX_drawString(tft, "MUTED", cx + 1, cy);
+        GFX_drawString(tft, muteText, cx, cy);
+        GFX_drawString(tft, muteText, cx + 1, cy);
     } else {
-        // Clear the badge area when not muted
-        FILL_RECT(x, y, w, h, PALETTE_BG);
+        // Clear the badge area when not muted (use wider area to cover both sizes)
+        FILL_RECT(leftMargin + (maxWidth - 130) / 2, y, 130, h, PALETTE_BG);
+        // Reset lockout flag when unmuted
+        lockoutMuted = false;
     }
 }
 

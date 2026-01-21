@@ -5,19 +5,20 @@
 #include "gps_handler.h"
 #include "lockout_manager.h"
 #include "storage_manager.h"
+#include "settings.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <cmath>
 
 static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 
-// Use global lockouts instance from main.cpp
+// Use global instances from main.cpp
 extern LockoutManager lockouts;
+extern SettingsManager settingsManager;
 
 AutoLockoutManager::AutoLockoutManager() {
   // Constructor
 }
-
 AutoLockoutManager::~AutoLockoutManager() {
   // Destructor
 }
@@ -43,7 +44,7 @@ int AutoLockoutManager::findCluster(float lat, float lon, Band band) const {
 void AutoLockoutManager::addEventToCluster(int clusterIdx, const AlertEvent& event) {
   LearningCluster& cluster = clusters[clusterIdx];
   
-  // Add event to history
+  // Add event to history (always for location averaging)
   cluster.events.push_back(event);
   
   // Limit event history per cluster (memory constraint)
@@ -52,14 +53,41 @@ void AutoLockoutManager::addEventToCluster(int clusterIdx, const AlertEvent& eve
     cluster.events.erase(cluster.events.begin());
   }
   
-  // Update cluster metadata
-  cluster.hitCount++;
-  if (event.isMoving) {
-    cluster.movingHitCount++;
-  } else {
-    cluster.stoppedHitCount++;
-  }
+  // Update lastSeen regardless of interval
   cluster.lastSeen = event.timestamp;
+  
+  // Get runtime settings for learn interval
+  const V1Settings& s = settingsManager.get();
+  time_t learnIntervalSec = s.lockoutLearnIntervalHours * 3600;
+  
+  // JBV1 Learn Interval: Only count hit if enough time has passed since last counted hit
+  // This prevents the same alert from being counted multiple times in one pass
+  time_t timeSinceLastHit = event.timestamp - cluster.lastCountedHit;
+  bool countThisHit = (cluster.lastCountedHit == 0) || (learnIntervalSec == 0) || (timeSinceLastHit >= learnIntervalSec);
+  
+  if (countThisHit) {
+    // Count this toward promotion
+    cluster.hitCount++;
+    if (event.isMoving) {
+      cluster.movingHitCount++;
+    } else {
+      cluster.stoppedHitCount++;
+    }
+    cluster.lastCountedHit = event.timestamp;
+    
+    // Reset miss counter on any counted hit (JBV1 behavior)
+    cluster.passWithoutAlertCount = 0;
+    
+    if (DEBUG_LOGS) {
+      Serial.printf("[AutoLockout] Added hit to cluster '%s' (hits: %d [%d stopped/%d moving])\n",
+                    cluster.name.c_str(), cluster.hitCount, cluster.stoppedHitCount, cluster.movingHitCount);
+    }
+  } else {
+    if (DEBUG_LOGS) {
+      Serial.printf("[AutoLockout] Skipped hit to cluster '%s' (interval: %ld sec, need: %ld sec)\n",
+                    cluster.name.c_str(), timeSinceLastHit, learnIntervalSec);
+    }
+  }
   
   // Recalculate cluster center (weighted average of all events)
   float sumLat = 0, sumLon = 0;
@@ -81,11 +109,6 @@ void AutoLockoutManager::addEventToCluster(int clusterIdx, const AlertEvent& eve
     if (dist > maxDist) maxDist = dist;
   }
   cluster.radius_m = std::max(50.0f, maxDist + 20.0f);  // Min 50m, +20m buffer
-  
-  if (DEBUG_LOGS) {
-    Serial.printf("[AutoLockout] Added event to cluster '%s' (hits: %d [%d stopped/%d moving], radius: %.0fm)\n",
-                  cluster.name.c_str(), cluster.hitCount, cluster.stoppedHitCount, cluster.movingHitCount, cluster.radius_m);
-  }
 }
 
 void AutoLockoutManager::createNewCluster(const AlertEvent& event) {
@@ -97,13 +120,16 @@ void AutoLockoutManager::createNewCluster(const AlertEvent& event) {
     pruneOldClusters();
   }
   
+  // Get runtime settings
+  const V1Settings& s = settingsManager.get();
+  
   LearningCluster cluster;
   cluster.centerLat = event.latitude;
   cluster.centerLon = event.longitude;
   cluster.radius_m = 50.0f;  // Initial radius
   cluster.band = event.band;
   cluster.frequency_khz = event.frequency_khz;
-  cluster.frequency_tolerance_khz = FREQUENCY_TOLERANCE_KHZ;
+  cluster.frequency_tolerance_khz = s.lockoutFreqToleranceMHz * 1000;  // Convert MHz to kHz
   cluster.events.push_back(event);
   cluster.hitCount = 1;
   cluster.stoppedHitCount = event.isMoving ? 0 : 1;
@@ -112,6 +138,9 @@ void AutoLockoutManager::createNewCluster(const AlertEvent& event) {
   cluster.lastSeen = event.timestamp;
   cluster.passWithoutAlertCount = 0;
   cluster.lastPassthrough = 0;
+  cluster.lastCountedHit = event.timestamp;  // First hit counts
+  cluster.lastCountedMiss = 0;
+  cluster.createdHeading = event.heading;    // Store heading for directional unlearn
   cluster.isPromoted = false;
   cluster.promotedLockoutIndex = -1;
   cluster.name = generateClusterName(cluster);
@@ -128,9 +157,14 @@ bool AutoLockoutManager::shouldPromoteCluster(const LearningCluster& cluster) co
   // Already promoted?
   if (cluster.isPromoted) return false;
   
+  // Get runtime settings for learn count
+  const V1Settings& s = settingsManager.get();
+  int requiredHits = s.lockoutLearnCount;
+  
   // Check hit count threshold (different for stopped vs moving)
-  bool hasEnoughStoppedHits = cluster.stoppedHitCount >= PROMOTION_STOPPED_HIT_COUNT;
-  bool hasEnoughMovingHits = cluster.movingHitCount >= PROMOTION_MOVING_HIT_COUNT;
+  // Use runtime setting for the threshold
+  bool hasEnoughStoppedHits = cluster.stoppedHitCount >= requiredHits;
+  bool hasEnoughMovingHits = cluster.movingHitCount >= requiredHits;
   
   if (!hasEnoughStoppedHits && !hasEnoughMovingHits) return false;
   
@@ -279,11 +313,37 @@ String AutoLockoutManager::generateClusterName(const LearningCluster& cluster) c
 }
 
 void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t frequency_khz, 
-                                      uint8_t signalStrength, uint16_t duration_ms, bool isMoving) {
+                                      uint8_t signalStrength, uint16_t duration_ms, bool isMoving, float heading) {
+  const V1Settings& s = settingsManager.get();
+  
+  // Check master enable
+  if (!s.lockoutEnabled) {
+    return;
+  }
+  
+  // Ka band protection (user-configurable)
+  if (s.lockoutKaProtection && band == BAND_KA) {
+    if (DEBUG_LOGS) {
+      Serial.printf("[AutoLockout] Not learning Ka band (protection enabled)\n");
+    }
+    return;
+  }
+  
   // Filter weak signals (likely far away or irrelevant)
   if (signalStrength < MIN_SIGNAL_STRENGTH) {
     if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] Ignoring weak signal (strength: %d)\n", signalStrength);
+      Serial.printf("[AutoLockout] Ignoring weak signal (strength: %d < %d)\n", 
+                    signalStrength, MIN_SIGNAL_STRENGTH);
+    }
+    return;
+  }
+  
+  // Filter strong signals (user-configurable, 0 = disabled)
+  uint8_t maxSig = s.lockoutMaxSignalStrength;
+  if (maxSig > 0 && signalStrength >= maxSig) {
+    if (DEBUG_LOGS) {
+      Serial.printf("[AutoLockout] Ignoring strong signal (strength: %d >= %d)\n", 
+                    signalStrength, maxSig);
     }
     return;
   }
@@ -292,6 +352,7 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   AlertEvent event;
   event.latitude = lat;
   event.longitude = lon;
+  event.heading = heading;  // Store heading for directional unlearn
   event.band = band;
   event.frequency_khz = frequency_khz;
   event.signalStrength = signalStrength;
@@ -312,8 +373,20 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   }
 }
 
-void AutoLockoutManager::recordPassthrough(float lat, float lon) {
+// Helper: Calculate angular difference between two headings (0-180 degrees)
+static float headingDifference(float h1, float h2) {
+  if (h1 < 0 || h2 < 0) return 0.0f;  // Unknown heading = no check
+  float diff = fabs(h1 - h2);
+  if (diff > 180.0f) diff = 360.0f - diff;
+  return diff;
+}
+
+void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading) {
   time_t now = time(nullptr);
+  
+  // Get runtime settings
+  const V1Settings& s = settingsManager.get();
+  time_t unlearnIntervalSec = s.lockoutUnlearnIntervalHours * 3600;
   
   // Find all promoted clusters near this location
   for (auto& cluster : clusters) {
@@ -325,12 +398,36 @@ void AutoLockoutManager::recordPassthrough(float lat, float lon) {
     
     // Passed through lockout zone without alert?
     if (dist <= PASSTHROUGH_RADIUS_M) {
-      cluster.passWithoutAlertCount++;
-      cluster.lastPassthrough = now;
+      // JBV1 Directional Unlearn: Only count miss if traveling in same direction as when created
+      if (s.lockoutDirectionalUnlearn && cluster.createdHeading >= 0 && heading >= 0) {
+        float hdgDiff = headingDifference(heading, cluster.createdHeading);
+        if (hdgDiff > DIRECTIONAL_UNLEARN_TOLERANCE_DEG) {
+          if (DEBUG_LOGS) {
+            Serial.printf("[AutoLockout] Skipped miss for '%s' (heading: %.0f° vs created: %.0f°, diff: %.0f° > %.0f°)\n",
+                          cluster.name.c_str(), heading, cluster.createdHeading, hdgDiff, DIRECTIONAL_UNLEARN_TOLERANCE_DEG);
+          }
+          continue;  // Wrong direction, don't count as miss
+        }
+      }
       
-      if (DEBUG_LOGS) {
-        Serial.printf("[AutoLockout] Passthrough '%s' without alert (count: %d)\n",
-                      cluster.name.c_str(), cluster.passWithoutAlertCount);
+      // JBV1 Unlearn Interval: Only count miss if enough time has passed
+      time_t timeSinceLastMiss = now - cluster.lastCountedMiss;
+      bool countThisMiss = (cluster.lastCountedMiss == 0) || (unlearnIntervalSec == 0) || (timeSinceLastMiss >= unlearnIntervalSec);
+      
+      if (countThisMiss) {
+        cluster.passWithoutAlertCount++;
+        cluster.lastPassthrough = now;
+        cluster.lastCountedMiss = now;
+        
+        if (DEBUG_LOGS) {
+          Serial.printf("[AutoLockout] Passthrough '%s' without alert (count: %d)\n",
+                        cluster.name.c_str(), cluster.passWithoutAlertCount);
+        }
+      } else {
+        if (DEBUG_LOGS) {
+          Serial.printf("[AutoLockout] Skipped miss for '%s' (interval: %ld sec, need: %ld sec)\n",
+                        cluster.name.c_str(), timeSinceLastMiss, unlearnIntervalSec);
+        }
       }
     }
   }
@@ -348,6 +445,10 @@ void AutoLockoutManager::update() {
     }
   }
   
+  // Get runtime settings for demotion
+  const V1Settings& s = settingsManager.get();
+  int demotionCount = s.lockoutUnlearnCount;
+  
   // Check for demotions
   time_t now = time(nullptr);
   time_t demotionWindow = DEMOTION_TIME_WINDOW_DAYS * 24 * 3600;
@@ -360,8 +461,8 @@ void AutoLockoutManager::update() {
     // Check demotion criteria
     bool shouldDemote = false;
     
-    // Criterion 1: Passed through N times without alert
-    if (cluster.passWithoutAlertCount >= DEMOTION_PASS_COUNT) {
+    // Criterion 1: Passed through N times without alert (N from runtime settings)
+    if (cluster.passWithoutAlertCount >= demotionCount) {
       // Check if these passes were recent (within demotion window)
       if ((now - cluster.lastPassthrough) <= demotionWindow) {
         shouldDemote = true;
@@ -421,6 +522,9 @@ bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
     cluster.lastSeen = obj["lastSeen"].as<time_t>();
     cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
     cluster.lastPassthrough = obj["lastPassthrough"].as<time_t>();
+    cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen for old data
+    cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
+    cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
     cluster.isPromoted = obj["isPromoted"].as<bool>();
     cluster.promotedLockoutIndex = obj["promotedLockoutIndex"].as<int>();
     
@@ -430,6 +534,7 @@ bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
       AlertEvent event;
       event.latitude = eventObj["lat"].as<float>();
       event.longitude = eventObj["lon"].as<float>();
+      event.heading = eventObj["heading"] | -1.0f;  // Default to unknown
       event.band = static_cast<Band>(eventObj["band"].as<int>());
       event.signalStrength = eventObj["signal"].as<uint8_t>();
       event.timestamp = eventObj["time"].as<time_t>();
@@ -464,6 +569,9 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
     obj["lastSeen"] = cluster.lastSeen;
     obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
     obj["lastPassthrough"] = cluster.lastPassthrough;
+    obj["lastCountedHit"] = cluster.lastCountedHit;
+    obj["lastCountedMiss"] = cluster.lastCountedMiss;
+    obj["createdHeading"] = cluster.createdHeading;
     obj["isPromoted"] = cluster.isPromoted;
     obj["promotedLockoutIndex"] = cluster.promotedLockoutIndex;
     
@@ -475,6 +583,7 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
       JsonObject eventObj = eventsArray.add<JsonObject>();
       eventObj["lat"] = event.latitude;
       eventObj["lon"] = event.longitude;
+      eventObj["heading"] = event.heading;
       eventObj["band"] = static_cast<int>(event.band);
       eventObj["signal"] = event.signalStrength;
       eventObj["time"] = event.timestamp;
@@ -605,6 +714,9 @@ bool AutoLockoutManager::backupToSD() {
     obj["lastSeen"] = static_cast<long>(cluster.lastSeen);
     obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
     obj["lastPassthrough"] = static_cast<long>(cluster.lastPassthrough);
+    obj["lastCountedHit"] = static_cast<long>(cluster.lastCountedHit);
+    obj["lastCountedMiss"] = static_cast<long>(cluster.lastCountedMiss);
+    obj["createdHeading"] = cluster.createdHeading;
     obj["isPromoted"] = cluster.isPromoted;
     obj["promotedLockoutIndex"] = cluster.promotedLockoutIndex;
     
@@ -616,6 +728,7 @@ bool AutoLockoutManager::backupToSD() {
       JsonObject evObj = events.add<JsonObject>();
       evObj["lat"] = ev.latitude;
       evObj["lon"] = ev.longitude;
+      evObj["heading"] = ev.heading;
       evObj["band"] = static_cast<int>(ev.band);
       evObj["freq"] = ev.frequency_khz;
       evObj["signal"] = ev.signalStrength;
@@ -701,6 +814,9 @@ bool AutoLockoutManager::restoreFromSD() {
     cluster.lastSeen = obj["lastSeen"].as<long>();
     cluster.passWithoutAlertCount = obj["passWithoutAlertCount"] | 0;
     cluster.lastPassthrough = obj["lastPassthrough"] | 0L;
+    cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen
+    cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
+    cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
     cluster.isPromoted = obj["isPromoted"] | false;
     cluster.promotedLockoutIndex = obj["promotedLockoutIndex"] | -1;
     
@@ -710,6 +826,7 @@ bool AutoLockoutManager::restoreFromSD() {
       AlertEvent ev;
       ev.latitude = evObj["lat"].as<float>();
       ev.longitude = evObj["lon"].as<float>();
+      ev.heading = evObj["heading"] | -1.0f;  // Default to unknown
       ev.band = static_cast<Band>(evObj["band"].as<int>());
       ev.frequency_khz = evObj["freq"].as<uint32_t>();
       ev.signalStrength = evObj["signal"].as<uint8_t>();

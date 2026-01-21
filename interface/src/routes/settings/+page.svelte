@@ -6,9 +6,7 @@
         ap_password: '',
         proxy_ble: true,
         proxy_name: 'V1C-LE-S3',
-        autoPowerOffMinutes: 0,
-        gpsEnabled: false,
-        obdEnabled: false
+        autoPowerOffMinutes: 0
     });
 	
 	let loading = $state(true);
@@ -46,8 +44,6 @@
 			formData.append('proxy_ble', settings.proxy_ble);
             formData.append('proxy_name', settings.proxy_name);
             formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
-            formData.append('gpsEnabled', settings.gpsEnabled);
-            formData.append('obdEnabled', settings.obdEnabled);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -236,34 +232,6 @@
 							{/if}
 						</span>
 					</label>
-				</div>
-			</div>
-		</div>
-
-		<!-- Hardware Modules -->
-		<div class="card bg-base-200">
-			<div class="card-body space-y-4">
-				<h2 class="card-title">🔧 Hardware Modules</h2>
-				<p class="text-sm text-base-content/60">Enable optional hardware modules. Disabled modules won't consume resources.</p>
-				
-				<label class="label cursor-pointer">
-					<div class="flex flex-col">
-						<span class="label-text">GPS Module</span>
-						<span class="label-text-alt text-base-content/50">Location-based lockouts and speed display</span>
-					</div>
-					<input type="checkbox" class="toggle" bind:checked={settings.gpsEnabled} />
-				</label>
-				
-				<label class="label cursor-pointer">
-					<div class="flex flex-col">
-						<span class="label-text">OBD-II Module</span>
-						<span class="label-text-alt text-base-content/50">Vehicle data and speed from car's computer</span>
-					</div>
-					<input type="checkbox" class="toggle" bind:checked={settings.obdEnabled} />
-				</label>
-				
-				<div class="text-xs text-base-content/40 mt-2">
-					💡 If a module is enabled but not detected after 60 seconds, it will automatically disable to save resources.
 				</div>
 			</div>
 		</div>

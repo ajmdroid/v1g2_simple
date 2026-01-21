@@ -205,6 +205,19 @@ void SettingsManager::load() {
     settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
     settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
     
+    // Auto-lockout settings (JBV1-style)
+    settings.lockoutEnabled = preferences.getBool("lkoutEn", true);
+    settings.lockoutKaProtection = preferences.getBool("lkoutKaProt", true);
+    settings.lockoutDirectionalUnlearn = preferences.getBool("lkoutDirUnl", true);
+    settings.lockoutFreqToleranceMHz = preferences.getUShort("lkoutFreqTol", 8);
+    settings.lockoutLearnCount = preferences.getUChar("lkoutLearnCt", 3);
+    settings.lockoutUnlearnCount = preferences.getUChar("lkoutUnlCt", 5);
+    settings.lockoutManualDeleteCount = preferences.getUChar("lkoutManDel", 25);
+    settings.lockoutLearnIntervalHours = preferences.getUChar("lkoutLearnHr", 4);
+    settings.lockoutUnlearnIntervalHours = preferences.getUChar("lkoutUnlHr", 4);
+    settings.lockoutMaxSignalStrength = preferences.getUChar("lkoutMaxSig", 0);
+    settings.lockoutMaxDistanceM = preferences.getUShort("lkoutMaxDist", 600);
+    
     preferences.end();
     
     Serial.println("Settings loaded:");
@@ -318,6 +331,19 @@ void SettingsManager::save() {
     written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += preferences.putBool("gpsEnabled", settings.gpsEnabled);
     written += preferences.putBool("obdEnabled", settings.obdEnabled);
+    
+    // Auto-lockout settings (JBV1-style)
+    written += preferences.putBool("lkoutEn", settings.lockoutEnabled);
+    written += preferences.putBool("lkoutKaProt", settings.lockoutKaProtection);
+    written += preferences.putBool("lkoutDirUnl", settings.lockoutDirectionalUnlearn);
+    written += preferences.putUShort("lkoutFreqTol", settings.lockoutFreqToleranceMHz);
+    written += preferences.putUChar("lkoutLearnCt", settings.lockoutLearnCount);
+    written += preferences.putUChar("lkoutUnlCt", settings.lockoutUnlearnCount);
+    written += preferences.putUChar("lkoutManDel", settings.lockoutManualDeleteCount);
+    written += preferences.putUChar("lkoutLearnHr", settings.lockoutLearnIntervalHours);
+    written += preferences.putUChar("lkoutUnlHr", settings.lockoutUnlearnIntervalHours);
+    written += preferences.putUChar("lkoutMaxSig", settings.lockoutMaxSignalStrength);
+    written += preferences.putUShort("lkoutMaxDist", settings.lockoutMaxDistanceM);
     
     preferences.end();
     
@@ -756,6 +782,19 @@ void SettingsManager::backupToSD() {
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["obdEnabled"] = settings.obdEnabled;
     
+    // === Auto-Lockout Settings (JBV1-style) ===
+    doc["lockoutEnabled"] = settings.lockoutEnabled;
+    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
+    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
+    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
+    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
+    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
+    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
+    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
+    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
+    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
+    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
+    
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
@@ -916,6 +955,19 @@ bool SettingsManager::restoreFromSD() {
     // === GPS/OBD Settings ===
     if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
     if (doc["obdEnabled"].is<bool>()) settings.obdEnabled = doc["obdEnabled"];
+    
+    // === Auto-Lockout Settings (JBV1-style) ===
+    if (doc["lockoutEnabled"].is<bool>()) settings.lockoutEnabled = doc["lockoutEnabled"];
+    if (doc["lockoutKaProtection"].is<bool>()) settings.lockoutKaProtection = doc["lockoutKaProtection"];
+    if (doc["lockoutDirectionalUnlearn"].is<bool>()) settings.lockoutDirectionalUnlearn = doc["lockoutDirectionalUnlearn"];
+    if (doc["lockoutFreqToleranceMHz"].is<int>()) settings.lockoutFreqToleranceMHz = doc["lockoutFreqToleranceMHz"];
+    if (doc["lockoutLearnCount"].is<int>()) settings.lockoutLearnCount = doc["lockoutLearnCount"];
+    if (doc["lockoutUnlearnCount"].is<int>()) settings.lockoutUnlearnCount = doc["lockoutUnlearnCount"];
+    if (doc["lockoutManualDeleteCount"].is<int>()) settings.lockoutManualDeleteCount = doc["lockoutManualDeleteCount"];
+    if (doc["lockoutLearnIntervalHours"].is<int>()) settings.lockoutLearnIntervalHours = doc["lockoutLearnIntervalHours"];
+    if (doc["lockoutUnlearnIntervalHours"].is<int>()) settings.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
+    if (doc["lockoutMaxSignalStrength"].is<int>()) settings.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
+    if (doc["lockoutMaxDistanceM"].is<int>()) settings.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
     
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];

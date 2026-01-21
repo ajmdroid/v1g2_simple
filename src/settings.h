@@ -175,6 +175,19 @@ struct V1Settings {
     // OBD settings  
     bool obdEnabled;          // Enable OBD-II module (default: off, auto-disabled if not found)
     
+    // Auto-Lockout settings (JBV1-style)
+    bool lockoutEnabled;            // Master enable for auto-lockout system
+    bool lockoutKaProtection;       // Never auto-learn Ka band (real threats)
+    bool lockoutDirectionalUnlearn; // Only unlearn when traveling same direction
+    uint16_t lockoutFreqToleranceMHz;  // Frequency tolerance in MHz (default: 8)
+    uint8_t lockoutLearnCount;      // Hits needed to promote (default: 3)
+    uint8_t lockoutUnlearnCount;    // Misses to demote auto-lockouts (default: 5)
+    uint8_t lockoutManualDeleteCount; // Misses to demote manual lockouts (default: 25)
+    uint8_t lockoutLearnIntervalHours;   // Hours between counted hits (default: 4)
+    uint8_t lockoutUnlearnIntervalHours; // Hours between counted misses (default: 4)
+    uint8_t lockoutMaxSignalStrength;    // Don't learn signals >= this (0=disabled, default: 0)
+    uint16_t lockoutMaxDistanceM;   // Max alert distance to learn (default: 600m)
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -253,7 +266,19 @@ struct V1Settings {
         lastV1Address(""),
         autoPowerOffMinutes(0),  // Default: disabled
         gpsEnabled(false),       // GPS off by default (opt-in)
-        obdEnabled(false) {}     // OBD off by default (opt-in)
+        obdEnabled(false),       // OBD off by default (opt-in)
+        // Auto-lockout defaults (JBV1 defaults)
+        lockoutEnabled(true),           // Auto-lockout enabled by default
+        lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
+        lockoutDirectionalUnlearn(true),// Directional unlearn on (JBV1 default)
+        lockoutFreqToleranceMHz(8),     // 8 MHz tolerance (JBV1 default)
+        lockoutLearnCount(3),           // 3 hits to learn (JBV1 default)
+        lockoutUnlearnCount(5),         // 5 misses to unlearn auto (JBV1 default)
+        lockoutManualDeleteCount(25),   // 25 misses to unlearn manual (JBV1 default)
+        lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)
+        lockoutUnlearnIntervalHours(4), // 4 hours between misses (JBV1 default)
+        lockoutMaxSignalStrength(0),    // No max (JBV1 "None" default)
+        lockoutMaxDistanceM(600) {}     // 600m max distance (JBV1 default)
 };
 
 class SettingsManager {
@@ -347,6 +372,19 @@ public:
     bool isObdEnabled() const { return settings.obdEnabled; }
     void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
     void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; save(); }
+    
+    // Auto-lockout settings (batch update - call save() after)
+    void updateLockoutEnabled(bool enabled) { settings.lockoutEnabled = enabled; }
+    void updateLockoutKaProtection(bool enabled) { settings.lockoutKaProtection = enabled; }
+    void updateLockoutDirectionalUnlearn(bool enabled) { settings.lockoutDirectionalUnlearn = enabled; }
+    void updateLockoutFreqToleranceMHz(uint16_t mhz) { settings.lockoutFreqToleranceMHz = mhz; }
+    void updateLockoutLearnCount(uint8_t count) { settings.lockoutLearnCount = count; }
+    void updateLockoutUnlearnCount(uint8_t count) { settings.lockoutUnlearnCount = count; }
+    void updateLockoutManualDeleteCount(uint8_t count) { settings.lockoutManualDeleteCount = count; }
+    void updateLockoutLearnIntervalHours(uint8_t hours) { settings.lockoutLearnIntervalHours = hours; }
+    void updateLockoutUnlearnIntervalHours(uint8_t hours) { settings.lockoutUnlearnIntervalHours = hours; }
+    void updateLockoutMaxSignalStrength(uint8_t strength) { settings.lockoutMaxSignalStrength = strength; }
+    void updateLockoutMaxDistanceM(uint16_t meters) { settings.lockoutMaxDistanceM = meters; }
     
     // SD card backup/restore for display settings
     void backupToSD();

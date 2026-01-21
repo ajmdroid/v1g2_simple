@@ -11,6 +11,7 @@
 struct AlertEvent {
   float latitude;
   float longitude;
+  float heading;           // GPS heading when alert occurred (0-360, -1 = unknown)
   Band band;
   uint32_t frequency_khz;  // Exact frequency (e.g., 24150 for K-band)
   uint8_t signalStrength;  // 0-9 (from V1)
@@ -43,6 +44,13 @@ struct LearningCluster {
   int passWithoutAlertCount;  // Times passed through without alert
   time_t lastPassthrough;
   
+  // Interval tracking (JBV1 feature)
+  time_t lastCountedHit;      // Last time a hit was counted toward promotion
+  time_t lastCountedMiss;     // Last time a miss was counted toward demotion
+  
+  // Directional unlearn (JBV1 feature)
+  float createdHeading;       // GPS heading (degrees) when cluster was created (0-360, -1 = unknown)
+  
   // State
   bool isPromoted;          // Has been promoted to lockout
   int promotedLockoutIndex; // Index in LockoutManager (-1 if not promoted)
@@ -53,27 +61,31 @@ private:
   std::vector<LearningCluster> clusters;
   LockoutManager* lockoutManager;  // Pointer to manual lockout manager
   
-  // Thresholds for promotion (alert -> lockout)
+  // Fixed constants (not user-configurable)
   static constexpr int PROMOTION_STOPPED_HIT_COUNT = 2;  // Stopped: 2 alerts (faster)
   static constexpr int PROMOTION_MOVING_HIT_COUNT = 4;   // Moving: 4 alerts (slower)
-  static constexpr int PROMOTION_TIME_WINDOW_DAYS = 2;  // Within 2 days
-  static constexpr float CLUSTER_RADIUS_M = 150.0f;  // Alerts within 150m = same location
-  static constexpr float FREQUENCY_TOLERANCE_KHZ = 25.0f;  // Mute ±25 kHz around exact freq
-  
-  // Thresholds for demotion (lockout -> removed)
-  static constexpr int DEMOTION_PASS_COUNT = 2;      // 2 passes without alert
-  static constexpr int DEMOTION_TIME_WINDOW_DAYS = 7;   // Within 7 days
-  static constexpr float PASSTHROUGH_RADIUS_M = 200.0f; // Slightly larger for detection
-  
-  // Signal strength filtering
-  static constexpr uint8_t MIN_SIGNAL_STRENGTH = 3;  // Ignore weak signals (< 3)
-  
-  // Speed detection (require GPS speed from GPSHandler)
+  static constexpr int PROMOTION_TIME_WINDOW_DAYS = 2;   // Within 2 days
+  static constexpr float CLUSTER_RADIUS_M = 150.0f;      // Alerts within 150m = same location
+  static constexpr int DEMOTION_TIME_WINDOW_DAYS = 7;    // Within 7 days
+  static constexpr float PASSTHROUGH_RADIUS_M = 200.0f;  // Slightly larger for detection
+  static constexpr uint8_t MIN_SIGNAL_STRENGTH = 3;      // Ignore weak signals (< 3)
+  static constexpr float DIRECTIONAL_UNLEARN_TOLERANCE_DEG = 90.0f;  // ±90° = same direction
   static constexpr float STOPPED_SPEED_THRESHOLD_MPS = 2.0f;  // < 2 m/s = stopped
+  static constexpr size_t MAX_CLUSTERS = 50;             // Max learning clusters
+  static constexpr size_t MAX_EVENTS_PER_CLUSTER = 20;   // Max events stored per cluster
   
-  // Storage limits
-  static constexpr size_t MAX_CLUSTERS = 50;         // Max learning clusters
-  static constexpr size_t MAX_EVENTS_PER_CLUSTER = 20;  // Max events stored per cluster
+  // User-configurable settings are read from settingsManager at runtime:
+  // - lockoutEnabled: master enable
+  // - lockoutKaProtection: never learn Ka
+  // - lockoutDirectionalUnlearn: only unlearn in same direction
+  // - lockoutFreqToleranceMHz: frequency tolerance (default 8 MHz)
+  // - lockoutLearnCount: hits to promote (default 3)
+  // - lockoutUnlearnCount: misses to demote auto (default 5)
+  // - lockoutManualDeleteCount: misses to demote manual (default 25)
+  // - lockoutLearnIntervalHours: hours between counted hits (default 4)
+  // - lockoutUnlearnIntervalHours: hours between counted misses (default 4)
+  // - lockoutMaxSignalStrength: don't learn >= this (0=disabled)
+  // - lockoutMaxDistanceM: max distance to learn (default 600m)
   
   // Helper functions
   int findCluster(float lat, float lon, Band band) const;
@@ -95,8 +107,8 @@ public:
   
   // Core functionality
   void recordAlert(float lat, float lon, Band band, uint32_t frequency_khz, 
-                   uint8_t signalStrength, uint16_t duration_ms, bool isMoving);
-  void recordPassthrough(float lat, float lon);  // Called when passing location without alert
+                   uint8_t signalStrength, uint16_t duration_ms, bool isMoving, float heading = -1.0f);
+  void recordPassthrough(float lat, float lon, float heading = -1.0f);  // heading: GPS course (0-360, -1 = unknown)
   void update();  // Call periodically to check promotion/demotion
   
   // Storage

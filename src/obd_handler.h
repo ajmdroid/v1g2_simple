@@ -54,6 +54,7 @@ private:
     static constexpr uint32_t DETECTION_TIMEOUT_MS = 60000;  // 60 seconds to detect module
     
     // ELM327 BLE device names typically contain these strings
+    // Zurich ZR-BT1 = rebranded Innova 1000 (also Hyper Tough HT500, Blcktec 430)
     static constexpr const char* ELM327_NAME_PATTERNS[] = {
         "OBDII",
         "OBD2", 
@@ -62,9 +63,15 @@ private:
         "iCar",
         "KONNWEI",
         "Viecar",
-        "Veepeak"
+        "Veepeak",
+        "ZURICH",
+        "ZR-BT",
+        "Innova",
+        "HT500",
+        "Blcktec",
+        "BlueDriver"
     };
-    static constexpr int ELM327_NAME_PATTERN_COUNT = 8;
+    static constexpr int ELM327_NAME_PATTERN_COUNT = 14;
     
     // Nordic UART Service UUIDs (used by most ELM327 BLE adapters)
     static constexpr const char* NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";

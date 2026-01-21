@@ -99,6 +99,10 @@ public:
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
     
+    // Lockout mute indicator - shows "LOCKOUT" instead of "MUTED" when V1 was auto-muted by GPS lockout
+    void setLockoutMuted(bool lockout) { lockoutMuted = lockout; }
+    bool isLockoutMuted() const { return lockoutMuted; }
+    
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
@@ -166,6 +170,7 @@ private:
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
+    bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

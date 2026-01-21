@@ -565,6 +565,19 @@ void WiFiManager::handleSettingsApi() {
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["obdEnabled"] = settings.obdEnabled;
     
+    // Auto-lockout settings (JBV1-style)
+    doc["lockoutEnabled"] = settings.lockoutEnabled;
+    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
+    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
+    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
+    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
+    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
+    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
+    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
+    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
+    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
+    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
+    
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
@@ -628,6 +641,60 @@ void WiFiManager::handleSettingsSave() {
     if (server.hasArg("obdEnabled")) {
         bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
         settingsManager.setObdEnabled(enabled);
+    }
+    
+    // Auto-lockout settings (JBV1-style)
+    if (server.hasArg("lockoutEnabled")) {
+        bool enabled = server.arg("lockoutEnabled") == "true" || server.arg("lockoutEnabled") == "1";
+        settingsManager.updateLockoutEnabled(enabled);
+    }
+    if (server.hasArg("lockoutKaProtection")) {
+        bool enabled = server.arg("lockoutKaProtection") == "true" || server.arg("lockoutKaProtection") == "1";
+        settingsManager.updateLockoutKaProtection(enabled);
+    }
+    if (server.hasArg("lockoutDirectionalUnlearn")) {
+        bool enabled = server.arg("lockoutDirectionalUnlearn") == "true" || server.arg("lockoutDirectionalUnlearn") == "1";
+        settingsManager.updateLockoutDirectionalUnlearn(enabled);
+    }
+    if (server.hasArg("lockoutFreqToleranceMHz")) {
+        int mhz = server.arg("lockoutFreqToleranceMHz").toInt();
+        mhz = std::max(1, std::min(mhz, 50));  // Clamp 1-50 MHz
+        settingsManager.updateLockoutFreqToleranceMHz(mhz);
+    }
+    if (server.hasArg("lockoutLearnCount")) {
+        int count = server.arg("lockoutLearnCount").toInt();
+        count = std::max(1, std::min(count, 10));
+        settingsManager.updateLockoutLearnCount(count);
+    }
+    if (server.hasArg("lockoutUnlearnCount")) {
+        int count = server.arg("lockoutUnlearnCount").toInt();
+        count = std::max(1, std::min(count, 50));
+        settingsManager.updateLockoutUnlearnCount(count);
+    }
+    if (server.hasArg("lockoutManualDeleteCount")) {
+        int count = server.arg("lockoutManualDeleteCount").toInt();
+        count = std::max(1, std::min(count, 100));
+        settingsManager.updateLockoutManualDeleteCount(count);
+    }
+    if (server.hasArg("lockoutLearnIntervalHours")) {
+        int hours = server.arg("lockoutLearnIntervalHours").toInt();
+        hours = std::max(0, std::min(hours, 24));
+        settingsManager.updateLockoutLearnIntervalHours(hours);
+    }
+    if (server.hasArg("lockoutUnlearnIntervalHours")) {
+        int hours = server.arg("lockoutUnlearnIntervalHours").toInt();
+        hours = std::max(0, std::min(hours, 24));
+        settingsManager.updateLockoutUnlearnIntervalHours(hours);
+    }
+    if (server.hasArg("lockoutMaxSignalStrength")) {
+        int strength = server.arg("lockoutMaxSignalStrength").toInt();
+        strength = std::max(0, std::min(strength, 9));  // 0=disabled, 1-9=threshold
+        settingsManager.updateLockoutMaxSignalStrength(strength);
+    }
+    if (server.hasArg("lockoutMaxDistanceM")) {
+        int meters = server.arg("lockoutMaxDistanceM").toInt();
+        meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
+        settingsManager.updateLockoutMaxDistanceM(meters);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
