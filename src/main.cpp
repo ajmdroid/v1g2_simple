@@ -146,7 +146,10 @@ static uint8_t volumeFadeOriginalVol = 0xFF;      // Original main volume before
 static uint8_t volumeFadeOriginalMuteVol = 0;     // Original muted volume (to pass to setVolume)
 static bool volumeFadeActive = false;             // True if volume has been faded down
 static bool volumeFadeCommandSent = false;        // One-shot flag to send fade command once
-static uint32_t volumeFadeAlertId = 0;            // Track which alert we faded for (band<<16|freq)
+// Track seen frequencies during fade session - new frequencies restore volume, priority shuffling stays faded
+static constexpr int MAX_FADE_SEEN_FREQS = 12;    // Max alerts V1 can track
+static uint16_t volumeFadeSeenFreqs[MAX_FADE_SEEN_FREQS] = {0};
+static int volumeFadeSeenCount = 0;
 
 // Speed-based volume tracking - boost volume at highway speeds
 // NOTE: Speed boost and volume fade can interact. Speed boost captures the pre-boost volume,
@@ -1102,21 +1105,31 @@ void processBLEData() {
                 const V1Settings& fadeSettings = settingsManager.get();
                 if (fadeSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
                     unsigned long now = millis();
-                    uint32_t currentAlertId = makeAlertId(priority.band, (uint16_t)priority.frequency);
+                    uint16_t currentFreq = (uint16_t)priority.frequency;
                     
-                    // SAFETY: If priority alert changed while faded, restore volume for new threat
-                    if (volumeFadeActive && volumeFadeAlertId != currentAlertId) {
-                        DEBUG_LOGF("[VolumeFade] New priority threat! Restoring volume to %d\n", volumeFadeOriginalVol);
+                    // Check if this is a new frequency we haven't seen during this fade session
+                    bool isNewFrequency = true;
+                    for (int i = 0; i < volumeFadeSeenCount; i++) {
+                        if (volumeFadeSeenFreqs[i] == currentFreq) {
+                            isNewFrequency = false;
+                            break;
+                        }
+                    }
+                    
+                    // New frequency while faded -> restore volume, restart fade timer
+                    if (volumeFadeActive && isNewFrequency) {
+                        DEBUG_LOGF("[VolumeFade] New frequency %d! Restoring volume to %d\n", currentFreq, volumeFadeOriginalVol);
                         if (volumeFadeOriginalVol != 0xFF) {
                             bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
                         }
-                        // Reset to start fresh fade timer for new alert - keep the same original volume
-                        // since we just restored it (don't re-capture state.mainVolume which might not have updated yet)
+                        // Restart fade timer but keep the same original volume baseline
                         volumeFadeAlertStartMs = now;
-                        // Keep volumeFadeOriginalVol - it's the correct baseline
-                        volumeFadeAlertId = currentAlertId;
                         volumeFadeActive = false;
                         volumeFadeCommandSent = false;
+                        // Add this new frequency to our seen list
+                        if (volumeFadeSeenCount < MAX_FADE_SEEN_FREQS) {
+                            volumeFadeSeenFreqs[volumeFadeSeenCount++] = currentFreq;
+                        }
                     }
                     
                     // Start tracking on first alert of a session
@@ -1132,9 +1145,11 @@ void processBLEData() {
                             DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d\n", volumeFadeOriginalVol);
                         }
                         volumeFadeOriginalMuteVol = state.muteVolume;  // Capture muted volume too
-                        volumeFadeAlertId = currentAlertId;
                         volumeFadeActive = false;
                         volumeFadeCommandSent = false;
+                        // Track this frequency as the first one in this session
+                        volumeFadeSeenFreqs[0] = currentFreq;
+                        volumeFadeSeenCount = 1;
                     }
                     
                     // Check if fade delay has elapsed
@@ -1164,7 +1179,7 @@ void processBLEData() {
                     volumeFadeOriginalMuteVol = 0;
                     volumeFadeActive = false;
                     volumeFadeCommandSent = false;
-                    volumeFadeAlertId = 0;
+                    volumeFadeSeenCount = 0;
                 }
 
                 // Voice alerts: announce new priority alert when no phone app connected
@@ -1481,7 +1496,7 @@ void processBLEData() {
                 volumeFadeOriginalMuteVol = 0;
                 volumeFadeActive = false;
                 volumeFadeCommandSent = false;
-                volumeFadeAlertId = 0;
+                volumeFadeSeenCount = 0;  // Clear seen frequencies for next session
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
