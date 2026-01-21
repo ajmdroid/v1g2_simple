@@ -25,6 +25,9 @@
 #include <FS.h>
 #include "../include/color_themes.h"
 
+// Forward declaration
+class V1ProfileManager;
+
 // WiFi mode options (prefixed to avoid conflicts with ESP SDK)
 enum WiFiModeSetting {
     V1_WIFI_OFF = 0,        // WiFi disabled
@@ -411,6 +414,9 @@ public:
     void backupToSD();
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
+    
+    // Validate profile references exist - clear invalid ones
+    void validateProfileReferences(V1ProfileManager& profileMgr);
 
 private:
     V1Settings settings;

@@ -3548,11 +3548,11 @@ void V1Display::drawKittScanner() {
 #endif
     
     const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int effectiveHeight = getEffectiveScreenHeight();
     const int eyeWidth = 50;       // Width of the bright center
     const int tailLength = 100;    // Length of the fading trail
     const int barHeight = 16;      // Height of the scanner bar
-    const int barY = effectiveHeight - 60;  // Vertically centered in frequency area
+    // Center vertically in full screen height (172 pixels), not just primary zone
+    const int barY = (SCREEN_HEIGHT - barHeight) / 2;
     
     // Animation speed: faster sweep (~0.7 second full cycle)
     const float speedPerFrame = 0.040f;

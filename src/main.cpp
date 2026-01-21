@@ -1666,6 +1666,10 @@ void setup() {
         v1ProfileManager.begin(storageManager.getFilesystem());
         audio_init_sd();  // Initialize SD-based frequency voice audio
         
+        // Validate profile references in auto-push slots
+        // Clear references to profiles that don't exist
+        settingsManager.validateProfileReferences(v1ProfileManager);
+        
         // Retry settings restore now that SD is mounted
         // (settings.begin() runs before storage, so restore may have failed)
         if (settingsManager.checkAndRestoreFromSD()) {

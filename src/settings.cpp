@@ -15,6 +15,7 @@
 
 #include "settings.h"
 #include "storage_manager.h"
+#include "v1_profiles.h"
 #include <ArduinoJson.h>
 #include <algorithm>
 
@@ -1213,4 +1214,35 @@ bool SettingsManager::restoreFromSD() {
     
     Serial.println("[Settings] ✅ Full restore from SD backup complete!");
     return true;
+}
+
+void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
+    // Validate that profile names in auto-push slots actually exist
+    // If not, clear them to prevent repeated "file not found" errors
+    bool needsSave = false;
+    
+    auto validateSlot = [&](AutoPushSlot& slot, const char* slotName) {
+        if (slot.profileName.length() > 0) {
+            V1Profile testProfile;
+            if (!profileMgr.loadProfile(slot.profileName, testProfile)) {
+                Serial.printf("[Settings] WARNING: Profile '%s' for %s does not exist - clearing reference\n",
+                             slot.profileName.c_str(), slotName);
+                slot.profileName = "";
+                needsSave = true;
+            } else {
+                Serial.printf("[Settings] Profile '%s' for %s validated OK\n",
+                             slot.profileName.c_str(), slotName);
+            }
+        }
+    };
+    
+    validateSlot(settings.slot0_default, "Slot 0 (Default)");
+    validateSlot(settings.slot1_highway, "Slot 1 (Highway)");
+    validateSlot(settings.slot2_comfort, "Slot 2 (Comfort)");
+    
+    if (needsSave) {
+        save();
+        backupToSD();  // Also update SD backup
+        Serial.println("[Settings] Cleared invalid profile references and saved");
+    }
 }

@@ -4,6 +4,7 @@
 
 #include "v1_profiles.h"
 #include <ArduinoJson.h>
+#include <vector>
 
 // Global instance
 V1ProfileManager v1ProfileManager;
@@ -70,9 +71,74 @@ V1ProfileManager::V1ProfileManager()
     , currentValid(false) {
 }
 
+void V1ProfileManager::recoverInterruptedSaves() {
+    // Scan for .tmp and .bak files that indicate interrupted saves
+    // .tmp = incomplete new save (delete it)
+    // .bak without corresponding .json = interrupted rename (restore it)
+    
+    File dir = fs->open(profileDir);
+    if (!dir || !dir.isDirectory()) {
+        return;
+    }
+    
+    std::vector<String> tmpFiles;
+    std::vector<String> bakFiles;
+    std::vector<String> jsonFiles;
+    
+    File entry;
+    while ((entry = dir.openNextFile())) {
+        String name = entry.name();
+        entry.close();
+        
+        if (name.endsWith(".tmp")) {
+            tmpFiles.push_back(name);
+        } else if (name.endsWith(".bak")) {
+            bakFiles.push_back(name);
+        } else if (name.endsWith(".json")) {
+            jsonFiles.push_back(name);
+        }
+    }
+    dir.close();
+    
+    // Remove incomplete .tmp files (interrupted during write)
+    for (const String& tmp : tmpFiles) {
+        String fullPath = profileDir + "/" + tmp;
+        Serial.printf("[V1Profiles] Removing incomplete temp file: %s\n", fullPath.c_str());
+        fs->remove(fullPath);
+    }
+    
+    // Check for orphaned .bak files (main file missing after rename)
+    for (const String& bak : bakFiles) {
+        // Get the corresponding .json filename
+        String jsonName = bak.substring(0, bak.length() - 4);  // Remove .bak
+        
+        // Check if the main .json file exists
+        bool hasJson = false;
+        for (const String& json : jsonFiles) {
+            if (json == jsonName) {
+                hasJson = true;
+                break;
+            }
+        }
+        
+        if (!hasJson) {
+            // Main file missing! Restore from backup
+            String bakPath = profileDir + "/" + bak;
+            String jsonPath = profileDir + "/" + jsonName;
+            Serial.printf("[V1Profiles] RECOVERY: Main file missing, restoring from backup: %s -> %s\n", 
+                bakPath.c_str(), jsonPath.c_str());
+            if (fs->rename(bakPath, jsonPath)) {
+                Serial.println("[V1Profiles] Recovery successful!");
+            } else {
+                Serial.println("[V1Profiles] Recovery FAILED - backup rename failed");
+            }
+        }
+    }
+}
+
 bool V1ProfileManager::begin(fs::FS* filesystem) {
     if (!filesystem) {
-        Serial.println("[V1Profiles] No filesystem provided");
+        Serial.println("[V1Profiles] No filesystem provided");;
         return false;
     }
     
@@ -86,6 +152,9 @@ bool V1ProfileManager::begin(fs::FS* filesystem) {
         }
         Serial.println("[V1Profiles] Created profiles directory");
     }
+    
+    // Run startup integrity check - recover any interrupted saves
+    recoverInterruptedSaves();
     
     ready = true;
     Serial.println("[V1Profiles] Initialized");
@@ -138,10 +207,24 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     }
     
     String path = profilePath(name);
+    String bakPath = path + ".bak";
+    
     File file = fs->open(path, FILE_READ);
     if (!file) {
-        Serial.printf("[V1Profiles] Failed to open profile: %s\n", path.c_str());
-        return false;
+        // Try to recover from backup file
+        if (fs->exists(bakPath)) {
+            Serial.printf("[V1Profiles] Main file missing, attempting recovery from backup: %s\n", bakPath.c_str());
+            // Rename backup to main file
+            if (fs->rename(bakPath, path)) {
+                Serial.println("[V1Profiles] Restored profile from backup!");
+                file = fs->open(path, FILE_READ);
+            }
+        }
+        
+        if (!file) {
+            Serial.printf("[V1Profiles] Profile not found: %s (no backup available)\n", path.c_str());
+            return false;
+        }
     }
     
     // Hard cap JSON size to avoid excessive allocation on small devices
