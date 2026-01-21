@@ -45,10 +45,32 @@
 // Gate verbose logs behind debug switches (keep off in normal builds)
 static constexpr bool DEBUG_LOGS = false;          // General debug logging (packet dumps, status)
 static constexpr bool AUTOPUSH_DEBUG_LOGS = false;  // AutoPush-specific verbose logs
+static constexpr bool PERF_TIMING_LOGS = false;    // Hot path timing measurements (enable for bench testing)
 #define DEBUG_LOGF(...) do { if (DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
 #define DEBUG_LOGLN(msg) do { if (DEBUG_LOGS) SerialLog.println(msg); } while (0)
 #define AUTO_PUSH_LOGF(...) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { if (AUTOPUSH_DEBUG_LOGS) SerialLog.println(msg); } while (0)
+
+// Performance timing helpers - measure critical path durations
+static unsigned long perfTimingAccum = 0;
+static unsigned long perfTimingCount = 0;
+static unsigned long perfTimingMax = 0;
+static unsigned long perfLastReport = 0;
+#define V1_PERF_START() unsigned long _perfStart = micros()
+#define V1_PERF_END(label) do { \
+    if (PERF_TIMING_LOGS) { \
+        unsigned long _perfDur = micros() - _perfStart; \
+        perfTimingAccum += _perfDur; \
+        perfTimingCount++; \
+        if (_perfDur > perfTimingMax) perfTimingMax = _perfDur; \
+        if (millis() - perfLastReport > 5000) { \
+            SerialLog.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n", \
+                label, perfTimingAccum/perfTimingCount, perfTimingMax, perfTimingCount); \
+            perfTimingAccum = 0; perfTimingCount = 0; perfTimingMax = 0; \
+            perfLastReport = millis(); \
+        } \
+    } \
+} while(0)
 
 // Global objects
 V1BLEClient bleClient;
@@ -70,7 +92,7 @@ unsigned long lastStatusUpdate = 0;
 unsigned long lastLvTick = 0;
 unsigned long lastRxMillis = 0;
 unsigned long lastDisplayDraw = 0;  // Throttle display updates
-static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 15;  // Min 15ms between draws (~66fps) for snappier response
+static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 50;  // Min 50ms between draws (~20fps) - flush alone takes 26ms
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
 // Color preview state machine to keep demo visible and cycle bands
@@ -113,6 +135,12 @@ static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce w
 static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
 static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
+
+// Direction change throttling - stop announcing if arrow bounces too much
+static uint8_t directionChangeCount = 0;        // Count of direction changes for current alert
+static unsigned long directionChangeWindowStart = 0;  // When the throttle window started
+static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;  // 10 second window
+static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
 
 // Secondary alert tracking - announce non-priority alerts once
 // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
@@ -1058,6 +1086,10 @@ void processBLEData() {
                     bool priorityAnnounced = false;
                     if (alertChanged && cooldownPassed) {
                         // New alert - full announcement based on mode
+                        // Reset direction change throttle for new alert
+                        directionChangeCount = 0;
+                        directionChangeWindowStart = now;
+                        
                         AlertBand audioBand;
                         bool validBand = true;
                         switch (priority.band) {
@@ -1087,15 +1119,34 @@ void processBLEData() {
                     } else if (!alertChanged && directionChanged && cooldownPassed && 
                                settings.voiceDirectionEnabled) {
                         // Same alert changed direction - announce direction + bogey count if changed
-                        uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
-                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
-                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
-                        play_direction_only(audioDir, bogeyCountToAnnounce);
+                        // But throttle if direction has been bouncing too much
+                        
+                        // Check if throttle window expired - reset counter
+                        if (now - directionChangeWindowStart > DIRECTION_THROTTLE_WINDOW_MS) {
+                            directionChangeCount = 0;
+                            directionChangeWindowStart = now;
+                        }
+                        
+                        // Increment change count
+                        directionChangeCount++;
+                        
+                        // Only announce if under throttle limit
+                        if (directionChangeCount <= DIRECTION_CHANGE_LIMIT) {
+                            uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                            DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/%d]\n", 
+                                       currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount,
+                                       directionChangeCount, DIRECTION_CHANGE_LIMIT);
+                            play_direction_only(audioDir, bogeyCountToAnnounce);
+                            lastVoiceAlertTime = now;
+                            lastPriorityAnnouncementTime = now;
+                            priorityAnnounced = true;
+                        } else {
+                            DEBUG_LOGF("[VoiceAlert] Direction change THROTTLED: freq=%u changes=%d in window\n",
+                                       currentFreq, directionChangeCount);
+                        }
+                        // Always update tracking even if throttled
                         lastVoiceAlertDirection = priority.direction;
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                        lastVoiceAlertTime = now;
-                        lastPriorityAnnouncementTime = now;
-                        priorityAnnounced = true;
                     } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
                                bogeyCountCooldownPassed && settings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
@@ -1265,7 +1316,9 @@ void processBLEData() {
 
                 // Update display FIRST for lowest latency
                 // Pass all alerts for multi-alert card display
+                V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
+                V1_PERF_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
                 persistedAlert = priority;
@@ -1309,19 +1362,25 @@ void processBLEData() {
                     unsigned long persistMs = persistSec * 1000UL;
                     if (alertPersistenceActive && (now - alertClearedTime) < persistMs) {
                         // Show persisted alert in dark grey
+                        V1_PERF_START();
                         display.updatePersisted(persistedAlert, state);
+                        V1_PERF_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
                         if (alertPersistenceActive) {
                             alertPersistenceActive = false;
                         }
+                        V1_PERF_START();
                         display.update(state);
+                        V1_PERF_END("display.resting");
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
                     alertPersistenceActive = false;
                     alertClearedTime = 0;
+                    V1_PERF_START();
                     display.update(state);
+                    V1_PERF_END("display.resting");
                 }
             }
         }

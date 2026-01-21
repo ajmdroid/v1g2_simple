@@ -55,6 +55,16 @@ static inline int getEffectiveScreenHeight() {
     return PRIMARY_ZONE_HEIGHT;  // Always use fixed primary zone height
 }
 
+// Debug timing for display operations (set to true to profile display)
+static constexpr bool DISPLAY_PERF_TIMING = false;  // Disable for production
+static unsigned long _dispPerfStart = 0;
+#define DISP_PERF_START() do { if (DISPLAY_PERF_TIMING) _dispPerfStart = micros(); } while(0)
+#define DISP_PERF_LOG(label) do { if (DISPLAY_PERF_TIMING) { \
+    unsigned long _dur = micros() - _dispPerfStart; \
+    if (_dur > 5000) Serial.printf("[DISP] %s: %luus\n", label, _dur); \
+    _dispPerfStart = micros(); \
+} } while(0)
+
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
 static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
     uint8_t r = (c >> 11) & 0x1F;
@@ -2507,7 +2517,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         lastSecondary[i] = allAlerts[i];
     }
     
+    DISP_PERF_START();
     drawBaseFrame();
+    DISP_PERF_LOG("drawBaseFrame");
 
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
@@ -2520,29 +2532,35 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
         drawRssiIndicator(bleClient.getConnectionRssi());
     }
+    DISP_PERF_LOG("counters+vol");
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
     drawFrequency(priority.frequency, priority.band, state.muted);
+    DISP_PERF_LOG("drawFrequency");
     drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
+    DISP_PERF_LOG("bands+bars");
     
     // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
     // (arrowsToShow already computed above for change detection)
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
+    DISP_PERF_LOG("arrows+icons");
     
     // Force card redraw since drawBaseFrame cleared the screen
     forceCardRedraw = true;
     
     // Draw secondary alert cards at bottom
     drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
+    DISP_PERF_LOG("cards");
     
     // Keep g_multiAlertMode true while in multi-alert - only reset when going to single-alert mode
 
 #if defined(DISPLAY_WAVESHARE_349)
     tft->flush();
+    DISP_PERF_LOG("flush");
 #endif
 
     lastAlert = priority;
@@ -2868,11 +2886,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
         // === TOP ROW: Direction arrow + Band + Frequency ===
-        int topRowY = cardY + 8;  // Top row starts 8px from card top (more room for text)
+        // Center content in the area above the meter (34px height)
+        // Text (~16px) and arrow should be vertically centered
+        const int contentCenterY = cardY + 17;  // Center of 34px area above meter
+        int topRowY = cardY + 9;  // Text top (centered: 17 - 8 = 9)
         
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
-        int arrowCY = topRowY + 10;  // Center arrow vertically in top row
+        int arrowCY = contentCenterY;  // Arrow centered in content area
         
         if (alert.direction & DIR_FRONT) {
             tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
