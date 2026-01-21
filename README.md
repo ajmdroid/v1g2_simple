@@ -185,6 +185,16 @@ Voice alert options:
 
 - **Enable Voice Alerts:** Toggle spoken announcements on/off
 - **Mute Voice at Volume 0:** Silence alerts when V1 volume is 0 (warning still plays)
+- **Volume Fade:** Reduce V1 volume after initial alert, restore for new threats
+- **Speed-Based Volume:** Boost V1 volume at highway speeds (requires OBD or GPS)
+
+### GPS & OBD (/gps)
+
+Speed and location sources:
+
+- **GPS Status:** View current position, speed, heading, and satellite info
+- **OBD-II:** Connect to ELM327 BLE adapter for accurate vehicle speed
+- **Lockout Management:** View/clear learned lockout zones
 
 ---
 

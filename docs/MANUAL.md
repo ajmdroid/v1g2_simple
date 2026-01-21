@@ -14,7 +14,7 @@
 ### v2.4.4 - OBD & Volume Features
 - **OBD-II Integration:** Connect to ELM327 Bluetooth LE adapters for vehicle speed. More accurate than GPS in tunnels/cities. Supports common adapters (OBDII, Vgate, iCar, KONNWEI, Veepeak, etc.). Configure via `/gps` page.
 - **Speed-Based Volume Boost:** Automatically increase V1 alert volume when traveling above configurable speed threshold (uses OBD or GPS). Louder alerts at highway speeds where road noise is higher. Configure via `/audio` page.
-- **Volume Fade:** Automatically reduce V1 alert volume after initial announcement. Configurable delay (1-10s) and target volume (0-9). Helps reduce annoyance on long alerts. Configure via `/audio` page.
+- **Volume Fade:** Automatically reduce V1 alert volume after initial announcement. Smart new-frequency detection restores volume for genuinely new threats while staying faded for priority shuffling between known signals. V1 mute always honored. Configure via `/audio` page.
 
 ### v2.3.4 - UI Improvements
 - **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) and V1 profiles to JSON and restore from backup via web UI (`/settings` page).
@@ -815,7 +815,13 @@ Automatically reduces V1's alert volume after the initial announcement period. U
 1. Alert starts → V1 alerts at normal volume
 2. After delay period → Volume reduced to target level
 3. Alert clears → Volume restored to original
-4. **New threat detection:** If priority alert changes (new frequency/band), volume immediately restores to full
+4. User mutes on V1 → Volume restored, tracking resets (V1 mute is always honored)
+
+**Smart New Threat Detection:**
+- System tracks all frequencies seen during a fade session (up to 12)
+- **New frequency appears** → Volume restored to full, fade timer restarts
+- **Priority shuffles between known frequencies** → Stays faded (no flip-flop)
+- Example: 35.501 and 35.515 both faded, new 35.490 appears → full volume for new threat
 
 **NVS Keys:** `volFadeEn`, `volFadeSec`, `volFadeVol`
 
