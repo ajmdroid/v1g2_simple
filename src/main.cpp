@@ -32,6 +32,7 @@
 #include "v1_profiles.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include "debug_logger.h"
 #include "audio_beep.h"
 #include "gps_handler.h"
 #include "lockout_manager.h"
@@ -709,6 +710,10 @@ static void processAutoPush() {
 void startWifi() {
     if (wifiManager.isSetupModeActive()) return;
     
+    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+        debugLogger.log(DebugLogCategory::Wifi, "startWifi() requested");
+    }
+
     SerialLog.println("[WiFi] Starting WiFi (manual start)...");
     wifiManager.begin();
     
@@ -1744,6 +1749,18 @@ void setup() {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
 
+    // Initialize debug logger after storage is mounted
+    debugLogger.begin();
+    {
+        DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system};
+        debugLogger.setFilter(filter);
+    }
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s)", storageManager.statusText().c_str());
+    }
+
     SerialLog.println("==============================");
     SerialLog.println("WiFi Configuration:");
     SerialLog.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
@@ -1751,8 +1768,18 @@ void setup() {
     SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
     SerialLog.println("==============================");
     
-    // WiFi is off by default; long-press BOOT (~2s) to start the AP when needed
-    SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
+    // WiFi startup behavior - either auto-start or wait for BOOT button
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start enabled (dev setting)");
+        }
+    } else {
+        SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start disabled (manual BOOT press required)");
+        }
+    }
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
     SerialLog.println("Initializing touch handler...");
@@ -1804,7 +1831,23 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
+    // Auto-start WiFi if enabled in dev settings
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled - starting AP now...");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start: starting AP");
+        }
+        startWifi();
+        SerialLog.println("Setup complete - BLE scanning, WiFi auto-started");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi auto-started)");
+        }
+    } else {
+        SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi idle until BOOT long-press)");
+        }
+    }
 }
 
 void loop() {

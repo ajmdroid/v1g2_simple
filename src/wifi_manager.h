@@ -122,6 +122,9 @@ private:
     void handleDebugEvents();
     void handleDebugEventsClear();
     void handleDebugEnable();
+    void handleDebugLogsMeta();
+    void handleDebugLogsDownload();
+    void handleDebugLogsClear();
     void handleSettingsBackup();
     void handleSettingsRestore();
     void handleObdStatus();

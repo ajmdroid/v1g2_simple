@@ -36,6 +36,16 @@ enum WiFiModeSetting {
     V1_WIFI_APSTA = 3       // Both modes
 };
 
+// Debug logging category configuration
+struct DebugLogConfig {
+    bool alerts;
+    bool wifi;
+    bool ble;
+    bool gps;
+    bool obd;
+    bool system;
+};
+
 // V1 operating modes (from ESP library)
 enum V1Mode {
     V1_MODE_UNKNOWN = 0x00,
@@ -123,6 +133,16 @@ struct V1Settings {
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
     bool kittScannerEnabled;     // KITT scanner animation on resting screen (easter egg)
+    
+    // Development/Debug settings
+    bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
+    bool enableDebugLogging;     // Write debug logs to SD card
+        bool logAlerts;              // Include alert events in debug log
+        bool logWifi;                // Include WiFi/AP events in debug log
+        bool logBle;                 // Include BLE/proxy events in debug log
+        bool logGps;                 // Include GPS events in debug log
+        bool logObd;                 // Include OBD events in debug log
+        bool logSystem;              // Include system/storage/events in debug log
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -259,6 +279,12 @@ struct V1Settings {
         speedVolumeEnabled(false),       // Speed-based volume disabled by default
         speedVolumeThresholdMph(45),     // Boost above 45 mph (highway speeds)
         speedVolumeBoost(2),             // Add 2 volume levels when above threshold
+        logAlerts(true),                 // Alert logging on by default
+        logWifi(true),                   // WiFi logging on by default
+        logBle(false),                   // BLE logging off by default
+        logGps(false),                   // GPS logging off by default
+        logObd(false),                   // OBD logging off by default
+        logSystem(true),                 // System/storage logging on by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -353,6 +379,17 @@ public:
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
     void setKittScannerEnabled(bool enabled);
+    void setEnableWifiAtBoot(bool enable);
+    void setEnableDebugLogging(bool enable);
+    void setLogAlerts(bool enable);
+    void setLogWifi(bool enable);
+    void setLogBle(bool enable);
+    void setLogGps(bool enable);
+    void setLogObd(bool enable);
+    void setLogSystem(bool enable);
+    DebugLogConfig getDebugLogConfig() const {
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem };
+    }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);

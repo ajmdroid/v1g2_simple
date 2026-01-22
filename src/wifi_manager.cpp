@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "display.h"
 #include "storage_manager.h"
+#include "debug_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
 #include "obd_handler.h"
@@ -33,6 +34,12 @@ static constexpr bool WIFI_DEBUG_FS_DUMP = false;
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
+
+static void applyDebugLogFilterFromSettings() {
+    DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system};
+    debugLogger.setFilter(filter);
+}
 
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
@@ -186,6 +193,10 @@ bool WiFiManager::startSetupMode() {
         Serial.printf("[SetupMode] AP auto-timeout set to %lu ms\n", WIFI_AP_AUTO_TIMEOUT_MS);
     }
 
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::Wifi, "Setup mode AP started");
+    }
+
     return true;
 }
 
@@ -199,6 +210,10 @@ bool WiFiManager::stopSetupMode(bool manual) {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
     setupModeState = SETUP_MODE_OFF;
+
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::Wifi, manual ? "Setup mode AP stopped (manual)" : "Setup mode AP stopped (timeout)");
+    }
 
     EVENT_LOG(EVT_WIFI_AP_STOP, 0);
     EVENT_LOG(EVT_SETUP_MODE_EXIT, manual ? 1 : 0);
@@ -415,6 +430,9 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
+    server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
+    server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
+    server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
     
     // OBD-II API routes
     server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
@@ -592,6 +610,17 @@ void WiFiManager::handleSettingsApi() {
     doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
     doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
     doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
+    
+    // Development/Debug settings
+    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableDebugLogging"] = settings.enableDebugLogging;
+    doc["logAlerts"] = settings.logAlerts;
+    doc["logWifi"] = settings.logWifi;
+    doc["logBle"] = settings.logBle;
+    doc["logGps"] = settings.logGps;
+    doc["logObd"] = settings.logObd;
+    doc["logSystem"] = settings.logSystem;
+    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -1445,6 +1474,30 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("kittScannerEnabled")) {
         settingsManager.setKittScannerEnabled(server.arg("kittScannerEnabled") == "true" || server.arg("kittScannerEnabled") == "1");
     }
+    if (server.hasArg("enableWifiAtBoot")) {
+        settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1");
+    }
+    if (server.hasArg("enableDebugLogging")) {
+        settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1");
+    }
+    if (server.hasArg("logAlerts")) {
+        settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1");
+    }
+    if (server.hasArg("logWifi")) {
+        settingsManager.setLogWifi(server.arg("logWifi") == "true" || server.arg("logWifi") == "1");
+    }
+    if (server.hasArg("logBle")) {
+        settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1");
+    }
+    if (server.hasArg("logGps")) {
+        settingsManager.setLogGps(server.arg("logGps") == "true" || server.arg("logGps") == "1");
+    }
+    if (server.hasArg("logObd")) {
+        settingsManager.setLogObd(server.arg("logObd") == "true" || server.arg("logObd") == "1");
+    }
+    if (server.hasArg("logSystem")) {
+        settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1");
+    }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();
@@ -1530,6 +1583,13 @@ void WiFiManager::handleDisplayColorsSave() {
 
     // Persist all color/visibility changes
     settingsManager.save();
+
+    // Apply debug logging runtime state immediately
+    applyDebugLogFilterFromSettings();
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabled()) {
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled via /api/displaycolors (size=%u bytes)", (unsigned int)debugLogger.size());
+    }
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
@@ -1604,6 +1664,14 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["kittScannerEnabled"] = s.kittScannerEnabled;
+    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableDebugLogging"] = s.enableDebugLogging;
+    doc["logAlerts"] = s.logAlerts;
+    doc["logWifi"] = s.logWifi;
+    doc["logBle"] = s.logBle;
+    doc["logGps"] = s.logGps;
+    doc["logObd"] = s.logObd;
+    doc["logSystem"] = s.logSystem;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -1651,6 +1719,73 @@ void WiFiManager::handleDebugEnable() {
     }
     perfMetricsSetDebug(enable);
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
+}
+
+void WiFiManager::handleDebugLogsMeta() {
+    if (!checkRateLimit()) return;
+
+    JsonDocument doc;
+    doc["enabled"] = settingsManager.get().enableDebugLogging;
+    doc["storageReady"] = storageManager.isReady();
+    doc["onSdCard"] = storageManager.isSDCard();
+    doc["exists"] = debugLogger.exists();
+    doc["sizeBytes"] = static_cast<uint32_t>(debugLogger.size());
+    doc["maxSizeBytes"] = static_cast<uint32_t>(DEBUG_LOG_MAX_BYTES);
+    doc["path"] = DEBUG_LOG_PATH;
+    DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+    doc["logAlerts"] = cfg.alerts;
+    doc["logWifi"] = cfg.wifi;
+    doc["logBle"] = cfg.ble;
+    doc["logGps"] = cfg.gps;
+    doc["logObd"] = cfg.obd;
+    doc["logSystem"] = cfg.system;
+
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleDebugLogsDownload() {
+    if (!checkRateLimit()) return;
+
+    if (!storageManager.isReady()) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"Storage not available\"}");
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(DEBUG_LOG_PATH)) {
+        server.send(404, "application/json", "{\"success\":false,\"error\":\"Log file not found\"}");
+        return;
+    }
+
+    File f = fs->open(DEBUG_LOG_PATH, FILE_READ);
+    if (!f) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open log\"}");
+        return;
+    }
+
+    server.sendHeader("Content-Type", "text/plain");
+    server.sendHeader("Content-Disposition", "attachment; filename=\"debug.log\"");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.streamFile(f, "text/plain");
+    f.close();
+}
+
+void WiFiManager::handleDebugLogsClear() {
+    if (!checkRateLimit()) return;
+
+    bool ok = debugLogger.clear();
+
+    JsonDocument doc;
+    doc["success"] = ok;
+    doc["enabled"] = debugLogger.isEnabled();
+    doc["exists"] = debugLogger.exists();
+    doc["sizeBytes"] = static_cast<uint32_t>(debugLogger.size());
+
+    String json;
+    serializeJson(doc, json);
+    server.send(ok ? 200 : 500, "application/json", json);
 }
 
 // ============= Settings Backup/Restore API Handlers =============
@@ -1714,6 +1849,10 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["kittScannerEnabled"] = s.kittScannerEnabled;
+    
+    // Development/Debug
+    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableDebugLogging"] = s.enableDebugLogging;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -1873,6 +2012,16 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
     if (doc["kittScannerEnabled"].is<bool>()) s.kittScannerEnabled = doc["kittScannerEnabled"];
     
+    // Development/Debug
+    if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
+    if (doc["enableDebugLogging"].is<bool>()) s.enableDebugLogging = doc["enableDebugLogging"];
+    if (doc["logAlerts"].is<bool>()) s.logAlerts = doc["logAlerts"];
+    if (doc["logWifi"].is<bool>()) s.logWifi = doc["logWifi"];
+    if (doc["logBle"].is<bool>()) s.logBle = doc["logBle"];
+    if (doc["logGps"].is<bool>()) s.logGps = doc["logGps"];
+    if (doc["logObd"].is<bool>()) s.logObd = doc["logObd"];
+    if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
+    
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
     if (doc["voiceDirectionEnabled"].is<bool>()) s.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
@@ -1955,6 +2104,13 @@ void WiFiManager::handleSettingsRestore() {
     
     // Save to flash
     settingsManager.save();
+
+    // Re-apply debug logging runtime state based on restored settings
+    applyDebugLogFilterFromSettings();
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::System, "Debug logging enabled via settings restore");
+    }
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     

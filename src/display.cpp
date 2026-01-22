@@ -13,6 +13,7 @@
 #include "ble_client.h"
 #include "audio_beep.h"
 #include <esp_heap_caps.h>
+#include <cstring>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
 // OpenFontRender for antialiased TrueType rendering
@@ -38,6 +39,9 @@ static constexpr int PRIMARY_ZONE_HEIGHT = 95;  // Fixed height for primary disp
 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
+
+// Force frequency cache invalidation - set when screen is cleared to ensure redraw
+static bool s_forceFrequencyRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -708,6 +712,7 @@ void V1Display::drawBaseFrame() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
+    s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -977,115 +982,8 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     }
 }
 
-// Modern Montserrat Bold bogey counter
-void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
-    const V1Settings& s = settingsManager.get();
-    
-    // Special case: lowercase 'l' (logic mode) - draw as bottom half of 'L' like V1 display
-    // Render full 'L' then mask off the top half for consistent styling
-    if (symbol == 'l') {
-        const int fontSize = 60;
-        
-        char buf[3] = {'L', 0, 0};
-        if (showDot) {
-            buf[1] = '.';
-        }
-        
-        ofr.setFontSize(fontSize);
-        
-        // Convert RGB565 background to RGB888 for antialiasing blend
-        uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofr.setBackgroundColor(bgR, bgG, bgB);
-        
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
-        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
-        int textW = bbox.xMax - bbox.xMin;
-        int textH = bbox.yMax - bbox.yMin;
-        
-        int x = 12;
-        int y = textH - 50;  // Same baseline position as other characters
-        
-        // Clear full area first
-        FILL_RECT(x - 2, 0, textW + 8, textH + 8, PALETTE_BG);
-        
-        // Render the full 'L.' 
-        ofr.setCursor(x, y);
-        ofr.printf("%s", buf);
-        
-        // Now mask off the top half by drawing a background rect over it
-        // Top of text starts at screen Y=0 (since y = textH - 50 and text renders upward)
-        int maskHeight = textH / 2;  // Cover top half of the 'L'
-        FILL_RECT(x - 2, 0, textW + 8, maskHeight, PALETTE_BG);
-        
-        return;
-    }
-    
-    // Convert lowercase mode letters to uppercase (font only has uppercase LASER)
-    char upperSymbol = symbol;
-    if (symbol >= 'a' && symbol <= 'z') {
-        upperSymbol = symbol - 32;  // Convert to uppercase
-    }
-    
-    char buf[3] = {upperSymbol, 0, 0};
-    if (showDot) {
-        buf[1] = '.';
-    }
-    
-    // Check if symbol is in the OFR font subset (0-9, -, ., L, A, S, E, R)
-    // Note: '=' (laser 3 bars) is NOT in the font, will use bitmap fallback
-    bool charInOfrFont = (upperSymbol >= '0' && upperSymbol <= '9') || 
-                         upperSymbol == '-' || upperSymbol == '.' ||
-                         upperSymbol == 'L' || upperSymbol == 'A' || upperSymbol == 'S' || 
-                         upperSymbol == 'E' || upperSymbol == 'R';
-    
-    // Fall back to Classic style if OFR not initialized or char not in font
-    if (!ofrInitialized || !charInOfrFont) {
-        // Use Classic 7-segment/14-segment rendering as fallback
-        drawTopCounterClassic(symbol, muted, showDot);
-        return;
-    }
-    
-    // OpenFontRender antialiased rendering - same font as frequency for consistency
-    const int fontSize = 60;  // Proportional to frequency (66)
-    
-    ofr.setFontSize(fontSize);
-    
-    // Convert RGB565 background to RGB888 for antialiasing blend
-    uint8_t bgR = (PALETTE_BG >> 11) << 3;
-    uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-    uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-    ofr.setBackgroundColor(bgR, bgG, bgB);
-    
-    bool isDigit = (symbol >= '0' && symbol <= '9');
-    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey);
-    ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-    
-    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
-    int textW = bbox.xMax - bbox.xMin;
-    int textH = bbox.yMax - bbox.yMin;
-    
-    int x = 12;
-    int y = textH - 50;  // Moved up 50 pixels total from baseline
-    
-    // Clear area - use fixed width to handle all digits/symbols (avoids ghosting when digit changes)
-    // OFR renders with baseline at 'y', text extends upward from there
-    // For y = textH - 50, the top of text is near Y=0 and bottom at roughly y
-    const int clearW = 55;  // Fixed width to cover any digit plus margin for antialiasing
-    const int clearY = 0;   // Start from top of screen where text begins
-    const int clearH = textH + 12;  // Cover full text height plus margin
-    FILL_RECT(x - 4, clearY, clearW, clearH, PALETTE_BG);
-    
-    ofr.setCursor(x, y);
-    ofr.printf("%s", buf);
-}
-
-// Router: calls appropriate bogey counter draw method based on display style
-// Note: Modern style now uses Classic 7-segment for bogey counter (for laser flag support)
-// but keeps Montserrat Bold for frequency display
+// Router: bogey counter uses Classic 7-segment for all styles (laser flag support + perf)
+// Frequency still uses OFR for Modern/Hemi/Serpentine
 void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     // Always use Classic 7-segment for bogey counter (both styles)
     // This ensures laser flag ('=') and all symbols render correctly
@@ -1403,27 +1301,59 @@ void V1Display::drawBatteryIndicator() {
     
     // If percent is enabled, ONLY show percent (never icon)
     if (s.showBatteryPercent && !s.hideBatteryIcon && batteryManager.hasBattery()) {
+        // Cache percent drawing to avoid heavy FreeType work every frame
+        static int lastPctDrawn = -1;
+        static bool lastPctVisible = false;
+        static uint16_t lastPctColor = 0;
+        static unsigned long lastPctDrawMs = 0;
+        const unsigned long PCT_FORCE_REDRAW_MS = 60000;  // 60s safety refresh
+
         // Clear battery icon area (we never show icon when percent is enabled)
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
-        
+
         // Only draw percent if not on USB
-        if (showBatteryOnUSB) {
-            // Choose color based on level
-            uint16_t textColor;
-            if (pct <= 20) {
-                textColor = 0xF800;  // Red - critical
-            } else if (pct <= 40) {
-                textColor = 0xFD20;  // Orange - low
-            } else {
-                textColor = 0x07E0;  // Green - good
+        if (!showBatteryOnUSB) {
+            // Clear percent area when not visible
+            if (lastPctVisible) {
+                FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+                lastPctVisible = false;
+                lastPctDrawn = -1;
             }
-            textColor = dimColor(textColor);
-            
-            // Format percentage string (no % to save space)
-            char pctStr[4];
-            snprintf(pctStr, sizeof(pctStr), "%d", pct);
-            
-            // Use OpenFontRender for 12px font (between size 1 and 2)
+            return;  // No percent on USB/fully charged
+        }
+
+        // Choose color based on level
+        uint16_t textColor;
+        if (pct <= 20) {
+            textColor = 0xF800;  // Red - critical
+        } else if (pct <= 40) {
+            textColor = 0xFD20;  // Orange - low
+        } else {
+            textColor = 0x07E0;  // Green - good
+        }
+        textColor = dimColor(textColor);
+
+        // Decide if we actually need to redraw
+        unsigned long nowMs = millis();
+        bool needsRedraw = s_forceFrequencyRedraw ||  // Screen was cleared
+                           (!lastPctVisible) ||
+                           (pct != lastPctDrawn) ||
+                           (textColor != lastPctColor) ||
+                           ((nowMs - lastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
+
+        if (!needsRedraw) {
+            return;  // Skip expensive render when nothing changed
+        }
+
+        // Format percentage string (no % to save space)
+        char pctStr[4];
+        snprintf(pctStr, sizeof(pctStr), "%d", pct);
+
+        // Always clear the text area before drawing (covers shorter numbers)
+        FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+
+        // Draw using OpenFontRender if available; fall back to built-in font otherwise
+        if (ofrInitialized) {
             const int fontSize = 14;
             uint8_t bgR = (PALETTE_BG >> 11) << 3;
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
@@ -1431,23 +1361,30 @@ void V1Display::drawBatteryIndicator() {
             ofr.setBackgroundColor(bgR, bgG, bgB);
             ofr.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
             ofr.setFontSize(fontSize);
-            
-            // Calculate text bounds for positioning
+
             FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
             int textW = bbox.xMax - bbox.xMin;
             int textH = bbox.yMax - bbox.yMin;
-            
+
             // Position text at top-right corner (closer to top edge)
             int textX = SCREEN_WIDTH - textW - 8;
             int textY = textH - 2;  // Very close to top (baseline positioning, so add textH and offset up)
-            
-            // Draw text - OpenFontRender handles background
+
             ofr.setCursor(textX, textY);
             ofr.printf("%s", pctStr);
         } else {
-            // On USB - clear percent area
-            FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+            // Fallback: built-in font, right-aligned near top-right
+            GFX_setTextDatum(TR_DATUM);
+            TFT_CALL(setTextSize)(1);  // Smallest for minimal overlap
+            TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+            GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 10);
         }
+
+        // Update cache
+        lastPctDrawn = pct;
+        lastPctColor = textColor;
+        lastPctVisible = true;
+        lastPctDrawMs = nowMs;
         return;  // Never draw icon when percent is enabled
     }
     
@@ -3345,37 +3282,34 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
     
-    ofr.setFontSize(fontSize);
-    ofr.setBackgroundColor(0, 0, 0);  // Black background
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool lastWasLaser = false;
+    static bool cacheInitialized = false;
+    static unsigned long lastDrawMs = 0;
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
     
-    // Clear bottom area for frequency - minimal height to avoid covering band labels
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-    
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering between band indicators and signal bars
-        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofr.setCursor(x, freqY);
-        ofr.printf("LASER");
-        return;
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheInitialized = false;
     }
     
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    // Build text and color
+    bool isLaser = (band == BAND_LASER);
+    char textBuf[16];
+    if (isLaser) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
+
     uint16_t freqColor;
-    if (muted) {
+    if (isLaser) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
@@ -3384,15 +3318,43 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     } else {
         freqColor = s.colorFrequency;
     }
+
+    unsigned long nowMs = millis();
+    bool changed = !cacheInitialized ||
+                   lastColor != freqColor ||
+                   lastWasLaser != isLaser ||
+                   strcmp(lastText, textBuf) != 0 ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    ofr.setFontSize(fontSize);
+    ofr.setBackgroundColor(0, 0, 0);  // Black background
+
+    // Clear bottom area for frequency - minimal height to avoid covering band labels
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
+
     // Get text width for centering between band indicators and signal bars
-    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
     int textW = bbox.xMax - bbox.xMin;
     int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofr.setCursor(x, freqY);
-    ofr.printf("%s", freqStr);
+    ofr.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastWasLaser = isLaser;
+    cacheInitialized = true;
+    lastDrawMs = nowMs;
+    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Hemi frequency display - Retro speedometer style with Hemi Head font
@@ -3417,37 +3379,33 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 70;  // Centered between mute icon and cards
     
-    ofrHemi.setFontSize(fontSize);
-    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
-    
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-    
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofrHemi.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering
-        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofrHemi.setCursor(x, freqY);
-        ofrHemi.printf("LASER");
-        return;
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool lastWasLaser = false;
+    static bool cacheInitialized = false;
+    static unsigned long lastDrawMs = 0;
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
+
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheInitialized = false;
     }
-    
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+
+    bool isLaser = (band == BAND_LASER);
+    char textBuf[16];
+    if (isLaser) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color
+
     uint16_t freqColor;
-    if (muted) {
+    if (isLaser) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
@@ -3456,15 +3414,43 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     } else {
         freqColor = s.colorFrequency;
     }
+
+    unsigned long nowMs = millis();
+    bool changed = !cacheInitialized ||
+                   lastColor != freqColor ||
+                   lastWasLaser != isLaser ||
+                   strcmp(lastText, textBuf) != 0 ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    ofrHemi.setFontSize(fontSize);
+    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
+
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+
     ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
+
     // Get text width for centering
-    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
     int textW = bbox.xMax - bbox.xMin;
     int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofrHemi.setCursor(x, freqY);
-    ofrHemi.printf("%s", freqStr);
+    ofrHemi.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastWasLaser = isLaser;
+    cacheInitialized = true;
+    lastDrawMs = nowMs;
+    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Serpentine frequency display - JB's favorite font
@@ -3491,38 +3477,33 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     // freqY is the baseline - with 65px font, visual center needs baseline around 55-60
     const int freqY = 35;  // Baseline Y position
     
-    ofrSerpentine.setFontSize(fontSize);
-    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
-    
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int effectiveHeight = getEffectiveScreenHeight();
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-    
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofrSerpentine.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering
-        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofrSerpentine.setCursor(x, freqY);
-        ofrSerpentine.printf("LASER");
-        return;
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool lastWasLaser = false;
+    static bool cacheInitialized = false;
+    static unsigned long lastDrawMs = 0;
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
+
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheInitialized = false;
     }
-    
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+
+    bool isLaser = (band == BAND_LASER);
+    char textBuf[16];
+    if (isLaser) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color
+
     uint16_t freqColor;
-    if (muted) {
+    if (isLaser) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
@@ -3531,15 +3512,44 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     } else {
         freqColor = s.colorFrequency;
     }
+
+    unsigned long nowMs = millis();
+    bool changed = !cacheInitialized ||
+                   lastColor != freqColor ||
+                   lastWasLaser != isLaser ||
+                   strcmp(lastText, textBuf) != 0 ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    ofrSerpentine.setFontSize(fontSize);
+    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
+
+    // Clear bottom area for frequency
+    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int effectiveHeight = getEffectiveScreenHeight();
+    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+
     ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
+
     // Get text width for centering
-    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
+    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
     int textW = bbox.xMax - bbox.xMin;
     int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofrSerpentine.setCursor(x, freqY);
-    ofrSerpentine.printf("%s", freqStr);
+    ofrSerpentine.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastWasLaser = isLaser;
+    cacheInitialized = true;
+    lastDrawMs = nowMs;
+    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Draw volume zero warning in the frequency area (flashing red text)

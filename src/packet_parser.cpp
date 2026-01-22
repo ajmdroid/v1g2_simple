@@ -9,6 +9,7 @@
 #include "packet_parser.h"
 #include "../include/config.h"
 #include <algorithm>
+#include "debug_logger.h"
 
 namespace {
 struct BandArrowData {
@@ -37,6 +38,25 @@ BandArrowData processBandArrow(uint8_t v) {
     d.side  = (v & 0b01000000) != 0;
     d.rear  = (v & 0b10000000) != 0;
     return d;
+}
+
+const char* bandToString(Band band) {
+    switch (band) {
+        case BAND_LASER: return "Laser";
+        case BAND_KA:    return "Ka";
+        case BAND_K:     return "K";
+        case BAND_X:     return "X";
+        default:         return "None";
+    }
+}
+
+const char* directionToString(Direction dir) {
+    switch (dir) {
+        case DIR_FRONT: return "Front";
+        case DIR_SIDE:  return "Side";
+        case DIR_REAR:  return "Rear";
+        default:        return "None";
+    }
 }
 
 // Decode V1's 7-segment bogey counter byte to a character
@@ -468,6 +488,64 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
     }
     // When alertCount == 0, DON'T clear signalBars - parseDisplayData handles it
+
+    if (debugLogger.isEnabledFor(DebugLogCategory::Alerts)) {
+        static bool hasLast = false;
+        static size_t lastCount = 0;
+        static Band lastBand = BAND_NONE;
+        static Direction lastDir = DIR_NONE;
+        static uint32_t lastFreq = 0;
+        static uint8_t lastFront = 0;
+        static uint8_t lastRear = 0;
+        static bool lastMuted = false;
+
+        Band priBand = BAND_NONE;
+        Direction priDir = DIR_NONE;
+        uint32_t priFreq = 0;
+        uint8_t priFront = 0;
+        uint8_t priRear = 0;
+
+        if (alertCount > 0) {
+            size_t idx = std::min<size_t>(displayState.v1PriorityIndex, alertCount - 1);
+            const AlertData& pri = alerts[idx];
+            priBand = pri.band;
+            priDir = pri.direction;
+            priFreq = pri.frequency;
+            priFront = pri.frontStrength;
+            priRear = pri.rearStrength;
+        }
+
+        bool changed = !hasLast ||
+                       alertCount != lastCount ||
+                       priBand != lastBand ||
+                       priDir != lastDir ||
+                       priFreq != lastFreq ||
+                       priFront != lastFront ||
+                       priRear != lastRear ||
+                       displayState.muted != lastMuted;
+
+        if (changed) {
+            debugLogger.logf(
+                DebugLogCategory::Alerts,
+                "[Alerts] count=%u pri=%s dir=%s freq=%u front=%u rear=%u muted=%s",
+                static_cast<unsigned>(alertCount),
+                bandToString(priBand),
+                directionToString(priDir),
+                static_cast<unsigned>(priFreq),
+                static_cast<unsigned>(priFront),
+                static_cast<unsigned>(priRear),
+                displayState.muted ? "true" : "false");
+
+            hasLast = true;
+            lastCount = alertCount;
+            lastBand = priBand;
+            lastDir = priDir;
+            lastFreq = priFreq;
+            lastFront = priFront;
+            lastRear = priRear;
+            lastMuted = displayState.muted;
+        }
+    }
 
     chunkCount = 0; // Clear chunks after processing
     return true;

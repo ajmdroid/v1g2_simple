@@ -132,6 +132,16 @@ void SettingsManager::load() {
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
     settings.kittScannerEnabled = preferences.getBool("kittScanner", false);
     
+    // Development/Debug settings
+    settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
+    settings.enableDebugLogging = preferences.getBool("debugLog", false);
+    settings.logAlerts = preferences.getBool("logAlerts", true);
+    settings.logWifi = preferences.getBool("logWifi", true);
+    settings.logBle = preferences.getBool("logBle", false);
+    settings.logGps = preferences.getBool("logGps", false);
+    settings.logObd = preferences.getBool("logObd", false);
+    settings.logSystem = preferences.getBool("logSystem", true);
+    
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
     bool needsMigration = preferences.isKey("voiceAlerts");
@@ -300,6 +310,14 @@ void SettingsManager::save() {
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putBool("hideRssi", settings.hideRssiIndicator);
     written += preferences.putBool("kittScanner", settings.kittScannerEnabled);
+    written += preferences.putBool("wifiAtBoot", settings.enableWifiAtBoot);
+    written += preferences.putBool("debugLog", settings.enableDebugLogging);
+    written += preferences.putBool("logAlerts", settings.logAlerts);
+    written += preferences.putBool("logWifi", settings.logWifi);
+    written += preferences.putBool("logBle", settings.logBle);
+    written += preferences.putBool("logGps", settings.logGps);
+    written += preferences.putBool("logObd", settings.logObd);
+    written += preferences.putBool("logSystem", settings.logSystem);
     written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -580,6 +598,46 @@ void SettingsManager::setHideRssiIndicator(bool hide) {
 
 void SettingsManager::setKittScannerEnabled(bool enabled) {
     settings.kittScannerEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setEnableWifiAtBoot(bool enable) {
+    settings.enableWifiAtBoot = enable;
+    save();
+}
+
+void SettingsManager::setEnableDebugLogging(bool enable) {
+    settings.enableDebugLogging = enable;
+    save();
+}
+
+void SettingsManager::setLogAlerts(bool enable) {
+    settings.logAlerts = enable;
+    save();
+}
+
+void SettingsManager::setLogWifi(bool enable) {
+    settings.logWifi = enable;
+    save();
+}
+
+void SettingsManager::setLogBle(bool enable) {
+    settings.logBle = enable;
+    save();
+}
+
+void SettingsManager::setLogGps(bool enable) {
+    settings.logGps = enable;
+    save();
+}
+
+void SettingsManager::setLogObd(bool enable) {
+    settings.logObd = enable;
+    save();
+}
+
+void SettingsManager::setLogSystem(bool enable) {
+    settings.logSystem = enable;
     save();
 }
 
@@ -882,6 +940,14 @@ void SettingsManager::backupToSD() {
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
     doc["kittScannerEnabled"] = settings.kittScannerEnabled;
+    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableDebugLogging"] = settings.enableDebugLogging;
+    doc["logAlerts"] = settings.logAlerts;
+    doc["logWifi"] = settings.logWifi;
+    doc["logBle"] = settings.logBle;
+    doc["logGps"] = settings.logGps;
+    doc["logObd"] = settings.logObd;
+    doc["logSystem"] = settings.logSystem;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1064,6 +1130,14 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
     if (doc["kittScannerEnabled"].is<bool>()) settings.kittScannerEnabled = doc["kittScannerEnabled"];
+    if (doc["enableWifiAtBoot"].is<bool>()) settings.enableWifiAtBoot = doc["enableWifiAtBoot"];
+    if (doc["enableDebugLogging"].is<bool>()) settings.enableDebugLogging = doc["enableDebugLogging"];
+    if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];
+    if (doc["logWifi"].is<bool>()) settings.logWifi = doc["logWifi"];
+    if (doc["logBle"].is<bool>()) settings.logBle = doc["logBle"];
+    if (doc["logGps"].is<bool>()) settings.logGps = doc["logGps"];
+    if (doc["logObd"].is<bool>()) settings.logObd = doc["logObd"];
+    if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
@@ -1178,6 +1252,16 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("battPct", settings.showBatteryPercent);
     preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putBool("hideVol", settings.hideVolumeIndicator);
+    preferences.putBool("hideRssi", settings.hideRssiIndicator);
+    preferences.putBool("kittScanner", settings.kittScannerEnabled);
+    preferences.putBool("wifiAtBoot", settings.enableWifiAtBoot);
+    preferences.putBool("debugLog", settings.enableDebugLogging);
+    preferences.putBool("logAlerts", settings.logAlerts);
+    preferences.putBool("logWifi", settings.logWifi);
+    preferences.putBool("logBle", settings.logBle);
+    preferences.putBool("logGps", settings.logGps);
+    preferences.putBool("logObd", settings.logObd);
+    preferences.putBool("logSystem", settings.logSystem);
     preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
     preferences.putBool("voiceBogeys", settings.announceBogeyCount);

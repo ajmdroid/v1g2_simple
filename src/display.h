@@ -139,8 +139,7 @@ private:
     void drawBandBadge(Band band);
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
-    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style
-    void drawTopCounterModern(char symbol, bool muted, bool showDot);        // Montserrat Bold font
+    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);

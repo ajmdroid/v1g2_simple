@@ -22,6 +22,8 @@
 					<li><a href="/audio">Audio</a></li>
 					<li><a href="/integrations">Integrations</a></li>
 					<li><a href="/settings">Settings</a></li>
+					<li class="menu-title"><span>Advanced</span></li>
+					<li><a href="/dev" class="text-warning">⚠️ Development</a></li>
 				</ul>
 			</div>
 			<a href="/" class="btn btn-ghost text-xl text-primary">V1 Gen2</a>
