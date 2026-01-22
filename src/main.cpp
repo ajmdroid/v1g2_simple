@@ -716,6 +716,13 @@ void startWifi() {
         return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
     });
     
+    // Manual profile push trigger from /api/profile/push
+    wifiManager.setProfilePushCallback([]() {
+        const V1Settings& s = settingsManager.get();
+        startAutoPush(s.activeSlot);
+        return true;
+    });
+    
     SerialLog.println("[WiFi] Initialized");
 }
 
@@ -863,6 +870,10 @@ void processBLEData() {
     
     // Process all queued packets (with safety cap to prevent unbounded growth)
     constexpr size_t RX_BUFFER_MAX = 512;  // Hard cap on buffer size
+    // Pre-reserve buffer once to avoid repeated heap growth/fragmentation on ESP32
+    if (rxBuffer.capacity() < RX_BUFFER_MAX) {
+        rxBuffer.reserve(RX_BUFFER_MAX);
+    }
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
         // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
         // for minimal latency. We don't forward again here to avoid duplicate packets.

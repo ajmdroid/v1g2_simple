@@ -212,11 +212,12 @@ bool WiFiManager::toggleSetupMode(bool manual) {
 }
 
 void WiFiManager::setupAP() {
-    // Use a constant, predictable SSID for Setup Mode
-    const char* apSSID = "V1-Simple";
-    const char* apPass = "setupv1g2";  // Simple password (unchanged)
+    // Use saved SSID/password when available; fall back to defaults if missing/too short
+    const V1Settings& settings = settingsManager.get();
+    String apSSID = settings.apSSID.length() ? settings.apSSID : "V1-Simple";
+    String apPass = (settings.apPassword.length() >= 8) ? settings.apPassword : "setupv1g2";  // WPA2 requires 8+
     
-    Serial.printf("[SetupMode] Starting AP: %s (pass: %s)\n", apSSID, apPass);
+    Serial.printf("[SetupMode] Starting AP: %s (pass: ****)\n", apSSID.c_str());
     
     // Configure AP IP
     IPAddress apIP(192, 168, 35, 5);
@@ -229,7 +230,7 @@ void WiFiManager::setupAP() {
         Serial.println("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1");
     }
     
-    if (!WiFi.softAP(apSSID, apPass)) {
+    if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
         Serial.println("[SetupMode] softAP failed!");
         return;
     }
@@ -537,19 +538,23 @@ void WiFiManager::handleApiProfilePush() {
         return;
     }
     
-    // Profile push is handled by main loop's processAutoPush() state machine
-    Serial.println("[API] Profile push requested");
+    // Invoke the registered callback to kick off the auto-push state machine
+    bool queued = false;
+    if (requestProfilePush) {
+        queued = requestProfilePush();
+    }
     
     JsonDocument doc;
-    doc["ok"] = true;
-    doc["message"] = "Profile push queued - check display for progress";
+    doc["ok"] = queued;
+    if (queued) {
+        doc["message"] = "Profile push queued - check display for progress";
+    } else {
+        doc["error"] = "Push handler unavailable";
+    }
     
     String json;
     serializeJson(doc, json);
-    server.send(200, "application/json", json);
-    
-    // Note: Actual push execution is handled by main.cpp's processAutoPush()
-    // via the startAutoPush() mechanism, not directly in this handler
+    server.send(queued ? 200 : 500, "application/json", json);
 }
 
 void WiFiManager::handleSettingsApi() {
@@ -1666,6 +1671,12 @@ void WiFiManager::handleSettingsRestore() {
     // BLE settings
     if (doc["proxyBLE"].is<bool>()) settingsManager.setProxyBLE(doc["proxyBLE"]);
     if (doc["proxyName"].is<const char*>()) settingsManager.setProxyName(doc["proxyName"].as<String>());
+    
+    // WiFi settings (password intentionally excluded from backups)
+    if (doc["apSSID"].is<const char*>()) {
+        // Preserve existing password while restoring SSID
+        settingsManager.updateAPCredentials(doc["apSSID"].as<String>(), settingsManager.get().apPassword);
+    }
     
     // Display settings
     if (doc["brightness"].is<int>()) s.brightness = doc["brightness"];

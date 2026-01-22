@@ -11,6 +11,7 @@
 #include <FS.h>
 #include <WebServer.h>
 #include "settings.h"
+#include <functional>
 
 // Setup Mode state (AP is always on)
 enum SetupModeState {
@@ -47,6 +48,9 @@ public:
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
     
+    // Callback to request a profile push (manual trigger from API)
+    void setProfilePushCallback(std::function<bool()> callback) { requestProfilePush = callback; }
+    
     // Callback for filesystem access (SD card)
     void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
     
@@ -81,6 +85,7 @@ private:
     std::function<String()> getAlertJson;
     std::function<String()> getStatusJson;
     std::function<bool(const char*, bool)> sendV1Command;
+    std::function<bool()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
     
