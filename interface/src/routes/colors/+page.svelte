@@ -32,6 +32,7 @@
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
+		showBatteryPercent: false,
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
@@ -252,6 +253,7 @@
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
+			params.append('showBatteryPercent', colors.showBatteryPercent);
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			params.append('hideRssiIndicator', colors.hideRssiIndicator);
@@ -326,6 +328,7 @@
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
+					showBatteryPercent: false,
 					hideBleIcon: false,
 					hideVolumeIndicator: false,
 					hideRssiIndicator: false
@@ -987,6 +990,22 @@
 							class="toggle toggle-primary" 
 							checked={colors.hideBatteryIcon}
 							onchange={(e) => colors.hideBatteryIcon = e.target.checked}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text">Show Battery Percentage</span>
+							<p class="text-xs text-base-content/50">Show battery level as percentage instead of icon</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.showBatteryPercent}
+							onchange={(e) => colors.showBatteryPercent = e.target.checked}
+							disabled={colors.hideBatteryIcon}
 						/>
 					</label>
 				</div>

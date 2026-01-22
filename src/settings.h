@@ -118,6 +118,7 @@ struct V1Settings {
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
+    bool showBatteryPercent;     // Show battery percentage text next to icon
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
@@ -347,6 +348,7 @@ public:
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
+    void setShowBatteryPercent(bool show);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);

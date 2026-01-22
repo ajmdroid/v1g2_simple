@@ -1430,6 +1430,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideBatteryIcon")) {
         settingsManager.setHideBatteryIcon(server.arg("hideBatteryIcon") == "true" || server.arg("hideBatteryIcon") == "1");
     }
+    if (server.hasArg("showBatteryPercent")) {
+        settingsManager.setShowBatteryPercent(server.arg("showBatteryPercent") == "true" || server.arg("showBatteryPercent") == "1");
+    }
     if (server.hasArg("hideBleIcon")) {
         settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
     }
@@ -1596,6 +1599,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["showBatteryPercent"] = s.showBatteryPercent;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
@@ -1705,6 +1709,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["showBatteryPercent"] = s.showBatteryPercent;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
@@ -1862,6 +1867,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideWifiIcon"].is<bool>()) s.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) s.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) s.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["showBatteryPercent"].is<bool>()) s.showBatteryPercent = doc["showBatteryPercent"];
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];

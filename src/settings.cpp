@@ -126,6 +126,7 @@ void SettingsManager::load() {
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
+    settings.showBatteryPercent = preferences.getBool("battPct", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
@@ -294,6 +295,7 @@ void SettingsManager::save() {
     written += preferences.putBool("hideWifi", settings.hideWifiIcon);
     written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
     written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    written += preferences.putBool("battPct", settings.showBatteryPercent);
     written += preferences.putBool("hideBle", settings.hideBleIcon);
     written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
     written += preferences.putBool("hideRssi", settings.hideRssiIndicator);
@@ -553,6 +555,11 @@ void SettingsManager::setHideProfileIndicator(bool hide) {
 
 void SettingsManager::setHideBatteryIcon(bool hide) {
     settings.hideBatteryIcon = hide;
+    save();
+}
+
+void SettingsManager::setShowBatteryPercent(bool show) {
+    settings.showBatteryPercent = show;
     save();
 }
 
@@ -870,6 +877,7 @@ void SettingsManager::backupToSD() {
     doc["hideWifiIcon"] = settings.hideWifiIcon;
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
+    doc["showBatteryPercent"] = settings.showBatteryPercent;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
@@ -1051,6 +1059,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["showBatteryPercent"].is<bool>()) settings.showBatteryPercent = doc["showBatteryPercent"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
@@ -1166,6 +1175,7 @@ bool SettingsManager::restoreFromSD() {
     preferences.putBool("hideWifi", settings.hideWifiIcon);
     preferences.putBool("hideProfile", settings.hideProfileIndicator);
     preferences.putBool("hideBatt", settings.hideBatteryIcon);
+    preferences.putBool("battPct", settings.showBatteryPercent);
     preferences.putBool("hideBle", settings.hideBleIcon);
     preferences.putBool("hideVol", settings.hideVolumeIndicator);
     preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);

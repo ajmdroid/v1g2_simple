@@ -1387,19 +1387,76 @@ void V1Display::drawBatteryIndicator() {
     const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
     const int capH = 3;     // Positive terminal cap height
     
-    // Hide battery icon when on USB power (voltage at/near max indicates charging)
-    // Use hysteresis to prevent flickering: hide above 4095, show below 4080
-    static bool showBattery = false;
+    // Hide battery when on USB power (voltage near max)
+    // Use hysteresis to prevent flickering: hide above 4125, show below 4095
+    static bool showBatteryOnUSB = true;
     uint16_t voltage = batteryManager.getVoltageMillivolts();
-    if (voltage > 4095) {
-        showBattery = false;  // Definitely on USB
-    } else if (voltage < 4080) {
-        showBattery = true;   // Definitely on battery
+    if (voltage > 4125) {
+        showBatteryOnUSB = false;  // On USB or fully charged
+    } else if (voltage < 4095) {
+        showBatteryOnUSB = true;   // On battery, not full
     }
-    // Between 4080-4095: keep previous state (hysteresis)
+    // Between 4095-4125: keep previous state (hysteresis)
     
-    // Don't draw if no battery, user hides it, or not on battery power
-    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBattery) {
+    // Get battery percentage for display
+    uint8_t pct = batteryManager.getPercentage();
+    
+    // If percent is enabled, ONLY show percent (never icon)
+    if (s.showBatteryPercent && !s.hideBatteryIcon && batteryManager.hasBattery()) {
+        // Clear battery icon area (we never show icon when percent is enabled)
+        FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
+        
+        // Only draw percent if not on USB
+        if (showBatteryOnUSB) {
+            // Choose color based on level
+            uint16_t textColor;
+            if (pct <= 20) {
+                textColor = 0xF800;  // Red - critical
+            } else if (pct <= 40) {
+                textColor = 0xFD20;  // Orange - low
+            } else {
+                textColor = 0x07E0;  // Green - good
+            }
+            textColor = dimColor(textColor);
+            
+            // Format percentage string (no % to save space)
+            char pctStr[4];
+            snprintf(pctStr, sizeof(pctStr), "%d", pct);
+            
+            // Use OpenFontRender for 12px font (between size 1 and 2)
+            const int fontSize = 14;
+            uint8_t bgR = (PALETTE_BG >> 11) << 3;
+            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+            ofr.setBackgroundColor(bgR, bgG, bgB);
+            ofr.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
+            ofr.setFontSize(fontSize);
+            
+            // Calculate text bounds for positioning
+            FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
+            int textW = bbox.xMax - bbox.xMin;
+            int textH = bbox.yMax - bbox.yMin;
+            
+            // Position text at top-right corner (closer to top edge)
+            int textX = SCREEN_WIDTH - textW - 8;
+            int textY = textH - 2;  // Very close to top (baseline positioning, so add textH and offset up)
+            
+            // Draw text - OpenFontRender handles background
+            ofr.setCursor(textX, textY);
+            ofr.printf("%s", pctStr);
+        } else {
+            // On USB - clear percent area
+            FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+        }
+        return;  // Never draw icon when percent is enabled
+    }
+    
+    // Percent is disabled, show icon instead
+    // Clear percent area (in case it was previously showing)
+    FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+    
+    // Don't draw icon if no battery, user hides it, or on USB
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBatteryOnUSB) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
@@ -1407,8 +1464,6 @@ void V1Display::drawBatteryIndicator() {
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
     
-    // Get battery percentage
-    uint8_t pct = batteryManager.getPercentage();
     int filledSections = (pct + 10) / 20;  // 0-20%=1, 21-40%=2, etc. (min 1 if >0)
     if (pct == 0) filledSections = 0;
     if (filledSections > sections) filledSections = sections;
@@ -3734,15 +3789,15 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
 
     // Clear the entire arrow region using the max dimensions
     // Stop above profile indicator area (profile at Y=152)
-    // Limit right edge to avoid clearing battery icon area (battery starts at X=618)
+    // Limit right edge to avoid clearing battery icon/percent area
     const int maxW = (topW > bottomW) ? topW : bottomW;
     const int maxH = (topH > bottomH) ? topH : bottomH;
     int clearTop = topArrowCenterY - topH/2 - 15;
     int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
     int clearLeft = cx - maxW/2 - 10;
     int clearWidth = maxW + 20;  // Reduced from +24 to avoid battery icon at X=618
-    // Clamp right edge to not overlap battery icon (battery starts at SCREEN_WIDTH - 22 = 618)
-    int maxClearRight = SCREEN_WIDTH - 24;  // Leave margin for battery icon
+    // Clamp right edge to not overlap battery percent (leave space at top-right)
+    int maxClearRight = SCREEN_WIDTH - 42;  // Leave margin for battery percent text
     if (clearLeft + clearWidth > maxClearRight) {
         clearWidth = maxClearRight - clearLeft;
     }
