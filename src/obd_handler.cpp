@@ -31,6 +31,21 @@ static OBDHandler* s_obdInstance = nullptr;
 #define OBD_LOGF(...) do { if (DEBUG_OBD) Serial.printf(__VA_ARGS__); } while(0)
 #define OBD_LOGLN(msg) do { if (DEBUG_OBD) Serial.println(msg); } while(0)
 
+// Simple RAII lock for the OBD mutex
+class ObdLock {
+public:
+    explicit ObdLock(SemaphoreHandle_t m) : mutex(m), locked(false) {
+        if (mutex) locked = xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE;
+    }
+    ~ObdLock() {
+        if (locked) xSemaphoreGive(mutex);
+    }
+    bool ok() const { return locked; }
+private:
+    SemaphoreHandle_t mutex;
+    bool locked;
+};
+
 // Security callbacks for ELM327 pairing
 class OBDSecurityCallbacks : public NimBLEClientCallbacks {
 public:
@@ -81,7 +96,9 @@ OBDHandler::OBDHandler()
     , scanStartMs(0)
     , responseComplete(false)
     , lastPollMs(0)
-    , obdMutex(nullptr) {
+    , obdMutex(nullptr)
+    , obdTaskHandle(nullptr)
+    , taskRunning(false) {
     
     // Initialize lastData with zero values
     lastData.speed_kph = 0;
@@ -107,6 +124,8 @@ void OBDHandler::begin() {
     if (!obdMutex) {
         obdMutex = xSemaphoreCreateMutex();
     }
+    
+    startTask();
     
     // Check if we have a saved device to reconnect to
     String savedAddr = settingsManager.getObdDeviceAddress();
@@ -137,59 +156,12 @@ void OBDHandler::begin() {
 }
 
 bool OBDHandler::update() {
-    // Handle scan timeout
-    if (state == OBDState::SCANNING && scanActive) {
-        if (millis() - detectionStartMs > DETECTION_TIMEOUT_MS) {
-            // Scan timed out - go to IDLE, not FAILED
-            // User can still trigger manual scan from UI
-            state = OBDState::IDLE;
-            scanActive = false;
-            detectionComplete = true;
-            Serial.println("[OBD] Scan timeout (120s) - returning to idle. Use UI to scan again.");
-        }
+    // If background task is running, just report freshness
+    if (taskRunning) {
+        return hasValidData();
     }
-    
-    // State machine
-    switch (state) {
-        case OBDState::OBD_DISABLED:
-        case OBDState::FAILED:
-            return false;
-            
-        case OBDState::IDLE:
-        case OBDState::SCANNING:
-            // Waiting for onELM327Found() callback from V1 scan
-            return false;
-            
-        case OBDState::CONNECTING:
-            Serial.println("[OBD] update() calling handleConnecting()");
-            handleConnecting();
-            return false;
-            
-        case OBDState::INITIALIZING:
-            handleInitializing();
-            return false;
-            
-        case OBDState::READY:
-            // Start polling
-            state = OBDState::POLLING;
-            lastPollMs = millis();
-            return false;
-            
-        case OBDState::POLLING:
-            handlePolling();
-            return lastData.valid;
-            
-        case OBDState::DISCONNECTED:
-            // Attempt reconnect after delay
-            if (millis() - lastPollMs > 5000) {
-                if (hasTargetDevice) {
-                    state = OBDState::CONNECTING;
-                }
-            }
-            return false;
-    }
-    
-    return false;
+    // Fallback to synchronous processing (e.g., if task failed to start)
+    return runStateMachine();
 }
 
 const char* OBDHandler::getStateString() const {
@@ -207,8 +179,40 @@ const char* OBDHandler::getStateString() const {
     }
 }
 
+// Thread-safe data accessors
+OBDData OBDHandler::getData() const {
+    ObdLock lock(obdMutex);
+    return lastData;
+}
+
+bool OBDHandler::hasValidData() const {
+    ObdLock lock(obdMutex);
+    return lastData.valid && (millis() - lastData.timestamp_ms) <= 2000;
+}
+
 bool OBDHandler::isDataStale(uint32_t maxAge_ms) const {
+    ObdLock lock(obdMutex);
     return (millis() - lastData.timestamp_ms) > maxAge_ms;
+}
+
+float OBDHandler::getSpeedKph() const {
+    ObdLock lock(obdMutex);
+    return lastData.speed_kph;
+}
+
+float OBDHandler::getSpeedMph() const {
+    ObdLock lock(obdMutex);
+    return lastData.speed_mph;
+}
+
+std::vector<OBDDeviceInfo> OBDHandler::getFoundDevices() const {
+    ObdLock lock(obdMutex);
+    return foundDevices;  // Return copy
+}
+
+void OBDHandler::clearFoundDevices() {
+    ObdLock lock(obdMutex);
+    foundDevices.clear();
 }
 
 bool OBDHandler::isELM327Device(const std::string& name) {
@@ -235,20 +239,23 @@ void OBDHandler::onELM327Found(const NimBLEAdvertisedDevice* device) {
     // Always add to found devices list (for UI display)
     // Check if already in list
     bool alreadyFound = false;
-    for (const auto& d : foundDevices) {
-        if (d.address == addrStr) {
-            alreadyFound = true;
-            break;
+    {
+        ObdLock lock(obdMutex);
+        for (const auto& d : foundDevices) {
+            if (d.address == addrStr) {
+                alreadyFound = true;
+                break;
+            }
         }
-    }
-    if (!alreadyFound) {
-        OBDDeviceInfo info;
-        info.address = addrStr;
-        info.name = String(name.c_str());
-        info.rssi = device->getRSSI();
-        foundDevices.push_back(info);
-        Serial.printf("[OBD] Found ELM327 device: '%s' [%s] RSSI:%d\n", 
-                      name.c_str(), addrStr.c_str(), info.rssi);
+        if (!alreadyFound) {
+            OBDDeviceInfo info;
+            info.address = addrStr;
+            info.name = String(name.c_str());
+            info.rssi = device->getRSSI();
+            foundDevices.push_back(info);
+            Serial.printf("[OBD] Found ELM327 device: '%s' [%s] RSSI:%d\n", 
+                          name.c_str(), addrStr.c_str(), info.rssi);
+        }
     }
     
     // If we're in SCANNING state and auto-connecting, connect to first device found
@@ -279,6 +286,8 @@ void OBDHandler::onDeviceFound(const NimBLEAdvertisedDevice* device) {
     if (name.empty() || name.length() < 2) {
         return;
     }
+    
+    ObdLock lock(obdMutex);
     
     // Check if already in list
     for (const auto& d : foundDevices) {
@@ -355,6 +364,67 @@ void OBDHandler::handlePolling() {
     requestSpeed();
 }
 
+bool OBDHandler::runStateMachine() {
+    // Handle scan timeout
+    if (state == OBDState::SCANNING && scanActive) {
+        if (millis() - detectionStartMs > DETECTION_TIMEOUT_MS) {
+            // Scan timed out - go to IDLE, not FAILED
+            state = OBDState::IDLE;
+            scanActive = false;
+            detectionComplete = true;
+            Serial.println("[OBD] Scan timeout (120s) - returning to idle. Use UI to scan again.");
+        }
+    }
+    
+    switch (state) {
+        case OBDState::OBD_DISABLED:
+        case OBDState::FAILED:
+            return false;
+        case OBDState::IDLE:
+        case OBDState::SCANNING:
+            return false;
+        case OBDState::CONNECTING:
+            handleConnecting();
+            return false;
+        case OBDState::INITIALIZING:
+            handleInitializing();
+            return false;
+        case OBDState::READY:
+            state = OBDState::POLLING;
+            lastPollMs = millis();
+            return false;
+        case OBDState::POLLING:
+            handlePolling();
+            return lastData.valid;
+        case OBDState::DISCONNECTED:
+            if (millis() - lastPollMs > 5000) {
+                if (hasTargetDevice) {
+                    state = OBDState::CONNECTING;
+                }
+            }
+            return false;
+    }
+    return false;
+}
+
+void OBDHandler::taskEntry(void* param) {
+    OBDHandler* self = static_cast<OBDHandler*>(param);
+    if (!self) vTaskDelete(nullptr);
+    for (;;) {
+        self->runStateMachine();
+        vTaskDelay(pdMS_TO_TICKS(10));  // keep loop responsive
+    }
+}
+
+void OBDHandler::startTask() {
+    if (obdTaskHandle) {
+        taskRunning = true;
+        return;
+    }
+    BaseType_t res = xTaskCreatePinnedToCore(taskEntry, "obdTask", 4096, this, 1, &obdTaskHandle, tskNO_AFFINITY);
+    taskRunning = (res == pdPASS);
+}
+
 bool OBDHandler::connectToDevice() {
     Serial.printf("[OBD] connectToDevice() called, target: %s\n", targetAddress.toString().c_str());
     
@@ -374,10 +444,10 @@ bool OBDHandler::connectToDevice() {
         pOBDClient->setConnectionParams(12, 12, 0, 500);  // min, max, latency, timeout
     }
     
-    // Configure security - try to bond with the device
-    // This enables pairing with PIN if device requires it
-    NimBLEDevice::setSecurityAuth(true, true, true);  // bonding, mitm, sc
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY);  // We can input PIN
+    // Configure security for commodity ELM327 clones: bond only, no MITM/SC, no keypad needed
+    // Keep this relaxed to avoid impacting the V1 link (NimBLE security is global)
+    NimBLEDevice::setSecurityAuth(true, false, false);      // bonding only
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT); // Just Works / PIN-less
     
     Serial.printf("[OBD] Attempting BLE connect (10s timeout, security enabled)...\n");
     
@@ -492,6 +562,9 @@ bool OBDHandler::discoverServices() {
 void OBDHandler::notificationCallback(NimBLERemoteCharacteristic* pChar, 
                                        uint8_t* pData, size_t length, bool isNotify) {
     if (!s_obdInstance || length == 0) return;
+
+    ObdLock lock(s_obdInstance->obdMutex);
+    if (!lock.ok()) return;
     
     // Append data to response buffer
     for (size_t i = 0; i < length; i++) {
@@ -574,6 +647,9 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
         return false;
     }
     
+    ObdLock lock(obdMutex);
+    if (!lock.ok()) return false;
+    
     // Clear response buffer
     responseBuffer = "";
     responseComplete = false;
@@ -591,7 +667,7 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
     // Wait for response (with '>' prompt)
     uint32_t startMs = millis();
     while (!responseComplete && (millis() - startMs) < timeout_ms) {
-        delay(10);
+        vTaskDelay(1);  // Yield to keep main loop responsive
     }
     
     if (!responseComplete) {
@@ -625,7 +701,7 @@ bool OBDHandler::requestSpeed() {
     String response;
     
     // Send PID 0x0D (Vehicle Speed)
-    if (!sendATCommand("010D", response, 1000)) {
+    if (!sendATCommand("010D", response, 250)) {  // keep timeout short to avoid loop stalls
         lastData.valid = false;
         return false;
     }
@@ -648,7 +724,7 @@ bool OBDHandler::requestRPM() {
     String response;
     
     // Send PID 0x0C (Engine RPM)
-    if (!sendATCommand("010C", response, 1000)) {
+    if (!sendATCommand("010C", response, 250)) {
         return false;
     }
     
@@ -666,7 +742,7 @@ bool OBDHandler::requestVoltage() {
     String response;
     
     // AT RV returns battery voltage
-    if (!sendATCommand("ATRV", response, 1000)) {
+    if (!sendATCommand("ATRV", response, 250)) {
         return false;
     }
     
@@ -816,6 +892,9 @@ bool OBDHandler::connectToAddress(const String& address, const String& name) {
     
     // Disconnect from current device if any
     disconnect();
+    
+    // Lock while modifying state variables
+    ObdLock lock(obdMutex);
     
     // Set target device - NimBLEAddress needs std::string and address type
     targetAddress = NimBLEAddress(std::string(address.c_str()), BLE_ADDR_PUBLIC);

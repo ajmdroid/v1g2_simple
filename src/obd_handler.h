@@ -13,6 +13,8 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <vector>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Forward declarations
 class NimBLEClient;
@@ -109,7 +111,14 @@ private:
     
     // Polling timing
     uint32_t lastPollMs;
-    static constexpr uint32_t POLL_INTERVAL_MS = 500;  // Poll speed every 500ms
+    static constexpr uint32_t POLL_INTERVAL_MS = 1000;  // Poll speed every 1s (reduced load)
+
+    // Background task
+    TaskHandle_t obdTaskHandle;
+    bool taskRunning;
+    static void taskEntry(void* param);
+    bool runStateMachine();
+    void startTask();
     
     // Mutex for thread safety
     SemaphoreHandle_t obdMutex;
@@ -141,20 +150,20 @@ public:
     void stopScan();
     void onScanComplete();  // Called by BLE when scan ends
     bool isScanActive() const { return scanActive; }
-    const std::vector<OBDDeviceInfo>& getFoundDevices() const { return foundDevices; }
-    void clearFoundDevices() { foundDevices.clear(); }
+    std::vector<OBDDeviceInfo> getFoundDevices() const;  // Returns copy (thread-safe)
+    void clearFoundDevices();
     
     // Connect to specific device
     bool connectToAddress(const String& address, const String& name = "");
     
-    // Get OBD data
-    OBDData getData() const { return lastData; }
-    bool hasValidData() const { return lastData.valid && !isDataStale(); }
+    // Get OBD data (thread-safe - returns copy under mutex)
+    OBDData getData() const;
+    bool hasValidData() const;
     bool isDataStale(uint32_t maxAge_ms = 2000) const;
     
-    // Speed accessors
-    float getSpeedKph() const { return lastData.speed_kph; }
-    float getSpeedMph() const { return lastData.speed_mph; }
+    // Speed accessors (thread-safe)
+    float getSpeedKph() const;
+    float getSpeedMph() const;
     
     // Request specific PIDs (for future expansion)
     bool requestSpeed();
@@ -199,4 +208,3 @@ private:
 
 // Global OBD handler instance (extern declaration)
 extern OBDHandler obdHandler;
-
