@@ -1,6 +1,58 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@plugin "daisyui" {
+	themes: light, v1dark --default --prefersdark;
+}
+
+/* Custom v1dark theme - matches V1 radar detector aesthetic */
+@plugin "daisyui/theme" {
+	name: "v1dark";
+	default: true;
+	prefersdark: true;
+	color-scheme: dark;
+	
+	/* Primary: Cyan (#00d4ff) */
+	--color-primary: oklch(75% 0.15 210);
+	--color-primary-content: oklch(10% 0.02 210);
+	
+	/* Secondary: Orange (#ff6b35) */
+	--color-secondary: oklch(65% 0.2 30);
+	--color-secondary-content: oklch(98% 0.01 30);
+	
+	/* Accent: Green (#00ff88) */
+	--color-accent: oklch(80% 0.2 155);
+	--color-accent-content: oklch(10% 0.02 155);
+	
+	/* Neutral: Dark blue (#1a1a2e) */
+	--color-neutral: oklch(18% 0.03 270);
+	--color-neutral-content: oklch(90% 0.02 270);
+	
+	/* Base: Very dark blue (#0f0f1a, #16213e, #1a1a2e) */
+	--color-base-100: oklch(12% 0.02 270);
+	--color-base-200: oklch(18% 0.04 250);
+	--color-base-300: oklch(18% 0.03 270);
+	--color-base-content: oklch(90% 0.02 270);
+	
+	/* Info: Cyan (#00d4ff) */
+	--color-info: oklch(75% 0.15 210);
+	--color-info-content: oklch(10% 0.02 210);
+	
+	/* Success: Green (#00ff88) */
+	--color-success: oklch(80% 0.2 155);
+	--color-success-content: oklch(10% 0.02 155);
+	
+	/* Warning: Yellow (#ffcc00) */
+	--color-warning: oklch(85% 0.18 90);
+	--color-warning-content: oklch(20% 0.05 90);
+	
+	/* Error: Red (#ff4444) */
+	--color-error: oklch(60% 0.25 25);
+	--color-error-content: oklch(98% 0.01 25);
+	
+	/* Styling */
+	--radius-selector: 0.5rem;
+	--radius-field: 0.25rem;
+	--radius-box: 0.5rem;
+}
 
 /* Custom styles for V1 Gen2 Display */
 :root {
