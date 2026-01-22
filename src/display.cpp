@@ -2886,10 +2886,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
         // === TOP ROW: Direction arrow + Band + Frequency ===
-        // Center content in the area above the meter (34px height)
-        // Text (~16px) and arrow should be vertically centered
-        const int contentCenterY = cardY + 17;  // Center of 34px area above meter
-        int topRowY = cardY + 9;  // Text top (centered: 17 - 8 = 9)
+        // Center content between top border (Y≈2) and meter top (Y=34)
+        // Usable area is ~32px, centered at Y=18 from card top
+        const int contentCenterY = cardY + 18;  // Center of content area above meter
+        int topRowY = cardY + 11;  // Text top (centered: 18 - 7 = 11 for ~14px text)
         
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
