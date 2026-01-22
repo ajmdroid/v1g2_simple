@@ -3410,14 +3410,17 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     const int fontSize = 65;  // Sized to match display area
     const int leftMargin = 135;   // After band indicators
     const int rightMargin = 200;  // Before signal bars
-    const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 55;  // Centered between mute icon and cards
+    
+    // Available vertical space: mute icon bottom (31) to card top (116) = 85px
+    // freqY is the baseline - with 65px font, visual center needs baseline around 55-60
+    const int freqY = 35;  // Baseline Y position
     
     ofrSerpentine.setFontSize(fontSize);
     ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
     
     // Clear bottom area for frequency
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int effectiveHeight = getEffectiveScreenHeight();
     FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
     if (band == BAND_LASER) {
