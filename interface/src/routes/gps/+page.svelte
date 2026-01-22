@@ -80,7 +80,7 @@
 	}
 	
 	function resetToDefaults() {
-		if (!confirm('Reset all lockout settings to JBV1 defaults?')) return;
+		if (!confirm('Reset all lockout settings to defaults?')) return;
 		
 		settings.lockoutEnabled = true;
 		settings.lockoutKaProtection = true;
@@ -182,7 +182,7 @@
 							max="10"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 3</span>
+							<span class="label-text-alt text-base-content/50">Default: 3</span>
 						</div>
 					</div>
 					
@@ -200,7 +200,7 @@
 							max="24"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 4 hours (0 = no interval)</span>
+							<span class="label-text-alt text-base-content/50">Default: 4 hours (0 = no interval)</span>
 						</div>
 					</div>
 					
@@ -218,7 +218,7 @@
 							max="50"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 8 MHz (radar guns drift with temperature)</span>
+							<span class="label-text-alt text-base-content/50">Default: 8 MHz (radar guns drift with temperature)</span>
 						</div>
 					</div>
 					
@@ -237,7 +237,7 @@
 							step="100"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 600m (~3/8 mi)</span>
+							<span class="label-text-alt text-base-content/50">Default: 600m (~3/8 mi)</span>
 						</div>
 					</div>
 					
@@ -260,7 +260,7 @@
 							<option value={8}>8 bars</option>
 						</select>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: None (strong signals may be real threats)</span>
+							<span class="label-text-alt text-base-content/50">Default: None (strong signals may be real threats)</span>
 						</div>
 					</div>
 				</div>
@@ -286,7 +286,7 @@
 							max="50"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 5</span>
+							<span class="label-text-alt text-base-content/50">Default: 5</span>
 						</div>
 					</div>
 					
@@ -304,7 +304,7 @@
 							max="100"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 25 (user lockouts are more trusted)</span>
+							<span class="label-text-alt text-base-content/50">Default: 25 (user lockouts are more trusted)</span>
 						</div>
 					</div>
 					
@@ -322,7 +322,7 @@
 							max="24"
 						/>
 						<div class="label">
-							<span class="label-text-alt text-base-content/50">JBV1 default: 4 hours (prevents multiple misses per trip)</span>
+							<span class="label-text-alt text-base-content/50">Default: 4 hours (prevents multiple misses per trip)</span>
 						</div>
 					</div>
 					
@@ -375,7 +375,7 @@
 			
 			{#if settings.lockoutEnabled}
 				<button class="btn btn-outline btn-sm" onclick={resetToDefaults}>
-					Reset to JBV1 Defaults
+					Reset to Defaults
 				</button>
 			{/if}
 		</div>

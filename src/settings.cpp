@@ -1245,4 +1245,7 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         backupToSD();  // Also update SD backup
         Serial.println("[Settings] Cleared invalid profile references and saved");
     }
+
+    // If any profiles are missing and auto-push was pointing to them, ensure OBD/GPS tasks remain unaffected
+    // (no action needed here beyond clearing references; safety comment for maintainers)
 }

@@ -1290,7 +1290,10 @@ void WiFiManager::handleAutoPushPushNow() {
         return;
     }
     
-    bleClient.setDisplayOn(profile.displayOn);
+    // Use slot's dark mode setting, not the profile's stored displayOn value
+    // (slot dark mode is the user-facing toggle in auto-push config)
+    bool slotDarkMode = settingsManager.getSlotDarkMode(slot);
+    bleClient.setDisplayOn(!slotDarkMode);  // Dark mode = display off
     
     if (mode != V1_MODE_UNKNOWN) {
         bleClient.setMode(static_cast<uint8_t>(mode));

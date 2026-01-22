@@ -263,17 +263,20 @@ void OBDHandler::onELM327Found(const NimBLEAdvertisedDevice* device) {
         return;  // Already found or not looking
     }
     
-    // Save target device info
-    targetAddress = device->getAddress();
-    targetDeviceName = name.c_str();
-    hasTargetDevice = true;
-    
-    // Mark as detected
-    moduleDetected = true;
-    detectionComplete = true;
-    
-    // Transition to connecting state
-    state = OBDState::CONNECTING;
+    {
+        ObdLock lock(obdMutex);
+        // Save target device info
+        targetAddress = device->getAddress();
+        targetDeviceName = name.c_str();
+        hasTargetDevice = true;
+        
+        // Mark as detected
+        moduleDetected = true;
+        detectionComplete = true;
+        
+        // Transition to connecting state
+        state = OBDState::CONNECTING;
+    }
 }
 
 void OBDHandler::onDeviceFound(const NimBLEAdvertisedDevice* device) {
@@ -430,6 +433,15 @@ void OBDHandler::startTask() {
     taskRunning = (res == pdPASS);
 }
 
+void OBDHandler::stopTask() {
+    if (obdTaskHandle) {
+        TaskHandle_t handle = obdTaskHandle;
+        obdTaskHandle = nullptr;
+        taskRunning = false;
+        vTaskDelete(handle);
+    }
+}
+
 bool OBDHandler::connectToDevice() {
     Serial.printf("[OBD] connectToDevice() called, target: %s\n", targetAddress.toString().c_str());
     
@@ -450,7 +462,8 @@ bool OBDHandler::connectToDevice() {
     }
     
     // Configure security for commodity ELM327 clones: bond only, no MITM/SC, no keypad needed
-    // Keep this relaxed to avoid impacting the V1 link (NimBLE security is global)
+    // Note: This is a global NimBLE setting, but V1 doesn't require security so it's safe
+    // The security callbacks handle PIN entry if the ELM327 requests pairing
     NimBLEDevice::setSecurityAuth(true, false, false);      // bonding only
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT); // Just Works / PIN-less
     
@@ -844,9 +857,12 @@ void OBDHandler::disconnect() {
         pOBDClient->disconnect();
     }
     
-    pNUSService = nullptr;
-    pRXChar = nullptr;
-    pTXChar = nullptr;
+    {
+        ObdLock lock(obdMutex);
+        pNUSService = nullptr;
+        pRXChar = nullptr;
+        pTXChar = nullptr;
+    }
     {
         ObdLock lock(obdMutex);
         if (lock.ok()) lastData.valid = false;

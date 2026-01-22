@@ -108,7 +108,7 @@ private:
     String responseBuffer;
     static constexpr size_t RESPONSE_BUFFER_SIZE = 256;
     bool responseComplete;
-    
+
     // Polling timing
     uint32_t lastPollMs;
     static constexpr uint32_t POLL_INTERVAL_MS = 1000;  // Poll speed every 1s (reduced load)
@@ -119,6 +119,7 @@ private:
     static void taskEntry(void* param);
     bool runStateMachine();
     void startTask();
+    void stopTask();
     
     // Mutex for thread safety
     SemaphoreHandle_t obdMutex;
