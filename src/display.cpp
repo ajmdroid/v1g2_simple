@@ -2907,11 +2907,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
         // === TOP ROW: Direction arrow + Band + Frequency ===
-        int topRowY = cardY + 8;  // Top row starts 8px from card top (more room for text)
+        // Center content between top border (Y≈2) and meter top (Y=34)
+        // Usable area is ~32px, centered at Y=18 from card top
+        const int contentCenterY = cardY + 18;  // Center of content area above meter
+        int topRowY = cardY + 11;  // Text top (centered: 18 - 7 = 11 for ~14px text)
         
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
-        int arrowCY = topRowY + 10;  // Center arrow vertically in top row
+        int arrowCY = contentCenterY;  // Arrow centered in content area
         
         if (alert.direction & DIR_FRONT) {
             tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
@@ -3428,14 +3431,17 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     const int fontSize = 65;  // Sized to match display area
     const int leftMargin = 135;   // After band indicators
     const int rightMargin = 200;  // Before signal bars
-    const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 55;  // Centered between mute icon and cards
+    
+    // Available vertical space: mute icon bottom (31) to card top (116) = 85px
+    // freqY is the baseline - with 65px font, visual center needs baseline around 55-60
+    const int freqY = 35;  // Baseline Y position
     
     ofrSerpentine.setFontSize(fontSize);
     ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
     
     // Clear bottom area for frequency
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int effectiveHeight = getEffectiveScreenHeight();
     FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
     
     if (band == BAND_LASER) {

@@ -469,9 +469,9 @@
 								min="1"
 								max="10"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 3</span>
-							</label>
+							</div>
 						</div>
 						
 						<div class="form-control">
@@ -486,9 +486,9 @@
 								min="0"
 								max="24"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 4</span>
-							</label>
+							</div>
 						</div>
 					</div>
 					
@@ -521,9 +521,9 @@
 								min="1"
 								max="50"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 5</span>
-							</label>
+							</div>
 						</div>
 						
 						<div class="form-control">
@@ -538,9 +538,9 @@
 								min="1"
 								max="100"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 25</span>
-							</label>
+							</div>
 						</div>
 					</div>
 					
@@ -572,9 +572,9 @@
 								min="1"
 								max="50"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 8</span>
-							</label>
+							</div>
 						</div>
 						
 						<div class="form-control">
@@ -589,9 +589,9 @@
 								min="50"
 								max="2000"
 							/>
-							<label class="label">
+<div class="label">
 								<span class="label-text-alt text-base-content/50">Default: 600</span>
-							</label>
+							</div>
 						</div>
 					</div>
 					
@@ -707,6 +707,6 @@
 			<button class="btn" onclick={() => showDeviceModal = false}>Close</button>
 		</div>
 	</div>
-	<div class="modal-backdrop" onclick={() => showDeviceModal = false}></div>
+	<button class="modal-backdrop" aria-label="Close modal" onclick={() => showDeviceModal = false}></button>
 </div>
 {/if}

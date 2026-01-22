@@ -148,6 +148,12 @@ static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
 static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
 
+// Direction change throttling - stop announcing if arrow bounces too much
+static uint8_t directionChangeCount = 0;        // Count of direction changes for current alert
+static unsigned long directionChangeWindowStart = 0;  // When the throttle window started
+static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;  // 10 second window
+static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
+
 // Secondary alert tracking - announce non-priority alerts once
 // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
 // NOTE: Bounds safety verified January 20, 2026 - all accesses check announcedAlertCount < 10
@@ -753,6 +759,13 @@ void startWifi() {
         return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
     });
     
+    // Manual profile push trigger from /api/profile/push
+    wifiManager.setProfilePushCallback([]() {
+        const V1Settings& s = settingsManager.get();
+        startAutoPush(s.activeSlot);
+        return true;
+    });
+    
     SerialLog.println("[WiFi] Initialized");
 }
 
@@ -900,6 +913,10 @@ void processBLEData() {
     
     // Process all queued packets (with safety cap to prevent unbounded growth)
     constexpr size_t RX_BUFFER_MAX = 512;  // Hard cap on buffer size
+    // Pre-reserve buffer once to avoid repeated heap growth/fragmentation on ESP32
+    if (rxBuffer.capacity() < RX_BUFFER_MAX) {
+        rxBuffer.reserve(RX_BUFFER_MAX);
+    }
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
         // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
         // for minimal latency. We don't forward again here to avoid duplicate packets.
@@ -1259,6 +1276,10 @@ void processBLEData() {
                     bool priorityAnnounced = false;
                     if (alertChanged && cooldownPassed) {
                         // New alert - full announcement based on mode
+                        // Reset direction change throttle for new alert
+                        directionChangeCount = 0;
+                        directionChangeWindowStart = now;
+                        
                         AlertBand audioBand;
                         bool validBand = true;
                         switch (priority.band) {
@@ -1288,15 +1309,34 @@ void processBLEData() {
                     } else if (!alertChanged && directionChanged && cooldownPassed && 
                                alertSettings.voiceDirectionEnabled) {
                         // Same alert changed direction - announce direction + bogey count if changed
-                        uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
-                        DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d)\n", 
-                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
-                        play_direction_only(audioDir, bogeyCountToAnnounce);
+                        // But throttle if direction has been bouncing too much
+                        
+                        // Check if throttle window expired - reset counter
+                        if (now - directionChangeWindowStart > DIRECTION_THROTTLE_WINDOW_MS) {
+                            directionChangeCount = 0;
+                            directionChangeWindowStart = now;
+                        }
+                        
+                        // Increment change count
+                        directionChangeCount++;
+                        
+                        // Only announce if under throttle limit
+                        if (directionChangeCount <= DIRECTION_CHANGE_LIMIT) {
+                            uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                            DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/%d]\n", 
+                                       currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount,
+                                       directionChangeCount, DIRECTION_CHANGE_LIMIT);
+                            play_direction_only(audioDir, bogeyCountToAnnounce);
+                            lastVoiceAlertTime = now;
+                            lastPriorityAnnouncementTime = now;
+                            priorityAnnounced = true;
+                        } else {
+                            DEBUG_LOGF("[VoiceAlert] Direction change THROTTLED: freq=%u changes=%d in window\n",
+                                       currentFreq, directionChangeCount);
+                        }
+                        // Always update tracking even if throttled
                         lastVoiceAlertDirection = priority.direction;
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                        lastVoiceAlertTime = now;
-                        lastPriorityAnnouncementTime = now;
-                        priorityAnnounced = true;
                     } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
                                bogeyCountCooldownPassed && alertSettings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
