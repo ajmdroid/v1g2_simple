@@ -43,6 +43,9 @@ static bool forceCardRedraw = false;
 // Force frequency cache invalidation - set when screen is cleared to ensure redraw
 static bool s_forceFrequencyRedraw = false;
 
+// Force battery percent cache invalidation - set when screen is cleared
+static bool s_forceBatteryRedraw = false;
+
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
 static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
@@ -713,6 +716,7 @@ void V1Display::drawBaseFrame() {
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
     s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
+    s_forceBatteryRedraw = true;    // Force battery percent cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -1335,7 +1339,7 @@ void V1Display::drawBatteryIndicator() {
 
         // Decide if we actually need to redraw
         unsigned long nowMs = millis();
-        bool needsRedraw = s_forceFrequencyRedraw ||  // Screen was cleared
+        bool needsRedraw = s_forceBatteryRedraw ||  // Screen was cleared
                            (!lastPctVisible) ||
                            (pct != lastPctDrawn) ||
                            (textColor != lastPctColor) ||
@@ -1344,6 +1348,9 @@ void V1Display::drawBatteryIndicator() {
         if (!needsRedraw) {
             return;  // Skip expensive render when nothing changed
         }
+        
+        // Clear force flag - we're handling it
+        s_forceBatteryRedraw = false;
 
         // Format percentage string (no % to save space)
         char pctStr[4];
@@ -3270,35 +3277,46 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
         return;
     }
     
-    // Modern style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender antialiased rendering
+    // Layout constants
     const int fontSize = 69;  // 15% larger for better visibility
-    const int leftMargin = 120;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars (at X=440)
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int clearTop = 30;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
     // Cache to avoid expensive OFR work when unchanged
     static char lastText[16] = "";
     static uint16_t lastColor = 0;
-    static bool lastWasLaser = false;
-    static bool cacheInitialized = false;
+    static bool cacheValid = false;
     static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
     static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
     
     // Check for forced invalidation (e.g., after screen clear)
     if (s_forceFrequencyRedraw) {
-        cacheInitialized = false;
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+    }
+    
+    // Modern style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
+        return;
     }
     
     // Build text and color
-    bool isLaser = (band == BAND_LASER);
     char textBuf[16];
-    if (isLaser) {
+    if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (freqMHz > 0) {
         snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
@@ -3307,7 +3325,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     }
 
     uint16_t freqColor;
-    if (isLaser) {
+    if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
@@ -3319,30 +3337,40 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
         freqColor = s.colorFrequency;
     }
 
+    // Check if anything changed
     unsigned long nowMs = millis();
-    bool changed = !cacheInitialized ||
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
                    lastColor != freqColor ||
-                   lastWasLaser != isLaser ||
-                   strcmp(lastText, textBuf) != 0 ||
+                   textChanged ||
                    (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
 
     if (!changed) {
         return;
     }
 
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    // For frequency strings (XX.XXX format), width is consistent
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofr.setFontSize(fontSize);
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
     ofr.setFontSize(fontSize);
     ofr.setBackgroundColor(0, 0, 0);  // Black background
-
-    // Clear bottom area for frequency - minimal height to avoid covering band labels
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-
-    // Get text width for centering between band indicators and signal bars
-    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
 
     ofr.setCursor(x, freqY);
     ofr.printf("%s", textBuf);
@@ -3351,10 +3379,10 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
     strncpy(lastText, textBuf, sizeof(lastText));
     lastText[sizeof(lastText) - 1] = '\0';
     lastColor = freqColor;
-    lastWasLaser = isLaser;
-    cacheInitialized = true;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
     lastDrawMs = nowMs;
-    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Hemi frequency display - Retro speedometer style with Hemi Head font
@@ -3367,34 +3395,46 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
         return;
     }
     
-    // Hemi style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender with Hemi Head font (retro speedometer style)
+    // Layout constants
     const int fontSize = 80;  // Larger for retro speedometer impact
-    const int leftMargin = 120;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 70;  // Centered between mute icon and cards
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int clearTop = 20;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
     // Cache to avoid expensive OFR work when unchanged
     static char lastText[16] = "";
     static uint16_t lastColor = 0;
-    static bool lastWasLaser = false;
-    static bool cacheInitialized = false;
+    static bool cacheValid = false;
     static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
     static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
 
     // Check for forced invalidation (e.g., after screen clear)
     if (s_forceFrequencyRedraw) {
-        cacheInitialized = false;
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
     }
 
-    bool isLaser = (band == BAND_LASER);
+    // Hemi style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
+        return;
+    }
+
+    // Build text and color
     char textBuf[16];
-    if (isLaser) {
+    if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (freqMHz > 0) {
         snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
@@ -3403,7 +3443,7 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     }
 
     uint16_t freqColor;
-    if (isLaser) {
+    if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
@@ -3415,30 +3455,39 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
         freqColor = s.colorFrequency;
     }
 
+    // Check if anything changed
     unsigned long nowMs = millis();
-    bool changed = !cacheInitialized ||
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
                    lastColor != freqColor ||
-                   lastWasLaser != isLaser ||
-                   strcmp(lastText, textBuf) != 0 ||
+                   textChanged ||
                    (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
 
     if (!changed) {
         return;
     }
 
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofrHemi.setFontSize(fontSize);
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
     ofrHemi.setFontSize(fontSize);
     ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
-
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-
     ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-
-    // Get text width for centering
-    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
 
     ofrHemi.setCursor(x, freqY);
     ofrHemi.printf("%s", textBuf);
@@ -3447,10 +3496,10 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
     strncpy(lastText, textBuf, sizeof(lastText));
     lastText[sizeof(lastText) - 1] = '\0';
     lastColor = freqColor;
-    lastWasLaser = isLaser;
-    cacheInitialized = true;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
     lastDrawMs = nowMs;
-    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Serpentine frequency display - JB's favorite font
@@ -3463,36 +3512,48 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
         return;
     }
     
-    // Serpentine style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender with Serpentine font
+    // Layout constants
     const int fontSize = 65;  // Sized to match display area
-    const int leftMargin = 135;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars
-    
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     // Available vertical space: mute icon bottom (31) to card top (116) = 85px
     // freqY is the baseline - with 65px font, visual center needs baseline around 55-60
     const int freqY = 35;  // Baseline Y position
+    const int clearTop = 20;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
     // Cache to avoid expensive OFR work when unchanged
     static char lastText[16] = "";
     static uint16_t lastColor = 0;
-    static bool lastWasLaser = false;
-    static bool cacheInitialized = false;
+    static bool cacheValid = false;
     static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
     static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
 
     // Check for forced invalidation (e.g., after screen clear)
     if (s_forceFrequencyRedraw) {
-        cacheInitialized = false;
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
     }
 
-    bool isLaser = (band == BAND_LASER);
+    // Serpentine style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
+        return;
+    }
+
+    // Build text and color
     char textBuf[16];
-    if (isLaser) {
+    if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (freqMHz > 0) {
         snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
@@ -3501,7 +3562,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     }
 
     uint16_t freqColor;
-    if (isLaser) {
+    if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
@@ -3513,31 +3574,39 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
         freqColor = s.colorFrequency;
     }
 
+    // Check if anything changed
     unsigned long nowMs = millis();
-    bool changed = !cacheInitialized ||
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
                    lastColor != freqColor ||
-                   lastWasLaser != isLaser ||
-                   strcmp(lastText, textBuf) != 0 ||
+                   textChanged ||
                    (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
 
     if (!changed) {
         return;
     }
 
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofrSerpentine.setFontSize(fontSize);
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
     ofrSerpentine.setFontSize(fontSize);
     ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
-
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int effectiveHeight = getEffectiveScreenHeight();
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-
     ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-
-    // Get text width for centering
-    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
 
     ofrSerpentine.setCursor(x, freqY);
     ofrSerpentine.printf("%s", textBuf);
@@ -3546,10 +3615,10 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
     strncpy(lastText, textBuf, sizeof(lastText));
     lastText[sizeof(lastText) - 1] = '\0';
     lastColor = freqColor;
-    lastWasLaser = isLaser;
-    cacheInitialized = true;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
     lastDrawMs = nowMs;
-    s_forceFrequencyRedraw = false;  // Clear force flag after successful draw
 }
 
 // Draw volume zero warning in the frequency area (flashing red text)
