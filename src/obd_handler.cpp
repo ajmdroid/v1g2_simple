@@ -348,7 +348,12 @@ void OBDHandler::handlePolling() {
     // Check if still connected
     if (pOBDClient && !pOBDClient->isConnected()) {
         Serial.println("[OBD] Connection lost");
-        lastData.valid = false;
+        {
+            ObdLock lock(obdMutex);
+            if (lock.ok()) {
+                lastData.valid = false;
+            }
+        }
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();
         return;
@@ -647,12 +652,13 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
         return false;
     }
     
-    ObdLock lock(obdMutex);
-    if (!lock.ok()) return false;
-    
-    // Clear response buffer
-    responseBuffer = "";
-    responseComplete = false;
+    {
+        // Clear response buffer under lock
+        ObdLock lock(obdMutex);
+        if (!lock.ok()) return false;
+        responseBuffer = "";
+        responseComplete = false;
+    }
     
     // Send command with carriage return
     String cmdStr = String(cmd) + "\r";
@@ -666,17 +672,24 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
     
     // Wait for response (with '>' prompt)
     uint32_t startMs = millis();
-    while (!responseComplete && (millis() - startMs) < timeout_ms) {
+    while (true) {
+        {
+            ObdLock lock(obdMutex);
+            if (lock.ok() && responseComplete) break;
+        }
+        if ((millis() - startMs) >= timeout_ms) break;
         vTaskDelay(1);  // Yield to keep main loop responsive
     }
     
-    if (!responseComplete) {
-        Serial.printf("[OBD] Command timeout: %s\n", cmd);
-        response = responseBuffer;  // Return partial response
-        return false;
+    {
+        ObdLock lock(obdMutex);
+        response = responseBuffer;
+        if (!responseComplete) {
+            Serial.printf("[OBD] Command timeout: %s\n", cmd);
+            return false;
+        }
     }
     
-    response = responseBuffer;
     OBD_LOGF("[OBD] RX: %s\n", response.c_str());
     
     // Check for error responses
@@ -702,16 +715,22 @@ bool OBDHandler::requestSpeed() {
     
     // Send PID 0x0D (Vehicle Speed)
     if (!sendATCommand("010D", response, 250)) {  // keep timeout short to avoid loop stalls
-        lastData.valid = false;
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.valid = false;
+        }
         return false;
     }
     
     uint8_t speedKph;
     if (parseSpeedResponse(response, speedKph)) {
-        lastData.speed_kph = speedKph;
-        lastData.speed_mph = speedKph * 0.621371f;
-        lastData.timestamp_ms = millis();
-        lastData.valid = true;
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.speed_kph = speedKph;
+            lastData.speed_mph = speedKph * 0.621371f;
+            lastData.timestamp_ms = millis();
+            lastData.valid = true;
+        }
         
         OBD_LOGF("[OBD] Speed: %d km/h (%.1f mph)\n", speedKph, lastData.speed_mph);
         return true;
@@ -730,8 +749,11 @@ bool OBDHandler::requestRPM() {
     
     uint16_t rpm;
     if (parseRPMResponse(response, rpm)) {
-        lastData.rpm = rpm;
-        lastData.timestamp_ms = millis();
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.rpm = rpm;
+            lastData.timestamp_ms = millis();
+        }
         return true;
     }
     
@@ -748,8 +770,11 @@ bool OBDHandler::requestVoltage() {
     
     float voltage;
     if (parseVoltageResponse(response, voltage)) {
-        lastData.voltage = voltage;
-        lastData.timestamp_ms = millis();
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.voltage = voltage;
+            lastData.timestamp_ms = millis();
+        }
         return true;
     }
     
@@ -822,7 +847,10 @@ void OBDHandler::disconnect() {
     pNUSService = nullptr;
     pRXChar = nullptr;
     pTXChar = nullptr;
-    lastData.valid = false;
+    {
+        ObdLock lock(obdMutex);
+        if (lock.ok()) lastData.valid = false;
+    }
     
     if (state != OBDState::OBD_DISABLED && state != OBDState::FAILED) {
         state = OBDState::DISCONNECTED;
