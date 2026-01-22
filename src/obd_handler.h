@@ -138,6 +138,8 @@ public:
     
     // Manual scan for OBD devices
     void startScan();
+    void stopScan();
+    void onScanComplete();  // Called by BLE when scan ends
     bool isScanActive() const { return scanActive; }
     const std::vector<OBDDeviceInfo>& getFoundDevices() const { return foundDevices; }
     void clearFoundDevices() { foundDevices.clear(); }

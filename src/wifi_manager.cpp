@@ -418,6 +418,7 @@ void WiFiManager::setupWebServer() {
     // OBD-II API routes
     server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
     server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
+    server.on("/api/obd/scan/stop", HTTP_POST, [this]() { handleObdScanStop(); });
     server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
     server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
     server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
@@ -1982,6 +1983,16 @@ void WiFiManager::handleObdScan() {
     
     obdHandler.startScan();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan started\"}");
+}
+
+void WiFiManager::handleObdScanStop() {
+    if (!settingsManager.isObdEnabled()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
+        return;
+    }
+    
+    obdHandler.stopScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan stopped\"}");
 }
 
 void WiFiManager::handleObdDevices() {

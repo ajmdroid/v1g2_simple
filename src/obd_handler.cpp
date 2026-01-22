@@ -774,6 +774,37 @@ void OBDHandler::startScan() {
     bleClient.startOBDScan();
 }
 
+void OBDHandler::stopScan() {
+    if (!scanActive) {
+        Serial.println("[OBD] stopScan() - scan not active");
+        return;
+    }
+    
+    Serial.println("[OBD] Stopping scan manually");
+    
+    // Stop the BLE scan
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan && pScan->isScanning()) {
+        pScan->stop();
+    }
+    
+    // Mark scan as complete
+    onScanComplete();
+}
+
+void OBDHandler::onScanComplete() {
+    if (!scanActive) return;
+    
+    scanActive = false;
+    Serial.printf("[OBD] Scan complete - found %d devices\n", foundDevices.size());
+    
+    // If we're in SCANNING state, go back to IDLE
+    if (state == OBDState::SCANNING) {
+        state = OBDState::IDLE;
+        detectionComplete = true;
+    }
+}
+
 bool OBDHandler::connectToAddress(const String& address, const String& name) {
     Serial.printf("[OBD] Connecting to specific device: %s (%s)\n", 
                   address.c_str(), name.length() > 0 ? name.c_str() : "unknown");

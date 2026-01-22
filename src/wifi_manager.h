@@ -121,6 +121,7 @@ private:
     void handleSettingsRestore();
     void handleObdStatus();
     void handleObdScan();
+    void handleObdScanStop();
     void handleObdDevices();
     void handleObdDevicesClear();
     void handleObdConnect();

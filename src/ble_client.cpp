@@ -545,6 +545,12 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
             // If SCAN_STOPPING, process() will handle the transition
         }
     }
+    
+    // Notify OBD handler that scan has ended (if it was scanning)
+    if (obdHandler.isScanActive()) {
+        Serial.println("[BLE] Scan ended - notifying OBD handler");
+        obdHandler.onScanComplete();
+    }
 }
 
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {

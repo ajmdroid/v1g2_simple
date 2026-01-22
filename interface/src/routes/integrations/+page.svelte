@@ -154,6 +154,19 @@
 		}
 	}
 	
+	async function stopObdScan() {
+		try {
+			const res = await fetch('/api/obd/scan/stop', { method: 'POST' });
+			if (res.ok) {
+				obdScanning = false;
+				message = { type: 'info', text: 'Scan stopped' };
+				await fetchObdDevices();
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Failed to stop scan' };
+		}
+	}
+	
 	async function connectToDevice(device) {
 		message = null;
 		showDeviceModal = false;  // Close modal when connecting
@@ -379,18 +392,22 @@
 					</div>
 					
 					<div class="flex gap-2">
-						<button 
-							class="btn btn-primary"
-							onclick={startObdScan}
-							disabled={obdScanning}
-						>
-							{#if obdScanning}
+						{#if obdScanning}
+							<button 
+								class="btn btn-warning"
+								onclick={stopObdScan}
+							>
 								<span class="loading loading-spinner loading-sm"></span>
-								Scanning...
-							{:else}
+								Stop Scan
+							</button>
+						{:else}
+							<button 
+								class="btn btn-primary"
+								onclick={startObdScan}
+							>
 								🔍 Scan for Devices
-							{/if}
-						</button>
+							</button>
+						{/if}
 						{#if obdDevices.length > 0}
 							<button class="btn btn-ghost btn-sm" onclick={() => showDeviceModal = true}>
 								📋 View {obdDevices.length} device{obdDevices.length > 1 ? 's' : ''}
