@@ -10,10 +10,12 @@
 #include "obd_handler.h"
 #include "settings.h"
 #include "ble_client.h"
+#include "debug_logger.h"
 #include <NimBLEDevice.h>
 
 // External references
 extern V1BLEClient bleClient;
+extern DebugLogger debugLogger;
 
 // Static constexpr definitions
 constexpr const char* OBDHandler::ELM327_NAME_PATTERNS[];
@@ -31,6 +33,9 @@ static OBDHandler* s_obdInstance = nullptr;
 #define OBD_LOGF(...) do { if (DEBUG_OBD) Serial.printf(__VA_ARGS__); } while(0)
 #define OBD_LOGLN(msg) do { if (DEBUG_OBD) Serial.println(msg); } while(0)
 
+// Debug logger macro for settings-enabled OBD logging
+#define OBD_DEBUG_LOGF(...) do { debugLogger.logf(DebugLogCategory::Obd, __VA_ARGS__); } while(0)
+
 // Simple RAII lock for the OBD mutex
 class ObdLock {
 public:
@@ -46,15 +51,24 @@ private:
     bool locked;
 };
 
+// Flag to track when authentication completes
+static volatile bool s_authComplete = false;
+static volatile bool s_authSuccess = false;
+
 // Security callbacks for ELM327 pairing
 class OBDSecurityCallbacks : public NimBLEClientCallbacks {
 public:
     void onConnect(NimBLEClient* pClient) override {
         Serial.println("[OBD] Security: Connected");
+        s_authComplete = false;  // Reset for new connection
+        s_authSuccess = false;
     }
     
     void onDisconnect(NimBLEClient* pClient, int reason) override {
         Serial.printf("[OBD] Security: Disconnected, reason=%d\n", reason);
+        // Mark auth as complete (failed) so we don't hang waiting
+        s_authComplete = true;
+        s_authSuccess = false;
     }
     
     void onPassKeyEntry(NimBLEConnInfo& connInfo) override {
@@ -71,6 +85,8 @@ public:
     }
     
     void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+        s_authComplete = true;
+        s_authSuccess = connInfo.isEncrypted();
         if (connInfo.isEncrypted()) {
             Serial.println("[OBD] Security: Authentication complete (encrypted)");
         } else {
@@ -127,32 +143,57 @@ void OBDHandler::begin() {
     
     startTask();
     
-    // Check if we have a saved device to reconnect to
+    // Check if we have a saved device
     String savedAddr = settingsManager.getObdDeviceAddress();
     String savedName = settingsManager.getObdDeviceName();
     
     if (savedAddr.length() > 0) {
-        // We have a saved device - scan for 120s to try reconnecting
-        Serial.printf("[OBD] Saved device: %s (%s) - scanning to reconnect...\n", 
+        // We have a saved device - store info but DON'T scan yet
+        // Wait for V1 to connect and settle before attempting OBD connection
+        Serial.printf("[OBD] Saved device: %s (%s) - waiting for V1 to connect first\n", 
                       savedName.c_str(), savedAddr.c_str());
+        OBD_DEBUG_LOGF("[OBD] Saved device: %s - waiting for V1", savedName.c_str());
         
         targetAddress = NimBLEAddress(std::string(savedAddr.c_str()), BLE_ADDR_PUBLIC);
         targetDeviceName = savedName;
         hasTargetDevice = true;
         
-        detectionStartMs = millis();
-        state = OBDState::SCANNING;
-        scanActive = true;
-        
-        // Trigger actual BLE scan
-        bleClient.startOBDScan();
+        // Stay idle - tryAutoConnect() will be called after V1 settles
+        state = OBDState::IDLE;
+        scanActive = false;
+        detectionComplete = false;
     } else {
         // No saved device - wait for manual scan from UI
         Serial.println("[OBD] No saved device - waiting for manual scan");
+        OBD_DEBUG_LOGF("[OBD] No saved device configured");
         state = OBDState::IDLE;
         scanActive = false;
         detectionComplete = true;  // Not "failed", just idle
     }
+}
+
+void OBDHandler::tryAutoConnect() {
+    // Called after V1 connection has settled
+    // Only connect if we have a saved device and not already connecting/connected
+    
+    if (!hasTargetDevice) {
+        Serial.println("[OBD] tryAutoConnect: No saved device - skipping");
+        return;
+    }
+    
+    if (state == OBDState::CONNECTING || state == OBDState::INITIALIZING ||
+        state == OBDState::READY || state == OBDState::POLLING) {
+        Serial.println("[OBD] tryAutoConnect: Already connecting or connected - skipping");
+        return;
+    }
+    
+    Serial.printf("[OBD] tryAutoConnect: Connecting to saved device %s (%s)\n",
+                  targetDeviceName.c_str(), targetAddress.toString().c_str());
+    OBD_DEBUG_LOGF("[OBD] Auto-connecting to %s", targetDeviceName.c_str());
+    
+    // Go directly to connecting state - no scan needed
+    state = OBDState::CONNECTING;
+    detectionStartMs = millis();
 }
 
 bool OBDHandler::update() {
@@ -319,17 +360,20 @@ void OBDHandler::handleConnecting() {
     
     if (connectToDevice()) {
         Serial.println("[OBD] Connected! Discovering services...");
+        OBD_DEBUG_LOGF("[OBD] Connected to %s", targetDeviceName.c_str());
         if (discoverServices()) {
             Serial.println("[OBD] Services discovered, initializing ELM327...");
             state = OBDState::INITIALIZING;
         } else {
             Serial.println("[OBD] Service discovery failed");
+            OBD_DEBUG_LOGF("[OBD] Service discovery failed for %s", targetDeviceName.c_str());
             disconnect();
             state = OBDState::DISCONNECTED;
             lastPollMs = millis();  // For reconnect delay
         }
     } else {
         Serial.println("[OBD] Connection failed");
+        OBD_DEBUG_LOGF("[OBD] Connection failed to %s", targetDeviceName.c_str());
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();  // For reconnect delay
     }
@@ -338,9 +382,11 @@ void OBDHandler::handleConnecting() {
 void OBDHandler::handleInitializing() {
     if (initializeELM327()) {
         Serial.println("[OBD] ELM327 initialized successfully");
+        OBD_DEBUG_LOGF("[OBD] ELM327 initialized - %s ready", targetDeviceName.c_str());
         state = OBDState::READY;
     } else {
         Serial.println("[OBD] ELM327 initialization failed");
+        OBD_DEBUG_LOGF("[OBD] ELM327 init failed for %s", targetDeviceName.c_str());
         disconnect();
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();
@@ -351,6 +397,7 @@ void OBDHandler::handlePolling() {
     // Check if still connected
     if (pOBDClient && !pOBDClient->isConnected()) {
         Serial.println("[OBD] Connection lost");
+        OBD_DEBUG_LOGF("[OBD] Connection lost to %s", targetDeviceName.c_str());
         {
             ObdLock lock(obdMutex);
             if (lock.ok()) {
@@ -445,6 +492,9 @@ void OBDHandler::stopTask() {
 bool OBDHandler::connectToDevice() {
     Serial.printf("[OBD] connectToDevice() called, target: %s\n", targetAddress.toString().c_str());
     
+    // Note: We don't delete bonds here - let NimBLE manage bonding naturally
+    // Deleting bonds on every connect can cause issues with some devices
+    
     // Create client if needed
     if (!pOBDClient) {
         Serial.println("[OBD] Creating new BLE client with security...");
@@ -461,22 +511,47 @@ bool OBDHandler::connectToDevice() {
         pOBDClient->setConnectionParams(12, 12, 0, 500);  // min, max, latency, timeout
     }
     
-    // Configure security for commodity ELM327 clones: bond only, no MITM/SC, no keypad needed
-    // Note: This is a global NimBLE setting, but V1 doesn't require security so it's safe
-    // The security callbacks handle PIN entry if the ELM327 requests pairing
-    NimBLEDevice::setSecurityAuth(true, false, false);      // bonding only
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT); // Just Works / PIN-less
+    // Configure security for ELM327 adapters that require PIN pairing (e.g., Veepeak BLE+)
+    // IMPORTANT: Use Legacy Pairing (sc=false), NOT Secure Connections!
+    // Veepeak and most cheap ELM327 adapters only support legacy pairing with fixed PIN
+    // The security callbacks handle PIN entry (onPassKeyEntry injects 1234)
+    NimBLEDevice::setSecurityAuth(true, true, false);       // bonding, MITM, NO secure connections (legacy pairing)
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY); // We can "type" a PIN
     
-    Serial.printf("[OBD] Attempting BLE connect (10s timeout, security enabled)...\n");
+    Serial.printf("[OBD] Attempting BLE connect (10s timeout, legacy pairing)...\n");
+    
+    // Reset auth flags before connecting
+    s_authComplete = false;
+    s_authSuccess = false;
     
     // Connect with 10 second timeout
     // NimBLE handles pairing automatically if the device requests it
     if (!pOBDClient->connect(targetAddress, false, 10)) {
         Serial.printf("[OBD] Failed to connect to %s\n", targetAddress.toString().c_str());
+        // Clean up client on failure to prevent leaks
+        NimBLEDevice::deleteClient(pOBDClient);
+        pOBDClient = nullptr;
         return false;
     }
     
-    Serial.println("[OBD] BLE connected successfully!");
+    Serial.println("[OBD] BLE connected!");
+    
+    // Don't call secureConnection() - it causes heap corruption on some devices
+    // Instead, let NimBLE handle pairing automatically when we try to access 
+    // encrypted services. The security callbacks will inject the PIN when prompted.
+    
+    // Give the connection a moment to stabilize and for device to request pairing
+    delay(500);
+    
+    // Check if still connected
+    if (!pOBDClient->isConnected()) {
+        Serial.println("[OBD] Lost connection after connect!");
+        NimBLEDevice::deleteClient(pOBDClient);
+        pOBDClient = nullptr;
+        return false;
+    }
+    
+    Serial.println("[OBD] Connection stable, proceeding to service discovery...");
     return true;
 }
 
@@ -657,6 +732,9 @@ bool OBDHandler::initializeELM327() {
         Serial.printf("[OBD] Vehicle response: %s\n", response.c_str());
     }
     
+    // Small delay to let ELM327 settle before polling begins
+    delay(200);
+    
     return true;
 }
 
@@ -724,14 +802,20 @@ void OBDHandler::sendCommand(const char* cmd) {
 }
 
 bool OBDHandler::requestSpeed() {
+    // Periodic speed logging (every 10 seconds when OBD logging enabled)
+    static unsigned long lastSpeedLogMs = 0;
+    static constexpr unsigned long SPEED_LOG_INTERVAL_MS = 10000;
+    
     String response;
     
     // Send PID 0x0D (Vehicle Speed)
-    if (!sendATCommand("010D", response, 250)) {  // keep timeout short to avoid loop stalls
+    // First query after init may take longer as ELM327 establishes vehicle communication
+    if (!sendATCommand("010D", response, 1000)) {  // 1 second timeout for reliability
         ObdLock lock(obdMutex);
         if (lock.ok()) {
             lastData.valid = false;
         }
+        OBD_DEBUG_LOGF("[OBD] Speed query failed");
         return false;
     }
     
@@ -746,6 +830,12 @@ bool OBDHandler::requestSpeed() {
         }
         
         OBD_LOGF("[OBD] Speed: %d km/h (%.1f mph)\n", speedKph, lastData.speed_mph);
+        
+        // Log speed periodically when OBD logging is enabled
+        if (millis() - lastSpeedLogMs >= SPEED_LOG_INTERVAL_MS) {
+            lastSpeedLogMs = millis();
+            OBD_DEBUG_LOGF("[OBD] Speed: %d km/h (%.1f mph)", speedKph, lastData.speed_mph);
+        }
         return true;
     }
     
@@ -852,9 +942,16 @@ bool OBDHandler::parseVoltageResponse(const String& response, float& voltage) {
 }
 
 void OBDHandler::disconnect() {
-    if (pOBDClient && pOBDClient->isConnected()) {
-        Serial.println("[OBD] Disconnecting...");
-        pOBDClient->disconnect();
+    if (pOBDClient) {
+        if (pOBDClient->isConnected()) {
+            Serial.println("[OBD] Disconnecting...");
+            pOBDClient->disconnect();
+        }
+        // CRITICAL: Delete the client to free NimBLE resources
+        // Prevents "Failed to create client" errors
+        Serial.println("[OBD] Deleting BLE client");
+        NimBLEDevice::deleteClient(pOBDClient);
+        pOBDClient = nullptr;
     }
     
     {
@@ -889,6 +986,14 @@ void OBDHandler::startScan() {
     detectionStartMs = millis();
     
     Serial.println("[OBD] Manual scan started - looking for ELM327 devices");
+    
+    // Only scan if V1 is connected - OBD uses second BLE client which needs V1 stable first
+    if (!bleClient.isConnected()) {
+        Serial.println("[OBD] ERROR: V1 not connected - connect V1 first before OBD scan");
+        state = OBDState::IDLE;
+        scanActive = false;
+        return;
+    }
     
     // Trigger actual BLE scan via V1 BLE client
     bleClient.startOBDScan();
@@ -950,6 +1055,10 @@ bool OBDHandler::connectToAddress(const String& address, const String& name) {
     detectionComplete = true;
     scanActive = false;
     state = OBDState::CONNECTING;
+    
+    // Save device to settings for auto-reconnect on next boot
+    settingsManager.setObdDevice(address, targetDeviceName);
+    Serial.printf("[OBD] Saved device to settings: %s (%s)\n", address.c_str(), targetDeviceName.c_str());
     
     Serial.printf("[OBD] State set to CONNECTING, hasTarget=%d\n", hasTargetDevice);
     

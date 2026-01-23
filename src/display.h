@@ -93,6 +93,9 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
+    // OBD indicator (shows "OBD" below signal bars when connected)
+    void updateObdIndicator();
+
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
     

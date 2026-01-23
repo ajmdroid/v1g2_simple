@@ -169,6 +169,10 @@ static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
 static bool autoPowerOffArmed = false;  // True once V1 data has been received (not just connected)
 
+// OBD auto-connect delay - wait for V1 connection to settle before OBD
+static unsigned long obdAutoConnectAt = 0;        // millis() when to attempt OBD connect (0 = disabled)
+static constexpr unsigned long OBD_CONNECT_DELAY_MS = 12000;  // 12 second delay after V1 connects
+
 // Volume fade tracking - reduce V1 volume after X seconds of continuous alert
 static unsigned long volumeFadeAlertStartMs = 0;  // When current alert session started (0 = no active alert)
 static uint8_t volumeFadeOriginalVol = 0xFF;      // Original main volume before fade (0xFF = not faded)
@@ -782,6 +786,12 @@ void onV1Connected() {
     if (activeSlotIndex != s.activeSlot) {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                         s.activeSlot, activeSlotIndex);
+    }
+    
+    // Schedule delayed OBD auto-connect if OBD is enabled
+    if (s.obdEnabled) {
+        obdAutoConnectAt = millis() + OBD_CONNECT_DELAY_MS;
+        SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
     }
     
     if (!s.autoPushEnabled) {
@@ -2147,7 +2157,16 @@ void loop() {
     }
     
     // Process OBD updates (always runs - state machine handles enabled/disabled)
+    // Check for delayed auto-connect trigger
+    if (obdAutoConnectAt != 0 && millis() >= obdAutoConnectAt) {
+        obdAutoConnectAt = 0;  // Clear trigger
+        SerialLog.println("[OBD] V1 settle delay complete - attempting OBD auto-connect");
+        obdHandler.tryAutoConnect();
+    }
     obdHandler.update();
+    
+    // Update OBD indicator on display (checks for state changes)
+    display.updateObdIndicator();
     
     // Speed-based volume: boost V1 volume at highway speeds
     // Check periodically (not every loop) to avoid spamming V1

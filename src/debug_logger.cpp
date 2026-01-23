@@ -78,7 +78,8 @@ void DebugLogger::writeLine(const char* line) {
 
     rotateIfNeeded();
 
-    File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND);
+    // Use FILE_APPEND with create flag, or FILE_WRITE if file doesn't exist
+    File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);  // true = create if missing
     if (!f) {
         return;
     }

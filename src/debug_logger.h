@@ -11,7 +11,7 @@
 
 // Log file location and size cap (shared with UI/API)
 inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
-inline constexpr size_t DEBUG_LOG_MAX_BYTES = 512 * 1024;  // 512KB cap
+inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
 
 // Log categories for selective filtering
 enum class DebugLogCategory {

@@ -11,6 +11,7 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include "ble_client.h"
+#include "obd_handler.h"
 #include "audio_beep.h"
 #include <esp_heap_caps.h>
 #include <cstring>
@@ -45,6 +46,11 @@ static bool s_forceFrequencyRedraw = false;
 
 // Force battery percent cache invalidation - set when screen is cleared
 static bool s_forceBatteryRedraw = false;
+
+// Force band/signal bar/arrow cache invalidation - set when screen is cleared
+static bool s_forceBandRedraw = false;
+static bool s_forceSignalBarsRedraw = false;
+static bool s_forceArrowRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -717,6 +723,9 @@ void V1Display::drawBaseFrame() {
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
     s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
     s_forceBatteryRedraw = true;    // Force battery percent cache invalidation after screen clear
+    s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
+    s_forceSignalBarsRedraw = true; // Force signal bars cache invalidation after screen clear
+    s_forceArrowRedraw = true;      // Force arrow cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -3007,6 +3016,11 @@ void V1Display::drawBandBadge(Band band) {
 }
 
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
+    // Cache to avoid redrawing unchanged bands
+    static uint8_t lastEffectiveMask = 0xFF;  // Invalid initial value to force first draw
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
     // Local blink timer - V1 blinks at ~5Hz, we match that
     // Use same timer as arrows for synchronized blinking
     static unsigned long lastBlinkTime = 0;
@@ -3024,6 +3038,17 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     if (!blinkOn) {
         // Turn off bands that are flashing during the OFF phase
         effectiveBandMask &= ~bandFlashBits;
+    }
+    
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceBandRedraw) {
+        cacheValid = false;
+        s_forceBandRedraw = false;
+    }
+    
+    // Check if anything changed
+    if (cacheValid && effectiveBandMask == lastEffectiveMask && muted == lastMuted) {
+        return;  // Nothing changed, skip redraw
     }
     
     // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
@@ -3061,16 +3086,33 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     const int labelClearW = 50;  // Width for "Ka" (widest label)
     const int labelClearH = 38;  // Height of 24pt font
     
+    // Only redraw bands that changed
+    uint8_t changedBands = cacheValid ? (effectiveBandMask ^ lastEffectiveMask) : 0xFF;
+    bool mutedChanged = !cacheValid || (muted != lastMuted);
+    
     for (int i = 0; i < 4; ++i) {
+        // Skip unchanged bands (unless muted state changed, which affects all lit bands)
+        bool bandChanged = (changedBands & cells[i].mask) != 0;
+        bool wasActive = (lastEffectiveMask & cells[i].mask) != 0;
+        bool isActive = (effectiveBandMask & cells[i].mask) != 0;
+        
+        if (cacheValid && !bandChanged && !(mutedChanged && (wasActive || isActive))) {
+            continue;  // This band hasn't changed
+        }
+        
         int labelY = startY + i * spacing;
         // Clear area around this label (ML_DATUM means Y is vertical center)
         FILL_RECT(x - 5, labelY - labelClearH/2, labelClearW, labelClearH, PALETTE_BG);
         
-        bool active = (effectiveBandMask & cells[i].mask) != 0;
-        uint16_t col = active ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
+        uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, labelY);
     }
+    
+    // Update cache
+    lastEffectiveMask = effectiveBandMask;
+    lastMuted = muted;
+    cacheValid = true;
     
     // Reset to default font for other text
     TFT_CALL(setFont)(NULL);
@@ -3794,6 +3836,19 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
+    // Cache to avoid redrawing unchanged arrows
+    static bool lastShowFront = false;
+    static bool lastShowSide = false;
+    static bool lastShowRear = false;
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
+    // Check for forced invalidation (after screen clear)
+    if (s_forceArrowRedraw) {
+        cacheValid = false;
+        s_forceArrowRedraw = false;
+    }
+    
     // Local blink timer - V1 blinks at ~5Hz, we match that
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
@@ -3866,23 +3921,35 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
-    // Clear the entire arrow region using the max dimensions
-    // Stop above profile indicator area (profile at Y=152)
-    // Limit right edge to avoid clearing battery icon/percent area
+    // Check if anything changed - if so, redraw ALL arrows to avoid clearing overlap issues
+    bool anyChanged = !cacheValid || 
+                      (showFront != lastShowFront) || 
+                      (showSide != lastShowSide) || 
+                      (showRear != lastShowRear) ||
+                      (muted != lastMuted);
+    
+    // If nothing changed, skip redraw entirely
+    if (!anyChanged) {
+        return;
+    }
+    
+    // Calculate clear regions for each arrow
     const int maxW = (topW > bottomW) ? topW : bottomW;
-    const int maxH = (topH > bottomH) ? topH : bottomH;
-    int clearTop = topArrowCenterY - topH/2 - 15;
-    int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
     int clearLeft = cx - maxW/2 - 10;
-    int clearWidth = maxW + 20;  // Reduced from +24 to avoid battery icon at X=618
-    // Clamp right edge to not overlap battery percent (leave space at top-right)
-    int maxClearRight = SCREEN_WIDTH - 42;  // Leave margin for battery percent text
+    int clearWidth = maxW + 20;
+    int maxClearRight = SCREEN_WIDTH - 42;
     if (clearLeft + clearWidth > maxClearRight) {
         clearWidth = maxClearRight - clearLeft;
     }
-    FILL_RECT(clearLeft, clearTop, clearWidth, clearBottom - clearTop, PALETTE_BG);
 
-    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
+    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol, bool needsClear) {
+        // Clear just this arrow's region if needed
+        if (needsClear) {
+            int arrowTop = centerY - triH/2 - 2;
+            int arrowHeight = triH + 4;
+            FILL_RECT(clearLeft, arrowTop, clearWidth, arrowHeight, PALETTE_BG);
+        }
+        
         uint16_t fillCol = active ? activeCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         
@@ -3918,7 +3985,16 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         }
     };
 
-    auto drawSideArrow = [&](bool active) {
+    auto drawSideArrow = [&](bool active, bool needsClear) {
+        // Clear just the side arrow region if needed
+        if (needsClear) {
+            const int headW = (int)(28 * scale);
+            const int headH = (int)(22 * scale);
+            int sideTop = cy - headH - 2;
+            int sideHeight = headH * 2 + 4;
+            FILL_RECT(clearLeft, sideTop, clearWidth, sideHeight, PALETTE_BG);
+        }
+        
         uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = (int)(66 * scale);   // Center bar width
@@ -3947,10 +4023,23 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Use showFront/Side/Rear which incorporate the blink state
-    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol);
-    drawSideArrow(showSide);
-    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
+    // Clear entire arrow region once, then redraw all
+    const int headH = (int)(22 * scale);
+    int totalTop = topArrowCenterY - topH/2 - 2;
+    int totalBottom = bottomArrowCenterY + bottomH/2 + 2;
+    FILL_RECT(clearLeft, totalTop, clearWidth, totalBottom - totalTop, PALETTE_BG);
+    
+    // Draw all three arrows
+    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol, false);
+    drawSideArrow(showSide, false);
+    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol, false);
+    
+    // Update cache
+    lastShowFront = showFront;
+    lastShowSide = showSide;
+    lastShowRear = showRear;
+    lastMuted = muted;
+    cacheValid = true;
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
@@ -3962,6 +4051,22 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 
     // Clamp strength to valid range (already mapped from 0-8 to 0-6)
     if (strength > 6) strength = 6;
+
+    // Cache to avoid redrawing unchanged bars
+    static uint8_t lastStrength = 0xFF;  // Invalid initial to force first draw
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceSignalBarsRedraw) {
+        cacheValid = false;
+        s_forceSignalBarsRedraw = false;
+    }
+    
+    // Check if anything changed
+    if (cacheValid && strength == lastStrength && muted == lastMuted) {
+        return;  // Nothing changed, skip redraw
+    }
 
     bool hasSignal = (strength > 0);
     
@@ -3991,24 +4096,27 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
     // Align signal bars so gap between bars 3 and 4 aligns with middle arrow center (cy=85)
-    // With 8 bars: barHeight=14, barSpacing=10, gap center at startY + 3*(barHeight+barSpacing) - barSpacing/2
-    // Want: startY + 3*24 - 5 = 85, so startY = 85 - 67 = 18
     int startY = 18;  // Fixed position to align with middle arrow
     if (startY < 8) startY = 8; // keep some padding from top icons
 
-    // Clear area once
-    int clearH = totalH + 4;
-    FILL_RECT(startX - 2, startY - 2, barWidth + 4, clearH, PALETTE_BG);
-
+    // Only redraw bars that changed state
     for (int i = 0; i < barCount; i++) {
+        bool wasLit = cacheValid && (i < lastStrength);
+        bool isLit = hasSignal && (i < strength);
+        bool wasMutedLit = cacheValid && wasLit && lastMuted;
+        bool isMutedLit = isLit && muted;
+        
+        // Skip if this bar's state hasn't changed
+        if (cacheValid && wasLit == isLit && wasMutedLit == isMutedLit) {
+            continue;
+        }
+        
         // Draw from bottom to top
         int visualIndex = barCount - 1 - i;
         int y = startY + visualIndex * (barHeight + barSpacing);
         
-        bool lit = hasSignal && (i < strength);
-        
         uint16_t fillColor;
-        if (!lit) {
+        if (!isLit) {
             fillColor = 0x1082; // very dark grey (resting/off)
         } else if (muted) {
             fillColor = PALETTE_MUTED; // muted grey for lit bars
@@ -4019,6 +4127,81 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         // Draw filled bar
         FILL_ROUND_RECT(startX, y, barWidth, barHeight, 2, fillColor);
     }
+    
+    // Draw OBD indicator below signal bars (if OBD is connected)
+    // Position: below the bottom bar, centered under bar area
+    // NOTE: Check OBD state BEFORE updating cache so we can detect if bars were just redrawn
+    static bool lastObdConnected = false;
+    bool obdConnected = obdHandler.isConnected();
+    bool barsWereRedrawn = !cacheValid;  // Capture before we set cacheValid = true
+    
+    // Update cache
+    lastStrength = strength;
+    lastMuted = muted;
+    cacheValid = true;
+    
+    // Redraw OBD indicator if state changed OR bars were just redrawn
+    if (obdConnected != lastObdConnected || barsWereRedrawn) {
+        const int obdY = startY + totalH + 6;  // Below last bar with small gap
+        const int obdLabelWidth = 36;
+        const int obdLabelHeight = 12;
+        const int obdX = startX + (barWidth - obdLabelWidth) / 2;  // Center under bars
+        
+        if (obdConnected) {
+            // Draw "OBD" label in green
+            uint16_t obdColor = 0x07E0;  // Green
+            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);  // Clear area first
+            
+            // Use small built-in font for "OBD" text
+            tft->setTextColor(obdColor);
+            tft->setTextSize(1);
+            tft->setCursor(obdX + 4, obdY + 2);
+            tft->print("OBD");
+        } else {
+            // Clear OBD area when disconnected
+            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+        }
+        lastObdConnected = obdConnected;
+    }
+}
+
+// Standalone OBD indicator update - can be called independently of signal bars
+void V1Display::updateObdIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    static bool lastObdState = false;
+    bool obdConnected = obdHandler.isConnected();
+    
+    // Only redraw if state changed
+    if (obdConnected == lastObdState) {
+        return;
+    }
+    lastObdState = obdConnected;
+    
+    // Match positioning from drawVerticalSignalBars
+    const int barCount = 6;
+    const int barHeight = 14;
+    const int barSpacing = 10;
+    const int barWidth = 44;
+    const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
+    const int startX = SCREEN_WIDTH - 200;
+    const int startY = 18;
+    
+    const int obdY = startY + totalH + 6;
+    const int obdLabelWidth = 36;
+    const int obdLabelHeight = 12;
+    const int obdX = startX + (barWidth - obdLabelWidth) / 2;
+    
+    if (obdConnected) {
+        uint16_t obdColor = 0x07E0;  // Green
+        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+        tft->setTextColor(obdColor);
+        tft->setTextSize(1);
+        tft->setCursor(obdX + 4, obdY + 2);
+        tft->print("OBD");
+    } else {
+        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+    }
+#endif
 }
 
 const char* V1Display::bandToString(Band band) {

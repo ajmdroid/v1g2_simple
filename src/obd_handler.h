@@ -131,8 +131,13 @@ public:
     OBDHandler();
     ~OBDHandler();
     
-    // Initialize OBD handler (starts scanning for ELM327 devices)
+    // Initialize OBD handler (prepares for connection, does NOT scan)
     void begin();
+    
+    // Attempt to connect to saved OBD device
+    // Call this after V1 connection has settled (10-15s delay)
+    // Only connects if saved device exists, otherwise does nothing
+    void tryAutoConnect();
     
     // Update - call in main loop (non-blocking)
     // Returns true if new data was received

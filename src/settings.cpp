@@ -227,6 +227,9 @@ void SettingsManager::load() {
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
     settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
     settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
+    settings.obdDeviceAddress = preferences.getString("obdAddr", "");
+    settings.obdDeviceName = preferences.getString("obdName", "");
+    settings.obdPin = preferences.getString("obdPin", "1234");
     
     // Auto-lockout settings (JBV1-style)
     settings.lockoutEnabled = preferences.getBool("lkoutEn", true);
@@ -370,6 +373,9 @@ void SettingsManager::save() {
     written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += preferences.putBool("gpsEnabled", settings.gpsEnabled);
     written += preferences.putBool("obdEnabled", settings.obdEnabled);
+    written += preferences.putString("obdAddr", settings.obdDeviceAddress);
+    written += preferences.putString("obdName", settings.obdDeviceName);
+    written += preferences.putString("obdPin", settings.obdPin);
     
     // Auto-lockout settings (JBV1-style)
     written += preferences.putBool("lkoutEn", settings.lockoutEnabled);
@@ -884,6 +890,9 @@ void SettingsManager::backupToSD() {
     // === GPS/OBD Settings ===
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["obdEnabled"] = settings.obdEnabled;
+    doc["obdDeviceAddress"] = settings.obdDeviceAddress;
+    doc["obdDeviceName"] = settings.obdDeviceName;
+    doc["obdPin"] = settings.obdPin;
     
     // === Auto-Lockout Settings (JBV1-style) ===
     doc["lockoutEnabled"] = settings.lockoutEnabled;
@@ -1074,6 +1083,9 @@ bool SettingsManager::restoreFromSD() {
     // === GPS/OBD Settings ===
     if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
     if (doc["obdEnabled"].is<bool>()) settings.obdEnabled = doc["obdEnabled"];
+    if (doc["obdDeviceAddress"].is<const char*>()) settings.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
+    if (doc["obdDeviceName"].is<const char*>()) settings.obdDeviceName = doc["obdDeviceName"].as<String>();
+    if (doc["obdPin"].is<const char*>()) settings.obdPin = doc["obdPin"].as<String>();
     
     // === Auto-Lockout Settings (JBV1-style) ===
     if (doc["lockoutEnabled"].is<bool>()) settings.lockoutEnabled = doc["lockoutEnabled"];
