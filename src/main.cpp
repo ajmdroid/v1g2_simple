@@ -84,7 +84,8 @@ V1Display display;
 TouchHandler touchHandler;
 
 // GPS and Lockout managers (optional modules)
-GPSHandler* gps = nullptr;
+// GPS is static allocation to avoid heap fragmentation - use begin()/end() to enable/disable
+GPSHandler gpsHandler;
 LockoutManager lockouts;
 AutoLockoutManager autoLockouts;
 
@@ -392,8 +393,8 @@ static float getCurrentSpeedMph() {
     }
     
     // Try GPS
-    if (gps != nullptr && gps->hasValidFix()) {
-        cachedSpeedMph = gps->getSpeed() * 2.237f;  // m/s to mph
+    if (gpsHandler.hasValidFix()) {
+        cachedSpeedMph = gpsHandler.getSpeed() * 2.237f;  // m/s to mph
         cachedSpeedTimestamp = now;
         return cachedSpeedMph;
     }
@@ -412,7 +413,7 @@ static bool hasValidSpeedSource() {
     unsigned long now = millis();
     // Fresh OBD or GPS data, or valid cache
     return (obdHandler.isModuleDetected() && obdHandler.hasValidData()) ||
-           (gps != nullptr && gps->hasValidFix()) ||
+           gpsHandler.hasValidFix() ||
            (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
 }
 
@@ -1164,8 +1165,8 @@ void processBLEData() {
                 static bool lockoutMuteSent = false;  // Track if we've sent mute for current alert
                 static uint32_t lastLockoutAlertId = 0xFFFFFFFF;  // Track which alert we muted
                 
-                if (gps != nullptr && gps->hasValidFix()) {
-                    GPSFix fix = gps->getFix();
+                if (gpsHandler.hasValidFix()) {
+                    GPSFix fix = gpsHandler.getFix();
                     
                     // Check if priority alert is in a lockout zone
                     if (priority.isValid && priority.band != BAND_NONE) {
@@ -1190,7 +1191,7 @@ void processBLEData() {
                         }
                         
                         // Record alert for auto-learning (even if locked out)
-                        bool isMoving = gps->isMoving();
+                        bool isMoving = gpsHandler.isMoving();
                         uint8_t strength = getAlertBars(priority);
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
                                                   (uint32_t)priority.frequency, strength, 0, isMoving);
@@ -1205,7 +1206,7 @@ void processBLEData() {
                         
                         uint8_t strength = getAlertBars(alert);
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
-                                                  (uint32_t)alert.frequency, strength, 0, gps->isMoving());
+                                                  (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving());
                     }
                 }
 
@@ -1592,11 +1593,11 @@ void processBLEData() {
                 // GPS Passthrough Recording: Track when we pass through lockout zones without alerts
                 // This helps demote false lockouts over time
                 static unsigned long lastPassthroughRecordMs = 0;
-                if (gps != nullptr && gps->hasValidFix() && gps->isMoving()) {
+                if (gpsHandler.hasValidFix() && gpsHandler.isMoving()) {
                     unsigned long now = millis();
                     // Only record passthrough every 5 seconds to avoid spamming
                     if (now - lastPassthroughRecordMs > 5000) {
-                        GPSFix fix = gps->getFix();
+                        GPSFix fix = gpsHandler.getFix();
                         autoLockouts.recordPassthrough(fix.latitude, fix.longitude);
                         lastPassthroughRecordMs = now;
                     }
@@ -1799,11 +1800,10 @@ void setup() {
         SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
                         lockouts.getLockoutCount(), autoLockouts.getClusterCount());
         
-        // Initialize GPS if enabled in settings
+        // Initialize GPS if enabled in settings (static allocation - just call begin())
         if (settingsManager.isGpsEnabled()) {
             SerialLog.println("[Setup] GPS enabled - initializing...");
-            gps = new GPSHandler();
-            gps->begin();
+            gpsHandler.begin();
         } else {
             SerialLog.println("[Setup] GPS disabled in settings");
         }
@@ -2203,15 +2203,14 @@ void loop() {
     // Process WiFi/web server
     wifiManager.process();
     
-    // Process GPS updates (if enabled)
-    if (gps != nullptr) {
-        gps->update();
+    // Process GPS updates (if enabled - static allocation uses isEnabled())
+    if (gpsHandler.isEnabled()) {
+        gpsHandler.update();
         
         // Auto-disable GPS if module not detected after timeout
-        if (gps->isDetectionComplete() && !gps->isModuleDetected()) {
+        if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
             SerialLog.println("[GPS] Module not detected - disabling GPS");
-            delete gps;
-            gps = nullptr;
+            gpsHandler.end();  // Static allocation - use end() instead of delete
             settingsManager.setGpsEnabled(false);
         }
     }

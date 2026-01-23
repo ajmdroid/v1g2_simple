@@ -26,6 +26,8 @@ private:
   
   // Helper: Calculate distance between two points (uses haversine)
   float distanceTo(float lat, float lon, const Lockout& lockout) const;
+  bool isValidLockout(const Lockout& lockout) const;
+  bool isDuplicate(const Lockout& lockout, int ignoreIndex = -1) const;
   
 public:
   LockoutManager();
@@ -33,7 +35,7 @@ public:
   
   // Storage management
   bool loadFromJSON(const char* jsonPath);
-  bool saveToJSON(const char* jsonPath);
+  bool saveToJSON(const char* jsonPath, bool skipBackup = false);
   
   // SD card backup (survives firmware updates)
   bool backupToSD();

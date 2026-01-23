@@ -258,38 +258,64 @@ bool BatteryManager::initTCA9554() {
 }
 
 bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
-    // Read current output state
-    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
-    tca9554Wire.write(TCA9554_OUTPUT_PORT);
-    tca9554Wire.endTransmission(false);
-    tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
+    static constexpr int MAX_RETRIES = 3;
+    static constexpr int RETRY_DELAY_MS = 5;
     
-    if (tca9554Wire.available() < 1) {
-        Serial.println("[Battery] Failed to read TCA9554 output port");
-        return false;
+    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        // Read current output state
+        tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+        tca9554Wire.write(TCA9554_OUTPUT_PORT);
+        uint8_t error = tca9554Wire.endTransmission(false);
+        
+        if (error != 0) {
+            if (attempt < MAX_RETRIES - 1) {
+                BATTERY_LOGF("[Battery] TCA9554 read start failed, retry %d\n", attempt + 1);
+                delay(RETRY_DELAY_MS);
+                continue;
+            }
+            Serial.printf("[Battery] TCA9554 read start FAILED after %d attempts\n", MAX_RETRIES);
+            return false;
+        }
+        
+        tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
+        
+        if (tca9554Wire.available() < 1) {
+            if (attempt < MAX_RETRIES - 1) {
+                BATTERY_LOGF("[Battery] TCA9554 read failed, retry %d\n", attempt + 1);
+                delay(RETRY_DELAY_MS);
+                continue;
+            }
+            Serial.printf("[Battery] TCA9554 read FAILED after %d attempts\n", MAX_RETRIES);
+            return false;
+        }
+        
+        uint8_t current = tca9554Wire.read();
+        
+        // Modify the bit
+        if (high) {
+            current |= (1 << pin);
+        } else {
+            current &= ~(1 << pin);
+        }
+        
+        // Write back
+        tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+        tca9554Wire.write(TCA9554_OUTPUT_PORT);
+        tca9554Wire.write(current);
+        error = tca9554Wire.endTransmission();
+        
+        if (error == 0) {
+            return true;  // Success!
+        }
+        
+        if (attempt < MAX_RETRIES - 1) {
+            BATTERY_LOGF("[Battery] TCA9554 write failed (err=%d), retry %d\n", error, attempt + 1);
+            delay(RETRY_DELAY_MS);
+        }
     }
     
-    uint8_t current = tca9554Wire.read();
-    
-    // Modify the bit
-    if (high) {
-        current |= (1 << pin);
-    } else {
-        current &= ~(1 << pin);
-    }
-    
-    // Write back
-    tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
-    tca9554Wire.write(TCA9554_OUTPUT_PORT);
-    tca9554Wire.write(current);
-    uint8_t error = tca9554Wire.endTransmission();
-    
-    if (error != 0) {
-        Serial.printf("[Battery] Failed to set TCA9554 pin %d: %d\n", pin, error);
-        return false;
-    }
-    
-    return true;
+    Serial.printf("[Battery] TCA9554 pin %d set FAILED after %d attempts\n", pin, MAX_RETRIES);
+    return false;
 }
 
 uint16_t BatteryManager::readADCMillivolts() {

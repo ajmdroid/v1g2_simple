@@ -53,6 +53,9 @@ private:
   uint32_t detectionStartMs;
   static constexpr uint32_t DETECTION_TIMEOUT_MS = 60000;  // 60 seconds to detect module
   
+  // Enable state (for static allocation pattern)
+  bool enabled;
+  
   // GPS pin configuration
   static constexpr int GPS_RX_PIN = 17;  // ESP32 RX <- GPS TX
   static constexpr int GPS_TX_PIN = 18;  // ESP32 TX -> GPS RX
@@ -63,14 +66,18 @@ public:
   ~GPSHandler();
   
   void begin();
+  void end();    // Disable GPS and release serial (for static allocation pattern)
   bool update();  // Call in main loop - non-blocking, parses available NMEA
+  
+  // Enable state (for static allocation - avoids heap fragmentation)
+  bool isEnabled() const { return enabled; }
   
   // Module detection
   bool isModuleDetected() const { return moduleDetected; }
   bool isDetectionComplete() const { return detectionComplete; }
   
   GPSFix getFix() const { return lastFix; }
-  bool hasValidFix() const { return lastFix.valid && !isFixStale(); }
+  bool hasValidFix() const { return enabled && lastFix.valid && !isFixStale(); }
   bool isFixStale(uint32_t maxAge_ms = 30000) const;
   
   // Time from GPS (more accurate than ESP32 RTC)

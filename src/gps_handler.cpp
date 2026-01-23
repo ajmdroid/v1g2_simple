@@ -13,7 +13,7 @@ static constexpr bool DEBUG_LOGS = false;  // Set true for verbose GPS logging
 // ============================================================================
 
 GPSHandler::GPSHandler() 
-  : gpsSerial(Serial2) {
+  : gpsSerial(Serial2), enabled(false) {
   // Initialize lastFix with zero values
   lastFix.latitude = 0;
   lastFix.longitude = 0;
@@ -39,10 +39,14 @@ GPSHandler::GPSHandler()
 
 void GPSHandler::begin() {
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  enabled = true;
+  
+  // Reset detection state on begin (allows re-enabling)
+  moduleDetected = false;
+  detectionComplete = false;
+  detectionStartMs = millis();
   
   delay(100);
-  
-  detectionStartMs = millis();
   
   if (DEBUG_LOGS) {
     Serial.println("[GPS] TinyGPSPlus initialized for M10-25Q (NMEA parser)");
@@ -50,13 +54,27 @@ void GPSHandler::begin() {
   }
 }
 
-GPSHandler::~GPSHandler() {
+void GPSHandler::end() {
+  if (!enabled) return;
+  
+  enabled = false;
   gpsSerial.end();
+  
+  // Clear fix to prevent stale data
+  lastFix.valid = false;
+  
+  if (DEBUG_LOGS) {
+    Serial.println("[GPS] Disabled (serial released)");
+  }
+}
+
+GPSHandler::~GPSHandler() {
+  end();
 }
 
 bool GPSHandler::update() {
-  // Skip if detection already failed
-  if (detectionComplete && !moduleDetected) {
+  // Skip if not enabled or detection already failed
+  if (!enabled || (detectionComplete && !moduleDetected)) {
     return false;
   }
   
@@ -152,7 +170,7 @@ bool GPSHandler::update() {
 // ============================================================================
 
 GPSHandler::GPSHandler() 
-  : GPS(&Serial2), gpsSerial(Serial2) {
+  : GPS(&Serial2), gpsSerial(Serial2), enabled(false) {
   // Initialize lastFix with zero values
   lastFix.latitude = 0;
   lastFix.longitude = 0;
@@ -179,10 +197,14 @@ GPSHandler::GPSHandler()
 void GPSHandler::begin() {
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   GPS.begin(GPS_BAUD);
+  enabled = true;
+  
+  // Reset detection state on begin (allows re-enabling)
+  moduleDetected = false;
+  detectionComplete = false;
+  detectionStartMs = millis();
   
   delay(100);
-  
-  detectionStartMs = millis();
   
   // Configure GPS for optimal lockout performance
   // PA1616S supports 10Hz update rate - use it for smooth geofence detection
@@ -198,13 +220,27 @@ void GPSHandler::begin() {
   }
 }
 
-GPSHandler::~GPSHandler() {
+void GPSHandler::end() {
+  if (!enabled) return;
+  
+  enabled = false;
   gpsSerial.end();
+  
+  // Clear fix to prevent stale data
+  lastFix.valid = false;
+  
+  if (DEBUG_LOGS) {
+    Serial.println("[GPS] Disabled (serial released)");
+  }
+}
+
+GPSHandler::~GPSHandler() {
+  end();
 }
 
 bool GPSHandler::update() {
-  // Skip if detection already failed
-  if (detectionComplete && !moduleDetected) {
+  // Skip if not enabled or detection already failed
+  if (!enabled || (detectionComplete && !moduleDetected)) {
     return false;
   }
   

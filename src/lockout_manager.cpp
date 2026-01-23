@@ -6,8 +6,41 @@
 #include "storage_manager.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <FS.h>
+#include <math.h>
 
 static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
+static constexpr float MIN_RADIUS_M = 5.0f;
+static constexpr float MAX_RADIUS_M = 5000.0f;  // generous upper bound
+static constexpr float DUP_EPSILON = 1e-4f;     // ~11m at equator
+static constexpr size_t JSON_CAPACITY_BYTES = 16384;  // Sized for dozens of lockouts
+
+// Memory limit: ~60 bytes per lockout = ~30KB at 500 lockouts (safe for 320KB heap)
+static constexpr size_t MAX_LOCKOUTS = 500;
+
+namespace {
+bool writeJsonFileAtomic(fs::FS& fs, const char* path, DynamicJsonDocument& doc) {
+  String tmpPath = String(path) + ".tmp";
+  File tmp = fs.open(tmpPath.c_str(), "w");
+  if (!tmp) {
+    return false;
+  }
+  size_t written = serializeJson(doc, tmp);
+  tmp.flush();
+  tmp.close();
+  if (written == 0) {
+    fs.remove(tmpPath.c_str());
+    return false;
+  }
+  fs.remove(path);
+  if (!fs.rename(tmpPath.c_str(), path)) {
+    // If rename fails, try to clean up
+    fs.remove(tmpPath.c_str());
+    return false;
+  }
+  return true;
+}
+}
 
 LockoutManager::LockoutManager() {
   // Constructor
@@ -40,8 +73,9 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     }
     return false;
   }
-  
-  JsonDocument doc;
+
+  // Use bounded JSON document to avoid heap churn; sized for typical lockout counts
+  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
   DeserializationError error = deserializeJson(doc, file);
   file.close();
   
@@ -68,7 +102,19 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     lockout.muteK = obj["muteK"] | false;
     lockout.muteKa = obj["muteKa"] | false;
     lockout.muteLaser = obj["muteLaser"] | false;
-    
+
+    if (!isValidLockout(lockout)) {
+      if (DEBUG_LOGS) {
+        Serial.printf("[Lockout] Skipping invalid lockout '%s'\n", lockout.name.c_str());
+      }
+      continue;
+    }
+    if (isDuplicate(lockout)) {
+      if (DEBUG_LOGS) {
+        Serial.printf("[Lockout] Skipping duplicate lockout '%s'\n", lockout.name.c_str());
+      }
+      continue;
+    }
     lockouts.push_back(lockout);
   }
   
@@ -79,8 +125,8 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   return true;
 }
 
-bool LockoutManager::saveToJSON(const char* jsonPath) {
-  JsonDocument doc;
+bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
+  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
   JsonArray lockoutArray = doc["lockouts"].to<JsonArray>();
   
   for (const auto& lockout : lockouts) {
@@ -96,28 +142,44 @@ bool LockoutManager::saveToJSON(const char* jsonPath) {
     obj["muteLaser"] = lockout.muteLaser;
   }
   
-  File file = LittleFS.open(jsonPath, "w");
-  if (!file) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Failed to open %s for writing\n", jsonPath);
-    }
+  bool ok = writeJsonFileAtomic(LittleFS, jsonPath, doc);
+
+  if (DEBUG_LOGS) {
+    Serial.printf("[Lockout] Saved %d lockout zones (%d bytes)%s\n", lockouts.size(), ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
+  }
+  
+  if (!ok) {
     return false;
   }
   
-  size_t bytesWritten = serializeJson(doc, file);
-  file.close();
-  
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Saved %d lockout zones (%d bytes)\n", lockouts.size(), bytesWritten);
+  // Auto-backup to SD card if available (unless explicitly skipped)
+  if (!skipBackup) {
+    backupToSD();
   }
   
-  // Auto-backup to SD card if available
-  backupToSD();
-  
-  return bytesWritten > 0;
+  return true;
 }
 
 void LockoutManager::addLockout(const Lockout& lockout) {
+  // Enforce memory limit
+  if (lockouts.size() >= MAX_LOCKOUTS) {
+    Serial.printf("[Lockout] Max lockout limit reached (%zu) - rejecting '%s'\n", 
+                  MAX_LOCKOUTS, lockout.name.c_str());
+    return;
+  }
+  
+  if (!isValidLockout(lockout)) {
+    if (DEBUG_LOGS) {
+      Serial.printf("[Lockout] Rejecting invalid lockout '%s'\n", lockout.name.c_str());
+    }
+    return;
+  }
+  if (isDuplicate(lockout)) {
+    if (DEBUG_LOGS) {
+      Serial.printf("[Lockout] Rejecting duplicate lockout '%s'\n", lockout.name.c_str());
+    }
+    return;
+  }
   lockouts.push_back(lockout);
   
   if (DEBUG_LOGS) {
@@ -137,6 +199,18 @@ void LockoutManager::removeLockout(int index) {
 
 void LockoutManager::updateLockout(int index, const Lockout& lockout) {
   if (index >= 0 && index < (int)lockouts.size()) {
+    if (!isValidLockout(lockout)) {
+      if (DEBUG_LOGS) {
+        Serial.printf("[Lockout] Rejecting invalid update for '%s'\n", lockout.name.c_str());
+      }
+      return;
+    }
+    if (isDuplicate(lockout, index)) {
+      if (DEBUG_LOGS) {
+        Serial.printf("[Lockout] Rejecting duplicate update for '%s'\n", lockout.name.c_str());
+      }
+      return;
+    }
     lockouts[index] = lockout;
     
     if (DEBUG_LOGS) {
@@ -245,7 +319,7 @@ bool LockoutManager::backupToSD() {
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs) return false;
   
-  JsonDocument doc;
+  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
   doc["_type"] = "v1simple_lockouts_backup";
   doc["_version"] = 1;
   doc["timestamp"] = millis();
@@ -265,23 +339,14 @@ bool LockoutManager::backupToSD() {
     obj["muteLaser"] = lockout.muteLaser;
   }
   
-  File file = fs->open("/v1simple_lockouts.json", "w");
-  if (!file) {
-    if (DEBUG_LOGS) {
-      Serial.println("[Lockout] Failed to open SD file for backup");
-    }
-    return false;
-  }
-  
-  size_t written = serializeJson(doc, file);
-  file.close();
+  bool ok = writeJsonFileAtomic(*fs, "/v1simple_lockouts.json", doc);
   
   if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Backed up %d lockouts to SD (%d bytes)\n", 
-                  lockouts.size(), written);
+    Serial.printf("[Lockout] Backed up %d lockouts to SD (%d bytes)%s\n", 
+                  lockouts.size(), ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   }
   
-  return written > 0;
+  return ok;
 }
 
 bool LockoutManager::restoreFromSD() {
@@ -301,7 +366,7 @@ bool LockoutManager::restoreFromSD() {
     return false;
   }
   
-  JsonDocument doc;
+  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
   DeserializationError error = deserializeJson(doc, file);
   file.close();
   
@@ -335,7 +400,14 @@ bool LockoutManager::restoreFromSD() {
     lockout.muteK = obj["muteK"] | false;
     lockout.muteKa = obj["muteKa"] | false;
     lockout.muteLaser = obj["muteLaser"] | false;
-    
+
+    if (!isValidLockout(lockout) || isDuplicate(lockout)) {
+      if (DEBUG_LOGS) {
+        Serial.printf("[Lockout] Skipping invalid/duplicate lockout '%s' from SD backup\n", lockout.name.c_str());
+      }
+      continue;
+    }
+
     lockouts.push_back(lockout);
   }
   
@@ -344,7 +416,7 @@ bool LockoutManager::restoreFromSD() {
   }
   
   // Save to LittleFS
-  saveToJSON("/v1profiles/lockouts.json");
+  saveToJSON("/v1profiles/lockouts.json", true);  // Skip re-backup while restoring
   
   return true;
 }
@@ -356,6 +428,33 @@ bool LockoutManager::checkAndRestoreFromSD() {
       Serial.println("[Lockout] LittleFS empty, checking for SD backup...");
     }
     return restoreFromSD();
+  }
+  return false;
+}
+
+bool LockoutManager::isValidLockout(const Lockout& lockout) const {
+  if (!isfinite(lockout.latitude) || !isfinite(lockout.longitude) || !isfinite(lockout.radius_m)) {
+    return false;
+  }
+  if (lockout.latitude < -90.0f || lockout.latitude > 90.0f) return false;
+  if (lockout.longitude < -180.0f || lockout.longitude > 180.0f) return false;
+  if (lockout.radius_m < MIN_RADIUS_M || lockout.radius_m > MAX_RADIUS_M) return false;
+  return true;
+}
+
+bool LockoutManager::isDuplicate(const Lockout& lockout, int ignoreIndex) const {
+  for (size_t i = 0; i < lockouts.size(); i++) {
+    if ((int)i == ignoreIndex) continue;
+    const auto& existing = lockouts[i];
+    if (fabs(existing.latitude - lockout.latitude) < DUP_EPSILON &&
+        fabs(existing.longitude - lockout.longitude) < DUP_EPSILON &&
+        fabs(existing.radius_m - lockout.radius_m) < 1.0f) {
+      // Consider matching if same location/radius and same band flags
+      if (existing.muteX == lockout.muteX && existing.muteK == lockout.muteK &&
+          existing.muteKa == lockout.muteKa && existing.muteLaser == lockout.muteLaser) {
+        return true;
+      }
+    }
   }
   return false;
 }

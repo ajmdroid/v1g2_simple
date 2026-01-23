@@ -487,6 +487,10 @@ public:
 private:
     V1Settings settings;
     Preferences preferences;
+    bool persistSettingsAtomically();
+    bool writeSettingsToNamespace(const char* ns);
+    String getActiveNamespace();
+    String getStagingNamespace(const String& activeNamespace);
     bool checkNeedsRestore();  // Returns true if NVS appears to be default/empty
 };
 
