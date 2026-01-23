@@ -106,6 +106,7 @@ struct V1Settings {
     uint16_t colorBandKa;        // Ka band color
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
+    uint16_t colorBandPhoto;     // Photo radar color (when V1 sends 'P')
     uint16_t colorWiFiIcon;      // WiFi indicator icon color (no client)
     uint16_t colorWiFiConnected;  // WiFi icon when client connected
     uint16_t colorBleConnected;   // Bluetooth icon when client connected
@@ -250,6 +251,7 @@ struct V1Settings {
         colorBandKa(0xF800),     // Red
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
+        colorBandPhoto(0x780F),  // Purple (photo radar)
         colorWiFiIcon(0x07FF),   // Cyan (WiFi icon, no client)
         colorWiFiConnected(0x07E0), // Green (WiFi client connected)
         colorBleConnected(0x07E0),   // Green (BLE connected)

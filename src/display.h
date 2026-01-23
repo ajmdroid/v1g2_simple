@@ -128,11 +128,11 @@ private:
     void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
-    void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false);
-    void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted);   // 7-segment style
-    void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted);    // Montserrat Bold font
-    void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted);      // Hemi Head font (retro speedometer)
-    void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted);// Serpentine font (JB's favorite)
+    void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
+    void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
+    void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);    // Montserrat Bold font
+    void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);      // Hemi Head font (retro speedometer)
+    void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawKittScanner();        // Knight Rider scanner animation for resting screen
     void drawStatusText(const char* text, uint16_t color);

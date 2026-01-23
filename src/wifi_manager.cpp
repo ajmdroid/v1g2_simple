@@ -1653,6 +1653,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bandKa"] = s.colorBandKa;
     doc["bandK"] = s.colorBandK;
     doc["bandX"] = s.colorBandX;
+    doc["bandPhoto"] = s.colorBandPhoto;
     doc["wifiIcon"] = s.colorWiFiIcon;
     doc["wifiConnected"] = s.colorWiFiConnected;
     doc["bleConnected"] = s.colorBleConnected;
@@ -1841,6 +1842,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorBandKa"] = s.colorBandKa;
     doc["colorBandK"] = s.colorBandK;
     doc["colorBandX"] = s.colorBandX;
+    doc["colorBandPhoto"] = s.colorBandPhoto;
     doc["colorWiFiIcon"] = s.colorWiFiIcon;
     doc["colorBleConnected"] = s.colorBleConnected;
     doc["colorBleDisconnected"] = s.colorBleDisconnected;
@@ -2005,6 +2007,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorBandKa"].is<int>()) s.colorBandKa = doc["colorBandKa"];
     if (doc["colorBandK"].is<int>()) s.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) s.colorBandX = doc["colorBandX"];
+    if (doc["colorBandPhoto"].is<int>()) s.colorBandPhoto = doc["colorBandPhoto"];
     if (doc["colorWiFiIcon"].is<int>()) s.colorWiFiIcon = doc["colorWiFiIcon"];
     if (doc["colorBleConnected"].is<int>()) s.colorBleConnected = doc["colorBleConnected"];
     if (doc["colorBleDisconnected"].is<int>()) s.colorBleDisconnected = doc["colorBleDisconnected"];

@@ -2349,7 +2349,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     
     // Frequency in persisted color (pass muted=true)
-    drawFrequency(alert.frequency, alert.band, true);
+    // Note: Photo radar check uses state.bogeyCounterChar even for persisted alerts
+    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    drawFrequency(alert.frequency, alert.band, true, isPhotoRadar);
     
     // No signal bars - just draw empty
     drawVerticalSignalBars(0, 0, alert.band, true);
@@ -2565,7 +2567,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
-    drawFrequency(priority.frequency, priority.band, state.muted);
+    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
     DISP_PERF_LOG("drawFrequency");
     drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
@@ -3151,7 +3154,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
 
 // Classic 7-segment frequency display (original V1 style)
 // Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
-void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     if (ofrSegment7Initialized) {
@@ -3226,6 +3229,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
             freqColor = PALETTE_MUTED_OR_PERSISTED;
         } else if (!hasFreq) {
             freqColor = PALETTE_GRAY;
+        } else if (isPhotoRadar && s.freqUseBandColor) {
+            freqColor = s.colorBandPhoto;  // Photo radar gets its own color
         } else if (s.freqUseBandColor && band != BAND_NONE) {
             freqColor = getBandColor(band);
         } else {
@@ -3310,12 +3315,12 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 }
 
 // Modern frequency display - Antialiased with OpenFontRender
-void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if OFR not initialized
     if (!ofrInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
@@ -3373,6 +3378,8 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
@@ -3428,12 +3435,12 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
 }
 
 // Hemi frequency display - Retro speedometer style with Hemi Head font
-void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Hemi OFR not initialized
     if (!ofrHemiInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
@@ -3491,6 +3498,8 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
@@ -3545,12 +3554,12 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
 }
 
 // Serpentine frequency display - JB's favorite font
-void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Serpentine OFR not initialized
     if (!ofrSerpentineInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
@@ -3610,6 +3619,8 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted)
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
@@ -3810,7 +3821,7 @@ void V1Display::drawKittScanner() {
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
-void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Debug: log which style is being used
@@ -3822,13 +3833,13 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     }
     
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
-        drawFrequencyModern(freqMHz, band, muted);
+        drawFrequencyModern(freqMHz, band, muted, isPhotoRadar);
     } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
-        drawFrequencyHemi(freqMHz, band, muted);
+        drawFrequencyHemi(freqMHz, band, muted, isPhotoRadar);
     } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
-        drawFrequencySerpentine(freqMHz, band, muted);
+        drawFrequencySerpentine(freqMHz, band, muted, isPhotoRadar);
     } else {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
     }
 }
 
