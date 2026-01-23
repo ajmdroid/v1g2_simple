@@ -228,7 +228,11 @@ OBDData OBDHandler::getData() const {
 
 bool OBDHandler::hasValidData() const {
     ObdLock lock(obdMutex);
-    return lastData.valid && (millis() - lastData.timestamp_ms) <= 2000;
+    // Allow up to 3x poll interval for data freshness (BLE can have delays)
+    // Poll interval is 1s, so 3s allows for occasional slow responses
+    uint32_t age = millis() - lastData.timestamp_ms;
+    bool fresh = lastData.valid && age <= 3000;
+    return fresh;
 }
 
 bool OBDHandler::isDataStale(uint32_t maxAge_ms) const {

@@ -1568,6 +1568,20 @@ void WiFiManager::handleDisplayColorsSave() {
         }
         settingsManager.setSpeedVolume(enabled, threshold, boost);
     }
+    // Low-speed mute settings
+    if (server.hasArg("lowSpeedMuteEnabled") || server.hasArg("lowSpeedMuteThresholdMph")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.lowSpeedMuteEnabled;
+        uint8_t threshold = current.lowSpeedMuteThresholdMph;
+        if (server.hasArg("lowSpeedMuteEnabled")) {
+            enabled = server.arg("lowSpeedMuteEnabled") == "true" || server.arg("lowSpeedMuteEnabled") == "1";
+        }
+        if (server.hasArg("lowSpeedMuteThresholdMph")) {
+            int val = server.arg("lowSpeedMuteThresholdMph").toInt();
+            threshold = (uint8_t)std::max(1, std::min(val, 30));  // 1-30 mph range
+        }
+        settingsManager.setLowSpeedMute(enabled, threshold);
+    }
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -1689,6 +1703,8 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
     doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
     doc["speedVolumeBoost"] = s.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     
     String json;
     serializeJson(doc, json);
@@ -1871,6 +1887,8 @@ void WiFiManager::handleSettingsBackup() {
     doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
     doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
     doc["speedVolumeBoost"] = s.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     
     // Auto-push slot settings
     doc["autoPushEnabled"] = s.autoPushEnabled;

@@ -188,6 +188,10 @@ void SettingsManager::load() {
     settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);
     settings.speedVolumeBoost = preferences.getUChar("spdVolBoost", 2);
     
+    // Low-speed mute settings
+    settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
+    settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);
+    
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
@@ -337,6 +341,8 @@ void SettingsManager::save() {
     written += preferences.putBool("spdVolEn", settings.speedVolumeEnabled);
     written += preferences.putUChar("spdVolThr", settings.speedVolumeThresholdMph);
     written += preferences.putUChar("spdVolBoost", settings.speedVolumeBoost);
+    written += preferences.putBool("lowSpdMute", settings.lowSpeedMuteEnabled);
+    written += preferences.putUChar("lowSpdThr", settings.lowSpeedMuteThresholdMph);
     written += preferences.putBool("autoPush", settings.autoPushEnabled);
     written += preferences.putInt("activeSlot", settings.activeSlot);
     written += preferences.putString("slot0name", settings.slot0Name);
@@ -706,6 +712,12 @@ void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t
     save();
 }
 
+void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph) {
+    settings.lowSpeedMuteEnabled = enabled;
+    settings.lowSpeedMuteThresholdMph = thresholdMph;
+    save();
+}
+
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {
         case 1: return settings.slot1_highway;
@@ -975,6 +987,8 @@ void SettingsManager::backupToSD() {
     doc["speedVolumeEnabled"] = settings.speedVolumeEnabled;
     doc["speedVolumeThresholdMph"] = settings.speedVolumeThresholdMph;
     doc["speedVolumeBoost"] = settings.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = settings.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = settings.lowSpeedMuteThresholdMph;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;
@@ -1172,6 +1186,8 @@ bool SettingsManager::restoreFromSD() {
     if (doc["speedVolumeEnabled"].is<bool>()) settings.speedVolumeEnabled = doc["speedVolumeEnabled"];
     if (doc["speedVolumeThresholdMph"].is<int>()) settings.speedVolumeThresholdMph = doc["speedVolumeThresholdMph"];
     if (doc["speedVolumeBoost"].is<int>()) settings.speedVolumeBoost = doc["speedVolumeBoost"];
+    if (doc["lowSpeedMuteEnabled"].is<bool>()) settings.lowSpeedMuteEnabled = doc["lowSpeedMuteEnabled"];
+    if (doc["lowSpeedMuteThresholdMph"].is<int>()) settings.lowSpeedMuteThresholdMph = doc["lowSpeedMuteThresholdMph"];
     
     // === Auto-Push Settings (v2+) ===
     if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];

@@ -20,7 +20,10 @@
 		// Speed-based volume settings
 		speedVolumeEnabled: false,
 		speedVolumeThresholdMph: 45,
-		speedVolumeBoost: 2
+		speedVolumeBoost: 2,
+		// Low-speed mute settings
+		lowSpeedMuteEnabled: false,
+		lowSpeedMuteThresholdMph: 5
 	});
 	
 	let loading = $state(true);
@@ -70,6 +73,9 @@
 				settings.speedVolumeEnabled = data.speedVolumeEnabled ?? false;
 				settings.speedVolumeThresholdMph = data.speedVolumeThresholdMph ?? 45;
 				settings.speedVolumeBoost = data.speedVolumeBoost ?? 2;
+				// Low-speed mute settings
+				settings.lowSpeedMuteEnabled = data.lowSpeedMuteEnabled ?? false;
+				settings.lowSpeedMuteThresholdMph = data.lowSpeedMuteThresholdMph ?? 5;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -103,6 +109,9 @@
 			params.append('speedVolumeEnabled', settings.speedVolumeEnabled);
 			params.append('speedVolumeThresholdMph', settings.speedVolumeThresholdMph);
 			params.append('speedVolumeBoost', settings.speedVolumeBoost);
+			// Low-speed mute settings
+			params.append('lowSpeedMuteEnabled', settings.lowSpeedMuteEnabled);
+			params.append('lowSpeedMuteThresholdMph', settings.lowSpeedMuteThresholdMph);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -451,6 +460,65 @@
 									Speed &gt; {settings.speedVolumeThresholdMph} mph → 
 									<strong>+{settings.speedVolumeBoost} volume</strong> (max 9)
 								</p>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Low-Speed Mute -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🅿️ Low-Speed Mute</h2>
+				<p class="text-sm text-base-content/70">Suppress voice at low speeds (parking lots, drive-thrus)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Low-Speed Mute</span>
+								<p class="text-xs text-base-content/50">Silence voice announcements when nearly stopped</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.lowSpeedMuteEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.lowSpeedMuteEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Speed Threshold -->
+							<div class="form-control">
+								<label class="label" for="low-speed-threshold">
+									<span class="label-text">Speed Threshold</span>
+									<span class="label-text-alt">{settings.lowSpeedMuteThresholdMph} mph</span>
+								</label>
+								<input 
+									id="low-speed-threshold"
+									type="range" 
+									min="1" 
+									max="20" 
+									step="1"
+									bind:value={settings.lowSpeedMuteThresholdMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Mute voice when below this speed</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
+									<strong>voice muted</strong> (alerts still display)
+								</p>
+							</div>
+							
+							<div class="text-xs text-base-content/40">
+								💡 Requires OBD or GPS for speed detection. If no speed source, voice remains active.
 							</div>
 						</div>
 					{/if}

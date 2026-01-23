@@ -375,17 +375,65 @@ static uint8_t getAlertBars(const AlertData& a) {
     return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
 }
 
-// Helper: get current speed in MPH from OBD (preferred) or GPS
+// Speed cache - avoids issues with OBD poll timing jitter
+static float cachedSpeedMph = 0.0f;
+static unsigned long cachedSpeedTimestamp = 0;
+static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;  // 5s cache - conservative for safety
+
+// Helper: get current speed in MPH from OBD (preferred) or GPS, with caching
 static float getCurrentSpeedMph() {
-    // Try OBD first (more accurate, faster updates)
+    unsigned long now = millis();
+    
+    // Try OBD first (more accurate, works in tunnels/garages)
     if (obdHandler.isModuleDetected() && obdHandler.hasValidData()) {
-        return obdHandler.getSpeedMph();
+        cachedSpeedMph = obdHandler.getSpeedMph();
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
     }
-    // Fall back to GPS
+    
+    // Try GPS
     if (gps != nullptr && gps->hasValidFix()) {
-        return gps->getSpeed() * 2.237f;  // m/s to mph
+        cachedSpeedMph = gps->getSpeed() * 2.237f;  // m/s to mph
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
     }
+    
+    // Use cached speed if still reasonably fresh (handles OBD jitter)
+    if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
+        return cachedSpeedMph;
+    }
+    
+    // Cache expired - return 0
     return 0.0f;
+}
+
+// Helper: check if we have any valid speed source (for low-speed mute logic)
+static bool hasValidSpeedSource() {
+    unsigned long now = millis();
+    // Fresh OBD or GPS data, or valid cache
+    return (obdHandler.isModuleDetected() && obdHandler.hasValidData()) ||
+           (gps != nullptr && gps->hasValidFix()) ||
+           (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
+}
+
+// Helper: check if voice should be muted due to low speed (parking lot mode)
+static bool isLowSpeedMuted() {
+    const V1Settings& s = settingsManager.get();
+    if (!s.lowSpeedMuteEnabled) return false;
+    
+    // Only mute if we have a valid speed source - don't mute just because no GPS/OBD
+    if (!hasValidSpeedSource()) return false;
+    
+    float speedMph = getCurrentSpeedMph();
+    bool muted = speedMph < s.lowSpeedMuteThresholdMph;
+    if (muted) {
+        static unsigned long lastLogTime = 0;
+        if (millis() - lastLogTime > 5000) {  // Log every 5s max
+            SerialLog.printf("[LowSpeedMute] Voice muted: %.1f mph < %d threshold\n", speedMph, s.lowSpeedMuteThresholdMph);
+            lastLogTime = millis();
+        }
+    }
+    return muted;
 }
 
 // WiFi manual startup - user must long-press BOOT to start AP
@@ -1241,9 +1289,12 @@ void processBLEData() {
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
                 // Skip if alert is in a GPS lockout zone
+                // Skip if at low speed (parking lot mode)
                 bool muteForVolZero = alertSettings.muteVoiceIfVolZero && state.mainVolume == 0;
+                bool muteForLowSpeed = isLowSpeedMuted();
                 if (alertSettings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
+                    !muteForLowSpeed &&
                     !state.muted &&  // Don't announce muted alerts
                     !priorityInLockout &&  // Don't announce lockout zone alerts
                     !bleClient.isProxyClientConnected() &&
@@ -1576,6 +1627,11 @@ void processBLEData() {
                 volumeFadeActive = false;
                 volumeFadeCommandSent = false;
                 volumeFadeSeenCount = 0;  // Clear seen frequencies for next session
+                
+                // Reset speed boost state - let it re-evaluate on next check
+                // This ensures speed boost re-engages properly after fade restores volume
+                speedVolumeBoostActive = false;
+                speedVolumeOriginalVol = 0xFF;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
@@ -2172,9 +2228,20 @@ void loop() {
     // Check periodically (not every loop) to avoid spamming V1
     // NOTE: If volume fade is active/tracking, let fade handle volume control
     static unsigned long lastSpeedVolumeCheck = 0;
+    static bool loggedSpeedVolumeSettings = false;
+    
     if (bleClient.isConnected() && now - lastSpeedVolumeCheck > 2000) {  // Check every 2s
         lastSpeedVolumeCheck = now;
         const V1Settings& spdSettings = settingsManager.get();
+        
+        // One-time log of settings for debugging
+        if (!loggedSpeedVolumeSettings) {
+            SerialLog.printf("[SpeedVolume] Settings: enabled=%d threshold=%d boost=%d\n",
+                spdSettings.speedVolumeEnabled, spdSettings.speedVolumeThresholdMph, spdSettings.speedVolumeBoost);
+            SerialLog.printf("[LowSpeedMute] Settings: enabled=%d threshold=%d\n",
+                spdSettings.lowSpeedMuteEnabled, spdSettings.lowSpeedMuteThresholdMph);
+            loggedSpeedVolumeSettings = true;
+        }
         
         // Skip speed volume adjustments if volume fade has captured the volume
         // (either during active fade or while tracking for potential fade)
@@ -2182,6 +2249,16 @@ void loop() {
         
         if (spdSettings.speedVolumeEnabled && !fadeTakingControl) {
             float speedMph = getCurrentSpeedMph();
+            
+            // Periodic debug: log speed check every 30s when at highway speeds
+            static unsigned long lastSpeedDebugLog = 0;
+            if (speedMph >= 40 && now - lastSpeedDebugLog > 30000) {
+                SerialLog.printf("[SpeedVolume] Check: speed=%.0f threshold=%d shouldBoost=%d boostActive=%d\n",
+                    speedMph, spdSettings.speedVolumeThresholdMph, 
+                    speedMph >= spdSettings.speedVolumeThresholdMph, speedVolumeBoostActive);
+                lastSpeedDebugLog = now;
+            }
+            
             bool shouldBoost = speedMph >= spdSettings.speedVolumeThresholdMph;
             
             if (shouldBoost && !speedVolumeBoostActive) {
@@ -2190,7 +2267,7 @@ void loop() {
                 speedVolumeOriginalVol = state.mainVolume;
                 uint8_t boostedVol = std::min((int)state.mainVolume + spdSettings.speedVolumeBoost, 9);
                 if (boostedVol > state.mainVolume) {
-                    DEBUG_LOGF("[SpeedVolume] Speed %.0f mph > %d threshold - boosting volume %d -> %d\n",
+                    SerialLog.printf("[SpeedVolume] Speed %.0f mph >= %d threshold - boosting volume %d -> %d\n",
                                speedMph, spdSettings.speedVolumeThresholdMph, state.mainVolume, boostedVol);
                     bleClient.setVolume(boostedVol, state.muteVolume);
                     speedVolumeBoostActive = true;
@@ -2199,7 +2276,7 @@ void loop() {
                 // Speed dropped below threshold - restore original volume
                 DisplayState state = parser.getDisplayState();
                 if (speedVolumeOriginalVol != 0xFF && state.mainVolume != speedVolumeOriginalVol) {
-                    DEBUG_LOGF("[SpeedVolume] Speed %.0f mph < %d threshold - restoring volume to %d\n",
+                    SerialLog.printf("[SpeedVolume] Speed %.0f mph < %d threshold - restoring volume to %d\n",
                                speedMph, spdSettings.speedVolumeThresholdMph, speedVolumeOriginalVol);
                     bleClient.setVolume(speedVolumeOriginalVol, state.muteVolume);
                 }
