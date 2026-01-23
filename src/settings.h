@@ -373,6 +373,7 @@ public:
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
+    void setBandPhotoColor(uint16_t color);
     void setPersistedColor(uint16_t color);
     void setVolumeMainColor(uint16_t color);
     void setVolumeMuteColor(uint16_t color);

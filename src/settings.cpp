@@ -545,6 +545,11 @@ void SettingsManager::setMutedColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setBandPhotoColor(uint16_t color) {
+    settings.colorBandPhoto = color;
+    save();
+}
+
 void SettingsManager::setPersistedColor(uint16_t color) {
     settings.colorPersisted = color;
     save();

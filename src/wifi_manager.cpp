@@ -1418,6 +1418,12 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setMutedColor(mutedColor);
     }
     
+    // Handle photo radar band color if provided
+    if (server.hasArg("bandPhoto")) {
+        uint16_t bandPhotoColor = server.arg("bandPhoto").toInt();
+        settingsManager.setBandPhotoColor(bandPhotoColor);
+    }
+    
     // Handle persisted color if provided
     if (server.hasArg("persisted")) {
         uint16_t persistedColor = server.arg("persisted").toInt();

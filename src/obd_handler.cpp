@@ -112,6 +112,9 @@ OBDHandler::OBDHandler()
     , scanStartMs(0)
     , responseComplete(false)
     , lastPollMs(0)
+    , connectionFailures(0)
+    , lastKnownRssi(-127)
+    , pendingClientDelete(false)
     , obdMutex(nullptr)
     , obdTaskHandle(nullptr)
     , taskRunning(false) {
@@ -128,7 +131,20 @@ OBDHandler::OBDHandler()
 }
 
 OBDHandler::~OBDHandler() {
-    disconnect();
+    // Stop the task first to prevent races
+    stopTask();
+    
+    // Clean up client
+    if (pOBDClient) {
+        if (pOBDClient->isConnected()) {
+            pOBDClient->disconnect();
+        }
+        // In destructor, we can try to delete the client since we're shutting down
+        // and no more BLE activity should be happening
+        vTaskDelay(pdMS_TO_TICKS(500));  // Give NimBLE time to clean up
+        NimBLEDevice::deleteClient(pOBDClient);
+        pOBDClient = nullptr;
+    }
     if (obdMutex) {
         vSemaphoreDelete(obdMutex);
         obdMutex = nullptr;
@@ -190,6 +206,9 @@ void OBDHandler::tryAutoConnect() {
     Serial.printf("[OBD] tryAutoConnect: Connecting to saved device %s (%s)\n",
                   targetDeviceName.c_str(), targetAddress.toString().c_str());
     OBD_DEBUG_LOGF("[OBD] Auto-connecting to %s", targetDeviceName.c_str());
+    
+    // Reset connection failure counter for fresh auto-connect attempt
+    connectionFailures = 0;
     
     // Go directly to connecting state - no scan needed
     state = OBDState::CONNECTING;
@@ -367,17 +386,29 @@ void OBDHandler::handleConnecting() {
         OBD_DEBUG_LOGF("[OBD] Connected to %s", targetDeviceName.c_str());
         if (discoverServices()) {
             Serial.println("[OBD] Services discovered, initializing ELM327...");
+            // Reset failure counter on successful connection
+            connectionFailures = 0;
             state = OBDState::INITIALIZING;
         } else {
             Serial.println("[OBD] Service discovery failed");
             OBD_DEBUG_LOGF("[OBD] Service discovery failed for %s", targetDeviceName.c_str());
             disconnect();
+            connectionFailures++;
+            Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
+            if (connectionFailures >= MAX_CONNECTION_FAILURES) {
+                Serial.println("[OBD] Max failures reached - OBD adapter may be off or out of range");
+            }
             state = OBDState::DISCONNECTED;
             lastPollMs = millis();  // For reconnect delay
         }
     } else {
         Serial.println("[OBD] Connection failed");
         OBD_DEBUG_LOGF("[OBD] Connection failed to %s", targetDeviceName.c_str());
+        connectionFailures++;
+        Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
+        if (connectionFailures >= MAX_CONNECTION_FAILURES) {
+            Serial.println("[OBD] Max failures reached - OBD adapter may be off or out of range");
+        }
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();  // For reconnect delay
     }
@@ -387,11 +418,18 @@ void OBDHandler::handleInitializing() {
     if (initializeELM327()) {
         Serial.println("[OBD] ELM327 initialized successfully");
         OBD_DEBUG_LOGF("[OBD] ELM327 initialized - %s ready", targetDeviceName.c_str());
+        // Fully connected and ready - ensure failure counter is reset
+        connectionFailures = 0;
         state = OBDState::READY;
     } else {
         Serial.println("[OBD] ELM327 initialization failed");
         OBD_DEBUG_LOGF("[OBD] ELM327 init failed for %s", targetDeviceName.c_str());
         disconnect();
+        connectionFailures++;
+        Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
+        if (connectionFailures >= MAX_CONNECTION_FAILURES) {
+            Serial.println("[OBD] Max failures reached - OBD adapter may be off or out of range");
+        }
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();
     }
@@ -424,6 +462,16 @@ void OBDHandler::handlePolling() {
 }
 
 bool OBDHandler::runStateMachine() {
+    // Note: We NO LONGER delete the OBD client - we reuse it!
+    // Deleting NimBLE clients causes heap corruption in many scenarios.
+    // Instead, we keep the client alive and just disconnect/reconnect as needed.
+    // The client will be cleaned up properly when the OBDHandler is destroyed.
+    if (pendingClientDelete) {
+        Serial.println("[OBD] Clearing pending client delete flag (client reused, not deleted)");
+        pendingClientDelete = false;
+        // Don't set pOBDClient to nullptr - keep it for reuse
+    }
+    
     // Handle scan timeout
     if (state == OBDState::SCANNING && scanActive) {
         if (millis() - detectionStartMs > DETECTION_TIMEOUT_MS) {
@@ -456,8 +504,36 @@ bool OBDHandler::runStateMachine() {
             handlePolling();
             return lastData.valid;
         case OBDState::DISCONNECTED:
-            if (millis() - lastPollMs > 5000) {
-                if (hasTargetDevice) {
+            if (hasTargetDevice) {
+                // Check if we've exceeded max connection failures
+                if (connectionFailures >= MAX_CONNECTION_FAILURES) {
+                    // Give up after too many failures - device is likely not available
+                    // (No more log spam - we've already logged each failure)
+                    return false;
+                }
+                
+                // Calculate exponential backoff delay: 5s, 10s, 20s, 40s, 60s (capped)
+                uint32_t retryDelay = BASE_RETRY_DELAY_MS * (1 << connectionFailures);
+                if (retryDelay > MAX_RETRY_DELAY_MS) {
+                    retryDelay = MAX_RETRY_DELAY_MS;
+                }
+                
+                if (millis() - lastPollMs > retryDelay) {
+                    // Before attempting reconnection, check if device is visible with decent signal
+                    if (!checkDevicePresence()) {
+                        // Device not found or weak signal - count as failure and extend backoff
+                        connectionFailures++;
+                        Serial.printf("[OBD] Device not visible or weak signal - failures: %d/%d\n", 
+                                      connectionFailures, MAX_CONNECTION_FAILURES);
+                        if (connectionFailures >= MAX_CONNECTION_FAILURES) {
+                            Serial.println("[OBD] Max failures reached - OBD adapter may be off or out of range");
+                        }
+                        lastPollMs = millis();
+                        return false;
+                    }
+                    
+                    Serial.printf("[OBD] Retry attempt %d/%d (RSSI: %d)\n", 
+                                  connectionFailures + 1, MAX_CONNECTION_FAILURES, lastKnownRssi);
                     state = OBDState::CONNECTING;
                 }
             }
@@ -493,14 +569,88 @@ void OBDHandler::stopTask() {
     }
 }
 
+bool OBDHandler::checkDevicePresence() {
+    // Quick BLE scan to check if target device is visible with acceptable signal
+    // Returns true if device found with RSSI >= MIN_RSSI_FOR_CONNECT
+    
+    if (!hasTargetDevice) {
+        return false;
+    }
+    
+    Serial.printf("[OBD] Checking presence of %s...\n", targetDeviceName.c_str());
+    
+    // Use NimBLE's scan to look for our target device
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (!pScan) {
+        Serial.println("[OBD] Failed to get scan object");
+        return true;  // Fail open - let connection attempt proceed
+    }
+    
+    // Configure for quick scan (2 seconds, active scan for name)
+    pScan->setActiveScan(true);
+    pScan->setInterval(100);  // 62.5ms
+    pScan->setWindow(80);     // 50ms (80% duty)
+    
+    // Start blocking scan for 2 seconds (duration, not continuous)
+    // NimBLE 2.x: start() returns bool, use getResults() to get scan results
+    bool scanStarted = pScan->start(2000);  // 2000ms = 2 seconds
+    if (!scanStarted) {
+        Serial.println("[OBD] Failed to start presence scan");
+        return true;  // Fail open - let connection attempt proceed
+    }
+    
+    // Get results from completed scan
+    NimBLEScanResults results = pScan->getResults();
+    
+    // Search results for our target device
+    bool found = false;
+    int rssi = -127;
+    
+    for (int i = 0; i < results.getCount(); i++) {
+        const NimBLEAdvertisedDevice* device = results.getDevice(i);
+        if (device && device->getAddress() == targetAddress) {
+            found = true;
+            rssi = device->getRSSI();
+            lastKnownRssi = rssi;
+            Serial.printf("[OBD] Found %s with RSSI: %d\n", targetDeviceName.c_str(), rssi);
+            break;
+        }
+    }
+    
+    // Clear scan results to free memory
+    pScan->clearResults();
+    
+    if (!found) {
+        Serial.printf("[OBD] Device %s not found in scan\n", targetDeviceName.c_str());
+        lastKnownRssi = -127;
+        return false;
+    }
+    
+    if (rssi < MIN_RSSI_FOR_CONNECT) {
+        Serial.printf("[OBD] RSSI %d too weak (min: %d) - skipping connection\n", rssi, MIN_RSSI_FOR_CONNECT);
+        return false;
+    }
+    
+    return true;
+}
+
 bool OBDHandler::connectToDevice() {
     Serial.printf("[OBD] connectToDevice() called, target: %s\n", targetAddress.toString().c_str());
     
     // Note: We don't delete bonds here - let NimBLE manage bonding naturally
     // Deleting bonds on every connect can cause issues with some devices
     
-    // Create client if needed
-    if (!pOBDClient) {
+    // Check if existing client is usable for reuse
+    if (pOBDClient) {
+        // If already connected, disconnect first
+        if (pOBDClient->isConnected()) {
+            Serial.println("[OBD] Disconnecting existing client before reconnect...");
+            pOBDClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(200));  // Let disconnect complete
+        }
+        Serial.println("[OBD] Reusing existing BLE client");
+    } else {
+        // Create new client
         Serial.println("[OBD] Creating new BLE client with security...");
         pOBDClient = NimBLEDevice::createClient();
         if (!pOBDClient) {
@@ -532,9 +682,7 @@ bool OBDHandler::connectToDevice() {
     // NimBLE handles pairing automatically if the device requests it
     if (!pOBDClient->connect(targetAddress, false, 10)) {
         Serial.printf("[OBD] Failed to connect to %s\n", targetAddress.toString().c_str());
-        // Clean up client on failure to prevent leaks
-        NimBLEDevice::deleteClient(pOBDClient);
-        pOBDClient = nullptr;
+        // Keep client for reuse on next attempt - don't delete
         return false;
     }
     
@@ -545,13 +693,12 @@ bool OBDHandler::connectToDevice() {
     // encrypted services. The security callbacks will inject the PIN when prompted.
     
     // Give the connection a moment to stabilize and for device to request pairing
-    delay(500);
+    vTaskDelay(pdMS_TO_TICKS(500));
     
     // Check if still connected
     if (!pOBDClient->isConnected()) {
         Serial.println("[OBD] Lost connection after connect!");
-        NimBLEDevice::deleteClient(pOBDClient);
-        pOBDClient = nullptr;
+        // Keep client for reuse on next attempt - don't delete
         return false;
     }
     
@@ -950,12 +1097,11 @@ void OBDHandler::disconnect() {
         if (pOBDClient->isConnected()) {
             Serial.println("[OBD] Disconnecting...");
             pOBDClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(200));  // Let disconnect complete
         }
-        // CRITICAL: Delete the client to free NimBLE resources
-        // Prevents "Failed to create client" errors
-        Serial.println("[OBD] Deleting BLE client");
-        NimBLEDevice::deleteClient(pOBDClient);
-        pOBDClient = nullptr;
+        // Keep client for reuse - don't delete it
+        // Deleting NimBLE clients causes heap corruption
+        Serial.println("[OBD] Client disconnected (kept for reuse)");
     }
     
     {

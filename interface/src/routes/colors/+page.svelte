@@ -13,6 +13,7 @@
 		bandKa: 0xF800,  // Red
 		bandK: 0x001F,   // Blue
 		bandX: 0x07E0,   // Green
+		bandPhoto: 0x780F, // Purple (photo radar)
 		wifiIcon: 0x07FF, // Cyan
 		wifiConnected: 0x07E0, // Green (client connected)
 		bleConnected: 0x07E0,    // Green
@@ -233,6 +234,7 @@
 			params.append('bandKa', colors.bandKa);
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
+			params.append('bandPhoto', colors.bandPhoto);
 			params.append('wifiIcon', colors.wifiIcon);
 			params.append('wifiConnected', colors.wifiConnected);
 			params.append('bleConnected', colors.bleConnected);
@@ -307,6 +309,7 @@
 					bandKa: 0xF800,
 					bandK: 0x001F,
 					bandX: 0x07E0,
+					bandPhoto: 0x780F,
 					wifiIcon: 0x07FF,
 					wifiConnected: 0x07E0,
 					bleConnected: 0x07E0,
@@ -736,6 +739,33 @@
 								class="text-2xl font-bold"
 								style="color: {rgb565ToHex(colors.bandX)}"
 							>X</span>
+						</div>
+					</div>
+					<!-- Photo Radar -->
+					<div class="form-control">
+						<label class="label" for="band-photo-color">
+							<span class="label-text">Photo</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="band-photo-color"
+								type="button"
+								aria-label="Photo radar band color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandPhoto)}"
+								onclick={() => openPicker('bandPhoto', 'Photo Radar Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandPhoto)}
+								onchange={(e) => handleHexInput('bandPhoto', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.bandPhoto)}"
+							>P</span>
 						</div>
 					</div>
 				</div>

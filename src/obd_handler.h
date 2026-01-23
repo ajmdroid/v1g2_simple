@@ -112,6 +112,20 @@ private:
     // Polling timing
     uint32_t lastPollMs;
     static constexpr uint32_t POLL_INTERVAL_MS = 1000;  // Poll speed every 1s (reduced load)
+    
+    // Connection retry management
+    uint8_t connectionFailures;
+    static constexpr uint8_t MAX_CONNECTION_FAILURES = 5;   // Give up after 5 consecutive failures
+    static constexpr uint32_t BASE_RETRY_DELAY_MS = 5000;   // Base delay between retries (5s)
+    static constexpr uint32_t MAX_RETRY_DELAY_MS = 60000;   // Max delay (1 minute)
+    
+    // RSSI tracking for reconnection decisions
+    int lastKnownRssi;                                        // Last RSSI from scan/connect (-127 = unknown)
+    static constexpr int MIN_RSSI_FOR_CONNECT = -85;          // Don't attempt connect if RSSI weaker than this
+    bool checkDevicePresence();                               // Quick scan to check if device is visible
+
+    // Deferred client deletion (prevents heap crash when deleting from callback context)
+    bool pendingClientDelete;
 
     // Background task
     TaskHandle_t obdTaskHandle;
