@@ -192,6 +192,7 @@
 		settings.logGps = false;
 		settings.logObd = false;
 		settings.logSystem = true;
+		settings.logDisplay = false;
 		
 		await saveSettings();
 	}
