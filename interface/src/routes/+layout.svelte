@@ -20,7 +20,10 @@
 					<li><a href="/devices">Saved V1s</a></li>
 					<li><a href="/colors">Colors</a></li>
 					<li><a href="/audio">Audio</a></li>
+					<li><a href="/integrations">Integrations</a></li>
 					<li><a href="/settings">Settings</a></li>
+					<li class="menu-title"><span>Advanced</span></li>
+					<li><a href="/dev" class="text-warning">⚠️ Development</a></li>
 				</ul>
 			</div>
 			<a href="/" class="btn btn-ghost text-xl text-primary">V1 Gen2</a>
@@ -32,6 +35,7 @@
 				<li><a href="/profiles" class="hover:text-primary">Profiles</a></li>
 				<li><a href="/colors" class="hover:text-primary">Colors</a></li>
 				<li><a href="/audio" class="hover:text-primary">Audio</a></li>
+				<li><a href="/integrations" class="hover:text-primary">Integrations</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
 			</ul>
 		</div>

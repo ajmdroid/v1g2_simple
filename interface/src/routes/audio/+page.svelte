@@ -12,7 +12,18 @@
 		secondaryLaser: true,
 		secondaryKa: true,
 		secondaryK: false,
-		secondaryX: false
+		secondaryX: false,
+		// Volume fade settings
+		alertVolumeFadeEnabled: false,
+		alertVolumeFadeDelaySec: 2,
+		alertVolumeFadeVolume: 1,
+		// Speed-based volume settings
+		speedVolumeEnabled: false,
+		speedVolumeThresholdMph: 45,
+		speedVolumeBoost: 2,
+		// Low-speed mute settings
+		lowSpeedMuteEnabled: false,
+		lowSpeedMuteThresholdMph: 5
 	});
 	
 	let loading = $state(true);
@@ -54,6 +65,17 @@
 				settings.secondaryKa = data.secondaryKa ?? true;
 				settings.secondaryK = data.secondaryK ?? false;
 				settings.secondaryX = data.secondaryX ?? false;
+				// Volume fade settings
+				settings.alertVolumeFadeEnabled = data.alertVolumeFadeEnabled ?? false;
+				settings.alertVolumeFadeDelaySec = data.alertVolumeFadeDelaySec ?? 2;
+				settings.alertVolumeFadeVolume = data.alertVolumeFadeVolume ?? 1;
+				// Speed-based volume settings
+				settings.speedVolumeEnabled = data.speedVolumeEnabled ?? false;
+				settings.speedVolumeThresholdMph = data.speedVolumeThresholdMph ?? 45;
+				settings.speedVolumeBoost = data.speedVolumeBoost ?? 2;
+				// Low-speed mute settings
+				settings.lowSpeedMuteEnabled = data.lowSpeedMuteEnabled ?? false;
+				settings.lowSpeedMuteThresholdMph = data.lowSpeedMuteThresholdMph ?? 5;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -79,6 +101,17 @@
 			params.append('secondaryKa', settings.secondaryKa);
 			params.append('secondaryK', settings.secondaryK);
 			params.append('secondaryX', settings.secondaryX);
+			// Volume fade settings
+			params.append('alertVolumeFadeEnabled', settings.alertVolumeFadeEnabled);
+			params.append('alertVolumeFadeDelaySec', settings.alertVolumeFadeDelaySec);
+			params.append('alertVolumeFadeVolume', settings.alertVolumeFadeVolume);
+			// Speed-based volume settings
+			params.append('speedVolumeEnabled', settings.speedVolumeEnabled);
+			params.append('speedVolumeThresholdMph', settings.speedVolumeThresholdMph);
+			params.append('speedVolumeBoost', settings.speedVolumeBoost);
+			// Low-speed mute settings
+			params.append('lowSpeedMuteEnabled', settings.lowSpeedMuteEnabled);
+			params.append('lowSpeedMuteThresholdMph', settings.lowSpeedMuteThresholdMph);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -290,6 +323,209 @@
 			</div>
 		</div>
 		
+		<!-- Volume Fade -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">📉 V1 Volume Fade</h2>
+				<p class="text-xs text-base-content/50 mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Volume Fade</span>
+								<p class="text-xs text-base-content/50">Lower V1 volume after delay, restore when alert clears</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.alertVolumeFadeEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.alertVolumeFadeEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Delay -->
+							<div class="form-control">
+								<label class="label" for="fade-delay">
+									<span class="label-text">Delay (seconds)</span>
+									<span class="label-text-alt">{settings.alertVolumeFadeDelaySec}s</span>
+								</label>
+								<input 
+									id="fade-delay"
+									type="range" 
+									min="1" 
+									max="10" 
+									bind:value={settings.alertVolumeFadeDelaySec}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Time at full volume before reducing</p>
+							</div>
+							
+							<!-- Reduced Volume -->
+							<div class="form-control">
+								<label class="label" for="fade-volume">
+									<span class="label-text">Reduced Volume</span>
+									<span class="label-text-alt">Level {settings.alertVolumeFadeVolume}</span>
+								</label>
+								<input 
+									id="fade-volume"
+									type="range" 
+									min="0" 
+									max="9" 
+									bind:value={settings.alertVolumeFadeVolume}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">V1 volume to fade to (0-9)</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
+									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
+									alert clears → <strong>restore volume</strong>
+								</p>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Speed-Based Volume -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🚗 Speed-Based Volume</h2>
+				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires OBD or GPS)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Speed Volume</span>
+								<p class="text-xs text-base-content/50">Louder alerts when driving faster (more road noise)</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.speedVolumeEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.speedVolumeEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Speed Threshold -->
+							<div class="form-control">
+								<label class="label" for="speed-threshold">
+									<span class="label-text">Speed Threshold</span>
+									<span class="label-text-alt">{settings.speedVolumeThresholdMph} mph</span>
+								</label>
+								<input 
+									id="speed-threshold"
+									type="range" 
+									min="20" 
+									max="80" 
+									step="5"
+									bind:value={settings.speedVolumeThresholdMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Boost volume when above this speed</p>
+							</div>
+							
+							<!-- Volume Boost -->
+							<div class="form-control">
+								<label class="label" for="speed-boost">
+									<span class="label-text">Volume Boost</span>
+									<span class="label-text-alt">+{settings.speedVolumeBoost} levels</span>
+								</label>
+								<input 
+									id="speed-boost"
+									type="range" 
+									min="1" 
+									max="5" 
+									bind:value={settings.speedVolumeBoost}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Volume levels to add (1-5)</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Speed &gt; {settings.speedVolumeThresholdMph} mph → 
+									<strong>+{settings.speedVolumeBoost} volume</strong> (max 9)
+								</p>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Low-Speed Mute -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">🅿️ Low-Speed Mute</h2>
+				<p class="text-sm text-base-content/70">Suppress voice at low speeds (parking lots, drive-thrus)</p>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Low-Speed Mute</span>
+								<p class="text-xs text-base-content/50">Silence voice announcements when nearly stopped</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.lowSpeedMuteEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.lowSpeedMuteEnabled}
+						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+							<!-- Speed Threshold -->
+							<div class="form-control">
+								<label class="label" for="low-speed-threshold">
+									<span class="label-text">Speed Threshold</span>
+									<span class="label-text-alt">{settings.lowSpeedMuteThresholdMph} mph</span>
+								</label>
+								<input 
+									id="low-speed-threshold"
+									type="range" 
+									min="1" 
+									max="20" 
+									step="1"
+									bind:value={settings.lowSpeedMuteThresholdMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="text-xs text-base-content/50 mt-1">Mute voice when below this speed</p>
+							</div>
+							
+							<!-- Preview -->
+							<div class="bg-base-300 rounded-lg p-3 text-sm">
+								<p class="text-base-content/70">
+									Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
+									<strong>voice muted</strong> (alerts still display)
+								</p>
+							</div>
+							
+							<div class="text-xs text-base-content/40">
+								💡 Requires OBD or GPS for speed detection. If no speed source, voice remains active.
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
 		<!-- Speaker Volume -->
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
@@ -322,7 +558,7 @@
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">ℹ️ How It Works</h2>
 				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
-					<li>Voice alerts only play when <strong>no phone app</strong> (JBV1) is connected</li>
+					<li>Voice alerts only play when <strong>no phone app</strong> is connected via BLE proxy</li>
 					<li>New alert: full announcement based on your content settings</li>
 					<li>Direction change: direction-only announcement (e.g., "behind") if direction is enabled</li>
 					<li>5-second cooldown between announcements to prevent spam</li>

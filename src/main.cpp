@@ -32,7 +32,12 @@
 #include "v1_profiles.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include "debug_logger.h"
 #include "audio_beep.h"
+#include "gps_handler.h"
+#include "lockout_manager.h"
+#include "auto_lockout_manager.h"
+#include "obd_handler.h"
 #include "../include/config.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
@@ -56,6 +61,15 @@ static unsigned long perfTimingAccum = 0;
 static unsigned long perfTimingCount = 0;
 static unsigned long perfTimingMax = 0;
 static unsigned long perfLastReport = 0;
+
+// Display latency tracking for SD logging
+static unsigned long displayLatencySum = 0;
+static unsigned long displayLatencyCount = 0;
+static unsigned long displayLatencyMax = 0;
+static unsigned long displayLatencyLastLog = 0;
+static constexpr unsigned long DISPLAY_LOG_INTERVAL_MS = 10000;  // Log summary every 10s
+static constexpr unsigned long DISPLAY_SLOW_THRESHOLD_US = 16000; // 16ms = 60fps budget
+
 #define V1_PERF_START() unsigned long _perfStart = micros()
 #define V1_PERF_END(label) do { \
     if (PERF_TIMING_LOGS) { \
@@ -72,11 +86,51 @@ static unsigned long perfLastReport = 0;
     } \
 } while(0)
 
+// Display latency logging macro - tracks timing and logs to SD when enabled
+#define V1_DISPLAY_END(label) do { \
+    unsigned long _dur = micros() - _perfStart; \
+    displayLatencySum += _dur; \
+    displayLatencyCount++; \
+    if (_dur > displayLatencyMax) displayLatencyMax = _dur; \
+    if (_dur > DISPLAY_SLOW_THRESHOLD_US && debugLogger.isEnabledFor(DebugLogCategory::Display)) { \
+        debugLogger.logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, _dur / 1000); \
+    } \
+    unsigned long _now = millis(); \
+    if ((_now - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) { \
+        if (debugLogger.isEnabledFor(DebugLogCategory::Display)) { \
+            debugLogger.logf(DebugLogCategory::Display, "Display: avg=%luus max=%luus n=%lu", \
+                displayLatencySum / displayLatencyCount, displayLatencyMax, displayLatencyCount); \
+        } \
+        displayLatencySum = 0; displayLatencyCount = 0; displayLatencyMax = 0; \
+        displayLatencyLastLog = _now; \
+    } \
+    if (PERF_TIMING_LOGS) { \
+        perfTimingAccum += _dur; \
+        perfTimingCount++; \
+        if (_dur > perfTimingMax) perfTimingMax = _dur; \
+        if (_now - perfLastReport > 5000) { \
+            SerialLog.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n", \
+                label, perfTimingAccum/perfTimingCount, perfTimingMax, perfTimingCount); \
+            perfTimingAccum = 0; perfTimingCount = 0; perfTimingMax = 0; \
+            perfLastReport = _now; \
+        } \
+    } \
+} while(0)
+
 // Global objects
 V1BLEClient bleClient;
 PacketParser parser;
 V1Display display;
 TouchHandler touchHandler;
+
+// GPS and Lockout managers (optional modules)
+// GPS is static allocation to avoid heap fragmentation - use begin()/end() to enable/disable
+GPSHandler gpsHandler;
+LockoutManager lockouts;
+AutoLockoutManager autoLockouts;
+
+// OBD-II handler uses global obdHandler from obd_handler.cpp
+// (included via obd_handler.h extern declaration)
 
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
@@ -155,6 +209,28 @@ static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after
 // Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
 static bool autoPowerOffArmed = false;  // True once V1 data has been received (not just connected)
+
+// OBD auto-connect delay - wait for V1 connection to settle before OBD
+static unsigned long obdAutoConnectAt = 0;        // millis() when to attempt OBD connect (0 = disabled)
+static constexpr unsigned long OBD_CONNECT_DELAY_MS = 12000;  // 12 second delay after V1 connects
+
+// Volume fade tracking - reduce V1 volume after X seconds of continuous alert
+static unsigned long volumeFadeAlertStartMs = 0;  // When current alert session started (0 = no active alert)
+static uint8_t volumeFadeOriginalVol = 0xFF;      // Original main volume before fade (0xFF = not faded)
+static uint8_t volumeFadeOriginalMuteVol = 0;     // Original muted volume (to pass to setVolume)
+static bool volumeFadeActive = false;             // True if volume has been faded down
+static bool volumeFadeCommandSent = false;        // One-shot flag to send fade command once
+// Track seen frequencies during fade session - new frequencies restore volume, priority shuffling stays faded
+static constexpr int MAX_FADE_SEEN_FREQS = 12;    // Max alerts V1 can track
+static uint16_t volumeFadeSeenFreqs[MAX_FADE_SEEN_FREQS] = {0};
+static int volumeFadeSeenCount = 0;
+
+// Speed-based volume tracking - boost volume at highway speeds
+// NOTE: Speed boost and volume fade can interact. Speed boost captures the pre-boost volume,
+// and volume fade captures the volume at alert start. When both are active, we need to 
+// restore to the correct "baseline" volume (before both adjustments).
+static bool speedVolumeBoostActive = false;       // True if volume is currently boosted
+static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before speed boost
 
 // Smart threat escalation tracking - detect signals ramping up over time
 // Trigger: was weak + now strong + sustained + not too many bogeys
@@ -338,6 +414,71 @@ static uint8_t getAlertBars(const AlertData& a) {
     if (a.direction & DIR_FRONT) return a.frontStrength;
     if (a.direction & DIR_REAR) return a.rearStrength;
     return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
+}
+
+// Speed cache - avoids issues with OBD poll timing jitter
+static float cachedSpeedMph = 0.0f;
+static unsigned long cachedSpeedTimestamp = 0;
+static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;  // 5s cache - conservative for safety
+
+// Helper: get current speed in MPH from OBD (preferred) or GPS, with caching
+static float getCurrentSpeedMph() {
+    unsigned long now = millis();
+    
+    // Try OBD first (more accurate, works in tunnels/garages)
+    if (obdHandler.isModuleDetected() && obdHandler.hasValidData()) {
+        cachedSpeedMph = obdHandler.getSpeedMph();
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
+    }
+    
+    // Try GPS
+    if (gpsHandler.hasValidFix()) {
+        cachedSpeedMph = gpsHandler.getSpeed() * 2.237f;  // m/s to mph
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
+    }
+    
+    // Use cached speed if still reasonably fresh (handles OBD jitter)
+    if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
+        return cachedSpeedMph;
+    }
+    
+    // Cache expired - return 0
+    return 0.0f;
+}
+
+// Helper: check if we have any valid speed source (for low-speed mute logic)
+static bool hasValidSpeedSource() {
+    unsigned long now = millis();
+    // Fresh OBD or GPS data, or valid cache
+    return (obdHandler.isModuleDetected() && obdHandler.hasValidData()) ||
+           gpsHandler.hasValidFix() ||
+           (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
+}
+
+// Helper: check if voice should be muted due to low speed (parking lot mode)
+// Skip low-speed muting if a phone app (JBV1/V1Driver) is connected - it handles its own alerts
+static bool isLowSpeedMuted() {
+    const V1Settings& s = settingsManager.get();
+    if (!s.lowSpeedMuteEnabled) return false;
+    
+    // Don't mute if phone app is connected - let the app handle it
+    if (bleClient.isProxyClientConnected()) return false;
+    
+    // Only mute if we have a valid speed source - don't mute just because no GPS/OBD
+    if (!hasValidSpeedSource()) return false;
+    
+    float speedMph = getCurrentSpeedMph();
+    bool muted = speedMph < s.lowSpeedMuteThresholdMph;
+    if (muted) {
+        static unsigned long lastLogTime = 0;
+        if (millis() - lastLogTime > 5000) {  // Log every 5s max
+            SerialLog.printf("[LowSpeedMute] Voice muted: %.1f mph < %d threshold\n", speedMph, s.lowSpeedMuteThresholdMph);
+            lastLogTime = millis();
+        }
+    }
+    return muted;
 }
 
 // WiFi manual startup - user must long-press BOOT to start AP
@@ -666,6 +807,10 @@ static void processAutoPush() {
 void startWifi() {
     if (wifiManager.isSetupModeActive()) return;
     
+    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+        debugLogger.log(DebugLogCategory::Wifi, "startWifi() requested");
+    }
+
     SerialLog.println("[WiFi] Starting WiFi (manual start)...");
     wifiManager.begin();
     
@@ -716,6 +861,13 @@ void startWifi() {
         return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
     });
     
+    // Manual profile push trigger from /api/profile/push
+    wifiManager.setProfilePushCallback([]() {
+        const V1Settings& s = settingsManager.get();
+        startAutoPush(s.activeSlot);
+        return true;
+    });
+    
     SerialLog.println("[WiFi] Initialized");
 }
 
@@ -727,6 +879,12 @@ void onV1Connected() {
     if (activeSlotIndex != s.activeSlot) {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                         s.activeSlot, activeSlotIndex);
+    }
+    
+    // Schedule delayed OBD auto-connect if OBD is enabled
+    if (s.obdEnabled) {
+        obdAutoConnectAt = millis() + OBD_CONNECT_DELAY_MS;
+        SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
     }
     
     if (!s.autoPushEnabled) {
@@ -863,6 +1021,10 @@ void processBLEData() {
     
     // Process all queued packets (with safety cap to prevent unbounded growth)
     constexpr size_t RX_BUFFER_MAX = 512;  // Hard cap on buffer size
+    // Pre-reserve buffer once to avoid repeated heap growth/fragmentation on ESP32
+    if (rxBuffer.capacity() < RX_BUFFER_MAX) {
+        rxBuffer.reserve(RX_BUFFER_MAX);
+    }
     while (xQueueReceive(bleDataQueue, &pkt, 0) == pdTRUE) {
         // NOTE: Proxy forwarding is done immediately in the BLE callback (forwardToProxyImmediate)
         // for minimal latency. We don't forward again here to avoid duplicate packets.
@@ -1021,6 +1183,9 @@ void processBLEData() {
             }
             lastDisplayDraw = now;
             
+            // Cache settings once for all volume/voice operations in this cycle
+            const V1Settings& alertSettings = settingsManager.get();
+            
             if (hasAlerts) {
                 AlertData priority = parser.getPriorityAlert();
                 int alertCount = parser.getAlertCount();
@@ -1033,14 +1198,150 @@ void processBLEData() {
                     autoPowerOffArmed = true;
                     SerialLog.println("[AutoPowerOff] Armed - V1 data received");
                 }
+                
+                // GPS Lockout Check: Mute V1 and suppress voice for lockout zones
+                // Display still shows alert (V1 is source of truth), but we auto-mute
+                bool priorityInLockout = false;
+                static bool lockoutMuteSent = false;  // Track if we've sent mute for current alert
+                static uint32_t lastLockoutAlertId = 0xFFFFFFFF;  // Track which alert we muted
+                
+                if (gpsHandler.hasValidFix()) {
+                    GPSFix fix = gpsHandler.getFix();
+                    
+                    // Check if priority alert is in a lockout zone
+                    if (priority.isValid && priority.band != BAND_NONE) {
+                        priorityInLockout = lockouts.shouldMuteAlert(fix.latitude, fix.longitude, priority.band);
+                        uint32_t currentAlertId = makeAlertId(priority.band, (uint16_t)priority.frequency);
+                        
+                        // Auto-mute V1 if in lockout zone and not already muted
+                        if (priorityInLockout && !state.muted) {
+                            // Only send mute once per alert (avoid spamming)
+                            if (!lockoutMuteSent || currentAlertId != lastLockoutAlertId) {
+                                DEBUG_LOGF("[Lockout] Auto-muting V1 for lockout zone alert\n");
+                                bleClient.setMute(true);
+                                lockoutMuteSent = true;
+                                lastLockoutAlertId = currentAlertId;
+                                // Tell display this is a lockout mute (shows "LOCKOUT" instead of "MUTED")
+                                display.setLockoutMuted(true);
+                            }
+                        } else if (!priorityInLockout) {
+                            // Reset tracking when not in lockout
+                            lockoutMuteSent = false;
+                            display.setLockoutMuted(false);
+                        }
+                        
+                        // Record alert for auto-learning (even if locked out)
+                        bool isMoving = gpsHandler.isMoving();
+                        uint8_t strength = getAlertBars(priority);
+                        autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
+                                                  (uint32_t)priority.frequency, strength, 0, isMoving);
+                    }
+                    
+                    // Record all secondary alerts for auto-learning too
+                    for (int i = 0; i < alertCount; i++) {
+                        const AlertData& alert = currentAlerts[i];
+                        if (!alert.isValid || alert.band == BAND_NONE) continue;
+                        // Skip priority (already recorded above)
+                        if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
+                        
+                        uint8_t strength = getAlertBars(alert);
+                        autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
+                                                  (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving());
+                    }
+                }
+
+                // Volume Fade: reduce V1 volume after X seconds of continuous unmuted alert
+                // Only applies when not muted - muted alerts should not trigger volume changes
+                if (alertSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
+                    unsigned long now = millis();
+                    uint16_t currentFreq = (uint16_t)priority.frequency;
+                    
+                    // Check if this is a new frequency we haven't seen during this fade session
+                    bool isNewFrequency = true;
+                    for (int i = 0; i < volumeFadeSeenCount; i++) {
+                        if (volumeFadeSeenFreqs[i] == currentFreq) {
+                            isNewFrequency = false;
+                            break;
+                        }
+                    }
+                    
+                    // New frequency while faded -> restore volume, restart fade timer
+                    if (volumeFadeActive && isNewFrequency) {
+                        DEBUG_LOGF("[VolumeFade] New frequency %d! Restoring volume to %d\n", currentFreq, volumeFadeOriginalVol);
+                        if (volumeFadeOriginalVol != 0xFF) {
+                            bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                        }
+                        // Restart fade timer but keep the same original volume baseline
+                        volumeFadeAlertStartMs = now;
+                        volumeFadeActive = false;
+                        volumeFadeCommandSent = false;
+                        // Add this new frequency to our seen list
+                        if (volumeFadeSeenCount < MAX_FADE_SEEN_FREQS) {
+                            volumeFadeSeenFreqs[volumeFadeSeenCount++] = currentFreq;
+                        }
+                    }
+                    
+                    // Start tracking on first alert of a session
+                    if (volumeFadeAlertStartMs == 0) {
+                        volumeFadeAlertStartMs = now;
+                        // Capture the "true" original volume - if speed boost is active,
+                        // use the pre-boost volume instead of current (boosted) volume
+                        if (speedVolumeBoostActive && speedVolumeOriginalVol != 0xFF) {
+                            volumeFadeOriginalVol = speedVolumeOriginalVol;
+                            DEBUG_LOGF("[VolumeFade] Alert started, using pre-speed-boost volume: %d\n", volumeFadeOriginalVol);
+                        } else {
+                            volumeFadeOriginalVol = state.mainVolume;  // Capture current volume
+                            DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d\n", volumeFadeOriginalVol);
+                        }
+                        volumeFadeOriginalMuteVol = state.muteVolume;  // Capture muted volume too
+                        volumeFadeActive = false;
+                        volumeFadeCommandSent = false;
+                        // Track this frequency as the first one in this session
+                        volumeFadeSeenFreqs[0] = currentFreq;
+                        volumeFadeSeenCount = 1;
+                    }
+                    
+                    // Check if fade delay has elapsed
+                    unsigned long fadeDelayMs = alertSettings.alertVolumeFadeDelaySec * 1000UL;
+                    if (!volumeFadeCommandSent && (now - volumeFadeAlertStartMs) >= fadeDelayMs) {
+                        // Time to fade - send reduced volume to V1
+                        uint8_t fadeVol = alertSettings.alertVolumeFadeVolume;
+                        // Don't fade if already at or below target volume
+                        if (state.mainVolume > fadeVol) {
+                            DEBUG_LOGF("[VolumeFade] Fading volume from %d to %d after %lums\n", 
+                                       state.mainVolume, fadeVol, now - volumeFadeAlertStartMs);
+                            if (bleClient.setVolume(fadeVol, volumeFadeOriginalMuteVol)) {
+                                volumeFadeActive = true;
+                            }
+                        }
+                        volumeFadeCommandSent = true;  // Don't retry even if failed
+                    }
+                } else if (alertSettings.alertVolumeFadeEnabled && (state.muted || priorityInLockout)) {
+                    // Alert was muted or entered lockout - restore volume if we faded
+                    if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
+                        DEBUG_LOGF("[VolumeFade] Alert muted/lockout - restoring volume to %d\n", volumeFadeOriginalVol);
+                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                    }
+                    // Reset tracking - will re-arm if alert unmutes
+                    volumeFadeAlertStartMs = 0;
+                    volumeFadeOriginalVol = 0xFF;
+                    volumeFadeOriginalMuteVol = 0;
+                    volumeFadeActive = false;
+                    volumeFadeCommandSent = false;
+                    volumeFadeSeenCount = 0;
+                }
 
                 // Voice alerts: announce new priority alert when no phone app connected
                 // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
-                const V1Settings& settings = settingsManager.get();
-                bool muteForVolZero = settings.muteVoiceIfVolZero && state.mainVolume == 0;
-                if (settings.voiceAlertMode != VOICE_MODE_DISABLED && 
+                // Skip if alert is in a GPS lockout zone
+                // Skip if at low speed (parking lot mode)
+                bool muteForVolZero = alertSettings.muteVoiceIfVolZero && state.mainVolume == 0;
+                bool muteForLowSpeed = isLowSpeedMuted();
+                if (alertSettings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
+                    !muteForLowSpeed &&
                     !state.muted &&  // Don't announce muted alerts
+                    !priorityInLockout &&  // Don't announce lockout zone alerts
                     !bleClient.isProxyClientConnected() &&
                     priority.isValid &&
                     priority.band != BAND_NONE) {
@@ -1103,10 +1404,10 @@ void processBLEData() {
                         if (validBand) {
                             DEBUG_LOGF("[VoiceAlert] New priority: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
                                        (int)audioBand, currentFreq, (int)audioDir,
-                                       (int)settings.voiceAlertMode, settings.voiceDirectionEnabled, alertCount);
+                                       (int)alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, alertCount);
                             play_frequency_voice(audioBand, currentFreq, audioDir,
-                                                 settings.voiceAlertMode, settings.voiceDirectionEnabled,
-                                                 settings.announceBogeyCount ? (uint8_t)alertCount : 1);
+                                                 alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled,
+                                                 alertSettings.announceBogeyCount ? (uint8_t)alertCount : 1);
                             lastVoiceAlertBand = priority.band;
                             lastVoiceAlertDirection = priority.direction;
                             lastVoiceAlertFrequency = currentFreq;
@@ -1117,7 +1418,7 @@ void processBLEData() {
                             priorityAnnounced = true;
                         }
                     } else if (!alertChanged && directionChanged && cooldownPassed && 
-                               settings.voiceDirectionEnabled) {
+                               alertSettings.voiceDirectionEnabled) {
                         // Same alert changed direction - announce direction + bogey count if changed
                         // But throttle if direction has been bouncing too much
                         
@@ -1132,7 +1433,7 @@ void processBLEData() {
                         
                         // Only announce if under throttle limit
                         if (directionChangeCount <= DIRECTION_CHANGE_LIMIT) {
-                            uint8_t bogeyCountToAnnounce = (settings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
+                            uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
                             DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/%d]\n", 
                                        currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount,
                                        directionChangeCount, DIRECTION_CHANGE_LIMIT);
@@ -1148,7 +1449,7 @@ void processBLEData() {
                         lastVoiceAlertDirection = priority.direction;
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                     } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
-                               bogeyCountCooldownPassed && settings.announceBogeyCount) {
+                               bogeyCountCooldownPassed && alertSettings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
                         // Uses shorter cooldown (2s) to be more responsive to count changes
                         DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
@@ -1164,7 +1465,7 @@ void processBLEData() {
                     // Only if: master toggle enabled, priority stable, gap after priority announcement
                     // Secondary alerts are announced once when they appear - no direction/bogey updates
                     if (!priorityAnnounced && 
-                        settings.announceSecondaryAlerts &&
+                        alertSettings.announceSecondaryAlerts &&
                         alertCount > 1 &&
                         (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
                         (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS)) {
@@ -1183,7 +1484,7 @@ void processBLEData() {
                             if (isAlertAnnounced(alert.band, alertFreq)) continue;
                             
                             // Check band filter
-                            if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                            if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                             
                             // Announce this secondary alert
                             AlertBand audioBand;
@@ -1210,7 +1511,7 @@ void processBLEData() {
                                            (int)audioBand, alertFreq, (int)secDir);
                                 // Secondary alerts: same voice mode, but no bogey count (keep it brief)
                                 play_frequency_voice(audioBand, alertFreq, secDir,
-                                                     settings.voiceAlertMode, settings.voiceDirectionEnabled, 1);
+                                                     alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
                                 markAlertAnnounced(alert.band, alertFreq);
                                 lastVoiceAlertTime = now;  // Use same cooldown
                                 break;  // Only announce one secondary per cycle
@@ -1220,7 +1521,7 @@ void processBLEData() {
                     
                     // SMART THREAT ESCALATION: Track signal history and announce when weak signals ramp up
                     // Update all secondary alert histories and check for escalation triggers
-                    if (settings.announceSecondaryAlerts && alertCount > 1) {
+                    if (alertSettings.announceSecondaryAlerts && alertCount > 1) {
                         // First pass: update all alert histories with current signal strengths
                         for (int i = 0; i < alertCount; i++) {
                             const AlertData& alert = currentAlerts[i];
@@ -1252,7 +1553,7 @@ void processBLEData() {
                                 if (state.muted) continue;
                                 
                                 // Skip if band not enabled for secondary
-                                if (!isBandEnabledForSecondary(alert.band, settings)) continue;
+                                if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                                 
                                 // Check smart escalation criteria (pass alertCount for bogey filter)
                                 if (shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
@@ -1318,7 +1619,7 @@ void processBLEData() {
                 // Pass all alerts for multi-alert card display
                 V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
-                V1_PERF_END("display.update(alerts)");
+                V1_DISPLAY_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
                 persistedAlert = priority;
@@ -1329,6 +1630,19 @@ void processBLEData() {
                 // No alerts from V1
                 displayMode = DisplayMode::IDLE;
                 
+                // GPS Passthrough Recording: Track when we pass through lockout zones without alerts
+                // This helps demote false lockouts over time
+                static unsigned long lastPassthroughRecordMs = 0;
+                if (gpsHandler.hasValidFix() && gpsHandler.isMoving()) {
+                    unsigned long now = millis();
+                    // Only record passthrough every 5 seconds to avoid spamming
+                    if (now - lastPassthroughRecordMs > 5000) {
+                        GPSFix fix = gpsHandler.getFix();
+                        autoLockouts.recordPassthrough(fix.latitude, fix.longitude);
+                        lastPassthroughRecordMs = now;
+                    }
+                }
+                
                 // Reset voice alert tracking when alerts clear
                 lastVoiceAlertBand = BAND_NONE;
                 lastVoiceAlertDirection = DIR_NONE;
@@ -1336,6 +1650,33 @@ void processBLEData() {
                 lastVoiceAlertBogeyCount = 0;
                 clearAnnouncedAlerts();
                 priorityStableSince = 0;
+                
+                // Volume Fade: restore original volume when alerts clear
+                // Restore if we either:
+                // 1. Actually faded (volumeFadeActive), OR
+                // 2. Had captured an original but fade was pending (volumeFadeAlertStartMs != 0)
+                //    This handles cases where alert cleared before fade delay elapsed
+                if (alertSettings.alertVolumeFadeEnabled && volumeFadeOriginalVol != 0xFF) {
+                    // Only send restore command if volume actually changed
+                    DisplayState restoreState = parser.getDisplayState();
+                    if (restoreState.mainVolume != volumeFadeOriginalVol) {
+                        DEBUG_LOGF("[VolumeFade] Alerts cleared - restoring volume from %d to %d\n", 
+                                   restoreState.mainVolume, volumeFadeOriginalVol);
+                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
+                    }
+                }
+                // Reset fade tracking regardless of whether fade was active
+                volumeFadeAlertStartMs = 0;
+                volumeFadeOriginalVol = 0xFF;
+                volumeFadeOriginalMuteVol = 0;
+                volumeFadeActive = false;
+                volumeFadeCommandSent = false;
+                volumeFadeSeenCount = 0;  // Clear seen frequencies for next session
+                
+                // Reset speed boost state - let it re-evaluate on next check
+                // This ensures speed boost re-engages properly after fade restores volume
+                speedVolumeBoostActive = false;
+                speedVolumeOriginalVol = 0xFF;
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
@@ -1364,7 +1705,7 @@ void processBLEData() {
                         // Show persisted alert in dark grey
                         V1_PERF_START();
                         display.updatePersisted(persistedAlert, state);
-                        V1_PERF_END("display.persisted");
+                        V1_DISPLAY_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
                         if (alertPersistenceActive) {
@@ -1372,7 +1713,7 @@ void processBLEData() {
                         }
                         V1_PERF_START();
                         display.update(state);
-                        V1_PERF_END("display.resting");
+                        V1_DISPLAY_END("display.resting");
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
@@ -1380,7 +1721,7 @@ void processBLEData() {
                     alertClearedTime = 0;
                     V1_PERF_START();
                     display.update(state);
-                    V1_PERF_END("display.resting");
+                    V1_DISPLAY_END("display.resting");
                 }
             }
         }
@@ -1481,14 +1822,53 @@ void setup() {
         v1ProfileManager.begin(storageManager.getFilesystem());
         audio_init_sd();  // Initialize SD-based frequency voice audio
         
+        // Validate profile references in auto-push slots
+        // Clear references to profiles that don't exist
+        settingsManager.validateProfileReferences(v1ProfileManager);
+        
         // Retry settings restore now that SD is mounted
         // (settings.begin() runs before storage, so restore may have failed)
         if (settingsManager.checkAndRestoreFromSD()) {
             // Settings were restored from SD - update display with restored brightness
             display.setBrightness(settingsManager.get().brightness);
         }
+        
+        // Initialize lockout managers (requires storage to be ready)
+        autoLockouts.setLockoutManager(&lockouts);
+        lockouts.loadFromJSON("/v1profiles/lockouts.json");
+        autoLockouts.loadFromJSON("/v1profiles/auto_lockouts.json");
+        SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
+                        lockouts.getLockoutCount(), autoLockouts.getClusterCount());
+        
+        // Initialize GPS if enabled in settings (static allocation - just call begin())
+        if (settingsManager.isGpsEnabled()) {
+            SerialLog.println("[Setup] GPS enabled - initializing...");
+            gpsHandler.begin();
+        } else {
+            SerialLog.println("[Setup] GPS disabled in settings");
+        }
+        
+        // Initialize OBD if enabled in settings
+        if (settingsManager.isObdEnabled()) {
+            SerialLog.println("[Setup] OBD enabled - initializing...");
+            obdHandler.begin();
+        } else {
+            SerialLog.println("[Setup] OBD disabled in settings");
+        }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
+    }
+
+    // Initialize debug logger after storage is mounted
+    debugLogger.begin();
+    {
+        DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display};
+        debugLogger.setFilter(filter);
+    }
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s)", storageManager.statusText().c_str());
     }
 
     SerialLog.println("==============================");
@@ -1498,8 +1878,18 @@ void setup() {
     SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
     SerialLog.println("==============================");
     
-    // WiFi is off by default; long-press BOOT (~2s) to start the AP when needed
-    SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
+    // WiFi startup behavior - either auto-start or wait for BOOT button
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start enabled (dev setting)");
+        }
+    } else {
+        SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start disabled (manual BOOT press required)");
+        }
+    }
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
     SerialLog.println("Initializing touch handler...");
@@ -1551,12 +1941,30 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
+    // Auto-start WiFi if enabled in dev settings
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled - starting AP now...");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start: starting AP");
+        }
+        startWifi();
+        SerialLog.println("Setup complete - BLE scanning, WiFi auto-started");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi auto-started)");
+        }
+    } else {
+        SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi idle until BOOT long-press)");
+        }
+    }
 }
 
 void loop() {
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
-    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
+    // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
+    bool bleReceiving = (millis() - lastRxMillis) < 2000;
+    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
     
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();
@@ -1836,6 +2244,110 @@ void loop() {
 
     // Process WiFi/web server
     wifiManager.process();
+    
+    // Process GPS updates (if enabled - static allocation uses isEnabled())
+    if (gpsHandler.isEnabled()) {
+        gpsHandler.update();
+        
+        // Auto-disable GPS if module not detected after timeout
+        if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
+            SerialLog.println("[GPS] Module not detected - disabling GPS");
+            gpsHandler.end();  // Static allocation - use end() instead of delete
+            settingsManager.setGpsEnabled(false);
+        }
+    }
+    
+    // Process OBD updates (always runs - state machine handles enabled/disabled)
+    // Check for delayed auto-connect trigger
+    if (obdAutoConnectAt != 0 && millis() >= obdAutoConnectAt) {
+        obdAutoConnectAt = 0;  // Clear trigger
+        SerialLog.println("[OBD] V1 settle delay complete - attempting OBD auto-connect");
+        obdHandler.tryAutoConnect();
+    }
+    obdHandler.update();
+    
+    // Update OBD indicator on display (checks for state changes)
+    display.updateObdIndicator();
+    
+    // Speed-based volume: boost V1 volume at highway speeds
+    // Check periodically (not every loop) to avoid spamming V1
+    // NOTE: If volume fade is active/tracking, let fade handle volume control
+    static unsigned long lastSpeedVolumeCheck = 0;
+    static bool loggedSpeedVolumeSettings = false;
+    
+    if (bleClient.isConnected() && now - lastSpeedVolumeCheck > 2000) {  // Check every 2s
+        lastSpeedVolumeCheck = now;
+        const V1Settings& spdSettings = settingsManager.get();
+        
+        // One-time log of settings for debugging
+        if (!loggedSpeedVolumeSettings) {
+            SerialLog.printf("[SpeedVolume] Settings: enabled=%d threshold=%d boost=%d\n",
+                spdSettings.speedVolumeEnabled, spdSettings.speedVolumeThresholdMph, spdSettings.speedVolumeBoost);
+            SerialLog.printf("[LowSpeedMute] Settings: enabled=%d threshold=%d\n",
+                spdSettings.lowSpeedMuteEnabled, spdSettings.lowSpeedMuteThresholdMph);
+            loggedSpeedVolumeSettings = true;
+        }
+        
+        // Skip speed volume adjustments if volume fade has captured the volume
+        // (either during active fade or while tracking for potential fade)
+        bool fadeTakingControl = volumeFadeOriginalVol != 0xFF;
+        
+        if (spdSettings.speedVolumeEnabled && !fadeTakingControl) {
+            float speedMph = getCurrentSpeedMph();
+            
+            // Periodic debug: log speed check every 30s when at highway speeds
+            static unsigned long lastSpeedDebugLog = 0;
+            if (speedMph >= 40 && now - lastSpeedDebugLog > 30000) {
+                SerialLog.printf("[SpeedVolume] Check: speed=%.0f threshold=%d shouldBoost=%d boostActive=%d\n",
+                    speedMph, spdSettings.speedVolumeThresholdMph, 
+                    speedMph >= spdSettings.speedVolumeThresholdMph, speedVolumeBoostActive);
+                lastSpeedDebugLog = now;
+            }
+            
+            bool shouldBoost = speedMph >= spdSettings.speedVolumeThresholdMph;
+            
+            if (shouldBoost && !speedVolumeBoostActive) {
+                // Speed crossed threshold - boost volume
+                DisplayState state = parser.getDisplayState();
+                speedVolumeOriginalVol = state.mainVolume;
+                uint8_t boostedVol = std::min((int)state.mainVolume + spdSettings.speedVolumeBoost, 9);
+                if (boostedVol > state.mainVolume) {
+                    SerialLog.printf("[SpeedVolume] Speed %.0f mph >= %d threshold - boosting volume %d -> %d\n",
+                               speedMph, spdSettings.speedVolumeThresholdMph, state.mainVolume, boostedVol);
+                    bleClient.setVolume(boostedVol, state.muteVolume);
+                    speedVolumeBoostActive = true;
+                }
+            } else if (!shouldBoost && speedVolumeBoostActive) {
+                // Speed dropped below threshold - restore original volume
+                DisplayState state = parser.getDisplayState();
+                if (speedVolumeOriginalVol != 0xFF && state.mainVolume != speedVolumeOriginalVol) {
+                    SerialLog.printf("[SpeedVolume] Speed %.0f mph < %d threshold - restoring volume to %d\n",
+                               speedMph, spdSettings.speedVolumeThresholdMph, speedVolumeOriginalVol);
+                    bleClient.setVolume(speedVolumeOriginalVol, state.muteVolume);
+                }
+                speedVolumeBoostActive = false;
+                speedVolumeOriginalVol = 0xFF;
+            }
+        }
+    }
+    
+    // Periodic auto-lockout maintenance (promotion/demotion checks)
+    // Only run every 30 seconds to minimize overhead
+    static unsigned long lastAutoLockoutUpdate = 0;
+    if (now - lastAutoLockoutUpdate > 30000) {
+        autoLockouts.update();
+        lastAutoLockoutUpdate = now;
+    }
+    
+    // Periodic save of auto-lockout learning data (every 5 minutes)
+    // Prevents losing learning progress on unexpected power loss
+    static unsigned long lastAutoLockoutSave = 0;
+    if (now - lastAutoLockoutSave > 300000) {  // 5 minutes
+        if (autoLockouts.getClusterCount() > 0) {
+            autoLockouts.saveToJSON("/v1profiles/auto_lockouts.json");
+        }
+        lastAutoLockoutSave = now;
+    }
     
     // Update display periodically
     now = millis();

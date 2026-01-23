@@ -15,12 +15,17 @@
 
 #include "settings.h"
 #include "storage_manager.h"
+#include "v1_profiles.h"
 #include <ArduinoJson.h>
 #include <algorithm>
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 static const int SD_BACKUP_VERSION = 2;  // Increment when adding new fields to backup
+static const char* SETTINGS_NS_A = "v1settingsA";
+static const char* SETTINGS_NS_B = "v1settingsB";
+static const char* SETTINGS_NS_META = "v1settingsMeta";
+static const char* SETTINGS_NS_LEGACY = "v1settings";
 
 // Global instance
 SettingsManager settingsManager;
@@ -42,6 +47,191 @@ static String xorObfuscate(const String& input) {
         output += (char)(input[i] ^ XOR_KEY[i % keyLen]);
     }
     return output;
+}
+
+String SettingsManager::getActiveNamespace() {
+    Preferences meta;
+    if (meta.begin(SETTINGS_NS_META, true)) {
+        String active = meta.getString("active", "");
+        meta.end();
+        if (active.length() > 0) {
+            return active;
+        }
+    }
+    return String(SETTINGS_NS_LEGACY);
+}
+
+String SettingsManager::getStagingNamespace(const String& activeNamespace) {
+    if (activeNamespace == SETTINGS_NS_A) return String(SETTINGS_NS_B);
+    if (activeNamespace == SETTINGS_NS_B) return String(SETTINGS_NS_A);
+    return String(SETTINGS_NS_A);
+}
+
+bool SettingsManager::writeSettingsToNamespace(const char* ns) {
+    Preferences prefs;
+    if (!prefs.begin(ns, false)) {
+        Serial.printf("[Settings] ERROR: Failed to open namespace %s for writing\n", ns);
+        return false;
+    }
+
+    // Clear old keys in this namespace to avoid stale data from previous versions
+    prefs.clear();
+    size_t written = 0;
+    // Store settings version for migration handling
+    written += prefs.putInt("settingsVer", SETTINGS_VERSION);
+    written += prefs.putBool("enableWifi", settings.enableWifi);
+    written += prefs.putInt("wifiMode", settings.wifiMode);
+    written += prefs.putString("apSSID", settings.apSSID);
+    // Obfuscate passwords before storing
+    written += prefs.putString("apPassword", xorObfuscate(settings.apPassword));
+    written += prefs.putBool("proxyBLE", settings.proxyBLE);
+    written += prefs.putString("proxyName", settings.proxyName);
+    written += prefs.putBool("displayOff", settings.turnOffDisplay);
+    written += prefs.putUChar("brightness", settings.brightness);
+    written += prefs.putInt("dispStyle", settings.displayStyle);
+    written += prefs.putUShort("colorBogey", settings.colorBogey);
+    written += prefs.putUShort("colorFreq", settings.colorFrequency);
+    written += prefs.putUShort("colorArrF", settings.colorArrowFront);
+    written += prefs.putUShort("colorArrS", settings.colorArrowSide);
+    written += prefs.putUShort("colorArrR", settings.colorArrowRear);
+    written += prefs.putUShort("colorBandL", settings.colorBandL);
+    written += prefs.putUShort("colorBandKa", settings.colorBandKa);
+    written += prefs.putUShort("colorBandK", settings.colorBandK);
+    written += prefs.putUShort("colorBandX", settings.colorBandX);
+    written += prefs.putUShort("colorBandP", settings.colorBandPhoto);
+    written += prefs.putUShort("colorWiFi", settings.colorWiFiIcon);
+    written += prefs.putUShort("colorWiFiC", settings.colorWiFiConnected);
+    written += prefs.putUShort("colorBleC", settings.colorBleConnected);
+    written += prefs.putUShort("colorBleD", settings.colorBleDisconnected);
+    written += prefs.putUShort("colorBar1", settings.colorBar1);
+    written += prefs.putUShort("colorBar2", settings.colorBar2);
+    written += prefs.putUShort("colorBar3", settings.colorBar3);
+    written += prefs.putUShort("colorBar4", settings.colorBar4);
+    written += prefs.putUShort("colorBar5", settings.colorBar5);
+    written += prefs.putUShort("colorBar6", settings.colorBar6);
+    written += prefs.putUShort("colorMuted", settings.colorMuted);
+    written += prefs.putUShort("colorPersist", settings.colorPersisted);
+    written += prefs.putUShort("colorVolMain", settings.colorVolumeMain);
+    written += prefs.putUShort("colorVolMute", settings.colorVolumeMute);
+    written += prefs.putUShort("colorRssiV1", settings.colorRssiV1);
+    written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
+    written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
+    written += prefs.putBool("hideWifi", settings.hideWifiIcon);
+    written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
+    written += prefs.putBool("hideBatt", settings.hideBatteryIcon);
+    written += prefs.putBool("battPct", settings.showBatteryPercent);
+    written += prefs.putBool("hideBle", settings.hideBleIcon);
+    written += prefs.putBool("hideVol", settings.hideVolumeIndicator);
+    written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
+    written += prefs.putBool("kittScanner", settings.kittScannerEnabled);
+    written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
+    written += prefs.putBool("debugLog", settings.enableDebugLogging);
+    written += prefs.putBool("logAlerts", settings.logAlerts);
+    written += prefs.putBool("logWifi", settings.logWifi);
+    written += prefs.putBool("logBle", settings.logBle);
+    written += prefs.putBool("logGps", settings.logGps);
+    written += prefs.putBool("logObd", settings.logObd);
+    written += prefs.putBool("logSystem", settings.logSystem);
+    written += prefs.putBool("logDisplay", settings.logDisplay);
+    written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
+    written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
+    written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
+    written += prefs.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
+    written += prefs.putUChar("voiceVol", settings.voiceVolume);
+    written += prefs.putBool("secAlerts", settings.announceSecondaryAlerts);
+    written += prefs.putBool("secLaser", settings.secondaryLaser);
+    written += prefs.putBool("secKa", settings.secondaryKa);
+    written += prefs.putBool("secK", settings.secondaryK);
+    written += prefs.putBool("secX", settings.secondaryX);
+    written += prefs.putBool("volFadeEn", settings.alertVolumeFadeEnabled);
+    written += prefs.putUChar("volFadeSec", settings.alertVolumeFadeDelaySec);
+    written += prefs.putUChar("volFadeVol", settings.alertVolumeFadeVolume);
+    written += prefs.putBool("spdVolEn", settings.speedVolumeEnabled);
+    written += prefs.putUChar("spdVolThr", settings.speedVolumeThresholdMph);
+    written += prefs.putUChar("spdVolBoost", settings.speedVolumeBoost);
+    written += prefs.putBool("lowSpdMute", settings.lowSpeedMuteEnabled);
+    written += prefs.putUChar("lowSpdThr", settings.lowSpeedMuteThresholdMph);
+    written += prefs.putBool("autoPush", settings.autoPushEnabled);
+    written += prefs.putInt("activeSlot", settings.activeSlot);
+    written += prefs.putString("slot0name", settings.slot0Name);
+    written += prefs.putString("slot1name", settings.slot1Name);
+    written += prefs.putString("slot2name", settings.slot2Name);
+    written += prefs.putUShort("slot0color", settings.slot0Color);
+    written += prefs.putUShort("slot1color", settings.slot1Color);
+    written += prefs.putUShort("slot2color", settings.slot2Color);
+    written += prefs.putUChar("slot0vol", settings.slot0Volume);
+    written += prefs.putUChar("slot1vol", settings.slot1Volume);
+    written += prefs.putUChar("slot2vol", settings.slot2Volume);
+    written += prefs.putUChar("slot0mute", settings.slot0MuteVolume);
+    written += prefs.putUChar("slot1mute", settings.slot1MuteVolume);
+    written += prefs.putUChar("slot2mute", settings.slot2MuteVolume);
+    written += prefs.putBool("slot0dark", settings.slot0DarkMode);
+    written += prefs.putBool("slot1dark", settings.slot1DarkMode);
+    written += prefs.putBool("slot2dark", settings.slot2DarkMode);
+    written += prefs.putBool("slot0mz", settings.slot0MuteToZero);
+    written += prefs.putBool("slot1mz", settings.slot1MuteToZero);
+    written += prefs.putBool("slot2mz", settings.slot2MuteToZero);
+    written += prefs.putUChar("slot0persist", settings.slot0AlertPersist);
+    written += prefs.putUChar("slot1persist", settings.slot1AlertPersist);
+    written += prefs.putUChar("slot2persist", settings.slot2AlertPersist);
+    written += prefs.putBool("slot0prio", settings.slot0PriorityArrow);
+    written += prefs.putBool("slot1prio", settings.slot1PriorityArrow);
+    written += prefs.putBool("slot2prio", settings.slot2PriorityArrow);
+    written += prefs.putString("slot0prof", settings.slot0_default.profileName);
+    written += prefs.putInt("slot0mode", settings.slot0_default.mode);
+    written += prefs.putString("slot1prof", settings.slot1_highway.profileName);
+    written += prefs.putInt("slot1mode", settings.slot1_highway.mode);
+    written += prefs.putString("slot2prof", settings.slot2_comfort.profileName);
+    written += prefs.putInt("slot2mode", settings.slot2_comfort.mode);
+    written += prefs.putString("lastV1Addr", settings.lastV1Address);
+    written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
+    written += prefs.putBool("gpsEnabled", settings.gpsEnabled);
+    written += prefs.putBool("obdEnabled", settings.obdEnabled);
+    written += prefs.putString("obdAddr", settings.obdDeviceAddress);
+    written += prefs.putString("obdName", settings.obdDeviceName);
+    written += prefs.putString("obdPin", settings.obdPin);
+    written += prefs.putBool("lkoutEn", settings.lockoutEnabled);
+    written += prefs.putBool("lkoutKaProt", settings.lockoutKaProtection);
+    written += prefs.putBool("lkoutDirUnl", settings.lockoutDirectionalUnlearn);
+    written += prefs.putUShort("lkoutFreqTol", settings.lockoutFreqToleranceMHz);
+    written += prefs.putUChar("lkoutLearnCt", settings.lockoutLearnCount);
+    written += prefs.putUChar("lkoutUnlCt", settings.lockoutUnlearnCount);
+    written += prefs.putUChar("lkoutManDel", settings.lockoutManualDeleteCount);
+    written += prefs.putUChar("lkoutLearnHr", settings.lockoutLearnIntervalHours);
+    written += prefs.putUChar("lkoutUnlHr", settings.lockoutUnlearnIntervalHours);
+    written += prefs.putUChar("lkoutMaxSig", settings.lockoutMaxSignalStrength);
+    written += prefs.putUShort("lkoutMaxDist", settings.lockoutMaxDistanceM);
+
+    prefs.end();
+    Serial.printf("[Settings] Wrote %d bytes to namespace %s\n", written, ns);
+    return true;
+}
+
+bool SettingsManager::persistSettingsAtomically() {
+    String activeNs = getActiveNamespace();
+    String stagingNs = getStagingNamespace(activeNs);
+
+    if (!writeSettingsToNamespace(stagingNs.c_str())) {
+        Serial.println("[Settings] ERROR: Failed to write staging settings");
+        return false;
+    }
+
+    Preferences meta;
+    if (!meta.begin(SETTINGS_NS_META, false)) {
+        Serial.println("[Settings] ERROR: Failed to open settings meta namespace");
+        return false;
+    }
+
+    bool committed = meta.putString("active", stagingNs) > 0;
+    meta.end();
+
+    if (!committed) {
+        Serial.println("[Settings] ERROR: Failed to update active settings namespace");
+        return false;
+    }
+
+    Serial.printf("[Settings] Active namespace advanced from %s to %s\n", activeNs.c_str(), stagingNs.c_str());
+    return true;
 }
 
 SettingsManager::SettingsManager() {}
@@ -69,7 +259,15 @@ bool SettingsManager::checkAndRestoreFromSD() {
 }
 
 void SettingsManager::load() {
-    preferences.begin("v1settings", true);  // Read-only mode
+    String activeNs = getActiveNamespace();
+    if (!preferences.begin(activeNs.c_str(), true)) {
+        Serial.printf("[Settings] WARN: Failed to open namespace %s, falling back to legacy\n", activeNs.c_str());
+        activeNs = SETTINGS_NS_LEGACY;
+        if (!preferences.begin(activeNs.c_str(), true)) {
+            Serial.println("ERROR: Failed to open preferences for reading!");
+            return;
+        }
+    }
     
     // Check settings version for migration
     int storedVersion = preferences.getInt("settingsVer", 1);
@@ -105,6 +303,7 @@ void SettingsManager::load() {
     settings.colorBandKa = preferences.getUShort("colorBandKa", 0xF800);
     settings.colorBandK = preferences.getUShort("colorBandK", 0x001F);
     settings.colorBandX = preferences.getUShort("colorBandX", 0x07E0);
+    settings.colorBandPhoto = preferences.getUShort("colorBandP", 0x780F);  // Purple (photo radar)
     settings.colorWiFiIcon = preferences.getUShort("colorWiFi", 0x07FF);
     settings.colorWiFiConnected = preferences.getUShort("colorWiFiC", 0x07E0);
     settings.colorBleConnected = preferences.getUShort("colorBleC", 0x07E0);
@@ -125,9 +324,22 @@ void SettingsManager::load() {
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
     settings.hideBatteryIcon = preferences.getBool("hideBatt", false);
+    settings.showBatteryPercent = preferences.getBool("battPct", false);
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
+    settings.kittScannerEnabled = preferences.getBool("kittScanner", false);
+    
+    // Development/Debug settings
+    settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
+    settings.enableDebugLogging = preferences.getBool("debugLog", false);
+    settings.logAlerts = preferences.getBool("logAlerts", true);
+    settings.logWifi = preferences.getBool("logWifi", true);
+    settings.logBle = preferences.getBool("logBle", false);
+    settings.logGps = preferences.getBool("logGps", false);
+    settings.logObd = preferences.getBool("logObd", false);
+    settings.logSystem = preferences.getBool("logSystem", true);
+    settings.logDisplay = preferences.getBool("logDisplay", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -146,13 +358,13 @@ void SettingsManager::load() {
     if (needsMigration) {
         preferences.end();
         // Re-open in write mode to remove old key
-        if (preferences.begin("v1settings", false)) {
+        if (preferences.begin(activeNs.c_str(), false)) {
             preferences.remove("voiceAlerts");
             Serial.println("[Settings] Migrated voiceAlerts -> voiceMode");
             preferences.end();
         }
         // Re-open in read-only to continue loading
-        preferences.begin("v1settings", true);
+        preferences.begin(activeNs.c_str(), true);
     }
     settings.announceBogeyCount = preferences.getBool("voiceBogeys", true);
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
@@ -164,6 +376,20 @@ void SettingsManager::load() {
     settings.secondaryKa = preferences.getBool("secKa", true);
     settings.secondaryK = preferences.getBool("secK", false);
     settings.secondaryX = preferences.getBool("secX", false);
+    
+    // Volume fade settings
+    settings.alertVolumeFadeEnabled = preferences.getBool("volFadeEn", false);
+    settings.alertVolumeFadeDelaySec = preferences.getUChar("volFadeSec", 2);
+    settings.alertVolumeFadeVolume = preferences.getUChar("volFadeVol", 1);
+    
+    // Speed-based volume settings
+    settings.speedVolumeEnabled = preferences.getBool("spdVolEn", false);
+    settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);
+    settings.speedVolumeBoost = preferences.getUChar("spdVolBoost", 2);
+    
+    // Low-speed mute settings
+    settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
+    settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);
     
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);
@@ -202,6 +428,24 @@ void SettingsManager::load() {
     settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
+    settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
+    settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
+    settings.obdDeviceAddress = preferences.getString("obdAddr", "");
+    settings.obdDeviceName = preferences.getString("obdName", "");
+    settings.obdPin = preferences.getString("obdPin", "1234");
+    
+    // Auto-lockout settings (JBV1-style)
+    settings.lockoutEnabled = preferences.getBool("lkoutEn", true);
+    settings.lockoutKaProtection = preferences.getBool("lkoutKaProt", true);
+    settings.lockoutDirectionalUnlearn = preferences.getBool("lkoutDirUnl", true);
+    settings.lockoutFreqToleranceMHz = preferences.getUShort("lkoutFreqTol", 8);
+    settings.lockoutLearnCount = preferences.getUChar("lkoutLearnCt", 3);
+    settings.lockoutUnlearnCount = preferences.getUChar("lkoutUnlCt", 5);
+    settings.lockoutManualDeleteCount = preferences.getUChar("lkoutManDel", 25);
+    settings.lockoutLearnIntervalHours = preferences.getUChar("lkoutLearnHr", 4);
+    settings.lockoutUnlearnIntervalHours = preferences.getUChar("lkoutUnlHr", 4);
+    settings.lockoutMaxSignalStrength = preferences.getUChar("lkoutMaxSig", 0);
+    settings.lockoutMaxDistanceM = preferences.getUShort("lkoutMaxDist", 600);
     
     preferences.end();
     
@@ -219,106 +463,12 @@ void SettingsManager::load() {
 }
 
 void SettingsManager::save() {
-    if (!preferences.begin("v1settings", false)) {  // Read-write mode
-        Serial.println("ERROR: Failed to open preferences for writing!");
+    if (!persistSettingsAtomically()) {
         return;
     }
-    
-    size_t written = 0;
-    // Store settings version for migration handling
-    written += preferences.putInt("settingsVer", SETTINGS_VERSION);
-    written += preferences.putBool("enableWifi", settings.enableWifi);
-    written += preferences.putInt("wifiMode", settings.wifiMode);
-    written += preferences.putString("apSSID", settings.apSSID);
-    // Obfuscate passwords before storing
-    written += preferences.putString("apPassword", xorObfuscate(settings.apPassword));
-    
-    written += preferences.putBool("proxyBLE", settings.proxyBLE);
-    written += preferences.putString("proxyName", settings.proxyName);
-    written += preferences.putBool("displayOff", settings.turnOffDisplay);
-    written += preferences.putUChar("brightness", settings.brightness);
-    written += preferences.putInt("dispStyle", settings.displayStyle);
-    written += preferences.putUShort("colorBogey", settings.colorBogey);
-    written += preferences.putUShort("colorFreq", settings.colorFrequency);
-    written += preferences.putUShort("colorArrF", settings.colorArrowFront);
-    written += preferences.putUShort("colorArrS", settings.colorArrowSide);
-    written += preferences.putUShort("colorArrR", settings.colorArrowRear);
-    written += preferences.putUShort("colorBandL", settings.colorBandL);
-    written += preferences.putUShort("colorBandKa", settings.colorBandKa);
-    written += preferences.putUShort("colorBandK", settings.colorBandK);
-    written += preferences.putUShort("colorBandX", settings.colorBandX);
-    written += preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
-    written += preferences.putUShort("colorWiFiC", settings.colorWiFiConnected);
-    written += preferences.putUShort("colorBleC", settings.colorBleConnected);
-    written += preferences.putUShort("colorBleD", settings.colorBleDisconnected);
-    written += preferences.putUShort("colorBar1", settings.colorBar1);
-    written += preferences.putUShort("colorBar2", settings.colorBar2);
-    written += preferences.putUShort("colorBar3", settings.colorBar3);
-    written += preferences.putUShort("colorBar4", settings.colorBar4);
-    written += preferences.putUShort("colorBar5", settings.colorBar5);
-    written += preferences.putUShort("colorBar6", settings.colorBar6);
-    written += preferences.putUShort("colorMuted", settings.colorMuted);
-    written += preferences.putUShort("colorPersist", settings.colorPersisted);
-    written += preferences.putUShort("colorVolMain", settings.colorVolumeMain);
-    written += preferences.putUShort("colorVolMute", settings.colorVolumeMute);
-    written += preferences.putUShort("colorRssiV1", settings.colorRssiV1);
-    written += preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
-    written += preferences.putBool("freqBandCol", settings.freqUseBandColor);
-    written += preferences.putBool("hideWifi", settings.hideWifiIcon);
-    written += preferences.putBool("hideProfile", settings.hideProfileIndicator);
-    written += preferences.putBool("hideBatt", settings.hideBatteryIcon);
-    written += preferences.putBool("hideBle", settings.hideBleIcon);
-    written += preferences.putBool("hideVol", settings.hideVolumeIndicator);
-    written += preferences.putBool("hideRssi", settings.hideRssiIndicator);
-    written += preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
-    written += preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
-    written += preferences.putBool("voiceBogeys", settings.announceBogeyCount);
-    written += preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
-    written += preferences.putUChar("voiceVol", settings.voiceVolume);
-    written += preferences.putBool("secAlerts", settings.announceSecondaryAlerts);
-    written += preferences.putBool("secLaser", settings.secondaryLaser);
-    written += preferences.putBool("secKa", settings.secondaryKa);
-    written += preferences.putBool("secK", settings.secondaryK);
-    written += preferences.putBool("secX", settings.secondaryX);
-    written += preferences.putBool("autoPush", settings.autoPushEnabled);
-    written += preferences.putInt("activeSlot", settings.activeSlot);
-    written += preferences.putString("slot0name", settings.slot0Name);
-    written += preferences.putString("slot1name", settings.slot1Name);
-    written += preferences.putString("slot2name", settings.slot2Name);
-    written += preferences.putUShort("slot0color", settings.slot0Color);
-    written += preferences.putUShort("slot1color", settings.slot1Color);
-    written += preferences.putUShort("slot2color", settings.slot2Color);
-    written += preferences.putUChar("slot0vol", settings.slot0Volume);
-    written += preferences.putUChar("slot1vol", settings.slot1Volume);
-    written += preferences.putUChar("slot2vol", settings.slot2Volume);
-    written += preferences.putUChar("slot0mute", settings.slot0MuteVolume);
-    written += preferences.putUChar("slot1mute", settings.slot1MuteVolume);
-    written += preferences.putUChar("slot2mute", settings.slot2MuteVolume);
-    written += preferences.putBool("slot0dark", settings.slot0DarkMode);
-    written += preferences.putBool("slot1dark", settings.slot1DarkMode);
-    written += preferences.putBool("slot2dark", settings.slot2DarkMode);
-    written += preferences.putBool("slot0mz", settings.slot0MuteToZero);
-    written += preferences.putBool("slot1mz", settings.slot1MuteToZero);
-    written += preferences.putBool("slot2mz", settings.slot2MuteToZero);
-    written += preferences.putUChar("slot0persist", settings.slot0AlertPersist);
-    written += preferences.putUChar("slot1persist", settings.slot1AlertPersist);
-    written += preferences.putUChar("slot2persist", settings.slot2AlertPersist);
-    written += preferences.putBool("slot0prio", settings.slot0PriorityArrow);
-    written += preferences.putBool("slot1prio", settings.slot1PriorityArrow);
-    written += preferences.putBool("slot2prio", settings.slot2PriorityArrow);
-    written += preferences.putString("slot0prof", settings.slot0_default.profileName);
-    written += preferences.putInt("slot0mode", settings.slot0_default.mode);
-    written += preferences.putString("slot1prof", settings.slot1_highway.profileName);
-    written += preferences.putInt("slot1mode", settings.slot1_highway.mode);
-    written += preferences.putString("slot2prof", settings.slot2_comfort.profileName);
-    written += preferences.putInt("slot2mode", settings.slot2_comfort.mode);
-    written += preferences.putString("lastV1Addr", settings.lastV1Address);
-    written += preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
-    
-    preferences.end();
-    
-    Serial.printf("Settings saved (%d bytes)\n", written);
-    
+
+    Serial.println("Settings saved atomically");
+
     // Backup display settings to SD card (survives reflash)
     backupToSD();
 }
@@ -462,6 +612,11 @@ void SettingsManager::setMutedColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setBandPhotoColor(uint16_t color) {
+    settings.colorBandPhoto = color;
+    save();
+}
+
 void SettingsManager::setPersistedColor(uint16_t color) {
     settings.colorPersisted = color;
     save();
@@ -507,6 +662,11 @@ void SettingsManager::setHideBatteryIcon(bool hide) {
     save();
 }
 
+void SettingsManager::setShowBatteryPercent(bool show) {
+    settings.showBatteryPercent = show;
+    save();
+}
+
 void SettingsManager::setHideBleIcon(bool hide) {
     settings.hideBleIcon = hide;
     save();
@@ -519,6 +679,56 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
 
 void SettingsManager::setHideRssiIndicator(bool hide) {
     settings.hideRssiIndicator = hide;
+    save();
+}
+
+void SettingsManager::setKittScannerEnabled(bool enabled) {
+    settings.kittScannerEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setEnableWifiAtBoot(bool enable) {
+    settings.enableWifiAtBoot = enable;
+    save();
+}
+
+void SettingsManager::setEnableDebugLogging(bool enable) {
+    settings.enableDebugLogging = enable;
+    save();
+}
+
+void SettingsManager::setLogAlerts(bool enable) {
+    settings.logAlerts = enable;
+    save();
+}
+
+void SettingsManager::setLogWifi(bool enable) {
+    settings.logWifi = enable;
+    save();
+}
+
+void SettingsManager::setLogBle(bool enable) {
+    settings.logBle = enable;
+    save();
+}
+
+void SettingsManager::setLogGps(bool enable) {
+    settings.logGps = enable;
+    save();
+}
+
+void SettingsManager::setLogObd(bool enable) {
+    settings.logObd = enable;
+    save();
+}
+
+void SettingsManager::setLogSystem(bool enable) {
+    settings.logSystem = enable;
+    save();
+}
+
+void SettingsManager::setLogDisplay(bool enable) {
+    settings.logDisplay = enable;
     save();
 }
 
@@ -564,6 +774,26 @@ void SettingsManager::setSecondaryK(bool enabled) {
 
 void SettingsManager::setSecondaryX(bool enabled) {
     settings.secondaryX = enabled;
+    save();
+}
+
+void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume) {
+    settings.alertVolumeFadeEnabled = enabled;
+    settings.alertVolumeFadeDelaySec = delaySec;
+    settings.alertVolumeFadeVolume = volume;
+    save();
+}
+
+void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost) {
+    settings.speedVolumeEnabled = enabled;
+    settings.speedVolumeThresholdMph = thresholdMph;
+    settings.speedVolumeBoost = boost;
+    save();
+}
+
+void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph) {
+    settings.lowSpeedMuteEnabled = enabled;
+    settings.lowSpeedMuteThresholdMph = thresholdMph;
     save();
 }
 
@@ -748,6 +978,26 @@ void SettingsManager::backupToSD() {
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     
+    // === GPS/OBD Settings ===
+    doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["obdEnabled"] = settings.obdEnabled;
+    doc["obdDeviceAddress"] = settings.obdDeviceAddress;
+    doc["obdDeviceName"] = settings.obdDeviceName;
+    doc["obdPin"] = settings.obdPin;
+    
+    // === Auto-Lockout Settings (JBV1-style) ===
+    doc["lockoutEnabled"] = settings.lockoutEnabled;
+    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
+    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
+    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
+    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
+    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
+    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
+    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
+    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
+    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
+    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
+    
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
@@ -763,6 +1013,7 @@ void SettingsManager::backupToSD() {
     doc["colorBandKa"] = settings.colorBandKa;
     doc["colorBandK"] = settings.colorBandK;
     doc["colorBandX"] = settings.colorBandX;
+    doc["colorBandPhoto"] = settings.colorBandPhoto;
     doc["colorWiFiIcon"] = settings.colorWiFiIcon;
     doc["colorWiFiConnected"] = settings.colorWiFiConnected;
     doc["colorBleConnected"] = settings.colorBleConnected;
@@ -785,9 +1036,20 @@ void SettingsManager::backupToSD() {
     doc["hideWifiIcon"] = settings.hideWifiIcon;
     doc["hideProfileIndicator"] = settings.hideProfileIndicator;
     doc["hideBatteryIcon"] = settings.hideBatteryIcon;
+    doc["showBatteryPercent"] = settings.showBatteryPercent;
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
+    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
+    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableDebugLogging"] = settings.enableDebugLogging;
+    doc["logAlerts"] = settings.logAlerts;
+    doc["logWifi"] = settings.logWifi;
+    doc["logBle"] = settings.logBle;
+    doc["logGps"] = settings.logGps;
+    doc["logObd"] = settings.logObd;
+    doc["logSystem"] = settings.logSystem;
+    doc["logDisplay"] = settings.logDisplay;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -800,6 +1062,14 @@ void SettingsManager::backupToSD() {
     doc["secondaryKa"] = settings.secondaryKa;
     doc["secondaryK"] = settings.secondaryK;
     doc["secondaryX"] = settings.secondaryX;
+    doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = settings.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = settings.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = settings.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = settings.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = settings.lowSpeedMuteThresholdMph;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;
@@ -905,6 +1175,26 @@ bool SettingsManager::restoreFromSD() {
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
     
+    // === GPS/OBD Settings ===
+    if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
+    if (doc["obdEnabled"].is<bool>()) settings.obdEnabled = doc["obdEnabled"];
+    if (doc["obdDeviceAddress"].is<const char*>()) settings.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
+    if (doc["obdDeviceName"].is<const char*>()) settings.obdDeviceName = doc["obdDeviceName"].as<String>();
+    if (doc["obdPin"].is<const char*>()) settings.obdPin = doc["obdPin"].as<String>();
+    
+    // === Auto-Lockout Settings (JBV1-style) ===
+    if (doc["lockoutEnabled"].is<bool>()) settings.lockoutEnabled = doc["lockoutEnabled"];
+    if (doc["lockoutKaProtection"].is<bool>()) settings.lockoutKaProtection = doc["lockoutKaProtection"];
+    if (doc["lockoutDirectionalUnlearn"].is<bool>()) settings.lockoutDirectionalUnlearn = doc["lockoutDirectionalUnlearn"];
+    if (doc["lockoutFreqToleranceMHz"].is<int>()) settings.lockoutFreqToleranceMHz = doc["lockoutFreqToleranceMHz"];
+    if (doc["lockoutLearnCount"].is<int>()) settings.lockoutLearnCount = doc["lockoutLearnCount"];
+    if (doc["lockoutUnlearnCount"].is<int>()) settings.lockoutUnlearnCount = doc["lockoutUnlearnCount"];
+    if (doc["lockoutManualDeleteCount"].is<int>()) settings.lockoutManualDeleteCount = doc["lockoutManualDeleteCount"];
+    if (doc["lockoutLearnIntervalHours"].is<int>()) settings.lockoutLearnIntervalHours = doc["lockoutLearnIntervalHours"];
+    if (doc["lockoutUnlearnIntervalHours"].is<int>()) settings.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
+    if (doc["lockoutMaxSignalStrength"].is<int>()) settings.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
+    if (doc["lockoutMaxDistanceM"].is<int>()) settings.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
+    
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
@@ -920,6 +1210,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
     if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
+    if (doc["colorBandPhoto"].is<int>()) settings.colorBandPhoto = doc["colorBandPhoto"];
     if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
     if (doc["colorWiFiConnected"].is<int>()) settings.colorWiFiConnected = doc["colorWiFiConnected"];
     if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
@@ -942,9 +1233,20 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideWifiIcon"].is<bool>()) settings.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) settings.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) settings.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["showBatteryPercent"].is<bool>()) settings.showBatteryPercent = doc["showBatteryPercent"];
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
+    if (doc["kittScannerEnabled"].is<bool>()) settings.kittScannerEnabled = doc["kittScannerEnabled"];
+    if (doc["enableWifiAtBoot"].is<bool>()) settings.enableWifiAtBoot = doc["enableWifiAtBoot"];
+    if (doc["enableDebugLogging"].is<bool>()) settings.enableDebugLogging = doc["enableDebugLogging"];
+    if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];
+    if (doc["logWifi"].is<bool>()) settings.logWifi = doc["logWifi"];
+    if (doc["logBle"].is<bool>()) settings.logBle = doc["logBle"];
+    if (doc["logGps"].is<bool>()) settings.logGps = doc["logGps"];
+    if (doc["logObd"].is<bool>()) settings.logObd = doc["logObd"];
+    if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
+    if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
@@ -961,6 +1263,14 @@ bool SettingsManager::restoreFromSD() {
     if (doc["secondaryKa"].is<bool>()) settings.secondaryKa = doc["secondaryKa"];
     if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
     if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
+    if (doc["alertVolumeFadeEnabled"].is<bool>()) settings.alertVolumeFadeEnabled = doc["alertVolumeFadeEnabled"];
+    if (doc["alertVolumeFadeDelaySec"].is<int>()) settings.alertVolumeFadeDelaySec = doc["alertVolumeFadeDelaySec"];
+    if (doc["alertVolumeFadeVolume"].is<int>()) settings.alertVolumeFadeVolume = doc["alertVolumeFadeVolume"];
+    if (doc["speedVolumeEnabled"].is<bool>()) settings.speedVolumeEnabled = doc["speedVolumeEnabled"];
+    if (doc["speedVolumeThresholdMph"].is<int>()) settings.speedVolumeThresholdMph = doc["speedVolumeThresholdMph"];
+    if (doc["speedVolumeBoost"].is<int>()) settings.speedVolumeBoost = doc["speedVolumeBoost"];
+    if (doc["lowSpeedMuteEnabled"].is<bool>()) settings.lowSpeedMuteEnabled = doc["lowSpeedMuteEnabled"];
+    if (doc["lowSpeedMuteThresholdMph"].is<int>()) settings.lowSpeedMuteThresholdMph = doc["lowSpeedMuteThresholdMph"];
     
     // === Auto-Push Settings (v2+) ===
     if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
@@ -1008,94 +1318,45 @@ bool SettingsManager::restoreFromSD() {
                   settings.slot1_highway.mode, doc["slot1Mode"].is<int>() ? "yes" : "NO",
                   settings.slot2_comfort.mode, doc["slot2Mode"].is<int>() ? "yes" : "NO");
     
-    // Save ALL restored settings to NVS
-    preferences.begin("v1settings", false);
-    preferences.putInt("settingsVer", SETTINGS_VERSION);
-    preferences.putBool("enableWifi", settings.enableWifi);
-    preferences.putString("apSSID", settings.apSSID);
-    preferences.putString("apPassword", xorObfuscate(settings.apPassword));
-    preferences.putBool("proxyBLE", settings.proxyBLE);
-    preferences.putString("proxyName", settings.proxyName);
-    preferences.putString("lastV1Addr", settings.lastV1Address);
-    preferences.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
-    preferences.putUChar("brightness", settings.brightness);
-    preferences.putBool("displayOff", settings.turnOffDisplay);
-    preferences.putInt("dispStyle", settings.displayStyle);
-    preferences.putUShort("colorBogey", settings.colorBogey);
-    preferences.putUShort("colorFreq", settings.colorFrequency);
-    preferences.putUShort("colorArrF", settings.colorArrowFront);
-    preferences.putUShort("colorArrS", settings.colorArrowSide);
-    preferences.putUShort("colorArrR", settings.colorArrowRear);
-    preferences.putUShort("colorBandL", settings.colorBandL);
-    preferences.putUShort("colorBandKa", settings.colorBandKa);
-    preferences.putUShort("colorBandK", settings.colorBandK);
-    preferences.putUShort("colorBandX", settings.colorBandX);
-    preferences.putUShort("colorWiFi", settings.colorWiFiIcon);
-    preferences.putUShort("colorWiFiC", settings.colorWiFiConnected);
-    preferences.putUShort("colorBleC", settings.colorBleConnected);
-    preferences.putUShort("colorBleD", settings.colorBleDisconnected);
-    preferences.putUShort("colorBar1", settings.colorBar1);
-    preferences.putUShort("colorBar2", settings.colorBar2);
-    preferences.putUShort("colorBar3", settings.colorBar3);
-    preferences.putUShort("colorBar4", settings.colorBar4);
-    preferences.putUShort("colorBar5", settings.colorBar5);
-    preferences.putUShort("colorBar6", settings.colorBar6);
-    preferences.putUShort("colorMuted", settings.colorMuted);
-    preferences.putUShort("colorPersist", settings.colorPersisted);
-    preferences.putUShort("colorVolMain", settings.colorVolumeMain);
-    preferences.putUShort("colorVolMute", settings.colorVolumeMute);
-    preferences.putUShort("colorRssiV1", settings.colorRssiV1);
-    preferences.putUShort("colorRssiPrx", settings.colorRssiProxy);
-    preferences.putBool("freqBandCol", settings.freqUseBandColor);
-    preferences.putBool("hideWifi", settings.hideWifiIcon);
-    preferences.putBool("hideProfile", settings.hideProfileIndicator);
-    preferences.putBool("hideBatt", settings.hideBatteryIcon);
-    preferences.putBool("hideBle", settings.hideBleIcon);
-    preferences.putBool("hideVol", settings.hideVolumeIndicator);
-    preferences.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
-    preferences.putBool("voiceDir", settings.voiceDirectionEnabled);
-    preferences.putBool("voiceBogeys", settings.announceBogeyCount);
-    preferences.putBool("muteVoiceVol0", settings.muteVoiceIfVolZero);
-    preferences.putUChar("voiceVol", settings.voiceVolume);
-    preferences.putBool("secAlerts", settings.announceSecondaryAlerts);
-    preferences.putBool("secLaser", settings.secondaryLaser);
-    preferences.putBool("secKa", settings.secondaryKa);
-    preferences.putBool("secK", settings.secondaryK);
-    preferences.putBool("secX", settings.secondaryX);
-    preferences.putBool("autoPush", settings.autoPushEnabled);
-    preferences.putInt("activeSlot", settings.activeSlot);
-    preferences.putString("slot0name", settings.slot0Name);
-    preferences.putString("slot1name", settings.slot1Name);
-    preferences.putString("slot2name", settings.slot2Name);
-    preferences.putUShort("slot0color", settings.slot0Color);
-    preferences.putUShort("slot1color", settings.slot1Color);
-    preferences.putUShort("slot2color", settings.slot2Color);
-    preferences.putUChar("slot0vol", settings.slot0Volume);
-    preferences.putUChar("slot1vol", settings.slot1Volume);
-    preferences.putUChar("slot2vol", settings.slot2Volume);
-    preferences.putUChar("slot0mute", settings.slot0MuteVolume);
-    preferences.putUChar("slot1mute", settings.slot1MuteVolume);
-    preferences.putUChar("slot2mute", settings.slot2MuteVolume);
-    preferences.putBool("slot0dark", settings.slot0DarkMode);
-    preferences.putBool("slot1dark", settings.slot1DarkMode);
-    preferences.putBool("slot2dark", settings.slot2DarkMode);
-    preferences.putBool("slot0mz", settings.slot0MuteToZero);
-    preferences.putBool("slot1mz", settings.slot1MuteToZero);
-    preferences.putBool("slot2mz", settings.slot2MuteToZero);
-    preferences.putUChar("slot0persist", settings.slot0AlertPersist);
-    preferences.putUChar("slot1persist", settings.slot1AlertPersist);
-    preferences.putUChar("slot2persist", settings.slot2AlertPersist);
-    preferences.putBool("slot0prio", settings.slot0PriorityArrow);
-    preferences.putBool("slot1prio", settings.slot1PriorityArrow);
-    preferences.putBool("slot2prio", settings.slot2PriorityArrow);
-    preferences.putString("slot0prof", settings.slot0_default.profileName);
-    preferences.putInt("slot0mode", settings.slot0_default.mode);
-    preferences.putString("slot1prof", settings.slot1_highway.profileName);
-    preferences.putInt("slot1mode", settings.slot1_highway.mode);
-    preferences.putString("slot2prof", settings.slot2_comfort.profileName);
-    preferences.putInt("slot2mode", settings.slot2_comfort.mode);
-    preferences.end();
-    
+    if (!persistSettingsAtomically()) {
+        Serial.println("[Settings] ERROR: Failed to persist restored settings");
+        return false;
+    }
+
     Serial.println("[Settings] ✅ Full restore from SD backup complete!");
     return true;
+}
+
+void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
+    // Validate that profile names in auto-push slots actually exist
+    // If not, clear them to prevent repeated "file not found" errors
+    bool needsSave = false;
+    
+    auto validateSlot = [&](AutoPushSlot& slot, const char* slotName) {
+        if (slot.profileName.length() > 0) {
+            V1Profile testProfile;
+            if (!profileMgr.loadProfile(slot.profileName, testProfile)) {
+                Serial.printf("[Settings] WARNING: Profile '%s' for %s does not exist - clearing reference\n",
+                             slot.profileName.c_str(), slotName);
+                slot.profileName = "";
+                needsSave = true;
+            } else {
+                Serial.printf("[Settings] Profile '%s' for %s validated OK\n",
+                             slot.profileName.c_str(), slotName);
+            }
+        }
+    };
+    
+    validateSlot(settings.slot0_default, "Slot 0 (Default)");
+    validateSlot(settings.slot1_highway, "Slot 1 (Highway)");
+    validateSlot(settings.slot2_comfort, "Slot 2 (Comfort)");
+    
+    if (needsSave) {
+        save();
+        backupToSD();  // Also update SD backup
+        Serial.println("[Settings] Cleared invalid profile references and saved");
+    }
+
+    // If any profiles are missing and auto-push was pointing to them, ensure OBD/GPS tasks remain unaffected
+    // (no action needed here beyond clearing references; safety comment for maintainers)
 }

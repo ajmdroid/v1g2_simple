@@ -11,8 +11,10 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include "ble_client.h"
+#include "obd_handler.h"
 #include "audio_beep.h"
 #include <esp_heap_caps.h>
+#include <cstring>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
 
 // OpenFontRender for antialiased TrueType rendering
@@ -38,6 +40,17 @@ static constexpr int PRIMARY_ZONE_HEIGHT = 95;  // Fixed height for primary disp
 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
+
+// Force frequency cache invalidation - set when screen is cleared to ensure redraw
+static bool s_forceFrequencyRedraw = false;
+
+// Force battery percent cache invalidation - set when screen is cleared
+static bool s_forceBatteryRedraw = false;
+
+// Force band/signal bar/arrow cache invalidation - set when screen is cleared
+static bool s_forceBandRedraw = false;
+static bool s_forceSignalBarsRedraw = false;
+static bool s_forceArrowRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -670,7 +683,7 @@ void V1Display::clear() {
     bleProxyDrawn = false;
 }
 
-void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
+void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData) {
 #if defined(DISPLAY_WAVESHARE_349)
     // Detect app disconnect - was connected, now isn't
     // Reset VOL 0 warning state immediately so it can trigger again
@@ -684,14 +697,19 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
     // Check if proxy client connection changed - update RSSI display
     bool proxyChanged = (clientConnected != bleProxyClientConnected);
     
+    // Check if receiving state changed (for heartbeat visual)
+    bool receivingChanged = (receivingData != bleReceivingData);
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
-        clientConnected == bleProxyClientConnected) {
+        clientConnected == bleProxyClientConnected &&
+        !receivingChanged) {
         return;  // No visual change needed
     }
 
     bleProxyEnabled = proxyEnabled;
     bleProxyClientConnected = clientConnected;
+    bleReceivingData = receivingData;
     drawBLEProxyIndicator();
     
     // Update RSSI display when proxy connection changes
@@ -708,6 +726,11 @@ void V1Display::drawBaseFrame() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
+    s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
+    s_forceBatteryRedraw = true;    // Force battery percent cache invalidation after screen clear
+    s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
+    s_forceSignalBarsRedraw = true; // Force signal bars cache invalidation after screen clear
+    s_forceArrowRedraw = true;      // Force arrow cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -977,115 +1000,8 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     }
 }
 
-// Modern Montserrat Bold bogey counter
-void V1Display::drawTopCounterModern(char symbol, bool muted, bool showDot) {
-    const V1Settings& s = settingsManager.get();
-    
-    // Special case: lowercase 'l' (logic mode) - draw as bottom half of 'L' like V1 display
-    // Render full 'L' then mask off the top half for consistent styling
-    if (symbol == 'l') {
-        const int fontSize = 60;
-        
-        char buf[3] = {'L', 0, 0};
-        if (showDot) {
-            buf[1] = '.';
-        }
-        
-        ofr.setFontSize(fontSize);
-        
-        // Convert RGB565 background to RGB888 for antialiasing blend
-        uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofr.setBackgroundColor(bgR, bgG, bgB);
-        
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
-        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
-        int textW = bbox.xMax - bbox.xMin;
-        int textH = bbox.yMax - bbox.yMin;
-        
-        int x = 12;
-        int y = textH - 50;  // Same baseline position as other characters
-        
-        // Clear full area first
-        FILL_RECT(x - 2, 0, textW + 8, textH + 8, PALETTE_BG);
-        
-        // Render the full 'L.' 
-        ofr.setCursor(x, y);
-        ofr.printf("%s", buf);
-        
-        // Now mask off the top half by drawing a background rect over it
-        // Top of text starts at screen Y=0 (since y = textH - 50 and text renders upward)
-        int maskHeight = textH / 2;  // Cover top half of the 'L'
-        FILL_RECT(x - 2, 0, textW + 8, maskHeight, PALETTE_BG);
-        
-        return;
-    }
-    
-    // Convert lowercase mode letters to uppercase (font only has uppercase LASER)
-    char upperSymbol = symbol;
-    if (symbol >= 'a' && symbol <= 'z') {
-        upperSymbol = symbol - 32;  // Convert to uppercase
-    }
-    
-    char buf[3] = {upperSymbol, 0, 0};
-    if (showDot) {
-        buf[1] = '.';
-    }
-    
-    // Check if symbol is in the OFR font subset (0-9, -, ., L, A, S, E, R)
-    // Note: '=' (laser 3 bars) is NOT in the font, will use bitmap fallback
-    bool charInOfrFont = (upperSymbol >= '0' && upperSymbol <= '9') || 
-                         upperSymbol == '-' || upperSymbol == '.' ||
-                         upperSymbol == 'L' || upperSymbol == 'A' || upperSymbol == 'S' || 
-                         upperSymbol == 'E' || upperSymbol == 'R';
-    
-    // Fall back to Classic style if OFR not initialized or char not in font
-    if (!ofrInitialized || !charInOfrFont) {
-        // Use Classic 7-segment/14-segment rendering as fallback
-        drawTopCounterClassic(symbol, muted, showDot);
-        return;
-    }
-    
-    // OpenFontRender antialiased rendering - same font as frequency for consistency
-    const int fontSize = 60;  // Proportional to frequency (66)
-    
-    ofr.setFontSize(fontSize);
-    
-    // Convert RGB565 background to RGB888 for antialiasing blend
-    uint8_t bgR = (PALETTE_BG >> 11) << 3;
-    uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-    uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-    ofr.setBackgroundColor(bgR, bgG, bgB);
-    
-    bool isDigit = (symbol >= '0' && symbol <= '9');
-    uint16_t color = isDigit ? s.colorBogey : (muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey);
-    ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-    
-    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, buf);
-    int textW = bbox.xMax - bbox.xMin;
-    int textH = bbox.yMax - bbox.yMin;
-    
-    int x = 12;
-    int y = textH - 50;  // Moved up 50 pixels total from baseline
-    
-    // Clear area - use fixed width to handle all digits/symbols (avoids ghosting when digit changes)
-    // OFR renders with baseline at 'y', text extends upward from there
-    // For y = textH - 50, the top of text is near Y=0 and bottom at roughly y
-    const int clearW = 55;  // Fixed width to cover any digit plus margin for antialiasing
-    const int clearY = 0;   // Start from top of screen where text begins
-    const int clearH = textH + 12;  // Cover full text height plus margin
-    FILL_RECT(x - 4, clearY, clearW, clearH, PALETTE_BG);
-    
-    ofr.setCursor(x, y);
-    ofr.printf("%s", buf);
-}
-
-// Router: calls appropriate bogey counter draw method based on display style
-// Note: Modern style now uses Classic 7-segment for bogey counter (for laser flag support)
-// but keeps Montserrat Bold for frequency display
+// Router: bogey counter uses Classic 7-segment for all styles (laser flag support + perf)
+// Frequency still uses OFR for Modern/Hemi/Serpentine
 void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     // Always use Classic 7-segment for bogey counter (both styles)
     // This ensures laser flag ('=') and all symbols render correctly
@@ -1203,8 +1119,8 @@ void V1Display::drawMuteIcon(bool muted) {
 #endif
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
-    // Badge dimensions
-    int w = 110;
+    // Badge dimensions - wider for "LOCKOUT" text
+    int w = lockoutMuted ? 130 : 110;
     int h = 26;
     int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
     int y = 5;  // Fixed near top of screen
@@ -1222,12 +1138,17 @@ void V1Display::drawMuteIcon(bool muted) {
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
         int cx = x + w / 2;
         int cy = y + h / 2;
+        
+        // Show different text for lockout mute vs user mute
+        const char* muteText = lockoutMuted ? "LOCKOUT" : "MUTED";
         // Pseudo-bold: draw twice with slight offset
-        GFX_drawString(tft, "MUTED", cx, cy);
-        GFX_drawString(tft, "MUTED", cx + 1, cy);
+        GFX_drawString(tft, muteText, cx, cy);
+        GFX_drawString(tft, muteText, cx + 1, cy);
     } else {
-        // Clear the badge area when not muted
-        FILL_RECT(x, y, w, h, PALETTE_BG);
+        // Clear the badge area when not muted (use wider area to cover both sizes)
+        FILL_RECT(leftMargin + (maxWidth - 130) / 2, y, 130, h, PALETTE_BG);
+        // Reset lockout flag when unmuted
+        lockoutMuted = false;
     }
 }
 
@@ -1382,19 +1303,119 @@ void V1Display::drawBatteryIndicator() {
     const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
     const int capH = 3;     // Positive terminal cap height
     
-    // Hide battery icon when on USB power (voltage at/near max indicates charging)
-    // Use hysteresis to prevent flickering: hide above 4095, show below 4080
-    static bool showBattery = false;
+    // Hide battery when on USB power (voltage near max)
+    // Use hysteresis to prevent flickering: hide above 4125, show below 4095
+    static bool showBatteryOnUSB = true;
     uint16_t voltage = batteryManager.getVoltageMillivolts();
-    if (voltage > 4095) {
-        showBattery = false;  // Definitely on USB
-    } else if (voltage < 4080) {
-        showBattery = true;   // Definitely on battery
+    if (voltage > 4125) {
+        showBatteryOnUSB = false;  // On USB or fully charged
+    } else if (voltage < 4095) {
+        showBatteryOnUSB = true;   // On battery, not full
     }
-    // Between 4080-4095: keep previous state (hysteresis)
+    // Between 4095-4125: keep previous state (hysteresis)
     
-    // Don't draw if no battery, user hides it, or not on battery power
-    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBattery) {
+    // Get battery percentage for display
+    uint8_t pct = batteryManager.getPercentage();
+    
+    // If percent is enabled, ONLY show percent (never icon)
+    if (s.showBatteryPercent && !s.hideBatteryIcon && batteryManager.hasBattery()) {
+        // Cache percent drawing to avoid heavy FreeType work every frame
+        static int lastPctDrawn = -1;
+        static bool lastPctVisible = false;
+        static uint16_t lastPctColor = 0;
+        static unsigned long lastPctDrawMs = 0;
+        const unsigned long PCT_FORCE_REDRAW_MS = 60000;  // 60s safety refresh
+
+        // Clear battery icon area (we never show icon when percent is enabled)
+        FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
+
+        // Only draw percent if not on USB
+        if (!showBatteryOnUSB) {
+            // Clear percent area when not visible
+            if (lastPctVisible) {
+                FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
+                lastPctVisible = false;
+                lastPctDrawn = -1;
+            }
+            return;  // No percent on USB/fully charged
+        }
+
+        // Choose color based on level
+        uint16_t textColor;
+        if (pct <= 20) {
+            textColor = 0xF800;  // Red - critical
+        } else if (pct <= 40) {
+            textColor = 0xFD20;  // Orange - low
+        } else {
+            textColor = 0x07E0;  // Green - good
+        }
+        textColor = dimColor(textColor);
+
+        // Decide if we actually need to redraw
+        unsigned long nowMs = millis();
+        bool needsRedraw = s_forceBatteryRedraw ||  // Screen was cleared
+                           (!lastPctVisible) ||
+                           (pct != lastPctDrawn) ||
+                           (textColor != lastPctColor) ||
+                           ((nowMs - lastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
+
+        if (!needsRedraw) {
+            return;  // Skip expensive render when nothing changed
+        }
+        
+        // Clear force flag - we're handling it
+        s_forceBatteryRedraw = false;
+
+        // Format percentage string (no % to save space)
+        char pctStr[4];
+        snprintf(pctStr, sizeof(pctStr), "%d", pct);
+
+        // Always clear the text area before drawing (covers shorter numbers)
+        // Positioned to avoid top arrow which extends to roughly SCREEN_WIDTH - 14
+        FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
+
+        // Draw using OpenFontRender if available; fall back to built-in font otherwise
+        if (ofrInitialized) {
+            const int fontSize = 20;  // Larger for better visibility
+            uint8_t bgR = (PALETTE_BG >> 11) << 3;
+            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+            ofr.setBackgroundColor(bgR, bgG, bgB);
+            ofr.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
+            ofr.setFontSize(fontSize);
+
+            FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
+            int textW = bbox.xMax - bbox.xMin;
+            int textH = bbox.yMax - bbox.yMin;
+
+            // Position text at top-right corner - use fixed Y position near top
+            int textX = SCREEN_WIDTH - textW - 4;
+            int textY = 2;  // Fixed: 2 pixels from top (OFR draws from top of glyph, not baseline)
+
+            ofr.setCursor(textX, textY);
+            ofr.printf("%s", pctStr);
+        } else {
+            // Fallback: built-in font, right-aligned near top-right
+            GFX_setTextDatum(TR_DATUM);
+            TFT_CALL(setTextSize)(2);  // Larger for better visibility
+            TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+            GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 12);
+        }
+
+        // Update cache
+        lastPctDrawn = pct;
+        lastPctColor = textColor;
+        lastPctVisible = true;
+        lastPctDrawMs = nowMs;
+        return;  // Never draw icon when percent is enabled
+    }
+    
+    // Percent is disabled, show icon instead
+    // Clear percent area (in case it was previously showing)
+    FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
+    
+    // Don't draw icon if no battery, user hides it, or on USB
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBatteryOnUSB) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
@@ -1402,8 +1423,6 @@ void V1Display::drawBatteryIndicator() {
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
     
-    // Get battery percentage
-    uint8_t pct = batteryManager.getPercentage();
     int filledSections = (pct + 10) / 20;  // 0-20%=1, 21-40%=2, etc. (min 1 if >0)
     if (pct == 0) filledSections = 0;
     if (filledSections > sections) filledSections = sections;
@@ -1471,8 +1490,15 @@ void V1Display::drawBLEProxyIndicator() {
     }
 
     // Icon color from settings: connected vs disconnected
-    uint16_t btColor = bleProxyClientConnected ? dimColor(s.colorBleConnected, 85)
-                                               : dimColor(s.colorBleDisconnected, 85);
+    // When connected but not receiving data, dim further to show "stale" state
+    uint16_t btColor;
+    if (bleProxyClientConnected) {
+        // Connected: bright green when receiving, dimmed when stale
+        btColor = bleReceivingData ? dimColor(s.colorBleConnected, 85)
+                                   : dimColor(s.colorBleConnected, 40);  // Much dimmer when no data
+    } else {
+        btColor = dimColor(s.colorBleDisconnected, 85);
+    }
 
     // Draw Bluetooth rune - the bind rune of ᛒ (Berkanan) and ᚼ (Hagall)
     // Center point of the icon
@@ -1683,9 +1709,12 @@ void V1Display::showResting(bool forceRedraw) {
         // Direction arrows all dimmed
         drawDirectionArrow(DIR_NONE, false);
         
-        // Frequency display: modern style shows blank, classic shows dashes
+        // Frequency display: KITT scanner if enabled, otherwise normal frequency display
         const V1Settings& s = settingsManager.get();
-        if (s.displayStyle != DISPLAY_STYLE_MODERN) {
+        if (s.kittScannerEnabled) {
+            // KITT scanner will be drawn on each frame in the periodic update
+            // Just clear the area here
+        } else if (s.displayStyle != DISPLAY_STYLE_MODERN) {
             drawFrequency(0, BAND_NONE);
         }
         
@@ -2138,8 +2167,19 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
+    // Check if KITT scanner is enabled and needs continuous animation
+    const V1Settings& sKitt = settingsManager.get();
+    bool kittScannerActive = sKitt.kittScannerEnabled && !volumeWarningActive;
+    
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
-        return;  // Nothing changed
+        // Nothing changed - but KITT scanner needs continuous updates for animation
+        if (kittScannerActive) {
+            drawKittScanner();
+#if defined(DISPLAY_WAVESHARE_349)
+            tft->flush();
+#endif
+        }
+        return;
     }
     
     if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
@@ -2259,6 +2299,8 @@ void V1Display::update(const DisplayState& state) {
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
+    } else if (s.kittScannerEnabled) {
+        drawKittScanner();  // Knight Rider easter egg
     } else {
         drawFrequency(0, primaryBand, effectiveMuted);
     }
@@ -2320,7 +2362,9 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     
     // Frequency in persisted color (pass muted=true)
-    drawFrequency(alert.frequency, alert.band, true);
+    // Note: Photo radar check uses state.bogeyCounterChar even for persisted alerts
+    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    drawFrequency(alert.frequency, alert.band, true, isPhotoRadar);
     
     // No signal bars - just draw empty
     drawVerticalSignalBars(0, 0, alert.band, true);
@@ -2536,7 +2580,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
-    drawFrequency(priority.frequency, priority.band, state.muted);
+    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
     DISP_PERF_LOG("drawFrequency");
     drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
     drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
@@ -2886,10 +2931,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
         // === TOP ROW: Direction arrow + Band + Frequency ===
-        // Center content in the area above the meter (34px height)
-        // Text (~16px) and arrow should be vertically centered
-        const int contentCenterY = cardY + 17;  // Center of 34px area above meter
-        int topRowY = cardY + 9;  // Text top (centered: 17 - 8 = 9)
+        // Center content between top border (Y≈2) and meter top (Y=34)
+        // Usable area is ~32px, centered at Y=18 from card top
+        const int contentCenterY = cardY + 18;  // Center of content area above meter
+        int topRowY = cardY + 11;  // Text top (centered: 18 - 7 = 11 for ~14px text)
         
         // Direction arrow on left side of card
         int arrowX = cardX + 18;
@@ -2987,6 +3032,11 @@ void V1Display::drawBandBadge(Band band) {
 }
 
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
+    // Cache to avoid redrawing unchanged bands
+    static uint8_t lastEffectiveMask = 0xFF;  // Invalid initial value to force first draw
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
     // Local blink timer - V1 blinks at ~5Hz, we match that
     // Use same timer as arrows for synchronized blinking
     static unsigned long lastBlinkTime = 0;
@@ -3004,6 +3054,17 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     if (!blinkOn) {
         // Turn off bands that are flashing during the OFF phase
         effectiveBandMask &= ~bandFlashBits;
+    }
+    
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceBandRedraw) {
+        cacheValid = false;
+        s_forceBandRedraw = false;
+    }
+    
+    // Check if anything changed
+    if (cacheValid && effectiveBandMask == lastEffectiveMask && muted == lastMuted) {
+        return;  // Nothing changed, skip redraw
     }
     
     // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
@@ -3041,16 +3102,33 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     const int labelClearW = 50;  // Width for "Ka" (widest label)
     const int labelClearH = 38;  // Height of 24pt font
     
+    // Only redraw bands that changed
+    uint8_t changedBands = cacheValid ? (effectiveBandMask ^ lastEffectiveMask) : 0xFF;
+    bool mutedChanged = !cacheValid || (muted != lastMuted);
+    
     for (int i = 0; i < 4; ++i) {
+        // Skip unchanged bands (unless muted state changed, which affects all lit bands)
+        bool bandChanged = (changedBands & cells[i].mask) != 0;
+        bool wasActive = (lastEffectiveMask & cells[i].mask) != 0;
+        bool isActive = (effectiveBandMask & cells[i].mask) != 0;
+        
+        if (cacheValid && !bandChanged && !(mutedChanged && (wasActive || isActive))) {
+            continue;  // This band hasn't changed
+        }
+        
         int labelY = startY + i * spacing;
         // Clear area around this label (ML_DATUM means Y is vertical center)
         FILL_RECT(x - 5, labelY - labelClearH/2, labelClearW, labelClearH, PALETTE_BG);
         
-        bool active = (effectiveBandMask & cells[i].mask) != 0;
-        uint16_t col = active ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
+        uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, labelY);
     }
+    
+    // Update cache
+    lastEffectiveMask = effectiveBandMask;
+    lastMuted = muted;
+    cacheValid = true;
     
     // Reset to default font for other text
     TFT_CALL(setFont)(NULL);
@@ -3089,7 +3167,7 @@ void V1Display::drawSignalBars(uint8_t bars) {
 
 // Classic 7-segment frequency display (original V1 style)
 // Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
-void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     if (ofrSegment7Initialized) {
@@ -3164,6 +3242,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
             freqColor = PALETTE_MUTED_OR_PERSISTED;
         } else if (!hasFreq) {
             freqColor = PALETTE_GRAY;
+        } else if (isPhotoRadar && s.freqUseBandColor) {
+            freqColor = s.colorBandPhoto;  // Photo radar gets its own color
         } else if (s.freqUseBandColor && band != BAND_NONE) {
             freqColor = getBandColor(band);
         } else {
@@ -3248,219 +3328,363 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted) {
 }
 
 // Modern frequency display - Antialiased with OpenFontRender
-void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if OFR not initialized
     if (!ofrInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
-    // Modern style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender antialiased rendering
+    // Layout constants
     const int fontSize = 69;  // 15% larger for better visibility
-    const int leftMargin = 120;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars (at X=440)
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 60;  // Position in middle of primary zone
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int clearTop = 30;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
-    ofr.setFontSize(fontSize);
-    ofr.setBackgroundColor(0, 0, 0);  // Black background
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool cacheValid = false;
+    static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
     
-    // Clear bottom area for frequency - minimal height to avoid covering band labels
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+    }
     
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofr.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering between band indicators and signal bars
-        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofr.setCursor(x, freqY);
-        ofr.printf("LASER");
+    // Modern style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
         return;
     }
     
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+    // Build text and color
+    char textBuf[16];
+    if (band == BAND_LASER) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color: muted -> grey, else band color (if enabled) or custom freq color
+
     uint16_t freqColor;
-    if (muted) {
+    if (band == BAND_LASER) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
         freqColor = s.colorFrequency;
     }
+
+    // Check if anything changed
+    unsigned long nowMs = millis();
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
+                   lastColor != freqColor ||
+                   textChanged ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    // For frequency strings (XX.XXX format), width is consistent
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofr.setFontSize(fontSize);
+        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
+    ofr.setFontSize(fontSize);
+    ofr.setBackgroundColor(0, 0, 0);  // Black background
     ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
-    // Get text width for centering between band indicators and signal bars
-    FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofr.setCursor(x, freqY);
-    ofr.printf("%s", freqStr);
+    ofr.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
+    lastDrawMs = nowMs;
 }
 
 // Hemi frequency display - Retro speedometer style with Hemi Head font
-void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Hemi OFR not initialized
     if (!ofrHemiInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
-    // Hemi style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender with Hemi Head font (retro speedometer style)
+    // Layout constants
     const int fontSize = 80;  // Larger for retro speedometer impact
-    const int leftMargin = 120;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars
     const int effectiveHeight = getEffectiveScreenHeight();
     const int freqY = effectiveHeight - 70;  // Centered between mute icon and cards
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int clearTop = 20;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
-    ofrHemi.setFontSize(fontSize);
-    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
-    
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-    
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofrHemi.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering
-        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofrHemi.setCursor(x, freqY);
-        ofrHemi.printf("LASER");
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool cacheValid = false;
+    static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
+
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+    }
+
+    // Hemi style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
         return;
     }
-    
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+
+    // Build text and color
+    char textBuf[16];
+    if (band == BAND_LASER) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color
+
     uint16_t freqColor;
-    if (muted) {
+    if (band == BAND_LASER) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
         freqColor = s.colorFrequency;
     }
+
+    // Check if anything changed
+    unsigned long nowMs = millis();
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
+                   lastColor != freqColor ||
+                   textChanged ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofrHemi.setFontSize(fontSize);
+        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
+    ofrHemi.setFontSize(fontSize);
+    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
     ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
-    // Get text width for centering
-    FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofrHemi.setCursor(x, freqY);
-    ofrHemi.printf("%s", freqStr);
+    ofrHemi.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
+    lastDrawMs = nowMs;
 }
 
 // Serpentine frequency display - JB's favorite font
-void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Serpentine OFR not initialized
     if (!ofrSerpentineInitialized) {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
     
-    // Serpentine style: show nothing when no frequency (resting/idle state)
-    if (freqMHz == 0 && band != BAND_LASER) {
-        return;
-    }
-    
-    // OpenFontRender with Serpentine font
+    // Layout constants
     const int fontSize = 65;  // Sized to match display area
-    const int leftMargin = 135;   // After band indicators
+    const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
     const int rightMargin = 200;  // Before signal bars
     const int effectiveHeight = getEffectiveScreenHeight();
-    const int freqY = effectiveHeight - 55;  // Centered between mute icon and cards
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    // Available vertical space: mute icon bottom (31) to card top (116) = 85px
+    // freqY is the baseline - with 65px font, visual center needs baseline around 55-60
+    const int freqY = 35;  // Baseline Y position
+    const int clearTop = 20;  // Top of frequency area to clear
+    const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
     
-    ofrSerpentine.setFontSize(fontSize);
-    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
-    
-    // Clear bottom area for frequency
-    int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    FILL_RECT(leftMargin, effectiveHeight - 5, maxWidth, 5, PALETTE_BG);
-    
-    if (band == BAND_LASER) {
-        uint16_t color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-        ofrSerpentine.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        // Get text width for centering
-        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, "LASER");
-        int textW = bbox.xMax - bbox.xMin;
-        int x = leftMargin + (maxWidth - textW) / 2;
-        
-        ofrSerpentine.setCursor(x, freqY);
-        ofrSerpentine.printf("LASER");
+    // Cache to avoid expensive OFR work when unchanged
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool cacheValid = false;
+    static unsigned long lastDrawMs = 0;
+    static int lastDrawX = 0;      // Cache last draw position for minimal clearing
+    static int lastDrawWidth = 0;  // Cache last text width
+    static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 500;
+
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceFrequencyRedraw) {
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+    }
+
+    // Serpentine style: show nothing when no frequency (resting/idle state)
+    // But we must clear the area if we previously drew something
+    if (freqMHz == 0 && band != BAND_LASER) {
+        if (cacheValid && lastText[0] != '\0') {
+            // Clear only the previously drawn text area
+            FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            lastText[0] = '\0';
+            cacheValid = false;
+        }
         return;
     }
-    
-    char freqStr[16];
-    if (freqMHz > 0) {
-        snprintf(freqStr, sizeof(freqStr), "%.3f", freqMHz / 1000.0f);
+
+    // Build text and color
+    char textBuf[16];
+    if (band == BAND_LASER) {
+        strcpy(textBuf, "LASER");
+    } else if (freqMHz > 0) {
+        snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
     } else {
-        snprintf(freqStr, sizeof(freqStr), "--.---");
+        snprintf(textBuf, sizeof(textBuf), "--.---");
     }
-    
-    // Determine frequency color
+
     uint16_t freqColor;
-    if (muted) {
+    if (band == BAND_LASER) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+    } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
     } else if (freqMHz == 0) {
         freqColor = PALETTE_GRAY;
+    } else if (isPhotoRadar && s.freqUseBandColor) {
+        freqColor = s.colorBandPhoto;  // Photo radar gets its own color
     } else if (s.freqUseBandColor && band != BAND_NONE) {
         freqColor = getBandColor(band);
     } else {
         freqColor = s.colorFrequency;
     }
+
+    // Check if anything changed
+    unsigned long nowMs = millis();
+    bool textChanged = strcmp(lastText, textBuf) != 0;
+    bool changed = !cacheValid ||
+                   lastColor != freqColor ||
+                   textChanged ||
+                   (nowMs - lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+
+    if (!changed) {
+        return;
+    }
+
+    // Only recalculate bbox if text actually changed (expensive FreeType call)
+    int textW, x;
+    if (textChanged || !cacheValid) {
+        ofrSerpentine.setFontSize(fontSize);
+        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+        textW = bbox.xMax - bbox.xMin;
+        x = leftMargin + (maxWidth - textW) / 2;
+    } else {
+        // Reuse cached position for color-only changes
+        textW = lastDrawWidth;
+        x = lastDrawX;
+    }
+
+    // Clear only the area we're about to draw (minimizes flash)
+    int clearX = (lastDrawWidth > 0) ? min(x, lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, lastDrawWidth) + 10;
+    FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
+
+    ofrSerpentine.setFontSize(fontSize);
+    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
     ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-    
-    // Get text width for centering
-    FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, freqStr);
-    int textW = bbox.xMax - bbox.xMin;
-    int x = leftMargin + (maxWidth - textW) / 2;
-    
+
     ofrSerpentine.setCursor(x, freqY);
-    ofrSerpentine.printf("%s", freqStr);
+    ofrSerpentine.printf("%s", textBuf);
+
+    // Update cache
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastDrawX = x;
+    lastDrawWidth = textW;
+    cacheValid = true;
+    lastDrawMs = nowMs;
 }
 
 // Draw volume zero warning in the frequency area (flashing red text)
@@ -3509,8 +3733,108 @@ void V1Display::drawVolumeZeroWarning() {
     }
 }
 
+// KITT scanner animation (Knight Rider style scanning LED bar)
+// Draws a red "eye" that sweeps back and forth in the frequency area
+void V1Display::drawKittScanner() {
+    const unsigned long KITT_FRAME_MS = 16;  // ~60fps animation
+    unsigned long now = millis();
+    
+    if (now - lastKittUpdate < KITT_FRAME_MS) {
+        return;  // Not time to update yet
+    }
+    lastKittUpdate = now;
+    
+    // Scanner layout - centered in the frequency display area
+#if defined(DISPLAY_WAVESHARE_349)
+    const int leftMargin = 160;   // After band indicators  
+    const int rightMargin = 220;  // Before signal bars
+#else
+    const int leftMargin = 10;
+    const int rightMargin = 130;
+#endif
+    
+    const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    const int eyeWidth = 50;       // Width of the bright center
+    const int tailLength = 400;    // Length of the fading trail (longer = more "always lit" like KITT)
+    const int barHeight = 25;      // Height of the scanner bar
+    // Center vertically in full screen height (172 pixels), not just primary zone
+    const int barY = (SCREEN_HEIGHT - barHeight) / 2;
+    
+    // Animation speed: faster sweep (~0.5 second full cycle)
+    const float speedPerFrame = 0.055f;
+    
+    // Update position
+    kittPosition += speedPerFrame * kittDirection;
+    
+    // Bounce at edges
+    if (kittPosition >= 1.0f) {
+        kittPosition = 1.0f;
+        kittDirection = -1;
+    } else if (kittPosition <= 0.0f) {
+        kittPosition = 0.0f;
+        kittDirection = 1;
+    }
+    
+    // Calculate eye center position
+    int eyeCenter = leftMargin + (int)(kittPosition * (scannerWidth - eyeWidth)) + eyeWidth / 2;
+    
+    // Clear the scanner area
+    FILL_RECT(leftMargin, barY, scannerWidth, barHeight, PALETTE_BG);
+    
+    // Draw the leading glow (dimmer, in front of the eye - brightest far away, dimmest near eye)
+    int leadLength = tailLength;  // Same length as trailing for full coverage
+    for (int i = 0; i < leadLength; i += 4) {
+        int leadX = eyeCenter + (kittDirection * (eyeWidth/2 + i));
+        if (leadX < leftMargin || leadX > leftMargin + scannerWidth - 4) continue;
+        
+        // Reverse fade: dim near eye, brighter far away (but still subtle overall)
+        float fade = (float)i / leadLength;  // 0 near eye, 1 far away
+        fade = fade * 0.40f;  // Keep it subtle - max 40% brightness
+        
+        // Red color with fading intensity
+        uint8_t r = (uint8_t)(31 * fade);
+        uint16_t color = (r << 11);
+        
+        FILL_RECT(leadX, barY, 4, barHeight, color);
+    }
+    
+    // Draw the trail (fading red segments behind the eye)
+    for (int i = 0; i < tailLength; i += 4) {
+        int trailX = eyeCenter - (kittDirection * (eyeWidth/2 + i));
+        if (trailX < leftMargin || trailX > leftMargin + scannerWidth - 4) continue;
+        
+        // Fade from bright to dim based on distance
+        float fade = 1.0f - ((float)i / tailLength);
+        fade = fade * fade;  // Quadratic falloff for more dramatic effect
+        fade = fade * 0.6f;  // Cap max brightness at 60%
+        
+        // Red color with fading intensity
+        uint8_t r = (uint8_t)(31 * fade);  // 5-bit red for RGB565
+        uint16_t color = (r << 11);  // Pure red, varying intensity
+        
+        FILL_RECT(trailX, barY, 4, barHeight, color);
+    }
+    
+    // Draw the bright eye center (gradient effect)
+    for (int i = 0; i < eyeWidth; i += 2) {
+        int x = eyeCenter - eyeWidth/2 + i;
+        if (x < leftMargin || x > leftMargin + scannerWidth - 2) continue;
+        
+        // Brightest in center, dimmer at edges
+        float distFromCenter = fabsf((float)(i - eyeWidth/2) / (eyeWidth/2));
+        float brightness = 1.0f - (distFromCenter * 0.5f);
+        
+        // Bright red/orange at center
+        uint8_t r = 31;  // Full red
+        uint8_t g = (uint8_t)(20 * brightness * brightness);  // Add some orange tint at center
+        uint16_t color = (r << 11) | (g << 5);
+        
+        FILL_RECT(x, barY, 2, barHeight, color);
+    }
+}
+
 // Router: calls appropriate frequency draw method based on display style setting
-void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
+void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     
     // Debug: log which style is being used
@@ -3522,13 +3846,13 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
     }
     
     if (s.displayStyle == DISPLAY_STYLE_MODERN) {
-        drawFrequencyModern(freqMHz, band, muted);
+        drawFrequencyModern(freqMHz, band, muted, isPhotoRadar);
     } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
-        drawFrequencyHemi(freqMHz, band, muted);
+        drawFrequencyHemi(freqMHz, band, muted, isPhotoRadar);
     } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
-        drawFrequencySerpentine(freqMHz, band, muted);
+        drawFrequencySerpentine(freqMHz, band, muted, isPhotoRadar);
     } else {
-        drawFrequencyClassic(freqMHz, band, muted);
+        drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
     }
 }
 
@@ -3536,6 +3860,19 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted) {
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
+    // Cache to avoid redrawing unchanged arrows
+    static bool lastShowFront = false;
+    static bool lastShowSide = false;
+    static bool lastShowRear = false;
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
+    // Check for forced invalidation (after screen clear)
+    if (s_forceArrowRedraw) {
+        cacheValid = false;
+        s_forceArrowRedraw = false;
+    }
+    
     // Local blink timer - V1 blinks at ~5Hz, we match that
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
@@ -3608,23 +3945,35 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
-    // Clear the entire arrow region using the max dimensions
-    // Stop above profile indicator area (profile at Y=152)
-    // Limit right edge to avoid clearing battery icon area (battery starts at X=618)
+    // Check if anything changed - if so, redraw ALL arrows to avoid clearing overlap issues
+    bool anyChanged = !cacheValid || 
+                      (showFront != lastShowFront) || 
+                      (showSide != lastShowSide) || 
+                      (showRear != lastShowRear) ||
+                      (muted != lastMuted);
+    
+    // If nothing changed, skip redraw entirely
+    if (!anyChanged) {
+        return;
+    }
+    
+    // Calculate clear regions for each arrow
     const int maxW = (topW > bottomW) ? topW : bottomW;
-    const int maxH = (topH > bottomH) ? topH : bottomH;
-    int clearTop = topArrowCenterY - topH/2 - 15;
-    int clearBottom = bottomArrowCenterY + bottomH/2 + 2;  // Reduced to not overlap profile area
     int clearLeft = cx - maxW/2 - 10;
-    int clearWidth = maxW + 20;  // Reduced from +24 to avoid battery icon at X=618
-    // Clamp right edge to not overlap battery icon (battery starts at SCREEN_WIDTH - 22 = 618)
-    int maxClearRight = SCREEN_WIDTH - 24;  // Leave margin for battery icon
+    int clearWidth = maxW + 20;
+    int maxClearRight = SCREEN_WIDTH - 42;
     if (clearLeft + clearWidth > maxClearRight) {
         clearWidth = maxClearRight - clearLeft;
     }
-    FILL_RECT(clearLeft, clearTop, clearWidth, clearBottom - clearTop, PALETTE_BG);
 
-    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol) {
+    auto drawTriangleArrow = [&](int centerY, bool down, bool active, int triW, int triH, int notchW, int notchH, uint16_t activeCol, bool needsClear) {
+        // Clear just this arrow's region if needed
+        if (needsClear) {
+            int arrowTop = centerY - triH/2 - 2;
+            int arrowHeight = triH + 4;
+            FILL_RECT(clearLeft, arrowTop, clearWidth, arrowHeight, PALETTE_BG);
+        }
+        
         uint16_t fillCol = active ? activeCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         
@@ -3660,7 +4009,16 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         }
     };
 
-    auto drawSideArrow = [&](bool active) {
+    auto drawSideArrow = [&](bool active, bool needsClear) {
+        // Clear just the side arrow region if needed
+        if (needsClear) {
+            const int headW = (int)(28 * scale);
+            const int headH = (int)(22 * scale);
+            int sideTop = cy - headH - 2;
+            int sideHeight = headH * 2 + 4;
+            FILL_RECT(clearLeft, sideTop, clearWidth, sideHeight, PALETTE_BG);
+        }
+        
         uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = (int)(66 * scale);   // Center bar width
@@ -3689,10 +4047,23 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Use showFront/Side/Rear which incorporate the blink state
-    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol);
-    drawSideArrow(showSide);
-    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol);
+    // Clear entire arrow region once, then redraw all
+    const int headH = (int)(22 * scale);
+    int totalTop = topArrowCenterY - topH/2 - 2;
+    int totalBottom = bottomArrowCenterY + bottomH/2 + 2;
+    FILL_RECT(clearLeft, totalTop, clearWidth, totalBottom - totalTop, PALETTE_BG);
+    
+    // Draw all three arrows
+    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol, false);
+    drawSideArrow(showSide, false);
+    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol, false);
+    
+    // Update cache
+    lastShowFront = showFront;
+    lastShowSide = showSide;
+    lastShowRear = showRear;
+    lastMuted = muted;
+    cacheValid = true;
 }
 
 // Draw vertical signal bars on right side (t4s3 style)
@@ -3704,6 +4075,22 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 
     // Clamp strength to valid range (already mapped from 0-8 to 0-6)
     if (strength > 6) strength = 6;
+
+    // Cache to avoid redrawing unchanged bars
+    static uint8_t lastStrength = 0xFF;  // Invalid initial to force first draw
+    static bool lastMuted = false;
+    static bool cacheValid = false;
+    
+    // Check for forced invalidation (e.g., after screen clear)
+    if (s_forceSignalBarsRedraw) {
+        cacheValid = false;
+        s_forceSignalBarsRedraw = false;
+    }
+    
+    // Check if anything changed
+    if (cacheValid && strength == lastStrength && muted == lastMuted) {
+        return;  // Nothing changed, skip redraw
+    }
 
     bool hasSignal = (strength > 0);
     
@@ -3733,24 +4120,27 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     int startX = SCREEN_WIDTH - 90;   // Relative position for narrower screen
 #endif
     // Align signal bars so gap between bars 3 and 4 aligns with middle arrow center (cy=85)
-    // With 8 bars: barHeight=14, barSpacing=10, gap center at startY + 3*(barHeight+barSpacing) - barSpacing/2
-    // Want: startY + 3*24 - 5 = 85, so startY = 85 - 67 = 18
     int startY = 18;  // Fixed position to align with middle arrow
     if (startY < 8) startY = 8; // keep some padding from top icons
 
-    // Clear area once
-    int clearH = totalH + 4;
-    FILL_RECT(startX - 2, startY - 2, barWidth + 4, clearH, PALETTE_BG);
-
+    // Only redraw bars that changed state
     for (int i = 0; i < barCount; i++) {
+        bool wasLit = cacheValid && (i < lastStrength);
+        bool isLit = hasSignal && (i < strength);
+        bool wasMutedLit = cacheValid && wasLit && lastMuted;
+        bool isMutedLit = isLit && muted;
+        
+        // Skip if this bar's state hasn't changed
+        if (cacheValid && wasLit == isLit && wasMutedLit == isMutedLit) {
+            continue;
+        }
+        
         // Draw from bottom to top
         int visualIndex = barCount - 1 - i;
         int y = startY + visualIndex * (barHeight + barSpacing);
         
-        bool lit = hasSignal && (i < strength);
-        
         uint16_t fillColor;
-        if (!lit) {
+        if (!isLit) {
             fillColor = 0x1082; // very dark grey (resting/off)
         } else if (muted) {
             fillColor = PALETTE_MUTED; // muted grey for lit bars
@@ -3761,6 +4151,81 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         // Draw filled bar
         FILL_ROUND_RECT(startX, y, barWidth, barHeight, 2, fillColor);
     }
+    
+    // Draw OBD indicator below signal bars (if OBD is connected)
+    // Position: below the bottom bar, centered under bar area
+    // NOTE: Check OBD state BEFORE updating cache so we can detect if bars were just redrawn
+    static bool lastObdConnected = false;
+    bool obdConnected = obdHandler.isConnected();
+    bool barsWereRedrawn = !cacheValid;  // Capture before we set cacheValid = true
+    
+    // Update cache
+    lastStrength = strength;
+    lastMuted = muted;
+    cacheValid = true;
+    
+    // Redraw OBD indicator if state changed OR bars were just redrawn
+    if (obdConnected != lastObdConnected || barsWereRedrawn) {
+        const int obdY = startY + totalH + 6;  // Below last bar with small gap
+        const int obdLabelWidth = 36;
+        const int obdLabelHeight = 12;
+        const int obdX = startX + (barWidth - obdLabelWidth) / 2;  // Center under bars
+        
+        if (obdConnected) {
+            // Draw "OBD" label in green
+            uint16_t obdColor = 0x07E0;  // Green
+            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);  // Clear area first
+            
+            // Use small built-in font for "OBD" text
+            tft->setTextColor(obdColor);
+            tft->setTextSize(1);
+            tft->setCursor(obdX + 4, obdY + 2);
+            tft->print("OBD");
+        } else {
+            // Clear OBD area when disconnected
+            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+        }
+        lastObdConnected = obdConnected;
+    }
+}
+
+// Standalone OBD indicator update - can be called independently of signal bars
+void V1Display::updateObdIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    static bool lastObdState = false;
+    bool obdConnected = obdHandler.isConnected();
+    
+    // Only redraw if state changed
+    if (obdConnected == lastObdState) {
+        return;
+    }
+    lastObdState = obdConnected;
+    
+    // Match positioning from drawVerticalSignalBars
+    const int barCount = 6;
+    const int barHeight = 14;
+    const int barSpacing = 10;
+    const int barWidth = 44;
+    const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
+    const int startX = SCREEN_WIDTH - 200;
+    const int startY = 18;
+    
+    const int obdY = startY + totalH + 6;
+    const int obdLabelWidth = 36;
+    const int obdLabelHeight = 12;
+    const int obdX = startX + (barWidth - obdLabelWidth) / 2;
+    
+    if (obdConnected) {
+        uint16_t obdColor = 0x07E0;  // Green
+        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+        tft->setTextColor(obdColor);
+        tft->setTextSize(1);
+        tft->setCursor(obdX + 4, obdY + 2);
+        tft->print("OBD");
+    } else {
+        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
+    }
+#endif
 }
 
 const char* V1Display::bandToString(Band band) {

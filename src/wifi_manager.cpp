@@ -7,8 +7,10 @@
 #include "settings.h"
 #include "display.h"
 #include "storage_manager.h"
+#include "debug_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
+#include "obd_handler.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -32,6 +34,12 @@ static constexpr bool WIFI_DEBUG_FS_DUMP = false;
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
+
+static void applyDebugLogFilterFromSettings() {
+    DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display};
+    debugLogger.setFilter(filter);
+}
 
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
@@ -185,6 +193,10 @@ bool WiFiManager::startSetupMode() {
         Serial.printf("[SetupMode] AP auto-timeout set to %lu ms\n", WIFI_AP_AUTO_TIMEOUT_MS);
     }
 
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::Wifi, "Setup mode AP started");
+    }
+
     return true;
 }
 
@@ -199,6 +211,10 @@ bool WiFiManager::stopSetupMode(bool manual) {
     WiFi.mode(WIFI_OFF);
     setupModeState = SETUP_MODE_OFF;
 
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::Wifi, manual ? "Setup mode AP stopped (manual)" : "Setup mode AP stopped (timeout)");
+    }
+
     EVENT_LOG(EVT_WIFI_AP_STOP, 0);
     EVENT_LOG(EVT_SETUP_MODE_EXIT, manual ? 1 : 0);
     return true;
@@ -212,11 +228,12 @@ bool WiFiManager::toggleSetupMode(bool manual) {
 }
 
 void WiFiManager::setupAP() {
-    // Use a constant, predictable SSID for Setup Mode
-    const char* apSSID = "V1-Simple";
-    const char* apPass = "setupv1g2";  // Simple password (unchanged)
+    // Use saved SSID/password when available; fall back to defaults if missing/too short
+    const V1Settings& settings = settingsManager.get();
+    String apSSID = settings.apSSID.length() ? settings.apSSID : "V1-Simple";
+    String apPass = (settings.apPassword.length() >= 8) ? settings.apPassword : "setupv1g2";  // WPA2 requires 8+
     
-    Serial.printf("[SetupMode] Starting AP: %s (pass: %s)\n", apSSID, apPass);
+    Serial.printf("[SetupMode] Starting AP: %s (pass: ****)\n", apSSID.c_str());
     
     // Configure AP IP
     IPAddress apIP(192, 168, 35, 5);
@@ -229,7 +246,7 @@ void WiFiManager::setupAP() {
         Serial.println("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1");
     }
     
-    if (!WiFi.softAP(apSSID, apPass)) {
+    if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
         Serial.println("[SetupMode] softAP failed!");
         return;
     }
@@ -413,6 +430,18 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
+    server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
+    server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
+    server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
+    
+    // OBD-II API routes
+    server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
+    server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
+    server.on("/api/obd/scan/stop", HTTP_POST, [this]() { handleObdScanStop(); });
+    server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
+    server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
+    server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
+    server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -537,19 +566,23 @@ void WiFiManager::handleApiProfilePush() {
         return;
     }
     
-    // Profile push is handled by main loop's processAutoPush() state machine
-    Serial.println("[API] Profile push requested");
+    // Invoke the registered callback to kick off the auto-push state machine
+    bool queued = false;
+    if (requestProfilePush) {
+        queued = requestProfilePush();
+    }
     
     JsonDocument doc;
-    doc["ok"] = true;
-    doc["message"] = "Profile push queued - check display for progress";
+    doc["ok"] = queued;
+    if (queued) {
+        doc["message"] = "Profile push queued - check display for progress";
+    } else {
+        doc["error"] = "Push handler unavailable";
+    }
     
     String json;
     serializeJson(doc, json);
-    server.send(200, "application/json", json);
-    
-    // Note: Actual push execution is handled by main.cpp's processAutoPush()
-    // via the startAutoPush() mechanism, not directly in this handler
+    server.send(queued ? 200 : 500, "application/json", json);
 }
 
 void WiFiManager::handleSettingsApi() {
@@ -562,6 +595,33 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["obdEnabled"] = settings.obdEnabled;
+    
+    // Auto-lockout settings (JBV1-style)
+    doc["lockoutEnabled"] = settings.lockoutEnabled;
+    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
+    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
+    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
+    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
+    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
+    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
+    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
+    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
+    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
+    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
+    
+    // Development/Debug settings
+    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableDebugLogging"] = settings.enableDebugLogging;
+    doc["logAlerts"] = settings.logAlerts;
+    doc["logWifi"] = settings.logWifi;
+    doc["logBle"] = settings.logBle;
+    doc["logGps"] = settings.logGps;
+    doc["logObd"] = settings.logObd;
+    doc["logSystem"] = settings.logSystem;
+    doc["logDisplay"] = settings.logDisplay;
+    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -616,6 +676,73 @@ void WiFiManager::handleSettingsSave() {
         style = std::max(0, std::min(style, 3));  // Clamp to valid range (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine)
         settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
         display.forceNextRedraw();  // Force display update to show new font style
+    }
+
+    // GPS/OBD module settings
+    if (server.hasArg("gpsEnabled")) {
+        bool enabled = server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1";
+        settingsManager.setGpsEnabled(enabled);
+    }
+    if (server.hasArg("obdEnabled")) {
+        bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
+        settingsManager.setObdEnabled(enabled);
+    }
+    if (server.hasArg("obdPin")) {
+        settingsManager.setObdPin(server.arg("obdPin"));
+    }
+    
+    // Auto-lockout settings (JBV1-style)
+    if (server.hasArg("lockoutEnabled")) {
+        bool enabled = server.arg("lockoutEnabled") == "true" || server.arg("lockoutEnabled") == "1";
+        settingsManager.updateLockoutEnabled(enabled);
+    }
+    if (server.hasArg("lockoutKaProtection")) {
+        bool enabled = server.arg("lockoutKaProtection") == "true" || server.arg("lockoutKaProtection") == "1";
+        settingsManager.updateLockoutKaProtection(enabled);
+    }
+    if (server.hasArg("lockoutDirectionalUnlearn")) {
+        bool enabled = server.arg("lockoutDirectionalUnlearn") == "true" || server.arg("lockoutDirectionalUnlearn") == "1";
+        settingsManager.updateLockoutDirectionalUnlearn(enabled);
+    }
+    if (server.hasArg("lockoutFreqToleranceMHz")) {
+        int mhz = server.arg("lockoutFreqToleranceMHz").toInt();
+        mhz = std::max(1, std::min(mhz, 50));  // Clamp 1-50 MHz
+        settingsManager.updateLockoutFreqToleranceMHz(mhz);
+    }
+    if (server.hasArg("lockoutLearnCount")) {
+        int count = server.arg("lockoutLearnCount").toInt();
+        count = std::max(1, std::min(count, 10));
+        settingsManager.updateLockoutLearnCount(count);
+    }
+    if (server.hasArg("lockoutUnlearnCount")) {
+        int count = server.arg("lockoutUnlearnCount").toInt();
+        count = std::max(1, std::min(count, 50));
+        settingsManager.updateLockoutUnlearnCount(count);
+    }
+    if (server.hasArg("lockoutManualDeleteCount")) {
+        int count = server.arg("lockoutManualDeleteCount").toInt();
+        count = std::max(1, std::min(count, 100));
+        settingsManager.updateLockoutManualDeleteCount(count);
+    }
+    if (server.hasArg("lockoutLearnIntervalHours")) {
+        int hours = server.arg("lockoutLearnIntervalHours").toInt();
+        hours = std::max(0, std::min(hours, 24));
+        settingsManager.updateLockoutLearnIntervalHours(hours);
+    }
+    if (server.hasArg("lockoutUnlearnIntervalHours")) {
+        int hours = server.arg("lockoutUnlearnIntervalHours").toInt();
+        hours = std::max(0, std::min(hours, 24));
+        settingsManager.updateLockoutUnlearnIntervalHours(hours);
+    }
+    if (server.hasArg("lockoutMaxSignalStrength")) {
+        int strength = server.arg("lockoutMaxSignalStrength").toInt();
+        strength = std::max(0, std::min(strength, 9));  // 0=disabled, 1-9=threshold
+        settingsManager.updateLockoutMaxSignalStrength(strength);
+    }
+    if (server.hasArg("lockoutMaxDistanceM")) {
+        int meters = server.arg("lockoutMaxDistanceM").toInt();
+        meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
+        settingsManager.updateLockoutMaxDistanceM(meters);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
@@ -1193,7 +1320,10 @@ void WiFiManager::handleAutoPushPushNow() {
         return;
     }
     
-    bleClient.setDisplayOn(profile.displayOn);
+    // Use slot's dark mode setting, not the profile's stored displayOn value
+    // (slot dark mode is the user-facing toggle in auto-push config)
+    bool slotDarkMode = settingsManager.getSlotDarkMode(slot);
+    bleClient.setDisplayOn(!slotDarkMode);  // Dark mode = display off
     
     if (mode != V1_MODE_UNKNOWN) {
         bleClient.setMode(static_cast<uint8_t>(mode));
@@ -1289,6 +1419,12 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setMutedColor(mutedColor);
     }
     
+    // Handle photo radar band color if provided
+    if (server.hasArg("bandPhoto")) {
+        uint16_t bandPhotoColor = server.arg("bandPhoto").toInt();
+        settingsManager.setBandPhotoColor(bandPhotoColor);
+    }
+    
     // Handle persisted color if provided
     if (server.hasArg("persisted")) {
         uint16_t persistedColor = server.arg("persisted").toInt();
@@ -1330,6 +1466,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideBatteryIcon")) {
         settingsManager.setHideBatteryIcon(server.arg("hideBatteryIcon") == "true" || server.arg("hideBatteryIcon") == "1");
     }
+    if (server.hasArg("showBatteryPercent")) {
+        settingsManager.setShowBatteryPercent(server.arg("showBatteryPercent") == "true" || server.arg("showBatteryPercent") == "1");
+    }
     if (server.hasArg("hideBleIcon")) {
         settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
     }
@@ -1338,6 +1477,36 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("hideRssiIndicator")) {
         settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
+    }
+    if (server.hasArg("kittScannerEnabled")) {
+        settingsManager.setKittScannerEnabled(server.arg("kittScannerEnabled") == "true" || server.arg("kittScannerEnabled") == "1");
+    }
+    if (server.hasArg("enableWifiAtBoot")) {
+        settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1");
+    }
+    if (server.hasArg("enableDebugLogging")) {
+        settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1");
+    }
+    if (server.hasArg("logAlerts")) {
+        settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1");
+    }
+    if (server.hasArg("logWifi")) {
+        settingsManager.setLogWifi(server.arg("logWifi") == "true" || server.arg("logWifi") == "1");
+    }
+    if (server.hasArg("logBle")) {
+        settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1");
+    }
+    if (server.hasArg("logGps")) {
+        settingsManager.setLogGps(server.arg("logGps") == "true" || server.arg("logGps") == "1");
+    }
+    if (server.hasArg("logObd")) {
+        settingsManager.setLogObd(server.arg("logObd") == "true" || server.arg("logObd") == "1");
+    }
+    if (server.hasArg("logSystem")) {
+        settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1");
+    }
+    if (server.hasArg("logDisplay")) {
+        settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1");
     }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
@@ -1371,6 +1540,58 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("secondaryX")) {
         settingsManager.setSecondaryX(server.arg("secondaryX") == "true" || server.arg("secondaryX") == "1");
     }
+    // Volume fade settings
+    if (server.hasArg("alertVolumeFadeEnabled") || server.hasArg("alertVolumeFadeDelaySec") || server.hasArg("alertVolumeFadeVolume")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.alertVolumeFadeEnabled;
+        uint8_t delaySec = current.alertVolumeFadeDelaySec;
+        uint8_t volume = current.alertVolumeFadeVolume;
+        if (server.hasArg("alertVolumeFadeEnabled")) {
+            enabled = server.arg("alertVolumeFadeEnabled") == "true" || server.arg("alertVolumeFadeEnabled") == "1";
+        }
+        if (server.hasArg("alertVolumeFadeDelaySec")) {
+            int val = server.arg("alertVolumeFadeDelaySec").toInt();
+            delaySec = (uint8_t)std::max(1, std::min(val, 10));
+        }
+        if (server.hasArg("alertVolumeFadeVolume")) {
+            int val = server.arg("alertVolumeFadeVolume").toInt();
+            volume = (uint8_t)std::max(0, std::min(val, 9));
+        }
+        settingsManager.setAlertVolumeFade(enabled, delaySec, volume);
+    }
+    // Speed-based volume settings
+    if (server.hasArg("speedVolumeEnabled") || server.hasArg("speedVolumeThresholdMph") || server.hasArg("speedVolumeBoost")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.speedVolumeEnabled;
+        uint8_t threshold = current.speedVolumeThresholdMph;
+        uint8_t boost = current.speedVolumeBoost;
+        if (server.hasArg("speedVolumeEnabled")) {
+            enabled = server.arg("speedVolumeEnabled") == "true" || server.arg("speedVolumeEnabled") == "1";
+        }
+        if (server.hasArg("speedVolumeThresholdMph")) {
+            int val = server.arg("speedVolumeThresholdMph").toInt();
+            threshold = (uint8_t)std::max(10, std::min(val, 100));
+        }
+        if (server.hasArg("speedVolumeBoost")) {
+            int val = server.arg("speedVolumeBoost").toInt();
+            boost = (uint8_t)std::max(1, std::min(val, 5));
+        }
+        settingsManager.setSpeedVolume(enabled, threshold, boost);
+    }
+    // Low-speed mute settings
+    if (server.hasArg("lowSpeedMuteEnabled") || server.hasArg("lowSpeedMuteThresholdMph")) {
+        const V1Settings& current = settingsManager.get();
+        bool enabled = current.lowSpeedMuteEnabled;
+        uint8_t threshold = current.lowSpeedMuteThresholdMph;
+        if (server.hasArg("lowSpeedMuteEnabled")) {
+            enabled = server.arg("lowSpeedMuteEnabled") == "true" || server.arg("lowSpeedMuteEnabled") == "1";
+        }
+        if (server.hasArg("lowSpeedMuteThresholdMph")) {
+            int val = server.arg("lowSpeedMuteThresholdMph").toInt();
+            threshold = (uint8_t)std::max(1, std::min(val, 30));  // 1-30 mph range
+        }
+        settingsManager.setLowSpeedMute(enabled, threshold);
+    }
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -1386,6 +1607,13 @@ void WiFiManager::handleDisplayColorsSave() {
 
     // Persist all color/visibility changes
     settingsManager.save();
+
+    // Apply debug logging runtime state immediately
+    applyDebugLogFilterFromSettings();
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabled()) {
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled via /api/displaycolors (size=%u bytes)", (unsigned int)debugLogger.size());
+    }
     
     // Trigger immediate display preview to show new colors
     display.showDemo();
@@ -1435,6 +1663,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["bandKa"] = s.colorBandKa;
     doc["bandK"] = s.colorBandK;
     doc["bandX"] = s.colorBandX;
+    doc["bandPhoto"] = s.colorBandPhoto;
     doc["wifiIcon"] = s.colorWiFiIcon;
     doc["wifiConnected"] = s.colorWiFiConnected;
     doc["bleConnected"] = s.colorBleConnected;
@@ -1455,9 +1684,20 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["showBatteryPercent"] = s.showBatteryPercent;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
+    doc["kittScannerEnabled"] = s.kittScannerEnabled;
+    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableDebugLogging"] = s.enableDebugLogging;
+    doc["logAlerts"] = s.logAlerts;
+    doc["logWifi"] = s.logWifi;
+    doc["logBle"] = s.logBle;
+    doc["logGps"] = s.logGps;
+    doc["logObd"] = s.logObd;
+    doc["logSystem"] = s.logSystem;
+    doc["logDisplay"] = s.logDisplay;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -1469,6 +1709,14 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["secondaryKa"] = s.secondaryKa;
     doc["secondaryK"] = s.secondaryK;
     doc["secondaryX"] = s.secondaryX;
+    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = s.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     
     String json;
     serializeJson(doc, json);
@@ -1499,6 +1747,75 @@ void WiFiManager::handleDebugEnable() {
     }
     perfMetricsSetDebug(enable);
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
+}
+
+void WiFiManager::handleDebugLogsMeta() {
+    if (!checkRateLimit()) return;
+
+    JsonDocument doc;
+    doc["enabled"] = settingsManager.get().enableDebugLogging;
+    doc["canEnable"] = debugLogger.canEnable();  // SD card required
+    doc["storageReady"] = storageManager.isReady();
+    doc["onSdCard"] = storageManager.isSDCard();
+    doc["exists"] = debugLogger.exists();
+    doc["sizeBytes"] = static_cast<uint32_t>(debugLogger.size());
+    doc["maxSizeBytes"] = static_cast<uint32_t>(DEBUG_LOG_MAX_BYTES);
+    doc["path"] = DEBUG_LOG_PATH;
+    DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+    doc["logAlerts"] = cfg.alerts;
+    doc["logWifi"] = cfg.wifi;
+    doc["logBle"] = cfg.ble;
+    doc["logGps"] = cfg.gps;
+    doc["logObd"] = cfg.obd;
+    doc["logSystem"] = cfg.system;
+    doc["logDisplay"] = cfg.display;
+
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleDebugLogsDownload() {
+    if (!checkRateLimit()) return;
+
+    if (!storageManager.isReady()) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"Storage not available\"}");
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(DEBUG_LOG_PATH)) {
+        server.send(404, "application/json", "{\"success\":false,\"error\":\"Log file not found\"}");
+        return;
+    }
+
+    File f = fs->open(DEBUG_LOG_PATH, FILE_READ);
+    if (!f) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open log\"}");
+        return;
+    }
+
+    server.sendHeader("Content-Type", "text/plain");
+    server.sendHeader("Content-Disposition", "attachment; filename=\"debug.log\"");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.streamFile(f, "text/plain");
+    f.close();
+}
+
+void WiFiManager::handleDebugLogsClear() {
+    if (!checkRateLimit()) return;
+
+    bool ok = debugLogger.clear();
+
+    JsonDocument doc;
+    doc["success"] = ok;
+    doc["enabled"] = debugLogger.isEnabled();
+    doc["exists"] = debugLogger.exists();
+    doc["sizeBytes"] = static_cast<uint32_t>(debugLogger.size());
+
+    String json;
+    serializeJson(doc, json);
+    server.send(ok ? 200 : 500, "application/json", json);
 }
 
 // ============= Settings Backup/Restore API Handlers =============
@@ -1538,6 +1855,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorBandKa"] = s.colorBandKa;
     doc["colorBandK"] = s.colorBandK;
     doc["colorBandX"] = s.colorBandX;
+    doc["colorBandPhoto"] = s.colorBandPhoto;
     doc["colorWiFiIcon"] = s.colorWiFiIcon;
     doc["colorBleConnected"] = s.colorBleConnected;
     doc["colorBleDisconnected"] = s.colorBleDisconnected;
@@ -1557,9 +1875,15 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
     doc["hideBatteryIcon"] = s.hideBatteryIcon;
+    doc["showBatteryPercent"] = s.showBatteryPercent;
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
+    doc["kittScannerEnabled"] = s.kittScannerEnabled;
+    
+    // Development/Debug
+    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableDebugLogging"] = s.enableDebugLogging;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -1572,6 +1896,14 @@ void WiFiManager::handleSettingsBackup() {
     doc["secondaryKa"] = s.secondaryKa;
     doc["secondaryK"] = s.secondaryK;
     doc["secondaryX"] = s.secondaryX;
+    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
+    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
+    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
+    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
+    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
+    doc["speedVolumeBoost"] = s.speedVolumeBoost;
+    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
+    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     
     // Auto-push slot settings
     doc["autoPushEnabled"] = s.autoPushEnabled;
@@ -1667,6 +1999,12 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["proxyBLE"].is<bool>()) settingsManager.setProxyBLE(doc["proxyBLE"]);
     if (doc["proxyName"].is<const char*>()) settingsManager.setProxyName(doc["proxyName"].as<String>());
     
+    // WiFi settings (password intentionally excluded from backups)
+    if (doc["apSSID"].is<const char*>()) {
+        // Preserve existing password while restoring SSID
+        settingsManager.updateAPCredentials(doc["apSSID"].as<String>(), settingsManager.get().apPassword);
+    }
+    
     // Display settings
     if (doc["brightness"].is<int>()) s.brightness = doc["brightness"];
     if (doc["displayStyle"].is<int>()) s.displayStyle = (DisplayStyle)doc["displayStyle"].as<int>();
@@ -1682,6 +2020,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorBandKa"].is<int>()) s.colorBandKa = doc["colorBandKa"];
     if (doc["colorBandK"].is<int>()) s.colorBandK = doc["colorBandK"];
     if (doc["colorBandX"].is<int>()) s.colorBandX = doc["colorBandX"];
+    if (doc["colorBandPhoto"].is<int>()) s.colorBandPhoto = doc["colorBandPhoto"];
     if (doc["colorWiFiIcon"].is<int>()) s.colorWiFiIcon = doc["colorWiFiIcon"];
     if (doc["colorBleConnected"].is<int>()) s.colorBleConnected = doc["colorBleConnected"];
     if (doc["colorBleDisconnected"].is<int>()) s.colorBleDisconnected = doc["colorBleDisconnected"];
@@ -1701,9 +2040,22 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideWifiIcon"].is<bool>()) s.hideWifiIcon = doc["hideWifiIcon"];
     if (doc["hideProfileIndicator"].is<bool>()) s.hideProfileIndicator = doc["hideProfileIndicator"];
     if (doc["hideBatteryIcon"].is<bool>()) s.hideBatteryIcon = doc["hideBatteryIcon"];
+    if (doc["showBatteryPercent"].is<bool>()) s.showBatteryPercent = doc["showBatteryPercent"];
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
+    if (doc["kittScannerEnabled"].is<bool>()) s.kittScannerEnabled = doc["kittScannerEnabled"];
+    
+    // Development/Debug
+    if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
+    if (doc["enableDebugLogging"].is<bool>()) s.enableDebugLogging = doc["enableDebugLogging"];
+    if (doc["logAlerts"].is<bool>()) s.logAlerts = doc["logAlerts"];
+    if (doc["logWifi"].is<bool>()) s.logWifi = doc["logWifi"];
+    if (doc["logBle"].is<bool>()) s.logBle = doc["logBle"];
+    if (doc["logGps"].is<bool>()) s.logGps = doc["logGps"];
+    if (doc["logObd"].is<bool>()) s.logObd = doc["logObd"];
+    if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
+    if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
     
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
@@ -1787,6 +2139,13 @@ void WiFiManager::handleSettingsRestore() {
     
     // Save to flash
     settingsManager.save();
+
+    // Re-apply debug logging runtime state based on restored settings
+    applyDebugLogFilterFromSettings();
+    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    if (debugLogger.isEnabled()) {
+        debugLogger.log(DebugLogCategory::System, "Debug logging enabled via settings restore");
+    }
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     
@@ -1797,4 +2156,113 @@ void WiFiManager::handleSettingsRestore() {
     }
     response += "\"}";
     server.send(200, "application/json", response);
+}
+
+// ============== OBD-II API Handlers ==============
+
+void WiFiManager::handleObdStatus() {
+    JsonDocument doc;
+    
+    doc["enabled"] = settingsManager.isObdEnabled();
+    doc["state"] = obdHandler.getStateString();
+    doc["connected"] = obdHandler.isConnected();
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["moduleDetected"] = obdHandler.isModuleDetected();
+    doc["deviceName"] = obdHandler.getConnectedDeviceName();
+    doc["savedDeviceAddress"] = settingsManager.getObdDeviceAddress();
+    doc["savedDeviceName"] = settingsManager.getObdDeviceName();
+    doc["pin"] = settingsManager.getObdPin();
+    
+    if (obdHandler.hasValidData()) {
+        OBDData data = obdHandler.getData();
+        doc["speedMph"] = data.speed_mph;
+        doc["speedKph"] = data.speed_kph;
+        doc["rpm"] = data.rpm;
+        doc["voltage"] = data.voltage;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdScan() {
+    if (!settingsManager.isObdEnabled()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
+        return;
+    }
+    
+    obdHandler.startScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan started\"}");
+}
+
+void WiFiManager::handleObdScanStop() {
+    if (!settingsManager.isObdEnabled()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
+        return;
+    }
+    
+    obdHandler.stopScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan stopped\"}");
+}
+
+void WiFiManager::handleObdDevices() {
+    JsonDocument doc;
+    JsonArray devices = doc["devices"].to<JsonArray>();
+    
+    for (const auto& device : obdHandler.getFoundDevices()) {
+        JsonObject d = devices.add<JsonObject>();
+        d["address"] = device.address;
+        d["name"] = device.name;
+        d["rssi"] = device.rssi;
+    }
+    
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["count"] = obdHandler.getFoundDevices().size();
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdConnect() {
+    if (!server.hasArg("address")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing address\"}");
+        return;
+    }
+    
+    String address = server.arg("address");
+    String name = server.hasArg("name") ? server.arg("name") : "";
+    
+    // Save PIN if provided
+    if (server.hasArg("pin")) {
+        settingsManager.setObdPin(server.arg("pin"));
+    }
+    
+    // Save device selection
+    settingsManager.setObdDevice(address, name);
+    
+    // Initiate connection
+    bool started = obdHandler.connectToAddress(address, name);
+    
+    if (started) {
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting to device\"}");
+    } else {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to start connection\"}");
+    }
+}
+
+void WiFiManager::handleObdDevicesClear() {
+    obdHandler.clearFoundDevices();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan results cleared\"}");
+}
+
+void WiFiManager::handleObdForget() {
+    // Clear the saved device from settings
+    settingsManager.setObdDevice("", "");
+    
+    // Disconnect if currently connected
+    obdHandler.disconnect();
+    
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved device forgotten\"}");
 }

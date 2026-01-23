@@ -13,6 +13,7 @@
 		bandKa: 0xF800,  // Red
 		bandK: 0x001F,   // Blue
 		bandX: 0x07E0,   // Green
+		bandPhoto: 0x780F, // Purple (photo radar)
 		wifiIcon: 0x07FF, // Cyan
 		wifiConnected: 0x07E0, // Green (client connected)
 		bleConnected: 0x07E0,    // Green
@@ -32,6 +33,7 @@
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
+		showBatteryPercent: false,
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
@@ -232,6 +234,7 @@
 			params.append('bandKa', colors.bandKa);
 			params.append('bandK', colors.bandK);
 			params.append('bandX', colors.bandX);
+			params.append('bandPhoto', colors.bandPhoto);
 			params.append('wifiIcon', colors.wifiIcon);
 			params.append('wifiConnected', colors.wifiConnected);
 			params.append('bleConnected', colors.bleConnected);
@@ -251,6 +254,7 @@
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
+			params.append('showBatteryPercent', colors.showBatteryPercent);
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			params.append('hideRssiIndicator', colors.hideRssiIndicator);
@@ -305,6 +309,7 @@
 					bandKa: 0xF800,
 					bandK: 0x001F,
 					bandX: 0x07E0,
+					bandPhoto: 0x780F,
 					wifiIcon: 0x07FF,
 					wifiConnected: 0x07E0,
 					bleConnected: 0x07E0,
@@ -324,6 +329,7 @@
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
+					showBatteryPercent: false,
 					hideBleIcon: false,
 					hideVolumeIndicator: false,
 					hideRssiIndicator: false
@@ -735,6 +741,33 @@
 							>X</span>
 						</div>
 					</div>
+					<!-- Photo Radar -->
+					<div class="form-control">
+						<label class="label" for="band-photo-color">
+							<span class="label-text">Photo</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="band-photo-color"
+								type="button"
+								aria-label="Photo radar band color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.bandPhoto)}"
+								onclick={() => openPicker('bandPhoto', 'Photo Radar Band')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.bandPhoto)}
+								onchange={(e) => handleHexInput('bandPhoto', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.bandPhoto)}"
+							>P</span>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -992,8 +1025,24 @@
 				<div class="form-control">
 					<label class="label cursor-pointer">
 						<div>
+							<span class="label-text">Show Battery Percentage</span>
+							<p class="text-xs text-base-content/50">Show battery level as percentage instead of icon</p>
+						</div>
+						<input 
+							type="checkbox" 
+							class="toggle toggle-primary" 
+							checked={colors.showBatteryPercent}
+							onchange={(e) => colors.showBatteryPercent = e.target.checked}
+							disabled={colors.hideBatteryIcon}
+						/>
+					</label>
+				</div>
+				
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
 							<span class="label-text">Hide BLE Proxy Icon</span>
-							<p class="text-xs text-base-content/50">Hide the JBV1 proxy status indicator</p>
+							<p class="text-xs text-base-content/50">Hide the BLE proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 

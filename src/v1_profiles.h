@@ -158,6 +158,9 @@ private:
     
     String profilePath(const String& name) const;
     static uint32_t calculateCRC32(const uint8_t* data, size_t length);
+    
+    // Startup recovery for interrupted saves
+    void recoverInterruptedSaves();
 };
 
 // Global instance

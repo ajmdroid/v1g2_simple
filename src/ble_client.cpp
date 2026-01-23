@@ -19,6 +19,8 @@
 
 #include "ble_client.h"
 #include "settings.h"
+#include "obd_handler.h"  // For ELM327 device detection during scan
+#include "debug_logger.h"
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
@@ -387,19 +389,36 @@ bool V1BLEClient::isConnected() {
 static int s_cachedV1Rssi = 0;
 static unsigned long s_lastV1RssiQueryMs = 0;
 static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
+static int s_lastLoggedV1Rssi = 0;
+static bool s_loggedV1Rssi = false;
 
 int V1BLEClient::getConnectionRssi() {
     // Return RSSI of connected V1 device, or 0 if not connected
     if (!connected || !pClient || !pClient->isConnected()) {
+        if (debugLogger.isEnabledFor(DebugLogCategory::Ble) && s_loggedV1Rssi && s_lastLoggedV1Rssi != 0) {
+            debugLogger.log(DebugLogCategory::Ble, "V1 RSSI unavailable (not connected)");
+        }
         s_cachedV1Rssi = 0;
+        s_lastLoggedV1Rssi = 0;
+        s_loggedV1Rssi = true;
         return 0;
     }
     
     // Only query BLE stack every 2 seconds - return cached value otherwise
     unsigned long now = millis();
+    bool updated = false;
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         s_cachedV1Rssi = pClient->getRssi();
         s_lastV1RssiQueryMs = now;
+        updated = true;
+    }
+
+    if (updated && debugLogger.isEnabledFor(DebugLogCategory::Ble)) {
+        if (!s_loggedV1Rssi || s_cachedV1Rssi != s_lastLoggedV1Rssi) {
+            debugLogger.logf(DebugLogCategory::Ble, "V1 RSSI: %d dBm", s_cachedV1Rssi);
+            s_lastLoggedV1Rssi = s_cachedV1Rssi;
+            s_loggedV1Rssi = true;
+        }
     }
     return s_cachedV1Rssi;
 }
@@ -407,16 +426,24 @@ int V1BLEClient::getConnectionRssi() {
 // Proxy client RSSI caching
 static int s_cachedProxyRssi = 0;
 static unsigned long s_lastProxyRssiQueryMs = 0;
+static int s_lastLoggedProxyRssi = 0;
+static bool s_loggedProxyRssi = false;
 
 int V1BLEClient::getProxyClientRssi() {
     // Return RSSI of connected proxy client (JBV1/phone), or 0 if not connected
     if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
+        if (debugLogger.isEnabledFor(DebugLogCategory::Ble) && s_loggedProxyRssi && s_lastLoggedProxyRssi != 0) {
+            debugLogger.log(DebugLogCategory::Ble, "Proxy RSSI unavailable (no client)");
+        }
         s_cachedProxyRssi = 0;
+        s_lastLoggedProxyRssi = 0;
+        s_loggedProxyRssi = true;
         return 0;
     }
     
     // Only query BLE stack every 2 seconds
     unsigned long now = millis();
+    bool updated = false;
     if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         // Get connection handle of first connected peer
         NimBLEConnInfo peerInfo = pServer->getPeerInfo(0);
@@ -426,6 +453,15 @@ int V1BLEClient::getProxyClientRssi() {
             s_cachedProxyRssi = rssi;
         }
         s_lastProxyRssiQueryMs = now;
+        updated = true;
+    }
+
+    if (updated && debugLogger.isEnabledFor(DebugLogCategory::Ble)) {
+        if (!s_loggedProxyRssi || s_cachedProxyRssi != s_lastLoggedProxyRssi) {
+            debugLogger.logf(DebugLogCategory::Ble, "Proxy RSSI: %d dBm", s_cachedProxyRssi);
+            s_lastLoggedProxyRssi = s_cachedProxyRssi;
+            s_loggedProxyRssi = true;
+        }
     }
     return s_cachedProxyRssi;
 }
@@ -467,6 +503,14 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     //                   name.length() > 0 ? name.c_str() : "(no name)");
     // }
     
+    // *** Check for OBD-II device (pass to OBD handler) ***
+    // When OBD is actively scanning, pass ALL named devices to handler
+    // User can then select which one to connect to from the UI
+    if (!name.empty() && obdHandler.isScanActive()) {
+        // Pass any named device to OBD handler when scanning
+        obdHandler.onDeviceFound(advertisedDevice);
+    }
+    
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
     // V1 Gen2 advertises as "V1G*" (like "V1G27B7A") or sometimes "V1-*"
     // Case-insensitive check without creating String objects
@@ -492,6 +536,13 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     if (bleClient->bleState == BLEState::CONNECTING || 
         bleClient->bleState == BLEState::CONNECTED) {
         return;
+    }
+    
+    // If OBD scan is active AND we're already connected to V1, let OBD scan continue
+    // If NOT connected to V1, we should still connect - OBD scan can happen after
+    if (obdHandler.isScanActive() && bleClient->connected) {
+        Serial.println("[BLE] OBD scan active (V1 connected) - ignoring additional V1");
+        return;  // Already have V1, let OBD scan continue
     }
     
     // Save this address for future fast reconnects
@@ -528,6 +579,12 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
             }
             // If SCAN_STOPPING, process() will handle the transition
         }
+    }
+    
+    // Notify OBD handler that scan has ended (if it was scanning)
+    if (obdHandler.isScanActive()) {
+        Serial.println("[BLE] Scan ended - notifying OBD handler");
+        obdHandler.onScanComplete();
     }
 }
 
@@ -1439,6 +1496,25 @@ void V1BLEClient::startScanning() {
     }
 }
 
+void V1BLEClient::startOBDScan() {
+    // Start a BLE scan for OBD devices - works even when V1 is connected
+    // This allows scanning for ELM327 adapters without disconnecting from V1
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan && !pScan->isScanning()) {
+        Serial.println("[BLE] Starting OBD device scan (30 seconds)...");
+        pScan->clearResults();
+        // 30-second scan for OBD devices - duration is in MILLISECONDS
+        pScan->start(30000, false, false);
+    } else if (pScan && pScan->isScanning()) {
+        Serial.println("[BLE] Scan already in progress - extending for OBD");
+        // Stop and restart with longer duration for OBD scan
+        pScan->stop();
+        delay(100);  // Brief delay for BLE stack
+        pScan->clearResults();
+        pScan->start(30000, false, false);
+    }
+}
+
 bool V1BLEClient::isScanning() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     return pScan && pScan->isScanning();
@@ -1509,10 +1585,13 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 // ==================== BLE Proxy Server Functions ====================
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
-    Serial.println("[BLE] JBV1/Phone connected");
-    // Request tighter connection parameters for lower latency on phone side
+    Serial.printf("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+    
+    // Request connection parameters - use Android-compatible range
+    // Min 15ms (12), Max 45ms (36), Latency 0, Timeout 4s (400)
+    // Some devices (Motorola G series) reject very tight intervals
     uint16_t connHandle = connInfo.getConnHandle();
-    pServer->updateConnParams(connHandle, 12, 24, 0, 400);
+    pServer->updateConnParams(connHandle, 12, 36, 0, 400);
     
     if (bleClient) {
         bleClient->proxyClientConnected = true;
@@ -1639,18 +1718,32 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pProxyServerCallbacks = new ProxyServerCallbacks(this);
     pServer->setCallbacks(pProxyServerCallbacks);
     
-    // Configure advertising data (Kenny's exact approach)
+    // Configure advertising data with improved Android compatibility
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     NimBLEAdvertisementData advData;
     NimBLEAdvertisementData scanRespData;
     
-    // Kenny uses setCompleteServices (includes service UUID in adv data)
+    // CRITICAL: Set flags to indicate BLE-only device (0x06 = LE General Discoverable + BR/EDR Not Supported)
+    // Without this flag, some Android devices (Motorola G series) may cache the device as "DUAL" (type 3)
+    // and attempt BR/EDR connections which fail with GATT_ERROR 133
+    advData.setFlags(0x06);
+    
+    // Include service UUID in advertising data (required for JBV1 discovery)
     advData.setCompleteServices(pProxyService->getUUID());
     advData.setAppearance(0x0C80);  // Generic tag appearance
+    
+    // Put name in both adv data AND scan response for broader compatibility
+    // Some Android devices (especially older Motorola) only read one or the other
+    advData.setName(deviceName);
     scanRespData.setName(deviceName);
     
     pAdvertising->setAdvertisementData(advData);
     pAdvertising->setScanResponseData(scanRespData);
+    
+    // Advertising interval: 50-100ms is optimal for Android discovery
+    // Some devices (Motorola G series) have trouble with faster intervals
+    pAdvertising->setMinInterval(0x50);   // 50ms in 0.625ms units = ~50ms
+    pAdvertising->setMaxInterval(0xA0);   // 100ms in 0.625ms units = ~100ms
     
     // Kenny's pattern: Start advertising then immediately stop
     // This initializes the advertising stack and ensures clean state

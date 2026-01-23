@@ -93,11 +93,19 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
+    // OBD indicator (shows "OBD" below signal bars when connected)
+    void updateObdIndicator();
+
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
-    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
+    // receivingData dims the icon when connected but no V1 packets received recently
+    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData = true);
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
+    
+    // Lockout mute indicator - shows "LOCKOUT" instead of "MUTED" when V1 was auto-muted by GPS lockout
+    void setLockoutMuted(bool lockout) { lockoutMuted = lockout; }
+    bool isLockoutMuted() const { return lockoutMuted; }
     
     // Flush canvas to physical display
     void flush();
@@ -121,12 +129,13 @@ private:
     void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
     void drawBandLabel(Band band, bool muted);
     void drawSignalBars(uint8_t bars);
-    void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false);
-    void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted);   // 7-segment style
-    void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted);    // Montserrat Bold font
-    void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted);      // Hemi Head font (retro speedometer)
-    void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted);// Serpentine font (JB's favorite)
+    void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
+    void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
+    void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);    // Montserrat Bold font
+    void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);      // Hemi Head font (retro speedometer)
+    void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
+    void drawKittScanner();        // Knight Rider scanner animation for resting screen
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);
@@ -134,8 +143,7 @@ private:
     void drawBandBadge(Band band);
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
-    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style
-    void drawTopCounterModern(char symbol, bool muted, bool showDot);        // Montserrat Bold font
+    void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
@@ -163,11 +171,19 @@ private:
     int lastProfileSlot = -1;               // Track profile changes
     bool bleProxyEnabled = false;           // BLE proxy enabled flag
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
+    bool bleReceivingData = true;           // True when V1 packets received recently (heartbeat)
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
+    bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
+    
+    // KITT scanner animation state
+    float kittPosition = 0.0f;              // Current scanner position (0.0 to 1.0)
+    int kittDirection = 1;                  // Scanner direction: 1=right, -1=left
+    unsigned long lastKittUpdate = 0;       // Last scanner animation update time
+    
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
 

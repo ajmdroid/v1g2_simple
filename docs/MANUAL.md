@@ -3,14 +3,29 @@
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
 
-**Version:** 2.3.4  
+**Version:** 3.0.7  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
 ---
 
-## Recent Changes (v2.3.4)
+## Recent Changes (v3.0.7)
 
+### v3.0.7 - GPS Lockouts, Debug Logging & Stability
+- **GPS Lockout Zones:** Create manual lockout zones that auto-mute specific bands when in range. Supports band-specific muting (X/K/Ka/Laser). Configure via `/gps` page.
+- **Auto-Lockout Learning:** System learns frequent false alert locations and auto-creates lockout zones after repeated hits.
+- **Debug Logging to SD:** File-based debug logging (requires SD card). 1GB cap with rotation. Enable via `/dev` page.
+- **Photo Radar Band Color:** Dedicated color for Photo Radar ('P') alerts. Configure via `/colors` page.
+- **Settings Backup to SD:** Automatic SD backup of settings on save; auto-restore on boot if NVS is default/corrupt.
+- **Display Latency Tracking:** Optional display latency metrics for performance debugging.
+- **BLE Heartbeat Indicator:** Visual indicator shows V1 connection health.
+
+### v2.4.4 - OBD & Volume Features
+- **OBD-II Integration:** Connect to ELM327 Bluetooth LE adapters for vehicle speed. More accurate than GPS in tunnels/cities. Supports common adapters (OBDII, Vgate, iCar, KONNWEI, Veepeak, etc.). Configure via `/gps` page.
+- **Speed-Based Volume Boost:** Automatically increase V1 alert volume when traveling above configurable speed threshold (uses OBD or GPS). Louder alerts at highway speeds where road noise is higher. Configure via `/audio` page.
+- **Volume Fade:** Automatically reduce V1 alert volume after initial announcement. Smart new-frequency detection restores volume for genuinely new threats while staying faded for priority shuffling between known signals. V1 mute always honored. Configure via `/audio` page.
+
+### v2.3.4 - UI Improvements
 - **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) and V1 profiles to JSON and restore from backup via web UI (`/settings` page).
 - **Volume Indicator Centered:** Volume indicator now vertically centered between bogey counter and BLE icon for better visual balance.
 - **Display Style Refinement:** Modern style now uses Classic 7-segment for bogey counter (supports laser '=' flag) while keeping Montserrat Bold for frequency display.
@@ -182,17 +197,21 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~1645 | Application entry, loop, touch handling, voice alert logic |
+| `main.cpp` | ~2150 | Application entry, loop, touch handling, voice alert logic, volume control |
 | `ble_client.cpp` | ~1743 | NimBLE client/server, V1 connection |
 | `display.cpp` | ~3204 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
-| `wifi_manager.cpp` | ~1451 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `wifi_manager.cpp` | ~1500 | WebServer, API endpoints (ArduinoJson), LittleFS |
 | `audio_beep.cpp` | ~1178 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
-| `settings.cpp` | ~863 | Preferences (NVS) storage |
+| `settings.cpp` | ~650 | Preferences (NVS) storage |
 | `v1_profiles.cpp` | ~574 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
 | `packet_parser.cpp` | ~453 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~63 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
+| `gps_handler.cpp` | ~200 | GPS fix acquisition via Adafruit PA1616S or TinyGPSPlus |
+| `obd_handler.cpp` | ~600 | OBD-II via ELM327 BLE adapter (vehicle speed) |
+| `lockout_manager.cpp` | ~300 | Manual geofence lockout zones |
+| `auto_lockout_manager.cpp` | ~500 | Automatic false alert learning with spatial/temporal clustering |
 | `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
 | `perf_metrics.cpp` | ~156 | Latency tracking (ArduinoJson) |
 
@@ -290,7 +309,7 @@ V1 Gen2 (BLE)
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
 
-The firmware version (e.g., "v2.4.3") is displayed on the boot splash screen and in the web UI header.
+The firmware version (e.g., "v3.0.7") is displayed on the boot splash screen and in the web UI header.
 
 **Source:** [src/main.cpp](src/main.cpp#L810-L820), [src/display.cpp](src/display.cpp) showBootSplash()
 
@@ -792,6 +811,52 @@ Voice alerts can be enabled/disabled at `/audio`:
 
 **API:** `POST /api/displaycolors` with `voiceAlertsEnabled=true|false`
 
+### Volume Fade (V1 Alert Volume Reduction)
+
+Automatically reduces V1's alert volume after the initial announcement period. Useful for long alerts where you've acknowledged the threat but don't want continuous loud beeping.
+
+**Settings:**
+- `alertVolumeFadeEnabled` - Master toggle (default: false)
+- `alertVolumeFadeDelaySec` - Seconds at full volume before fading (1-10, default: 2)
+- `alertVolumeFadeVolume` - Target volume to fade to (0-9, default: 1)
+
+**Behavior:**
+1. Alert starts → V1 alerts at normal volume
+2. After delay period → Volume reduced to target level
+3. Alert clears → Volume restored to original
+4. User mutes on V1 → Volume restored, tracking resets (V1 mute is always honored)
+
+**Smart New Threat Detection:**
+- System tracks all frequencies seen during a fade session (up to 12)
+- **New frequency appears** → Volume restored to full, fade timer restarts
+- **Priority shuffles between known frequencies** → Stays faded (no flip-flop)
+- Example: 35.501 and 35.515 both faded, new 35.490 appears → full volume for new threat
+
+**NVS Keys:** `volFadeEn`, `volFadeSec`, `volFadeVol`
+
+**Configure:** Web UI at `/audio` → "Volume Fade" section
+
+### Speed-Based Volume (Highway Mode)
+
+Automatically boosts V1 alert volume when traveling above a configurable speed threshold. Compensates for increased road noise at highway speeds.
+
+**Settings:**
+- `speedVolumeEnabled` - Master toggle (default: false)
+- `speedVolumeThresholdMph` - Speed to trigger boost (20-80 mph, default: 45)
+- `speedVolumeBoost` - Volume levels to add (1-5, default: 2)
+
+**Behavior:**
+1. Speed exceeds threshold → V1 volume boosted by configured amount (capped at 9)
+2. Speed drops below threshold → Volume restored to original
+3. Checks every 2 seconds to avoid rapid toggling
+4. Uses OBD speed (preferred) or GPS speed as fallback
+
+**NVS Keys:** `spdVolEn`, `spdVolThr`, `spdVolBoost`
+
+**Configure:** Web UI at `/audio` → "Speed-Based Volume" section
+
+**Requires:** OBD-II adapter (ELM327 BLE) or GPS module for speed data
+
 ---
 
 ## G. Storage
@@ -922,10 +987,11 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 |-------|------|---------|
 | `/` | `+page.svelte` | Home - connection status, quick links |
 | `/settings` | `settings/+page.svelte` | WiFi AP, BLE proxy settings |
-| `/audio` | `audio/+page.svelte` | Voice alert settings |
+| `/audio` | `audio/+page.svelte` | Voice alert settings, volume fade, speed volume |
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
+| `/gps` | `gps/+page.svelte` | GPS, OBD, and auto-lockout settings |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
 
 ### Settings Page (`/settings`)
@@ -953,9 +1019,42 @@ Controls:
 - **Announce Secondary Alerts:** Master toggle for non-priority alert announcements
 - **Per-band filters:** When secondary enabled, choose which bands to announce (Laser, Ka, K, X)
 
+**Volume Fade (V1 Alert Volume):**
+- **Enable Volume Fade:** Reduce V1 alert volume after initial announcement period
+- **Delay:** Seconds to wait at full volume before fading (1-10)
+- **Reduced Volume:** Target volume to fade to (0-9)
+
+**Speed-Based Volume:**
+- **Enable Speed Volume:** Boost V1 volume when traveling above threshold
+- **Speed Threshold:** MPH threshold to trigger boost (20-80)
+- **Volume Boost:** Levels to add when above threshold (1-5)
+
+**Speaker Volume:** Slider to control ES8311 DAC output level (0-100%)
+
 Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. Smart threat escalation detects when secondary alerts ramp up from weak (≤2 bars) to strong (≥4 bars sustained) and announces with full context.
 
 **Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
+
+### GPS & OBD Page (`/gps`)
+
+Controls:
+- **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
+- **OBD-II Module:** Enable/disable ELM327 BLE adapter for vehicle speed (auto-detects within 60s)
+
+**Auto-Lockout Settings (JBV1-style):**
+- **Enable Auto-Lockout:** Master toggle for automatic false alert learning
+- **Ka Protection:** Never auto-learn Ka band (real threats, default: on)
+- **Directional Unlearn:** Only unlearn when traveling same direction (default: on)
+- **Frequency Tolerance:** MHz tolerance for lockout matching (default: 8)
+- **Learn Count:** Hits needed to promote to lockout (default: 3)
+- **Unlearn Count:** Passes without alert to demote auto-lockout (default: 5)
+- **Manual Delete Count:** Passes to demote manual lockouts (default: 25)
+- **Learn Interval:** Hours between counted hits (default: 4)
+- **Unlearn Interval:** Hours between counted misses (default: 4)
+- **Max Signal Strength:** Don't learn strong signals above this level (0=disabled)
+- **Max Distance:** Don't learn alerts farther than this distance (default: 600m)
+
+**Source:** [interface/src/routes/gps/+page.svelte](interface/src/routes/gps/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -1672,4 +1771,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v2.3.4.*
+*Document generated from source code analysis. Last verified against v3.0.7.*

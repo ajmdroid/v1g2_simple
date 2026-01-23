@@ -25,12 +25,26 @@
 #include <FS.h>
 #include "../include/color_themes.h"
 
+// Forward declaration
+class V1ProfileManager;
+
 // WiFi mode options (prefixed to avoid conflicts with ESP SDK)
 enum WiFiModeSetting {
     V1_WIFI_OFF = 0,        // WiFi disabled
     V1_WIFI_STA = 1,        // Connect to existing network
     V1_WIFI_AP = 2,         // Create access point
     V1_WIFI_APSTA = 3       // Both modes
+};
+
+// Debug logging category configuration
+struct DebugLogConfig {
+    bool alerts;
+    bool wifi;
+    bool ble;
+    bool gps;
+    bool obd;
+    bool system;
+    bool display;
 };
 
 // V1 operating modes (from ESP library)
@@ -93,6 +107,7 @@ struct V1Settings {
     uint16_t colorBandKa;        // Ka band color
     uint16_t colorBandK;         // K band color
     uint16_t colorBandX;         // X band color
+    uint16_t colorBandPhoto;     // Photo radar color (when V1 sends 'P')
     uint16_t colorWiFiIcon;      // WiFi indicator icon color (no client)
     uint16_t colorWiFiConnected;  // WiFi icon when client connected
     uint16_t colorBleConnected;   // Bluetooth icon when client connected
@@ -115,9 +130,22 @@ struct V1Settings {
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
     bool hideBatteryIcon;        // Hide battery icon
+    bool showBatteryPercent;     // Show battery percentage text next to icon
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
+    bool kittScannerEnabled;     // KITT scanner animation on resting screen (easter egg)
+    
+    // Development/Debug settings
+    bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
+    bool enableDebugLogging;     // Write debug logs to SD card
+        bool logAlerts;              // Include alert events in debug log
+        bool logWifi;                // Include WiFi/AP events in debug log
+        bool logBle;                 // Include BLE/proxy events in debug log
+        bool logGps;                 // Include GPS events in debug log
+        bool logObd;                 // Include OBD events in debug log
+        bool logSystem;              // Include system/storage/events in debug log
+        bool logDisplay;             // Include display latency events in debug log
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -132,6 +160,20 @@ struct V1Settings {
     bool secondaryKa;               // Announce secondary Ka alerts
     bool secondaryK;                // Announce secondary K alerts
     bool secondaryX;                // Announce secondary X alerts
+    
+    // Volume fade (reduce V1 volume after initial alert period)
+    bool alertVolumeFadeEnabled;    // Enable volume fade feature
+    uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
+    uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
+    
+    // Speed-based volume (boost V1 volume at highway speeds)
+    bool speedVolumeEnabled;        // Enable speed-based volume boost
+    uint8_t speedVolumeThresholdMph; // Speed threshold to trigger boost (default: 45 mph)
+    uint8_t speedVolumeBoost;       // Volume levels to add when above threshold (1-5)
+    
+    // Low-speed mute (suppress voice at low speeds, e.g., parking lots)
+    bool lowSpeedMuteEnabled;        // Enable low-speed voice muting
+    uint8_t lowSpeedMuteThresholdMph; // Mute voice when below this speed (default: 5 mph)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -169,6 +211,28 @@ struct V1Settings {
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     
+    // GPS settings
+    bool gpsEnabled;          // Enable GPS module (default: off, auto-disabled if not found)
+    
+    // OBD settings  
+    bool obdEnabled;          // Enable OBD-II module (default: off, auto-disabled if not found)
+    String obdDeviceAddress;  // Saved OBD device BLE address (e.g., "AA:BB:CC:DD:EE:FF")
+    String obdDeviceName;     // Saved OBD device name (for display)
+    String obdPin;            // PIN code for OBD adapter (typically "1234")
+    
+    // Auto-Lockout settings (JBV1-style)
+    bool lockoutEnabled;            // Master enable for auto-lockout system
+    bool lockoutKaProtection;       // Never auto-learn Ka band (real threats)
+    bool lockoutDirectionalUnlearn; // Only unlearn when traveling same direction
+    uint16_t lockoutFreqToleranceMHz;  // Frequency tolerance in MHz (default: 8)
+    uint8_t lockoutLearnCount;      // Hits needed to promote (default: 3)
+    uint8_t lockoutUnlearnCount;    // Misses to demote auto-lockouts (default: 5)
+    uint8_t lockoutManualDeleteCount; // Misses to demote manual lockouts (default: 25)
+    uint8_t lockoutLearnIntervalHours;   // Hours between counted hits (default: 4)
+    uint8_t lockoutUnlearnIntervalHours; // Hours between counted misses (default: 4)
+    uint8_t lockoutMaxSignalStrength;    // Don't learn signals >= this (0=disabled, default: 0)
+    uint16_t lockoutMaxDistanceM;   // Max alert distance to learn (default: 600m)
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -189,6 +253,7 @@ struct V1Settings {
         colorBandKa(0xF800),     // Red
         colorBandK(0x001F),      // Blue
         colorBandX(0x07E0),      // Green
+        colorBandPhoto(0x780F),  // Purple (photo radar)
         colorWiFiIcon(0x07FF),   // Cyan (WiFi icon, no client)
         colorWiFiConnected(0x07E0), // Green (WiFi client connected)
         colorBleConnected(0x07E0),   // Green (BLE connected)
@@ -205,6 +270,7 @@ struct V1Settings {
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
+        kittScannerEnabled(false),   // KITT scanner off by default (easter egg)
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -215,6 +281,21 @@ struct V1Settings {
         secondaryKa(true),               // Ka usually real threats
         secondaryK(false),               // K has more false positives
         secondaryX(false),               // X is rare
+        alertVolumeFadeEnabled(false),   // Volume fade disabled by default
+        alertVolumeFadeDelaySec(2),      // 2 seconds at full volume before fade
+        alertVolumeFadeVolume(1),        // Fade to volume 1 (quiet but audible)
+        speedVolumeEnabled(false),       // Speed-based volume disabled by default
+        speedVolumeThresholdMph(45),     // Boost above 45 mph (highway speeds)
+        speedVolumeBoost(2),             // Add 2 volume levels when above threshold
+        lowSpeedMuteEnabled(false),      // Low-speed voice mute disabled by default
+        lowSpeedMuteThresholdMph(5),     // Mute voice below 5 mph (parking lot mode)
+        logAlerts(true),                 // Alert logging on by default
+        logWifi(true),                   // WiFi logging on by default
+        logBle(false),                   // BLE logging off by default
+        logGps(false),                   // GPS logging off by default
+        logObd(false),                   // OBD logging off by default
+        logSystem(true),                 // System/storage logging on by default
+        logDisplay(false),               // Display latency logging off by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -245,7 +326,24 @@ struct V1Settings {
         slot1_highway(),
         slot2_comfort(),
         lastV1Address(""),
-        autoPowerOffMinutes(0) {}  // Default: disabled
+        autoPowerOffMinutes(0),  // Default: disabled
+        gpsEnabled(false),       // GPS off by default (opt-in)
+        obdEnabled(false),       // OBD off by default (opt-in)
+        obdDeviceAddress(""),    // No saved OBD device
+        obdDeviceName(""),       // No saved OBD device name
+        obdPin("1234"),          // Default ELM327 PIN
+        // Auto-lockout defaults (JBV1 defaults)
+        lockoutEnabled(true),           // Auto-lockout enabled by default
+        lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
+        lockoutDirectionalUnlearn(true),// Directional unlearn on (JBV1 default)
+        lockoutFreqToleranceMHz(8),     // 8 MHz tolerance (JBV1 default)
+        lockoutLearnCount(3),           // 3 hits to learn (JBV1 default)
+        lockoutUnlearnCount(5),         // 5 misses to unlearn auto (JBV1 default)
+        lockoutManualDeleteCount(25),   // 25 misses to unlearn manual (JBV1 default)
+        lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)
+        lockoutUnlearnIntervalHours(4), // 4 hours between misses (JBV1 default)
+        lockoutMaxSignalStrength(0),    // No max (JBV1 "None" default)
+        lockoutMaxDistanceM(600) {}     // 600m max distance (JBV1 default)
 };
 
 class SettingsManager {
@@ -278,6 +376,7 @@ public:
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
     void setMutedColor(uint16_t color);
+    void setBandPhotoColor(uint16_t color);
     void setPersistedColor(uint16_t color);
     void setVolumeMainColor(uint16_t color);
     void setVolumeMuteColor(uint16_t color);
@@ -287,9 +386,23 @@ public:
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
     void setHideBatteryIcon(bool hide);
+    void setShowBatteryPercent(bool show);
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
+    void setKittScannerEnabled(bool enabled);
+    void setEnableWifiAtBoot(bool enable);
+    void setEnableDebugLogging(bool enable);
+    void setLogAlerts(bool enable);
+    void setLogWifi(bool enable);
+    void setLogBle(bool enable);
+    void setLogGps(bool enable);
+    void setLogObd(bool enable);
+    void setLogSystem(bool enable);
+    void setLogDisplay(bool enable);
+    DebugLogConfig getDebugLogConfig() const {
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay };
+    }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);
@@ -299,6 +412,9 @@ public:
     void setSecondaryKa(bool enabled);
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
+    void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
+    void setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost);
+    void setLowSpeedMute(bool enabled, uint8_t thresholdMph);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration
@@ -334,14 +450,51 @@ public:
     // Reset to defaults
     void resetToDefaults();
     
+    // GPS/OBD settings
+    bool isGpsEnabled() const { return settings.gpsEnabled; }
+    bool isObdEnabled() const { return settings.obdEnabled; }
+    void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
+    void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; save(); }
+    
+    // OBD device settings
+    const String& getObdDeviceAddress() const { return settings.obdDeviceAddress; }
+    const String& getObdDeviceName() const { return settings.obdDeviceName; }
+    const String& getObdPin() const { return settings.obdPin; }
+    void setObdDevice(const String& address, const String& name) { 
+        settings.obdDeviceAddress = address; 
+        settings.obdDeviceName = name;
+        save(); 
+    }
+    void setObdPin(const String& pin) { settings.obdPin = pin; save(); }
+    
+    // Auto-lockout settings (batch update - call save() after)
+    void updateLockoutEnabled(bool enabled) { settings.lockoutEnabled = enabled; }
+    void updateLockoutKaProtection(bool enabled) { settings.lockoutKaProtection = enabled; }
+    void updateLockoutDirectionalUnlearn(bool enabled) { settings.lockoutDirectionalUnlearn = enabled; }
+    void updateLockoutFreqToleranceMHz(uint16_t mhz) { settings.lockoutFreqToleranceMHz = mhz; }
+    void updateLockoutLearnCount(uint8_t count) { settings.lockoutLearnCount = count; }
+    void updateLockoutUnlearnCount(uint8_t count) { settings.lockoutUnlearnCount = count; }
+    void updateLockoutManualDeleteCount(uint8_t count) { settings.lockoutManualDeleteCount = count; }
+    void updateLockoutLearnIntervalHours(uint8_t hours) { settings.lockoutLearnIntervalHours = hours; }
+    void updateLockoutUnlearnIntervalHours(uint8_t hours) { settings.lockoutUnlearnIntervalHours = hours; }
+    void updateLockoutMaxSignalStrength(uint8_t strength) { settings.lockoutMaxSignalStrength = strength; }
+    void updateLockoutMaxDistanceM(uint16_t meters) { settings.lockoutMaxDistanceM = meters; }
+    
     // SD card backup/restore for display settings
     void backupToSD();
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
+    
+    // Validate profile references exist - clear invalid ones
+    void validateProfileReferences(V1ProfileManager& profileMgr);
 
 private:
     V1Settings settings;
     Preferences preferences;
+    bool persistSettingsAtomically();
+    bool writeSettingsToNamespace(const char* ns);
+    String getActiveNamespace();
+    String getStagingNamespace(const String& activeNamespace);
     bool checkNeedsRestore();  // Returns true if NVS appears to be default/empty
 };
 

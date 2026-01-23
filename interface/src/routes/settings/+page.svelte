@@ -184,7 +184,7 @@
 		<div class="card bg-base-200">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🟦 Bluetooth Proxy</h2>
-				<p class="text-sm text-base-content/60">Relay V1 data to apps like JBV1.</p>
+				<p class="text-sm text-base-content/60">Relay V1 data to phone apps.</p>
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
 					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
@@ -223,7 +223,7 @@
 						max="60"
 						placeholder="0"
 					/>
-					<label class="label">
+					<div class="label">
 						<span class="label-text-alt">
 							{#if settings.autoPowerOffMinutes > 0}
 								Device will power off {settings.autoPowerOffMinutes} minute{settings.autoPowerOffMinutes !== 1 ? 's' : ''} after V1 disconnects
@@ -231,7 +231,7 @@
 								Auto power-off is disabled
 							{/if}
 						</span>
-					</label>
+					</div>
 				</div>
 			</div>
 		</div>
