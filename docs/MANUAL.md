@@ -3,13 +3,22 @@
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
 
-**Version:** 2.4.4  
+**Version:** 3.0.7  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
 **Last Updated:** January 2026
 
 ---
 
-## Recent Changes (v2.4.4)
+## Recent Changes (v3.0.7)
+
+### v3.0.7 - GPS Lockouts, Debug Logging & Stability
+- **GPS Lockout Zones:** Create manual lockout zones that auto-mute specific bands when in range. Supports band-specific muting (X/K/Ka/Laser). Configure via `/gps` page.
+- **Auto-Lockout Learning:** System learns frequent false alert locations and auto-creates lockout zones after repeated hits.
+- **Debug Logging to SD:** File-based debug logging (requires SD card). 1GB cap with rotation. Enable via `/dev` page.
+- **Photo Radar Band Color:** Dedicated color for Photo Radar ('P') alerts. Configure via `/colors` page.
+- **Settings Backup to SD:** Automatic SD backup of settings on save; auto-restore on boot if NVS is default/corrupt.
+- **Display Latency Tracking:** Optional display latency metrics for performance debugging.
+- **BLE Heartbeat Indicator:** Visual indicator shows V1 connection health.
 
 ### v2.4.4 - OBD & Volume Features
 - **OBD-II Integration:** Connect to ELM327 Bluetooth LE adapters for vehicle speed. More accurate than GPS in tunnels/cities. Supports common adapters (OBDII, Vgate, iCar, KONNWEI, Veepeak, etc.). Configure via `/gps` page.
@@ -300,7 +309,7 @@ V1 Gen2 (BLE)
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
 
-The firmware version (e.g., "v2.4.3") is displayed on the boot splash screen and in the web UI header.
+The firmware version (e.g., "v3.0.7") is displayed on the boot splash screen and in the web UI header.
 
 **Source:** [src/main.cpp](src/main.cpp#L810-L820), [src/display.cpp](src/display.cpp) showBootSplash()
 
@@ -1762,4 +1771,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v2.3.4.*
+*Document generated from source code analysis. Last verified against v3.0.7.*
