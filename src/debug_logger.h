@@ -56,6 +56,7 @@ public:
     bool clear();
     bool storageReady() const;
     bool onSdCard() const;
+    bool canEnable() const;  // Returns true if SD card present (required for logging)
 
 private:
     void writeLine(const char* line);

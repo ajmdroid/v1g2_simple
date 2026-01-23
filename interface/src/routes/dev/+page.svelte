@@ -20,6 +20,7 @@
 
 	let logInfo = $state({
 		enabled: false,
+		canEnable: false,
 		exists: false,
 		sizeBytes: 0,
 		maxSizeBytes: 0,
@@ -73,6 +74,7 @@
 			const data = await response.json();
 
 			logInfo.enabled = data.enabled ?? false;
+			logInfo.canEnable = data.canEnable ?? false;
 			logInfo.exists = data.exists ?? false;
 			logInfo.sizeBytes = data.sizeBytes ?? 0;
 			logInfo.maxSizeBytes = data.maxSizeBytes ?? 0;
@@ -272,16 +274,20 @@
 				<div class="form-control">
 					<label class="label cursor-pointer">
 						<div>
-							<span class="label-text font-semibold">Enable Debug Logging to SD</span>
+							<span class="label-text font-semibold">Enable Debug Logging</span>
 							<p class="text-xs opacity-70 mt-1">
-								Write debug logs to SD card (may impact performance)
+								{#if !logInfo.canEnable}
+									<span class="text-error">⚠️ Requires SD card (not detected)</span>
+								{:else}
+									Write debug logs to SD card (may impact performance)
+								{/if}
 							</p>
 						</div>
 						<input 
 							type="checkbox" 
 							class="toggle toggle-primary"
 							bind:checked={settings.enableDebugLogging}
-							disabled={!acknowledged}
+							disabled={!acknowledged || !logInfo.canEnable}
 						/>
 					</label>
 				</div>

@@ -15,11 +15,16 @@ void DebugLogger::begin() {
 }
 
 void DebugLogger::setEnabled(bool enabledFlag) {
-    enabled = enabledFlag && storageManager.isReady();
+    // Debug logging requires SD card - LittleFS is too small for 1GB log cap
+    enabled = enabledFlag && storageManager.isReady() && storageManager.isSDCard();
     if (enabled) {
         rotateIfNeeded();
         // Note: avoid recursive logging while enabling.
     }
+}
+
+bool DebugLogger::canEnable() const {
+    return storageManager.isReady() && storageManager.isSDCard();
 }
 
 void DebugLogger::setFilter(const DebugLogFilter& newFilter) {

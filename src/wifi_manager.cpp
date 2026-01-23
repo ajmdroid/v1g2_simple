@@ -1754,6 +1754,7 @@ void WiFiManager::handleDebugLogsMeta() {
 
     JsonDocument doc;
     doc["enabled"] = settingsManager.get().enableDebugLogging;
+    doc["canEnable"] = debugLogger.canEnable();  // SD card required
     doc["storageReady"] = storageManager.isReady();
     doc["onSdCard"] = storageManager.isSDCard();
     doc["exists"] = debugLogger.exists();
