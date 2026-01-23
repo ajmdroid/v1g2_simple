@@ -1328,7 +1328,7 @@ void V1Display::drawBatteryIndicator() {
         if (!showBatteryOnUSB) {
             // Clear percent area when not visible
             if (lastPctVisible) {
-                FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+                FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
                 lastPctVisible = false;
                 lastPctDrawn = -1;
             }
@@ -1366,11 +1366,12 @@ void V1Display::drawBatteryIndicator() {
         snprintf(pctStr, sizeof(pctStr), "%d", pct);
 
         // Always clear the text area before drawing (covers shorter numbers)
-        FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+        // Positioned to avoid top arrow which extends to roughly SCREEN_WIDTH - 14
+        FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
 
         // Draw using OpenFontRender if available; fall back to built-in font otherwise
         if (ofrInitialized) {
-            const int fontSize = 14;
+            const int fontSize = 20;  // Larger for better visibility
             uint8_t bgR = (PALETTE_BG >> 11) << 3;
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
             uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
@@ -1382,18 +1383,18 @@ void V1Display::drawBatteryIndicator() {
             int textW = bbox.xMax - bbox.xMin;
             int textH = bbox.yMax - bbox.yMin;
 
-            // Position text at top-right corner (closer to top edge)
-            int textX = SCREEN_WIDTH - textW - 8;
-            int textY = textH - 2;  // Very close to top (baseline positioning, so add textH and offset up)
+            // Position text at top-right corner - use fixed Y position near top
+            int textX = SCREEN_WIDTH - textW - 4;
+            int textY = 2;  // Fixed: 2 pixels from top (OFR draws from top of glyph, not baseline)
 
             ofr.setCursor(textX, textY);
             ofr.printf("%s", pctStr);
         } else {
             // Fallback: built-in font, right-aligned near top-right
             GFX_setTextDatum(TR_DATUM);
-            TFT_CALL(setTextSize)(1);  // Smallest for minimal overlap
+            TFT_CALL(setTextSize)(2);  // Larger for better visibility
             TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-            GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 10);
+            GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 12);
         }
 
         // Update cache
@@ -1406,7 +1407,7 @@ void V1Display::drawBatteryIndicator() {
     
     // Percent is disabled, show icon instead
     // Clear percent area (in case it was previously showing)
-    FILL_RECT(SCREEN_WIDTH - 40, 0, 38, 22, PALETTE_BG);
+    FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
     
     // Don't draw icon if no battery, user hides it, or on USB
     if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBatteryOnUSB) {
