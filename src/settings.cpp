@@ -132,6 +132,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("logGps", settings.logGps);
     written += prefs.putBool("logObd", settings.logObd);
     written += prefs.putBool("logSystem", settings.logSystem);
+    written += prefs.putBool("logDisplay", settings.logDisplay);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -338,6 +339,7 @@ void SettingsManager::load() {
     settings.logGps = preferences.getBool("logGps", false);
     settings.logObd = preferences.getBool("logObd", false);
     settings.logSystem = preferences.getBool("logSystem", true);
+    settings.logDisplay = preferences.getBool("logDisplay", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -725,6 +727,11 @@ void SettingsManager::setLogSystem(bool enable) {
     save();
 }
 
+void SettingsManager::setLogDisplay(bool enable) {
+    settings.logDisplay = enable;
+    save();
+}
+
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
     settings.voiceAlertMode = mode;
     save();
@@ -1042,6 +1049,7 @@ void SettingsManager::backupToSD() {
     doc["logGps"] = settings.logGps;
     doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
+    doc["logDisplay"] = settings.logDisplay;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1238,6 +1246,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["logGps"].is<bool>()) settings.logGps = doc["logGps"];
     if (doc["logObd"].is<bool>()) settings.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
+    if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

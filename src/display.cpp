@@ -683,7 +683,7 @@ void V1Display::clear() {
     bleProxyDrawn = false;
 }
 
-void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
+void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData) {
 #if defined(DISPLAY_WAVESHARE_349)
     // Detect app disconnect - was connected, now isn't
     // Reset VOL 0 warning state immediately so it can trigger again
@@ -697,14 +697,19 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected) {
     // Check if proxy client connection changed - update RSSI display
     bool proxyChanged = (clientConnected != bleProxyClientConnected);
     
+    // Check if receiving state changed (for heartbeat visual)
+    bool receivingChanged = (receivingData != bleReceivingData);
+    
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
-        clientConnected == bleProxyClientConnected) {
+        clientConnected == bleProxyClientConnected &&
+        !receivingChanged) {
         return;  // No visual change needed
     }
 
     bleProxyEnabled = proxyEnabled;
     bleProxyClientConnected = clientConnected;
+    bleReceivingData = receivingData;
     drawBLEProxyIndicator();
     
     // Update RSSI display when proxy connection changes
@@ -1485,8 +1490,15 @@ void V1Display::drawBLEProxyIndicator() {
     }
 
     // Icon color from settings: connected vs disconnected
-    uint16_t btColor = bleProxyClientConnected ? dimColor(s.colorBleConnected, 85)
-                                               : dimColor(s.colorBleDisconnected, 85);
+    // When connected but not receiving data, dim further to show "stale" state
+    uint16_t btColor;
+    if (bleProxyClientConnected) {
+        // Connected: bright green when receiving, dimmed when stale
+        btColor = bleReceivingData ? dimColor(s.colorBleConnected, 85)
+                                   : dimColor(s.colorBleConnected, 40);  // Much dimmer when no data
+    } else {
+        btColor = dimColor(s.colorBleDisconnected, 85);
+    }
 
     // Draw Bluetooth rune - the bind rune of ᛒ (Berkanan) and ᚼ (Hagall)
     // Center point of the icon

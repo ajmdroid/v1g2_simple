@@ -20,7 +20,8 @@ enum class DebugLogCategory {
     Alerts,
     Ble,
     Gps,
-    Obd
+    Obd,
+    Display
 };
 
 struct DebugLogFilter {
@@ -30,6 +31,7 @@ struct DebugLogFilter {
     bool gps = false;
     bool obd = false;
     bool system = true;
+    bool display = false;
 };
 
 class DebugLogger {

@@ -30,12 +30,13 @@ bool DebugLogger::categoryAllowed(DebugLogCategory category) const {
     if (!enabled) return false;
 
     switch (category) {
-        case DebugLogCategory::Alerts: return filter.alerts;
-        case DebugLogCategory::Wifi:   return filter.wifi;
-        case DebugLogCategory::Ble:    return filter.ble;
-        case DebugLogCategory::Gps:    return filter.gps;
-        case DebugLogCategory::Obd:    return filter.obd;
-        case DebugLogCategory::System: return filter.system;
+        case DebugLogCategory::Alerts:  return filter.alerts;
+        case DebugLogCategory::Wifi:    return filter.wifi;
+        case DebugLogCategory::Ble:     return filter.ble;
+        case DebugLogCategory::Gps:     return filter.gps;
+        case DebugLogCategory::Obd:     return filter.obd;
+        case DebugLogCategory::System:  return filter.system;
+        case DebugLogCategory::Display: return filter.display;
         default: return false;
     }
 }

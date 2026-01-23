@@ -97,7 +97,8 @@ public:
     void updateObdIndicator();
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
-    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected);
+    // receivingData dims the icon when connected but no V1 packets received recently
+    void setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData = true);
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
@@ -170,6 +171,7 @@ private:
     int lastProfileSlot = -1;               // Track profile changes
     bool bleProxyEnabled = false;           // BLE proxy enabled flag
     bool bleProxyClientConnected = false;   // BLE proxy client connection flag
+    bool bleReceivingData = true;           // True when V1 packets received recently (heartbeat)
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)

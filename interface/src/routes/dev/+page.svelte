@@ -11,7 +11,8 @@
 			logBle: false,
 			logGps: false,
 			logObd: false,
-			logSystem: true
+			logSystem: true,
+			logDisplay: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -54,6 +55,7 @@
 			settings.logGps = data.logGps ?? false;
 			settings.logObd = data.logObd ?? false;
 			settings.logSystem = data.logSystem ?? true;
+			settings.logDisplay = data.logDisplay ?? false;
 			
 			loading = false;
 		} catch (error) {
@@ -105,6 +107,7 @@
 			params.append('logGps', settings.logGps);
 			params.append('logObd', settings.logObd);
 			params.append('logSystem', settings.logSystem);
+			params.append('logDisplay', settings.logDisplay);
 
 			const response = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -310,6 +313,10 @@
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logSystem} disabled={!acknowledged}>
 								<span class="label-text text-sm">System</span>
+							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logDisplay} disabled={!acknowledged}>
+								<span class="label-text text-sm">Display</span>
 							</label>
 						</div>
 					</div>

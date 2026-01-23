@@ -61,6 +61,15 @@ static unsigned long perfTimingAccum = 0;
 static unsigned long perfTimingCount = 0;
 static unsigned long perfTimingMax = 0;
 static unsigned long perfLastReport = 0;
+
+// Display latency tracking for SD logging
+static unsigned long displayLatencySum = 0;
+static unsigned long displayLatencyCount = 0;
+static unsigned long displayLatencyMax = 0;
+static unsigned long displayLatencyLastLog = 0;
+static constexpr unsigned long DISPLAY_LOG_INTERVAL_MS = 10000;  // Log summary every 10s
+static constexpr unsigned long DISPLAY_SLOW_THRESHOLD_US = 16000; // 16ms = 60fps budget
+
 #define V1_PERF_START() unsigned long _perfStart = micros()
 #define V1_PERF_END(label) do { \
     if (PERF_TIMING_LOGS) { \
@@ -73,6 +82,37 @@ static unsigned long perfLastReport = 0;
                 label, perfTimingAccum/perfTimingCount, perfTimingMax, perfTimingCount); \
             perfTimingAccum = 0; perfTimingCount = 0; perfTimingMax = 0; \
             perfLastReport = millis(); \
+        } \
+    } \
+} while(0)
+
+// Display latency logging macro - tracks timing and logs to SD when enabled
+#define V1_DISPLAY_END(label) do { \
+    unsigned long _dur = micros() - _perfStart; \
+    displayLatencySum += _dur; \
+    displayLatencyCount++; \
+    if (_dur > displayLatencyMax) displayLatencyMax = _dur; \
+    if (_dur > DISPLAY_SLOW_THRESHOLD_US && debugLogger.isEnabledFor(DebugLogCategory::Display)) { \
+        debugLogger.logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, _dur / 1000); \
+    } \
+    unsigned long _now = millis(); \
+    if ((_now - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) { \
+        if (debugLogger.isEnabledFor(DebugLogCategory::Display)) { \
+            debugLogger.logf(DebugLogCategory::Display, "Display: avg=%luus max=%luus n=%lu", \
+                displayLatencySum / displayLatencyCount, displayLatencyMax, displayLatencyCount); \
+        } \
+        displayLatencySum = 0; displayLatencyCount = 0; displayLatencyMax = 0; \
+        displayLatencyLastLog = _now; \
+    } \
+    if (PERF_TIMING_LOGS) { \
+        perfTimingAccum += _dur; \
+        perfTimingCount++; \
+        if (_dur > perfTimingMax) perfTimingMax = _dur; \
+        if (_now - perfLastReport > 5000) { \
+            SerialLog.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n", \
+                label, perfTimingAccum/perfTimingCount, perfTimingMax, perfTimingCount); \
+            perfTimingAccum = 0; perfTimingCount = 0; perfTimingMax = 0; \
+            perfLastReport = _now; \
         } \
     } \
 } while(0)
@@ -1579,7 +1619,7 @@ void processBLEData() {
                 // Pass all alerts for multi-alert card display
                 V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
-                V1_PERF_END("display.update(alerts)");
+                V1_DISPLAY_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
                 persistedAlert = priority;
@@ -1665,7 +1705,7 @@ void processBLEData() {
                         // Show persisted alert in dark grey
                         V1_PERF_START();
                         display.updatePersisted(persistedAlert, state);
-                        V1_PERF_END("display.persisted");
+                        V1_DISPLAY_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
                         if (alertPersistenceActive) {
@@ -1673,7 +1713,7 @@ void processBLEData() {
                         }
                         V1_PERF_START();
                         display.update(state);
-                        V1_PERF_END("display.resting");
+                        V1_DISPLAY_END("display.resting");
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
@@ -1681,7 +1721,7 @@ void processBLEData() {
                     alertClearedTime = 0;
                     V1_PERF_START();
                     display.update(state);
-                    V1_PERF_END("display.resting");
+                    V1_DISPLAY_END("display.resting");
                 }
             }
         }
@@ -1823,7 +1863,7 @@ void setup() {
     debugLogger.begin();
     {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system};
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display};
         debugLogger.setFilter(filter);
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
@@ -1922,7 +1962,9 @@ void setup() {
 
 void loop() {
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
-    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected());
+    // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
+    bool bleReceiving = (millis() - lastRxMillis) < 2000;
+    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
     
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();

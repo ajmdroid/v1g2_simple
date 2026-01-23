@@ -724,24 +724,24 @@ bool OBDHandler::discoverServices() {
         // Continue anyway, some devices work without explicit discovery
     }
     
-    // List ALL services first for debugging
-    Serial.println("[OBD] Available services:");
-    const std::vector<NimBLERemoteService*>& services = pOBDClient->getServices(true);
-    for (NimBLERemoteService* svc : services) {
-        if (svc) {
-            Serial.printf("  - Service: %s\n", svc->getUUID().toString().c_str());
-            // Also list characteristics
-            const std::vector<NimBLERemoteCharacteristic*>& chars = svc->getCharacteristics(true);
-            for (NimBLERemoteCharacteristic* chr : chars) {
-                if (chr) {
-                    uint8_t props = chr->getRemoteService() ? 0 : 0;  // placeholder
-                    Serial.printf("      Char: %s\n", chr->getUUID().toString().c_str());
+    // List ALL services for debugging (verbose - gated)
+    if (DEBUG_OBD) {
+        Serial.println("[OBD] Available services:");
+        const std::vector<NimBLERemoteService*>& services = pOBDClient->getServices(true);
+        for (NimBLERemoteService* svc : services) {
+            if (svc) {
+                Serial.printf("  - Service: %s\n", svc->getUUID().toString().c_str());
+                const std::vector<NimBLERemoteCharacteristic*>& chars = svc->getCharacteristics(true);
+                for (NimBLERemoteCharacteristic* chr : chars) {
+                    if (chr) {
+                        Serial.printf("      Char: %s\n", chr->getUUID().toString().c_str());
+                    }
                 }
             }
         }
-    }
-    if (services.empty()) {
-        Serial.println("[OBD] No services found!");
+        if (services.empty()) {
+            Serial.println("[OBD] No services found!");
+        }
     }
     
     // Look for Nordic UART Service
@@ -927,7 +927,7 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
         ObdLock lock(obdMutex);
         response = responseBuffer;
         if (!responseComplete) {
-            Serial.printf("[OBD] Command timeout: %s\n", cmd);
+            OBD_LOGF("[OBD] Command timeout: %s\n", cmd);
             return false;
         }
     }

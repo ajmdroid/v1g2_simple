@@ -620,6 +620,7 @@ void WiFiManager::handleSettingsApi() {
     doc["logGps"] = settings.logGps;
     doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
+    doc["logDisplay"] = settings.logDisplay;
     doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     String json;
@@ -1504,6 +1505,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("logSystem")) {
         settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1");
     }
+    if (server.hasArg("logDisplay")) {
+        settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1");
+    }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();
@@ -1693,6 +1697,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["logGps"] = s.logGps;
     doc["logObd"] = s.logObd;
     doc["logSystem"] = s.logSystem;
+    doc["logDisplay"] = s.logDisplay;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -1762,6 +1767,7 @@ void WiFiManager::handleDebugLogsMeta() {
     doc["logGps"] = cfg.gps;
     doc["logObd"] = cfg.obd;
     doc["logSystem"] = cfg.system;
+    doc["logDisplay"] = cfg.display;
 
     String json;
     serializeJson(doc, json);
@@ -2048,6 +2054,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["logGps"].is<bool>()) s.logGps = doc["logGps"];
     if (doc["logObd"].is<bool>()) s.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
+    if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
     
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();

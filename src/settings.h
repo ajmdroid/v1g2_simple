@@ -44,6 +44,7 @@ struct DebugLogConfig {
     bool gps;
     bool obd;
     bool system;
+    bool display;
 };
 
 // V1 operating modes (from ESP library)
@@ -144,6 +145,7 @@ struct V1Settings {
         bool logGps;                 // Include GPS events in debug log
         bool logObd;                 // Include OBD events in debug log
         bool logSystem;              // Include system/storage/events in debug log
+        bool logDisplay;             // Include display latency events in debug log
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -293,6 +295,7 @@ struct V1Settings {
         logGps(false),                   // GPS logging off by default
         logObd(false),                   // OBD logging off by default
         logSystem(true),                 // System/storage logging on by default
+        logDisplay(false),               // Display latency logging off by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -396,8 +399,9 @@ public:
     void setLogGps(bool enable);
     void setLogObd(bool enable);
     void setLogSystem(bool enable);
+    void setLogDisplay(bool enable);
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
