@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	
+	let acknowledged = $state(false);
 	let settings = $state({
 		gpsEnabled: false,
 		obdEnabled: false,
@@ -221,6 +222,11 @@
 	}
 	
 	async function saveSettings() {
+		if (!acknowledged) {
+			message = { type: 'error', text: 'Please acknowledge the warning before saving' };
+			return;
+		}
+		
 		saving = true;
 		message = null;
 		
@@ -301,6 +307,29 @@
 <div class="space-y-6">
 	<h1 class="text-2xl font-bold">🔌 Integrations</h1>
 	
+	<!-- Alpha Warning Banner -->
+	<div class="alert alert-warning shadow-lg">
+		<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+		</svg>
+		<div class="flex-1">
+			<h3 class="font-bold">🧪 Alpha Features - Experimental</h3>
+			<div class="text-sm">
+				GPS and lockout features are minimally tested and may not work correctly. OBD-II speed is more stable but still experimental.
+			</div>
+			<div class="form-control mt-2">
+				<label class="label cursor-pointer justify-start gap-2">
+					<input 
+						type="checkbox" 
+						class="checkbox checkbox-warning" 
+						bind:checked={acknowledged}
+					/>
+					<span class="label-text font-semibold">I understand these features are experimental</span>
+				</label>
+			</div>
+		</div>
+	</div>
+	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status">
 			<span>{message.text}</span>
@@ -313,7 +342,7 @@
 		</div>
 	{:else}
 		<!-- GPS Module -->
-		<div class="card bg-base-200">
+		<div class="card bg-base-200" class:opacity-50={!acknowledged}>
 			<div class="card-body space-y-4">
 				<h2 class="card-title">📍 GPS Module</h2>
 				<p class="text-sm text-base-content/60">Serial GPS module for speed display and lockouts.</p>
@@ -323,7 +352,7 @@
 						<span class="label-text">Enable GPS Module</span>
 						<span class="label-text-alt text-base-content/50">Required for lockouts and GPS speed display</span>
 					</div>
-					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.gpsEnabled} />
+					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.gpsEnabled} disabled={!acknowledged} />
 				</label>
 				
 				<div class="text-xs text-base-content/40">
@@ -333,7 +362,7 @@
 		</div>
 
 		<!-- OBD-II Module -->
-		<div class="card bg-base-200">
+		<div class="card bg-base-200" class:opacity-50={!acknowledged}>
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🚗 OBD-II Module</h2>
 				<p class="text-sm text-base-content/60">Bluetooth ELM327 adapter for vehicle speed.</p>
@@ -343,7 +372,7 @@
 						<span class="label-text">Enable OBD-II</span>
 						<span class="label-text-alt text-base-content/50">Connect to ELM327 BLE adapter</span>
 					</div>
-					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.obdEnabled} />
+					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.obdEnabled} disabled={!acknowledged} />
 				</label>
 				
 				{#if settings.obdEnabled}
@@ -427,7 +456,7 @@
 		</div>
 
 		<!-- Auto-Lockout Master -->
-		<div class="card bg-base-200">
+		<div class="card bg-base-200" class:opacity-50={!acknowledged}>
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🔒 Auto-Lockout System</h2>
 				<p class="text-sm text-base-content/60">Automatically learn and mute false alerts at specific locations.</p>
@@ -437,7 +466,7 @@
 						<span class="label-text font-semibold">Enable Auto-Lockouts</span>
 						<span class="label-text-alt text-base-content/50">Learn false alerts and auto-mute in the future</span>
 					</div>
-					<input type="checkbox" class="toggle toggle-success" bind:checked={settings.lockoutEnabled} />
+					<input type="checkbox" class="toggle toggle-success" bind:checked={settings.lockoutEnabled} disabled={!acknowledged} />
 				</label>
 				
 				{#if !settings.gpsEnabled && settings.lockoutEnabled}
