@@ -417,9 +417,13 @@ static bool hasValidSpeedSource() {
 }
 
 // Helper: check if voice should be muted due to low speed (parking lot mode)
+// Skip low-speed muting if a phone app (JBV1/V1Driver) is connected - it handles its own alerts
 static bool isLowSpeedMuted() {
     const V1Settings& s = settingsManager.get();
     if (!s.lowSpeedMuteEnabled) return false;
+    
+    // Don't mute if phone app is connected - let the app handle it
+    if (bleClient.isProxyClientConnected()) return false;
     
     // Only mute if we have a valid speed source - don't mute just because no GPS/OBD
     if (!hasValidSpeedSource()) return false;
