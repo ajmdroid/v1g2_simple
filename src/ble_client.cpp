@@ -1585,10 +1585,13 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 // ==================== BLE Proxy Server Functions ====================
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
-    Serial.println("[BLE] JBV1/Phone connected");
-    // Request tighter connection parameters for lower latency on phone side
+    Serial.printf("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+    
+    // Request connection parameters - use Android-compatible range
+    // Min 15ms (12), Max 45ms (36), Latency 0, Timeout 4s (400)
+    // Some devices (Motorola G series) reject very tight intervals
     uint16_t connHandle = connInfo.getConnHandle();
-    pServer->updateConnParams(connHandle, 12, 24, 0, 400);
+    pServer->updateConnParams(connHandle, 12, 36, 0, 400);
     
     if (bleClient) {
         bleClient->proxyClientConnected = true;
@@ -1715,18 +1718,27 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pProxyServerCallbacks = new ProxyServerCallbacks(this);
     pServer->setCallbacks(pProxyServerCallbacks);
     
-    // Configure advertising data (Kenny's exact approach)
+    // Configure advertising data with improved Android compatibility
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     NimBLEAdvertisementData advData;
     NimBLEAdvertisementData scanRespData;
     
-    // Kenny uses setCompleteServices (includes service UUID in adv data)
+    // Include service UUID in advertising data (required for JBV1 discovery)
     advData.setCompleteServices(pProxyService->getUUID());
     advData.setAppearance(0x0C80);  // Generic tag appearance
+    
+    // Put name in both adv data AND scan response for broader compatibility
+    // Some Android devices (especially older Motorola) only read one or the other
+    advData.setName(deviceName);
     scanRespData.setName(deviceName);
     
     pAdvertising->setAdvertisementData(advData);
     pAdvertising->setScanResponseData(scanRespData);
+    
+    // Advertising interval: 50-100ms is optimal for Android discovery
+    // Some devices (Motorola G series) have trouble with faster intervals
+    pAdvertising->setMinInterval(0x50);   // 50ms in 0.625ms units = ~50ms
+    pAdvertising->setMaxInterval(0xA0);   // 100ms in 0.625ms units = ~100ms
     
     // Kenny's pattern: Start advertising then immediately stop
     // This initializes the advertising stack and ensures clean state
