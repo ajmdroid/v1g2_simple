@@ -1723,6 +1723,11 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     NimBLEAdvertisementData advData;
     NimBLEAdvertisementData scanRespData;
     
+    // CRITICAL: Set flags to indicate BLE-only device (0x06 = LE General Discoverable + BR/EDR Not Supported)
+    // Without this flag, some Android devices (Motorola G series) may cache the device as "DUAL" (type 3)
+    // and attempt BR/EDR connections which fail with GATT_ERROR 133
+    advData.setFlags(0x06);
+    
     // Include service UUID in advertising data (required for JBV1 discovery)
     advData.setCompleteServices(pProxyService->getUUID());
     advData.setAppearance(0x0C80);  // Generic tag appearance
