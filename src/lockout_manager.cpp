@@ -42,12 +42,18 @@ bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
 }
 }
 
-LockoutManager::LockoutManager() {
-  // Constructor
+LockoutManager::LockoutManager() : lockoutMutex(nullptr) {
+  lockoutMutex = xSemaphoreCreateMutex();
+  if (!lockoutMutex) {
+    Serial.println("[Lockout] Failed to create mutex!");
+  }
 }
 
 LockoutManager::~LockoutManager() {
-  // Destructor
+  if (lockoutMutex) {
+    vSemaphoreDelete(lockoutMutex);
+    lockoutMutex = nullptr;
+  }
 }
 
 float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) const {
@@ -83,6 +89,13 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     if (DEBUG_LOGS) {
       Serial.printf("[Lockout] JSON parse error: %s\n", error.c_str());
     }
+    return false;
+  }
+  
+  // Lock for vector modifications
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    Serial.println("[Lockout] Failed to acquire mutex for load");
     return false;
   }
   
@@ -129,23 +142,32 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
   JsonDocument doc;
   JsonArray lockoutArray = doc["lockouts"].to<JsonArray>();
   
-  for (const auto& lockout : lockouts) {
-    JsonObject obj = lockoutArray.add<JsonObject>();
-    obj["name"] = lockout.name;
-    obj["latitude"] = lockout.latitude;
-    obj["longitude"] = lockout.longitude;
-    obj["radius_m"] = lockout.radius_m;
-    obj["enabled"] = lockout.enabled;
-    obj["muteX"] = lockout.muteX;
-    obj["muteK"] = lockout.muteK;
-    obj["muteKa"] = lockout.muteKa;
-    obj["muteLaser"] = lockout.muteLaser;
+  // Lock for vector read access
+  {
+    LockoutLock lock(lockoutMutex);
+    if (!lock.ok()) {
+      Serial.println("[Lockout] Failed to acquire mutex for save");
+      return false;
+    }
+    
+    for (const auto& lockout : lockouts) {
+      JsonObject obj = lockoutArray.add<JsonObject>();
+      obj["name"] = lockout.name;
+      obj["latitude"] = lockout.latitude;
+      obj["longitude"] = lockout.longitude;
+      obj["radius_m"] = lockout.radius_m;
+      obj["enabled"] = lockout.enabled;
+      obj["muteX"] = lockout.muteX;
+      obj["muteK"] = lockout.muteK;
+      obj["muteKa"] = lockout.muteKa;
+      obj["muteLaser"] = lockout.muteLaser;
+    }
   }
   
   bool ok = writeJsonFileAtomic(LittleFS, jsonPath, doc);
 
   if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Saved %d lockout zones (%d bytes)%s\n", lockouts.size(), ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
+    Serial.printf("[Lockout] Saved lockout zones (%d bytes)%s\n", ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   }
   
   if (!ok) {
@@ -161,6 +183,12 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
 }
 
 void LockoutManager::addLockout(const Lockout& lockout) {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    Serial.println("[Lockout] Failed to acquire mutex for add");
+    return;
+  }
+  
   // Enforce memory limit
   if (lockouts.size() >= MAX_LOCKOUTS) {
     Serial.printf("[Lockout] Max lockout limit reached (%zu) - rejecting '%s'\n", 
@@ -189,6 +217,12 @@ void LockoutManager::addLockout(const Lockout& lockout) {
 }
 
 void LockoutManager::removeLockout(int index) {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    Serial.println("[Lockout] Failed to acquire mutex for remove");
+    return;
+  }
+  
   if (index >= 0 && index < (int)lockouts.size()) {
     if (DEBUG_LOGS) {
       Serial.printf("[Lockout] Removed: %s\n", lockouts[index].name.c_str());
@@ -198,6 +232,12 @@ void LockoutManager::removeLockout(int index) {
 }
 
 void LockoutManager::updateLockout(int index, const Lockout& lockout) {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    Serial.println("[Lockout] Failed to acquire mutex for update");
+    return;
+  }
+  
   if (index >= 0 && index < (int)lockouts.size()) {
     if (!isValidLockout(lockout)) {
       if (DEBUG_LOGS) {
@@ -220,13 +260,32 @@ void LockoutManager::updateLockout(int index, const Lockout& lockout) {
 }
 
 void LockoutManager::clearAll() {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    Serial.println("[Lockout] Failed to acquire mutex for clearAll");
+    return;
+  }
+  
   if (DEBUG_LOGS) {
     Serial.printf("[Lockout] Cleared all %d lockouts\n", lockouts.size());
   }
   lockouts.clear();
 }
 
+int LockoutManager::getLockoutCount() const {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    return 0;
+  }
+  return static_cast<int>(lockouts.size());
+}
+
 const Lockout* LockoutManager::getLockoutAtIndex(int idx) const {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    return nullptr;
+  }
+  
   if (idx >= 0 && idx < (int)lockouts.size()) {
     return &lockouts[idx];
   }
@@ -234,6 +293,11 @@ const Lockout* LockoutManager::getLockoutAtIndex(int idx) const {
 }
 
 int LockoutManager::getNearestLockout(float lat, float lon) const {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    return -1;
+  }
+  
   int nearestIdx = -1;
   float minDistance = 999999.0f;
   
@@ -249,6 +313,11 @@ int LockoutManager::getNearestLockout(float lat, float lon) const {
 }
 
 bool LockoutManager::shouldMuteAlert(float lat, float lon, Band band) const {
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    return false;  // Fail open - don't mute if we can't check
+  }
+  
   for (const auto& lockout : lockouts) {
     if (!lockout.enabled) continue;
     
@@ -292,6 +361,11 @@ bool LockoutManager::shouldMuteAlert(float lat, float lon, Band band) const {
 std::vector<int> LockoutManager::getActiveLockouts(float lat, float lon) const {
   std::vector<int> activeLockouts;
   
+  LockoutLock lock(lockoutMutex);
+  if (!lock.ok()) {
+    return activeLockouts;  // Return empty vector
+  }
+  
   for (size_t i = 0; i < lockouts.size(); i++) {
     if (!lockouts[i].enabled) continue;
     
@@ -326,24 +400,33 @@ bool LockoutManager::backupToSD() {
   
   JsonArray lockoutArray = doc["lockouts"].to<JsonArray>();
   
-  for (const auto& lockout : lockouts) {
-    JsonObject obj = lockoutArray.add<JsonObject>();
-    obj["name"] = lockout.name;
-    obj["latitude"] = lockout.latitude;
-    obj["longitude"] = lockout.longitude;
-    obj["radius_m"] = lockout.radius_m;
-    obj["enabled"] = lockout.enabled;
-    obj["muteX"] = lockout.muteX;
-    obj["muteK"] = lockout.muteK;
-    obj["muteKa"] = lockout.muteKa;
-    obj["muteLaser"] = lockout.muteLaser;
+  // Lock for vector read access
+  {
+    LockoutLock lock(lockoutMutex);
+    if (!lock.ok()) {
+      Serial.println("[Lockout] Failed to acquire mutex for SD backup");
+      return false;
+    }
+    
+    for (const auto& lockout : lockouts) {
+      JsonObject obj = lockoutArray.add<JsonObject>();
+      obj["name"] = lockout.name;
+      obj["latitude"] = lockout.latitude;
+      obj["longitude"] = lockout.longitude;
+      obj["radius_m"] = lockout.radius_m;
+      obj["enabled"] = lockout.enabled;
+      obj["muteX"] = lockout.muteX;
+      obj["muteK"] = lockout.muteK;
+      obj["muteKa"] = lockout.muteKa;
+      obj["muteLaser"] = lockout.muteLaser;
+    }
   }
   
   bool ok = writeJsonFileAtomic(*fs, "/v1simple_lockouts.json", doc);
   
   if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Backed up %d lockouts to SD (%d bytes)%s\n", 
-                  lockouts.size(), ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
+    Serial.printf("[Lockout] Backed up lockouts to SD (%d bytes)%s\n", 
+                  ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   }
   
   return ok;
@@ -385,37 +468,46 @@ bool LockoutManager::restoreFromSD() {
     return false;
   }
   
-  // Clear and restore
-  lockouts.clear();
-  
-  JsonArray lockoutArray = doc["lockouts"].as<JsonArray>();
-  for (JsonObject obj : lockoutArray) {
-    Lockout lockout;
-    lockout.name = obj["name"].as<String>();
-    lockout.latitude = obj["latitude"].as<float>();
-    lockout.longitude = obj["longitude"].as<float>();
-    lockout.radius_m = obj["radius_m"].as<float>();
-    lockout.enabled = obj["enabled"].as<bool>();
-    lockout.muteX = obj["muteX"] | false;
-    lockout.muteK = obj["muteK"] | false;
-    lockout.muteKa = obj["muteKa"] | false;
-    lockout.muteLaser = obj["muteLaser"] | false;
-
-    if (!isValidLockout(lockout) || isDuplicate(lockout)) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Skipping invalid/duplicate lockout '%s' from SD backup\n", lockout.name.c_str());
-      }
-      continue;
+  // Lock for vector modifications
+  {
+    LockoutLock lock(lockoutMutex);
+    if (!lock.ok()) {
+      Serial.println("[Lockout] Failed to acquire mutex for SD restore");
+      return false;
     }
+    
+    // Clear and restore
+    lockouts.clear();
+    
+    JsonArray lockoutArray = doc["lockouts"].as<JsonArray>();
+    for (JsonObject obj : lockoutArray) {
+      Lockout lockout;
+      lockout.name = obj["name"].as<String>();
+      lockout.latitude = obj["latitude"].as<float>();
+      lockout.longitude = obj["longitude"].as<float>();
+      lockout.radius_m = obj["radius_m"].as<float>();
+      lockout.enabled = obj["enabled"].as<bool>();
+      lockout.muteX = obj["muteX"] | false;
+      lockout.muteK = obj["muteK"] | false;
+      lockout.muteKa = obj["muteKa"] | false;
+      lockout.muteLaser = obj["muteLaser"] | false;
 
-    lockouts.push_back(lockout);
-  }
+      if (!isValidLockout(lockout) || isDuplicate(lockout)) {
+        if (DEBUG_LOGS) {
+          Serial.printf("[Lockout] Skipping invalid/duplicate lockout '%s' from SD backup\n", lockout.name.c_str());
+        }
+        continue;
+      }
+
+      lockouts.push_back(lockout);
+    }
+    
+    if (DEBUG_LOGS) {
+      Serial.printf("[Lockout] Restored %d lockouts from SD backup\n", lockouts.size());
+    }
+  }  // Release lock before calling saveToJSON
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Restored %d lockouts from SD backup\n", lockouts.size());
-  }
-  
-  // Save to LittleFS
+  // Save to LittleFS (will acquire its own lock)
   saveToJSON("/v1profiles/lockouts.json", true);  // Skip re-backup while restoring
   
   return true;

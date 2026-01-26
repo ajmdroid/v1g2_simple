@@ -129,7 +129,8 @@ private:
 
     // Background task
     TaskHandle_t obdTaskHandle;
-    bool taskRunning;
+    volatile bool taskRunning;
+    volatile bool taskShouldExit;  // Cooperative shutdown flag
     static void taskEntry(void* param);
     bool runStateMachine();
     void startTask();

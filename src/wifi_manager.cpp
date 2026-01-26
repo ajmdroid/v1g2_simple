@@ -409,6 +409,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/displaycolors", HTTP_POST, [this]() { handleDisplayColorsSave(); });
     server.on("/api/displaycolors/reset", HTTP_POST, [this]() { handleDisplayColorsReset(); });
     server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
+        if (!checkRateLimit()) return;
         if (isColorPreviewRunning()) {
             Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
             cancelColorPreview();
@@ -422,6 +423,7 @@ void WiFiManager::setupWebServer() {
         }
     });
     server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
+        if (!checkRateLimit()) return;
         Serial.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
         cancelColorPreview();
         display.showResting();  // Return to normal scanning state
@@ -580,7 +582,7 @@ void WiFiManager::handleApiProfilePush() {
     // Check if V1 is connected
     if (!bleClient.isConnected()) {
         server.send(503, "application/json", 
-                   "{\"ok\":false,\"error\":\"V1 not connected\"}");
+                   "{\"error\":\"V1 not connected\"}");
         return;
     }
     
@@ -667,7 +669,7 @@ void WiFiManager::handleSettingsSave() {
         }
         
         if (apSsid.length() == 0 || apPass.length() < 8) {
-            server.send(400, "text/plain", "AP SSID required and password must be at least 8 characters");
+            server.send(400, "application/json", "{\"error\":\"AP SSID required and password must be at least 8 characters\"}");
             return;
         }
         settingsManager.updateAPCredentials(apSsid, apPass);
@@ -816,6 +818,8 @@ void WiFiManager::handleSettingsSave() {
 }
 
 void WiFiManager::handleDarkMode() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("state")) {
         server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
         return;
@@ -841,6 +845,8 @@ void WiFiManager::handleDarkMode() {
 }
 
 void WiFiManager::handleMute() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("state")) {
         server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
         return;
@@ -1823,11 +1829,13 @@ void WiFiManager::handleDebugEvents() {
 }
 
 void WiFiManager::handleDebugEventsClear() {
+    if (!checkRateLimit()) return;
     eventRingClear();
     server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WiFiManager::handleDebugEnable() {
+    if (!checkRateLimit()) return;
     bool enable = true;
     if (server.hasArg("enable")) {
         enable = (server.arg("enable") == "true" || server.arg("enable") == "1");
@@ -2084,6 +2092,7 @@ void WiFiManager::handleSettingsBackup() {
 }
 
 void WiFiManager::handleSettingsRestore() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     Serial.println("[HTTP] POST /api/settings/restore");
     
@@ -2303,6 +2312,8 @@ void WiFiManager::handleObdStatus() {
 }
 
 void WiFiManager::handleObdScan() {
+    if (!checkRateLimit()) return;
+    
     if (!settingsManager.isObdEnabled()) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
         return;
@@ -2313,6 +2324,8 @@ void WiFiManager::handleObdScan() {
 }
 
 void WiFiManager::handleObdScanStop() {
+    if (!checkRateLimit()) return;
+    
     if (!settingsManager.isObdEnabled()) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
         return;
@@ -2342,6 +2355,8 @@ void WiFiManager::handleObdDevices() {
 }
 
 void WiFiManager::handleObdConnect() {
+    if (!checkRateLimit()) return;
+    
     if (!server.hasArg("address")) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing address\"}");
         return;
@@ -2369,11 +2384,15 @@ void WiFiManager::handleObdConnect() {
 }
 
 void WiFiManager::handleObdDevicesClear() {
+    if (!checkRateLimit()) return;
+    
     obdHandler.clearFoundDevices();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan results cleared\"}");
 }
 
 void WiFiManager::handleObdForget() {
+    if (!checkRateLimit()) return;
+    
     // Clear the saved device from settings
     settingsManager.setObdDevice("", "");
     
@@ -2395,6 +2414,7 @@ void WiFiManager::handleGpsStatus() {
 }
 
 void WiFiManager::handleGpsReset() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     
     if (!gpsResetCallback) {
@@ -2421,6 +2441,7 @@ void WiFiManager::handleCameraStatus() {
 }
 
 void WiFiManager::handleCameraReload() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     
     if (!cameraReloadCallback) {
@@ -2439,6 +2460,7 @@ void WiFiManager::handleCameraReload() {
 }
 
 void WiFiManager::handleCameraUpload() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     
     // Get filesystem for saving
@@ -2492,6 +2514,7 @@ void WiFiManager::handleCameraUpload() {
 }
 
 void WiFiManager::handleCameraTest() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     
     // Get camera type from query param (default to 0 = red light)

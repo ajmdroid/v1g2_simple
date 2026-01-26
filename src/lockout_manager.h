@@ -1,9 +1,12 @@
 // Lockout Manager - Geofence-based alert muting
 // Stores GPS lockout zones and checks if current location should mute alerts
+// Thread-safe: All vector operations protected by mutex
 
 #pragma once
 #include <Arduino.h>
 #include <vector>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "packet_parser.h"  // For Band enum
 
 struct Lockout {
@@ -20,9 +23,29 @@ struct Lockout {
   bool muteLaser;
 };
 
+// RAII lock guard for lockout mutex
+class LockoutLock {
+public:
+  explicit LockoutLock(SemaphoreHandle_t sem) : sem_(sem), locked_(false) {
+    if (sem_) {
+      locked_ = (xSemaphoreTake(sem_, pdMS_TO_TICKS(100)) == pdTRUE);
+    }
+  }
+  ~LockoutLock() {
+    if (sem_ && locked_) {
+      xSemaphoreGive(sem_);
+    }
+  }
+  bool ok() const { return locked_; }
+private:
+  SemaphoreHandle_t sem_;
+  bool locked_;
+};
+
 class LockoutManager {
 private:
   std::vector<Lockout> lockouts;
+  mutable SemaphoreHandle_t lockoutMutex;  // Protects lockouts vector
   
   // Helper: Calculate distance between two points (uses haversine)
   float distanceTo(float lat, float lon, const Lockout& lockout) const;
@@ -49,7 +72,7 @@ public:
   void clearAll();
   
   // Query functions
-  int getLockoutCount() const { return lockouts.size(); }
+  int getLockoutCount() const;
   const Lockout* getLockoutAtIndex(int idx) const;
   int getNearestLockout(float lat, float lon) const;  // Returns index or -1
   

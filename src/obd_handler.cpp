@@ -51,6 +51,21 @@ private:
     bool locked;
 };
 
+// Helper: Validate that a string contains only valid hex characters
+static bool isValidHexString(const String& str, size_t expectedLen = 0) {
+    if (str.length() == 0) return false;
+    if (expectedLen > 0 && str.length() != expectedLen) return false;
+    
+    for (size_t i = 0; i < str.length(); i++) {
+        char c = str[i];
+        bool isHex = (c >= '0' && c <= '9') || 
+                     (c >= 'A' && c <= 'F') || 
+                     (c >= 'a' && c <= 'f');
+        if (!isHex) return false;
+    }
+    return true;
+}
+
 // Flag to track when authentication completes
 static volatile bool s_authComplete = false;
 static volatile bool s_authSuccess = false;
@@ -117,7 +132,8 @@ OBDHandler::OBDHandler()
     , pendingClientDelete(false)
     , obdMutex(nullptr)
     , obdTaskHandle(nullptr)
-    , taskRunning(false) {
+    , taskRunning(false)
+    , taskShouldExit(false) {
     
     // Initialize lastData with zero values
     lastData.speed_kph = 0;
@@ -545,10 +561,16 @@ bool OBDHandler::runStateMachine() {
 void OBDHandler::taskEntry(void* param) {
     OBDHandler* self = static_cast<OBDHandler*>(param);
     if (!self) vTaskDelete(nullptr);
-    for (;;) {
+    
+    while (!self->taskShouldExit) {
         self->runStateMachine();
         vTaskDelay(pdMS_TO_TICKS(10));  // keep loop responsive
     }
+    
+    // Clean exit - task deletes itself
+    self->obdTaskHandle = nullptr;
+    self->taskRunning = false;
+    vTaskDelete(nullptr);
 }
 
 void OBDHandler::startTask() {
@@ -556,12 +578,28 @@ void OBDHandler::startTask() {
         taskRunning = true;
         return;
     }
+    taskShouldExit = false;  // Reset exit flag before starting
     BaseType_t res = xTaskCreatePinnedToCore(taskEntry, "obdTask", 4096, this, 1, &obdTaskHandle, tskNO_AFFINITY);
     taskRunning = (res == pdPASS);
 }
 
 void OBDHandler::stopTask() {
+    if (!obdTaskHandle) {
+        return;
+    }
+    
+    // Signal task to exit cooperatively
+    taskShouldExit = true;
+    
+    // Wait for task to exit (max 500ms)
+    const uint32_t startMs = millis();
+    while (obdTaskHandle && (millis() - startMs) < 500) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    
+    // If task didn't exit, force delete (fallback)
     if (obdTaskHandle) {
+        Serial.println("[OBD] Task didn't exit cleanly, forcing delete");
         TaskHandle_t handle = obdTaskHandle;
         obdTaskHandle = nullptr;
         taskRunning = false;
@@ -1056,6 +1094,11 @@ bool OBDHandler::parseSpeedResponse(const String& response, uint8_t& speedKph) {
         return false;
     }
     
+    // Validate hex characters before parsing
+    if (!isValidHexString(hexVal, 2)) {
+        return false;
+    }
+    
     speedKph = (uint8_t)strtoul(hexVal.c_str(), nullptr, 16);
     return true;
 }
@@ -1075,6 +1118,11 @@ bool OBDHandler::parseRPMResponse(const String& response, uint16_t& rpm) {
     String hexB = response.substring(idx + 6, idx + 8);
     
     if (hexA.length() < 2 || hexB.length() < 2) {
+        return false;
+    }
+    
+    // Validate hex characters before parsing
+    if (!isValidHexString(hexA, 2) || !isValidHexString(hexB, 2)) {
         return false;
     }
     
