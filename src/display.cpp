@@ -2497,14 +2497,30 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
     
-    // Also check if any secondary alert changed
+    // Also check if any secondary alert changed (set-based, not order-based)
+    // V1 may reorder alerts by signal strength - we only care if the SET of alerts changed
     if (!needsRedraw) {
-        for (int i = 0; i < alertCount && i < 4; i++) {
-            // Check both band and frequency for secondary alerts
-            if (allAlerts[i].band != lastSecondary[i].band ||
-                allAlerts[i].frequency != lastSecondary[i].frequency) {
-                needsRedraw = true;
-                break;
+        // Compare counts first
+        int lastAlertCount = 0;
+        for (int i = 0; i < 4; i++) {
+            if (lastSecondary[i].band != BAND_NONE) lastAlertCount++;
+        }
+        if (alertCount != lastAlertCount) {
+            needsRedraw = true;
+        } else {
+            // Check if any current alert is NOT in last set (set membership test)
+            for (int i = 0; i < alertCount && i < 4 && !needsRedraw; i++) {
+                bool foundInLast = false;
+                for (int j = 0; j < 4; j++) {
+                    if (allAlerts[i].band == lastSecondary[j].band &&
+                        (allAlerts[i].band == BAND_LASER || allAlerts[i].frequency == lastSecondary[j].frequency)) {
+                        foundInLast = true;
+                        break;
+                    }
+                }
+                if (!foundInLast) {
+                    needsRedraw = true;
+                }
             }
         }
     }
