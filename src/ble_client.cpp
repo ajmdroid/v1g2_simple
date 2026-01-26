@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "obd_handler.h"  // For ELM327 device detection during scan
 #include "debug_logger.h"
+#include "perf_metrics.h"
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
@@ -599,6 +600,7 @@ void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
 }
 
 void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
+    PERF_INC(disconnects);  // Count V1 disconnections
     Serial.printf("[BLE] V1 disconnected (reason: %d)\n", reason);
     
     // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
@@ -780,6 +782,7 @@ bool V1BLEClient::connectToServer() {
     }
     
     // Success! Now finish connection setup
+    PERF_INC(reconnects);  // Count successful (re)connections
     Serial.println("[BLE] Connected! Setting up characteristics...");
     return finishConnection();
 }

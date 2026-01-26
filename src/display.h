@@ -93,8 +93,16 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // OBD indicator (shows "OBD" below signal bars when connected)
-    void updateObdIndicator();
+    // Status bar at top of screen (GPS/CAM/OBD indicators)
+    void drawStatusBar();
+
+    // Camera alert indicator (shows camera type and distance)
+    // When V1 has active alerts, camera shows as a secondary card; otherwise in main frequency area
+    void updateCameraAlert(bool active, const char* typeName, float distance_m, bool approaching, uint16_t color, bool v1HasAlerts = false);
+    void clearCameraAlert();
+    
+    // Set camera alert state for secondary card system (called before drawSecondaryAlertCards)
+    void setCameraAlertState(bool active, const char* typeName, float distance_m, uint16_t color);
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
@@ -178,6 +186,12 @@ private:
     bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
+    
+    // Camera alert state for secondary card integration
+    bool cameraCardActive = false;          // True when camera should show as secondary card
+    char cameraCardTypeName[16] = {0};      // Camera type name for card
+    float cameraCardDistance = 0.0f;        // Camera distance for card
+    uint16_t cameraCardColor = 0;           // Camera card color
     
     // KITT scanner animation state
     float kittPosition = 0.0f;              // Current scanner position (0.0 to 1.0)

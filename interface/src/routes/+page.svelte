@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	
 	let status = $state({
 		wifi: {
@@ -19,14 +19,23 @@
 		alert: null
 	});
 	
+	let gpsStatus = $state(null);
 	let loading = $state(true);
 	let error = $state(null);
+	let statusInterval = null;
+	let gpsInterval = null;
 	
 	onMount(async () => {
 		await fetchStatus();
+		await fetchGpsStatus();
 		// Poll status every 2 seconds for responsive alerts
-		const interval = setInterval(fetchStatus, 2000);
-		return () => clearInterval(interval);
+		statusInterval = setInterval(fetchStatus, 2000);
+		gpsInterval = setInterval(fetchGpsStatus, 3000);
+	});
+	
+	onDestroy(() => {
+		if (statusInterval) clearInterval(statusInterval);
+		if (gpsInterval) clearInterval(gpsInterval);
 	});
 	
 	async function fetchStatus() {
@@ -43,6 +52,17 @@
 			error = 'Connection lost';
 		} finally {
 			loading = false;
+		}
+	}
+	
+	async function fetchGpsStatus() {
+		try {
+			const res = await fetch('/api/gps/status');
+			if (res.ok) {
+				gpsStatus = await res.json();
+			}
+		} catch (e) {
+			// Silently fail - GPS might not be enabled
 		}
 	}
 	
@@ -176,6 +196,39 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- GPS Status (shown when enabled and has fix) -->
+		{#if gpsStatus?.enabled && gpsStatus?.hasValidFix}
+			<div class="card bg-base-200 shadow-xl">
+				<div class="card-body p-4">
+					<h2 class="card-title text-sm">
+						<span class="text-xl">📍</span>
+						GPS
+					</h2>
+					<div class="text-xl font-bold text-success">
+						{Math.round(gpsStatus.speed_mph)} mph
+					</div>
+					<div class="text-xs text-base-content/60">
+						{gpsStatus.satellites} sats • HDOP {gpsStatus.hdop?.toFixed(1) || '—'}
+					</div>
+				</div>
+			</div>
+		{:else if gpsStatus?.enabled && gpsStatus?.moduleDetected && !gpsStatus?.hasValidFix}
+			<div class="card bg-base-200 shadow-xl">
+				<div class="card-body p-4">
+					<h2 class="card-title text-sm">
+						<span class="text-xl">📍</span>
+						GPS
+					</h2>
+					<div class="text-xl font-bold text-warning">
+						Searching
+					</div>
+					<div class="text-xs text-base-content/60">
+						{gpsStatus.satellites || 0} sats visible
+					</div>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Quick Actions -->

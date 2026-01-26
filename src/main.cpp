@@ -38,9 +38,12 @@
 #include "lockout_manager.h"
 #include "auto_lockout_manager.h"
 #include "obd_handler.h"
+#include "camera_manager.h"
+#include "perf_metrics.h"
 #include "../include/config.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
+#include <LittleFS.h>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -213,6 +216,11 @@ static bool autoPowerOffArmed = false;  // True once V1 data has been received (
 // OBD auto-connect delay - wait for V1 connection to settle before OBD
 static unsigned long obdAutoConnectAt = 0;        // millis() when to attempt OBD connect (0 = disabled)
 static constexpr unsigned long OBD_CONNECT_DELAY_MS = 12000;  // 12 second delay after V1 connects
+
+// Deferred camera database loading - loads after V1 connects to not block boot
+// Not static - accessed from wifi_manager for runtime GPS enable
+bool cameraLoadPending = false;            // True if camera DB should be loaded
+bool cameraLoadComplete = false;           // True once loading finished
 
 // Volume fade tracking - reduce V1 volume after X seconds of continuous alert
 static unsigned long volumeFadeAlertStartMs = 0;  // When current alert session started (0 = no active alert)
@@ -584,6 +592,29 @@ static AlertData persistedAlert;
 static unsigned long alertClearedTime = 0;
 static bool alertPersistenceActive = false;
 
+// Camera alert tracking
+static bool cameraAlertActive = false;
+static unsigned long cameraAlertStartMs = 0;
+static unsigned long lastCameraCheckMs = 0;
+static NearbyCameraResult currentCameraAlert;
+static float lastCameraAlertLat = 0.0f;
+static float lastCameraAlertLon = 0.0f;
+static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;  // Check every 500ms
+static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;  // Min distance before re-alerting same area
+
+// Camera test alert mode (from web UI)
+static bool cameraTestActive = false;
+static unsigned long cameraTestEndMs = 0;
+static char cameraTestTypeName[16] = {0};
+static float cameraTestDistance = 500.0f;
+
+// Regional camera cache - rebuilds every 30min or when moved 50+ miles
+static unsigned long lastCacheCheckMs = 0;
+static constexpr unsigned long CACHE_CHECK_INTERVAL_MS = 30000;   // Check every 30 seconds
+static constexpr unsigned long CACHE_REFRESH_INTERVAL_MS = 1800000; // Force refresh every 30 minutes
+static constexpr float CACHE_RADIUS_MILES = 100.0f;    // Cache cameras within 100 miles
+static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f; // Refresh if moved 50+ miles from cache center
+
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
 static int tapCount = 0;
@@ -633,6 +664,7 @@ static AutoPushState autoPushState;
 // This runs in BLE task context, so we avoid SPI operations here
 void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
     if (bleDataQueue && length > 0 && length <= sizeof(BLEDataPacket::data)) {
+        PERF_INC(rxPackets);  // Count every packet received from V1
         BLEDataPacket pkt;
         memcpy(pkt.data, data, length);
         pkt.length = length;
@@ -641,6 +673,7 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         // Non-blocking send to queue - if queue is full, drop the packet
         BaseType_t result = xQueueSend(bleDataQueue, &pkt, 0);
         if (result != pdTRUE) {
+            PERF_INC(queueDrops);  // Count queue overflows
             BLEDataPacket dropped;
             xQueueReceive(bleDataQueue, &dropped, 0);  // Drop oldest to make room
             xQueueSend(bleDataQueue, &pkt, 0);
@@ -868,6 +901,126 @@ void startWifi() {
         return true;
     });
     
+    // GPS status callback for web API
+    wifiManager.setGpsStatusCallback([]() {
+        JsonDocument doc;
+        
+        doc["enabled"] = gpsHandler.isEnabled();
+        doc["moduleDetected"] = gpsHandler.isModuleDetected();
+        doc["detectionComplete"] = gpsHandler.isDetectionComplete();
+        doc["hasValidFix"] = gpsHandler.hasValidFix();
+        
+        if (gpsHandler.isEnabled() && gpsHandler.isModuleDetected()) {
+            GPSFix fix = gpsHandler.getFix();
+            doc["latitude"] = fix.latitude;
+            doc["longitude"] = fix.longitude;
+            doc["satellites"] = fix.satellites;
+            doc["hdop"] = fix.hdop;
+            doc["speed_mph"] = fix.speed_mps * 2.237f;
+            doc["heading"] = fix.heading_deg;
+            doc["fixValid"] = fix.valid;
+            doc["fixStale"] = gpsHandler.isFixStale();
+            doc["moving"] = gpsHandler.isMoving();
+            
+            // GPS time if available
+            if (fix.unixTime > 0) {
+                doc["gpsTime"] = fix.unixTime;
+                char timeStr[32];
+                snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d UTC", fix.hour, fix.minute, fix.seconds);
+                doc["gpsTimeStr"] = timeStr;
+            }
+        }
+        
+        String json;
+        serializeJson(doc, json);
+        return json;
+    });
+    
+    // GPS reset callback for web API
+    wifiManager.setGpsResetCallback([]() {
+        gpsHandler.reset();
+    });
+    
+    // Camera status callback for web API
+    wifiManager.setCameraStatusCallback([]() {
+        JsonDocument doc;
+        
+        doc["loaded"] = cameraManager.isLoaded();
+        doc["count"] = cameraManager.getCameraCount();
+        
+        if (cameraManager.isLoaded()) {
+            doc["name"] = cameraManager.getDatabaseName();
+            doc["date"] = cameraManager.getDatabaseDate();
+            doc["redLightCount"] = cameraManager.getRedLightCount();
+            doc["speedCount"] = cameraManager.getSpeedCameraCount();
+            doc["alprCount"] = cameraManager.getALPRCount();
+            
+            // Regional cache info
+            if (cameraManager.hasRegionalCache()) {
+                JsonObject cache = doc["cache"].to<JsonObject>();
+                float cacheLat, cacheLon;
+                cameraManager.getCacheCenter(cacheLat, cacheLon);
+                cache["count"] = cameraManager.getRegionalCacheCount();
+                cache["centerLat"] = cacheLat;
+                cache["centerLon"] = cacheLon;
+                cache["radiusMiles"] = cameraManager.getCacheRadius();
+            }
+        }
+        
+        String json;
+        serializeJson(doc, json);
+        return json;
+    });
+    
+    // Camera reload callback for web API
+    wifiManager.setCameraReloadCallback([]() {
+        if (!storageManager.isReady() || !storageManager.isSDCard()) {
+            return false;
+        }
+        fs::FS* fs = storageManager.getFilesystem();
+        if (!fs) return false;
+        
+        return cameraManager.begin(fs);
+    });
+    
+    // Camera test callback for web API - triggers display + voice
+    wifiManager.setCameraTestCallback([](int type) {
+        // type: 0=red light, 1=speed, 2=ALPR, 3=red light+speed
+        
+        // Get camera type name for display
+        const char* typeName = "CAM";
+        CameraAlertType voiceType = CameraAlertType::SPEED;
+        switch (type) {
+            case 0:
+                typeName = "REDLIGHT";
+                voiceType = CameraAlertType::RED_LIGHT;
+                break;
+            case 1:
+                typeName = "SPEED";
+                voiceType = CameraAlertType::SPEED;
+                break;
+            case 2:
+                typeName = "ALPR";
+                voiceType = CameraAlertType::ALPR;
+                break;
+            case 3:
+                typeName = "RLS";
+                voiceType = CameraAlertType::RED_LIGHT_SPEED;
+                break;
+        }
+        
+        // Set up test alert mode - persists for 5 seconds
+        cameraTestActive = true;
+        cameraTestEndMs = millis() + 5000;
+        strncpy(cameraTestTypeName, typeName, sizeof(cameraTestTypeName) - 1);
+        cameraTestDistance = 500.0f;
+        
+        // Play voice alert
+        play_camera_voice(voiceType);
+        
+        Serial.printf("[Camera] Test alert: %s (type %d) - showing for 5s\n", typeName, type);
+    });
+    
     SerialLog.println("[WiFi] Initialized");
 }
 
@@ -885,6 +1038,12 @@ void onV1Connected() {
     if (s.obdEnabled) {
         obdAutoConnectAt = millis() + OBD_CONNECT_DELAY_MS;
         SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
+    }
+    
+    // Trigger deferred camera database loading now that V1 is connected
+    // This happens in loop() to avoid blocking the callback
+    if (cameraLoadPending && !cameraLoadComplete) {
+        SerialLog.println("[Camera] V1 connected - camera database will load shortly");
     }
     
     if (!s.autoPushEnabled) {
@@ -1127,7 +1286,18 @@ void processBLEData() {
 
         // ALWAYS erase packet from buffer after attempting to parse
         // This prevents stale packets from accumulating when display updates are throttled
+        uint8_t packetId = packetPtr[3];
         bool parseOk = parser.parse(packetPtr, packetSize);
+        
+        // Only count display/alert packets for success/failure metrics
+        // Other packet types (heartbeats, ACKs, etc.) are expected to return false
+        if (packetId == PACKET_ID_DISPLAY_DATA || packetId == PACKET_ID_ALERT_DATA) {
+            if (parseOk) {
+                PERF_INC(parseSuccesses);
+            } else {
+                PERF_INC(parseFailures);  // Actual parse error on a packet we care about
+            }
+        }
 
         // Debug: dump display/alert packets for capture/replay (throttled to 1 Hz per ID)
         if (packetPtr[3] == PACKET_ID_DISPLAY_DATA || packetPtr[3] == PACKET_ID_ALERT_DATA) {
@@ -1844,6 +2014,13 @@ void setup() {
         if (settingsManager.isGpsEnabled()) {
             SerialLog.println("[Setup] GPS enabled - initializing...");
             gpsHandler.begin();
+            
+            // Defer camera database loading until after V1 connects
+            // This keeps boot fast - camera loading can take several seconds for large DBs
+            if (storageManager.isSDCard()) {
+                cameraLoadPending = true;
+                SerialLog.println("[Setup] Camera database will load after V1 connects");
+            }
         } else {
             SerialLog.println("[Setup] GPS disabled in settings");
         }
@@ -1863,7 +2040,7 @@ void setup() {
     debugLogger.begin();
     {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display};
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics};
         debugLogger.setFilter(filter);
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
@@ -1961,6 +2138,20 @@ void setup() {
 }
 
 void loop() {
+    // Periodic perf metrics logging (every 60s if enabled)
+    static unsigned long lastPerfLogMs = 0;
+    if (settingsManager.get().logPerfMetrics && debugLogger.isEnabledFor(DebugLogCategory::PerfMetrics)) {
+        unsigned long now = millis();
+        if (now - lastPerfLogMs >= 60000) {
+            lastPerfLogMs = now;
+            debugLogger.logf(DebugLogCategory::PerfMetrics, 
+                "PerfMetrics: rx=%lu qDrop=%lu parseOK=%lu parseFail=%lu disc=%lu reconn=%lu",
+                perfCounters.rxPackets, perfCounters.queueDrops, 
+                perfCounters.parseSuccesses, perfCounters.parseFailures,
+                perfCounters.disconnects, perfCounters.reconnects);
+        }
+    }
+
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
     // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
     bool bleReceiving = (millis() - lastRxMillis) < 2000;
@@ -2257,6 +2448,119 @@ void loop() {
         }
     }
     
+    // Camera alert checking (requires GPS with valid fix)
+    const V1Settings& camSettings = settingsManager.get();
+    if (camSettings.cameraAlertsEnabled && cameraManager.isLoaded() && gpsHandler.isEnabled()) {
+        unsigned long now = millis();
+        
+        // Regional cache refresh check - only when GPS has valid fix
+        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.hasValidFix()) {
+            lastCacheCheckMs = now;
+            
+            GPSFix cacheFix = gpsHandler.getFix();
+            bool needsRefresh = cameraManager.needsCacheRefresh(cacheFix.latitude, cacheFix.longitude, CACHE_REFRESH_DIST_MILES);
+            
+            // Also refresh if cache is older than 30 minutes
+            if (!needsRefresh && cameraManager.hasRegionalCache()) {
+                // Force refresh every 30 minutes while driving
+                static unsigned long lastCacheRefreshMs = 0;
+                if (lastCacheRefreshMs == 0) lastCacheRefreshMs = now;
+                if (now - lastCacheRefreshMs >= CACHE_REFRESH_INTERVAL_MS) {
+                    needsRefresh = true;
+                    lastCacheRefreshMs = now;
+                }
+            }
+            
+            if (needsRefresh) {
+                Serial.printf("[Camera] Building regional cache at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
+                if (cameraManager.buildRegionalCache(cacheFix.latitude, cacheFix.longitude, CACHE_RADIUS_MILES)) {
+                    // Save to LittleFS for fast boot next time
+                    cameraManager.saveRegionalCache(&LittleFS, "/cameras_cache.json");
+                }
+            }
+        }
+        
+        if (now - lastCameraCheckMs >= CAMERA_CHECK_INTERVAL_MS) {
+            lastCameraCheckMs = now;
+            
+            // Only check when we have a valid GPS fix
+            if (gpsHandler.hasValidFix()) {
+                GPSFix fix = gpsHandler.getFix();
+                float lat = fix.latitude;
+                float lon = fix.longitude;
+                float heading = fix.heading_deg;
+                float alertRadius = static_cast<float>(camSettings.cameraAlertDistanceM);
+                
+                // Update camera type filters from settings
+                cameraManager.setEnabledTypes(
+                    camSettings.cameraAlertRedLight,
+                    camSettings.cameraAlertSpeed,
+                    camSettings.cameraAlertALPR
+                );
+                
+                NearbyCameraResult nearestCamera;
+                bool cameraFound = cameraManager.getClosestCamera(lat, lon, heading, alertRadius, nearestCamera);
+                
+                // Only alert when approaching the camera (forward-looking)
+                if (cameraFound && nearestCamera.isApproaching) {
+                    // Check if this is a new alert (not already alerting this camera)
+                    float distFromLastAlert = CameraManager::haversineDistance(
+                        lat, lon, lastCameraAlertLat, lastCameraAlertLon);
+                    
+                    bool isNewAlert = !cameraAlertActive || 
+                                      (distFromLastAlert > CAMERA_ALERT_COOLDOWN_M);
+                    
+                    if (isNewAlert && !cameraAlertActive) {
+                        // New camera alert - start alert
+                        cameraAlertActive = true;
+                        cameraAlertStartMs = now;
+                        currentCameraAlert = nearestCamera;
+                        lastCameraAlertLat = nearestCamera.camera.latitude;
+                        lastCameraAlertLon = nearestCamera.camera.longitude;
+                        
+                        Serial.printf("[Camera] ALERT: %s at %.0fm AHEAD\n",
+                            nearestCamera.camera.getTypeName(),
+                            nearestCamera.distance_m);
+                        
+                        // Play voice alert if enabled
+                        if (camSettings.cameraAudioEnabled) {
+                            // Convert camera type to voice type
+                            CameraAlertType voiceType = CameraAlertType::SPEED;  // Default
+                            CameraType camType = nearestCamera.camera.getCameraType();
+                            switch (camType) {
+                                case CameraType::RedLightCamera:
+                                    voiceType = CameraAlertType::RED_LIGHT;
+                                    break;
+                                case CameraType::RedLightAndSpeed:
+                                    voiceType = CameraAlertType::RED_LIGHT_SPEED;
+                                    break;
+                                case CameraType::SpeedCamera:
+                                    voiceType = CameraAlertType::SPEED;
+                                    break;
+                                case CameraType::ALPR:
+                                    voiceType = CameraAlertType::ALPR;
+                                    break;
+                                default:
+                                    voiceType = CameraAlertType::SPEED;
+                                    break;
+                            }
+                            play_camera_voice(voiceType);
+                        }
+                    }
+                    
+                    // Update distance while alert is active
+                    currentCameraAlert.distance_m = nearestCamera.distance_m;
+                    currentCameraAlert.isApproaching = nearestCamera.isApproaching;
+                    
+                } else if (cameraAlertActive) {
+                    // No approaching camera in range - clear alert
+                    Serial.println("[Camera] Alert cleared - camera out of range or passed");
+                    cameraAlertActive = false;
+                }
+            }
+        }
+    }
+    
     // Process OBD updates (always runs - state machine handles enabled/disabled)
     // Check for delayed auto-connect trigger
     if (obdAutoConnectAt != 0 && millis() >= obdAutoConnectAt) {
@@ -2266,8 +2570,70 @@ void loop() {
     }
     obdHandler.update();
     
-    // Update OBD indicator on display (checks for state changes)
-    display.updateObdIndicator();
+    // Deferred camera database loading - runs once after V1 connects
+    // Loading 70K+ cameras takes several seconds, so we do it here in loop()
+    // rather than blocking boot or the BLE callback
+    if (cameraLoadPending && !cameraLoadComplete && bleClient.isConnected()) {
+        cameraLoadPending = false;
+        cameraLoadComplete = true;
+        
+        SerialLog.println("[Camera] Loading camera database from SD card...");
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs && cameraManager.begin(fs)) {
+            SerialLog.printf("[Camera] Database loaded: %d cameras\n", 
+                            cameraManager.getCameraCount());
+            
+            // Try to load regional cache from LittleFS for fast queries
+            if (cameraManager.loadRegionalCache(&LittleFS, "/cameras_cache.json")) {
+                SerialLog.printf("[Camera] Regional cache loaded: %d cameras\n", 
+                                cameraManager.getRegionalCacheCount());
+            } else {
+                SerialLog.println("[Camera] No regional cache - will build on GPS fix");
+            }
+        } else {
+            SerialLog.println("[Camera] No camera database found on SD card");
+        }
+    }
+
+    // Check if V1 has active alerts - determines if camera shows as main display or card
+    bool v1HasActiveAlerts = parser.hasAlerts();
+    
+    // Update camera alert display (if active)
+    // Test mode takes priority
+    if (cameraTestActive) {
+        if (millis() < cameraTestEndMs) {
+            // Simulate countdown
+            cameraTestDistance -= 5.0f;  // Decrease distance to simulate approach
+            if (cameraTestDistance < 50.0f) cameraTestDistance = 50.0f;
+            
+            const V1Settings& dispSettings = settingsManager.get();
+            display.updateCameraAlert(
+                true,
+                cameraTestTypeName,
+                cameraTestDistance,
+                true,
+                dispSettings.colorCameraAlert,
+                v1HasActiveAlerts  // Show as card if V1 has alerts
+            );
+        } else {
+            // Test complete
+            cameraTestActive = false;
+            display.clearCameraAlert();
+            Serial.println("[Camera] Test alert ended");
+        }
+    } else if (cameraAlertActive) {
+        const V1Settings& dispSettings = settingsManager.get();
+        display.updateCameraAlert(
+            true,
+            currentCameraAlert.camera.getShortTypeName(),
+            currentCameraAlert.distance_m,
+            currentCameraAlert.isApproaching,
+            dispSettings.colorCameraAlert,
+            v1HasActiveAlerts  // Show as card if V1 has alerts
+        );
+    } else {
+        display.clearCameraAlert();
+    }
     
     // Speed-based volume: boost V1 volume at highway speeds
     // Check periodically (not every loop) to avoid spamming V1

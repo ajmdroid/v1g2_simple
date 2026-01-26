@@ -16,6 +16,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <atomic>
+#include <cmath>  // For sinf
 
 // Debug logging control - set to false for production to reduce serial overhead
 static constexpr bool AUDIO_DEBUG_LOGS = false;
@@ -478,6 +479,50 @@ void play_vol0_beep() {
     
     AUDIO_LOGF("[AUDIO] Playing 'Warning Volume Zero' (%dms)\\n", WARNING_VOLUME_ZERO_PCM_DURATION_MS);
     play_pcm_audio(warning_volume_zero_pcm, WARNING_VOLUME_ZERO_PCM_SAMPLES, WARNING_VOLUME_ZERO_PCM_DURATION_MS);
+}
+
+// Camera alert tone - generates a short 1000Hz tone (200ms)
+// Pre-generated at compile time to avoid runtime generation overhead
+static const int CAMERA_TONE_FREQ = 1000;  // Hz
+static const int CAMERA_TONE_MS = 200;     // Duration
+static const int CAMERA_TONE_SAMPLES = (22050 * CAMERA_TONE_MS) / 1000;  // 4410 samples
+
+// Generate sine wave samples for camera tone
+static int16_t camera_tone_samples[CAMERA_TONE_SAMPLES];
+static bool camera_tone_generated = false;
+
+static void generate_camera_tone() {
+    if (camera_tone_generated) return;
+    
+    const float twoPiOverSampleRate = 2.0f * 3.14159265f / 22050.0f;
+    const float amplitude = 16000.0f;  // Not max to avoid distortion
+    
+    for (int i = 0; i < CAMERA_TONE_SAMPLES; i++) {
+        float t = i * twoPiOverSampleRate * CAMERA_TONE_FREQ;
+        // Apply envelope (fade in/out) to avoid clicks
+        float envelope = 1.0f;
+        if (i < 100) {  // Fade in first ~5ms
+            envelope = i / 100.0f;
+        } else if (i > CAMERA_TONE_SAMPLES - 100) {  // Fade out last ~5ms
+            envelope = (CAMERA_TONE_SAMPLES - i) / 100.0f;
+        }
+        camera_tone_samples[i] = (int16_t)(sinf(t) * amplitude * envelope);
+    }
+    camera_tone_generated = true;
+}
+
+void play_camera_alert_tone() {
+    AUDIO_LOGLN("[AUDIO] play_camera_alert_tone() called");
+    
+    if (audio_playing) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    generate_camera_tone();
+    
+    AUDIO_LOGF("[AUDIO] Playing camera alert tone (%dms)\\n", CAMERA_TONE_MS);
+    play_pcm_audio(camera_tone_samples, CAMERA_TONE_SAMPLES, CAMERA_TONE_MS);
 }
 
 // Play voice alert for band/direction (non-blocking)
@@ -989,6 +1034,93 @@ void play_band_only(AlertBand band) {
         AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
         audio_playing = false;
         free(params);
+    }
+}
+
+// Play camera voice alert (e.g., "Red light camera ahead", "ALPR ahead")
+// Uses SD card audio clips: cam_redlight.mul, cam_speed.mul, cam_alpr.mul, dir_ahead.mul
+void play_camera_voice(CameraAlertType type) {
+    AUDIO_LOGF("[AUDIO] play_camera_voice() type=%d\n", (int)type);
+    
+    if (audio_playing.load()) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return;
+    }
+    
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, falling back to tone");
+        play_camera_alert_tone();
+        return;
+    }
+    
+    // Allocate params for the task
+    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
+    if (!params) {
+        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
+        play_camera_alert_tone();
+        return;
+    }
+    params->numClips = 0;
+    
+    // Select camera type clip
+    const char* camFile = nullptr;
+    switch (type) {
+        case CameraAlertType::RED_LIGHT:
+            camFile = "cam_redlight.mul";
+            break;
+        case CameraAlertType::SPEED:
+            camFile = "cam_speed.mul";
+            break;
+        case CameraAlertType::ALPR:
+            camFile = "cam_alpr.mul";
+            break;
+        case CameraAlertType::RED_LIGHT_SPEED:
+            camFile = "cam_both.mul";
+            break;
+    }
+    
+    if (camFile) {
+        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, camFile);
+    }
+    
+    // Add "ahead" direction
+    snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+    
+    // Check if first clip exists - if not, fall back to tone
+    if (audioFS && params->numClips > 0) {
+        if (!audioFS->exists(params->filePaths[0])) {
+            AUDIO_LOGF("[AUDIO] Camera clip not found: %s, using tone\n", params->filePaths[0]);
+            free(params);
+            play_camera_alert_tone();
+            return;
+        }
+    }
+    
+    AUDIO_LOGF("[AUDIO] Playing camera voice: %s + ahead\n", camFile);
+    
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
+        free(params);
+        return;
+    }
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
+        params,
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        free(params);
+        // Fall back to tone
+        play_camera_alert_tone();
     }
 }
 

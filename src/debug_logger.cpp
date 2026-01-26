@@ -35,13 +35,14 @@ bool DebugLogger::categoryAllowed(DebugLogCategory category) const {
     if (!enabled) return false;
 
     switch (category) {
-        case DebugLogCategory::Alerts:  return filter.alerts;
-        case DebugLogCategory::Wifi:    return filter.wifi;
-        case DebugLogCategory::Ble:     return filter.ble;
-        case DebugLogCategory::Gps:     return filter.gps;
-        case DebugLogCategory::Obd:     return filter.obd;
-        case DebugLogCategory::System:  return filter.system;
-        case DebugLogCategory::Display: return filter.display;
+        case DebugLogCategory::Alerts:      return filter.alerts;
+        case DebugLogCategory::Wifi:        return filter.wifi;
+        case DebugLogCategory::Ble:         return filter.ble;
+        case DebugLogCategory::Gps:         return filter.gps;
+        case DebugLogCategory::Obd:         return filter.obd;
+        case DebugLogCategory::System:      return filter.system;
+        case DebugLogCategory::Display:     return filter.display;
+        case DebugLogCategory::PerfMetrics: return filter.perfMetrics;
         default: return false;
     }
 }
@@ -164,4 +165,57 @@ bool DebugLogger::clear() {
         return fs->remove(DEBUG_LOG_PATH);
     }
     return true;  // Nothing to clear
+}
+
+String DebugLogger::tail(size_t maxBytes) const {
+    if (!storageManager.isReady()) return "[Storage not ready]";
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) return "[Filesystem unavailable]";
+    if (!fs->exists(DEBUG_LOG_PATH)) return "[No log file]";
+
+    File f = fs->open(DEBUG_LOG_PATH, FILE_READ);
+    if (!f) return "[Failed to open log]";
+
+    size_t fileSize = f.size();
+    if (fileSize == 0) {
+        f.close();
+        return "[Log file empty]";
+    }
+
+    // Read from the end of the file
+    size_t bytesToRead = (fileSize < maxBytes) ? fileSize : maxBytes;
+    size_t startPos = fileSize - bytesToRead;
+
+    // If not reading from start, try to align to start of a line
+    if (startPos > 0) {
+        f.seek(startPos);
+        // Skip partial line by finding next newline
+        while (startPos < fileSize && f.read() != '\n') {
+            startPos++;
+        }
+        startPos++;  // Move past the newline
+        if (startPos >= fileSize) {
+            f.close();
+            return "[Log too fragmented]";
+        }
+        bytesToRead = fileSize - startPos;
+    }
+
+    f.seek(startPos);
+    String content;
+    content.reserve(bytesToRead + 1);
+
+    // Read in chunks to avoid memory issues
+    char buffer[512];
+    size_t remaining = bytesToRead;
+    while (remaining > 0) {
+        size_t chunkSize = (remaining < sizeof(buffer)) ? remaining : sizeof(buffer);
+        size_t bytesRead = f.read((uint8_t*)buffer, chunkSize);
+        if (bytesRead == 0) break;
+        content.concat(buffer, bytesRead);
+        remaining -= bytesRead;
+    }
+
+    f.close();
+    return content;
 }

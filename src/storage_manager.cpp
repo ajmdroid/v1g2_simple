@@ -12,7 +12,8 @@
 StorageManager storageManager;
 
 StorageManager::StorageManager()
-    : fs(nullptr), ready(false), usingSDMMC(false) {
+    : fs(nullptr), ready(false), usingSDMMC(false),
+      cameraDbFound(false), alprCount(0), redlightCount(0), speedCount(0) {
 }
 
 bool StorageManager::begin() {
@@ -32,6 +33,10 @@ bool StorageManager::begin() {
         usingSDMMC = true;
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
         Serial.printf("[Storage] SD card mounted (%lluMB)\n", cardSize);
+        
+        // Check for camera database files
+        checkCameraDatabase();
+        
         return true;
     } else {
         Serial.println("[Storage] SD_MMC.begin() failed");
@@ -60,4 +65,42 @@ String StorageManager::statusText() const {
         return "SD card (" + String(cardSize) + "MB)";
     }
     return "LittleFS (internal)";
+}
+
+uint32_t StorageManager::countJsonLines(const char* path) {
+    if (!fs) return 0;
+    
+    File file = fs->open(path, "r");
+    if (!file) return 0;
+    
+    uint32_t count = 0;
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        if (line.length() > 2 && line.indexOf('{') >= 0) {
+            count++;
+        }
+    }
+    file.close();
+    return count;
+}
+
+void StorageManager::checkCameraDatabase() {
+    cameraDbFound = false;
+    alprCount = 0;
+    redlightCount = 0;
+    speedCount = 0;
+    
+    if (!fs) return;
+    
+    // Quick existence check only - don't count lines during boot
+    // This makes boot ~3 seconds faster by not reading 70K+ lines
+    bool hasAlpr = fs->exists("/alpr.json");
+    bool hasRedlight = fs->exists("/redlight_cam.json");
+    bool hasSpeed = fs->exists("/speed_cam.json");
+    
+    cameraDbFound = hasAlpr || hasRedlight || hasSpeed;
+    
+    if (cameraDbFound) {
+        Serial.println("[Storage] ✓ Camera database found");
+    }
 }

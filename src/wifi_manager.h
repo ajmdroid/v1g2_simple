@@ -57,6 +57,16 @@ public:
     // Callback for push executor status (auto-push)
     void setPushStatusCallback(std::function<String()> callback) { getPushStatusJson = callback; }
     
+    // Callback for GPS status
+    void setGpsStatusCallback(std::function<String()> callback) { getGpsStatusJson = callback; }
+    void setGpsResetCallback(std::function<void()> callback) { gpsResetCallback = callback; }
+    
+    // Callback for camera alerts
+    void setCameraStatusCallback(std::function<String()> callback) { getCameraStatusJson = callback; }
+    void setCameraReloadCallback(std::function<bool()> callback) { cameraReloadCallback = callback; }
+    void setCameraUploadCallback(std::function<bool(const String&)> callback) { cameraUploadCallback = callback; }
+    void setCameraTestCallback(std::function<void(int)> callback) { cameraTestCallback = callback; }
+    
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
@@ -88,6 +98,12 @@ private:
     std::function<bool()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
+    std::function<String()> getGpsStatusJson;
+    std::function<void()> gpsResetCallback;
+    std::function<String()> getCameraStatusJson;
+    std::function<bool()> cameraReloadCallback;
+    std::function<bool(const String&)> cameraUploadCallback;
+    std::function<void(int)> cameraTestCallback;
     
     // Setup functions
     void setupAP();
@@ -124,6 +140,7 @@ private:
     void handleDebugEnable();
     void handleDebugLogsMeta();
     void handleDebugLogsDownload();
+    void handleDebugLogsTail();
     void handleDebugLogsClear();
     void handleSettingsBackup();
     void handleSettingsRestore();
@@ -134,6 +151,12 @@ private:
     void handleObdDevicesClear();
     void handleObdConnect();
     void handleObdForget();
+    void handleGpsStatus();
+    void handleGpsReset();
+    void handleCameraStatus();
+    void handleCameraReload();
+    void handleCameraUpload();
+    void handleCameraTest();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

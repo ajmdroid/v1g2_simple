@@ -19,6 +19,14 @@ enum class AlertDirection : uint8_t {
     SIDE = 2
 };
 
+// Camera types for voice alerts
+enum class CameraAlertType : uint8_t {
+    RED_LIGHT = 0,
+    SPEED = 1,
+    ALPR = 2,
+    RED_LIGHT_SPEED = 3  // Combined
+};
+
 // Set audio volume (0-100%)
 void audio_set_volume(uint8_t volumePercent);
 
@@ -70,3 +78,10 @@ void audio_process_amp_timeout();
 
 // Test beep on startup (for debugging)
 void play_test_beep();
+
+// Play camera alert tone (short distinctive tone for camera warnings)
+void play_camera_alert_tone();
+
+// Play camera voice alert (e.g., "Red light camera ahead", "ALPR ahead")
+// Uses embedded PCM audio for reliability without SD card dependency
+void play_camera_voice(CameraAlertType type);

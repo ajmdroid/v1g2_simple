@@ -12,6 +12,8 @@
 #include "wifi_manager.h"
 #include "ble_client.h"
 #include "obd_handler.h"
+#include "gps_handler.h"
+#include "storage_manager.h"
 #include "audio_beep.h"
 #include <esp_heap_caps.h>
 #include <cstring>
@@ -62,6 +64,9 @@ static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show
 
 // External reference to BLE client for checking proxy connection
 extern V1BLEClient bleClient;
+
+// External reference to GPS handler for GPS indicator
+extern GPSHandler gpsHandler;
 
 // Helper to get effective screen height (fixed primary zone, cards below)
 static inline int getEffectiveScreenHeight() {
@@ -1723,6 +1728,9 @@ void V1Display::showResting(bool forceRedraw) {
         
         // Profile indicator
         drawProfileIndicator(profileSlot);
+        
+        // Status bar (GPS/CAM/OBD indicators)
+        drawStatusBar();
 
         lastRestingPaletteRevision = paletteRevision;
         lastRestingProfileSlot = profileSlot;
@@ -1782,6 +1790,7 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     drawProfileIndicator(currentProfileSlot);
+    drawStatusBar();  // GPS/CAM/OBD status indicators
     
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
@@ -2312,6 +2321,7 @@ void V1Display::update(const DisplayState& state) {
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
+    drawStatusBar();  // GPS/CAM/OBD status indicators at top
     
     // Clear any persisted card slots when entering resting state
     AlertData emptyPriority;
@@ -2592,6 +2602,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
+    drawStatusBar();  // GPS/CAM/OBD status indicators at top
     DISP_PERF_LOG("arrows+icons");
     
     // Force card redraw since drawBaseFrame cleared the screen
@@ -2812,19 +2823,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
     };
     
-    // Build list of cards to draw this frame
+    // Build list of cards to draw this frame (V1 alerts first, then camera if room)
     struct CardToDraw {
-        int slot;
+        int slot;           // V1 card slot index (-1 for camera)
         bool isGraced;
-        uint8_t bars;  // Signal strength for this card
+        uint8_t bars;       // Signal strength for V1 cards
+        bool isCamera;      // True if this is a camera alert card
     } cardsToDraw[2];
     int cardsToDrawCount = 0;
     
+    // First: add V1 secondary alerts (they get priority over camera)
     for (int c = 0; c < 2 && cardsToDrawCount < 2; c++) {
         if (cards[c].lastSeen == 0) continue;
         if (isSameAsPriority(cards[c].alert)) continue;
         cardsToDraw[cardsToDrawCount].slot = c;
         cardsToDraw[cardsToDrawCount].bars = getAlertBars(cards[c].alert);
+        cardsToDraw[cardsToDrawCount].isCamera = false;
         // Check if live or graced
         bool isLive = false;
         if (alerts != nullptr) {
@@ -2839,20 +2853,51 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDrawCount++;
     }
     
+    // Second: if there's room and camera is active, add camera as last card
+    if (cardsToDrawCount < 2 && cameraCardActive && cameraCardTypeName[0] != '\0') {
+        cardsToDraw[cardsToDrawCount].slot = -1;  // -1 indicates camera card
+        cardsToDraw[cardsToDrawCount].bars = 0;
+        cardsToDraw[cardsToDrawCount].isCamera = true;
+        cardsToDraw[cardsToDrawCount].isGraced = false;
+        cardsToDrawCount++;
+    }
+    
+    // Track camera state for change detection
+    static bool lastCameraCardActive = false;
+    static float lastCameraCardDistance = -1.0f;
+    static char lastCameraCardTypeName[16] = {0};
+    
     // Check if cards changed from last frame
     bool cardsChanged = (cardsToDrawCount != lastDrawnCount);
+    
+    // Check V1 card changes
     if (!cardsChanged) {
         for (int i = 0; i < cardsToDrawCount; i++) {
-            int slot = cardsToDraw[i].slot;
-            if (cards[slot].alert.band != lastDrawnCards[i].band ||
-                cards[slot].alert.frequency != lastDrawnCards[i].frequency ||
-                cardsToDraw[i].isGraced != lastDrawnCards[i].isGraced ||
-                cardsToDraw[i].bars != lastDrawnCards[i].bars ||
-                muted != lastDrawnCards[i].wasMuted) {
-                cardsChanged = true;
-                break;
+            if (cardsToDraw[i].isCamera) {
+                // Camera card change detection
+                if (!lastCameraCardActive ||
+                    strcmp(cameraCardTypeName, lastCameraCardTypeName) != 0 ||
+                    fabs(cameraCardDistance - lastCameraCardDistance) >= 10.0f) {
+                    cardsChanged = true;
+                    break;
+                }
+            } else {
+                int slot = cardsToDraw[i].slot;
+                if (cards[slot].alert.band != lastDrawnCards[i].band ||
+                    cards[slot].alert.frequency != lastDrawnCards[i].frequency ||
+                    cardsToDraw[i].isGraced != lastDrawnCards[i].isGraced ||
+                    cardsToDraw[i].bars != lastDrawnCards[i].bars ||
+                    muted != lastDrawnCards[i].wasMuted) {
+                    cardsChanged = true;
+                    break;
+                }
             }
         }
+    }
+    
+    // Also check if camera state changed (was active, now not or vice versa)
+    if (!cardsChanged && lastCameraCardActive != cameraCardActive) {
+        cardsChanged = true;
     }
     
     // Only clear and redraw if cards changed (or forced after full screen redraw)
@@ -2860,6 +2905,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         return;  // No card changes - skip redraw
     }
     forceCardRedraw = false;  // Reset the force flag
+    
+    // Update camera tracking for next frame
+    lastCameraCardActive = cameraCardActive;
+    lastCameraCardDistance = cameraCardDistance;
+    strncpy(lastCameraCardTypeName, cameraCardTypeName, sizeof(lastCameraCardTypeName) - 1);
+    lastCameraCardTypeName[sizeof(lastCameraCardTypeName) - 1] = '\0';
     
     // Clear card area only when needed
     const int signalBarsX = SCREEN_WIDTH - 200 - 2;
@@ -2871,7 +2922,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // Update tracking for next frame
     lastDrawnCount = cardsToDrawCount;
     for (int i = 0; i < 2; i++) {
-        if (i < cardsToDrawCount) {
+        if (i < cardsToDrawCount && !cardsToDraw[i].isCamera) {
             int slot = cardsToDraw[i].slot;
             lastDrawnCards[i].band = cards[slot].alert.band;
             lastDrawnCards[i].frequency = cards[slot].alert.frequency;
@@ -2889,13 +2940,77 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     
     // Step 3: Draw the cards we identified
     for (int i = 0; i < cardsToDrawCount; i++) {
+        int cardX = startX + i * (cardW + cardSpacing);
+        
+        // Handle camera card separately
+        if (cardsToDraw[i].isCamera) {
+            // === CAMERA ALERT CARD ===
+            uint16_t camColor = cameraCardColor;
+            
+            // Card background - darker version of camera color
+            uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
+            uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
+            uint8_t b = (camColor & 0x1F) * 3 / 10;
+            uint16_t bgCol = (r << 11) | (g << 5) | b;
+            
+            FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+            DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, camColor);
+            
+            // Camera icon at left (simple camera shape)
+            const int iconX = cardX + 14;
+            const int iconY = cardY + 12;
+            const int iconW = 18;
+            const int iconH = 14;
+            // Camera body
+            FILL_RECT(iconX, iconY, iconW, iconH, camColor);
+            // Lens circle
+            tft->fillCircle(iconX + iconW/2, iconY + iconH/2, 5, bgCol);
+            tft->drawCircle(iconX + iconW/2, iconY + iconH/2, 5, camColor);
+            // Flash bump
+            FILL_RECT(iconX + iconW - 5, iconY - 4, 5, 4, camColor);
+            
+            // Type name to the right of icon
+            int labelX = cardX + 38;
+            int topRowY = cardY + 8;
+            tft->setTextColor(TFT_WHITE);
+            tft->setTextSize(1);
+            tft->setCursor(labelX, topRowY);
+            // Truncate type name if needed
+            char shortType[12];
+            strncpy(shortType, cameraCardTypeName, 11);
+            shortType[11] = '\0';
+            tft->print(shortType);
+            
+            // Distance below type (larger font)
+            char distStr[16];
+            if (cameraCardDistance < 1609.34f) {  // Less than 1 mile
+                int distFt = static_cast<int>(cameraCardDistance * 3.28084f);
+                snprintf(distStr, sizeof(distStr), "%d ft", distFt);
+            } else {
+                snprintf(distStr, sizeof(distStr), "%.1f mi", cameraCardDistance / 1609.34f);
+            }
+            
+            tft->setTextSize(2);
+            tft->setTextColor(camColor);
+            int distY = cardY + 20;
+            tft->setCursor(labelX, distY);
+            tft->print(distStr);
+            
+            // Forward arrow indicator at bottom (shows approaching)
+            const int arrowY = cardY + cardH - 14;
+            const int arrowX = cardX + cardW / 2;
+            // Draw forward-pointing arrow
+            tft->fillTriangle(arrowX, arrowY - 6, arrowX - 8, arrowY + 4, arrowX + 8, arrowY + 4, camColor);
+            
+            continue;  // Skip V1 card drawing code
+        }
+        
+        // === V1 ALERT CARD ===
         int c = cardsToDraw[i].slot;
         const AlertData& alert = cards[c].alert;
         bool isGraced = cardsToDraw[i].isGraced;
         bool drawMuted = muted || isGraced;
         uint8_t bars = cardsToDraw[i].bars;
-        
-        int cardX = startX + i * (cardW + cardSpacing);
         
         if (doDebug) {
             Serial.printf("[CARDS] DRAW slot%d b%d f%d bars=%d graced=%d X=%d\n", 
@@ -4152,80 +4267,238 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         FILL_ROUND_RECT(startX, y, barWidth, barHeight, 2, fillColor);
     }
     
-    // Draw OBD indicator below signal bars (if OBD is connected)
-    // Position: below the bottom bar, centered under bar area
-    // NOTE: Check OBD state BEFORE updating cache so we can detect if bars were just redrawn
-    static bool lastObdConnected = false;
-    bool obdConnected = obdHandler.isConnected();
-    bool barsWereRedrawn = !cacheValid;  // Capture before we set cacheValid = true
-    
     // Update cache
     lastStrength = strength;
     lastMuted = muted;
     cacheValid = true;
-    
-    // Redraw OBD indicator if state changed OR bars were just redrawn
-    if (obdConnected != lastObdConnected || barsWereRedrawn) {
-        const int obdY = startY + totalH + 6;  // Below last bar with small gap
-        const int obdLabelWidth = 36;
-        const int obdLabelHeight = 12;
-        const int obdX = startX + (barWidth - obdLabelWidth) / 2;  // Center under bars
-        
-        if (obdConnected) {
-            // Draw "OBD" label in green
-            uint16_t obdColor = 0x07E0;  // Green
-            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);  // Clear area first
-            
-            // Use small built-in font for "OBD" text
-            tft->setTextColor(obdColor);
-            tft->setTextSize(1);
-            tft->setCursor(obdX + 4, obdY + 2);
-            tft->print("OBD");
-        } else {
-            // Clear OBD area when disconnected
-            FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
-        }
-        lastObdConnected = obdConnected;
-    }
 }
 
-// Standalone OBD indicator update - can be called independently of signal bars
-void V1Display::updateObdIndicator() {
+// Status bar at very top of screen showing GPS/CAM/OBD status
+void V1Display::drawStatusBar() {
 #if defined(DISPLAY_WAVESHARE_349)
-    static bool lastObdState = false;
+    const V1Settings& s = settingsManager.get();
+    
+    // Current state
+    bool gpsHasFix = gpsHandler.hasValidFix();
+    int gpsSats = gpsHandler.getFix().satellites;  // Get satellites from fix struct
+    bool hasCameraDb = storageManager.hasCameraDatabase();
     bool obdConnected = obdHandler.isConnected();
     
-    // Only redraw if state changed
-    if (obdConnected == lastObdState) {
-        return;
+    // For CAM: only show if camera DB exists AND GPS has fix
+    bool showCam = hasCameraDb && gpsHasFix;
+    
+    // Status bar positioning
+    const int statusY = 1;           // Very top of screen
+    const int statusHeight = 10;     // Height for font size 1
+    const int leftMargin = 135;      // After band indicators
+    const int rightMargin = 200;     // Before signal bars
+    const int areaWidth = SCREEN_WIDTH - leftMargin - rightMargin;  // ~305 pixels
+    
+    // Spacing: GPS on left, CAM center, OBD on right
+    const int gpsX = leftMargin + 10;
+    const int camX = leftMargin + areaWidth / 2 - 12;  // Center
+    const int obdX = leftMargin + areaWidth - 36;
+    
+    // Use built-in font size 1
+    tft->setTextSize(1);
+    
+    // ---- GPS indicator ----
+    // Clear GPS area (wide enough for "GPS XX")
+    FILL_RECT(gpsX, statusY, 48, statusHeight, PALETTE_BG);
+    
+    if (gpsHasFix && gpsSats > 0) {
+        // GPS color based on satellite count
+        uint16_t gpsColor = (gpsSats >= 4) ? s.colorStatusGps : s.colorStatusGpsWarn;
+        tft->setTextColor(gpsColor);
+        tft->setCursor(gpsX, statusY + 1);
+        tft->printf("GPS %d", gpsSats);
+    } else if (gpsHandler.isEnabled()) {
+        // Show dimmed "GPS" when enabled but no fix
+        tft->setTextColor(PALETTE_MUTED_OR_PERSISTED);
+        tft->setCursor(gpsX, statusY + 1);
+        tft->print("GPS");
     }
-    lastObdState = obdConnected;
     
-    // Match positioning from drawVerticalSignalBars
-    const int barCount = 6;
-    const int barHeight = 14;
-    const int barSpacing = 10;
-    const int barWidth = 44;
-    const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
-    const int startX = SCREEN_WIDTH - 200;
-    const int startY = 18;
+    // ---- CAM indicator ----
+    // Clear CAM area
+    FILL_RECT(camX, statusY, 24, statusHeight, PALETTE_BG);
     
-    const int obdY = startY + totalH + 6;
-    const int obdLabelWidth = 36;
-    const int obdLabelHeight = 12;
-    const int obdX = startX + (barWidth - obdLabelWidth) / 2;
+    if (showCam) {
+        tft->setTextColor(s.colorStatusCam);
+        tft->setCursor(camX, statusY + 1);
+        tft->print("CAM");
+    }
+    
+    // ---- OBD indicator ----
+    // Clear OBD area
+    FILL_RECT(obdX, statusY, 24, statusHeight, PALETTE_BG);
     
     if (obdConnected) {
-        uint16_t obdColor = 0x07E0;  // Green
-        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
-        tft->setTextColor(obdColor);
-        tft->setTextSize(1);
-        tft->setCursor(obdX + 4, obdY + 2);
+        tft->setTextColor(s.colorStatusObd);
+        tft->setCursor(obdX, statusY + 1);
         tft->print("OBD");
-    } else {
-        FILL_RECT(obdX, obdY, obdLabelWidth, obdLabelHeight, PALETTE_BG);
     }
 #endif
+}
+
+// Camera alert indicator - shows camera type and distance countdown
+void V1Display::updateCameraAlert(bool active, const char* typeName, float distance_m, bool approaching, uint16_t color, bool v1HasAlerts) {
+#if defined(DISPLAY_WAVESHARE_349)
+    static bool lastCameraState = false;
+    static bool lastWasCard = false;  // Track if we were showing as card
+    static float lastDistance = -1.0f;
+    static char lastTypeName[16] = {0};
+    
+    // If V1 has active alerts, camera should display as a secondary card instead
+    if (active && v1HasAlerts) {
+        // Clear main frequency area if we were showing there
+        if (lastCameraState && !lastWasCard) {
+            const int leftMargin = 135;
+            const int rightMargin = 200;
+            const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+            const int muteIconBottom = 33;
+            int effectiveHeight = getEffectiveScreenHeight();
+            const int fontSize = 75;
+            int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
+            const int clearX = leftMargin + 10;
+            const int clearY = freqY - 10;
+            const int clearW = maxWidth - 10;
+            const int clearH = fontSize + 25;
+            FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
+        }
+        // Set camera card state - will be drawn by drawSecondaryAlertCards
+        setCameraAlertState(true, typeName, distance_m, color);
+        lastCameraState = true;
+        lastWasCard = true;
+        lastDistance = distance_m;
+        strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
+        lastTypeName[sizeof(lastTypeName) - 1] = '\0';
+        return;
+    }
+    
+    // If V1 no longer has alerts but camera is active, clear card state and show in main area
+    if (active && lastWasCard) {
+        setCameraAlertState(false, "", 0, 0);  // Clear card state
+        lastWasCard = false;
+        // Force redraw in main area
+        lastCameraState = false;
+    }
+    
+    // Clear camera card state when showing in main area
+    if (active && !v1HasAlerts) {
+        setCameraAlertState(false, "", 0, 0);
+    }
+    
+    // Camera alert uses same area as frequency display
+    const int leftMargin = 135;   // After band indicators
+    const int rightMargin = 200;  // Before signal bars
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    
+    // Vertical positioning - same as frequency display
+    const int muteIconBottom = 33;
+    int effectiveHeight = getEffectiveScreenHeight();
+    const int fontSize = 75;
+    int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
+    
+    // Clear area dimensions
+    const int clearX = leftMargin + 10;
+    const int clearY = freqY - 10;
+    const int clearW = maxWidth - 10;
+    const int clearH = fontSize + 25;
+    
+    if (!active) {
+        // Clear camera alert area if was previously shown
+        if (lastCameraState) {
+            if (!lastWasCard) {
+                FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
+            }
+            setCameraAlertState(false, "", 0, 0);  // Clear card state
+            lastCameraState = false;
+            lastWasCard = false;
+            lastDistance = -1.0f;
+            lastTypeName[0] = '\0';
+        }
+        return;
+    }
+    
+    // Check if we need to redraw
+    bool needsRedraw = !lastCameraState || 
+                       (fabs(distance_m - lastDistance) >= 10.0f) ||
+                       (strcmp(typeName, lastTypeName) != 0);
+    
+    if (!needsRedraw) return;
+    
+    lastCameraState = true;
+    lastWasCard = false;
+    lastDistance = distance_m;
+    strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
+    lastTypeName[sizeof(lastTypeName) - 1] = '\0';
+    
+    // Clear the frequency area
+    FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
+    
+    // Camera type label at top (e.g., "RED LIGHT", "SPEED", "ALPR")
+    tft->setTextSize(2);
+    tft->setTextColor(color);
+    int typeLen = strlen(typeName);
+    int typePixelWidth = typeLen * 12;  // size 2 = 12 pixels per char
+    int typeX = leftMargin + (maxWidth - typePixelWidth) / 2;
+    tft->setCursor(typeX, clearY + 5);
+    tft->print(typeName);
+    
+    // Distance in large font - centered below type
+    char distStr[16];
+    if (distance_m < 1609.34f) {  // Less than 1 mile
+        int distFt = static_cast<int>(distance_m * 3.28084f);
+        snprintf(distStr, sizeof(distStr), "%d ft", distFt);
+    } else {
+        snprintf(distStr, sizeof(distStr), "%.1f mi", distance_m / 1609.34f);
+    }
+    
+    // Use OpenFontRender for distance if available, otherwise tft
+    if (ofrSegment7Initialized) {
+        ofrSegment7.setFontSize(50);
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+        ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        
+        FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, 50, Align::Left, Layout::Horizontal, distStr);
+        int distTextWidth = bbox.xMax - bbox.xMin;
+        int distX = leftMargin + (maxWidth - distTextWidth) / 2;
+        ofrSegment7.setCursor(distX, clearY + 35);
+        ofrSegment7.printf("%s", distStr);
+    } else {
+        tft->setTextSize(3);
+        int distLen = strlen(distStr);
+        int distX = leftMargin + (maxWidth - distLen * 18) / 2;
+        tft->setCursor(distX, clearY + 35);
+        tft->print(distStr);
+    }
+    
+    flush();
+#endif
+}
+
+void V1Display::clearCameraAlert() {
+#if defined(DISPLAY_WAVESHARE_349)
+    updateCameraAlert(false, "", 0, false, 0, false);
+#endif
+}
+
+void V1Display::setCameraAlertState(bool active, const char* typeName, float distance_m, uint16_t color) {
+    cameraCardActive = active;
+    cameraCardDistance = distance_m;
+    cameraCardColor = color;
+    if (active && typeName) {
+        strncpy(cameraCardTypeName, typeName, sizeof(cameraCardTypeName) - 1);
+        cameraCardTypeName[sizeof(cameraCardTypeName) - 1] = '\0';
+    } else {
+        cameraCardTypeName[0] = '\0';
+    }
+    // Force secondary cards redraw when camera state changes
+    secondaryCardsNeedRedraw = true;
 }
 
 const char* V1Display::bandToString(Band band) {

@@ -45,6 +45,7 @@ struct DebugLogConfig {
     bool obd;
     bool system;
     bool display;
+    bool perfMetrics;
 };
 
 // V1 operating modes (from ESP library)
@@ -124,6 +125,10 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
+    uint16_t colorStatusGps;     // Status bar GPS color (good fix, >=4 sats)
+    uint16_t colorStatusGpsWarn; // Status bar GPS color (weak fix, <4 sats)
+    uint16_t colorStatusCam;     // Status bar CAM indicator color
+    uint16_t colorStatusObd;     // Status bar OBD indicator color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -146,6 +151,7 @@ struct V1Settings {
         bool logObd;                 // Include OBD events in debug log
         bool logSystem;              // Include system/storage/events in debug log
         bool logDisplay;             // Include display latency events in debug log
+        bool logPerfMetrics;         // Log BLE performance metrics periodically
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -233,6 +239,15 @@ struct V1Settings {
     uint8_t lockoutMaxSignalStrength;    // Don't learn signals >= this (0=disabled, default: 0)
     uint16_t lockoutMaxDistanceM;   // Max alert distance to learn (default: 600m)
     
+    // Camera alerts settings (red light cameras, speed cameras, ALPR)
+    bool cameraAlertsEnabled;          // Master enable for camera alerts
+    uint16_t cameraAlertDistanceM;     // Alert distance in meters (default: 500m)
+    bool cameraAlertRedLight;          // Alert on red light cameras
+    bool cameraAlertSpeed;             // Alert on speed cameras
+    bool cameraAlertALPR;              // Alert on ALPR cameras
+    bool cameraAudioEnabled;           // Play audio for camera alerts
+    uint16_t colorCameraAlert;         // Camera alert display color (default: orange)
+    
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -264,6 +279,10 @@ struct V1Settings {
         colorBar4(0xFFE0),       // Yellow
         colorBar5(0xF800),       // Red
         colorBar6(0xF800),       // Red (strongest)
+        colorStatusGps(0x07E0),  // Green (GPS good)
+        colorStatusGpsWarn(0xFD20), // Orange (GPS weak)
+        colorStatusCam(0x07FF),  // Cyan (camera DB)
+        colorStatusObd(0x07E0),  // Green (OBD connected)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -343,7 +362,15 @@ struct V1Settings {
         lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)
         lockoutUnlearnIntervalHours(4), // 4 hours between misses (JBV1 default)
         lockoutMaxSignalStrength(0),    // No max (JBV1 "None" default)
-        lockoutMaxDistanceM(600) {}     // 600m max distance (JBV1 default)
+        lockoutMaxDistanceM(600),       // 600m max distance (JBV1 default)
+        // Camera alert defaults
+        cameraAlertsEnabled(true),      // Camera alerts on by default
+        cameraAlertDistanceM(500),      // Alert 500m before camera
+        cameraAlertRedLight(true),      // Red light cameras on
+        cameraAlertSpeed(true),         // Speed cameras on
+        cameraAlertALPR(true),          // ALPR cameras on
+        cameraAudioEnabled(true),       // Audio alerts on
+        colorCameraAlert(0xFD20) {}     // Orange (camera alert color)
 };
 
 class SettingsManager {
@@ -382,6 +409,10 @@ public:
     void setVolumeMuteColor(uint16_t color);
     void setRssiV1Color(uint16_t color);
     void setRssiProxyColor(uint16_t color);
+    void setStatusGpsColor(uint16_t color);
+    void setStatusGpsWarnColor(uint16_t color);
+    void setStatusCamColor(uint16_t color);
+    void setStatusObdColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
@@ -400,8 +431,9 @@ public:
     void setLogObd(bool enable);
     void setLogSystem(bool enable);
     void setLogDisplay(bool enable);
+    void setLogPerfMetrics(bool enable);
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
@@ -479,6 +511,13 @@ public:
     void updateLockoutUnlearnIntervalHours(uint8_t hours) { settings.lockoutUnlearnIntervalHours = hours; }
     void updateLockoutMaxSignalStrength(uint8_t strength) { settings.lockoutMaxSignalStrength = strength; }
     void updateLockoutMaxDistanceM(uint16_t meters) { settings.lockoutMaxDistanceM = meters; }
+    
+    // Camera alert settings (batch update - call save() after)
+    bool isCameraAlertsEnabled() const { return settings.cameraAlertsEnabled; }
+    bool isCameraAudioEnabled() const { return settings.cameraAudioEnabled; }
+    void updateCameraAlertsEnabled(bool enabled) { settings.cameraAlertsEnabled = enabled; }
+    void updateCameraAudioEnabled(bool enabled) { settings.cameraAudioEnabled = enabled; }
+    void updateCameraAlertDistanceM(uint16_t meters) { settings.cameraAlertDistanceM = meters; }
     
     // SD card backup/restore for display settings
     void backupToSD();

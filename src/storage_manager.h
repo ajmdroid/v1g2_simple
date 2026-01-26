@@ -47,11 +47,24 @@ public:
     
     // Get underlying filesystem
     fs::FS* getFilesystem() const { return fs; }
+    
+    // Camera database info
+    bool hasCameraDatabase() const { return cameraDbFound; }
+    uint32_t getAlprCount() const { return alprCount; }
+    uint32_t getRedlightCount() const { return redlightCount; }
+    uint32_t getSpeedCount() const { return speedCount; }
 
 private:
+    void checkCameraDatabase();
+    uint32_t countJsonLines(const char* path);
+    
     fs::FS* fs;
     bool ready;
     bool usingSDMMC;
+    bool cameraDbFound;
+    uint32_t alprCount;
+    uint32_t redlightCount;
+    uint32_t speedCount;
 };
 
 // Global instance

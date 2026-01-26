@@ -3,9 +3,10 @@
 
 #include "gps_handler.h"
 #include "config.h"
+#include "debug_logger.h"
 #include <cmath>
 
-static constexpr bool DEBUG_LOGS = false;  // Set true for verbose GPS logging
+static constexpr bool DEBUG_LOGS = true;  // Set true for verbose GPS logging
 
 #ifdef USE_TINYGPS
 // ============================================================================
@@ -38,6 +39,11 @@ GPSHandler::GPSHandler()
 }
 
 void GPSHandler::begin() {
+  // Enable GPS module via EN pin (LOW = enabled)
+  pinMode(GPS_EN_PIN, OUTPUT);
+  digitalWrite(GPS_EN_PIN, LOW);
+  delay(50);  // Allow GPS to power up
+  
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   enabled = true;
   
@@ -50,7 +56,7 @@ void GPSHandler::begin() {
   
   if (DEBUG_LOGS) {
     Serial.println("[GPS] TinyGPSPlus initialized for M10-25Q (NMEA parser)");
-    Serial.printf("[GPS] Wiring: TX->GPIO%d, RX->GPIO%d\n", GPS_TX_PIN, GPS_RX_PIN);
+    Serial.printf("[GPS] Wiring: TX->GPIO%d, RX->GPIO%d, EN->GPIO%d\n", GPS_TX_PIN, GPS_RX_PIN, GPS_EN_PIN);
   }
 }
 
@@ -70,6 +76,36 @@ void GPSHandler::end() {
 
 GPSHandler::~GPSHandler() {
   end();
+}
+
+void GPSHandler::reset() {
+  if (!enabled) {
+    Serial.println("[GPS] Reset requested but GPS not enabled");
+    return;
+  }
+  
+  Serial.println("[GPS] Power cycling GPS module...");
+  
+  // Disable GPS module via EN pin (HIGH = disabled for PA1616S / Adafruit)
+  digitalWrite(GPS_EN_PIN, HIGH);
+  delay(500);  // Give module time to fully power down
+  
+  // Clear fix and detection state
+  lastFix.valid = false;
+  lastFix.latitude = 0;
+  lastFix.longitude = 0;
+  lastFix.satellites = 0;
+  lastFix.hdop = 999;
+  moduleDetected = false;
+  detectionComplete = false;
+  detectionStartMs = millis();
+  
+  // Re-enable GPS module (LOW = enabled)
+  digitalWrite(GPS_EN_PIN, LOW);
+  delay(100);  // Allow GPS to power up
+  
+  Serial.println("[GPS] Reset complete - module re-enabled");
+  debugLogger.log(DebugLogCategory::Gps, "Reset complete - searching for satellites");
 }
 
 bool GPSHandler::update() {
@@ -94,12 +130,14 @@ bool GPSHandler::update() {
       if (DEBUG_LOGS) {
         Serial.println("[GPS] Module detected");
       }
+      debugLogger.log(DebugLogCategory::Gps, "Module detected - waiting for satellite fix");
     } else if (millis() - detectionStartMs > DETECTION_TIMEOUT_MS) {
       detectionComplete = true;
       moduleDetected = false;
       if (DEBUG_LOGS) {
         Serial.println("[GPS] Module NOT detected (timeout) - GPS disabled");
       }
+      debugLogger.log(DebugLogCategory::Gps, "Module NOT detected (60s timeout) - GPS disabled");
       return false;
     }
   }
@@ -151,13 +189,35 @@ bool GPSHandler::update() {
       }
     }
     
+    // Log to SD card if GPS category enabled
+    if (debugLogger.isEnabledFor(DebugLogCategory::Gps)) {
+      debugLogger.logf(DebugLogCategory::Gps, "Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s",
+                       lastFix.latitude, lastFix.longitude,
+                       lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
+    }
+    
     return true;
   } else {
     lastFix.valid = false;
     
-    if (DEBUG_LOGS && (millis() % 5000 < 100)) {  // Log every 5 seconds
-      Serial.printf("[GPS] Searching for fix... (Sats: %d)\n", 
-                    gps.satellites.isValid() ? (int)gps.satellites.value() : 0);
+    // Log search status every 5 seconds using static timer
+    static uint32_t lastSearchLog = 0;
+    static uint32_t lastSearchLogSD = 0;
+    if (DEBUG_LOGS && (millis() - lastSearchLog > 5000)) {
+      lastSearchLog = millis();
+      Serial.printf("[GPS] Searching... Sats: %d | Chars: %lu | Sentences: %lu | Checksum fail: %lu\n", 
+                    gps.satellites.isValid() ? (int)gps.satellites.value() : 0,
+                    gps.charsProcessed(),
+                    gps.sentencesWithFix(),
+                    gps.failedChecksum());
+    }
+    // Log to SD every 30 seconds (less frequent to avoid filling card)
+    if (debugLogger.isEnabledFor(DebugLogCategory::Gps) && (millis() - lastSearchLogSD > 30000)) {
+      lastSearchLogSD = millis();
+      debugLogger.logf(DebugLogCategory::Gps, "Searching... Sats: %d | Chars: %lu | Sentences: %lu",
+                       gps.satellites.isValid() ? (int)gps.satellites.value() : 0,
+                       gps.charsProcessed(),
+                       gps.sentencesWithFix());
     }
   }
   
@@ -195,6 +255,11 @@ GPSHandler::GPSHandler()
 }
 
 void GPSHandler::begin() {
+  // Enable GPS module via EN pin (LOW = enabled)
+  pinMode(GPS_EN_PIN, OUTPUT);
+  digitalWrite(GPS_EN_PIN, LOW);
+  delay(50);  // Allow GPS to power up
+  
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   GPS.begin(GPS_BAUD);
   enabled = true;
@@ -216,7 +281,7 @@ void GPSHandler::begin() {
   
   if (DEBUG_LOGS) {
     Serial.println("[GPS] Adafruit PA1616S initialized (10Hz, GPS+GLONASS+Galileo)");
-    Serial.printf("[GPS] Wiring: TX->GPIO%d, RX->GPIO%d\n", GPS_TX_PIN, GPS_RX_PIN);
+    Serial.printf("[GPS] Wiring: TX->GPIO%d, RX->GPIO%d, EN->GPIO%d\n", GPS_TX_PIN, GPS_RX_PIN, GPS_EN_PIN);
   }
 }
 
@@ -226,16 +291,54 @@ void GPSHandler::end() {
   enabled = false;
   gpsSerial.end();
   
+  // Power off GPS module via EN pin (HIGH = disabled)
+  digitalWrite(GPS_EN_PIN, HIGH);
+  
   // Clear fix to prevent stale data
   lastFix.valid = false;
   
   if (DEBUG_LOGS) {
-    Serial.println("[GPS] Disabled (serial released)");
+    Serial.println("[GPS] Disabled (serial released, power off)");
   }
 }
 
 GPSHandler::~GPSHandler() {
   end();
+}
+
+void GPSHandler::reset() {
+  if (!enabled) {
+    Serial.println("[GPS] Reset requested but GPS not enabled");
+    return;
+  }
+  
+  Serial.println("[GPS] Power cycling GPS module...");
+  
+  // Disable GPS module via EN pin (HIGH = disabled for PA1616S / Adafruit)
+  digitalWrite(GPS_EN_PIN, HIGH);
+  delay(500);  // Give module time to fully power down
+  
+  // Clear fix and detection state
+  lastFix.valid = false;
+  lastFix.latitude = 0;
+  lastFix.longitude = 0;
+  lastFix.satellites = 0;
+  lastFix.hdop = 999;
+  moduleDetected = false;
+  detectionComplete = false;
+  detectionStartMs = millis();
+  
+  // Re-enable GPS module (LOW = enabled)
+  digitalWrite(GPS_EN_PIN, LOW);
+  delay(100);  // Allow GPS to power up
+  
+  // Re-configure GPS for PA1616S
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
+  GPS.sendCommand(PGCMD_ANTENNA);
+  
+  Serial.println("[GPS] Reset complete - module re-enabled and configured");
+  debugLogger.log(DebugLogCategory::Gps, "Reset complete - searching for satellites");
 }
 
 bool GPSHandler::update() {
@@ -256,6 +359,7 @@ bool GPSHandler::update() {
       if (DEBUG_LOGS) {
         Serial.println("[GPS] Module detected");
       }
+      debugLogger.log(DebugLogCategory::Gps, "Module detected - waiting for satellite fix");
     }
     
     if (!GPS.parse(GPS.lastNMEA())) {
@@ -263,7 +367,11 @@ bool GPSHandler::update() {
     }
     
     // Update fix data if GPS has a valid fix
-    if (GPS.fix) {
+    // Note: GPS.fix should be true when fixquality >= 1, but check both as fallback
+    // fixquality: 0=no fix, 1=GPS fix, 2=DGPS fix, 6=estimated
+    bool hasGpsFix = GPS.fix || (GPS.fixquality >= 1 && GPS.satellites > 0);
+    
+    if (hasGpsFix) {
       lastFix.latitude = GPS.latitudeDegrees;
       lastFix.longitude = GPS.longitudeDegrees;
       lastFix.valid = true;
@@ -295,7 +403,7 @@ bool GPSHandler::update() {
       lastFix.heading_deg = GPS.angle;
       
       if (DEBUG_LOGS) {
-        Serial.printf("[GPS] Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
+        Serial.printf("[GPS] FIX ACQUIRED: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
                       lastFix.latitude, lastFix.longitude, 
                       lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
         Serial.printf("[GPS] Time: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
@@ -303,13 +411,25 @@ bool GPSHandler::update() {
                       lastFix.hour, lastFix.minute, lastFix.seconds);
       }
       
+      // Log fix to SD card
+      debugLogger.logf(DebugLogCategory::Gps, "FIX: %.6f, %.6f | HDOP: %.1f | Sats: %d",
+                       lastFix.latitude, lastFix.longitude, lastFix.hdop, lastFix.satellites);
+      
       return true;
     } else {
       // GPS has no fix yet
       lastFix.valid = false;
       
+      static uint32_t lastSearchLogSD_ada = 0;
       if (DEBUG_LOGS && (millis() % 5000 < 100)) {  // Log every 5 seconds
-        Serial.printf("[GPS] Searching for fix... (Sats: %d)\n", (int)GPS.satellites);
+        Serial.printf("[GPS] Searching for fix... (Sats: %d, FixQual: %d, Lat: %.6f, Lon: %.6f)\n", 
+                      (int)GPS.satellites, (int)GPS.fixquality, GPS.latitudeDegrees, GPS.longitudeDegrees);
+      }
+      // Log to SD every 30 seconds - include fix quality and lat/lon for debugging
+      if (debugLogger.isEnabledFor(DebugLogCategory::Gps) && (millis() - lastSearchLogSD_ada > 30000)) {
+        lastSearchLogSD_ada = millis();
+        debugLogger.logf(DebugLogCategory::Gps, "Searching... Sats: %d, FixQual: %d, Fix: %d, Lat: %.6f, Lon: %.6f", 
+                         (int)GPS.satellites, (int)GPS.fixquality, (int)GPS.fix, GPS.latitudeDegrees, GPS.longitudeDegrees);
       }
     }
   }
@@ -321,6 +441,7 @@ bool GPSHandler::update() {
     if (DEBUG_LOGS) {
       Serial.println("[GPS] Module NOT detected (timeout) - GPS disabled");
     }
+    debugLogger.log(DebugLogCategory::Gps, "Module NOT detected (60s timeout) - GPS disabled");
   }
   
   return false;

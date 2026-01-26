@@ -56,9 +56,11 @@ private:
   // Enable state (for static allocation pattern)
   bool enabled;
   
-  // GPS pin configuration
-  static constexpr int GPS_RX_PIN = 17;  // ESP32 RX <- GPS TX
-  static constexpr int GPS_TX_PIN = 18;  // ESP32 TX -> GPS RX
+  // GPS pin configuration (Waveshare ESP32-S3-Touch-LCD-3.49)
+  // Note: GPIO 17/18 are used for I2C touch, so we use GPIO 1/2/3 for GPS
+  static constexpr int GPS_RX_PIN = 1;   // ESP32 RX <- GPS TX
+  static constexpr int GPS_TX_PIN = 2;   // ESP32 TX -> GPS RX
+  static constexpr int GPS_EN_PIN = 3;   // GPS Enable (LOW=on, HIGH=off)
   static constexpr uint32_t GPS_BAUD = 9600;
   
 public:
@@ -67,6 +69,7 @@ public:
   
   void begin();
   void end();    // Disable GPS and release serial (for static allocation pattern)
+  void reset();  // Power cycle GPS module via EN pin to re-acquire fix
   bool update();  // Call in main loop - non-blocking, parses available NMEA
   
   // Enable state (for static allocation - avoids heap fragmentation)

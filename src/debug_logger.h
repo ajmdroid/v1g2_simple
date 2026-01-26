@@ -21,7 +21,8 @@ enum class DebugLogCategory {
     Ble,
     Gps,
     Obd,
-    Display
+    Display,
+    PerfMetrics
 };
 
 struct DebugLogFilter {
@@ -32,6 +33,7 @@ struct DebugLogFilter {
     bool obd = false;
     bool system = true;
     bool display = false;
+    bool perfMetrics = false;
 };
 
 class DebugLogger {
@@ -57,6 +59,7 @@ public:
     bool storageReady() const;
     bool onSdCard() const;
     bool canEnable() const;  // Returns true if SD card present (required for logging)
+    String tail(size_t maxBytes = 32768) const;  // Read last N bytes (default 32KB)
 
 private:
     void writeLine(const char* line);

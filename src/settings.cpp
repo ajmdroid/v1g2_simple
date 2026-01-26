@@ -115,6 +115,10 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
+    written += prefs.putUShort("colorStGps", settings.colorStatusGps);
+    written += prefs.putUShort("colorStGpsW", settings.colorStatusGpsWarn);
+    written += prefs.putUShort("colorStCam", settings.colorStatusCam);
+    written += prefs.putUShort("colorStObd", settings.colorStatusObd);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -133,6 +137,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("logObd", settings.logObd);
     written += prefs.putBool("logSystem", settings.logSystem);
     written += prefs.putBool("logDisplay", settings.logDisplay);
+    written += prefs.putBool("logPerfMet", settings.logPerfMetrics);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -201,6 +206,15 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("lkoutUnlHr", settings.lockoutUnlearnIntervalHours);
     written += prefs.putUChar("lkoutMaxSig", settings.lockoutMaxSignalStrength);
     written += prefs.putUShort("lkoutMaxDist", settings.lockoutMaxDistanceM);
+    
+    // Camera alerts
+    written += prefs.putBool("camEnabled", settings.cameraAlertsEnabled);
+    written += prefs.putUShort("camAlertDist", settings.cameraAlertDistanceM);
+    written += prefs.putBool("camRedLight", settings.cameraAlertRedLight);
+    written += prefs.putBool("camSpeed", settings.cameraAlertSpeed);
+    written += prefs.putBool("camALPR", settings.cameraAlertALPR);
+    written += prefs.putBool("camAudio", settings.cameraAudioEnabled);
+    written += prefs.putUShort("camColor", settings.colorCameraAlert);
 
     prefs.end();
     Serial.printf("[Settings] Wrote %d bytes to namespace %s\n", written, ns);
@@ -320,6 +334,10 @@ void SettingsManager::load() {
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
     settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
+    settings.colorStatusGps = preferences.getUShort("colorStGps", 0x07E0);     // Green for GPS good
+    settings.colorStatusGpsWarn = preferences.getUShort("colorStGpsW", 0xFD20); // Orange for GPS weak
+    settings.colorStatusCam = preferences.getUShort("colorStCam", 0x07FF);     // Cyan for CAM
+    settings.colorStatusObd = preferences.getUShort("colorStObd", 0x07E0);     // Green for OBD
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -340,6 +358,7 @@ void SettingsManager::load() {
     settings.logObd = preferences.getBool("logObd", false);
     settings.logSystem = preferences.getBool("logSystem", true);
     settings.logDisplay = preferences.getBool("logDisplay", false);
+    settings.logPerfMetrics = preferences.getBool("logPerfMet", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -446,6 +465,15 @@ void SettingsManager::load() {
     settings.lockoutUnlearnIntervalHours = preferences.getUChar("lkoutUnlHr", 4);
     settings.lockoutMaxSignalStrength = preferences.getUChar("lkoutMaxSig", 0);
     settings.lockoutMaxDistanceM = preferences.getUShort("lkoutMaxDist", 600);
+    
+    // Camera alerts
+    settings.cameraAlertsEnabled = preferences.getBool("camEnabled", true);
+    settings.cameraAlertDistanceM = preferences.getUShort("camAlertDist", 500);
+    settings.cameraAlertRedLight = preferences.getBool("camRedLight", true);
+    settings.cameraAlertSpeed = preferences.getBool("camSpeed", true);
+    settings.cameraAlertALPR = preferences.getBool("camALPR", true);
+    settings.cameraAudioEnabled = preferences.getBool("camAudio", true);
+    settings.colorCameraAlert = preferences.getUShort("camColor", 0xFD20);
     
     preferences.end();
     
@@ -642,6 +670,26 @@ void SettingsManager::setRssiProxyColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setStatusGpsColor(uint16_t color) {
+    settings.colorStatusGps = color;
+    save();
+}
+
+void SettingsManager::setStatusGpsWarnColor(uint16_t color) {
+    settings.colorStatusGpsWarn = color;
+    save();
+}
+
+void SettingsManager::setStatusCamColor(uint16_t color) {
+    settings.colorStatusCam = color;
+    save();
+}
+
+void SettingsManager::setStatusObdColor(uint16_t color) {
+    settings.colorStatusObd = color;
+    save();
+}
+
 void SettingsManager::setFreqUseBandColor(bool use) {
     settings.freqUseBandColor = use;
     save();
@@ -729,6 +777,11 @@ void SettingsManager::setLogSystem(bool enable) {
 
 void SettingsManager::setLogDisplay(bool enable) {
     settings.logDisplay = enable;
+    save();
+}
+
+void SettingsManager::setLogPerfMetrics(bool enable) {
+    settings.logPerfMetrics = enable;
     save();
 }
 
@@ -998,6 +1051,15 @@ void SettingsManager::backupToSD() {
     doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
     doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
     
+    // === Camera Alert Settings ===
+    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
+    doc["cameraAlertDistanceM"] = settings.cameraAlertDistanceM;
+    doc["cameraAlertRedLight"] = settings.cameraAlertRedLight;
+    doc["cameraAlertSpeed"] = settings.cameraAlertSpeed;
+    doc["cameraAlertALPR"] = settings.cameraAlertALPR;
+    doc["cameraAudioEnabled"] = settings.cameraAudioEnabled;
+    doc["colorCameraAlert"] = settings.colorCameraAlert;
+    
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
@@ -1030,6 +1092,10 @@ void SettingsManager::backupToSD() {
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
+    doc["colorStatusGps"] = settings.colorStatusGps;
+    doc["colorStatusGpsWarn"] = settings.colorStatusGpsWarn;
+    doc["colorStatusCam"] = settings.colorStatusCam;
+    doc["colorStatusObd"] = settings.colorStatusObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -1050,6 +1116,7 @@ void SettingsManager::backupToSD() {
     doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
     doc["logDisplay"] = settings.logDisplay;
+    doc["logPerfMetrics"] = settings.logPerfMetrics;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1195,6 +1262,15 @@ bool SettingsManager::restoreFromSD() {
     if (doc["lockoutMaxSignalStrength"].is<int>()) settings.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
     if (doc["lockoutMaxDistanceM"].is<int>()) settings.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
     
+    // === Camera Alert Settings ===
+    if (doc["cameraAlertsEnabled"].is<bool>()) settings.cameraAlertsEnabled = doc["cameraAlertsEnabled"];
+    if (doc["cameraAlertDistanceM"].is<int>()) settings.cameraAlertDistanceM = doc["cameraAlertDistanceM"];
+    if (doc["cameraAlertRedLight"].is<bool>()) settings.cameraAlertRedLight = doc["cameraAlertRedLight"];
+    if (doc["cameraAlertSpeed"].is<bool>()) settings.cameraAlertSpeed = doc["cameraAlertSpeed"];
+    if (doc["cameraAlertALPR"].is<bool>()) settings.cameraAlertALPR = doc["cameraAlertALPR"];
+    if (doc["cameraAudioEnabled"].is<bool>()) settings.cameraAudioEnabled = doc["cameraAudioEnabled"];
+    if (doc["colorCameraAlert"].is<int>()) settings.colorCameraAlert = doc["colorCameraAlert"];
+    
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
@@ -1227,6 +1303,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorStatusGps"].is<int>()) settings.colorStatusGps = doc["colorStatusGps"];
+    if (doc["colorStatusGpsWarn"].is<int>()) settings.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
+    if (doc["colorStatusCam"].is<int>()) settings.colorStatusCam = doc["colorStatusCam"];
+    if (doc["colorStatusObd"].is<int>()) settings.colorStatusObd = doc["colorStatusObd"];
     if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
     // === UI Toggles ===
@@ -1247,6 +1327,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["logObd"].is<bool>()) settings.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
     if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
+    if (doc["logPerfMetrics"].is<bool>()) settings.logPerfMetrics = doc["logPerfMetrics"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

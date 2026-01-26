@@ -30,6 +30,10 @@
 		volumeMute: 0xFFE0, // Yellow (mute volume)
 		rssiV1: 0x07E0,  // Green (V1 RSSI label)
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
+		statusGps: 0x07E0,     // Green (GPS indicator)
+		statusGpsWarn: 0xFD20, // Orange (GPS low sats)
+		statusCam: 0x07FF,     // Cyan (Camera database)
+		statusObd: 0x07E0,     // Green (OBD connected)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -251,6 +255,10 @@
 			params.append('volumeMute', colors.volumeMute);
 			params.append('rssiV1', colors.rssiV1);
 			params.append('rssiProxy', colors.rssiProxy);
+			params.append('statusGps', colors.statusGps);
+			params.append('statusGpsWarn', colors.statusGpsWarn);
+			params.append('statusCam', colors.statusCam);
+			params.append('statusObd', colors.statusObd);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -326,6 +334,10 @@
 					volumeMute: 0xFFE0,
 					rssiV1: 0x07E0,
 					rssiProxy: 0x001F,
+					statusGps: 0x07E0,
+					statusGpsWarn: 0xFD20,
+					statusCam: 0x07FF,
+					statusObd: 0x07E0,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -626,6 +638,115 @@
 								style="color: {rgb565ToHex(colors.rssiProxy)}"
 							>P</span>
 							<span class="text-lg font-mono text-success">-62</span>
+						</div>
+					</div>
+				</div>
+				<div class="divider my-2"></div>
+				<h3 class="font-semibold text-sm mt-2">Status Bar</h3>
+				<p class="text-sm text-base-content/50 mb-2">GPS, Camera, and OBD status indicators at top of display</p>
+				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+					<div class="form-control">
+						<label class="label" for="statusGps-color">
+							<span class="label-text">GPS (good fix)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="statusGps-color"
+								type="button"
+								aria-label="GPS indicator color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.statusGps)}"
+								onclick={() => openPicker('statusGps', 'GPS Indicator')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.statusGps)}
+								onchange={(e) => handleHexInput('statusGps', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-sm font-bold font-mono"
+								style="color: {rgb565ToHex(colors.statusGps)}"
+							>GPS 8</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="statusGpsWarn-color">
+							<span class="label-text">GPS (low sats)</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="statusGpsWarn-color"
+								type="button"
+								aria-label="GPS low satellites color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.statusGpsWarn)}"
+								onclick={() => openPicker('statusGpsWarn', 'GPS Low Sats')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.statusGpsWarn)}
+								onchange={(e) => handleHexInput('statusGpsWarn', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-sm font-bold font-mono"
+								style="color: {rgb565ToHex(colors.statusGpsWarn)}"
+							>GPS 2</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="statusCam-color">
+							<span class="label-text">Camera DB</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="statusCam-color"
+								type="button"
+								aria-label="Camera database color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.statusCam)}"
+								onclick={() => openPicker('statusCam', 'Camera Database')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.statusCam)}
+								onchange={(e) => handleHexInput('statusCam', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-sm font-bold font-mono"
+								style="color: {rgb565ToHex(colors.statusCam)}"
+							>CAM</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="statusObd-color">
+							<span class="label-text">OBD</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button 
+								id="statusObd-color"
+								type="button"
+								aria-label="OBD connected color"
+								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.statusObd)}"
+								onclick={() => openPicker('statusObd', 'OBD Connected')}
+							></button>
+							<input 
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.statusObd)}
+								onchange={(e) => handleHexInput('statusObd', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span 
+								class="text-sm font-bold font-mono"
+								style="color: {rgb565ToHex(colors.statusObd)}"
+							>OBD</span>
 						</div>
 					</div>
 				</div>

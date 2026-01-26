@@ -11,6 +11,8 @@
 #include "v1_profiles.h"
 #include "ble_client.h"
 #include "obd_handler.h"
+#include "gps_handler.h"
+#include "camera_manager.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -23,6 +25,11 @@
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
+// External GPS handler for runtime enable/disable
+extern GPSHandler gpsHandler;
+// Camera load trigger flags (set when GPS enabled at runtime)
+extern bool cameraLoadPending;
+extern bool cameraLoadComplete;
 // Preview hold helper to keep color demo visible briefly
 extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
@@ -37,7 +44,7 @@ static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Requi
 
 static void applyDebugLogFilterFromSettings() {
     DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display};
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics};
     debugLogger.setFilter(filter);
 }
 
@@ -432,6 +439,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
     server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
+    server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
     server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
     
     // OBD-II API routes
@@ -442,6 +450,16 @@ void WiFiManager::setupWebServer() {
     server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
     server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
     server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
+    
+    // GPS API routes
+    server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
+    server.on("/api/gps/reset", HTTP_POST, [this]() { handleGpsReset(); });
+    
+    // Camera alerts API routes
+    server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
+    server.on("/api/cameras/reload", HTTP_POST, [this]() { handleCameraReload(); });
+    server.on("/api/cameras/upload", HTTP_POST, [this]() { handleCameraUpload(); });
+    server.on("/api/cameras/test", HTTP_POST, [this]() { handleCameraTest(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -611,6 +629,11 @@ void WiFiManager::handleSettingsApi() {
     doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
     doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
     
+    // Camera alert settings
+    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
+    doc["cameraAudioEnabled"] = settings.cameraAudioEnabled;
+    doc["cameraAlertDistanceM"] = settings.cameraAlertDistanceM;
+    
     // Development/Debug settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
@@ -681,11 +704,36 @@ void WiFiManager::handleSettingsSave() {
     // GPS/OBD module settings
     if (server.hasArg("gpsEnabled")) {
         bool enabled = server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1";
+        bool wasEnabled = settingsManager.isGpsEnabled();
         settingsManager.setGpsEnabled(enabled);
+        
+        // Actually start/stop GPS hardware at runtime
+        if (enabled && !wasEnabled) {
+            Serial.println("[WiFi] GPS enabled - starting GPS handler");
+            gpsHandler.begin();
+            // Trigger camera database loading if SD card available
+            if (storageManager.isSDCard() && !cameraLoadComplete) {
+                cameraLoadPending = true;
+                Serial.println("[WiFi] Camera database will load after V1 connects");
+            }
+        } else if (!enabled && wasEnabled) {
+            Serial.println("[WiFi] GPS disabled - stopping GPS handler");
+            gpsHandler.end();
+        }
     }
     if (server.hasArg("obdEnabled")) {
         bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
+        bool wasEnabled = settingsManager.isObdEnabled();
         settingsManager.setObdEnabled(enabled);
+        
+        // Actually start/stop OBD hardware at runtime
+        if (enabled && !wasEnabled) {
+            Serial.println("[WiFi] OBD enabled - starting OBD handler");
+            obdHandler.begin();
+        } else if (!enabled && wasEnabled) {
+            Serial.println("[WiFi] OBD disabled - disconnecting OBD");
+            obdHandler.disconnect();
+        }
     }
     if (server.hasArg("obdPin")) {
         settingsManager.setObdPin(server.arg("obdPin"));
@@ -745,12 +793,26 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.updateLockoutMaxDistanceM(meters);
     }
     
+    // Camera alert settings
+    if (server.hasArg("cameraAlertsEnabled")) {
+        bool enabled = server.arg("cameraAlertsEnabled") == "true" || server.arg("cameraAlertsEnabled") == "1";
+        settingsManager.updateCameraAlertsEnabled(enabled);
+    }
+    if (server.hasArg("cameraAudioEnabled")) {
+        bool enabled = server.arg("cameraAudioEnabled") == "true" || server.arg("cameraAudioEnabled") == "1";
+        settingsManager.updateCameraAudioEnabled(enabled);
+    }
+    if (server.hasArg("cameraAlertDistanceM")) {
+        int meters = server.arg("cameraAlertDistanceM").toInt();
+        meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
+        settingsManager.updateCameraAlertDistanceM(meters);
+    }
+    
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
     
-    server.sendHeader("Location", "/settings?saved=1");
-    server.send(302);
+    server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WiFiManager::handleDarkMode() {
@@ -1451,6 +1513,24 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setRssiProxyColor(rssiProxyColor);
     }
     
+    // Handle status bar colors
+    if (server.hasArg("statusGps")) {
+        uint16_t statusGpsColor = server.arg("statusGps").toInt();
+        settingsManager.setStatusGpsColor(statusGpsColor);
+    }
+    if (server.hasArg("statusGpsWarn")) {
+        uint16_t statusGpsWarnColor = server.arg("statusGpsWarn").toInt();
+        settingsManager.setStatusGpsWarnColor(statusGpsWarnColor);
+    }
+    if (server.hasArg("statusCam")) {
+        uint16_t statusCamColor = server.arg("statusCam").toInt();
+        settingsManager.setStatusCamColor(statusCamColor);
+    }
+    if (server.hasArg("statusObd")) {
+        uint16_t statusObdColor = server.arg("statusObd").toInt();
+        settingsManager.setStatusObdColor(statusObdColor);
+    }
+    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -1507,6 +1587,9 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("logDisplay")) {
         settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1");
+    }
+    if (server.hasArg("logPerfMetrics")) {
+        settingsManager.setLogPerfMetrics(server.arg("logPerfMetrics") == "true" || server.arg("logPerfMetrics") == "1");
     }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
@@ -1680,6 +1763,10 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["volumeMute"] = s.colorVolumeMute;
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
+    doc["statusGps"] = s.colorStatusGps;
+    doc["statusGpsWarn"] = s.colorStatusGpsWarn;
+    doc["statusCam"] = s.colorStatusCam;
+    doc["statusObd"] = s.colorStatusObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
@@ -1802,6 +1889,31 @@ void WiFiManager::handleDebugLogsDownload() {
     f.close();
 }
 
+void WiFiManager::handleDebugLogsTail() {
+    if (!checkRateLimit()) return;
+
+    // Optional ?bytes= parameter (default 32KB, max 64KB)
+    size_t maxBytes = 32768;
+    if (server.hasArg("bytes")) {
+        maxBytes = server.arg("bytes").toInt();
+        if (maxBytes > 65536) maxBytes = 65536;  // Cap at 64KB
+        if (maxBytes < 1024) maxBytes = 1024;    // Min 1KB
+    }
+
+    String content = debugLogger.tail(maxBytes);
+
+    JsonDocument doc;
+    doc["content"] = content;
+    doc["bytes"] = content.length();
+    doc["totalSize"] = static_cast<uint32_t>(debugLogger.size());
+    doc["exists"] = debugLogger.exists();
+    doc["enabled"] = debugLogger.isEnabled();
+
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
 void WiFiManager::handleDebugLogsClear() {
     if (!checkRateLimit()) return;
 
@@ -1869,6 +1981,10 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorPersisted"] = s.colorPersisted;
     doc["colorVolumeMain"] = s.colorVolumeMain;
     doc["colorVolumeMute"] = s.colorVolumeMute;
+    doc["colorStatusGps"] = s.colorStatusGps;
+    doc["colorStatusGpsWarn"] = s.colorStatusGpsWarn;
+    doc["colorStatusCam"] = s.colorStatusCam;
+    doc["colorStatusObd"] = s.colorStatusObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     
     // Display visibility
@@ -2265,4 +2381,132 @@ void WiFiManager::handleObdForget() {
     obdHandler.disconnect();
     
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved device forgotten\"}");
+}
+
+void WiFiManager::handleGpsStatus() {
+    markUiActivity();
+    
+    if (!getGpsStatusJson) {
+        server.send(503, "application/json", "{\"error\":\"GPS handler not available\"}");
+        return;
+    }
+    
+    server.send(200, "application/json", getGpsStatusJson());
+}
+
+void WiFiManager::handleGpsReset() {
+    markUiActivity();
+    
+    if (!gpsResetCallback) {
+        server.send(503, "application/json", "{\"error\":\"GPS handler not available\"}");
+        return;
+    }
+    
+    Serial.println("[HTTP] POST /api/gps/reset - power cycling GPS module");
+    gpsResetCallback();
+    
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"GPS module reset initiated\"}");
+}
+
+void WiFiManager::handleCameraStatus() {
+    markUiActivity();
+    
+    if (!getCameraStatusJson) {
+        // Return empty status if camera manager not available
+        server.send(200, "application/json", "{\"loaded\":false,\"count\":0}");
+        return;
+    }
+    
+    server.send(200, "application/json", getCameraStatusJson());
+}
+
+void WiFiManager::handleCameraReload() {
+    markUiActivity();
+    
+    if (!cameraReloadCallback) {
+        server.send(503, "application/json", "{\"error\":\"Camera manager not available\"}");
+        return;
+    }
+    
+    Serial.println("[HTTP] POST /api/cameras/reload - reloading camera database");
+    bool success = cameraReloadCallback();
+    
+    if (success) {
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Camera database reloaded\"}");
+    } else {
+        server.send(200, "application/json", "{\"success\":false,\"message\":\"No camera database found on SD card\"}");
+    }
+}
+
+void WiFiManager::handleCameraUpload() {
+    markUiActivity();
+    
+    // Get filesystem for saving
+    fs::FS* fs = getFilesystem ? getFilesystem() : nullptr;
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not available\"}");
+        return;
+    }
+    
+    // Get POST body (NDJSON data)
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+        return;
+    }
+    
+    String body = server.arg("plain");
+    if (body.length() == 0) {
+        server.send(400, "application/json", "{\"error\":\"Empty data\"}");
+        return;
+    }
+    
+    Serial.printf("[HTTP] POST /api/cameras/upload - received %d bytes\n", body.length());
+    
+    // Save to SD card as ALPR database
+    const char* filename = "/alpr_osm.json";
+    File file = fs->open(filename, "w");
+    if (!file) {
+        server.send(500, "application/json", "{\"error\":\"Failed to create file on SD\"}");
+        return;
+    }
+    
+    size_t written = file.print(body);
+    file.close();
+    
+    Serial.printf("[HTTP] Saved %d bytes to %s\n", written, filename);
+    
+    // If we have an upload callback (to trigger reload), call it
+    if (cameraUploadCallback) {
+        cameraUploadCallback(String(filename));
+    }
+    
+    // Try to reload the camera database
+    bool reloaded = cameraReloadCallback ? cameraReloadCallback() : false;
+    
+    char response[256];
+    snprintf(response, sizeof(response), 
+             "{\"success\":true,\"bytes\":%d,\"file\":\"%s\",\"reloaded\":%s}",
+             written, filename, reloaded ? "true" : "false");
+    
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraTest() {
+    markUiActivity();
+    
+    // Get camera type from query param (default to 0 = red light)
+    int cameraType = 0;
+    if (server.hasArg("type")) {
+        cameraType = server.arg("type").toInt();
+    }
+    
+    Serial.printf("[HTTP] POST /api/cameras/test - type=%d\n", cameraType);
+    
+    // Call the test callback to trigger display + voice
+    if (cameraTestCallback) {
+        cameraTestCallback(cameraType);
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Camera test triggered\"}");
+    } else {
+        server.send(503, "application/json", "{\"success\":false,\"message\":\"Test callback not configured\"}");
+    }
 }

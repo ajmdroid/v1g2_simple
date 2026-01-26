@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	let acknowledged = $state(false);
 	let settings = $state({
@@ -12,7 +12,8 @@
 			logGps: false,
 			logObd: false,
 			logSystem: true,
-			logDisplay: false
+			logDisplay: false,
+			logPerfMetrics: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -30,6 +31,14 @@
 	});
 	let logLoading = $state(true);
 	let logActionBusy = $state(false);
+
+	// Log viewer state
+	let logViewerOpen = $state(false);
+	let logContent = $state('');
+	let logViewerLoading = $state(false);
+	let logAutoRefresh = $state(false);
+	let logRefreshInterval = $state(null);
+	let logFilterText = $state('');
 
 	const formatBytes = (bytes) => {
 		if (!bytes) return '0 B';
@@ -57,6 +66,7 @@
 			settings.logObd = data.logObd ?? false;
 			settings.logSystem = data.logSystem ?? true;
 			settings.logDisplay = data.logDisplay ?? false;
+			settings.logPerfMetrics = data.logPerfMetrics ?? false;
 			
 			loading = false;
 		} catch (error) {
@@ -110,6 +120,7 @@
 			params.append('logObd', settings.logObd);
 			params.append('logSystem', settings.logSystem);
 			params.append('logDisplay', settings.logDisplay);
+			params.append('logPerfMetrics', settings.logPerfMetrics);
 
 			const response = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -195,9 +206,76 @@
 		settings.logObd = false;
 		settings.logSystem = true;
 		settings.logDisplay = false;
+		settings.logPerfMetrics = false;
 		
 		await saveSettings();
 	}
+
+	// Log viewer functions
+	async function loadLogContent() {
+		logViewerLoading = true;
+		try {
+			const response = await fetch('/api/debug/logs/tail?bytes=32768');
+			if (!response.ok) throw new Error('Failed to load logs');
+			const data = await response.json();
+			logContent = data.content || '[No content]';
+			// Update log info while we're at it
+			logInfo.exists = data.exists;
+			logInfo.sizeBytes = data.totalSize;
+		} catch (error) {
+			console.error('Failed to load log content:', error);
+			logContent = '[Error loading logs]';
+		} finally {
+			logViewerLoading = false;
+		}
+	}
+
+	function openLogViewer() {
+		logViewerOpen = true;
+		loadLogContent();
+	}
+
+	function closeLogViewer() {
+		logViewerOpen = false;
+		stopAutoRefresh();
+	}
+
+	function toggleAutoRefresh() {
+		if (logAutoRefresh) {
+			stopAutoRefresh();
+		} else {
+			startAutoRefresh();
+		}
+	}
+
+	function startAutoRefresh() {
+		logAutoRefresh = true;
+		logRefreshInterval = setInterval(() => {
+			loadLogContent();
+		}, 3000);  // Refresh every 3 seconds
+	}
+
+	function stopAutoRefresh() {
+		logAutoRefresh = false;
+		if (logRefreshInterval) {
+			clearInterval(logRefreshInterval);
+			logRefreshInterval = null;
+		}
+	}
+
+	// Filtered log content based on search
+	function getFilteredContent() {
+		if (!logFilterText.trim()) return logContent;
+		const lines = logContent.split('\n');
+		const filtered = lines.filter(line => 
+			line.toLowerCase().includes(logFilterText.toLowerCase())
+		);
+		return filtered.join('\n') || '[No matching lines]';
+	}
+
+	onDestroy(() => {
+		stopAutoRefresh();
+	});
 </script>
 
 <div class="space-y-6">
@@ -325,6 +403,10 @@
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logDisplay} disabled={!acknowledged}>
 								<span class="label-text text-sm">Display</span>
 							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logPerfMetrics} disabled={!acknowledged}>
+								<span class="label-text text-sm">Perf Metrics</span>
+							</label>
 						</div>
 					</div>
 				{/if}
@@ -362,6 +444,16 @@
 							🗑️ Delete Logs
 						</button>
 					</div>
+					
+					<!-- View Logs Button -->
+					<button 
+						class="btn btn-sm btn-primary w-full"
+						onclick={openLogViewer}
+						disabled={!acknowledged || !logInfo.storageReady || !logInfo.exists}
+					>
+						👁️ View Logs
+					</button>
+					
 					<p class="text-[11px] opacity-60 text-center">
 						Debug logging is {settings.enableDebugLogging ? 'enabled' : 'disabled'}; file capped at {formatBytes(logInfo.maxSizeBytes || 0)}.
 					</p>
@@ -415,3 +507,69 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Log Viewer Modal -->
+{#if logViewerOpen}
+	<div class="modal modal-open">
+		<div class="modal-box max-w-4xl w-full h-[80vh] flex flex-col">
+			<div class="flex items-center justify-between mb-4">
+				<h3 class="font-bold text-lg">📋 Log Viewer</h3>
+				<button class="btn btn-sm btn-circle btn-ghost" onclick={closeLogViewer}>✕</button>
+			</div>
+			
+			<!-- Controls -->
+			<div class="flex flex-wrap gap-2 mb-3">
+				<input 
+					type="text" 
+					placeholder="Filter logs..." 
+					class="input input-sm input-bordered flex-1 min-w-[150px]"
+					bind:value={logFilterText}
+				/>
+				<button 
+					class="btn btn-sm btn-outline"
+					onclick={loadLogContent}
+					disabled={logViewerLoading}
+				>
+					{#if logViewerLoading}
+						<span class="loading loading-spinner loading-xs"></span>
+					{:else}
+						🔄 Refresh
+					{/if}
+				</button>
+				<label class="btn btn-sm swap" class:btn-primary={logAutoRefresh} class:btn-outline={!logAutoRefresh}>
+					<input type="checkbox" checked={logAutoRefresh} onchange={toggleAutoRefresh} />
+					<span class="swap-on">⏸️ Auto</span>
+					<span class="swap-off">▶️ Auto</span>
+				</label>
+			</div>
+			
+			<!-- Size info -->
+			<div class="text-xs opacity-60 mb-2">
+				Showing last ~32KB • Total size: {formatBytes(logInfo.sizeBytes)}
+				{#if logFilterText}
+					• Filtered by: "{logFilterText}"
+				{/if}
+			</div>
+			
+			<!-- Log content -->
+			<div class="flex-1 overflow-auto bg-base-300 rounded-lg p-3 font-mono text-xs">
+				{#if logViewerLoading && !logContent}
+					<div class="flex items-center justify-center h-full">
+						<span class="loading loading-spinner loading-lg"></span>
+					</div>
+				{:else}
+					<pre class="whitespace-pre-wrap break-words">{getFilteredContent()}</pre>
+				{/if}
+			</div>
+			
+			<!-- Actions -->
+			<div class="modal-action">
+				<button class="btn btn-sm btn-outline" onclick={downloadLogs}>
+					📥 Download Full Log
+				</button>
+				<button class="btn btn-sm" onclick={closeLogViewer}>Close</button>
+			</div>
+		</div>
+		<div class="modal-backdrop bg-black/50" onclick={closeLogViewer}></div>
+	</div>
+{/if}

@@ -19,7 +19,7 @@ static constexpr size_t JSON_CAPACITY_BYTES = 16384;  // Sized for dozens of loc
 static constexpr size_t MAX_LOCKOUTS = 500;
 
 namespace {
-bool writeJsonFileAtomic(fs::FS& fs, const char* path, DynamicJsonDocument& doc) {
+bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
   String tmpPath = String(path) + ".tmp";
   File tmp = fs.open(tmpPath.c_str(), "w");
   if (!tmp) {
@@ -75,7 +75,7 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   }
 
   // Use bounded JSON document to avoid heap churn; sized for typical lockout counts
-  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, file);
   file.close();
   
@@ -126,7 +126,7 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
 }
 
 bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
-  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
+  JsonDocument doc;
   JsonArray lockoutArray = doc["lockouts"].to<JsonArray>();
   
   for (const auto& lockout : lockouts) {
@@ -319,7 +319,7 @@ bool LockoutManager::backupToSD() {
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs) return false;
   
-  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
+  JsonDocument doc;
   doc["_type"] = "v1simple_lockouts_backup";
   doc["_version"] = 1;
   doc["timestamp"] = millis();
@@ -366,7 +366,7 @@ bool LockoutManager::restoreFromSD() {
     return false;
   }
   
-  DynamicJsonDocument doc(JSON_CAPACITY_BYTES);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, file);
   file.close();
   

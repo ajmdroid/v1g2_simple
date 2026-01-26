@@ -27,7 +27,7 @@
 // Set PERF_METRICS=1 for debug builds (sampled timing + reports)
 // ============================================================================
 #ifndef PERF_METRICS
-#define PERF_METRICS 0  // Disabled for release (set to 1 for development)
+#define PERF_METRICS 0  // Disabled for release
 #endif
 
 // Compile-time toggles for monitoring and verbose alerts
