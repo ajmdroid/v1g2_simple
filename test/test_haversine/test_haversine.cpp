@@ -5,18 +5,25 @@
  * This is critical for correctly determining if an alert is within a lockout zone.
  */
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cmath>
+
+// Avoid conflict with Arduino's PI macro
+#ifndef M_PI_F
+#define M_PI_F 3.14159265358979323846f
+#endif
 
 // Inline implementation for testing (mirrors gps_handler.cpp)
 static float haversineDistance(float lat1, float lon1, float lat2, float lon2) {
     const float R = 6371000.0f;  // Earth radius in meters
-    const float PI = 3.14159265358979323846f;
     
-    float dLat = (lat2 - lat1) * PI / 180.0f;
-    float dLon = (lon2 - lon1) * PI / 180.0f;
+    float dLat = (lat2 - lat1) * M_PI_F / 180.0f;
+    float dLon = (lon2 - lon1) * M_PI_F / 180.0f;
     
     float a = sin(dLat/2) * sin(dLat/2) +
-              cos(lat1 * PI / 180.0f) * cos(lat2 * PI / 180.0f) *
+              cos(lat1 * M_PI_F / 180.0f) * cos(lat2 * M_PI_F / 180.0f) *
               sin(dLon/2) * sin(dLon/2);
     
     float c = 2 * atan2(sqrt(a), sqrt(1-a));
@@ -102,12 +109,10 @@ void test_haversine_symmetry() {
 }
 
 // ============================================================================
-// Main
+// Test Runner
 // ============================================================================
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Core functionality
     RUN_TEST(test_haversine_same_point_returns_zero);
     RUN_TEST(test_haversine_sf_to_la);
@@ -125,6 +130,20 @@ int main(int argc, char **argv) {
     
     // Properties
     RUN_TEST(test_haversine_symmetry);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);  // Allow serial to connect
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

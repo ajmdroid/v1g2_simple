@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -456,9 +459,7 @@ void test_obd_state_unknown() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Hex validation tests
     RUN_TEST(test_hex_valid_uppercase);
     RUN_TEST(test_hex_valid_lowercase);
@@ -518,6 +519,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_obd_state_enum_values);
     RUN_TEST(test_obd_state_strings);
     RUN_TEST(test_obd_state_unknown);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

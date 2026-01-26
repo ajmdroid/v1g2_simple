@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
@@ -213,9 +216,7 @@ void test_xor_obfuscate_longer_than_key() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Bounds clamping tests (4 tests)
     RUN_TEST(test_clamp_brightness_minimum_is_1);
     RUN_TEST(test_clamp_alertVolumeFadeDelaySec_1_to_10);
@@ -240,6 +241,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_xor_obfuscate_empty_string);
     RUN_TEST(test_xor_obfuscate_single_char);
     RUN_TEST(test_xor_obfuscate_longer_than_key);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -306,9 +309,7 @@ void test_ring_out_of_bounds_returns_null() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Ring index calculation tests (4 tests)
     RUN_TEST(test_ringIndex_simple);
     RUN_TEST(test_ringIndex_wraparound);
@@ -331,6 +332,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_ring_overflow_overwrites_oldest);
     RUN_TEST(test_ring_empty);
     RUN_TEST(test_ring_out_of_bounds_returns_null);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

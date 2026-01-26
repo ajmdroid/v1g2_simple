@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 
@@ -293,9 +296,7 @@ void test_all_states_have_strings() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // State to string tests
     RUN_TEST(test_ble_state_disconnected_string);
     RUN_TEST(test_ble_state_scanning_string);
@@ -338,6 +339,20 @@ int main(int argc, char **argv) {
     // State enum tests
     RUN_TEST(test_state_enum_values);
     RUN_TEST(test_all_states_have_strings);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

@@ -12,6 +12,9 @@
  * - Stress tests (rapid state changes)
  */
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 #include <array>
@@ -1466,12 +1469,10 @@ void test_sequential_test_modes() {
 }
 
 // ============================================================================
-// Main Entry Point
+// Test Runner
 // ============================================================================
 
-int main() {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Band decoding tests
     RUN_TEST(test_band_decode_laser);
     RUN_TEST(test_band_decode_ka);
@@ -1583,6 +1584,20 @@ int main() {
     RUN_TEST(test_v1_disconnects_during_test_mode);
     RUN_TEST(test_v1_connects_during_test_mode);
     RUN_TEST(test_sequential_test_modes);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main() {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

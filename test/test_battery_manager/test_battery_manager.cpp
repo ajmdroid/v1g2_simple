@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 
 // ============================================================================
@@ -288,9 +291,7 @@ void test_critical_is_also_low() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Voltage to percentage tests
     RUN_TEST(test_percent_at_full_voltage);
     RUN_TEST(test_percent_above_full_voltage);
@@ -336,6 +337,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_percent_monotonic_increase);
     RUN_TEST(test_low_not_critical_boundary);
     RUN_TEST(test_critical_is_also_low);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

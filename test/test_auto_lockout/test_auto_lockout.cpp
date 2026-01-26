@@ -10,6 +10,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cmath>
 #include <cstdint>
 #include <ctime>
@@ -488,9 +491,7 @@ void test_countUniqueDays_empty_list() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Heading difference tests (7 tests)
     RUN_TEST(test_headingDifference_same_heading);
     RUN_TEST(test_headingDifference_small_difference);
@@ -527,6 +528,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_countUniqueDays_two_days);
     RUN_TEST(test_countUniqueDays_multiple_events_same_day);
     RUN_TEST(test_countUniqueDays_empty_list);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

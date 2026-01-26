@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 
@@ -339,9 +342,7 @@ void test_wifi_client_connected_is_distinct() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Setup mode state tests
     RUN_TEST(test_setup_mode_enum_values);
     RUN_TEST(test_setup_mode_strings);
@@ -390,6 +391,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_setup_mode_boolean_logic);
     RUN_TEST(test_wifi_client_disabled_is_zero);
     RUN_TEST(test_wifi_client_connected_is_distinct);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

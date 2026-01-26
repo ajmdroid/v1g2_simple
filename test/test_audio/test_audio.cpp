@@ -9,6 +9,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 
@@ -261,7 +264,7 @@ void test_ghz_k_band_typical() {
 void test_ghz_k_band_ignores_freq() {
     // Should return 24 regardless of frequency value
     TEST_ASSERT_EQUAL_INT(24, getGHz(AlertBand::K, 0));
-    TEST_ASSERT_EQUAL_INT(24, getGHz(AlertBand::K, 99999));
+    TEST_ASSERT_EQUAL_INT(24, getGHz(AlertBand::K, 65535));  // max uint16_t
 }
 
 // ============================================================================
@@ -277,7 +280,7 @@ void test_ghz_x_band_typical() {
 void test_ghz_x_band_ignores_freq() {
     // Should return 10 regardless of frequency value
     TEST_ASSERT_EQUAL_INT(10, getGHz(AlertBand::X, 0));
-    TEST_ASSERT_EQUAL_INT(10, getGHz(AlertBand::X, 99999));
+    TEST_ASSERT_EQUAL_INT(10, getGHz(AlertBand::X, 65535));  // max uint16_t
 }
 
 // ============================================================================
@@ -369,9 +372,7 @@ void test_full_freq_parse_24150() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Band enum tests
     RUN_TEST(test_band_enum_values);
     RUN_TEST(test_band_strings);
@@ -423,6 +424,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_full_freq_parse_34749);
     RUN_TEST(test_full_freq_parse_35500);
     RUN_TEST(test_full_freq_parse_24150);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

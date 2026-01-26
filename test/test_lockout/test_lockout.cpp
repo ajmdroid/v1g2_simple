@@ -10,6 +10,9 @@
  */
 
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -351,9 +354,7 @@ void test_shouldMuteForBand_handles_band_none() {
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Validation tests (14 tests)
     RUN_TEST(test_isValidLockout_accepts_valid_lockout);
     RUN_TEST(test_isValidLockout_rejects_nan_latitude);
@@ -393,6 +394,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_shouldMuteForBand_mutes_multiple_bands);
     RUN_TEST(test_shouldMuteForBand_respects_enabled_flag);
     RUN_TEST(test_shouldMuteForBand_handles_band_none);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

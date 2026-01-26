@@ -5,6 +5,9 @@
  * Any bug here directly affects what the user sees on screen.
  */
 #include <unity.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include <cstdint>
 #include <cstring>
 #include <array>
@@ -339,12 +342,10 @@ void test_frequency_tolerance_door_opener_vs_speed_sign() {
 }
 
 // ============================================================================
-// Main
+// Test Runner
 // ============================================================================
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Band decoding
     RUN_TEST(test_decode_band_laser);
     RUN_TEST(test_decode_band_ka);
@@ -388,6 +389,20 @@ int main(int argc, char **argv) {
     RUN_TEST(test_frequency_tolerance_within);
     RUN_TEST(test_frequency_tolerance_exceeded);
     RUN_TEST(test_frequency_tolerance_door_opener_vs_speed_sign);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif
