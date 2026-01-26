@@ -20,6 +20,7 @@
 #include "battery_manager.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
+#include <HTTPClient.h>
 #include <algorithm>
 #include <map>
 #include <vector>
@@ -474,6 +475,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/cameras/reload", HTTP_POST, [this]() { handleCameraReload(); });
     server.on("/api/cameras/upload", HTTP_POST, [this]() { handleCameraUpload(); });
     server.on("/api/cameras/test", HTTP_POST, [this]() { handleCameraTest(); });
+    server.on("/api/cameras/sync-osm", HTTP_POST, [this]() { handleCameraSyncOsm(); });
     
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
@@ -2795,6 +2797,146 @@ void WiFiManager::handleCameraTest() {
     } else {
         server.send(503, "application/json", "{\"success\":false,\"message\":\"Test callback not configured\"}");
     }
+}
+
+void WiFiManager::handleCameraSyncOsm() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    Serial.println("[HTTP] POST /api/cameras/sync-osm - Starting OSM sync");
+    
+    // Check if WiFi STA is connected to internet
+    if (wifiClientState != WIFI_CLIENT_CONNECTED) {
+        server.send(400, "application/json", 
+            "{\"success\":false,\"error\":\"Not connected to external WiFi. Connect to a network first.\"}");
+        return;
+    }
+    
+    // Get filesystem for saving
+    fs::FS* fs = getFilesystem ? getFilesystem() : nullptr;
+    if (!fs) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"SD card not available\"}");
+        return;
+    }
+    
+    // Overpass query for ALPR cameras in US
+    const char* overpassQuery = 
+        "[out:json][timeout:300];"
+        "area[\"ISO3166-1\"=\"US\"]->.usa;"
+        "(node[\"surveillance:type\"=\"ALPR\"](area.usa);"
+        "way[\"surveillance:type\"=\"ALPR\"](area.usa););"
+        "out center;";
+    
+    HTTPClient http;
+    http.setTimeout(120000);  // 2 minute timeout
+    http.setConnectTimeout(30000);  // 30s connect timeout
+    
+    // Use POST to Overpass API
+    const char* overpassUrl = "https://overpass-api.de/api/interpreter";
+    
+    Serial.println("[OSM] Connecting to Overpass API...");
+    
+    if (!http.begin(overpassUrl)) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to connect to Overpass API\"}");
+        return;
+    }
+    
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    
+    String postData = "data=" + String(overpassQuery);
+    postData.replace(" ", "%20");
+    postData.replace("\"", "%22");
+    
+    Serial.printf("[OSM] Sending query (%d bytes)...\n", postData.length());
+    
+    int httpCode = http.POST(postData);
+    
+    if (httpCode != HTTP_CODE_OK) {
+        Serial.printf("[OSM] HTTP error: %d\n", httpCode);
+        http.end();
+        char errBuf[128];
+        snprintf(errBuf, sizeof(errBuf), 
+            "{\"success\":false,\"error\":\"Overpass API returned %d\"}", httpCode);
+        server.send(502, "application/json", errBuf);
+        return;
+    }
+    
+    // Get response size
+    int contentLength = http.getSize();
+    Serial.printf("[OSM] Response size: %d bytes\n", contentLength);
+    
+    // Stream the response to parse JSON
+    WiFiClient* stream = http.getStreamPtr();
+    
+    // Use streaming JSON parser
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, *stream);
+    http.end();
+    
+    if (error) {
+        Serial.printf("[OSM] JSON parse error: %s\n", error.c_str());
+        char errBuf[128];
+        snprintf(errBuf, sizeof(errBuf), 
+            "{\"success\":false,\"error\":\"JSON parse failed: %s\"}", error.c_str());
+        server.send(500, "application/json", errBuf);
+        return;
+    }
+    
+    // Extract elements
+    JsonArray elements = doc["elements"];
+    int count = elements.size();
+    Serial.printf("[OSM] Found %d ALPR cameras\n", count);
+    
+    if (count == 0) {
+        server.send(200, "application/json", 
+            "{\"success\":true,\"count\":0,\"message\":\"No cameras found\"}");
+        return;
+    }
+    
+    // Convert to NDJSON and save
+    const char* filename = "/alpr_osm.json";
+    File file = fs->open(filename, "w");
+    if (!file) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to create file\"}");
+        return;
+    }
+    
+    // Write metadata header
+    char dateBuf[32];
+    snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", 2026, 1, 26);  // TODO: use actual date
+    file.printf("{\"_meta\":{\"name\":\"OSM ALPR (US)\",\"date\":\"%s\"}}\n", dateBuf);
+    
+    int written = 0;
+    for (JsonObject el : elements) {
+        float lat = 0, lon = 0;
+        
+        if (el["type"] == "node") {
+            lat = el["lat"];
+            lon = el["lon"];
+        } else if (el["type"] == "way" && el["center"].is<JsonObject>()) {
+            lat = el["center"]["lat"];
+            lon = el["center"]["lon"];
+        } else {
+            continue;
+        }
+        
+        // Write NDJSON record: {"lat":...,"lon":...,"flg":4}
+        file.printf("{\"lat\":%.6f,\"lon\":%.6f,\"flg\":4}\n", lat, lon);
+        written++;
+    }
+    
+    file.close();
+    Serial.printf("[OSM] Saved %d cameras to %s\n", written, filename);
+    
+    // Trigger camera reload
+    bool reloaded = cameraReloadCallback ? cameraReloadCallback() : false;
+    
+    char response[256];
+    snprintf(response, sizeof(response), 
+        "{\"success\":true,\"count\":%d,\"file\":\"%s\",\"reloaded\":%s}",
+        written, filename, reloaded ? "true" : "false");
+    
+    server.send(200, "application/json", response);
 }
 
 // ==================== WiFi Client (STA) API Handlers ====================

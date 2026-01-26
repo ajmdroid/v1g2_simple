@@ -108,105 +108,42 @@
 		}
 	}
 	
-	// Sync ALPR data from OpenStreetMap via Overpass API
+	// Sync ALPR data from OpenStreetMap via device's WiFi connection
 	async function syncAlprFromOsm() {
 		if (alprSyncing) return;
 		
 		alprSyncing = true;
-		alprSyncProgress = 'Fetching ALPR data from OpenStreetMap...';
+		alprSyncProgress = 'Device is fetching ALPR data from OpenStreetMap...';
 		alprSyncCount = 0;
 		
 		try {
-			// Overpass query for ALPR cameras in US (surveillance:type=ALPR)
-			const overpassQuery = `
-[out:json][timeout:300];
-area["ISO3166-1"="US"]->.usa;
-(
-  node["surveillance:type"="ALPR"](area.usa);
-  way["surveillance:type"="ALPR"](area.usa);
-);
-out center;
-`;
-			
-			alprSyncProgress = 'Querying Overpass API (this may take a minute)...';
-			
-			const overpassUrl = 'https://overpass-api.de/api/interpreter';
-			const overpassRes = await fetch(overpassUrl, {
+			// Call the device endpoint that fetches OSM data directly
+			// Requires device to be connected to external WiFi (STA mode)
+			const res = await fetch('/api/cameras/sync-osm', { 
 				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: 'data=' + encodeURIComponent(overpassQuery)
+				// Long timeout - OSM query can take 1-2 minutes
+				signal: AbortSignal.timeout(180000)
 			});
 			
-			if (!overpassRes.ok) {
-				throw new Error(`Overpass API error: ${overpassRes.status}`);
+			const result = await res.json();
+			
+			if (!result.success) {
+				throw new Error(result.error || 'Sync failed');
 			}
 			
-			const osmData = await overpassRes.json();
-			const elements = osmData.elements || [];
-			alprSyncCount = elements.length;
-			
-			alprSyncProgress = `Converting ${elements.length} ALPR cameras to NDJSON...`;
-			
-			// Convert OSM data to NDJSON format compatible with camera_manager
-			// Format: {"lat":..., "lon":..., "flg":4, "dir":[...]}
-			const ndjsonLines = ['{"_meta":{"name":"OSM ALPR (US)","date":"' + new Date().toISOString().split('T')[0] + '"}}'];
-			
-			for (const el of elements) {
-				let lat, lon;
-				
-				if (el.type === 'node') {
-					lat = el.lat;
-					lon = el.lon;
-				} else if (el.type === 'way' && el.center) {
-					lat = el.center.lat;
-					lon = el.center.lon;
-				} else {
-					continue;
-				}
-				
-				const record = {
-					lat: parseFloat(lat.toFixed(6)),
-					lon: parseFloat(lon.toFixed(6)),
-					flg: 4  // ALPR type
-				};
-				
-				// Add direction if available
-				const direction = el.tags?.direction;
-				if (direction) {
-					const dir = parseFloat(direction);
-					if (!isNaN(dir)) {
-						record.dir = [Math.round(dir)];
-					}
-				}
-				
-				ndjsonLines.push(JSON.stringify(record));
-			}
-			
-			const ndjsonData = ndjsonLines.join('\n');
-			
-			alprSyncProgress = `Uploading ${ndjsonLines.length - 1} cameras to device...`;
-			
-			// POST to device
-			const uploadRes = await fetch('/api/cameras/upload', {
-				method: 'POST',
-				headers: { 'Content-Type': 'text/plain' },
-				body: ndjsonData
-			});
-			
-			if (!uploadRes.ok) {
-				throw new Error(`Upload failed: ${uploadRes.status}`);
-			}
-			
-			const result = await uploadRes.json();
-			
+			alprSyncCount = result.count;
 			alprSyncProgress = '';
 			await fetchCameraStatus();
-			message = { type: 'success', text: `Synced ${alprSyncCount} ALPR cameras from OpenStreetMap` };
+			message = { type: 'success', text: `Synced ${result.count} ALPR cameras from OpenStreetMap` };
 			
 		} catch (e) {
 			console.error('ALPR sync error:', e);
 			alprSyncProgress = '';
-			message = { type: 'error', text: `Sync failed: ${e.message}` };
+			if (e.name === 'TimeoutError') {
+				message = { type: 'error', text: 'Sync timed out. The OSM query may take a while - try again.' };
+			} else {
+				message = { type: 'error', text: `Sync failed: ${e.message}` };
+			}
 		} finally {
 			alprSyncing = false;
 		}
@@ -1232,7 +1169,7 @@ out center;
 						<div class="divider my-1 text-xs text-base-content/40">— or sync from internet —</div>
 						
 						<p class="text-xs text-base-content/60">
-							Sync ALPR cameras from OpenStreetMap. Requires your phone to have internet access while connected to V1 Simple WiFi (or fetch first, then connect).
+							Sync ALPR cameras from OpenStreetMap. Requires V1 Simple to be connected to an external WiFi network (Settings → WiFi Client).
 						</p>
 						
 						{#if alprSyncProgress}
@@ -1259,7 +1196,7 @@ out center;
 						</button>
 						
 						<p class="text-xs text-base-content/50 mt-1">
-							⚠️ Requires internet on your phone. ~80,000 US cameras, may take 1-2 minutes.
+							⚠️ Requires WiFi connection to internet. ~80,000 US cameras, may take 1-2 minutes.
 						</p>
 						
 						<div class="divider my-1 text-xs text-base-content/40">— download tools —</div>

@@ -193,6 +193,7 @@ private:
     void handleCameraReload();
     void handleCameraUpload();
     void handleCameraTest();
+    void handleCameraSyncOsm();
     void handleWifiClientStatus();
     void handleWifiClientScan();
     void handleWifiClientConnect();
