@@ -2487,12 +2487,20 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     bool needsRedraw = false;
     
+    // Frequency tolerance for V1 jitter (V1 can report ±1-3 MHz variation between packets)
+    const uint32_t FREQ_TOLERANCE_MHZ = 5;
+    auto freqDifferent = [FREQ_TOLERANCE_MHZ](uint32_t a, uint32_t b) -> bool {
+        uint32_t diff = (a > b) ? (a - b) : (b - a);
+        return diff > FREQ_TOLERANCE_MHZ;
+    };
+    
     // Always redraw on first run, entering live mode, or when transitioning from persisted mode
     if (firstRun) { needsRedraw = true; firstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
     // V1 is source of truth - always redraw when priority alert changes
-    else if (priority.frequency != lastPriority.frequency) { needsRedraw = true; }
+    // Use frequency tolerance to avoid full redraws from V1 jitter
+    else if (freqDifferent(priority.frequency, lastPriority.frequency)) { needsRedraw = true; }
     else if (priority.band != lastPriority.band) { needsRedraw = true; }
     else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
