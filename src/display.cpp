@@ -4439,8 +4439,10 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     static char lastTypeName[16] = {0};
     static int lastCameraCount = 0;
     
-    // Clamp count to max supported
-    if (count > MAX_CAMERA_CARDS) count = MAX_CAMERA_CARDS;
+    // Max supported: 1 primary + MAX_CAMERA_CARDS (2) = 3 cameras total
+    // When V1 has alerts, max is MAX_CAMERA_CARDS since all become cards
+    const int MAX_TOTAL_CAMERAS = MAX_CAMERA_CARDS + 1;
+    if (count > MAX_TOTAL_CAMERAS) count = MAX_TOTAL_CAMERAS;
     
     bool active = (count > 0);
     const char* typeName = active ? cameras[0].typeName : "";
@@ -4455,25 +4457,30 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     
     // === HANDLE CARD STATES ===
     // Set up camera cards for secondary display
+    // MAX_CAMERA_CARDS = 2 card slots available
     if (active) {
         if (showPrimaryAsCard) {
-            // V1 has alerts - all cameras become cards
-            for (int i = 0; i < count; i++) {
+            // V1 has alerts - all cameras become cards (max 2)
+            int cardCount = (count > MAX_CAMERA_CARDS) ? MAX_CAMERA_CARDS : count;
+            for (int i = 0; i < cardCount; i++) {
                 setCameraAlertState(i, true, cameras[i].typeName, cameras[i].distance_m, cameras[i].color);
             }
             // Clear any unused slots
-            for (int i = count; i < MAX_CAMERA_CARDS; i++) {
+            for (int i = cardCount; i < MAX_CAMERA_CARDS; i++) {
                 setCameraAlertState(i, false, "", 0, 0);
             }
         } else {
-            // No V1 alerts - primary in main area, secondary (if any) as card
-            setCameraAlertState(0, false, "", 0, 0);  // Primary not a card
-            if (count > 1) {
-                // Secondary camera gets card slot 0 (since slot 0 is now for first card)
-                setCameraAlertState(0, true, cameras[1].typeName, cameras[1].distance_m, cameras[1].color);
+            // No V1 alerts - primary (cameras[0]) in main area
+            // Secondary cameras (cameras[1], cameras[2]) get card slots 0, 1
+            for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
+                int cameraIndex = i + 1;  // Skip cameras[0] which is primary
+                if (cameraIndex < count) {
+                    setCameraAlertState(i, true, cameras[cameraIndex].typeName, 
+                                       cameras[cameraIndex].distance_m, cameras[cameraIndex].color);
+                } else {
+                    setCameraAlertState(i, false, "", 0, 0);
+                }
             }
-            // Clear second card slot
-            setCameraAlertState(1, false, "", 0, 0);
         }
     } else {
         // No cameras - clear all card states

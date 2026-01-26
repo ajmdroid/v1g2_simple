@@ -592,8 +592,10 @@ static AlertData persistedAlert;
 static unsigned long alertClearedTime = 0;
 static bool alertPersistenceActive = false;
 
-// Camera alert tracking - supports up to 2 simultaneous approaching cameras
-static constexpr int MAX_ACTIVE_CAMERAS = 2;
+// Camera alert tracking - supports up to 3 simultaneous approaching cameras
+// Display: 1 primary (main area) + 2 secondary cards when no V1 alerts
+// When V1 has alerts: up to 2 cameras shown as cards (V1 gets primary)
+static constexpr int MAX_ACTIVE_CAMERAS = 3;
 static std::vector<NearbyCameraResult> activeCameraAlerts;  // Active approaching cameras, sorted by distance
 static unsigned long cameraAlertStartMs = 0;
 static unsigned long lastCameraCheckMs = 0;
@@ -610,8 +612,12 @@ static std::vector<PassedCameraTracker> recentlyPassedCameras;
 static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;  // Remember passed cameras for 1 minute
 
 // Camera test alert mode (from web UI)
+// Test cycles through: 1 camera → 2 cameras → 3 cameras to show card display
 static bool cameraTestActive = false;
 static unsigned long cameraTestEndMs = 0;
+static int cameraTestPhase = 0;  // 0=1cam, 1=2cam, 2=3cam
+static unsigned long cameraTestPhaseStartMs = 0;
+static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000;  // 3 seconds per phase
 static char cameraTestTypeName[16] = {0};
 static float cameraTestDistance = 500.0f;
 
@@ -693,25 +699,44 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
 
 // Helper: Update camera card state BEFORE display.update() is called
 // This ensures the secondary card area shows camera info when V1 has alerts
-// Supports multiple cameras: closest gets primary, second closest gets card
+// Supports up to 3 cameras: primary in main area + 2 secondary cards
 static void updateCameraCardState(bool v1HasAlerts) {
     const V1Settings& dispSettings = settingsManager.get();
     
-    // Test mode takes priority - shows single test camera
+    // Test mode takes priority - cycles through 1→2→3 cameras to demo card display
     if (cameraTestActive && millis() < cameraTestEndMs) {
-        if (v1HasAlerts) {
-            // Show test camera as secondary card when V1 has alerts
-            display.setCameraAlertState(0, true, cameraTestTypeName, cameraTestDistance, dispSettings.colorCameraAlert);
-            display.setCameraAlertState(1, false, "", 0, 0);
+        // Update test phase (cycles every 3 seconds)
+        unsigned long elapsed = millis() - cameraTestPhaseStartMs;
+        int newPhase = (elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3;
+        if (newPhase != cameraTestPhase) {
+            cameraTestPhase = newPhase;
+            Serial.printf("[Camera] Test phase: %d camera(s)\n", cameraTestPhase + 1);
+        }
+        
+        // Test shows: phase 0 = 1 cam, phase 1 = 2 cams, phase 2 = 3 cams
+        int numTestCameras = cameraTestPhase + 1;
+        
+        // Simulated test camera data
+        static const char* testTypes[] = {"RED LIGHT", "SPEED", "ALPR"};
+        static const float testDistances[] = {500.0f, 800.0f, 1200.0f};
+        
+        // Set up card states based on phase
+        // Card slot 0 = 2nd camera, Card slot 1 = 3rd camera (primary is main area)
+        if (numTestCameras >= 2) {
+            display.setCameraAlertState(0, true, testTypes[1], testDistances[1], dispSettings.colorCameraAlert);
         } else {
-            // No cards needed - test camera shows in main area
-            display.clearAllCameraAlerts();
+            display.setCameraAlertState(0, false, "", 0, 0);
+        }
+        if (numTestCameras >= 3) {
+            display.setCameraAlertState(1, true, testTypes[2], testDistances[2], dispSettings.colorCameraAlert);
+        } else {
+            display.setCameraAlertState(1, false, "", 0, 0);
         }
     } else if (!activeCameraAlerts.empty()) {
         // Real camera alerts active
         if (v1HasAlerts) {
-            // V1 has priority - all cameras show as cards
-            for (int i = 0; i < MAX_ACTIVE_CAMERAS; i++) {
+            // V1 has priority - cameras 1 & 2 show as cards (max 2 card slots)
+            for (int i = 0; i < 2; i++) {
                 if (i < (int)activeCameraAlerts.size()) {
                     display.setCameraAlertState(i, true, 
                         activeCameraAlerts[i].camera.getShortTypeName(),
@@ -722,17 +747,20 @@ static void updateCameraCardState(bool v1HasAlerts) {
                 }
             }
         } else {
-            // No V1 alerts - primary camera in main area, secondary (if any) as card
-            // Primary camera (index 0) shows in main display, not as card
-            display.setCameraAlertState(0, false, "", 0, 0);
-            // Secondary camera (index 1) shows as card if present
-            if (activeCameraAlerts.size() > 1) {
-                display.setCameraAlertState(0, true,  // Use card slot 0 for the secondary camera
-                    activeCameraAlerts[1].camera.getShortTypeName(),
-                    activeCameraAlerts[1].distance_m,
+            // No V1 alerts - primary camera (index 0) in main area
+            // Secondary cameras (index 1, 2) show as cards
+            int cardIdx = 0;
+            for (int i = 1; i < (int)activeCameraAlerts.size() && cardIdx < 2; i++) {
+                display.setCameraAlertState(cardIdx, true,
+                    activeCameraAlerts[i].camera.getShortTypeName(),
+                    activeCameraAlerts[i].distance_m,
                     dispSettings.colorCameraAlert);
+                cardIdx++;
             }
-            display.setCameraAlertState(1, false, "", 0, 0);  // Clear second card slot
+            // Clear unused card slots
+            for (; cardIdx < 2; cardIdx++) {
+                display.setCameraAlertState(cardIdx, false, "", 0, 0);
+            }
         }
     } else {
         // No camera alerts - clear all card states
@@ -1068,16 +1096,18 @@ void startWifi() {
                 break;
         }
         
-        // Set up test alert mode - persists for 5 seconds
+        // Set up test alert mode - cycles through 1→2→3 cameras over 9 seconds
         cameraTestActive = true;
-        cameraTestEndMs = millis() + 5000;
+        cameraTestEndMs = millis() + 9000;  // 3 phases × 3 seconds each
+        cameraTestPhase = 0;
+        cameraTestPhaseStartMs = millis();
         strncpy(cameraTestTypeName, typeName, sizeof(cameraTestTypeName) - 1);
         cameraTestDistance = 500.0f;
         
         // Play voice alert
         play_camera_voice(voiceType);
         
-        Serial.printf("[Camera] Test alert: %s (type %d) - showing for 5s\n", typeName, type);
+        Serial.printf("[Camera] Test alert: %s - cycling 1→2→3 cameras over 9s\n", typeName);
     });
     
     SerialLog.println("[WiFi] Initialized");
@@ -2776,26 +2806,37 @@ void loop() {
     bool v1HasActiveAlerts = parser.hasAlerts();
     
     // Update camera alert display (if active)
-    // Test mode takes priority
+    // Test mode takes priority - cycles through 1→2→3 cameras
     if (cameraTestActive) {
         if (millis() < cameraTestEndMs) {
-            // Simulate countdown
-            cameraTestDistance -= 5.0f;  // Decrease distance to simulate approach
+            // Simulate countdown for primary camera
+            cameraTestDistance -= 2.0f;  // Decrease distance to simulate approach
             if (cameraTestDistance < 50.0f) cameraTestDistance = 50.0f;
             
+            // Calculate current test phase (0=1cam, 1=2cam, 2=3cam)
+            unsigned long elapsed = millis() - cameraTestPhaseStartMs;
+            int numCameras = ((elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3) + 1;
+            
             const V1Settings& dispSettings = settingsManager.get();
-            display.updateCameraAlert(
-                true,
-                cameraTestTypeName,
-                cameraTestDistance,
-                true,
-                dispSettings.colorCameraAlert,
-                v1HasActiveAlerts  // Show as card if V1 has alerts
-            );
+            
+            // Build camera info array based on test phase
+            static const char* testTypes[] = {"RED LIGHT", "SPEED", "ALPR"};
+            static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
+            
+            V1Display::CameraAlertInfo camInfos[3];
+            for (int i = 0; i < numCameras; i++) {
+                camInfos[i].typeName = testTypes[i];
+                camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);  // Slowly approach
+                if (camInfos[i].distance_m < 50.0f) camInfos[i].distance_m = 50.0f;
+                camInfos[i].color = dispSettings.colorCameraAlert;
+            }
+            
+            display.updateCameraAlerts(camInfos, numCameras, v1HasActiveAlerts);
         } else {
             // Test complete
             cameraTestActive = false;
-            display.clearCameraAlert();
+            cameraTestPhase = 0;
+            display.clearCameraAlerts();
             Serial.println("[Camera] Test alert ended");
         }
     } else if (!activeCameraAlerts.empty()) {
