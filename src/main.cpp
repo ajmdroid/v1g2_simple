@@ -719,17 +719,22 @@ static void updateCameraCardState(bool v1HasAlerts) {
         
         // Secondary camera types (primary uses cameraTestTypeName set by user)
         static const char* secondaryTypes[] = {"SPEED", "ALPR"};
-        static const float testDistances[] = {800.0f, 1200.0f};
+        // Use decreasing distances to simulate approach (same formula as camera section)
+        static const float baseDistances[] = {800.0f, 1200.0f};
+        float dist0 = baseDistances[0] - (elapsed * 0.01f);
+        float dist1 = baseDistances[1] - (elapsed * 0.01f);
+        if (dist0 < 50.0f) dist0 = 50.0f;
+        if (dist1 < 50.0f) dist1 = 50.0f;
         
         // Set up card states based on phase
         // Card slot 0 = 2nd camera, Card slot 1 = 3rd camera (primary is main area)
         if (numTestCameras >= 2) {
-            display.setCameraAlertState(0, true, secondaryTypes[0], testDistances[0], dispSettings.colorCameraAlert);
+            display.setCameraAlertState(0, true, secondaryTypes[0], dist0, dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(0, false, "", 0, 0);
         }
         if (numTestCameras >= 3) {
-            display.setCameraAlertState(1, true, secondaryTypes[1], testDistances[1], dispSettings.colorCameraAlert);
+            display.setCameraAlertState(1, true, secondaryTypes[1], dist1, dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(1, false, "", 0, 0);
         }
@@ -2815,6 +2820,9 @@ void loop() {
     
     // Update camera alert display (if active)
     // Test mode takes priority - cycles through 1→2→3 cameras
+    // NOTE: When V1 IS connected, updateCameraCardState() already handles card state
+    // and display.update() already draws them. Only call updateCameraAlerts() when
+    // V1 is NOT connected (camera shows in main area, not as card).
     if (cameraTestActive) {
         if (millis() < cameraTestEndMs) {
             // Simulate countdown for primary camera
@@ -2825,30 +2833,35 @@ void loop() {
             unsigned long elapsed = millis() - cameraTestPhaseStartMs;
             int numCameras = ((elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3) + 1;
             
-            const V1Settings& dispSettings = settingsManager.get();
-            
-            // Build camera info array based on test phase
-            // Primary (index 0) uses the user-selected test type
-            // Secondary cameras use different types for variety
-            static const char* secondaryTypes[] = {"SPEED", "ALPR", "RED LIGHT"};
-            static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
-            
-            V1Display::CameraAlertInfo camInfos[3];
-            // Primary camera: user-selected type (stored in cameraTestTypeName)
-            camInfos[0].typeName = cameraTestTypeName;
-            camInfos[0].distance_m = baseDistances[0] - (elapsed * 0.01f);
-            if (camInfos[0].distance_m < 50.0f) camInfos[0].distance_m = 50.0f;
-            camInfos[0].color = dispSettings.colorCameraAlert;
-            
-            // Secondary cameras: cycle through other types
-            for (int i = 1; i < numCameras; i++) {
-                camInfos[i].typeName = secondaryTypes[i - 1];
-                camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);
-                if (camInfos[i].distance_m < 50.0f) camInfos[i].distance_m = 50.0f;
-                camInfos[i].color = dispSettings.colorCameraAlert;
+            // When V1 is connected, cards are handled by updateCameraCardState() + display.update()
+            // Only call updateCameraAlerts() when V1 is NOT connected (for main area display)
+            if (!v1HasActiveAlerts) {
+                const V1Settings& dispSettings = settingsManager.get();
+                
+                // Build camera info array based on test phase
+                // Primary (index 0) uses the user-selected test type
+                // Secondary cameras use different types for variety
+                static const char* secondaryTypes[] = {"SPEED", "ALPR", "RED LIGHT"};
+                static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
+                
+                V1Display::CameraAlertInfo camInfos[3];
+                // Primary camera: user-selected type (stored in cameraTestTypeName)
+                camInfos[0].typeName = cameraTestTypeName;
+                camInfos[0].distance_m = baseDistances[0] - (elapsed * 0.01f);
+                if (camInfos[0].distance_m < 50.0f) camInfos[0].distance_m = 50.0f;
+                camInfos[0].color = dispSettings.colorCameraAlert;
+                
+                // Secondary cameras: cycle through other types
+                for (int i = 1; i < numCameras; i++) {
+                    camInfos[i].typeName = secondaryTypes[i - 1];
+                    camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);
+                    if (camInfos[i].distance_m < 50.0f) camInfos[i].distance_m = 50.0f;
+                    camInfos[i].color = dispSettings.colorCameraAlert;
+                }
+                
+                display.updateCameraAlerts(camInfos, numCameras, v1HasActiveAlerts);
             }
-            
-            display.updateCameraAlerts(camInfos, numCameras, v1HasActiveAlerts);
+            // When V1 IS connected, cards already handled by updateCameraCardState()
         } else {
             // Test complete
             cameraTestActive = false;
