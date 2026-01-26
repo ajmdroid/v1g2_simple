@@ -33,25 +33,25 @@ struct CameraRecord {
   
   CameraType getCameraType() const { return static_cast<CameraType>(type); }
   
-  // Get type name for display
+  // Get type name for display (full readable name for main display)
   const char* getTypeName() const {
     switch (getCameraType()) {
-      case CameraType::RedLightAndSpeed: return "RLC+SPD";
+      case CameraType::RedLightAndSpeed: return "RED LIGHT + SPEED";
       case CameraType::SpeedCamera: return "SPEED";
-      case CameraType::RedLightCamera: return "REDLIGHT";
+      case CameraType::RedLightCamera: return "RED LIGHT";
       case CameraType::ALPR: return "ALPR";
-      default: return "CAM";
+      default: return "CAMERA";
     }
   }
   
-  // Get short type name for display (3 chars max)
+  // Get short type name for card display (fits in secondary card bottom row)
   const char* getShortTypeName() const {
     switch (getCameraType()) {
-      case CameraType::RedLightAndSpeed: return "RLS";
-      case CameraType::SpeedCamera: return "SPD";
-      case CameraType::RedLightCamera: return "RLC";
-      case CameraType::ALPR: return "LPR";
-      default: return "CAM";
+      case CameraType::RedLightAndSpeed: return "RLC+SPD";
+      case CameraType::SpeedCamera: return "SPEED";
+      case CameraType::RedLightCamera: return "RED LIGHT";
+      case CameraType::ALPR: return "ALPR";
+      default: return "CAMERA";
     }
   }
 };

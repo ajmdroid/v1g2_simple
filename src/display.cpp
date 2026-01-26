@@ -2983,10 +2983,11 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         
         // Handle camera card separately
         if (cardsToDraw[i].isCamera) {
-            // === CAMERA ALERT CARD ===
+            // === CAMERA ALERT CARD (V1 card style) ===
+            // Matches V1 card layout: Top row = Arrow + Badge + Info, Bottom row = Type label
             uint16_t camColor = cameraCardColor;
             
-            // Card background - darker version of camera color
+            // Card background - darker version of camera color (same as V1 cards)
             uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
             uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
             uint8_t b = (camColor & 0x1F) * 3 / 10;
@@ -2995,32 +2996,24 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
             DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, camColor);
             
-            // Camera icon at left (simple camera shape)
-            const int iconX = cardX + 14;
-            const int iconY = cardY + 12;
-            const int iconW = 18;
-            const int iconH = 14;
-            // Camera body
-            FILL_RECT(iconX, iconY, iconW, iconH, camColor);
-            // Lens circle
-            tft->fillCircle(iconX + iconW/2, iconY + iconH/2, 5, bgCol);
-            tft->drawCircle(iconX + iconW/2, iconY + iconH/2, 5, camColor);
-            // Flash bump
-            FILL_RECT(iconX + iconW - 5, iconY - 4, 5, 4, camColor);
+            // === TOP ROW: Direction arrow + CAM badge + Distance ===
+            // (Matches V1 card: Arrow + Band + Frequency)
+            const int contentCenterY = cardY + 18;
+            int topRowY = cardY + 11;
             
-            // Type name to the right of icon
-            int labelX = cardX + 38;
-            int topRowY = cardY + 8;
-            tft->setTextColor(TFT_WHITE);
-            tft->setTextSize(1);
+            // Direction arrow on left (always forward for approaching camera)
+            int arrowX = cardX + 18;
+            int arrowCY = contentCenterY;
+            tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, TFT_WHITE);
+            
+            // "CAM" badge (like band indicator on V1 cards)
+            int labelX = cardX + 36;
+            tft->setTextColor(camColor);
+            tft->setTextSize(2);
             tft->setCursor(labelX, topRowY);
-            // Truncate type name if needed
-            char shortType[12];
-            strncpy(shortType, cameraCardTypeName, 11);
-            shortType[11] = '\0';
-            tft->print(shortType);
+            tft->print("CAM");
             
-            // Distance below type (larger font)
+            // Distance after CAM (like frequency on V1 cards)
             char distStr[16];
             if (cameraCardDistance < 1609.34f) {  // Less than 1 mile
                 int distFt = static_cast<int>(cameraCardDistance * 3.28084f);
@@ -3028,18 +3021,23 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             } else {
                 snprintf(distStr, sizeof(distStr), "%.1f mi", cameraCardDistance / 1609.34f);
             }
-            
-            tft->setTextSize(2);
-            tft->setTextColor(camColor);
-            int distY = cardY + 20;
-            tft->setCursor(labelX, distY);
+            tft->setTextColor(TFT_WHITE);
+            int distX = labelX + 3 * 12 + 4;  // After "CAM" + spacing
+            tft->setCursor(distX, topRowY);
             tft->print(distStr);
             
-            // Forward arrow indicator at bottom (shows approaching)
-            const int arrowY = cardY + cardH - 14;
-            const int arrowX = cardX + cardW / 2;
-            // Draw forward-pointing arrow
-            tft->fillTriangle(arrowX, arrowY - 6, arrowX - 8, arrowY + 4, arrowX + 8, arrowY + 4, camColor);
+            // === BOTTOM ROW: Camera type name centered ===
+            // (Replaces signal meter - cameras don't have signal strength)
+            const int bottomRowY = cardY + 38;
+            tft->setTextSize(1);
+            tft->setTextColor(camColor);
+            
+            // Center the type name in the card
+            int typeLen = strlen(cameraCardTypeName);
+            int typePixelWidth = typeLen * 6;  // size 1 = 6 pixels per char
+            int typeX = cardX + (cardW - typePixelWidth) / 2;
+            tft->setCursor(typeX, bottomRowY);
+            tft->print(cameraCardTypeName);
             
             continue;  // Skip V1 card drawing code
         }
@@ -4450,22 +4448,22 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
         setCameraAlertState(false, "", 0, 0);
     }
     
-    // Camera alert uses same area as frequency display
-    const int leftMargin = 135;   // After band indicators
-    const int rightMargin = 200;  // Before signal bars
+    // Camera alert uses same area as frequency display (V1 frequency style)
+    const int leftMargin = 135;   // After band indicators (same as V1 frequency)
+    const int rightMargin = 200;  // Before signal bars (same as V1 frequency)
     const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
-    // Vertical positioning - same as frequency display
+    // Vertical positioning - same as V1 frequency display
     const int muteIconBottom = 33;
     int effectiveHeight = getEffectiveScreenHeight();
-    const int fontSize = 75;
+    const int fontSize = 75;  // Same font size as V1 frequency
     int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
     
-    // Clear area dimensions
+    // Clear area dimensions (larger to include type label above)
     const int clearX = leftMargin + 10;
-    const int clearY = freqY - 10;
+    const int clearY = freqY - 25;  // Extra space for type label above
     const int clearW = maxWidth - 10;
-    const int clearH = fontSize + 25;
+    const int clearH = fontSize + 40;  // Taller to fit type label + distance
     
     if (!active) {
         // Clear camera alert area if was previously shown
@@ -4495,19 +4493,19 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
     strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
     lastTypeName[sizeof(lastTypeName) - 1] = '\0';
     
-    // Clear the frequency area
+    // Clear the display area
     FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
     
-    // Camera type label at top (e.g., "RED LIGHT", "SPEED", "ALPR")
+    // === CAMERA TYPE LABEL (above distance, like band indicator position) ===
     tft->setTextSize(2);
     tft->setTextColor(color);
     int typeLen = strlen(typeName);
     int typePixelWidth = typeLen * 12;  // size 2 = 12 pixels per char
     int typeX = leftMargin + (maxWidth - typePixelWidth) / 2;
-    tft->setCursor(typeX, clearY + 5);
+    tft->setCursor(typeX, clearY + 2);
     tft->print(typeName);
     
-    // Distance in large font - centered below type
+    // === DISTANCE IN LARGE 75pt SEGMENT7 FONT (same as V1 frequency) ===
     char distStr[16];
     if (distance_m < 1609.34f) {  // Less than 1 mile
         int distFt = static_cast<int>(distance_m * 3.28084f);
@@ -4516,25 +4514,26 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
         snprintf(distStr, sizeof(distStr), "%.1f mi", distance_m / 1609.34f);
     }
     
-    // Use OpenFontRender for distance if available, otherwise tft
+    // Use OpenFontRender Segment7 at 75pt (matching V1 frequency)
     if (ofrSegment7Initialized) {
-        ofrSegment7.setFontSize(50);
+        ofrSegment7.setFontSize(fontSize);  // 75pt - same as V1 frequency
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
         ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
         ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         
-        FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, 50, Align::Left, Layout::Horizontal, distStr);
+        FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, distStr);
         int distTextWidth = bbox.xMax - bbox.xMin;
         int distX = leftMargin + (maxWidth - distTextWidth) / 2;
-        ofrSegment7.setCursor(distX, clearY + 35);
+        ofrSegment7.setCursor(distX, freqY);  // Same Y position as V1 frequency
         ofrSegment7.printf("%s", distStr);
     } else {
-        tft->setTextSize(3);
+        // Fallback to larger tft font
+        tft->setTextSize(4);
         int distLen = strlen(distStr);
-        int distX = leftMargin + (maxWidth - distLen * 18) / 2;
-        tft->setCursor(distX, clearY + 35);
+        int distX = leftMargin + (maxWidth - distLen * 24) / 2;
+        tft->setCursor(distX, freqY);
         tft->print(distStr);
     }
     
