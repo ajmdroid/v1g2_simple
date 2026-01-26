@@ -129,5 +129,3 @@ public:
     int16_t getTextWidth(const char* text) { return strlen(text) * 10; }
     int16_t getTextHeight(const char* text) { return 20; }
 };
-
-#endif // display_driver.h mock

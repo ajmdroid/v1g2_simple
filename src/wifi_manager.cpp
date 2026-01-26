@@ -2263,6 +2263,9 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorStatusGpsWarn"] = s.colorStatusGpsWarn;
     doc["colorStatusCam"] = s.colorStatusCam;
     doc["colorStatusObd"] = s.colorStatusObd;
+    doc["colorWiFiConnected"] = s.colorWiFiConnected;
+    doc["colorRssiV1"] = s.colorRssiV1;
+    doc["colorRssiProxy"] = s.colorRssiProxy;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     
     // Display visibility
@@ -2278,6 +2281,57 @@ void WiFiManager::handleSettingsBackup() {
     // Development/Debug
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
     doc["enableDebugLogging"] = s.enableDebugLogging;
+    doc["logAlerts"] = s.logAlerts;
+    doc["logWifi"] = s.logWifi;
+    doc["logBle"] = s.logBle;
+    doc["logGps"] = s.logGps;
+    doc["logObd"] = s.logObd;
+    doc["logSystem"] = s.logSystem;
+    doc["logDisplay"] = s.logDisplay;
+    doc["logPerfMetrics"] = s.logPerfMetrics;
+    doc["logAudio"] = s.logAudio;
+    doc["logCamera"] = s.logCamera;
+    doc["logLockout"] = s.logLockout;
+    doc["logTouch"] = s.logTouch;
+    
+    // WiFi client settings
+    doc["wifiMode"] = (int)s.wifiMode;
+    doc["wifiClientEnabled"] = s.wifiClientEnabled;
+    doc["wifiClientSSID"] = s.wifiClientSSID;
+    
+    // GPS settings
+    doc["gpsEnabled"] = s.gpsEnabled;
+    
+    // OBD settings
+    doc["obdEnabled"] = s.obdEnabled;
+    doc["obdDeviceAddress"] = s.obdDeviceAddress;
+    doc["obdDeviceName"] = s.obdDeviceName;
+    doc["obdPin"] = s.obdPin;
+    
+    // Auto-lockout settings
+    doc["lockoutEnabled"] = s.lockoutEnabled;
+    doc["lockoutKaProtection"] = s.lockoutKaProtection;
+    doc["lockoutDirectionalUnlearn"] = s.lockoutDirectionalUnlearn;
+    doc["lockoutFreqToleranceMHz"] = s.lockoutFreqToleranceMHz;
+    doc["lockoutLearnCount"] = s.lockoutLearnCount;
+    doc["lockoutUnlearnCount"] = s.lockoutUnlearnCount;
+    doc["lockoutManualDeleteCount"] = s.lockoutManualDeleteCount;
+    doc["lockoutLearnIntervalHours"] = s.lockoutLearnIntervalHours;
+    doc["lockoutUnlearnIntervalHours"] = s.lockoutUnlearnIntervalHours;
+    doc["lockoutMaxSignalStrength"] = s.lockoutMaxSignalStrength;
+    doc["lockoutMaxDistanceM"] = s.lockoutMaxDistanceM;
+    
+    // Camera alert settings
+    doc["cameraAlertsEnabled"] = s.cameraAlertsEnabled;
+    doc["cameraAlertDistanceM"] = s.cameraAlertDistanceM;
+    doc["cameraAlertRedLight"] = s.cameraAlertRedLight;
+    doc["cameraAlertSpeed"] = s.cameraAlertSpeed;
+    doc["cameraAlertALPR"] = s.cameraAlertALPR;
+    doc["cameraAudioEnabled"] = s.cameraAudioEnabled;
+    doc["colorCameraAlert"] = s.colorCameraAlert;
+    
+    // Auto power-off
+    doc["autoPowerOffMinutes"] = s.autoPowerOffMinutes;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -2429,6 +2483,14 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorPersisted"].is<int>()) s.colorPersisted = doc["colorPersisted"];
     if (doc["colorVolumeMain"].is<int>()) s.colorVolumeMain = doc["colorVolumeMain"];
     if (doc["colorVolumeMute"].is<int>()) s.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["colorWiFiConnected"].is<int>()) s.colorWiFiConnected = doc["colorWiFiConnected"];
+    if (doc["colorRssiV1"].is<int>()) s.colorRssiV1 = doc["colorRssiV1"];
+    if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorStatusGps"].is<int>()) s.colorStatusGps = doc["colorStatusGps"];
+    if (doc["colorStatusGpsWarn"].is<int>()) s.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
+    if (doc["colorStatusCam"].is<int>()) s.colorStatusCam = doc["colorStatusCam"];
+    if (doc["colorStatusObd"].is<int>()) s.colorStatusObd = doc["colorStatusObd"];
+    if (doc["colorCameraAlert"].is<int>()) s.colorCameraAlert = doc["colorCameraAlert"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     
     // Display visibility
@@ -2451,6 +2513,49 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["logObd"].is<bool>()) s.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
     if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
+    if (doc["logPerfMetrics"].is<bool>()) s.logPerfMetrics = doc["logPerfMetrics"];
+    if (doc["logAudio"].is<bool>()) s.logAudio = doc["logAudio"];
+    if (doc["logCamera"].is<bool>()) s.logCamera = doc["logCamera"];
+    if (doc["logLockout"].is<bool>()) s.logLockout = doc["logLockout"];
+    if (doc["logTouch"].is<bool>()) s.logTouch = doc["logTouch"];
+    
+    // WiFi client settings
+    if (doc["wifiMode"].is<int>()) s.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
+    if (doc["wifiClientEnabled"].is<bool>()) s.wifiClientEnabled = doc["wifiClientEnabled"];
+    if (doc["wifiClientSSID"].is<const char*>()) s.wifiClientSSID = doc["wifiClientSSID"].as<String>();
+    
+    // GPS settings
+    if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
+    
+    // OBD settings
+    if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
+    if (doc["obdDeviceAddress"].is<const char*>()) s.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
+    if (doc["obdDeviceName"].is<const char*>()) s.obdDeviceName = doc["obdDeviceName"].as<String>();
+    if (doc["obdPin"].is<const char*>()) s.obdPin = doc["obdPin"].as<String>();
+    
+    // Auto-lockout settings
+    if (doc["lockoutEnabled"].is<bool>()) s.lockoutEnabled = doc["lockoutEnabled"];
+    if (doc["lockoutKaProtection"].is<bool>()) s.lockoutKaProtection = doc["lockoutKaProtection"];
+    if (doc["lockoutDirectionalUnlearn"].is<bool>()) s.lockoutDirectionalUnlearn = doc["lockoutDirectionalUnlearn"];
+    if (doc["lockoutFreqToleranceMHz"].is<int>()) s.lockoutFreqToleranceMHz = doc["lockoutFreqToleranceMHz"];
+    if (doc["lockoutLearnCount"].is<int>()) s.lockoutLearnCount = doc["lockoutLearnCount"];
+    if (doc["lockoutUnlearnCount"].is<int>()) s.lockoutUnlearnCount = doc["lockoutUnlearnCount"];
+    if (doc["lockoutManualDeleteCount"].is<int>()) s.lockoutManualDeleteCount = doc["lockoutManualDeleteCount"];
+    if (doc["lockoutLearnIntervalHours"].is<int>()) s.lockoutLearnIntervalHours = doc["lockoutLearnIntervalHours"];
+    if (doc["lockoutUnlearnIntervalHours"].is<int>()) s.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
+    if (doc["lockoutMaxSignalStrength"].is<int>()) s.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
+    if (doc["lockoutMaxDistanceM"].is<int>()) s.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
+    
+    // Camera alert settings
+    if (doc["cameraAlertsEnabled"].is<bool>()) s.cameraAlertsEnabled = doc["cameraAlertsEnabled"];
+    if (doc["cameraAlertDistanceM"].is<int>()) s.cameraAlertDistanceM = doc["cameraAlertDistanceM"];
+    if (doc["cameraAlertRedLight"].is<bool>()) s.cameraAlertRedLight = doc["cameraAlertRedLight"];
+    if (doc["cameraAlertSpeed"].is<bool>()) s.cameraAlertSpeed = doc["cameraAlertSpeed"];
+    if (doc["cameraAlertALPR"].is<bool>()) s.cameraAlertALPR = doc["cameraAlertALPR"];
+    if (doc["cameraAudioEnabled"].is<bool>()) s.cameraAudioEnabled = doc["cameraAudioEnabled"];
+    
+    // Auto power-off
+    if (doc["autoPowerOffMinutes"].is<int>()) s.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
     
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
@@ -2833,7 +2938,7 @@ void WiFiManager::handleCameraSyncOsm() {
         "out center;";
     
     HTTPClient http;
-    http.setTimeout(120000);  // 2 minute timeout
+    http.setTimeout(60000);   // 1 minute timeout (max ~65s for uint16_t)
     http.setConnectTimeout(30000);  // 30s connect timeout
     
     // Use POST to Overpass API

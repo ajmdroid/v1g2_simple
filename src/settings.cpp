@@ -1116,7 +1116,10 @@ void SettingsManager::backupToSD() {
     // Note: AP password intentionally NOT stored on SD card for security
     // (SD cards can be removed and read elsewhere)
     doc["enableWifi"] = settings.enableWifi;
+    doc["wifiMode"] = (int)settings.wifiMode;
     doc["apSSID"] = settings.apSSID;
+    doc["wifiClientEnabled"] = settings.wifiClientEnabled;
+    doc["wifiClientSSID"] = settings.wifiClientSSID;
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
     doc["lastV1Address"] = settings.lastV1Address;
@@ -1331,7 +1334,10 @@ bool SettingsManager::restoreFromSD() {
     // === WiFi/Network Settings (v2+) ===
     // Note: AP password NOT restored from SD for security - user must re-enter after restore
     if (doc["enableWifi"].is<bool>()) settings.enableWifi = doc["enableWifi"];
+    if (doc["wifiMode"].is<int>()) settings.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
     if (doc["apSSID"].is<const char*>()) settings.apSSID = doc["apSSID"].as<String>();
+    if (doc["wifiClientEnabled"].is<bool>()) settings.wifiClientEnabled = doc["wifiClientEnabled"];
+    if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = doc["wifiClientSSID"].as<String>();
     if (doc["proxyBLE"].is<bool>()) settings.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
