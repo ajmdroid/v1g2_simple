@@ -28,6 +28,8 @@ struct DisplayCallTracker {
     int updateCameraAlertsCalls = 0;
     int flushCalls = 0;
     int forceCardRedrawSets = 0;
+    int displayUpdateCalls = 0;        // Main display update calls
+    int displayUpdatePreviewCalls = 0; // Preview-mode display update calls
     
     // Track WHO called (for debugging conflicts)
     enum class Caller {
@@ -35,13 +37,16 @@ struct DisplayCallTracker {
         UPDATE_CAMERA_CARD_STATE,
         UPDATE_CAMERA_ALERTS,
         DISPLAY_UPDATE,
+        DISPLAY_UPDATE_PREVIEW,
         CLEAR_CAMERA_ALERTS
     };
     Caller lastCameraCardCaller = Caller::NONE;
     Caller lastFlushCaller = Caller::NONE;
+    Caller lastMainDisplayCaller = Caller::NONE;  // Who wrote to main display
     
     // Conflict detection
     bool cameraCardConflict = false;  // Set if multiple callers wrote camera state
+    bool mainDisplayConflict = false; // Set if preview AND live data wrote to main display
     
     void reset() {
         setCameraAlertStateCalls = 0;
@@ -49,9 +54,13 @@ struct DisplayCallTracker {
         updateCameraAlertsCalls = 0;
         flushCalls = 0;
         forceCardRedrawSets = 0;
+        displayUpdateCalls = 0;
+        displayUpdatePreviewCalls = 0;
         lastCameraCardCaller = Caller::NONE;
         lastFlushCaller = Caller::NONE;
+        lastMainDisplayCaller = Caller::NONE;
         cameraCardConflict = false;
+        mainDisplayConflict = false;
     }
     
     void recordCameraCardWrite(Caller caller) {
@@ -60,6 +69,15 @@ struct DisplayCallTracker {
             cameraCardConflict = true;  // Different caller wrote to same state!
         }
         lastCameraCardCaller = caller;
+    }
+    
+    void recordMainDisplayWrite(Caller caller) {
+        if (caller == Caller::DISPLAY_UPDATE) displayUpdateCalls++;
+        if (caller == Caller::DISPLAY_UPDATE_PREVIEW) displayUpdatePreviewCalls++;
+        if (lastMainDisplayCaller != Caller::NONE && lastMainDisplayCaller != caller) {
+            mainDisplayConflict = true;  // Preview and live data both writing!
+        }
+        lastMainDisplayCaller = caller;
     }
     
     void recordFlush(Caller caller) {
@@ -405,6 +423,152 @@ void test_single_flush_per_frame() {
 }
 
 // ============================================================================
+// COLOR PREVIEW TEST MODE SIMULATION
+// ============================================================================
+
+/**
+ * Simulates the color preview path decision logic from main.cpp
+ * 
+ * Color preview writes to the MAIN display area.
+ * When active, it should be the only writer to main display.
+ * When inactive, live V1 data (or scanning screen) should own main display.
+ */
+enum class MainDisplayPath {
+    NONE,               // No display update needed
+    LIVE_DATA,          // Live V1 data or scanning screen
+    COLOR_PREVIEW       // Color preview test mode
+};
+
+MainDisplayPath getMainDisplayPath(bool colorPreviewActive, bool v1Connected) {
+    if (colorPreviewActive) {
+        return MainDisplayPath::COLOR_PREVIEW;
+    }
+    return MainDisplayPath::LIVE_DATA;
+}
+
+/**
+ * Simulates display.update() with preview data
+ */
+void simulateDisplayUpdateWithPreview(bool colorPreviewActive, uint16_t previewColor) {
+    if (colorPreviewActive) {
+        // Color preview writes to main display
+        g_tracker.recordMainDisplayWrite(DisplayCallTracker::Caller::DISPLAY_UPDATE_PREVIEW);
+    }
+}
+
+/**
+ * Simulates display.update() with live V1 data
+ */
+void simulateDisplayUpdateWithLiveData(bool v1Connected, bool v1HasAlerts) {
+    // Live data path writes to main display
+    g_tracker.recordMainDisplayWrite(DisplayCallTracker::Caller::DISPLAY_UPDATE);
+}
+
+/**
+ * Simulates one loop iteration for color preview mode
+ * 
+ * The key invariant: only ONE path should write to main display per frame
+ */
+void simulateColorPreviewLoop(bool colorPreviewActive, bool v1Connected, 
+                              bool v1HasAlerts, uint16_t previewColor) {
+    g_tracker.reset();
+    
+    MainDisplayPath expectedPath = getMainDisplayPath(colorPreviewActive, v1Connected);
+    
+    // In main.cpp, display.update() is called with either:
+    // 1. Preview data (when colorPreviewActive) OR
+    // 2. Live V1 data (when not in preview mode)
+    // Never both!
+    
+    if (expectedPath == MainDisplayPath::COLOR_PREVIEW) {
+        simulateDisplayUpdateWithPreview(colorPreviewActive, previewColor);
+    } else {
+        simulateDisplayUpdateWithLiveData(v1Connected, v1HasAlerts);
+    }
+    
+    g_display.flush(DisplayCallTracker::Caller::DISPLAY_UPDATE);
+}
+
+// ============================================================================
+// TESTS: Color Preview Ownership
+// ============================================================================
+
+void test_color_preview_owns_main_display_v1_connected() {
+    // Color preview active + V1 connected = preview owns main display
+    simulateColorPreviewLoop(true, true, true, 0xFF00);
+    
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Color preview should have single ownership of main display");
+    TEST_ASSERT_EQUAL_MESSAGE(DisplayCallTracker::Caller::DISPLAY_UPDATE_PREVIEW,
+        g_tracker.lastMainDisplayCaller,
+        "Color preview should own main display when active");
+    TEST_ASSERT_EQUAL(1, g_tracker.displayUpdatePreviewCalls);
+    TEST_ASSERT_EQUAL(0, g_tracker.displayUpdateCalls);
+}
+
+void test_color_preview_owns_main_display_v1_disconnected() {
+    // Color preview active + V1 disconnected = preview owns main display
+    simulateColorPreviewLoop(true, false, false, 0x00FF);
+    
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Color preview should have single ownership of main display");
+    TEST_ASSERT_EQUAL_MESSAGE(DisplayCallTracker::Caller::DISPLAY_UPDATE_PREVIEW,
+        g_tracker.lastMainDisplayCaller,
+        "Color preview should own main display regardless of V1 state");
+}
+
+void test_live_data_owns_main_display_v1_connected() {
+    // No preview + V1 connected = live data owns main display
+    simulateColorPreviewLoop(false, true, true, 0);
+    
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Live data should have single ownership of main display");
+    TEST_ASSERT_EQUAL_MESSAGE(DisplayCallTracker::Caller::DISPLAY_UPDATE,
+        g_tracker.lastMainDisplayCaller,
+        "Live V1 data should own main display when not in preview mode");
+    TEST_ASSERT_EQUAL(1, g_tracker.displayUpdateCalls);
+    TEST_ASSERT_EQUAL(0, g_tracker.displayUpdatePreviewCalls);
+}
+
+void test_live_data_owns_main_display_v1_disconnected() {
+    // No preview + V1 disconnected = live data (scanning screen) owns main display
+    simulateColorPreviewLoop(false, false, false, 0);
+    
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Live data should have single ownership of main display");
+    TEST_ASSERT_EQUAL_MESSAGE(DisplayCallTracker::Caller::DISPLAY_UPDATE,
+        g_tracker.lastMainDisplayCaller,
+        "Scanning screen should own main display when V1 disconnected and no preview");
+}
+
+void test_color_preview_ends_ownership_transfers_to_live() {
+    // Frame 1: Color preview active
+    simulateColorPreviewLoop(true, true, true, 0xFF00);
+    TEST_ASSERT_EQUAL(DisplayCallTracker::Caller::DISPLAY_UPDATE_PREVIEW,
+        g_tracker.lastMainDisplayCaller);
+    TEST_ASSERT_FALSE(g_tracker.mainDisplayConflict);
+    
+    // Frame 2: Color preview ends, live data takes over
+    simulateColorPreviewLoop(false, true, true, 0);
+    TEST_ASSERT_EQUAL(DisplayCallTracker::Caller::DISPLAY_UPDATE,
+        g_tracker.lastMainDisplayCaller);
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Ownership transfer should not cause conflict");
+}
+
+void test_main_display_path_decision() {
+    // Test all combinations of colorPreviewActive and v1Connected
+    TEST_ASSERT_EQUAL(MainDisplayPath::COLOR_PREVIEW, 
+        getMainDisplayPath(true, true));
+    TEST_ASSERT_EQUAL(MainDisplayPath::COLOR_PREVIEW, 
+        getMainDisplayPath(true, false));
+    TEST_ASSERT_EQUAL(MainDisplayPath::LIVE_DATA, 
+        getMainDisplayPath(false, true));
+    TEST_ASSERT_EQUAL(MainDisplayPath::LIVE_DATA, 
+        getMainDisplayPath(false, false));
+}
+
+// ============================================================================
 // TESTS: Force Redraw Flag Management
 // ============================================================================
 
@@ -458,6 +622,14 @@ int main(int argc, char **argv) {
     // Performance/correctness tests
     RUN_TEST(test_single_flush_per_frame);
     RUN_TEST(test_force_redraw_not_set_when_no_change);
+    
+    // Color preview ownership tests
+    RUN_TEST(test_color_preview_owns_main_display_v1_connected);
+    RUN_TEST(test_color_preview_owns_main_display_v1_disconnected);
+    RUN_TEST(test_live_data_owns_main_display_v1_connected);
+    RUN_TEST(test_live_data_owns_main_display_v1_disconnected);
+    RUN_TEST(test_color_preview_ends_ownership_transfers_to_live);
+    RUN_TEST(test_main_display_path_decision);
     
     return UNITY_END();
 }

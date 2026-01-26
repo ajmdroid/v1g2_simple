@@ -39,8 +39,8 @@ test/
 | haversine distance | 10 | ✅ PASS |
 | packet parser | 30 | ✅ PASS |
 | display system | 74 | ✅ PASS |
-| integration/ownership | 14 | ✅ PASS |
-| **Total** | **128** | **✅ ALL PASS** |
+| integration/ownership | 20 | ✅ PASS |
+| **Total** | **134** | **✅ ALL PASS** |
 
 ## Display Torture Test Categories
 
@@ -143,7 +143,7 @@ When test mode ends:
   else → showScanning()  // NEVER showResting() when disconnected!
 ```
 
-## Display Ownership Integration Tests (14 tests) ⭐ NEW
+## Display Ownership Integration Tests (20 tests) ⭐ NEW
 
 Located in `test/test_integration/test_display_ownership.cpp`.
 
@@ -166,12 +166,25 @@ Located in `test/test_integration/test_display_ownership.cpp`.
    - Single flush per frame (multiple flushes = flashing)
    - Force redraw flag not set unconditionally
 
+4. **Color Preview Ownership** (6 tests):
+   - Color preview owns main display when active (V1 connected or disconnected)
+   - Live data owns main display when preview inactive
+   - Ownership transfers cleanly when preview ends
+   - Path decision logic for all preview + V1 combinations
+
 ### The Pattern Being Enforced
 
 ```
 Each display element should have ONE owner per frame:
+
+CAMERA CARDS:
 - V1 connected: updateCameraCardState() owns camera cards
 - V1 disconnected: updateCameraAlerts() owns camera cards
+- NEVER both in the same frame!
+
+MAIN DISPLAY:
+- Color preview active: preview path owns main display
+- Color preview inactive: live data path owns main display
 - NEVER both in the same frame!
 ```
 
