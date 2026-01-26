@@ -694,6 +694,148 @@ Error response body:
 
 ---
 
+## Error Codes Reference
+
+The firmware uses structured error codes defined in `src/error_codes.h` for consistent error reporting.
+
+### Error Categories
+
+| Range | Category | Description |
+|-------|----------|-------------|
+| 0 | Success | No error |
+| 100-199 | BLE | Bluetooth errors |
+| 200-299 | GPS | GPS module errors |
+| 300-399 | Storage | Filesystem errors |
+| 400-499 | WiFi | Network errors |
+| 500-599 | V1 | V1 protocol errors |
+| 900-999 | System | General system errors |
+
+### BLE Errors (100-199)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 100 | `ERR_BLE_NOT_INITIALIZED` | BLE stack not initialized |
+| 101 | `ERR_BLE_SCAN_FAILED` | BLE scan failed to start |
+| 102 | `ERR_BLE_CONNECT_FAILED` | Connection attempt failed |
+| 103 | `ERR_BLE_CONNECT_TIMEOUT` | Connection timed out |
+| 104 | `ERR_BLE_DISCONNECT` | Unexpected disconnection |
+| 105 | `ERR_BLE_SERVICE_NOT_FOUND` | Required BLE service missing |
+| 106 | `ERR_BLE_CHAR_NOT_FOUND` | Required characteristic missing |
+| 107 | `ERR_BLE_WRITE_FAILED` | Write operation failed |
+| 108 | `ERR_BLE_NOTIFY_FAILED` | Notification setup failed |
+| 109 | `ERR_BLE_MTU_NEGOTIATION_FAILED` | MTU negotiation failed |
+| 110 | `ERR_BLE_ALREADY_CONNECTED` | Already connected |
+| 111 | `ERR_BLE_DEVICE_NOT_FOUND` | Device not found in scan |
+| 112 | `ERR_BLE_PAIRING_FAILED` | Pairing/bonding failed |
+
+### GPS Errors (200-299)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 200 | `ERR_GPS_NOT_INITIALIZED` | GPS handler not initialized |
+| 201 | `ERR_GPS_NO_FIX` | No GPS fix available |
+| 202 | `ERR_GPS_INVALID_DATA` | Invalid NMEA data |
+| 203 | `ERR_GPS_TIMEOUT` | GPS communication timeout |
+| 204 | `ERR_GPS_COMM_ERROR` | Serial communication error |
+| 205 | `ERR_GPS_CONFIG_FAILED` | Module configuration failed |
+| 206 | `ERR_GPS_MODULE_NOT_DETECTED` | No GPS module detected |
+| 207 | `ERR_GPS_BAUD_MISMATCH` | Baud rate mismatch |
+
+### Storage Errors (300-399)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 300 | `ERR_STORAGE_NOT_INITIALIZED` | Storage not mounted |
+| 301 | `ERR_STORAGE_MOUNT_FAILED` | LittleFS mount failed |
+| 302 | `ERR_STORAGE_FULL` | Storage full |
+| 303 | `ERR_STORAGE_READ_FAILED` | File read failed |
+| 304 | `ERR_STORAGE_WRITE_FAILED` | File write failed |
+| 305 | `ERR_STORAGE_FILE_NOT_FOUND` | File not found |
+| 306 | `ERR_STORAGE_CORRUPT_DATA` | Data corruption detected |
+| 307 | `ERR_STORAGE_PERMISSION_DENIED` | Permission denied |
+| 308 | `ERR_STORAGE_SD_NOT_INSERTED` | SD card not inserted |
+| 309 | `ERR_STORAGE_FORMAT_FAILED` | Format operation failed |
+| 310 | `ERR_STORAGE_JSON_PARSE_FAILED` | JSON parsing error |
+| 311 | `ERR_STORAGE_JSON_TOO_LARGE` | JSON exceeds size limit |
+
+### WiFi Errors (400-499)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 400 | `ERR_WIFI_NOT_INITIALIZED` | WiFi not initialized |
+| 401 | `ERR_WIFI_AP_START_FAILED` | AP mode failed to start |
+| 402 | `ERR_WIFI_STA_CONNECT_FAILED` | Station connection failed |
+| 403 | `ERR_WIFI_STA_TIMEOUT` | Connection timeout |
+| 404 | `ERR_WIFI_STA_WRONG_PASSWORD` | Incorrect password |
+| 405 | `ERR_WIFI_STA_NO_SSID` | SSID not found |
+| 406 | `ERR_WIFI_SERVER_START_FAILED` | Web server failed |
+| 407 | `ERR_WIFI_DNS_START_FAILED` | DNS server failed |
+| 408 | `ERR_WIFI_MDNS_START_FAILED` | mDNS failed |
+| 409 | `ERR_WIFI_OTA_FAILED` | OTA update failed |
+| 410 | `ERR_WIFI_HTTP_REQUEST_FAILED` | HTTP request failed |
+| 411 | `ERR_WIFI_HTTP_TIMEOUT` | HTTP timeout |
+| 412 | `ERR_WIFI_INVALID_URL` | Invalid URL format |
+
+### V1 Protocol Errors (500-599)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 500 | `ERR_V1_INVALID_PACKET` | Malformed V1 packet |
+| 501 | `ERR_V1_CHECKSUM_MISMATCH` | Packet checksum failed |
+| 502 | `ERR_V1_UNKNOWN_PACKET_TYPE` | Unknown packet type |
+| 503 | `ERR_V1_MALFORMED_DATA` | Invalid packet data |
+| 504 | `ERR_V1_QUEUE_FULL` | Packet queue overflow |
+| 505 | `ERR_V1_NOT_CONNECTED` | V1 not connected |
+| 506 | `ERR_V1_COMMAND_FAILED` | V1 command failed |
+| 507 | `ERR_V1_VERSION_MISMATCH` | Protocol version mismatch |
+
+### System Errors (900-999)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 900 | `ERR_SYSTEM_OUT_OF_MEMORY` | Heap exhausted |
+| 901 | `ERR_SYSTEM_TASK_CREATE_FAILED` | FreeRTOS task creation failed |
+| 902 | `ERR_SYSTEM_MUTEX_TIMEOUT` | Mutex acquisition timeout |
+| 903 | `ERR_SYSTEM_INVALID_PARAMETER` | Invalid function parameter |
+| 904 | `ERR_SYSTEM_NOT_IMPLEMENTED` | Feature not implemented |
+| 905 | `ERR_SYSTEM_HARDWARE_FAULT` | Hardware fault detected |
+| 906 | `ERR_SYSTEM_WATCHDOG_TIMEOUT` | Watchdog triggered |
+| 907 | `ERR_SYSTEM_LOW_BATTERY` | Battery critically low |
+
+### Helper Macros
+
+```c
+// Get error category
+ERR_CATEGORY(err)       // Returns 100, 200, etc.
+
+// Check error type
+IS_BLE_ERROR(err)       // true if 100-199
+IS_GPS_ERROR(err)       // true if 200-299
+IS_STORAGE_ERROR(err)   // true if 300-399
+IS_WIFI_ERROR(err)      // true if 400-499
+IS_V1_ERROR(err)        // true if 500-599
+IS_SYSTEM_ERROR(err)    // true if 900-999
+
+// Get human-readable string
+errToString(err)        // Returns "BLE connection failed" etc.
+```
+
+### Usage Example
+
+```cpp
+#include "error_codes.h"
+
+int result = connectToV1();
+if (result != ERR_NONE) {
+    Serial.printf("Error %d: %s\n", result, errToString(result));
+    if (IS_BLE_ERROR(result)) {
+        // BLE-specific recovery
+    }
+}
+```
+
+---
+
 ## Security Notes
 
 1. **Change Default Password**: The default AP password is `setupv1g2`. Change it immediately in Settings.
