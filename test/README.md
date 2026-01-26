@@ -40,7 +40,9 @@ test/
 | packet parser | 30 | ✅ PASS |
 | display system | 74 | ✅ PASS |
 | integration/ownership | 20 | ✅ PASS |
-| **Total** | **134** | **✅ ALL PASS** |
+| lockout manager | 32 | ✅ PASS |
+| auto-lockout manager | 27 | ✅ PASS |
+| **Total** | **193** | **✅ ALL PASS** |
 
 ## Display Torture Test Categories
 
