@@ -14,9 +14,24 @@ CameraManager cameraManager;
 CameraManager::CameraManager() {
   // Reserve space for typical database size
   cameras.reserve(1000);
+  
+  // Create mutex for thread-safe access to camera vector
+  cameraMutex = xSemaphoreCreateMutex();
+  if (!cameraMutex) {
+    Serial.println("[Camera] WARNING: Failed to create camera mutex!");
+  }
 }
 
 CameraManager::~CameraManager() {
+  // Stop any background loading
+  stopBackgroundLoad();
+  
+  // Delete mutex
+  if (cameraMutex) {
+    vSemaphoreDelete(cameraMutex);
+    cameraMutex = nullptr;
+  }
+  
   clear();
 }
 
@@ -236,8 +251,16 @@ const std::vector<CameraRecord>& CameraManager::getQueryCameras() const {
 }
 
 // Build regional cache containing only cameras within radius of GPS position
+// Thread-safe: uses mutex when accessing full camera database
 bool CameraManager::buildRegionalCache(float lat, float lon, float radiusMiles) {
+  // Take mutex to safely read cameras vector (may be modified by background task)
+  if (!cameraMutex || xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+    Serial.println("[Camera] Cannot build cache - mutex unavailable");
+    return false;
+  }
+  
   if (cameras.empty()) {
+    xSemaphoreGive(cameraMutex);
     Serial.println("[Camera] Cannot build cache - no database loaded");
     return false;
   }
@@ -270,6 +293,9 @@ bool CameraManager::buildRegionalCache(float lat, float lon, float radiusMiles) 
   cacheCenterLon = lon;
   cacheRadiusMi = radiusMiles;
   cacheBuiltMs = millis();
+  
+  // Release mutex now that we're done reading cameras
+  xSemaphoreGive(cameraMutex);
   
   uint32_t elapsed = millis() - startTime;
   Serial.printf("[Camera] Regional cache: %d of %d cameras within %.0f mi (took %dms)\n",
@@ -672,4 +698,248 @@ size_t CameraManager::getALPRCount() const {
     }
   }
   return count;
+}
+
+// =========================================================================
+// Background Loading Implementation
+// =========================================================================
+
+// Thread-safe camera count access
+size_t CameraManager::getLoadedCount() const {
+  if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    size_t count = cameras.size();
+    xSemaphoreGive(cameraMutex);
+    return count;
+  }
+  return cameras.size();  // Fall back to unsynchronized if mutex fails
+}
+
+// Static task entry point - calls instance method
+void CameraManager::loadTaskEntry(void* param) {
+  CameraManager* self = static_cast<CameraManager*>(param);
+  
+  Serial.println("[Camera] Background load task started");
+  
+  // Perform the incremental database load
+  bool success = self->loadDatabaseIncremental();
+  
+  // Mark loading complete
+  self->backgroundLoading = false;
+  self->loadProgressPercent = success ? 100 : 0;
+  
+  Serial.printf("[Camera] Background load task complete: %s (%d cameras)\n",
+                success ? "success" : "failed", self->cameras.size());
+  
+  // Delete the task (task deletes itself when done)
+  self->loadTaskHandle = nullptr;
+  vTaskDelete(NULL);
+}
+
+// Start background loading - returns immediately
+bool CameraManager::startBackgroundLoad() {
+  if (!fs) {
+    Serial.println("[Camera] Cannot start background load - no filesystem");
+    return false;
+  }
+  
+  if (backgroundLoading) {
+    Serial.println("[Camera] Background load already in progress");
+    return false;
+  }
+  
+  // Mark loading as in progress
+  backgroundLoading = true;
+  loadProgressPercent = 0;
+  loadTaskShouldExit = false;
+  
+  // Create background task with low priority (1)
+  // Lower than BLE (5) and display (2) to avoid interfering with UI
+  BaseType_t result = xTaskCreate(
+    loadTaskEntry,          // Task function
+    "CamLoad",              // Task name
+    4096,                   // Stack size (bytes)
+    this,                   // Parameter (this pointer)
+    1,                      // Priority (low)
+    &loadTaskHandle         // Task handle
+  );
+  
+  if (result != pdPASS) {
+    Serial.println("[Camera] Failed to create background load task");
+    backgroundLoading = false;
+    return false;
+  }
+  
+  Serial.println("[Camera] Background load task created");
+  return true;
+}
+
+// Stop background loading (if in progress)
+void CameraManager::stopBackgroundLoad() {
+  if (!backgroundLoading || !loadTaskHandle) {
+    return;
+  }
+  
+  Serial.println("[Camera] Stopping background load...");
+  loadTaskShouldExit = true;
+  
+  // Wait for task to exit (up to 2 seconds)
+  for (int i = 0; i < 20 && loadTaskHandle; i++) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  
+  // Force delete if still running
+  if (loadTaskHandle) {
+    vTaskDelete(loadTaskHandle);
+    loadTaskHandle = nullptr;
+    Serial.println("[Camera] Background load task forcefully terminated");
+  }
+  
+  backgroundLoading = false;
+}
+
+// Incremental database load with yielding - called from background task
+bool CameraManager::loadDatabaseIncremental() {
+  // List of database files to load (in order)
+  struct DatabaseFile {
+    const char* path;
+    bool exists;
+    size_t approxLines;  // Estimate for progress calculation
+  };
+  
+  DatabaseFile files[] = {
+    {"/alpr.json", false, 70000},       // Main ALPR database
+    {"/redlight_cam.json", false, 200},
+    {"/speed_cam.json", false, 1200}
+  };
+  const int numFiles = sizeof(files) / sizeof(files[0]);
+  
+  // Check which files exist and count total
+  size_t totalLines = 0;
+  int existingFiles = 0;
+  for (int i = 0; i < numFiles; i++) {
+    if (fs->exists(files[i].path)) {
+      files[i].exists = true;
+      totalLines += files[i].approxLines;
+      existingFiles++;
+    }
+  }
+  
+  if (existingFiles == 0) {
+    Serial.println("[Camera] No database files found for background load");
+    return false;
+  }
+  
+  Serial.printf("[Camera] Background loading %d files (~%d records)...\n", 
+                existingFiles, totalLines);
+  
+  uint32_t overallStart = millis();
+  size_t linesLoaded = 0;
+  bool firstFile = true;
+  
+  for (int fileIdx = 0; fileIdx < numFiles; fileIdx++) {
+    if (loadTaskShouldExit) {
+      Serial.println("[Camera] Background load cancelled");
+      return false;
+    }
+    
+    if (!files[fileIdx].exists) continue;
+    
+    const char* path = files[fileIdx].path;
+    
+    File file = fs->open(path, "r");
+    if (!file) {
+      Serial.printf("[Camera] Failed to open %s\n", path);
+      continue;
+    }
+    
+    uint32_t fileStart = millis();
+    size_t fileRecords = 0;
+    size_t parseErrors = 0;
+    char lineBuffer[256];
+    size_t bufIdx = 0;
+    
+    // Clear cameras only for first file
+    if (firstFile) {
+      if (cameraMutex && xSemaphoreTake(cameraMutex, portMAX_DELAY) == pdTRUE) {
+        cameras.clear();
+        cameras.reserve(totalLines + 1000);
+        xSemaphoreGive(cameraMutex);
+      }
+      firstFile = false;
+    }
+    
+    while (file.available()) {
+      // Check for cancellation every 100 lines
+      if ((linesLoaded % 100) == 0) {
+        if (loadTaskShouldExit) {
+          file.close();
+          Serial.println("[Camera] Background load cancelled mid-file");
+          return false;
+        }
+        
+        // Update progress
+        loadProgressPercent = (totalLines > 0) ? 
+                              (linesLoaded * 100 / totalLines) : 0;
+        
+        // Yield to other tasks (allow BLE, display, etc. to run)
+        vTaskDelay(pdMS_TO_TICKS(1));  // 1ms yield
+      }
+      
+      char c = file.read();
+      
+      if (c == '\n' || c == '\r') {
+        if (bufIdx > 0) {
+          lineBuffer[bufIdx] = '\0';
+          
+          CameraRecord record;
+          if (parseCameraLine(lineBuffer, record)) {
+            // Thread-safe add to camera vector
+            if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+              cameras.push_back(record);
+              xSemaphoreGive(cameraMutex);
+              fileRecords++;
+            }
+          } else {
+            parseErrors++;
+          }
+          
+          linesLoaded++;
+          bufIdx = 0;
+        }
+      } else if (bufIdx < sizeof(lineBuffer) - 1) {
+        lineBuffer[bufIdx++] = c;
+      }
+    }
+    
+    // Handle last line without newline
+    if (bufIdx > 0) {
+      lineBuffer[bufIdx] = '\0';
+      CameraRecord record;
+      if (parseCameraLine(lineBuffer, record)) {
+        if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+          cameras.push_back(record);
+          xSemaphoreGive(cameraMutex);
+          fileRecords++;
+        }
+      }
+      linesLoaded++;
+    }
+    
+    file.close();
+    
+    uint32_t fileElapsed = millis() - fileStart;
+    Serial.printf("[Camera] Loaded %d from %s in %dms (bg)\n", 
+                  fileRecords, path, fileElapsed);
+  }
+  
+  // Build spatial index after all files loaded
+  buildSpatialIndex();
+  
+  loadProgressPercent = 100;
+  
+  uint32_t totalElapsed = millis() - overallStart;
+  Serial.printf("[Camera] Background load complete: %d cameras in %dms\n",
+                cameras.size(), totalElapsed);
+  
+  return !cameras.empty();
 }

@@ -8,6 +8,9 @@
 #include <Arduino.h>
 #include <vector>
 #include <FS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 // Camera types (matches ExCam flg values)
 enum class CameraType : uint8_t {
@@ -134,11 +137,33 @@ public:
   // Utility functions (public for external use)
   static float haversineDistance(float lat1, float lon1, float lat2, float lon2);
   static float calculateBearing(float lat1, float lon1, float lat2, float lon2);
+  
+  // Background loading - non-blocking database load
+  // Call setFilesystem() first, then startBackgroundLoad()
+  // Load regional cache first for instant alerts, then background load full DB
+  void setFilesystem(fs::FS* filesystem) { fs = filesystem; }
+  fs::FS* getFilesystem() const { return fs; }
+  bool startBackgroundLoad();
+  void stopBackgroundLoad();
+  bool isBackgroundLoading() const { return backgroundLoading; }
+  int getLoadProgress() const { return loadProgressPercent; }  // 0-100
+  size_t getLoadedCount() const;  // Thread-safe camera count
 
 private:
   fs::FS* fs = nullptr;
   std::vector<CameraRecord> cameras;          // Full database from SD
   std::vector<CameraRecord> regionalCache;    // Subset near GPS position
+  
+  // Thread safety for camera vector (modified by background task, read by queries)
+  mutable SemaphoreHandle_t cameraMutex = nullptr;
+  
+  // Background loading state
+  TaskHandle_t loadTaskHandle = nullptr;
+  volatile bool backgroundLoading = false;
+  volatile bool loadTaskShouldExit = false;
+  volatile int loadProgressPercent = 0;
+  static void loadTaskEntry(void* param);
+  bool loadDatabaseIncremental();  // Called by background task
   
   // Regional cache metadata
   float cacheCenterLat = 0.0f;

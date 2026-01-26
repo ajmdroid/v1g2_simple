@@ -2453,8 +2453,9 @@ void loop() {
     if (camSettings.cameraAlertsEnabled && cameraManager.isLoaded() && gpsHandler.isEnabled()) {
         unsigned long now = millis();
         
-        // Regional cache refresh check - only when GPS has valid fix
-        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.hasValidFix()) {
+        // Regional cache refresh check - only when GPS has valid fix AND background load is complete
+        // Skip cache rebuild while background loading is in progress
+        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.hasValidFix() && !cameraManager.isBackgroundLoading()) {
             lastCacheCheckMs = now;
             
             GPSFix cacheFix = gpsHandler.getFix();
@@ -2571,27 +2572,75 @@ void loop() {
     obdHandler.update();
     
     // Deferred camera database loading - runs once after V1 connects
-    // Loading 70K+ cameras takes several seconds, so we do it here in loop()
-    // rather than blocking boot or the BLE callback
+    // Strategy: Load regional cache first (instant, ~100ms), then background load full DB
+    // This allows camera alerts to work immediately while the 70K+ record DB loads in background
     if (cameraLoadPending && !cameraLoadComplete && bleClient.isConnected()) {
         cameraLoadPending = false;
-        cameraLoadComplete = true;
+        cameraLoadComplete = true;  // Mark complete to prevent re-entry
         
-        SerialLog.println("[Camera] Loading camera database from SD card...");
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs && cameraManager.begin(fs)) {
-            SerialLog.printf("[Camera] Database loaded: %d cameras\n", 
-                            cameraManager.getCameraCount());
+        SerialLog.println("[Camera] Initializing camera alerts...");
+        fs::FS* sdFs = storageManager.getFilesystem();
+        
+        // Step 1: Try to load regional cache from LittleFS first (fast path ~100ms)
+        // This gives us immediate camera alerts without waiting for full DB
+        bool hasCachedData = cameraManager.loadRegionalCache(&LittleFS, "/cameras_cache.json");
+        if (hasCachedData) {
+            SerialLog.printf("[Camera] Regional cache loaded: %d cameras (instant alerts ready)\n", 
+                            cameraManager.getRegionalCacheCount());
+        }
+        
+        // Step 2: Start background loading of full database from SD card
+        // The background task runs at low priority and yields frequently to not block BLE/display
+        if (sdFs && (sdFs->exists("/alpr.json") || sdFs->exists("/redlight_cam.json") || sdFs->exists("/speed_cam.json"))) {
+            // Set filesystem for background loader
+            cameraManager.setFilesystem(sdFs);
             
-            // Try to load regional cache from LittleFS for fast queries
-            if (cameraManager.loadRegionalCache(&LittleFS, "/cameras_cache.json")) {
-                SerialLog.printf("[Camera] Regional cache loaded: %d cameras\n", 
-                                cameraManager.getRegionalCacheCount());
+            if (cameraManager.startBackgroundLoad()) {
+                SerialLog.println("[Camera] Background database load started (won't block V1)");
             } else {
-                SerialLog.println("[Camera] No regional cache - will build on GPS fix");
+                // Background load failed to start - fall back to synchronous
+                SerialLog.println("[Camera] Background load failed, using synchronous load...");
+                if (cameraManager.begin(sdFs)) {
+                    SerialLog.printf("[Camera] Database loaded: %d cameras\n", 
+                                    cameraManager.getCameraCount());
+                }
             }
-        } else {
-            SerialLog.println("[Camera] No camera database found on SD card");
+        } else if (!hasCachedData) {
+            SerialLog.println("[Camera] No camera database or cache found");
+        }
+    }
+    
+    // Monitor background camera load progress (optional: could show on display)
+    static bool bgLoadLoggedComplete = false;
+    static bool bgLoadCacheBuilt = false;  // Track if we've rebuilt cache after background load
+    if (cameraManager.isBackgroundLoading()) {
+        // Optionally log progress periodically
+        static unsigned long lastProgressLog = 0;
+        if (millis() - lastProgressLog > 10000) {  // Every 10 seconds
+            SerialLog.printf("[Camera] Background load: %d%% (%d cameras)\n",
+                            cameraManager.getLoadProgress(), cameraManager.getLoadedCount());
+            lastProgressLog = millis();
+        }
+        bgLoadLoggedComplete = false;
+        bgLoadCacheBuilt = false;
+    } else if (!bgLoadLoggedComplete && cameraManager.getCameraCount() > 0) {
+        // Log once when background load completes
+        bgLoadLoggedComplete = true;
+        SerialLog.printf("[Camera] Background load complete: %d cameras ready\n",
+                        cameraManager.getCameraCount());
+        
+        // Build/refresh regional cache now that full database is loaded
+        // This ensures we have the most up-to-date cache for the current location
+        if (!bgLoadCacheBuilt && gpsHandler.hasValidFix()) {
+            bgLoadCacheBuilt = true;
+            GPSFix fix = gpsHandler.getFix();
+            SerialLog.printf("[Camera] Rebuilding regional cache with full database at %.4f, %.4f\n",
+                            fix.latitude, fix.longitude);
+            if (cameraManager.buildRegionalCache(fix.latitude, fix.longitude, CACHE_RADIUS_MILES)) {
+                cameraManager.saveRegionalCache(&LittleFS, "/cameras_cache.json");
+                SerialLog.printf("[Camera] Regional cache updated: %d cameras\n",
+                                cameraManager.getRegionalCacheCount());
+            }
         }
     }
 
