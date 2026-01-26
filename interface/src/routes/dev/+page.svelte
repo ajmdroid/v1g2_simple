@@ -40,6 +40,13 @@
 	let logRefreshInterval = $state(null);
 	let logFilterText = $state('');
 
+	// Performance metrics state
+	let metricsExpanded = $state(false);
+	let metrics = $state(null);
+	let metricsLoading = $state(false);
+	let metricsAutoRefresh = $state(false);
+	let metricsRefreshInterval = $state(null);
+
 	const formatBytes = (bytes) => {
 		if (!bytes) return '0 B';
 		if (bytes < 1024) return `${bytes} B`;
@@ -273,8 +280,53 @@
 		return filtered.join('\n') || '[No matching lines]';
 	}
 
+	// Performance metrics functions
+	async function loadMetrics() {
+		metricsLoading = true;
+		try {
+			const response = await fetch('/api/debug/metrics');
+			if (!response.ok) throw new Error('Failed to load metrics');
+			metrics = await response.json();
+		} catch (error) {
+			console.error('Failed to load metrics:', error);
+		} finally {
+			metricsLoading = false;
+		}
+	}
+
+	function toggleMetricsAutoRefresh() {
+		if (metricsAutoRefresh) {
+			stopMetricsAutoRefresh();
+		} else {
+			startMetricsAutoRefresh();
+		}
+	}
+
+	function startMetricsAutoRefresh() {
+		metricsAutoRefresh = true;
+		loadMetrics();  // Load immediately
+		metricsRefreshInterval = setInterval(() => {
+			loadMetrics();
+		}, 2000);  // Refresh every 2 seconds
+	}
+
+	function stopMetricsAutoRefresh() {
+		metricsAutoRefresh = false;
+		if (metricsRefreshInterval) {
+			clearInterval(metricsRefreshInterval);
+			metricsRefreshInterval = null;
+		}
+	}
+
+	function formatLatency(us) {
+		if (!us) return '-';
+		if (us < 1000) return `${us}µs`;
+		return `${(us / 1000).toFixed(1)}ms`;
+	}
+
 	onDestroy(() => {
 		stopAutoRefresh();
+		stopMetricsAutoRefresh();
 	});
 </script>
 
@@ -458,6 +510,157 @@
 						Debug logging is {settings.enableDebugLogging ? 'enabled' : 'disabled'}; file capped at {formatBytes(logInfo.maxSizeBytes || 0)}.
 					</p>
 				</div>
+			</div>
+		</div>
+
+		<!-- Performance Metrics -->
+		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
+			<div class="card-body">
+				<div class="flex items-center justify-between">
+					<h2 class="card-title">📊 Performance Metrics</h2>
+					<button 
+						class="btn btn-sm btn-ghost"
+						onclick={() => { metricsExpanded = !metricsExpanded; if (metricsExpanded && !metrics) loadMetrics(); }}
+					>
+						{metricsExpanded ? '▼' : '▶'}
+					</button>
+				</div>
+				
+				{#if metricsExpanded}
+					<div class="space-y-4 mt-2">
+						<!-- Controls -->
+						<div class="flex gap-2">
+							<button 
+								class="btn btn-sm btn-outline flex-1"
+								onclick={loadMetrics}
+								disabled={metricsLoading}
+							>
+								{#if metricsLoading}
+									<span class="loading loading-spinner loading-xs"></span>
+								{:else}
+									🔄 Refresh
+								{/if}
+							</button>
+							<label class="btn btn-sm swap flex-1" class:btn-primary={metricsAutoRefresh} class:btn-outline={!metricsAutoRefresh}>
+								<input type="checkbox" checked={metricsAutoRefresh} onchange={toggleMetricsAutoRefresh} />
+								<span class="swap-on">⏸️ Stop Auto</span>
+								<span class="swap-off">▶️ Auto (2s)</span>
+							</label>
+						</div>
+
+						{#if metrics}
+							<!-- BLE Queue Stats -->
+							<div class="bg-base-300 rounded-lg p-3">
+								<h3 class="font-semibold text-sm mb-2">📡 BLE Queue (V1→Display)</h3>
+								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+									<div class="flex justify-between">
+										<span class="opacity-70">RX Packets:</span>
+										<span class="font-mono">{metrics.rxPackets?.toLocaleString() || 0}</span>
+									</div>
+									<div class="flex justify-between">
+										<span class="opacity-70">Parse OK:</span>
+										<span class="font-mono">{metrics.parseSuccesses?.toLocaleString() || 0}</span>
+									</div>
+									<div class="flex justify-between">
+										<span class="opacity-70">Queue Drops:</span>
+										<span class="font-mono" class:text-error={metrics.queueDrops > 0}>{metrics.queueDrops || 0}</span>
+									</div>
+									<div class="flex justify-between">
+										<span class="opacity-70">Queue High-Water:</span>
+										<span class="font-mono">{metrics.queueHighWater || 0}/64</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Display Stats -->
+							<div class="bg-base-300 rounded-lg p-3">
+								<h3 class="font-semibold text-sm mb-2">🖥️ Display</h3>
+								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+									<div class="flex justify-between">
+										<span class="opacity-70">Updates:</span>
+										<span class="font-mono">{metrics.displayUpdates?.toLocaleString() || 0}</span>
+									</div>
+									<div class="flex justify-between">
+										<span class="opacity-70">Skipped:</span>
+										<span class="font-mono">{metrics.displaySkips || 0}</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Latency Stats (when PERF_METRICS enabled) -->
+							{#if metrics.monitoringEnabled}
+								<div class="bg-base-300 rounded-lg p-3">
+									<h3 class="font-semibold text-sm mb-2">⏱️ BLE→Flush Latency</h3>
+									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+										<div class="flex justify-between">
+											<span class="opacity-70">Min:</span>
+											<span class="font-mono">{formatLatency(metrics.latencyMinUs)}</span>
+										</div>
+										<div class="flex justify-between">
+											<span class="opacity-70">Avg:</span>
+											<span class="font-mono">{formatLatency(metrics.latencyAvgUs)}</span>
+										</div>
+										<div class="flex justify-between">
+											<span class="opacity-70">Max:</span>
+											<span class="font-mono" class:text-warning={metrics.latencyMaxUs > 100000}>{formatLatency(metrics.latencyMaxUs)}</span>
+										</div>
+									</div>
+									<div class="text-[10px] opacity-50 mt-1">
+										Samples: {metrics.latencySamples?.toLocaleString() || 0} (1 in 8 packets)
+									</div>
+								</div>
+							{/if}
+
+							<!-- Proxy Stats -->
+							{#if metrics.proxy}
+								<div class="bg-base-300 rounded-lg p-3">
+									<h3 class="font-semibold text-sm mb-2">📲 V1 Proxy (to JBV1/V1C)</h3>
+									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+										<div class="flex justify-between">
+											<span class="opacity-70">Connected:</span>
+											<span class="font-mono" class:text-success={metrics.proxy.connected}>{metrics.proxy.connected ? 'Yes' : 'No'}</span>
+										</div>
+										<div class="flex justify-between">
+											<span class="opacity-70">Packets Sent:</span>
+											<span class="font-mono">{metrics.proxy.sendCount?.toLocaleString() || 0}</span>
+										</div>
+										<div class="flex justify-between">
+											<span class="opacity-70">Drops:</span>
+											<span class="font-mono" class:text-error={metrics.proxy.dropCount > 0}>{metrics.proxy.dropCount || 0}</span>
+										</div>
+										<div class="flex justify-between">
+											<span class="opacity-70">Errors:</span>
+											<span class="font-mono" class:text-error={metrics.proxy.errorCount > 0}>{metrics.proxy.errorCount || 0}</span>
+										</div>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Connection Stats -->
+							<div class="bg-base-300 rounded-lg p-3">
+								<h3 class="font-semibold text-sm mb-2">🔗 Connection</h3>
+								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+									<div class="flex justify-between">
+										<span class="opacity-70">Reconnects:</span>
+										<span class="font-mono">{metrics.reconnects || 0}</span>
+									</div>
+									<div class="flex justify-between">
+										<span class="opacity-70">Disconnects:</span>
+										<span class="font-mono">{metrics.disconnects || 0}</span>
+									</div>
+								</div>
+							</div>
+						{:else if metricsLoading}
+							<div class="flex items-center justify-center py-4">
+								<span class="loading loading-spinner loading-sm"></span>
+							</div>
+						{:else}
+							<div class="text-center text-sm opacity-60 py-4">
+								Click Refresh or enable Auto to load metrics
+							</div>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		</div>
 

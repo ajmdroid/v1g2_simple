@@ -1819,7 +1819,54 @@ void WiFiManager::handleDisplayColorsApi() {
 // ============= Debug API Handlers =============
 
 void WiFiManager::handleDebugMetrics() {
-    String json = perfMetricsToJson();
+    // Get base perf metrics
+    JsonDocument doc;
+    
+    // Core counters (always available)
+    doc["rxPackets"] = perfCounters.rxPackets;
+    doc["rxBytes"] = perfCounters.rxBytes;
+    doc["parseSuccesses"] = perfCounters.parseSuccesses;
+    doc["parseFailures"] = perfCounters.parseFailures;
+    doc["queueDrops"] = perfCounters.queueDrops;
+    doc["queueHighWater"] = perfCounters.queueHighWater;
+    doc["displayUpdates"] = perfCounters.displayUpdates;
+    doc["displaySkips"] = perfCounters.displaySkips;
+    doc["reconnects"] = perfCounters.reconnects;
+    doc["disconnects"] = perfCounters.disconnects;
+    
+#if PERF_METRICS
+    doc["monitoringEnabled"] = (bool)PERF_MONITORING;
+#if PERF_MONITORING
+    extern PerfLatency perfLatency;
+    extern bool perfDebugEnabled;
+    uint32_t minUs = (perfLatency.minUs == UINT32_MAX) ? 0 : perfLatency.minUs;
+    doc["latencyMinUs"] = minUs;
+    doc["latencyAvgUs"] = perfLatency.avgUs();
+    doc["latencyMaxUs"] = perfLatency.maxUs;
+    doc["latencySamples"] = perfLatency.sampleCount;
+    doc["debugEnabled"] = perfDebugEnabled;
+#else
+    doc["latencyMinUs"] = 0;
+    doc["latencyAvgUs"] = 0;
+    doc["latencyMaxUs"] = 0;
+    doc["latencySamples"] = 0;
+    doc["debugEnabled"] = false;
+#endif
+#else
+    doc["metricsEnabled"] = false;
+#endif
+    
+    // Add proxy metrics from BLE client
+    const ProxyMetrics& proxy = bleClient.getProxyMetrics();
+    JsonObject proxyObj = doc["proxy"].to<JsonObject>();
+    proxyObj["sendCount"] = proxy.sendCount;
+    proxyObj["dropCount"] = proxy.dropCount;
+    proxyObj["errorCount"] = proxy.errorCount;
+    proxyObj["queueHighWater"] = proxy.queueHighWater;
+    proxyObj["connected"] = bleClient.isProxyClientConnected();
+    
+    String json;
+    serializeJson(doc, json);
     server.send(200, "application/json", json);
 }
 

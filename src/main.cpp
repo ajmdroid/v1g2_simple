@@ -678,6 +678,9 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
             xQueueReceive(bleDataQueue, &dropped, 0);  // Drop oldest to make room
             xQueueSend(bleDataQueue, &pkt, 0);
         }
+        // Track queue high-water mark for perf monitoring
+        UBaseType_t queueDepth = uxQueueMessagesWaiting(bleDataQueue);
+        PERF_MAX(queueHighWater, queueDepth);
     }
 }
 
