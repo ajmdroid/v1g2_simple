@@ -143,6 +143,9 @@ String eventRingToJson() {
     
     JsonArray events = doc["events"].to<JsonArray>();
     
+    // Lock to prevent torn reads while iterating
+    portENTER_CRITICAL(&eventRingMux);
+    
     uint32_t count = eventRingCount < EVENT_RING_SIZE ? eventRingCount : EVENT_RING_SIZE;
     uint32_t startIdx = (eventRingHead - count) & (EVENT_RING_SIZE - 1);
     
@@ -156,6 +159,8 @@ String eventRingToJson() {
             evtObj["data"] = evt.data;
         }
     }
+    
+    portEXIT_CRITICAL(&eventRingMux);
     
     String json;
     serializeJson(doc, json);

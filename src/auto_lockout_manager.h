@@ -1,10 +1,13 @@
 // Auto-Lockout Manager - Intelligent location-based false alert learning
 // Tracks repeated alerts at specific locations and auto-creates lockout zones
+// Thread-safe: All vector operations protected by mutex
 
 #pragma once
 #include <Arduino.h>
 #include <vector>
 #include <ctime>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "lockout_manager.h"  // For Band enum and LockoutManager
 
 // Single alert event with location and metadata
@@ -56,9 +59,29 @@ struct LearningCluster {
   int promotedLockoutIndex; // Index in LockoutManager (-1 if not promoted)
 };
 
+// RAII lock guard for cluster mutex (same pattern as LockoutLock)
+class ClusterLock {
+public:
+  explicit ClusterLock(SemaphoreHandle_t sem) : sem_(sem), locked_(false) {
+    if (sem_) {
+      locked_ = (xSemaphoreTake(sem_, pdMS_TO_TICKS(100)) == pdTRUE);
+    }
+  }
+  ~ClusterLock() {
+    if (sem_ && locked_) {
+      xSemaphoreGive(sem_);
+    }
+  }
+  bool ok() const { return locked_; }
+private:
+  SemaphoreHandle_t sem_;
+  bool locked_;
+};
+
 class AutoLockoutManager {
 private:
   std::vector<LearningCluster> clusters;
+  mutable SemaphoreHandle_t clusterMutex;  // Protects clusters vector
   LockoutManager* lockoutManager;  // Pointer to manual lockout manager
   
   // Fixed constants (not user-configurable)
@@ -88,7 +111,7 @@ private:
   // - lockoutMaxDistanceM: max distance to learn (default 600m)
   
   // Helper functions
-  int findCluster(float lat, float lon, Band band) const;
+  int findCluster(float lat, float lon, Band band, uint32_t frequency_khz) const;
   void addEventToCluster(int clusterIdx, const AlertEvent& event);
   void createNewCluster(const AlertEvent& event);
   bool shouldPromoteCluster(const LearningCluster& cluster) const;
@@ -120,8 +143,8 @@ public:
   bool restoreFromSD();
   bool checkAndRestoreFromSD();  // Auto-restore if LittleFS is empty
   
-  // Query
-  int getClusterCount() const { return clusters.size(); }
+  // Query (thread-safe)
+  int getClusterCount() const;
   const LearningCluster* getClusterAtIndex(int idx) const;
   std::vector<int> getClustersNearLocation(float lat, float lon, float radius_m) const;
   

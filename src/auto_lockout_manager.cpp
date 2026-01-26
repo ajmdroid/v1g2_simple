@@ -23,17 +23,60 @@ static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 extern LockoutManager lockouts;
 extern SettingsManager settingsManager;
 
-AutoLockoutManager::AutoLockoutManager() {
-  // Constructor
+// Atomic file write helper (same pattern as lockout_manager.cpp)
+namespace {
+bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
+  String tmpPath = String(path) + ".tmp";
+  File tmp = fs.open(tmpPath.c_str(), "w");
+  if (!tmp) {
+    return false;
+  }
+  size_t written = serializeJson(doc, tmp);
+  tmp.flush();
+  tmp.close();
+  if (written == 0) {
+    fs.remove(tmpPath.c_str());
+    return false;
+  }
+  fs.remove(path);
+  if (!fs.rename(tmpPath.c_str(), path)) {
+    // If rename fails, try to clean up
+    fs.remove(tmpPath.c_str());
+    return false;
+  }
+  return true;
 }
-AutoLockoutManager::~AutoLockoutManager() {
-  // Destructor
 }
 
-int AutoLockoutManager::findCluster(float lat, float lon, Band band) const {
+AutoLockoutManager::AutoLockoutManager() : clusterMutex(nullptr), lockoutManager(nullptr) {
+  clusterMutex = xSemaphoreCreateMutex();
+  if (!clusterMutex) {
+    Serial.println("[AutoLockout] Failed to create mutex!");
+  }
+}
+AutoLockoutManager::~AutoLockoutManager() {
+  if (clusterMutex) {
+    vSemaphoreDelete(clusterMutex);
+    clusterMutex = nullptr;
+  }
+}
+
+int AutoLockoutManager::findCluster(float lat, float lon, Band band, uint32_t frequency_khz) const {
+  // Note: Caller must hold clusterMutex
+  
+  // Get frequency tolerance from settings
+  const V1Settings& s = settingsManager.get();
+  float freqToleranceKHz = s.lockoutFreqToleranceMHz * 1000.0f;  // Convert MHz to kHz
+  
   for (size_t i = 0; i < clusters.size(); i++) {
     // Must match band
     if (clusters[i].band != band) continue;
+    
+    // Check frequency tolerance (prevents merging different sources at same location)
+    // e.g., door opener at 24.150 GHz vs speed sign at 24.125 GHz
+    int32_t freqDiff = (int32_t)frequency_khz - (int32_t)clusters[i].frequency_khz;
+    if (freqDiff < 0) freqDiff = -freqDiff;  // abs()
+    if ((float)freqDiff > freqToleranceKHz) continue;
     
     // Check distance to cluster center
     float dist = GPSHandler::haversineDistance(lat, lon, 
@@ -368,8 +411,15 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   event.isMoving = isMoving;
   event.isPersistent = (duration_ms > 2000);  // >2 seconds = stationary source
   
-  // Find or create cluster
-  int clusterIdx = findCluster(lat, lon, band);
+  // Lock for vector access
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for recordAlert\n");
+    return;
+  }
+  
+  // Find or create cluster (now includes frequency matching)
+  int clusterIdx = findCluster(lat, lon, band, frequency_khz);
   
   if (clusterIdx >= 0) {
     // Add to existing cluster
@@ -394,6 +444,13 @@ void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading) 
   // Get runtime settings
   const V1Settings& s = settingsManager.get();
   time_t unlearnIntervalSec = s.lockoutUnlearnIntervalHours * 3600;
+  
+  // Lock for vector access
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for recordPassthrough\n");
+    return;
+  }
   
   // Find all promoted clusters near this location
   for (auto& cluster : clusters) {
@@ -441,6 +498,13 @@ void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading) 
 }
 
 void AutoLockoutManager::update() {
+  // Lock for vector access
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for update\n");
+    return;
+  }
+  
   // Prune old data
   pruneOldEvents();
   pruneOldClusters();
@@ -514,7 +578,13 @@ bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
     return false;
   }
   
-  clusters.clear();
+  // Lock for vector modifications
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    Serial.println("[AutoLockout] Failed to acquire mutex for load");
+    return false;
+  }
+    clusters.clear();
   
   JsonArray clusterArray = doc["clusters"].as<JsonArray>();
   for (JsonObject obj : clusterArray) {
@@ -564,15 +634,23 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
   JsonDocument doc;
   JsonArray clusterArray = doc["clusters"].to<JsonArray>();
   
-  for (const auto& cluster : clusters) {
-    JsonObject obj = clusterArray.add<JsonObject>();
-    obj["name"] = cluster.name;
-    obj["centerLat"] = cluster.centerLat;
-    obj["centerLon"] = cluster.centerLon;
-    obj["radius_m"] = cluster.radius_m;
-    obj["band"] = static_cast<int>(cluster.band);
-    obj["hitCount"] = cluster.hitCount;
-    obj["firstSeen"] = cluster.firstSeen;
+  // Lock for vector read access
+  {
+    ClusterLock lock(clusterMutex);
+    if (!lock.ok()) {
+      Serial.println("[AutoLockout] Failed to acquire mutex for save");
+      return false;
+    }
+    
+    for (const auto& cluster : clusters) {
+      JsonObject obj = clusterArray.add<JsonObject>();
+      obj["name"] = cluster.name;
+      obj["centerLat"] = cluster.centerLat;
+      obj["centerLon"] = cluster.centerLon;
+      obj["radius_m"] = cluster.radius_m;
+      obj["band"] = static_cast<int>(cluster.band);
+      obj["hitCount"] = cluster.hitCount;
+      obj["firstSeen"] = cluster.firstSeen;
     obj["lastSeen"] = cluster.lastSeen;
     obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
     obj["lastPassthrough"] = cluster.lastPassthrough;
@@ -597,25 +675,36 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
       eventObj["moving"] = event.isMoving;
     }
   }
+  } // End of lock scope
   
-  File file = LittleFS.open(jsonPath, "w");
-  if (!file) return false;
-  
-  size_t bytesWritten = serializeJson(doc, file);
-  file.close();
-  
+  // Atomic write: write to temp file then rename (prevents corruption on power loss)
+  bool ok = writeJsonFileAtomic(LittleFS, jsonPath, doc);
+
   if (DEBUG_LOGS) {
-    Serial.printf("[AutoLockout] Saved %d clusters (%d bytes)\n", 
-                  clusters.size(), bytesWritten);
+    Serial.printf("[AutoLockout] Saved clusters (%d bytes)%s\n", 
+                  ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
+  }
+  
+  if (!ok) {
+    return false;
   }
   
   // Auto-backup to SD card if available
   backupToSD();
   
-  return bytesWritten > 0;
+  return true;
+}
+
+int AutoLockoutManager::getClusterCount() const {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return 0;
+  return clusters.size();
 }
 
 const LearningCluster* AutoLockoutManager::getClusterAtIndex(int idx) const {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return nullptr;
+  
   if (idx >= 0 && idx < (int)clusters.size()) {
     return &clusters[idx];
   }
@@ -625,6 +714,9 @@ const LearningCluster* AutoLockoutManager::getClusterAtIndex(int idx) const {
 std::vector<int> AutoLockoutManager::getClustersNearLocation(float lat, float lon, 
                                                               float radius_m) const {
   std::vector<int> nearClusters;
+  
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return nearClusters;
   
   for (size_t i = 0; i < clusters.size(); i++) {
     float dist = GPSHandler::haversineDistance(lat, lon,
@@ -639,24 +731,37 @@ std::vector<int> AutoLockoutManager::getClustersNearLocation(float lat, float lo
 }
 
 void AutoLockoutManager::promoteClusterManually(int clusterIdx) {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return;
+  
   if (clusterIdx >= 0 && clusterIdx < (int)clusters.size()) {
     promoteCluster(clusterIdx);
-    saveToJSON("/v1profiles/auto_lockouts.json");
+    // Note: saveToJSON acquires its own lock, release this one first
   }
+  // Lock released here, safe to call saveToJSON
+  saveToJSON("/v1profiles/auto_lockouts.json");
 }
 
 void AutoLockoutManager::deleteCluster(int clusterIdx) {
-  if (clusterIdx >= 0 && clusterIdx < (int)clusters.size()) {
-    if (clusters[clusterIdx].isPromoted) {
-      demoteCluster(clusterIdx);
-    } else {
-      clusters.erase(clusters.begin() + clusterIdx);
+  {
+    ClusterLock lock(clusterMutex);
+    if (!lock.ok()) return;
+    
+    if (clusterIdx >= 0 && clusterIdx < (int)clusters.size()) {
+      if (clusters[clusterIdx].isPromoted) {
+        demoteCluster(clusterIdx);
+      } else {
+        clusters.erase(clusters.begin() + clusterIdx);
+      }
     }
-    saveToJSON("/v1profiles/auto_lockouts.json");
   }
+  saveToJSON("/v1profiles/auto_lockouts.json");
 }
 
 void AutoLockoutManager::clearAll() {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return;
+  
   if (DEBUG_LOGS) {
     Serial.printf("[AutoLockout] Cleared all %d clusters\n", clusters.size());
   }
@@ -664,6 +769,12 @@ void AutoLockoutManager::clearAll() {
 }
 
 void AutoLockoutManager::printClusterStats() const {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    Serial.println("[AutoLockout] Failed to acquire mutex for printClusterStats");
+    return;
+  }
+  
   Serial.println("\n=== Auto-Lockout Learning Clusters ===");
   
   for (size_t i = 0; i < clusters.size(); i++) {
@@ -705,64 +816,65 @@ bool AutoLockoutManager::backupToSD() {
   
   JsonArray clusterArray = doc["clusters"].to<JsonArray>();
   
-  for (const auto& cluster : clusters) {
-    JsonObject obj = clusterArray.add<JsonObject>();
-    obj["name"] = cluster.name;
-    obj["centerLat"] = cluster.centerLat;
-    obj["centerLon"] = cluster.centerLon;
-    obj["radius_m"] = cluster.radius_m;
-    obj["band"] = static_cast<int>(cluster.band);
-    obj["frequency_khz"] = cluster.frequency_khz;
-    obj["frequency_tolerance_khz"] = cluster.frequency_tolerance_khz;
-    obj["hitCount"] = cluster.hitCount;
-    obj["stoppedHitCount"] = cluster.stoppedHitCount;
-    obj["movingHitCount"] = cluster.movingHitCount;
-    obj["firstSeen"] = static_cast<long>(cluster.firstSeen);
-    obj["lastSeen"] = static_cast<long>(cluster.lastSeen);
-    obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
-    obj["lastPassthrough"] = static_cast<long>(cluster.lastPassthrough);
-    obj["lastCountedHit"] = static_cast<long>(cluster.lastCountedHit);
-    obj["lastCountedMiss"] = static_cast<long>(cluster.lastCountedMiss);
-    obj["createdHeading"] = cluster.createdHeading;
-    obj["isPromoted"] = cluster.isPromoted;
-    obj["promotedLockoutIndex"] = cluster.promotedLockoutIndex;
+  // Lock for vector read access
+  {
+    ClusterLock lock(clusterMutex);
+    if (!lock.ok()) {
+      Serial.println("[AutoLockout] Failed to acquire mutex for SD backup");
+      return false;
+    }
     
-    // Save last 5 events (most recent) to reduce SD write size
-    JsonArray events = obj["events"].to<JsonArray>();
-    int startIdx = cluster.events.size() > 5 ? cluster.events.size() - 5 : 0;
-    for (size_t i = startIdx; i < cluster.events.size(); i++) {
-      const auto& ev = cluster.events[i];
-      JsonObject evObj = events.add<JsonObject>();
-      evObj["lat"] = ev.latitude;
-      evObj["lon"] = ev.longitude;
-      evObj["heading"] = ev.heading;
-      evObj["band"] = static_cast<int>(ev.band);
-      evObj["freq"] = ev.frequency_khz;
-      evObj["signal"] = ev.signalStrength;
-      evObj["duration"] = ev.duration_ms;
-      evObj["time"] = static_cast<long>(ev.timestamp);
-      evObj["moving"] = ev.isMoving;
-      evObj["persistent"] = ev.isPersistent;
+    for (const auto& cluster : clusters) {
+      JsonObject obj = clusterArray.add<JsonObject>();
+      obj["name"] = cluster.name;
+      obj["centerLat"] = cluster.centerLat;
+      obj["centerLon"] = cluster.centerLon;
+      obj["radius_m"] = cluster.radius_m;
+      obj["band"] = static_cast<int>(cluster.band);
+      obj["frequency_khz"] = cluster.frequency_khz;
+      obj["frequency_tolerance_khz"] = cluster.frequency_tolerance_khz;
+      obj["hitCount"] = cluster.hitCount;
+      obj["stoppedHitCount"] = cluster.stoppedHitCount;
+      obj["movingHitCount"] = cluster.movingHitCount;
+      obj["firstSeen"] = static_cast<long>(cluster.firstSeen);
+      obj["lastSeen"] = static_cast<long>(cluster.lastSeen);
+      obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
+      obj["lastPassthrough"] = static_cast<long>(cluster.lastPassthrough);
+      obj["lastCountedHit"] = static_cast<long>(cluster.lastCountedHit);
+      obj["lastCountedMiss"] = static_cast<long>(cluster.lastCountedMiss);
+      obj["createdHeading"] = cluster.createdHeading;
+      obj["isPromoted"] = cluster.isPromoted;
+      obj["promotedLockoutIndex"] = cluster.promotedLockoutIndex;
+      
+      // Save last 5 events (most recent) to reduce SD write size
+      JsonArray events = obj["events"].to<JsonArray>();
+      int startIdx = cluster.events.size() > 5 ? cluster.events.size() - 5 : 0;
+      for (size_t i = startIdx; i < cluster.events.size(); i++) {
+        const auto& ev = cluster.events[i];
+        JsonObject evObj = events.add<JsonObject>();
+        evObj["lat"] = ev.latitude;
+        evObj["lon"] = ev.longitude;
+        evObj["heading"] = ev.heading;
+        evObj["band"] = static_cast<int>(ev.band);
+        evObj["freq"] = ev.frequency_khz;
+        evObj["signal"] = ev.signalStrength;
+        evObj["duration"] = ev.duration_ms;
+        evObj["time"] = static_cast<long>(ev.timestamp);
+        evObj["moving"] = ev.isMoving;
+        evObj["persistent"] = ev.isPersistent;
+      }
     }
-  }
+  } // Lock released
   
-  File file = fs->open("/v1simple_auto_lockouts.json", "w");
-  if (!file) {
-    if (DEBUG_LOGS) {
-      Serial.println("[AutoLockout] Failed to open SD file for backup");
-    }
-    return false;
-  }
-  
-  size_t written = serializeJson(doc, file);
-  file.close();
+  // Atomic write to SD
+  bool ok = writeJsonFileAtomic(*fs, "/v1simple_auto_lockouts.json", doc);
   
   if (DEBUG_LOGS) {
-    Serial.printf("[AutoLockout] Backed up %d clusters to SD (%d bytes)\n", 
-                  clusters.size(), written);
+    Serial.printf("[AutoLockout] Backed up clusters to SD (%d bytes)%s\n", 
+                  ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   }
   
-  return written > 0;
+  return ok;
 }
 
 bool AutoLockoutManager::restoreFromSD() {
@@ -798,6 +910,13 @@ bool AutoLockoutManager::restoreFromSD() {
     if (DEBUG_LOGS) {
       Serial.println("[AutoLockout] Invalid SD backup format");
     }
+    return false;
+  }
+  
+  // Lock for vector modifications
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) {
+    Serial.println("[AutoLockout] Failed to acquire mutex for SD restore");
     return false;
   }
   

@@ -56,69 +56,72 @@
 
 // ============================================================================
 // Always-on counters (zero overhead when not accessed)
+// Uses std::atomic for thread-safe access from main loop and web handlers
 // ============================================================================
 struct PerfCounters {
     // Packet flow
-    volatile uint32_t rxPackets = 0;        // Total BLE notifications received
-    volatile uint32_t rxBytes = 0;          // Total bytes received
-    volatile uint32_t queueDrops = 0;       // Packets dropped (queue full)
-    volatile uint32_t queueHighWater = 0;   // Max queue depth seen
-    volatile uint32_t parseSuccesses = 0;   // Successfully parsed packets
-    volatile uint32_t parseFailures = 0;    // Parse failures (resync)
+    std::atomic<uint32_t> rxPackets{0};        // Total BLE notifications received
+    std::atomic<uint32_t> rxBytes{0};          // Total bytes received
+    std::atomic<uint32_t> queueDrops{0};       // Packets dropped (queue full)
+    std::atomic<uint32_t> queueHighWater{0};   // Max queue depth seen
+    std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
+    std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
     
     // Connection
-    volatile uint32_t reconnects = 0;       // BLE reconnection count
-    volatile uint32_t disconnects = 0;      // BLE disconnection count
+    std::atomic<uint32_t> reconnects{0};       // BLE reconnection count
+    std::atomic<uint32_t> disconnects{0};      // BLE disconnection count
     
     // Display
-    volatile uint32_t displayUpdates = 0;   // Frames drawn
-    volatile uint32_t displaySkips = 0;     // Updates skipped (throttled)
+    std::atomic<uint32_t> displayUpdates{0};   // Frames drawn
+    std::atomic<uint32_t> displaySkips{0};     // Updates skipped (throttled)
     
     // Timing (microseconds for precision)
-    volatile uint32_t lastNotifyUs = 0;     // Timestamp of last notify
-    volatile uint32_t lastFlushUs = 0;      // Timestamp of last flush
+    std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
+    std::atomic<uint32_t> lastFlushUs{0};      // Timestamp of last flush
     
     void reset() {
-        rxPackets = 0;
-        rxBytes = 0;
-        queueDrops = 0;
-        queueHighWater = 0;
-        parseSuccesses = 0;
-        parseFailures = 0;
-        reconnects = 0;
-        disconnects = 0;
-        displayUpdates = 0;
-        displaySkips = 0;
+        rxPackets.store(0, std::memory_order_relaxed);
+        rxBytes.store(0, std::memory_order_relaxed);
+        queueDrops.store(0, std::memory_order_relaxed);
+        queueHighWater.store(0, std::memory_order_relaxed);
+        parseSuccesses.store(0, std::memory_order_relaxed);
+        parseFailures.store(0, std::memory_order_relaxed);
+        reconnects.store(0, std::memory_order_relaxed);
+        disconnects.store(0, std::memory_order_relaxed);
+        displayUpdates.store(0, std::memory_order_relaxed);
+        displaySkips.store(0, std::memory_order_relaxed);
     }
 };
 
 // ============================================================================
 // Sampled latency tracking (only when PERF_METRICS=1)
+// Uses std::atomic for thread-safe access
 // ============================================================================
 struct PerfLatency {
     // BLE→Flush latency (microseconds)
-    volatile uint32_t minUs = UINT32_MAX;
-    volatile uint32_t maxUs = 0;
-    volatile uint64_t totalUs = 0;
-    volatile uint32_t sampleCount = 0;
+    std::atomic<uint32_t> minUs{UINT32_MAX};
+    std::atomic<uint32_t> maxUs{0};
+    std::atomic<uint64_t> totalUs{0};
+    std::atomic<uint32_t> sampleCount{0};
     
     // Per-stage breakdown (for debugging bottlenecks)
-    volatile uint32_t notifyToQueueUs = 0;    // notify callback → queue send
-    volatile uint32_t queueToParseUs = 0;     // queue receive → parse done
-    volatile uint32_t parseToFlushUs = 0;     // parse done → display flush
+    std::atomic<uint32_t> notifyToQueueUs{0};    // notify callback → queue send
+    std::atomic<uint32_t> queueToParseUs{0};     // queue receive → parse done
+    std::atomic<uint32_t> parseToFlushUs{0};     // parse done → display flush
     
     void reset() {
-        minUs = UINT32_MAX;
-        maxUs = 0;
-        totalUs = 0;
-        sampleCount = 0;
-        notifyToQueueUs = 0;
-        queueToParseUs = 0;
-        parseToFlushUs = 0;
+        minUs.store(UINT32_MAX, std::memory_order_relaxed);
+        maxUs.store(0, std::memory_order_relaxed);
+        totalUs.store(0, std::memory_order_relaxed);
+        sampleCount.store(0, std::memory_order_relaxed);
+        notifyToQueueUs.store(0, std::memory_order_relaxed);
+        queueToParseUs.store(0, std::memory_order_relaxed);
+        parseToFlushUs.store(0, std::memory_order_relaxed);
     }
     
     uint32_t avgUs() const {
-        return sampleCount > 0 ? static_cast<uint32_t>(totalUs / sampleCount) : 0;
+        uint32_t count = sampleCount.load(std::memory_order_relaxed);
+        return count > 0 ? static_cast<uint32_t>(totalUs.load(std::memory_order_relaxed) / count) : 0;
     }
 };
 

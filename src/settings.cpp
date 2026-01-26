@@ -310,7 +310,7 @@ void SettingsManager::load() {
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
-    settings.brightness = preferences.getUChar("brightness", 200);
+    settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
@@ -395,7 +395,7 @@ void SettingsManager::load() {
     }
     settings.announceBogeyCount = preferences.getBool("voiceBogeys", true);
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
-    settings.voiceVolume = preferences.getUChar("voiceVol", 75);
+    settings.voiceVolume = std::min<uint8_t>(100, preferences.getUChar("voiceVol", 75));  // 0-100%
     
     // Secondary alert settings
     settings.announceSecondaryAlerts = preferences.getBool("secAlerts", false);
@@ -406,17 +406,17 @@ void SettingsManager::load() {
     
     // Volume fade settings
     settings.alertVolumeFadeEnabled = preferences.getBool("volFadeEn", false);
-    settings.alertVolumeFadeDelaySec = preferences.getUChar("volFadeSec", 2);
-    settings.alertVolumeFadeVolume = preferences.getUChar("volFadeVol", 1);
+    settings.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences.getUChar("volFadeSec", 2), 1, 10);  // 1-10 seconds
+    settings.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences.getUChar("volFadeVol", 1));  // 0-9 (V1 volume range)
     
     // Speed-based volume settings
     settings.speedVolumeEnabled = preferences.getBool("spdVolEn", false);
-    settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);
-    settings.speedVolumeBoost = preferences.getUChar("spdVolBoost", 2);
+    settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);  // No upper bound needed for speed
+    settings.speedVolumeBoost = std::min<uint8_t>(9, preferences.getUChar("spdVolBoost", 2));  // 0-9 (V1 volume range)
     
     // Low-speed mute settings
     settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
-    settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);
+    settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);  // No upper bound needed for speed;
     
     settings.autoPushEnabled = preferences.getBool("autoPush", false);
     settings.activeSlot = preferences.getInt("activeSlot", 0);

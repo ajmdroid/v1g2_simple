@@ -362,8 +362,8 @@ static void i2s_init() {
 static std::atomic<bool> audio_playing{false};
 
 // Amp warm-keeping: keep amp on for a few seconds after playback for faster subsequent plays
-static volatile bool amp_is_warm = false;
-static volatile unsigned long amp_last_used_ms = 0;
+static std::atomic<bool> amp_is_warm{false};
+static std::atomic<unsigned long> amp_last_used_ms{0};
 static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;  // Keep amp on for 3 seconds after last audio
 
 // Audio task parameters for non-blocking playback

@@ -49,17 +49,18 @@ bool perfMetricsCheckReport() {
     
     // Single-line compact report
     uint32_t avgUs = perfLatency.avgUs();
-    uint32_t minUs = (perfLatency.minUs == UINT32_MAX) ? 0 : perfLatency.minUs;
+    uint32_t minUsVal = perfLatency.minUs.load();
+    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
     Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu\n",
-        (unsigned long)perfCounters.rxPackets,
-        (unsigned long)perfCounters.parseSuccesses,
-        (unsigned long)perfCounters.queueDrops,
-        (unsigned long)perfCounters.queueHighWater,
+        (unsigned long)perfCounters.rxPackets.load(),
+        (unsigned long)perfCounters.parseSuccesses.load(),
+        (unsigned long)perfCounters.queueDrops.load(),
+        (unsigned long)perfCounters.queueHighWater.load(),
         (unsigned long)minUs,
         (unsigned long)avgUs,
-        (unsigned long)perfLatency.maxUs,
-        (unsigned long)perfCounters.displayUpdates);
+        (unsigned long)perfLatency.maxUs.load(),
+        (unsigned long)perfCounters.displayUpdates.load());
     
     // Reset latency stats for next window (counters are cumulative)
     perfLatency.reset();
@@ -74,29 +75,30 @@ bool perfMetricsCheckReport() {
 void perfMetricsPrint() {
 #if PERF_METRICS && PERF_MONITORING
     uint32_t avgUs = perfLatency.avgUs();
-    uint32_t minUs = (perfLatency.minUs == UINT32_MAX) ? 0 : perfLatency.minUs;
+    uint32_t minUsVal = perfLatency.minUs.load();
+    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
     Serial.println("=== Performance Metrics ===");
     Serial.printf("RX: packets=%lu bytes=%lu\n", 
-        (unsigned long)perfCounters.rxPackets, 
-        (unsigned long)perfCounters.rxBytes);
+        (unsigned long)perfCounters.rxPackets.load(), 
+        (unsigned long)perfCounters.rxBytes.load());
     Serial.printf("Parse: ok=%lu fail=%lu\n",
-        (unsigned long)perfCounters.parseSuccesses,
-        (unsigned long)perfCounters.parseFailures);
+        (unsigned long)perfCounters.parseSuccesses.load(),
+        (unsigned long)perfCounters.parseFailures.load());
     Serial.printf("Queue: drops=%lu highWater=%lu\n",
-        (unsigned long)perfCounters.queueDrops,
-        (unsigned long)perfCounters.queueHighWater);
+        (unsigned long)perfCounters.queueDrops.load(),
+        (unsigned long)perfCounters.queueHighWater.load());
     Serial.printf("Display: updates=%lu skips=%lu\n",
-        (unsigned long)perfCounters.displayUpdates,
-        (unsigned long)perfCounters.displaySkips);
+        (unsigned long)perfCounters.displayUpdates.load(),
+        (unsigned long)perfCounters.displaySkips.load());
     Serial.printf("Connection: reconnects=%lu disconnects=%lu\n",
-        (unsigned long)perfCounters.reconnects,
-        (unsigned long)perfCounters.disconnects);
+        (unsigned long)perfCounters.reconnects.load(),
+        (unsigned long)perfCounters.disconnects.load());
     Serial.printf("Latency (BLE->flush): min=%luus avg=%luus max=%luus samples=%lu\n",
         (unsigned long)minUs,
         (unsigned long)avgUs,
-        (unsigned long)perfLatency.maxUs,
-        (unsigned long)perfLatency.sampleCount);
+        (unsigned long)perfLatency.maxUs.load(),
+        (unsigned long)perfLatency.sampleCount.load());
     Serial.println("===========================");
 #elif PERF_METRICS
     Serial.println("Performance monitoring disabled (PERF_MONITORING=0)");
@@ -108,25 +110,26 @@ void perfMetricsPrint() {
 String perfMetricsToJson() {
     JsonDocument doc;
     
-    doc["rxPackets"] = perfCounters.rxPackets;
-    doc["rxBytes"] = perfCounters.rxBytes;
-    doc["parseSuccesses"] = perfCounters.parseSuccesses;
-    doc["parseFailures"] = perfCounters.parseFailures;
-    doc["queueDrops"] = perfCounters.queueDrops;
-    doc["queueHighWater"] = perfCounters.queueHighWater;
-    doc["displayUpdates"] = perfCounters.displayUpdates;
-    doc["displaySkips"] = perfCounters.displaySkips;
-    doc["reconnects"] = perfCounters.reconnects;
-    doc["disconnects"] = perfCounters.disconnects;
+    doc["rxPackets"] = perfCounters.rxPackets.load();
+    doc["rxBytes"] = perfCounters.rxBytes.load();
+    doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
+    doc["parseFailures"] = perfCounters.parseFailures.load();
+    doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["queueHighWater"] = perfCounters.queueHighWater.load();
+    doc["displayUpdates"] = perfCounters.displayUpdates.load();
+    doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["reconnects"] = perfCounters.reconnects.load();
+    doc["disconnects"] = perfCounters.disconnects.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
 #if PERF_MONITORING
-    uint32_t minUs = (perfLatency.minUs == UINT32_MAX) ? 0 : perfLatency.minUs;
+    uint32_t minUsVal = perfLatency.minUs.load();
+    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     doc["latencyMinUs"] = minUs;
     doc["latencyAvgUs"] = perfLatency.avgUs();
-    doc["latencyMaxUs"] = perfLatency.maxUs;
-    doc["latencySamples"] = perfLatency.sampleCount;
+    doc["latencyMaxUs"] = perfLatency.maxUs.load();
+    doc["latencySamples"] = perfLatency.sampleCount.load();
     doc["debugEnabled"] = perfDebugEnabled;
 #else
     doc["latencyMinUs"] = 0;

@@ -2240,9 +2240,9 @@ void loop() {
             lastPerfLogMs = now;
             debugLogger.logf(DebugLogCategory::PerfMetrics, 
                 "PerfMetrics: rx=%lu qDrop=%lu parseOK=%lu parseFail=%lu disc=%lu reconn=%lu",
-                perfCounters.rxPackets, perfCounters.queueDrops, 
-                perfCounters.parseSuccesses, perfCounters.parseFailures,
-                perfCounters.disconnects, perfCounters.reconnects);
+                perfCounters.rxPackets.load(), perfCounters.queueDrops.load(), 
+                perfCounters.parseSuccesses.load(), perfCounters.parseFailures.load(),
+                perfCounters.disconnects.load(), perfCounters.reconnects.load());
         }
     }
 
