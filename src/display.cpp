@@ -2744,12 +2744,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         
         // Only fully return if no camera cards to draw
         if (!hasActiveCameras) {
-            // Clear the card area and return
+            // Clear the card area
             const int signalBarsX = SCREEN_WIDTH - 200 - 2;
             const int clearWidth = signalBarsX - startX;
             if (clearWidth > 0) {
                 FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
             }
+            // Reset last drawn count so next time cards appear, change is detected
+            lastDrawnCount = 0;
             return;
         }
         // Otherwise, fall through to draw camera cards
@@ -3034,23 +3036,29 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             int arrowCY = contentCenterY;
             tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, TFT_WHITE);
             
-            // "CAM" badge (like band indicator on V1 cards)
-            int labelX = cardX + 36;
-            tft->setTextColor(camColor);
-            tft->setTextSize(2);
-            tft->setCursor(labelX, topRowY);
-            tft->print("CAM");
-            
-            // Distance after CAM (like frequency on V1 cards)
+            // Distance in compact format (like frequency on V1 cards)
+            // Position after arrow, fitting within card width
             char distStr[16];
             if (camDistance < 1609.34f) {  // Less than 1 mile
                 int distFt = static_cast<int>(camDistance * 3.28084f);
-                snprintf(distStr, sizeof(distStr), "%d ft", distFt);
+                snprintf(distStr, sizeof(distStr), "%dft", distFt);  // No space to save room
             } else {
-                snprintf(distStr, sizeof(distStr), "%.1f mi", camDistance / 1609.34f);
+                snprintf(distStr, sizeof(distStr), "%.1fmi", camDistance / 1609.34f);
             }
+            
+            // Draw distance in size 2 font, positioned after arrow with room for text
+            int labelX = cardX + 36;
             tft->setTextColor(TFT_WHITE);
-            int distX = labelX + 3 * 12 + 4;  // After "CAM" + spacing
+            tft->setTextSize(2);
+            // Calculate text width (12 pixels per char at size 2)
+            int distLen = strlen(distStr);
+            int distPixelWidth = distLen * 12;
+            // Position to fit within card - ensure it doesn't overflow
+            int maxDistX = cardX + cardW - distPixelWidth - 5;  // 5px right margin
+            int distX = labelX;
+            if (distX + distPixelWidth > cardX + cardW - 5) {
+                distX = maxDistX;  // Shift left if needed
+            }
             tft->setCursor(distX, topRowY);
             tft->print(distStr);
             
@@ -4501,6 +4509,17 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
         clearAllCameraAlerts();
     }
     
+    // === DRAW/CLEAR CAMERA CARDS IN SECONDARY AREA ===
+    // After setting card states, we need to actually render or clear them
+    // Force redraw to ensure cards are drawn or cleared properly
+    forceCardRedraw = true;
+    // Call drawSecondaryAlertCards with empty V1 data to render/clear camera cards
+    AlertData emptyPriority;  // Default constructor = invalid
+    drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+    
+    // Flush to ensure card changes are visible (especially when clearing)
+    flush();
+    
     // === HANDLE MAIN AREA DISPLAY ===
     // If V1 has active alerts, clear main camera area (camera shows as card instead)
     if (active && showPrimaryAsCard) {
@@ -4545,11 +4564,12 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     const int fontSize = 75;  // Same font size as V1 frequency
     int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
     
-    // Clear area dimensions (larger to include type label above)
+    // Clear area dimensions - match V1 frequency area (don't overlap with cards at Y=118)
+    // Cards start at Y = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT = 172 - 54 = 118
     const int clearX = leftMargin + 10;
-    const int clearY = freqY - 25;  // Extra space for type label above
+    const int clearY = freqY - 5;  // Same as V1 frequency clear (y - 5)
     const int clearW = maxWidth - 10;
-    const int clearH = fontSize + 40;  // Taller to fit type label + distance
+    const int clearH = fontSize + 10;  // Same as V1 frequency clear (fontSize + 10)
     
     if (!active) {
         // Clear camera alert area if was previously shown
@@ -4581,16 +4601,20 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
     lastTypeName[sizeof(lastTypeName) - 1] = '\0';
     
-    // Clear the display area
+    // Clear the display area (frequency area only)
     FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
     
-    // === CAMERA TYPE LABEL (above distance, like band indicator position) ===
+    // === CAMERA TYPE LABEL (above distance, positioned like band label) ===
+    // Position at top of primary zone, above the mute icon row
+    const int typeLabelY = 8;  // Near top of display
     tft->setTextSize(2);
     tft->setTextColor(color);
     int typeLen = strlen(typeName);
     int typePixelWidth = typeLen * 12;  // size 2 = 12 pixels per char
     int typeX = leftMargin + (maxWidth - typePixelWidth) / 2;
-    tft->setCursor(typeX, clearY + 2);
+    // Clear just the type label area first (in case type name changed length)
+    FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
+    tft->setCursor(typeX, typeLabelY);
     tft->print(typeName);
     
     // === DISTANCE IN LARGE 75pt SEGMENT7 FONT (same as V1 frequency) ===

@@ -732,6 +732,7 @@ static void updateCameraCardState(bool v1HasAlerts) {
         } else {
             display.setCameraAlertState(1, false, "", 0, 0);
         }
+        return;  // Early return - test mode handled
     } else if (!activeCameraAlerts.empty()) {
         // Real camera alerts active
         if (v1HasAlerts) {
