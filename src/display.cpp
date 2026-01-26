@@ -4576,9 +4576,9 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
             const int clearW = maxWidth - 10;
             const int clearH = fontSize + 40;
             FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
-            // Also clear the type label at the top
-            const int typeLabelY = 8;
-            FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
+            // Also clear the type label (below status bar at Y=14)
+            const int typeLabelY = 14;
+            FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
         }
         lastCameraState = true;
         lastWasCard = true;
@@ -4603,18 +4603,18 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     // Vertical positioning - same as V1 frequency display
     const int muteIconBottom = 33;
     int effectiveHeight = getEffectiveScreenHeight();
-    const int fontSize = 75;  // Same font size as V1 frequency
+    const int fontSize = 67;  // ~10% smaller than V1 frequency (75 -> 67)
     int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
     
-    // Clear area dimensions - match V1 frequency area (don't overlap with cards at Y=118)
+    // Clear area dimensions - sized for 67pt font (don't overlap with cards at Y=118)
     // Cards start at Y = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT = 172 - 54 = 118
     const int clearX = leftMargin + 10;
-    const int clearY = freqY - 5;  // Same as V1 frequency clear (y - 5)
+    const int clearY = freqY - 5;
     const int clearW = maxWidth - 10;
-    const int clearH = fontSize + 10;  // Same as V1 frequency clear (fontSize + 10)
+    const int clearH = fontSize + 10;  // 67 + 10 = 77px (scaled down from 85)
     
-    // Type label position (at top of primary zone)
-    const int typeLabelY = 8;
+    // Type label position (below status bar which ends at Y~11)
+    const int typeLabelY = 14;
     
     if (!active) {
         // Clear camera alert area if was previously shown
@@ -4622,8 +4622,8 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
             if (!lastWasCard) {
                 // Clear main distance area
                 FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
-                // Also clear the type label at the top
-                FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
+                // Also clear the type label (below status bar)
+                FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
             }
             lastCameraState = false;
             lastWasCard = false;
@@ -4652,20 +4652,20 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     // Clear the display area (frequency area only)
     FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
     
-    // === CAMERA TYPE LABEL (above distance, positioned like band label) ===
-    // Position at top of primary zone, above the mute icon row
-    // (typeLabelY already declared above)
+    // === CAMERA TYPE LABEL (below status bar, above distance) ===
+    // Position below status bar (which ends at Y~11)
+    // (typeLabelY already declared above at Y=14)
     tft->setTextSize(2);
     tft->setTextColor(color);
     int typeLen = strlen(typeName);
     int typePixelWidth = typeLen * 12;  // size 2 = 12 pixels per char
     int typeX = leftMargin + (maxWidth - typePixelWidth) / 2;
     // Clear just the type label area first (in case type name changed length)
-    FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
+    FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
     tft->setCursor(typeX, typeLabelY);
     tft->print(typeName);
     
-    // === DISTANCE IN LARGE 75pt SEGMENT7 FONT (same as V1 frequency) ===
+    // === DISTANCE IN 67pt SEGMENT7 FONT (~10% smaller than V1 frequency) ===
     char distStr[16];
     if (distance_m < 1609.34f) {  // Less than 1 mile
         int distFt = static_cast<int>(distance_m * 3.28084f);
@@ -4674,9 +4674,9 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
         snprintf(distStr, sizeof(distStr), "%.1f mi", distance_m / 1609.34f);
     }
     
-    // Use OpenFontRender Segment7 at 75pt (matching V1 frequency)
+    // Use OpenFontRender Segment7 at 67pt
     if (ofrSegment7Initialized) {
-        ofrSegment7.setFontSize(fontSize);  // 75pt - same as V1 frequency
+        ofrSegment7.setFontSize(fontSize);  // 67pt
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
