@@ -2724,21 +2724,35 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastPriorityForCards = AlertData();
     }
     
-    // If called with nullptr alerts and count 0, force-expire all cards immediately
-    // (used when transitioning to non-alert screens to clear stale card state)
+    // Check if any camera cards are active
+    bool hasActiveCameras = false;
+    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
+        if (cameraCards[i].active && cameraCards[i].typeName[0] != '\0') {
+            hasActiveCameras = true;
+            break;
+        }
+    }
+    
+    // If called with nullptr alerts and count 0, clear V1 card state
+    // BUT: if camera cards are active, we need to continue and draw them
     if (alerts == nullptr && alertCount == 0) {
         for (int c = 0; c < 2; c++) {
             cards[c].alert = AlertData();
             cards[c].lastSeen = 0;
         }
         lastPriorityForCards = AlertData();
-        // Clear the card area
-        const int signalBarsX = SCREEN_WIDTH - 200 - 2;
-        const int clearWidth = signalBarsX - startX;
-        if (clearWidth > 0) {
-            FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
+        
+        // Only fully return if no camera cards to draw
+        if (!hasActiveCameras) {
+            // Clear the card area and return
+            const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+            const int clearWidth = signalBarsX - startX;
+            if (clearWidth > 0) {
+                FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
+            }
+            return;
         }
-        return;
+        // Otherwise, fall through to draw camera cards
     }
     
     // Helper: check if two alerts match (same band + exact frequency)

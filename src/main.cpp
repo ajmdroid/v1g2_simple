@@ -716,19 +716,19 @@ static void updateCameraCardState(bool v1HasAlerts) {
         // Test shows: phase 0 = 1 cam, phase 1 = 2 cams, phase 2 = 3 cams
         int numTestCameras = cameraTestPhase + 1;
         
-        // Simulated test camera data
-        static const char* testTypes[] = {"RED LIGHT", "SPEED", "ALPR"};
-        static const float testDistances[] = {500.0f, 800.0f, 1200.0f};
+        // Secondary camera types (primary uses cameraTestTypeName set by user)
+        static const char* secondaryTypes[] = {"SPEED", "ALPR"};
+        static const float testDistances[] = {800.0f, 1200.0f};
         
         // Set up card states based on phase
         // Card slot 0 = 2nd camera, Card slot 1 = 3rd camera (primary is main area)
         if (numTestCameras >= 2) {
-            display.setCameraAlertState(0, true, testTypes[1], testDistances[1], dispSettings.colorCameraAlert);
+            display.setCameraAlertState(0, true, secondaryTypes[0], testDistances[0], dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(0, false, "", 0, 0);
         }
         if (numTestCameras >= 3) {
-            display.setCameraAlertState(1, true, testTypes[2], testDistances[2], dispSettings.colorCameraAlert);
+            display.setCameraAlertState(1, true, secondaryTypes[1], testDistances[1], dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(1, false, "", 0, 0);
         }
@@ -2820,13 +2820,22 @@ void loop() {
             const V1Settings& dispSettings = settingsManager.get();
             
             // Build camera info array based on test phase
-            static const char* testTypes[] = {"RED LIGHT", "SPEED", "ALPR"};
+            // Primary (index 0) uses the user-selected test type
+            // Secondary cameras use different types for variety
+            static const char* secondaryTypes[] = {"SPEED", "ALPR", "RED LIGHT"};
             static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
             
             V1Display::CameraAlertInfo camInfos[3];
-            for (int i = 0; i < numCameras; i++) {
-                camInfos[i].typeName = testTypes[i];
-                camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);  // Slowly approach
+            // Primary camera: user-selected type (stored in cameraTestTypeName)
+            camInfos[0].typeName = cameraTestTypeName;
+            camInfos[0].distance_m = baseDistances[0] - (elapsed * 0.01f);
+            if (camInfos[0].distance_m < 50.0f) camInfos[0].distance_m = 50.0f;
+            camInfos[0].color = dispSettings.colorCameraAlert;
+            
+            // Secondary cameras: cycle through other types
+            for (int i = 1; i < numCameras; i++) {
+                camInfos[i].typeName = secondaryTypes[i - 1];
+                camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);
                 if (camInfos[i].distance_m < 50.0f) camInfos[i].distance_m = 50.0f;
                 camInfos[i].color = dispSettings.colorCameraAlert;
             }
