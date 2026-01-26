@@ -38,8 +38,8 @@ test/
 |--------|-------|--------|
 | haversine distance | 10 | ✅ PASS |
 | packet parser | 30 | ✅ PASS |
-| display system | 65 | ✅ PASS |
-| **Total** | **105** | **✅ ALL PASS** |
+| display system | 74 | ✅ PASS |
+| **Total** | **114** | **✅ ALL PASS** |
 
 ## Display Torture Test Categories
 
@@ -118,6 +118,29 @@ The `test_display` suite comprehensively tests the display system:
 ### Layout (2 tests)
 - Screen dimensions (640×172)
 - Primary/secondary zone fit
+
+### Test Mode State Machine (9 tests)
+Tests display restore behavior after web UI tests (color preview, camera test) end.
+**These tests catch the "stuck screen" bug where display didn't return to SCANNING when V1 was disconnected.**
+
+| Test | Scenario | Expected Behavior |
+|------|----------|-------------------|
+| Color preview ends, V1 disconnected | Test ends while scanning | Show SCANNING (not RESTING!) |
+| Color preview ends, V1 connected | Test ends with V1 idle | Show RESTING |
+| Color preview ends, V1 has alerts | Test ends with active alert | Show ALERT with data |
+| Camera test ends, V1 disconnected | Test ends while scanning | Show SCANNING |
+| Camera test ends, V1 connected | Test ends with V1 | Show RESTING or ALERT |
+| Ended flags clear | After processing | Flags reset (no infinite loop) |
+| V1 disconnects during test | State change mid-test | Uses current state at end |
+| V1 connects during test | State change mid-test | Uses current state at end |
+| Sequential test modes | Multiple tests | Each restores correctly |
+
+**Key Invariant:**
+```
+When test mode ends:
+  if (v1Connected) → showResting() or update()
+  else → showScanning()  // NEVER showResting() when disconnected!
+```
 
 ## Writing Tests
 

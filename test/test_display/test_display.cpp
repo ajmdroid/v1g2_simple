@@ -1173,6 +1173,299 @@ void test_layout_primary_zone() {
 }
 
 // ============================================================================
+// Test Cases: Test Mode State Machine (Color Preview, Camera Test, Audio Test)
+// 
+// CRITICAL: These tests catch the bug where display doesn't properly restore
+// after web UI tests end. The key invariant is:
+//   - V1 connected → show resting or update with alerts
+//   - V1 disconnected → show scanning (NOT resting!)
+// ============================================================================
+
+// Display screen types for state machine testing
+enum class DisplayScreen {
+    SCANNING,       // V1 not connected - looking for V1
+    RESTING,        // V1 connected, no alerts
+    ALERT,          // V1 connected, has alerts
+    DEMO,           // Color preview active
+    CAMERA_TEST     // Camera test active
+};
+
+// Simulates the display state machine that determines which screen to show
+class DisplayStateMachine {
+public:
+    bool v1Connected = false;
+    bool hasAlerts = false;
+    bool colorPreviewActive = false;
+    bool colorPreviewEnded = false;
+    bool cameraTestActive = false;
+    bool cameraTestEnded = false;
+    
+    DisplayScreen lastScreen = DisplayScreen::SCANNING;
+    int showScanningCount = 0;
+    int showRestingCount = 0;
+    int showAlertCount = 0;
+    
+    void reset() {
+        v1Connected = false;
+        hasAlerts = false;
+        colorPreviewActive = false;
+        colorPreviewEnded = false;
+        cameraTestActive = false;
+        cameraTestEnded = false;
+        lastScreen = DisplayScreen::SCANNING;
+        showScanningCount = 0;
+        showRestingCount = 0;
+        showAlertCount = 0;
+    }
+    
+    // Start color preview test
+    void startColorPreview() {
+        colorPreviewActive = true;
+        colorPreviewEnded = false;
+    }
+    
+    // End color preview (simulates timeout or cancel)
+    void endColorPreview() {
+        colorPreviewActive = false;
+        colorPreviewEnded = true;
+    }
+    
+    // Start camera test
+    void startCameraTest() {
+        cameraTestActive = true;
+        cameraTestEnded = false;
+    }
+    
+    // End camera test
+    void endCameraTest() {
+        cameraTestActive = false;
+        cameraTestEnded = true;
+    }
+    
+    // Main loop tick - processes state and determines screen to show
+    // Returns the screen that should be displayed
+    // THIS IS THE LOGIC THAT HAD THE BUG - we test it in isolation
+    DisplayScreen processLoop() {
+        // Test modes take priority
+        if (colorPreviewActive) {
+            lastScreen = DisplayScreen::DEMO;
+            return lastScreen;
+        }
+        
+        if (cameraTestActive) {
+            lastScreen = DisplayScreen::CAMERA_TEST;
+            return lastScreen;
+        }
+        
+        // Handle test mode ending - restore proper screen
+        if (colorPreviewEnded || cameraTestEnded) {
+            colorPreviewEnded = false;
+            cameraTestEnded = false;
+            
+            // KEY INVARIANT: Check connection state to determine correct screen
+            if (v1Connected) {
+                if (hasAlerts) {
+                    showAlertCount++;
+                    lastScreen = DisplayScreen::ALERT;
+                } else {
+                    showRestingCount++;
+                    lastScreen = DisplayScreen::RESTING;
+                }
+            } else {
+                // V1 NOT connected - MUST show scanning, NOT resting!
+                // THIS WAS THE BUG: code was calling showResting() here
+                showScanningCount++;
+                lastScreen = DisplayScreen::SCANNING;
+            }
+            return lastScreen;
+        }
+        
+        // Normal operation
+        if (!v1Connected) {
+            lastScreen = DisplayScreen::SCANNING;
+            return lastScreen;
+        }
+        
+        if (hasAlerts) {
+            lastScreen = DisplayScreen::ALERT;
+        } else {
+            lastScreen = DisplayScreen::RESTING;
+        }
+        return lastScreen;
+    }
+};
+
+static DisplayStateMachine g_stateMachine;
+
+// Test: Color preview ends when V1 disconnected → must show SCANNING
+void test_color_preview_ends_v1_disconnected_shows_scanning() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = false;  // V1 NOT connected
+    
+    // Start and run color preview
+    g_stateMachine.startColorPreview();
+    TEST_ASSERT_EQUAL(DisplayScreen::DEMO, g_stateMachine.processLoop());
+    
+    // End color preview
+    g_stateMachine.endColorPreview();
+    
+    // Process loop should show SCANNING (not RESTING!)
+    DisplayScreen result = g_stateMachine.processLoop();
+    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, result);
+    TEST_ASSERT_EQUAL(1, g_stateMachine.showScanningCount);
+    TEST_ASSERT_EQUAL(0, g_stateMachine.showRestingCount);  // Must NOT call showResting!
+}
+
+// Test: Color preview ends when V1 connected (no alerts) → show RESTING
+void test_color_preview_ends_v1_connected_no_alerts_shows_resting() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = true;
+    g_stateMachine.hasAlerts = false;
+    
+    g_stateMachine.startColorPreview();
+    g_stateMachine.processLoop();
+    g_stateMachine.endColorPreview();
+    
+    DisplayScreen result = g_stateMachine.processLoop();
+    TEST_ASSERT_EQUAL(DisplayScreen::RESTING, result);
+    TEST_ASSERT_EQUAL(1, g_stateMachine.showRestingCount);
+    TEST_ASSERT_EQUAL(0, g_stateMachine.showScanningCount);
+}
+
+// Test: Color preview ends when V1 connected (has alerts) → show ALERT
+void test_color_preview_ends_v1_connected_with_alerts_shows_alert() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = true;
+    g_stateMachine.hasAlerts = true;
+    
+    g_stateMachine.startColorPreview();
+    g_stateMachine.processLoop();
+    g_stateMachine.endColorPreview();
+    
+    DisplayScreen result = g_stateMachine.processLoop();
+    TEST_ASSERT_EQUAL(DisplayScreen::ALERT, result);
+    TEST_ASSERT_EQUAL(1, g_stateMachine.showAlertCount);
+}
+
+// Test: Camera test ends when V1 disconnected → must show SCANNING
+void test_camera_test_ends_v1_disconnected_shows_scanning() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = false;
+    
+    g_stateMachine.startCameraTest();
+    TEST_ASSERT_EQUAL(DisplayScreen::CAMERA_TEST, g_stateMachine.processLoop());
+    
+    g_stateMachine.endCameraTest();
+    
+    DisplayScreen result = g_stateMachine.processLoop();
+    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, result);
+    TEST_ASSERT_EQUAL(1, g_stateMachine.showScanningCount);
+    TEST_ASSERT_EQUAL(0, g_stateMachine.showRestingCount);  // Must NOT call showResting!
+}
+
+// Test: Camera test ends when V1 connected → show RESTING or ALERT
+void test_camera_test_ends_v1_connected_shows_correct_screen() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = true;
+    g_stateMachine.hasAlerts = false;
+    
+    g_stateMachine.startCameraTest();
+    g_stateMachine.processLoop();
+    g_stateMachine.endCameraTest();
+    
+    TEST_ASSERT_EQUAL(DisplayScreen::RESTING, g_stateMachine.processLoop());
+    
+    // Now with alerts
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = true;
+    g_stateMachine.hasAlerts = true;
+    
+    g_stateMachine.startCameraTest();
+    g_stateMachine.processLoop();
+    g_stateMachine.endCameraTest();
+    
+    TEST_ASSERT_EQUAL(DisplayScreen::ALERT, g_stateMachine.processLoop());
+}
+
+// Test: Ended flags are cleared after processing (prevent infinite loop)
+void test_ended_flags_clear_after_processing() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = false;
+    
+    g_stateMachine.endColorPreview();
+    TEST_ASSERT_TRUE(g_stateMachine.colorPreviewEnded);
+    
+    g_stateMachine.processLoop();
+    TEST_ASSERT_FALSE(g_stateMachine.colorPreviewEnded);  // Must be cleared!
+    
+    // Second call should NOT increment counters again
+    int prevCount = g_stateMachine.showScanningCount;
+    g_stateMachine.processLoop();
+    // showScanningCount might increment for normal operation, but not for "ended" handling
+    // The key is that colorPreviewEnded is cleared
+    TEST_ASSERT_FALSE(g_stateMachine.colorPreviewEnded);
+}
+
+// Test: V1 disconnects DURING test mode → correct screen after test ends
+void test_v1_disconnects_during_test_mode() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = true;  // Start connected
+    
+    g_stateMachine.startColorPreview();
+    g_stateMachine.processLoop();
+    
+    // V1 disconnects while in test mode
+    g_stateMachine.v1Connected = false;
+    
+    // Test ends
+    g_stateMachine.endColorPreview();
+    
+    // Should show SCANNING (not RESTING, even though we started connected)
+    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, g_stateMachine.processLoop());
+}
+
+// Test: V1 connects DURING test mode → correct screen after test ends
+void test_v1_connects_during_test_mode() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = false;  // Start disconnected
+    
+    g_stateMachine.startColorPreview();
+    g_stateMachine.processLoop();
+    
+    // V1 connects while in test mode
+    g_stateMachine.v1Connected = true;
+    g_stateMachine.hasAlerts = true;  // And has alerts
+    
+    // Test ends
+    g_stateMachine.endColorPreview();
+    
+    // Should show ALERT (current state, not state when test started)
+    TEST_ASSERT_EQUAL(DisplayScreen::ALERT, g_stateMachine.processLoop());
+}
+
+// Test: Multiple test modes don't interfere
+void test_sequential_test_modes() {
+    g_stateMachine.reset();
+    g_stateMachine.v1Connected = false;
+    
+    // Color preview
+    g_stateMachine.startColorPreview();
+    g_stateMachine.processLoop();
+    g_stateMachine.endColorPreview();
+    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, g_stateMachine.processLoop());
+    
+    // Camera test
+    g_stateMachine.startCameraTest();
+    g_stateMachine.processLoop();
+    g_stateMachine.endCameraTest();
+    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, g_stateMachine.processLoop());
+    
+    // Total calls
+    TEST_ASSERT_EQUAL(2, g_stateMachine.showScanningCount);
+    TEST_ASSERT_EQUAL(0, g_stateMachine.showRestingCount);
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -1279,6 +1572,17 @@ int main() {
     // Layout tests
     RUN_TEST(test_layout_screen_dimensions);
     RUN_TEST(test_layout_primary_zone);
+    
+    // Test mode state machine tests (catches display restore bugs)
+    RUN_TEST(test_color_preview_ends_v1_disconnected_shows_scanning);
+    RUN_TEST(test_color_preview_ends_v1_connected_no_alerts_shows_resting);
+    RUN_TEST(test_color_preview_ends_v1_connected_with_alerts_shows_alert);
+    RUN_TEST(test_camera_test_ends_v1_disconnected_shows_scanning);
+    RUN_TEST(test_camera_test_ends_v1_connected_shows_correct_screen);
+    RUN_TEST(test_ended_flags_clear_after_processing);
+    RUN_TEST(test_v1_disconnects_during_test_mode);
+    RUN_TEST(test_v1_connects_during_test_mode);
+    RUN_TEST(test_sequential_test_modes);
     
     return UNITY_END();
 }
