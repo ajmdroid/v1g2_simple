@@ -42,7 +42,9 @@ test/
 | integration/ownership | 20 | ✅ PASS |
 | lockout manager | 32 | ✅ PASS |
 | auto-lockout manager | 27 | ✅ PASS |
-| **Total** | **193** | **✅ ALL PASS** |
+| settings manager | 15 | ✅ PASS |
+| event ring | 15 | ✅ PASS |
+| **Total** | **223** | **✅ ALL PASS** |
 
 ## Display Torture Test Categories
 
