@@ -1,6 +1,7 @@
 /**
  * WiFi Manager for V1 Gen2 Display
- * AP-only: always-on access point serving the local UI/API.
+ * AP+STA: always-on access point serving the local UI/API
+ *         plus optional station mode to connect to external network
  */
 
 #include "wifi_manager.h"
@@ -20,6 +21,8 @@
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <algorithm>
+#include <map>
+#include <vector>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
@@ -177,7 +180,16 @@ bool WiFiManager::startSetupMode() {
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
 
-    WiFi.mode(WIFI_AP);
+    // Check if WiFi client is enabled - use AP+STA mode
+    const V1Settings& settings = settingsManager.get();
+    if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+        Serial.println("[SetupMode] WiFi client enabled, using AP+STA mode");
+        WiFi.mode(WIFI_AP_STA);
+        wifiClientState = WIFI_CLIENT_DISCONNECTED;
+    } else {
+        WiFi.mode(WIFI_AP);
+        wifiClientState = WIFI_CLIENT_DISABLED;
+    }
 
     setupAP();
     setupWebServer();
@@ -463,6 +475,13 @@ void WiFiManager::setupWebServer() {
     server.on("/api/cameras/upload", HTTP_POST, [this]() { handleCameraUpload(); });
     server.on("/api/cameras/test", HTTP_POST, [this]() { handleCameraTest(); });
     
+    // WiFi client (STA) API routes - connect to external network
+    server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
+    server.on("/api/wifi/scan", HTTP_POST, [this]() { handleWifiClientScan(); });
+    server.on("/api/wifi/connect", HTTP_POST, [this]() { handleWifiClientConnect(); });
+    server.on("/api/wifi/disconnect", HTTP_POST, [this]() { handleWifiClientDisconnect(); });
+    server.on("/api/wifi/forget", HTTP_POST, [this]() { handleWifiClientForget(); });
+    
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
@@ -503,6 +522,9 @@ void WiFiManager::process() {
 
     server.handleClient();
     checkAutoTimeout();
+    
+    // Check WiFi client (STA) connection status
+    checkWifiClientStatus();
 }
 
 String WiFiManager::getAPIPAddress() const {
@@ -510,6 +532,187 @@ String WiFiManager::getAPIPAddress() const {
         return WiFi.softAPIP().toString();
     }
     return "";
+}
+
+String WiFiManager::getIPAddress() const {
+    if (wifiClientState == WIFI_CLIENT_CONNECTED) {
+        return WiFi.localIP().toString();
+    }
+    return "";
+}
+
+String WiFiManager::getConnectedSSID() const {
+    if (wifiClientState == WIFI_CLIENT_CONNECTED) {
+        return WiFi.SSID();
+    }
+    return "";
+}
+
+bool WiFiManager::startWifiScan() {
+    if (wifiScanRunning) {
+        Serial.println("[WiFiClient] Scan already in progress");
+        return false;
+    }
+    
+    Serial.println("[WiFiClient] Starting async network scan...");
+    WiFi.scanDelete();  // Clear previous results
+    
+    // Start async scan (non-blocking)
+    int result = WiFi.scanNetworks(true, false, false, 300);  // async=true, show_hidden=false, passive=false, max_ms_per_chan=300
+    if (result == WIFI_SCAN_RUNNING) {
+        wifiScanRunning = true;
+        return true;
+    }
+    
+    Serial.printf("[WiFiClient] Scan failed to start: %d\n", result);
+    return false;
+}
+
+std::vector<ScannedNetwork> WiFiManager::getScannedNetworks() {
+    std::vector<ScannedNetwork> networks;
+    
+    int16_t scanResult = WiFi.scanComplete();
+    if (scanResult == WIFI_SCAN_RUNNING) {
+        // Still scanning
+        return networks;  // Empty
+    }
+    
+    wifiScanRunning = false;
+    
+    if (scanResult == WIFI_SCAN_FAILED || scanResult < 0) {
+        Serial.printf("[WiFiClient] Scan failed: %d\n", scanResult);
+        return networks;
+    }
+    
+    Serial.printf("[WiFiClient] Scan found %d networks\n", scanResult);
+    
+    // Deduplicate by SSID (keep strongest signal)
+    std::map<String, ScannedNetwork> uniqueNetworks;
+    
+    for (int i = 0; i < scanResult; i++) {
+        String ssid = WiFi.SSID(i);
+        if (ssid.length() == 0) continue;  // Skip hidden networks
+        
+        int32_t rssi = WiFi.RSSI(i);
+        uint8_t encType = WiFi.encryptionType(i);
+        
+        auto it = uniqueNetworks.find(ssid);
+        if (it == uniqueNetworks.end() || rssi > it->second.rssi) {
+            uniqueNetworks[ssid] = {ssid, rssi, encType};
+        }
+    }
+    
+    // Convert to vector and sort by signal strength
+    for (const auto& pair : uniqueNetworks) {
+        networks.push_back(pair.second);
+    }
+    
+    std::sort(networks.begin(), networks.end(), [](const ScannedNetwork& a, const ScannedNetwork& b) {
+        return a.rssi > b.rssi;  // Strongest first
+    });
+    
+    WiFi.scanDelete();  // Free memory
+    return networks;
+}
+
+bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
+    if (ssid.length() == 0) {
+        Serial.println("[WiFiClient] Cannot connect: empty SSID");
+        return false;
+    }
+    
+    // Make sure we're in AP+STA mode
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        Serial.println("[WiFiClient] Switching to AP+STA mode");
+        WiFi.mode(WIFI_AP_STA);
+        delay(100);  // Brief delay for mode switch
+    }
+    
+    Serial.printf("[WiFiClient] Connecting to: %s\n", ssid.c_str());
+    
+    pendingConnectSSID = ssid;
+    pendingConnectPassword = password;
+    wifiConnectStartMs = millis();
+    wifiClientState = WIFI_CLIENT_CONNECTING;
+    
+    WiFi.begin(ssid.c_str(), password.c_str());
+    
+    return true;
+}
+
+void WiFiManager::disconnectFromNetwork() {
+    Serial.println("[WiFiClient] Disconnecting from network");
+    WiFi.disconnect(false);  // Don't turn off station mode
+    wifiClientState = WIFI_CLIENT_DISCONNECTED;
+    pendingConnectSSID = "";
+    pendingConnectPassword = "";
+}
+
+void WiFiManager::checkWifiClientStatus() {
+    // Skip if WiFi client is disabled
+    if (wifiClientState == WIFI_CLIENT_DISABLED) {
+        return;
+    }
+    
+    wl_status_t status = WiFi.status();
+    
+    switch (wifiClientState) {
+        case WIFI_CLIENT_CONNECTING: {
+            if (status == WL_CONNECTED) {
+                wifiClientState = WIFI_CLIENT_CONNECTED;
+                Serial.printf("[WiFiClient] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+                
+                // Save credentials on successful connection
+                if (pendingConnectSSID.length() > 0) {
+                    settingsManager.setWifiClientCredentials(pendingConnectSSID, pendingConnectPassword);
+                    pendingConnectSSID = "";
+                    pendingConnectPassword = "";
+                }
+            } else if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+                wifiClientState = WIFI_CLIENT_FAILED;
+                Serial.printf("[WiFiClient] Connection failed: %d\n", status);
+                pendingConnectSSID = "";
+                pendingConnectPassword = "";
+            } else if (millis() - wifiConnectStartMs > WIFI_CONNECT_TIMEOUT_MS) {
+                wifiClientState = WIFI_CLIENT_FAILED;
+                Serial.println("[WiFiClient] Connection timeout");
+                WiFi.disconnect(false);
+                pendingConnectSSID = "";
+                pendingConnectPassword = "";
+            }
+            break;
+        }
+        
+        case WIFI_CLIENT_CONNECTED: {
+            if (status != WL_CONNECTED) {
+                wifiClientState = WIFI_CLIENT_DISCONNECTED;
+                Serial.println("[WiFiClient] Lost connection");
+            }
+            break;
+        }
+        
+        case WIFI_CLIENT_DISCONNECTED:
+        case WIFI_CLIENT_FAILED: {
+            // Auto-reconnect if we have saved credentials
+            const V1Settings& settings = settingsManager.get();
+            if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+                String savedPassword = settingsManager.getWifiClientPassword();
+                if (savedPassword.length() > 0 || status == WL_NO_SSID_AVAIL) {
+                    // Only try auto-reconnect every 30 seconds
+                    static unsigned long lastReconnectAttempt = 0;
+                    if (millis() - lastReconnectAttempt > 30000) {
+                        lastReconnectAttempt = millis();
+                        Serial.println("[WiFiClient] Auto-reconnect attempt...");
+                        connectToNetwork(settings.wifiClientSSID, savedPassword);
+                    }
+                }
+            }
+            break;
+        }
+        
+        default:
+            break;
+    }
 }
 
 void WiFiManager::handleStatus() {
@@ -2592,4 +2795,149 @@ void WiFiManager::handleCameraTest() {
     } else {
         server.send(503, "application/json", "{\"success\":false,\"message\":\"Test callback not configured\"}");
     }
+}
+
+// ==================== WiFi Client (STA) API Handlers ====================
+
+void WiFiManager::handleWifiClientStatus() {
+    markUiActivity();
+    
+    const V1Settings& settings = settingsManager.get();
+    
+    JsonDocument doc;
+    doc["enabled"] = settings.wifiClientEnabled;
+    doc["savedSSID"] = settings.wifiClientSSID;
+    
+    // Map state to string
+    const char* stateStr = "unknown";
+    switch (wifiClientState) {
+        case WIFI_CLIENT_DISABLED: stateStr = "disabled"; break;
+        case WIFI_CLIENT_DISCONNECTED: stateStr = "disconnected"; break;
+        case WIFI_CLIENT_CONNECTING: stateStr = "connecting"; break;
+        case WIFI_CLIENT_CONNECTED: stateStr = "connected"; break;
+        case WIFI_CLIENT_FAILED: stateStr = "failed"; break;
+    }
+    doc["state"] = stateStr;
+    
+    if (wifiClientState == WIFI_CLIENT_CONNECTED) {
+        doc["connectedSSID"] = WiFi.SSID();
+        doc["ip"] = WiFi.localIP().toString();
+        doc["rssi"] = WiFi.RSSI();
+    }
+    
+    doc["scanRunning"] = wifiScanRunning;
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleWifiClientScan() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    Serial.println("[HTTP] POST /api/wifi/scan");
+    
+    // Check if scan is already running - return current results
+    if (wifiScanRunning) {
+        int16_t scanResult = WiFi.scanComplete();
+        if (scanResult == WIFI_SCAN_RUNNING) {
+            server.send(200, "application/json", "{\"scanning\":true,\"networks\":[]}");
+            return;
+        }
+    }
+    
+    // Check if we have results from a completed scan
+    int16_t scanResult = WiFi.scanComplete();
+    if (scanResult > 0) {
+        // Return results
+        std::vector<ScannedNetwork> networks = getScannedNetworks();
+        
+        JsonDocument doc;
+        doc["scanning"] = false;
+        JsonArray arr = doc["networks"].to<JsonArray>();
+        
+        for (const auto& net : networks) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["ssid"] = net.ssid;
+            obj["rssi"] = net.rssi;
+            obj["secure"] = !net.isOpen();
+        }
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+        return;
+    }
+    
+    // Start a new scan
+    if (startWifiScan()) {
+        server.send(200, "application/json", "{\"scanning\":true,\"networks\":[]}");
+    } else {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start scan\"}");
+    }
+}
+
+void WiFiManager::handleWifiClientConnect() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    Serial.println("[HTTP] POST /api/wifi/connect");
+    
+    // Parse JSON body
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing request body\"}");
+        return;
+    }
+    
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (error) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    String ssid = doc["ssid"] | "";
+    String password = doc["password"] | "";
+    
+    if (ssid.length() == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"SSID required\"}");
+        return;
+    }
+    
+    // Note: Password can be empty for open networks
+    if (connectToNetwork(ssid, password)) {
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting...\"}");
+    } else {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start connection\"}");
+    }
+}
+
+void WiFiManager::handleWifiClientDisconnect() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    Serial.println("[HTTP] POST /api/wifi/disconnect");
+    
+    disconnectFromNetwork();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Disconnected\"}");
+}
+
+void WiFiManager::handleWifiClientForget() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    Serial.println("[HTTP] POST /api/wifi/forget");
+    
+    // Disconnect if connected
+    disconnectFromNetwork();
+    
+    // Clear saved credentials
+    settingsManager.clearWifiClientCredentials();
+    
+    // Switch back to AP-only mode
+    wifiClientState = WIFI_CLIENT_DISABLED;
+    WiFi.mode(WIFI_AP);
+    
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
 }

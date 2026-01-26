@@ -84,6 +84,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("apSSID", settings.apSSID);
     // Obfuscate passwords before storing
     written += prefs.putString("apPassword", xorObfuscate(settings.apPassword));
+    // WiFi client (STA) settings - password stored in separate secure namespace
+    written += prefs.putBool("wifiClientEn", settings.wifiClientEnabled);
+    written += prefs.putString("wifiClSSID", settings.wifiClientSSID);
     written += prefs.putBool("proxyBLE", settings.proxyBLE);
     written += prefs.putString("proxyName", settings.proxyName);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
@@ -291,7 +294,6 @@ void SettingsManager::load() {
     int storedVersion = preferences.getInt("settingsVer", 1);
     
     settings.enableWifi = preferences.getBool("enableWifi", true);
-    settings.wifiMode = V1_WIFI_AP;  // Always AP-only mode
     
     // Handle AP password storage - version 1 was plain text, version 2+ is obfuscated
     String storedApPwd = preferences.getString("apPassword", "");
@@ -306,6 +308,12 @@ void SettingsManager::load() {
     }
     
     settings.apSSID = preferences.getString("apSSID", "V1-Simple");
+    
+    // WiFi client (STA) settings
+    settings.wifiClientEnabled = preferences.getBool("wifiClientEn", false);
+    settings.wifiClientSSID = preferences.getString("wifiClSSID", "");
+    // Determine WiFi mode based on client enabled state
+    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
@@ -517,6 +525,61 @@ void SettingsManager::setWiFiEnabled(bool enabled) {
 void SettingsManager::setAPCredentials(const String& ssid, const String& password) {
     settings.apSSID = ssid;
     settings.apPassword = password;
+    save();
+}
+
+// WiFi client (STA) credential functions - stored in separate secure namespace
+static const char* WIFI_CLIENT_NS = "v1wificlient";
+
+String SettingsManager::getWifiClientPassword() {
+    Preferences prefs;
+    if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
+        return "";
+    }
+    String storedPwd = prefs.getString("password", "");
+    prefs.end();
+    
+    // Password is XOR obfuscated
+    return storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
+}
+
+void SettingsManager::setWifiClientEnabled(bool enabled) {
+    settings.wifiClientEnabled = enabled;
+    settings.wifiMode = enabled ? V1_WIFI_APSTA : V1_WIFI_AP;
+    save();
+}
+
+void SettingsManager::setWifiClientCredentials(const String& ssid, const String& password) {
+    settings.wifiClientSSID = ssid;
+    settings.wifiClientEnabled = true;
+    settings.wifiMode = V1_WIFI_APSTA;
+    
+    // Store password in separate namespace with obfuscation
+    Preferences prefs;
+    if (prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write
+        prefs.putString("password", xorObfuscate(password));
+        prefs.end();
+        Serial.println("[Settings] WiFi client credentials saved");
+    } else {
+        Serial.println("[Settings] ERROR: Failed to save WiFi client password");
+    }
+    
+    save();
+}
+
+void SettingsManager::clearWifiClientCredentials() {
+    settings.wifiClientSSID = "";
+    settings.wifiClientEnabled = false;
+    settings.wifiMode = V1_WIFI_AP;
+    
+    // Clear the password from secure namespace
+    Preferences prefs;
+    if (prefs.begin(WIFI_CLIENT_NS, false)) {
+        prefs.clear();
+        prefs.end();
+        Serial.println("[Settings] WiFi client credentials cleared");
+    }
+    
     save();
 }
 

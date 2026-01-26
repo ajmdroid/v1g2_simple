@@ -87,11 +87,16 @@ struct AutoPushSlot {
 
 // Settings structure
 struct V1Settings {
-    // WiFi settings (AP-only mode)
+    // WiFi settings
     bool enableWifi;
-    WiFiModeSetting wifiMode;  // Always V1_WIFI_AP
+    WiFiModeSetting wifiMode;  // V1_WIFI_AP (default) or V1_WIFI_APSTA (with client)
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
+    
+    // WiFi client (STA) settings - connect to external network
+    bool wifiClientEnabled;  // Enable WiFi client mode (AP+STA dual mode)
+    String wifiClientSSID;   // SSID of network to connect to
+    // NOTE: wifiClientPassword stored separately in secure NVS namespace
     
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
@@ -262,6 +267,8 @@ struct V1Settings {
         wifiMode(V1_WIFI_AP),
         apSSID("V1-Simple"),
         apPassword("setupv1g2"),
+        wifiClientEnabled(false),  // WiFi client disabled by default
+        wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1C-LE-S3"),
         turnOffDisplay(false),
@@ -510,6 +517,14 @@ public:
         save(); 
     }
     void setObdPin(const String& pin) { settings.obdPin = pin; save(); }
+    
+    // WiFi client (STA) settings - connect to external network
+    bool isWifiClientEnabled() const { return settings.wifiClientEnabled; }
+    const String& getWifiClientSSID() const { return settings.wifiClientSSID; }
+    String getWifiClientPassword();  // Retrieves from secure NVS namespace
+    void setWifiClientEnabled(bool enabled);
+    void setWifiClientCredentials(const String& ssid, const String& password);
+    void clearWifiClientCredentials();  // Forget saved network
     
     // Auto-lockout settings (batch update - call save() after)
     void updateLockoutEnabled(bool enabled) { settings.lockoutEnabled = enabled; }
