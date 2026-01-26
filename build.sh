@@ -88,10 +88,10 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  -c, --clean        Clean build (remove .pio/build/)"
-            echo "  -f, --upload-fs    Upload filesystem after build"
-            echo "  -u, --upload       Upload firmware after build"
+            echo "  -f, --upload-fs    Upload filesystem after build (runs tests first)"
+            echo "  -u, --upload       Upload firmware after build (runs tests first)"
             echo "  -m, --monitor      Open serial monitor after upload"
-            echo "  -a, --all          Upload filesystem, firmware, and monitor"
+            echo "  -a, --all          Upload filesystem, firmware, and monitor (runs tests first)"
             echo "  -s, --skip-web     Skip web interface build"
             echo "  -e, --env ENV      PlatformIO environment (default: waveshare-349)"
             echo "                     Windows users: use --env waveshare-349-windows"
@@ -213,7 +213,22 @@ echo -e "${BLUE}📊 Build size:${NC}"
 "$PIO_CMD" run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
-# Step 4: Upload filesystem if requested
+# Step 4: Run tests before upload (if uploading)
+if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
+    echo -e "${YELLOW}🧪 Running unit tests...${NC}"
+    "$PIO_CMD" test -e native
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Tests failed! Aborting upload.${NC}"
+        echo -e "${RED}   Fix failing tests before uploading to device.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ All tests passed${NC}"
+    echo ""
+fi
+
+# Step 5: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
     "$PIO_CMD" run $PIO_ARGS -t uploadfs
@@ -227,7 +242,7 @@ if [ "$UPLOAD_FS" = true ]; then
     echo ""
 fi
 
-# Step 5: Upload firmware if requested
+# Step 6: Upload firmware if requested
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
     "$PIO_CMD" run $PIO_ARGS -t upload
@@ -256,7 +271,7 @@ if [ "$UPLOAD_FW" = true ]; then
     echo ""
 fi
 
-# Step 6: Monitor if requested
+# Step 7: Monitor if requested
 if [ "$MONITOR" = true ]; then
     echo -e "${GREEN}📡 Opening serial monitor...${NC}"
     echo -e "${BLUE}(Press Ctrl+C to exit)${NC}"
