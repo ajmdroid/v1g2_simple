@@ -816,6 +816,7 @@ void WiFiManager::handleSettingsApi() {
     JsonDocument doc;
     doc["ap_ssid"] = settings.apSSID;
     doc["ap_password"] = "********";  // Don't send actual password
+    doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
@@ -892,7 +893,11 @@ void WiFiManager::handleSettingsSave() {
         settingsManager.setProxyBLE(proxyEnabled);
     }
     if (server.hasArg("proxy_name")) {
-        settingsManager.setProxyName(server.arg("proxy_name"));
+        String proxyName = server.arg("proxy_name");
+        if (proxyName.length() > 32) {
+            proxyName = proxyName.substring(0, 32);  // Truncate to max 32 chars
+        }
+        settingsManager.setProxyName(proxyName);
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();

@@ -1,9 +1,54 @@
 <script>
 	import '../app.css';
+	import { onMount } from 'svelte';
+	
 	let { children } = $props();
+	let showPasswordWarning = $state(false);
+	let warningDismissed = $state(false);
+	
+	// Check if using default password on mount
+	onMount(async () => {
+		// Only check once per session (use sessionStorage)
+		if (sessionStorage.getItem('passwordWarningDismissed')) {
+			warningDismissed = true;
+			return;
+		}
+		
+		try {
+			const res = await fetch('/api/settings');
+			if (res.ok) {
+				const data = await res.json();
+				// Check if firmware reports default password in use
+				if (data.isDefaultPassword === true) {
+					showPasswordWarning = true;
+				}
+			}
+		} catch (e) {
+			// Don't show warning on error
+		}
+	});
+	
+	function dismissWarning() {
+		warningDismissed = true;
+		sessionStorage.setItem('passwordWarningDismissed', 'true');
+	}
 </script>
 
 <div class="min-h-screen bg-base-100">
+	<!-- Security Warning Banner -->
+	{#if showPasswordWarning && !warningDismissed}
+		<div class="alert alert-warning shadow-lg rounded-none" role="alert">
+			<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+			</svg>
+			<div>
+				<h3 class="font-bold">Default Password Detected</h3>
+				<div class="text-xs">Change your WiFi password in <a href="/settings" class="link link-primary font-semibold">Settings</a> to secure your device.</div>
+			</div>
+			<button class="btn btn-sm btn-ghost" onclick={dismissWarning} aria-label="Dismiss warning">✕</button>
+		</div>
+	{/if}
+
 	<!-- Navigation -->
 	<nav class="navbar bg-base-200 shadow-lg" aria-label="Main navigation">
 		<div class="navbar-start">
