@@ -2868,6 +2868,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         bool isGraced;
         uint8_t bars;       // Signal strength for V1 cards
         bool isCamera;      // True if this is a camera alert card
+        int cameraIndex;    // Which camera in cameraCards[] array
     } cardsToDraw[2];
     int cardsToDrawCount = 0;
     
@@ -2878,6 +2879,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDraw[cardsToDrawCount].slot = c;
         cardsToDraw[cardsToDrawCount].bars = getAlertBars(cards[c].alert);
         cardsToDraw[cardsToDrawCount].isCamera = false;
+        cardsToDraw[cardsToDrawCount].cameraIndex = -1;
         // Check if live or graced
         bool isLive = false;
         if (alerts != nullptr) {
@@ -2892,19 +2894,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDrawCount++;
     }
     
-    // Second: if there's room and camera is active, add camera as last card
-    if (cardsToDrawCount < 2 && cameraCardActive && cameraCardTypeName[0] != '\0') {
-        cardsToDraw[cardsToDrawCount].slot = -1;  // -1 indicates camera card
-        cardsToDraw[cardsToDrawCount].bars = 0;
-        cardsToDraw[cardsToDrawCount].isCamera = true;
-        cardsToDraw[cardsToDrawCount].isGraced = false;
-        cardsToDrawCount++;
+    // Second: add active camera alerts to fill remaining card slots
+    for (int cam = 0; cam < MAX_CAMERA_CARDS && cardsToDrawCount < 2; cam++) {
+        if (cameraCards[cam].active && cameraCards[cam].typeName[0] != '\0') {
+            cardsToDraw[cardsToDrawCount].slot = -1;  // -1 indicates camera card
+            cardsToDraw[cardsToDrawCount].bars = 0;
+            cardsToDraw[cardsToDrawCount].isCamera = true;
+            cardsToDraw[cardsToDrawCount].cameraIndex = cam;
+            cardsToDraw[cardsToDrawCount].isGraced = false;
+            cardsToDrawCount++;
+        }
     }
     
-    // Track camera state for change detection
-    static bool lastCameraCardActive = false;
-    static float lastCameraCardDistance = -1.0f;
-    static char lastCameraCardTypeName[16] = {0};
+    // Track camera state for change detection (now tracks multiple cameras)
+    static int lastActiveCameraCount = 0;
+    static float lastCameraDistances[MAX_CAMERA_CARDS] = {-1.0f, -1.0f};
+    static char lastCameraTypeNames[MAX_CAMERA_CARDS][16] = {{0}, {0}};
     
     // Check if cards changed from last frame
     bool cardsChanged = (cardsToDrawCount != lastDrawnCount);
@@ -2914,11 +2919,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         for (int i = 0; i < cardsToDrawCount; i++) {
             if (cardsToDraw[i].isCamera) {
                 // Camera card change detection
-                if (!lastCameraCardActive ||
-                    strcmp(cameraCardTypeName, lastCameraCardTypeName) != 0 ||
-                    fabs(cameraCardDistance - lastCameraCardDistance) >= 10.0f) {
-                    cardsChanged = true;
-                    break;
+                int camIdx = cardsToDraw[i].cameraIndex;
+                if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
+                    if (strcmp(cameraCards[camIdx].typeName, lastCameraTypeNames[camIdx]) != 0 ||
+                        fabs(cameraCards[camIdx].distance_m - lastCameraDistances[camIdx]) >= 10.0f) {
+                        cardsChanged = true;
+                        break;
+                    }
                 }
             } else {
                 int slot = cardsToDraw[i].slot;
@@ -2934,8 +2941,8 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
     }
     
-    // Also check if camera state changed (was active, now not or vice versa)
-    if (!cardsChanged && lastCameraCardActive != cameraCardActive) {
+    // Also check if camera count changed
+    if (!cardsChanged && lastActiveCameraCount != activeCameraCount) {
         cardsChanged = true;
     }
     
@@ -2946,10 +2953,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     forceCardRedraw = false;  // Reset the force flag
     
     // Update camera tracking for next frame
-    lastCameraCardActive = cameraCardActive;
-    lastCameraCardDistance = cameraCardDistance;
-    strncpy(lastCameraCardTypeName, cameraCardTypeName, sizeof(lastCameraCardTypeName) - 1);
-    lastCameraCardTypeName[sizeof(lastCameraCardTypeName) - 1] = '\0';
+    lastActiveCameraCount = activeCameraCount;
+    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
+        lastCameraDistances[i] = cameraCards[i].distance_m;
+        strncpy(lastCameraTypeNames[i], cameraCards[i].typeName, sizeof(lastCameraTypeNames[i]) - 1);
+        lastCameraTypeNames[i][sizeof(lastCameraTypeNames[i]) - 1] = '\0';
+    }
     
     // Clear card area only when needed
     const int signalBarsX = SCREEN_WIDTH - 200 - 2;
@@ -2983,9 +2992,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         
         // Handle camera card separately
         if (cardsToDraw[i].isCamera) {
+            int camIdx = cardsToDraw[i].cameraIndex;
+            if (camIdx < 0 || camIdx >= MAX_CAMERA_CARDS) continue;
+            
             // === CAMERA ALERT CARD (V1 card style) ===
             // Matches V1 card layout: Top row = Arrow + Badge + Info, Bottom row = Type label
-            uint16_t camColor = cameraCardColor;
+            uint16_t camColor = cameraCards[camIdx].color;
+            const char* camTypeName = cameraCards[camIdx].typeName;
+            float camDistance = cameraCards[camIdx].distance_m;
             
             // Card background - darker version of camera color (same as V1 cards)
             uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
@@ -3015,11 +3029,11 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             
             // Distance after CAM (like frequency on V1 cards)
             char distStr[16];
-            if (cameraCardDistance < 1609.34f) {  // Less than 1 mile
-                int distFt = static_cast<int>(cameraCardDistance * 3.28084f);
+            if (camDistance < 1609.34f) {  // Less than 1 mile
+                int distFt = static_cast<int>(camDistance * 3.28084f);
                 snprintf(distStr, sizeof(distStr), "%d ft", distFt);
             } else {
-                snprintf(distStr, sizeof(distStr), "%.1f mi", cameraCardDistance / 1609.34f);
+                snprintf(distStr, sizeof(distStr), "%.1f mi", camDistance / 1609.34f);
             }
             tft->setTextColor(TFT_WHITE);
             int distX = labelX + 3 * 12 + 4;  // After "CAM" + spacing
@@ -3033,11 +3047,11 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             tft->setTextColor(camColor);
             
             // Center the type name in the card
-            int typeLen = strlen(cameraCardTypeName);
+            int typeLen = strlen(camTypeName);
             int typePixelWidth = typeLen * 6;  // size 1 = 6 pixels per char
             int typeX = cardX + (cardW - typePixelWidth) / 2;
             tft->setCursor(typeX, bottomRowY);
-            tft->print(cameraCardTypeName);
+            tft->print(camTypeName);
             
             continue;  // Skip V1 card drawing code
         }
@@ -4401,15 +4415,74 @@ void V1Display::drawStatusBar() {
 }
 
 // Camera alert indicator - shows camera type and distance countdown
+// Legacy single-camera interface - calls updateCameraAlerts internally
 void V1Display::updateCameraAlert(bool active, const char* typeName, float distance_m, bool approaching, uint16_t color, bool v1HasAlerts) {
 #if defined(DISPLAY_WAVESHARE_349)
+    if (active) {
+        CameraAlertInfo cameras[1];
+        cameras[0].typeName = typeName;
+        cameras[0].distance_m = distance_m;
+        cameras[0].color = color;
+        updateCameraAlerts(cameras, 1, v1HasAlerts);
+    } else {
+        updateCameraAlerts(nullptr, 0, v1HasAlerts);
+    }
+#endif
+}
+
+// Multi-camera alert system
+void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bool v1HasAlerts) {
+#if defined(DISPLAY_WAVESHARE_349)
     static bool lastCameraState = false;
-    static bool lastWasCard = false;  // Track if we were showing as card
+    static bool lastWasCard = false;  // Track if primary was showing as card
     static float lastDistance = -1.0f;
     static char lastTypeName[16] = {0};
+    static int lastCameraCount = 0;
     
-    // If V1 has active alerts, camera should display as a secondary card instead
-    if (active && v1HasAlerts) {
+    // Clamp count to max supported
+    if (count > MAX_CAMERA_CARDS) count = MAX_CAMERA_CARDS;
+    
+    bool active = (count > 0);
+    const char* typeName = active ? cameras[0].typeName : "";
+    float distance_m = active ? cameras[0].distance_m : 0.0f;
+    uint16_t color = active ? cameras[0].color : 0;
+    
+    // Determine how to display cameras:
+    // - If V1 has alerts: All cameras show as cards (V1 gets primary)
+    // - If no V1 alerts and 1 camera: Primary camera in main area
+    // - If no V1 alerts and 2 cameras: Primary in main area, secondary as card
+    bool showPrimaryAsCard = v1HasAlerts;
+    
+    // === HANDLE CARD STATES ===
+    // Set up camera cards for secondary display
+    if (active) {
+        if (showPrimaryAsCard) {
+            // V1 has alerts - all cameras become cards
+            for (int i = 0; i < count; i++) {
+                setCameraAlertState(i, true, cameras[i].typeName, cameras[i].distance_m, cameras[i].color);
+            }
+            // Clear any unused slots
+            for (int i = count; i < MAX_CAMERA_CARDS; i++) {
+                setCameraAlertState(i, false, "", 0, 0);
+            }
+        } else {
+            // No V1 alerts - primary in main area, secondary (if any) as card
+            setCameraAlertState(0, false, "", 0, 0);  // Primary not a card
+            if (count > 1) {
+                // Secondary camera gets card slot 0 (since slot 0 is now for first card)
+                setCameraAlertState(0, true, cameras[1].typeName, cameras[1].distance_m, cameras[1].color);
+            }
+            // Clear second card slot
+            setCameraAlertState(1, false, "", 0, 0);
+        }
+    } else {
+        // No cameras - clear all card states
+        clearAllCameraAlerts();
+    }
+    
+    // === HANDLE MAIN AREA DISPLAY ===
+    // If V1 has active alerts, clear main camera area (camera shows as card instead)
+    if (active && showPrimaryAsCard) {
         // Clear main frequency area if we were showing there
         if (lastCameraState && !lastWasCard) {
             const int leftMargin = 135;
@@ -4420,32 +4493,24 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
             const int fontSize = 75;
             int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
             const int clearX = leftMargin + 10;
-            const int clearY = freqY - 10;
+            const int clearY = freqY - 25;
             const int clearW = maxWidth - 10;
-            const int clearH = fontSize + 25;
+            const int clearH = fontSize + 40;
             FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
         }
-        // Set camera card state - will be drawn by drawSecondaryAlertCards
-        setCameraAlertState(true, typeName, distance_m, color);
         lastCameraState = true;
         lastWasCard = true;
         lastDistance = distance_m;
+        lastCameraCount = count;
         strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
         lastTypeName[sizeof(lastTypeName) - 1] = '\0';
         return;
     }
     
-    // If V1 no longer has alerts but camera is active, clear card state and show in main area
+    // If we were showing as card but V1 no longer has alerts, force main area redraw
     if (active && lastWasCard) {
-        setCameraAlertState(false, "", 0, 0);  // Clear card state
         lastWasCard = false;
-        // Force redraw in main area
-        lastCameraState = false;
-    }
-    
-    // Clear camera card state when showing in main area
-    if (active && !v1HasAlerts) {
-        setCameraAlertState(false, "", 0, 0);
+        lastCameraState = false;  // Force redraw
     }
     
     // Camera alert uses same area as frequency display (V1 frequency style)
@@ -4471,10 +4536,10 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
             if (!lastWasCard) {
                 FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
             }
-            setCameraAlertState(false, "", 0, 0);  // Clear card state
             lastCameraState = false;
             lastWasCard = false;
             lastDistance = -1.0f;
+            lastCameraCount = 0;
             lastTypeName[0] = '\0';
         }
         return;
@@ -4483,13 +4548,15 @@ void V1Display::updateCameraAlert(bool active, const char* typeName, float dista
     // Check if we need to redraw
     bool needsRedraw = !lastCameraState || 
                        (fabs(distance_m - lastDistance) >= 10.0f) ||
-                       (strcmp(typeName, lastTypeName) != 0);
+                       (strcmp(typeName, lastTypeName) != 0) ||
+                       (count != lastCameraCount);
     
     if (!needsRedraw) return;
     
     lastCameraState = true;
     lastWasCard = false;
     lastDistance = distance_m;
+    lastCameraCount = count;
     strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
     lastTypeName[sizeof(lastTypeName) - 1] = '\0';
     
@@ -4547,16 +4614,40 @@ void V1Display::clearCameraAlert() {
 #endif
 }
 
-void V1Display::setCameraAlertState(bool active, const char* typeName, float distance_m, uint16_t color) {
-    cameraCardActive = active;
-    cameraCardDistance = distance_m;
-    cameraCardColor = color;
+void V1Display::clearCameraAlerts() {
+#if defined(DISPLAY_WAVESHARE_349)
+    updateCameraAlerts(nullptr, 0, false);
+#endif
+}
+
+void V1Display::setCameraAlertState(int index, bool active, const char* typeName, float distance_m, uint16_t color) {
+    if (index < 0 || index >= MAX_CAMERA_CARDS) return;
+    
+    cameraCards[index].active = active;
+    cameraCards[index].distance_m = distance_m;
+    cameraCards[index].color = color;
     if (active && typeName) {
-        strncpy(cameraCardTypeName, typeName, sizeof(cameraCardTypeName) - 1);
-        cameraCardTypeName[sizeof(cameraCardTypeName) - 1] = '\0';
+        strncpy(cameraCards[index].typeName, typeName, sizeof(cameraCards[index].typeName) - 1);
+        cameraCards[index].typeName[sizeof(cameraCards[index].typeName) - 1] = '\0';
     } else {
-        cameraCardTypeName[0] = '\0';
+        cameraCards[index].typeName[0] = '\0';
     }
+    
+    // Update active count
+    activeCameraCount = 0;
+    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
+        if (cameraCards[i].active) activeCameraCount++;
+    }
+}
+
+void V1Display::clearAllCameraAlerts() {
+    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
+        cameraCards[i].active = false;
+        cameraCards[i].typeName[0] = '\0';
+        cameraCards[i].distance_m = 0.0f;
+        cameraCards[i].color = 0;
+    }
+    activeCameraCount = 0;
 }
 
 const char* V1Display::bandToString(Band band) {

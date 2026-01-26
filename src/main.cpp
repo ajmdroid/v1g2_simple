@@ -592,15 +592,22 @@ static AlertData persistedAlert;
 static unsigned long alertClearedTime = 0;
 static bool alertPersistenceActive = false;
 
-// Camera alert tracking
-static bool cameraAlertActive = false;
+// Camera alert tracking - supports up to 2 simultaneous approaching cameras
+static constexpr int MAX_ACTIVE_CAMERAS = 2;
+static std::vector<NearbyCameraResult> activeCameraAlerts;  // Active approaching cameras, sorted by distance
 static unsigned long cameraAlertStartMs = 0;
 static unsigned long lastCameraCheckMs = 0;
-static NearbyCameraResult currentCameraAlert;
-static float lastCameraAlertLat = 0.0f;
-static float lastCameraAlertLon = 0.0f;
 static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;  // Check every 500ms
 static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;  // Min distance before re-alerting same area
+
+// Track last alert position to avoid re-alerting same camera
+struct PassedCameraTracker {
+    float lat = 0.0f;
+    float lon = 0.0f;
+    unsigned long passedTimeMs = 0;
+};
+static std::vector<PassedCameraTracker> recentlyPassedCameras;
+static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;  // Remember passed cameras for 1 minute
 
 // Camera test alert mode (from web UI)
 static bool cameraTestActive = false;
@@ -686,28 +693,50 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
 
 // Helper: Update camera card state BEFORE display.update() is called
 // This ensures the secondary card area shows camera info when V1 has alerts
+// Supports multiple cameras: closest gets primary, second closest gets card
 static void updateCameraCardState(bool v1HasAlerts) {
     const V1Settings& dispSettings = settingsManager.get();
     
-    // Test mode takes priority
+    // Test mode takes priority - shows single test camera
     if (cameraTestActive && millis() < cameraTestEndMs) {
         if (v1HasAlerts) {
-            // Show as secondary card when V1 has alerts
-            display.setCameraAlertState(true, cameraTestTypeName, cameraTestDistance, dispSettings.colorCameraAlert);
+            // Show test camera as secondary card when V1 has alerts
+            display.setCameraAlertState(0, true, cameraTestTypeName, cameraTestDistance, dispSettings.colorCameraAlert);
+            display.setCameraAlertState(1, false, "", 0, 0);
         } else {
-            display.setCameraAlertState(false, "", 0, 0);
+            // No cards needed - test camera shows in main area
+            display.clearAllCameraAlerts();
         }
-    } else if (cameraAlertActive) {
+    } else if (!activeCameraAlerts.empty()) {
+        // Real camera alerts active
         if (v1HasAlerts) {
-            // Show as secondary card when V1 has alerts
-            display.setCameraAlertState(true, currentCameraAlert.camera.getShortTypeName(), 
-                                        currentCameraAlert.distance_m, dispSettings.colorCameraAlert);
+            // V1 has priority - all cameras show as cards
+            for (int i = 0; i < MAX_ACTIVE_CAMERAS; i++) {
+                if (i < (int)activeCameraAlerts.size()) {
+                    display.setCameraAlertState(i, true, 
+                        activeCameraAlerts[i].camera.getShortTypeName(),
+                        activeCameraAlerts[i].distance_m, 
+                        dispSettings.colorCameraAlert);
+                } else {
+                    display.setCameraAlertState(i, false, "", 0, 0);
+                }
+            }
         } else {
-            display.setCameraAlertState(false, "", 0, 0);
+            // No V1 alerts - primary camera in main area, secondary (if any) as card
+            // Primary camera (index 0) shows in main display, not as card
+            display.setCameraAlertState(0, false, "", 0, 0);
+            // Secondary camera (index 1) shows as card if present
+            if (activeCameraAlerts.size() > 1) {
+                display.setCameraAlertState(0, true,  // Use card slot 0 for the secondary camera
+                    activeCameraAlerts[1].camera.getShortTypeName(),
+                    activeCameraAlerts[1].distance_m,
+                    dispSettings.colorCameraAlert);
+            }
+            display.setCameraAlertState(1, false, "", 0, 0);  // Clear second card slot
         }
     } else {
-        // No camera alert - clear card state
-        display.setCameraAlertState(false, "", 0, 0);
+        // No camera alerts - clear all card states
+        display.clearAllCameraAlerts();
     }
 }
 
@@ -2522,6 +2551,15 @@ void loop() {
         if (now - lastCameraCheckMs >= CAMERA_CHECK_INTERVAL_MS) {
             lastCameraCheckMs = now;
             
+            // Clean up old "passed camera" entries
+            recentlyPassedCameras.erase(
+                std::remove_if(recentlyPassedCameras.begin(), recentlyPassedCameras.end(),
+                    [now](const PassedCameraTracker& p) { 
+                        return (now - p.passedTimeMs) > PASSED_CAMERA_MEMORY_MS; 
+                    }),
+                recentlyPassedCameras.end()
+            );
+            
             // Only check when we have a valid GPS fix
             if (gpsHandler.hasValidFix()) {
                 GPSFix fix = gpsHandler.getFix();
@@ -2537,35 +2575,81 @@ void loop() {
                     camSettings.cameraAlertALPR
                 );
                 
-                NearbyCameraResult nearestCamera;
-                bool cameraFound = cameraManager.getClosestCamera(lat, lon, heading, alertRadius, nearestCamera);
+                // Find all nearby cameras (sorted by distance, approaching first)
+                std::vector<NearbyCameraResult> nearbyCameras = cameraManager.findNearby(
+                    lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2);  // Get a few extra for filtering
                 
-                // Only alert when approaching the camera (forward-looking)
-                if (cameraFound && nearestCamera.isApproaching) {
-                    // Check if this is a new alert (not already alerting this camera)
-                    float distFromLastAlert = CameraManager::haversineDistance(
-                        lat, lon, lastCameraAlertLat, lastCameraAlertLon);
+                // Filter: only keep approaching cameras, exclude recently passed
+                std::vector<NearbyCameraResult> approachingCameras;
+                for (const auto& cam : nearbyCameras) {
+                    if (!cam.isApproaching) continue;
                     
-                    bool isNewAlert = !cameraAlertActive || 
-                                      (distFromLastAlert > CAMERA_ALERT_COOLDOWN_M);
+                    // Check if this camera was recently passed (don't re-alert)
+                    bool recentlyPassed = false;
+                    for (const auto& passed : recentlyPassedCameras) {
+                        float dist = CameraManager::haversineDistance(
+                            cam.camera.latitude, cam.camera.longitude,
+                            passed.lat, passed.lon);
+                        if (dist < CAMERA_ALERT_COOLDOWN_M) {
+                            recentlyPassed = true;
+                            break;
+                        }
+                    }
+                    if (recentlyPassed) continue;
                     
-                    if (isNewAlert && !cameraAlertActive) {
-                        // New camera alert - start alert
-                        cameraAlertActive = true;
-                        cameraAlertStartMs = now;
-                        currentCameraAlert = nearestCamera;
-                        lastCameraAlertLat = nearestCamera.camera.latitude;
-                        lastCameraAlertLon = nearestCamera.camera.longitude;
+                    approachingCameras.push_back(cam);
+                    if ((int)approachingCameras.size() >= MAX_ACTIVE_CAMERAS) break;
+                }
+                
+                // Check for cameras that were active but are no longer approaching (passed)
+                for (const auto& oldCam : activeCameraAlerts) {
+                    bool stillApproaching = false;
+                    for (const auto& newCam : approachingCameras) {
+                        // Match by position (within 50m)
+                        float dist = CameraManager::haversineDistance(
+                            oldCam.camera.latitude, oldCam.camera.longitude,
+                            newCam.camera.latitude, newCam.camera.longitude);
+                        if (dist < 50.0f) {
+                            stillApproaching = true;
+                            break;
+                        }
+                    }
+                    if (!stillApproaching) {
+                        // Camera was passed - add to recently passed list
+                        PassedCameraTracker passed;
+                        passed.lat = oldCam.camera.latitude;
+                        passed.lon = oldCam.camera.longitude;
+                        passed.passedTimeMs = now;
+                        recentlyPassedCameras.push_back(passed);
+                        Serial.printf("[Camera] PASSED: %s\n", oldCam.camera.getTypeName());
+                    }
+                }
+                
+                // Check for new cameras that weren't in the previous active list
+                for (const auto& newCam : approachingCameras) {
+                    bool wasAlreadyActive = false;
+                    for (const auto& oldCam : activeCameraAlerts) {
+                        float dist = CameraManager::haversineDistance(
+                            oldCam.camera.latitude, oldCam.camera.longitude,
+                            newCam.camera.latitude, newCam.camera.longitude);
+                        if (dist < 50.0f) {
+                            wasAlreadyActive = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!wasAlreadyActive) {
+                        // New camera entering alert range
+                        bool isPrimary = activeCameraAlerts.empty();
+                        Serial.printf("[Camera] ALERT: %s at %.0fm AHEAD%s\n",
+                            newCam.camera.getTypeName(),
+                            newCam.distance_m,
+                            isPrimary ? " (PRIMARY)" : " (SECONDARY)");
                         
-                        Serial.printf("[Camera] ALERT: %s at %.0fm AHEAD\n",
-                            nearestCamera.camera.getTypeName(),
-                            nearestCamera.distance_m);
-                        
-                        // Play voice alert if enabled
-                        if (camSettings.cameraAudioEnabled) {
-                            // Convert camera type to voice type
-                            CameraAlertType voiceType = CameraAlertType::SPEED;  // Default
-                            CameraType camType = nearestCamera.camera.getCameraType();
+                        // Play voice alert only for new primary camera
+                        if (isPrimary && camSettings.cameraAudioEnabled) {
+                            CameraAlertType voiceType = CameraAlertType::SPEED;
+                            CameraType camType = newCam.camera.getCameraType();
                             switch (camType) {
                                 case CameraType::RedLightCamera:
                                     voiceType = CameraAlertType::RED_LIGHT;
@@ -2585,16 +2669,22 @@ void loop() {
                             }
                             play_camera_voice(voiceType);
                         }
+                        
+                        // If no active cameras, start timing
+                        if (activeCameraAlerts.empty()) {
+                            cameraAlertStartMs = now;
+                        }
                     }
-                    
-                    // Update distance while alert is active
-                    currentCameraAlert.distance_m = nearestCamera.distance_m;
-                    currentCameraAlert.isApproaching = nearestCamera.isApproaching;
-                    
-                } else if (cameraAlertActive) {
-                    // No approaching camera in range - clear alert
-                    Serial.println("[Camera] Alert cleared - camera out of range or passed");
-                    cameraAlertActive = false;
+                }
+                
+                // Update active camera list
+                activeCameraAlerts = approachingCameras;
+                
+                // Debug: log active camera count changes
+                static int lastCameraCount = 0;
+                if ((int)activeCameraAlerts.size() != lastCameraCount) {
+                    Serial.printf("[Camera] Active cameras: %d\n", (int)activeCameraAlerts.size());
+                    lastCameraCount = activeCameraAlerts.size();
                 }
             }
         }
@@ -2708,18 +2798,19 @@ void loop() {
             display.clearCameraAlert();
             Serial.println("[Camera] Test alert ended");
         }
-    } else if (cameraAlertActive) {
+    } else if (!activeCameraAlerts.empty()) {
+        // Multi-camera display update
         const V1Settings& dispSettings = settingsManager.get();
-        display.updateCameraAlert(
-            true,
-            currentCameraAlert.camera.getShortTypeName(),
-            currentCameraAlert.distance_m,
-            currentCameraAlert.isApproaching,
-            dispSettings.colorCameraAlert,
-            v1HasActiveAlerts  // Show as card if V1 has alerts
-        );
+        V1Display::CameraAlertInfo camInfos[MAX_ACTIVE_CAMERAS];
+        int count = std::min((int)activeCameraAlerts.size(), MAX_ACTIVE_CAMERAS);
+        for (int i = 0; i < count; i++) {
+            camInfos[i].typeName = activeCameraAlerts[i].camera.getTypeName();  // Full name for main display
+            camInfos[i].distance_m = activeCameraAlerts[i].distance_m;
+            camInfos[i].color = dispSettings.colorCameraAlert;
+        }
+        display.updateCameraAlerts(camInfos, count, v1HasActiveAlerts);
     } else {
-        display.clearCameraAlert();
+        display.clearCameraAlerts();
     }
     
     // Speed-based volume: boost V1 volume at highway speeds
