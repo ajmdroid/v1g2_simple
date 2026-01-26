@@ -2698,14 +2698,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // Track previous priority to add as persisted card when it disappears
     static AlertData lastPriorityForCards;
     
-    // Track what was drawn last frame to avoid unnecessary redraws (declared early for reset)
+    // Track what was drawn at each POSITION (0 or 1) for incremental updates
     static struct {
+        bool isCamera = false;      // Was this a camera or V1 card?
+        // V1 card state
         Band band = BAND_NONE;
         uint32_t frequency = 0;
+        uint8_t direction = 0;
         bool isGraced = false;
         bool wasMuted = false;
-        uint8_t bars = 0;  // Signal strength bars (0-6)
-    } lastDrawnCards[2];
+        uint8_t bars = 0;           // Signal strength bars (0-6)
+        // Camera card state
+        int cameraIndex = -1;
+        char typeName[16] = {0};
+        int distanceFt = -1;        // Distance in feet for comparison
+        uint16_t color = 0;
+    } lastDrawnPositions[2];
     static int lastDrawnCount = 0;
     
     // Track profile changes - clear cards when profile rotates
@@ -2716,9 +2724,13 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         for (int c = 0; c < 2; c++) {
             cards[c].alert = AlertData();
             cards[c].lastSeen = 0;
-            lastDrawnCards[c].band = BAND_NONE;
-            lastDrawnCards[c].frequency = 0;
-            lastDrawnCards[c].bars = 0;
+            lastDrawnPositions[c].band = BAND_NONE;
+            lastDrawnPositions[c].frequency = 0;
+            lastDrawnPositions[c].bars = 0;
+            lastDrawnPositions[c].isCamera = false;
+            lastDrawnPositions[c].cameraIndex = -1;
+            lastDrawnPositions[c].distanceFt = -1;
+            lastDrawnPositions[c].typeName[0] = '\0';
         }
         lastDrawnCount = 0;
         lastPriorityForCards = AlertData();
@@ -2924,158 +2936,177 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     
     // Track camera state for change detection (now tracks multiple cameras)
     static int lastActiveCameraCount = 0;
-    static float lastCameraDistances[MAX_CAMERA_CARDS] = {-1.0f, -1.0f};
-    static char lastCameraTypeNames[MAX_CAMERA_CARDS][16] = {{0}, {0}};
     
-    // Check if cards changed from last frame
-    bool cardsChanged = (cardsToDrawCount != lastDrawnCount);
+    // === INCREMENTAL UPDATE LOGIC ===
+    // Instead of clearing all cards and redrawing, check each position independently
     
-    // Check V1 card changes
-    if (!cardsChanged) {
-        for (int i = 0; i < cardsToDrawCount; i++) {
-            if (cardsToDraw[i].isCamera) {
-                // Camera card change detection
-                int camIdx = cardsToDraw[i].cameraIndex;
-                if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
-                    if (strcmp(cameraCards[camIdx].typeName, lastCameraTypeNames[camIdx]) != 0 ||
-                        fabs(cameraCards[camIdx].distance_m - lastCameraDistances[camIdx]) >= 10.0f) {
-                        cardsChanged = true;
-                        break;
-                    }
-                }
-            } else {
-                int slot = cardsToDraw[i].slot;
-                if (cards[slot].alert.band != lastDrawnCards[i].band ||
-                    cards[slot].alert.frequency != lastDrawnCards[i].frequency ||
-                    cardsToDraw[i].isGraced != lastDrawnCards[i].isGraced ||
-                    cardsToDraw[i].bars != lastDrawnCards[i].bars ||
-                    muted != lastDrawnCards[i].wasMuted) {
-                    cardsChanged = true;
-                    break;
-                }
-            }
-        }
-    }
-    
-    // Also check if camera count changed
-    if (!cardsChanged && lastActiveCameraCount != activeCameraCount) {
-        cardsChanged = true;
-    }
-    
-    // Only clear and redraw if cards changed (or forced after full screen redraw)
-    if (!cardsChanged && !forceCardRedraw) {
-        return;  // No card changes - skip redraw
-    }
+    // Capture forceCardRedraw before resetting (need it for redraw checks)
+    bool doForceRedraw = forceCardRedraw;
     forceCardRedraw = false;  // Reset the force flag
     
-    // Update camera tracking for next frame
-    lastActiveCameraCount = activeCameraCount;
-    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
-        lastCameraDistances[i] = cameraCards[i].distance_m;
-        strncpy(lastCameraTypeNames[i], cameraCards[i].typeName, sizeof(lastCameraTypeNames[i]) - 1);
-        lastCameraTypeNames[i][sizeof(lastCameraTypeNames[i]) - 1] = '\0';
-    }
-    
-    // Clear card area only when needed
-    const int signalBarsX = SCREEN_WIDTH - 200 - 2;
-    const int clearWidth = signalBarsX - startX;
-    if (clearWidth > 0) {
-        FILL_RECT(startX, cardY, clearWidth, SECONDARY_ROW_HEIGHT, PALETTE_BG);
-    }
-    
-    // Update tracking for next frame
-    lastDrawnCount = cardsToDrawCount;
-    for (int i = 0; i < 2; i++) {
-        if (i < cardsToDrawCount && !cardsToDraw[i].isCamera) {
-            int slot = cardsToDraw[i].slot;
-            lastDrawnCards[i].band = cards[slot].alert.band;
-            lastDrawnCards[i].frequency = cards[slot].alert.frequency;
-            lastDrawnCards[i].isGraced = cardsToDraw[i].isGraced;
-            lastDrawnCards[i].wasMuted = muted;
-            lastDrawnCards[i].bars = cardsToDraw[i].bars;
-        } else {
-            lastDrawnCards[i].band = BAND_NONE;
-            lastDrawnCards[i].frequency = 0;
-            lastDrawnCards[i].isGraced = false;
-            lastDrawnCards[i].wasMuted = false;
-            lastDrawnCards[i].bars = 0;
+    // Helper to check if position needs full redraw vs just update
+    auto positionNeedsFullRedraw = [&](int pos) -> bool {
+        if (pos >= cardsToDrawCount) {
+            // Position now empty but had content - needs clear
+            return lastDrawnPositions[pos].band != BAND_NONE || 
+                   lastDrawnPositions[pos].isCamera;
         }
-    }
+        
+        auto& last = lastDrawnPositions[pos];
+        auto& curr = cardsToDraw[pos];
+        
+        // Type changed (camera <-> V1) - full redraw
+        if (curr.isCamera != last.isCamera) return true;
+        
+        if (curr.isCamera) {
+            // Camera card - check if camera index or type changed
+            int camIdx = curr.cameraIndex;
+            if (camIdx != last.cameraIndex) return true;
+            if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
+                if (strcmp(cameraCards[camIdx].typeName, last.typeName) != 0) return true;
+                if (cameraCards[camIdx].color != last.color) return true;
+            }
+        } else {
+            // V1 card - check if band/freq/direction changed (needs full card redraw)
+            int slot = curr.slot;
+            if (cards[slot].alert.band != last.band) return true;
+            if (cards[slot].alert.frequency != last.frequency) return true;
+            if (cards[slot].alert.direction != last.direction) return true;
+            if (curr.isGraced != last.isGraced) return true;
+            if (muted != last.wasMuted) return true;
+        }
+        return false;
+    };
     
-    // Step 3: Draw the cards we identified
-    for (int i = 0; i < cardsToDrawCount; i++) {
+    // Helper to check if position needs dynamic update (distance or bars only)
+    auto positionNeedsDynamicUpdate = [&](int pos) -> bool {
+        if (pos >= cardsToDrawCount) return false;
+        
+        auto& last = lastDrawnPositions[pos];
+        auto& curr = cardsToDraw[pos];
+        
+        if (curr.isCamera) {
+            int camIdx = curr.cameraIndex;
+            if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
+                int currDistFt = static_cast<int>(cameraCards[camIdx].distance_m * 3.28084f);
+                // Update if distance changed by more than 10ft
+                if (abs(currDistFt - last.distanceFt) >= 10) return true;
+            }
+        } else {
+            // V1 card - check signal bars
+            if (curr.bars != last.bars) return true;
+        }
+        return false;
+    };
+    
+    const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+    
+    // Process each card position
+    for (int i = 0; i < 2; i++) {
         int cardX = startX + i * (cardW + cardSpacing);
         
-        // Handle camera card separately
+        bool needsFullRedraw = positionNeedsFullRedraw(i) || doForceRedraw;
+        bool needsDynamicUpdate = !needsFullRedraw && positionNeedsDynamicUpdate(i);
+        
+        // Clear position if it's now empty
+        if (i >= cardsToDrawCount) {
+            if (lastDrawnPositions[i].band != BAND_NONE || lastDrawnPositions[i].isCamera) {
+                FILL_RECT(cardX, cardY, cardW, cardH, PALETTE_BG);
+                lastDrawnPositions[i].band = BAND_NONE;
+                lastDrawnPositions[i].isCamera = false;
+                lastDrawnPositions[i].cameraIndex = -1;
+                lastDrawnPositions[i].distanceFt = -1;
+            }
+            continue;
+        }
+        
+        if (!needsFullRedraw && !needsDynamicUpdate) {
+            continue;  // Skip this position - nothing changed
+        }
+        
+        // Handle camera card
         if (cardsToDraw[i].isCamera) {
             int camIdx = cardsToDraw[i].cameraIndex;
             if (camIdx < 0 || camIdx >= MAX_CAMERA_CARDS) continue;
             
-            // === CAMERA ALERT CARD (V1 card style) ===
-            // Matches V1 card layout: Top row = Arrow + Badge + Info, Bottom row = Type label
             uint16_t camColor = cameraCards[camIdx].color;
             const char* camTypeName = cameraCards[camIdx].typeName;
             float camDistance = cameraCards[camIdx].distance_m;
+            int currDistFt = static_cast<int>(camDistance * 3.28084f);
             
-            // Card background - darker version of camera color (same as V1 cards)
-            uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
-            uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
-            uint8_t b = (camColor & 0x1F) * 3 / 10;
-            uint16_t bgCol = (r << 11) | (g << 5) | b;
-            
-            FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-            DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, camColor);
-            
-            // === TOP ROW: Direction arrow + CAM badge + Distance ===
-            // (Matches V1 card: Arrow + Band + Frequency)
-            const int contentCenterY = cardY + 18;
-            int topRowY = cardY + 11;
-            
-            // Direction arrow on left (always forward for approaching camera)
-            int arrowX = cardX + 18;
-            int arrowCY = contentCenterY;
-            tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, TFT_WHITE);
-            
-            // Distance in compact format (like frequency on V1 cards)
-            // Position after arrow, fitting within card width
-            char distStr[16];
-            if (camDistance < 1609.34f) {  // Less than 1 mile
-                int distFt = static_cast<int>(camDistance * 3.28084f);
-                snprintf(distStr, sizeof(distStr), "%dft", distFt);  // No space to save room
-            } else {
-                snprintf(distStr, sizeof(distStr), "%.1fmi", camDistance / 1609.34f);
+            if (needsFullRedraw) {
+                // === FULL CAMERA CARD REDRAW ===
+                uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
+                uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
+                uint8_t b = (camColor & 0x1F) * 3 / 10;
+                uint16_t bgCol = (r << 11) | (g << 5) | b;
+                
+                FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+                DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, camColor);
+                
+                const int contentCenterY = cardY + 18;
+                int topRowY = cardY + 11;
+                
+                // Direction arrow
+                int arrowX = cardX + 18;
+                int arrowCY = contentCenterY;
+                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, TFT_WHITE);
+                
+                // Bottom row: Camera type name
+                const int bottomRowY = cardY + 38;
+                tft->setTextSize(1);
+                tft->setTextColor(camColor);
+                int typeLen = strlen(camTypeName);
+                int typePixelWidth = typeLen * 6;
+                int typeX = cardX + (cardW - typePixelWidth) / 2;
+                tft->setCursor(typeX, bottomRowY);
+                tft->print(camTypeName);
             }
             
-            // Draw distance in size 2 font, positioned after arrow with room for text
-            int labelX = cardX + 36;
-            tft->setTextColor(TFT_WHITE);
-            tft->setTextSize(2);
-            // Calculate text width (12 pixels per char at size 2)
-            int distLen = strlen(distStr);
-            int distPixelWidth = distLen * 12;
-            // Position to fit within card - ensure it doesn't overflow
-            int maxDistX = cardX + cardW - distPixelWidth - 5;  // 5px right margin
-            int distX = labelX;
-            if (distX + distPixelWidth > cardX + cardW - 5) {
-                distX = maxDistX;  // Shift left if needed
+            // Draw distance (always when full redraw, or just update if dynamic)
+            if (needsFullRedraw || needsDynamicUpdate) {
+                int topRowY = cardY + 11;
+                int labelX = cardX + 36;
+                
+                // Clear just the distance text area
+                uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
+                uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
+                uint8_t b = (camColor & 0x1F) * 3 / 10;
+                uint16_t bgCol = (r << 11) | (g << 5) | b;
+                FILL_RECT(labelX, topRowY - 2, cardW - 40, 18, bgCol);
+                
+                // Format and draw distance
+                char distStr[16];
+                if (camDistance < 1609.34f) {
+                    snprintf(distStr, sizeof(distStr), "%dft", currDistFt);
+                } else {
+                    snprintf(distStr, sizeof(distStr), "%.1fmi", camDistance / 1609.34f);
+                }
+                
+                tft->setTextColor(TFT_WHITE);
+                tft->setTextSize(2);
+                int distLen = strlen(distStr);
+                int distPixelWidth = distLen * 12;
+                int maxDistX = cardX + cardW - distPixelWidth - 5;
+                int distX = labelX;
+                if (distX + distPixelWidth > cardX + cardW - 5) {
+                    distX = maxDistX;
+                }
+                tft->setCursor(distX, topRowY);
+                tft->print(distStr);
+                
+                // Update tracking
+                lastDrawnPositions[i].distanceFt = currDistFt;
             }
-            tft->setCursor(distX, topRowY);
-            tft->print(distStr);
             
-            // === BOTTOM ROW: Camera type name centered ===
-            // (Replaces signal meter - cameras don't have signal strength)
-            const int bottomRowY = cardY + 38;
-            tft->setTextSize(1);
-            tft->setTextColor(camColor);
+            // Update position tracking
+            lastDrawnPositions[i].isCamera = true;
+            lastDrawnPositions[i].cameraIndex = camIdx;
+            strncpy(lastDrawnPositions[i].typeName, camTypeName, sizeof(lastDrawnPositions[i].typeName) - 1);
+            lastDrawnPositions[i].color = camColor;
+            lastDrawnPositions[i].band = BAND_NONE;
             
-            // Center the type name in the card
-            int typeLen = strlen(camTypeName);
-            int typePixelWidth = typeLen * 6;  // size 1 = 6 pixels per char
-            int typeX = cardX + (cardW - typePixelWidth) / 2;
-            tft->setCursor(typeX, bottomRowY);
-            tft->print(camTypeName);
-            
-            continue;  // Skip V1 card drawing code
+            continue;
         }
         
         // === V1 ALERT CARD ===
@@ -3085,25 +3116,17 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         bool drawMuted = muted || isGraced;
         uint8_t bars = cardsToDraw[i].bars;
         
-        if (doDebug) {
-            Serial.printf("[CARDS] DRAW slot%d b%d f%d bars=%d graced=%d X=%d\n", 
-                          c, alert.band, alert.frequency, bars, isGraced, cardX);
-        }
-        
         // Card background and border colors
         uint16_t bandCol = getBandColor(alert.band);
         uint16_t bgCol, borderCol;
         
         if (isGraced) {
-            // Graced: use PALETTE_MUTED (grey) with slightly visible background
-            bgCol = 0x2104;  // Dark grey background
+            bgCol = 0x2104;
             borderCol = PALETTE_MUTED;
         } else if (drawMuted) {
-            // Muted but not graced
             bgCol = 0x2104;
             borderCol = PALETTE_MUTED;
         } else {
-            // Active card - darker version of band color
             uint8_t r = ((bandCol >> 11) & 0x1F) * 3 / 10;
             uint8_t g = ((bandCol >> 5) & 0x3F) * 3 / 10;
             uint8_t b = (bandCol & 0x1F) * 3 / 10;
@@ -3111,92 +3134,108 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             borderCol = bandCol;
         }
         
-        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
-        
-        // Colors for content - graced cards use grey
         uint16_t contentCol = (isGraced || drawMuted) ? PALETTE_MUTED : TFT_WHITE;
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
         
-        // === TOP ROW: Direction arrow + Band + Frequency ===
-        // Center content between top border (Y≈2) and meter top (Y=34)
-        // Usable area is ~32px, centered at Y=18 from card top
-        const int contentCenterY = cardY + 18;  // Center of content area above meter
-        int topRowY = cardY + 11;  // Text top (centered: 18 - 7 = 11 for ~14px text)
-        
-        // Direction arrow on left side of card
-        int arrowX = cardX + 18;
-        int arrowCY = contentCenterY;  // Arrow centered in content area
-        
-        if (alert.direction & DIR_FRONT) {
-            tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
-        } else if (alert.direction & DIR_REAR) {
-            tft->fillTriangle(arrowX, arrowCY + 7, arrowX - 6, arrowCY - 5, arrowX + 6, arrowCY - 5, contentCol);
-        } else if (alert.direction & DIR_SIDE) {
-            FILL_RECT(arrowX - 6, arrowCY - 2, 12, 4, contentCol);
+        if (needsFullRedraw) {
+            // === FULL V1 CARD REDRAW ===
+            FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+            DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
+            
+            const int contentCenterY = cardY + 18;
+            int topRowY = cardY + 11;
+            
+            // Direction arrow
+            int arrowX = cardX + 18;
+            int arrowCY = contentCenterY;
+            if (alert.direction & DIR_FRONT) {
+                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
+            } else if (alert.direction & DIR_REAR) {
+                tft->fillTriangle(arrowX, arrowCY + 7, arrowX - 6, arrowCY - 5, arrowX + 6, arrowCY - 5, contentCol);
+            } else if (alert.direction & DIR_SIDE) {
+                FILL_RECT(arrowX - 6, arrowCY - 2, 12, 4, contentCol);
+            }
+            
+            // Band + frequency
+            int labelX = cardX + 36;
+            tft->setTextColor(bandLabelCol);
+            tft->setTextSize(2);
+            if (alert.band == BAND_LASER) {
+                tft->setCursor(labelX, topRowY);
+                tft->print("LASER");
+            } else {
+                const char* bandStr = bandToString(alert.band);
+                tft->setCursor(labelX, topRowY);
+                tft->print(bandStr);
+                
+                tft->setTextColor(contentCol);
+                int freqX = labelX + strlen(bandStr) * 12 + 4;
+                tft->setCursor(freqX, topRowY);
+                if (alert.frequency > 0) {
+                    char freqStr[10];
+                    snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
+                    tft->print(freqStr);
+                } else {
+                    tft->print("---");
+                }
+            }
+            
+            // Draw meter background
+            const int meterY = cardY + 34;
+            const int meterX = cardX + 10;
+            const int meterW = cardW - 20;
+            const int meterH = 18;
+            FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);
         }
         
-        // Band indicator + frequency on top row
-        int labelX = cardX + 36;
-        tft->setTextColor(bandLabelCol);
-        tft->setTextSize(2);
-        if (alert.band == BAND_LASER) {
-            tft->setCursor(labelX, topRowY);
-            tft->print("LASER");
-        } else {
-            // Band letter + frequency: "Ka 34.740" or "K 24.150"
-            const char* bandStr = bandToString(alert.band);
-            tft->setCursor(labelX, topRowY);
-            tft->print(bandStr);
+        // Draw/update signal bars (always after full redraw, or on bars change)
+        if (needsFullRedraw || needsDynamicUpdate) {
+            const int meterY = cardY + 34;
+            const int meterX = cardX + 10;
+            const int meterW = cardW - 20;
+            const int meterH = 18;
+            const int barCount = 6;
+            const int barSpacing = 2;
+            const int barWidth = (meterW - (barCount - 1) * barSpacing) / barCount;
             
-            // Frequency after band
-            tft->setTextColor(contentCol);
-            int freqX = labelX + strlen(bandStr) * 12 + 4;
-            tft->setCursor(freqX, topRowY);
-            if (alert.frequency > 0) {
-                char freqStr[10];
-                snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
-                tft->print(freqStr);
-            } else {
-                tft->print("---");
+            // Clear meter area for bar update (not full redraw which already did it)
+            if (!needsFullRedraw) {
+                FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);
+            }
+            
+            uint16_t barColors[6] = {
+                settings.colorBar1, settings.colorBar2, settings.colorBar3,
+                settings.colorBar4, settings.colorBar5, settings.colorBar6
+            };
+            
+            for (int b = 0; b < barCount; b++) {
+                int barX = meterX + b * (barWidth + barSpacing);
+                int barH = 10;
+                int barY = meterY + (meterH - barH) / 2;
+                
+                if (b < bars) {
+                    uint16_t fillColor = (isGraced || drawMuted) ? PALETTE_MUTED : barColors[b];
+                    FILL_RECT(barX, barY, barWidth, barH, fillColor);
+                } else {
+                    DRAW_RECT(barX, barY, barWidth, barH, dimColor(barColors[b], 30));
+                }
             }
         }
         
-        // === BOTTOM ROW: Signal strength meter ===
-        const int meterY = cardY + 34;      // Bottom row Y position (adjusted for taller card)
-        const int meterX = cardX + 10;      // Start of meter
-        const int meterW = cardW - 20;      // Meter width (with padding)
-        const int meterH = 18;              // Meter height (slightly taller)
-        const int barCount = 6;             // 6 bars like main signal meter
-        const int barSpacing = 2;           // Gap between bars
-        const int barWidth = (meterW - (barCount - 1) * barSpacing) / barCount;
-        
-        // Draw meter background (dark outline)
-        FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);  // Very dark grey
-        
-        // Get signal bar colors from settings (same as main signal bars)
-        uint16_t barColors[6] = {
-            settings.colorBar1, settings.colorBar2, settings.colorBar3,
-            settings.colorBar4, settings.colorBar5, settings.colorBar6
-        };
-        
-        // Draw signal bars with uniform height (cleaner look)
-        for (int b = 0; b < barCount; b++) {
-            int barX = meterX + b * (barWidth + barSpacing);
-            // All bars same height for compact card design
-            int barH = 10;  // Uniform height
-            int barY = meterY + (meterH - barH) / 2;  // Center vertically (4px above and below)
-            
-            if (b < bars) {
-                // Filled bar - use color-coded colors, or muted grey
-                uint16_t fillColor = (isGraced || drawMuted) ? PALETTE_MUTED : barColors[b];
-                FILL_RECT(barX, barY, barWidth, barH, fillColor);
-            } else {
-                // Empty bar outline
-                DRAW_RECT(barX, barY, barWidth, barH, dimColor(barColors[b], 30));
-            }
-        }
+        // Update position tracking for V1 card
+        lastDrawnPositions[i].isCamera = false;
+        lastDrawnPositions[i].band = alert.band;
+        lastDrawnPositions[i].frequency = alert.frequency;
+        lastDrawnPositions[i].direction = alert.direction;
+        lastDrawnPositions[i].isGraced = isGraced;
+        lastDrawnPositions[i].wasMuted = muted;
+        lastDrawnPositions[i].bars = bars;
+        lastDrawnPositions[i].cameraIndex = -1;
     }
+    
+    // Update global tracking
+    lastDrawnCount = cardsToDrawCount;
+    lastActiveCameraCount = activeCameraCount;
 #endif
 }
 
@@ -4537,6 +4576,9 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
             const int clearW = maxWidth - 10;
             const int clearH = fontSize + 40;
             FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
+            // Also clear the type label at the top
+            const int typeLabelY = 8;
+            FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
         }
         lastCameraState = true;
         lastWasCard = true;
@@ -4571,11 +4613,17 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     const int clearW = maxWidth - 10;
     const int clearH = fontSize + 10;  // Same as V1 frequency clear (fontSize + 10)
     
+    // Type label position (at top of primary zone)
+    const int typeLabelY = 8;
+    
     if (!active) {
         // Clear camera alert area if was previously shown
         if (lastCameraState) {
             if (!lastWasCard) {
+                // Clear main distance area
                 FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
+                // Also clear the type label at the top
+                FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 20, PALETTE_BG);
             }
             lastCameraState = false;
             lastWasCard = false;
@@ -4606,7 +4654,7 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     
     // === CAMERA TYPE LABEL (above distance, positioned like band label) ===
     // Position at top of primary zone, above the mute icon row
-    const int typeLabelY = 8;  // Near top of display
+    // (typeLabelY already declared above)
     tft->setTextSize(2);
     tft->setTextColor(color);
     int typeLen = strlen(typeName);
