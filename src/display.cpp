@@ -4539,6 +4539,7 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     static float lastDistance = -1.0f;
     static char lastTypeName[16] = {0};
     static int lastCameraCount = 0;
+    static bool lastV1HasAlerts = false;
     
     // Max supported: 1 primary + MAX_CAMERA_CARDS (2) = 3 cameras total
     // When V1 has alerts, max is MAX_CAMERA_CARDS since all become cards
@@ -4549,6 +4550,16 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     const char* typeName = active ? cameras[0].typeName : "";
     float distance_m = active ? cameras[0].distance_m : 0.0f;
     uint16_t color = active ? cameras[0].color : 0;
+    
+    // === EARLY EXIT: Check if anything actually changed ===
+    // Skip all processing if state is identical to last call
+    bool stateChanged = (active != lastCameraState) || 
+                        (count != lastCameraCount) ||
+                        (v1HasAlerts != lastV1HasAlerts);
+    if (!stateChanged && !active) {
+        // No cameras now, no cameras before - nothing to do
+        return;
+    }
     
     // Determine how to display cameras:
     // - If V1 has alerts: All cameras show as cards (V1 gets primary)
@@ -4589,15 +4600,22 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     }
     
     // === DRAW/CLEAR CAMERA CARDS IN SECONDARY AREA ===
-    // After setting card states, we need to actually render or clear them
-    // Force redraw to ensure cards are drawn or cleared properly
-    forceCardRedraw = true;
-    // Call drawSecondaryAlertCards with empty V1 data to render/clear camera cards
-    AlertData emptyPriority;  // Default constructor = invalid
-    drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+    // ONLY force redraw when camera state actually changed
+    // This prevents constant full redraws when called every frame with no cameras
+    if (stateChanged) {
+        forceCardRedraw = true;
+        // Call drawSecondaryAlertCards with empty V1 data to render/clear camera cards
+        AlertData emptyPriority;  // Default constructor = invalid
+        drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+        
+        // Flush to ensure card changes are visible (especially when clearing)
+        flush();
+    }
     
-    // Flush to ensure card changes are visible (especially when clearing)
-    flush();
+    // Update tracking for next call
+    lastCameraState = active;
+    lastCameraCount = count;
+    lastV1HasAlerts = v1HasAlerts;;
     
     // === HANDLE MAIN AREA DISPLAY ===
     // If V1 has active alerts, clear main camera area (camera shows as card instead)
