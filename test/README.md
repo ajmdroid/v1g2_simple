@@ -39,7 +39,8 @@ test/
 | haversine distance | 10 | ✅ PASS |
 | packet parser | 30 | ✅ PASS |
 | display system | 74 | ✅ PASS |
-| **Total** | **114** | **✅ ALL PASS** |
+| integration/ownership | 14 | ✅ PASS |
+| **Total** | **128** | **✅ ALL PASS** |
 
 ## Display Torture Test Categories
 
@@ -141,6 +142,46 @@ When test mode ends:
   if (v1Connected) → showResting() or update()
   else → showScanning()  // NEVER showResting() when disconnected!
 ```
+
+## Display Ownership Integration Tests (14 tests) ⭐ NEW
+
+Located in `test/test_integration/test_display_ownership.cpp`.
+
+**Purpose:** Catch bugs where multiple code paths try to manage the same display state, causing flashing or conflicts. This is the exact class of bug that caused camera test flashing when V1 was connected.
+
+### What It Tests
+
+1. **Path Decision Logic** (6 tests) - Verifies correct code path is chosen:
+   - No cameras → no display path active
+   - Camera test + V1 disconnected → `updateCameraAlerts` owns main area
+   - Camera test + V1 connected → `updateCameraCardState` owns cards
+   - Real cameras follow same rules
+
+2. **Ownership Conflict Detection** (6 tests) - Catches dual-writer bugs:
+   - Only ONE caller should write to camera card state per frame
+   - Tests fail if multiple callers write to same state
+   - Covers V1 connect/disconnect transitions
+
+3. **Performance Guards** (2 tests):
+   - Single flush per frame (multiple flushes = flashing)
+   - Force redraw flag not set unconditionally
+
+### The Pattern Being Enforced
+
+```
+Each display element should have ONE owner per frame:
+- V1 connected: updateCameraCardState() owns camera cards
+- V1 disconnected: updateCameraAlerts() owns camera cards
+- NEVER both in the same frame!
+```
+
+### How to Add New Ownership Tests
+
+When adding a new test mode or display feature:
+1. Add the path decision to `getCameraDisplayPath()`
+2. Add simulation function like `simulateUpdateCameraAlerts()`
+3. Add conflict detection test
+4. Run tests - if they fail with "conflict", you have a dual-writer bug
 
 ## Writing Tests
 
