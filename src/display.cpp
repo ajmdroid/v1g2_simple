@@ -54,6 +54,11 @@ static bool s_forceBandRedraw = false;
 static bool s_forceSignalBarsRedraw = false;
 static bool s_forceArrowRedraw = false;
 
+// Force status bar/mute icon/top counter cache invalidation - set when screen is cleared
+static bool s_forceStatusBarRedraw = false;
+static bool s_forceMuteIconRedraw = false;
+static bool s_forceTopCounterRedraw = false;
+
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
 static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
@@ -736,6 +741,9 @@ void V1Display::drawBaseFrame() {
     s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
     s_forceSignalBarsRedraw = true; // Force signal bars cache invalidation after screen clear
     s_forceArrowRedraw = true;      // Force arrow cache invalidation after screen clear
+    s_forceStatusBarRedraw = true;  // Force status bar cache invalidation after screen clear
+    s_forceMuteIconRedraw = true;   // Force mute icon cache invalidation after screen clear
+    s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -955,7 +963,27 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
 // Classic 7-segment bogey counter (original V1 style)
 // Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
+    // Change detection: skip redraw if nothing changed
+    static char lastSymbol = '\0';
+    static bool lastMuted = false;
+    static bool lastShowDot = false;
+    static uint16_t lastBogeyColor = 0;
+    
     const V1Settings& s = settingsManager.get();
+    
+    // Check if color setting changed
+    bool colorChanged = (s.colorBogey != lastBogeyColor);
+    
+    // Skip redraw if nothing changed (unless forced after screen clear)
+    if (!s_forceTopCounterRedraw && !colorChanged &&
+        symbol == lastSymbol && muted == lastMuted && showDot == lastShowDot) {
+        return;
+    }
+    s_forceTopCounterRedraw = false;
+    lastSymbol = symbol;
+    lastMuted = muted;
+    lastShowDot = showDot;
+    lastBogeyColor = s.colorBogey;
     
     // Use bogey color for digits, muted color if muted, otherwise bogey color
     bool isDigit = (symbol >= '0' && symbol <= '9');
@@ -1114,6 +1142,18 @@ void V1Display::drawRssiIndicator(int rssi) {
 }
 
 void V1Display::drawMuteIcon(bool muted) {
+    // Change detection: skip redraw if nothing changed
+    static bool lastMutedState = false;
+    static bool lastLockoutMuted = false;
+    
+    // Skip redraw if nothing changed (unless forced after screen clear)
+    if (!s_forceMuteIconRedraw && muted == lastMutedState && lockoutMuted == lastLockoutMuted) {
+        return;
+    }
+    s_forceMuteIconRedraw = false;
+    lastMutedState = muted;
+    lastLockoutMuted = lockoutMuted;
+    
     // Draw badge at fixed top position (top ~10% of screen)
 #if defined(DISPLAY_WAVESHARE_349)
     const int leftMargin = 120;    // After band indicators
@@ -4276,6 +4316,13 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 // Status bar at very top of screen showing GPS/CAM/OBD status
 void V1Display::drawStatusBar() {
 #if defined(DISPLAY_WAVESHARE_349)
+    // Change detection: track last state to avoid redundant redraws
+    static bool lastGpsHasFix = false;
+    static int lastGpsSats = -1;
+    static bool lastShowCam = false;
+    static bool lastObdConnected = false;
+    static bool lastGpsEnabled = false;
+    
     const V1Settings& s = settingsManager.get();
     
     // Current state
@@ -4283,9 +4330,24 @@ void V1Display::drawStatusBar() {
     int gpsSats = gpsHandler.getFix().satellites;  // Get satellites from fix struct
     bool hasCameraDb = storageManager.hasCameraDatabase();
     bool obdConnected = obdHandler.isConnected();
+    bool gpsEnabled = gpsHandler.isEnabled();
     
     // For CAM: only show if camera DB exists AND GPS has fix
     bool showCam = hasCameraDb && gpsHasFix;
+    
+    // Skip redraw if nothing changed (unless forced after screen clear)
+    if (!s_forceStatusBarRedraw &&
+        gpsHasFix == lastGpsHasFix && gpsSats == lastGpsSats &&
+        showCam == lastShowCam && obdConnected == lastObdConnected &&
+        gpsEnabled == lastGpsEnabled) {
+        return;
+    }
+    s_forceStatusBarRedraw = false;
+    lastGpsHasFix = gpsHasFix;
+    lastGpsSats = gpsSats;
+    lastShowCam = showCam;
+    lastObdConnected = obdConnected;
+    lastGpsEnabled = gpsEnabled;
     
     // Status bar positioning
     const int statusY = 1;           // Very top of screen
