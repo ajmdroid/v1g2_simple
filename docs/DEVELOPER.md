@@ -289,11 +289,67 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar,
 
 ### Before Committing Display Changes
 
+**Critical: Display changes MUST be tested with all these scenarios:**
+
 - [ ] Test with active V1 alerts (flashing bugs only appear with live data)
+- [ ] Test with NO V1 alerts (idle/resting state)
+- [ ] Test transitions: alerts → no alerts → alerts
 - [ ] Test camera alerts on/off transitions
 - [ ] Test mute/unmute transitions
 - [ ] Test volume changes
-- [ ] Verify no flashing/flickering in any state
+- [ ] Test brightness changes
+- [ ] Let device run 5+ minutes in each state (flashing may be subtle)
+- [ ] **Verify no flashing/flickering in any state**
+
+**Display Change Review Checklist:**
+
+1. [ ] Does any new display function have change detection / early exit?
+2. [ ] Are any `force*Redraw` flags set unconditionally?
+3. [ ] Is the function called from main loop without state guards?
+4. [ ] Does the function use frequency comparison with tolerance (±5 MHz)?
+5. [ ] Does the function flush() - if so, is it guarded?
+
+**Common Patterns That Cause Flashing:**
+
+```cpp
+// ❌ BAD - Called every loop without change detection
+void loop() {
+    if (someCondition) {
+        display.updateSomething();  // Called every frame!
+    }
+}
+
+// ✅ GOOD - Only call on state change
+static bool lastCondition = false;
+void loop() {
+    if (someCondition != lastCondition) {
+        display.updateSomething();
+        lastCondition = someCondition;
+    }
+}
+```
+
+```cpp
+// ❌ BAD - Display function without early exit
+void V1Display::updateSomething(bool active) {
+    FILL_RECT(...);  // Clears every frame
+    if (active) { 
+        drawText(...);
+    }
+}
+
+// ✅ GOOD - Display function with change detection
+void V1Display::updateSomething(bool active) {
+    static bool lastActive = false;
+    if (active == lastActive) return;  // Early exit
+    
+    FILL_RECT(...);
+    if (active) { 
+        drawText(...);
+    }
+    lastActive = active;
+}
+```
 
 ### Before Committing BLE Changes
 
