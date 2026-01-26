@@ -205,8 +205,14 @@ bool CameraManager::parseCameraLine(const char* line, CameraRecord& record) {
   }
   
   // Camera type from flg field
+  // Note: flg values 1-3 are standard ExCam types, but ALPR uses flg=8192
+  // We map 8192 to our internal ALPR type (4) since uint8_t can't hold 8192
   int flg = doc["flg"] | 2;  // Default to speed camera
-  record.type = static_cast<uint8_t>(flg);
+  if (flg == 8192) {
+    record.type = static_cast<uint8_t>(CameraType::ALPR);
+  } else {
+    record.type = static_cast<uint8_t>(flg);
+  }
   
   // Speed limit (0 if not specified)
   record.speedLimit = doc["spd"] | 0;
