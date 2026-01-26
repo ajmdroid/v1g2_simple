@@ -13,7 +13,11 @@
 			logObd: false,
 			logSystem: true,
 			logDisplay: false,
-			logPerfMetrics: false
+			logPerfMetrics: false,
+			logAudio: false,
+			logCamera: false,
+			logLockout: false,
+			logTouch: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -74,6 +78,10 @@
 			settings.logSystem = data.logSystem ?? true;
 			settings.logDisplay = data.logDisplay ?? false;
 			settings.logPerfMetrics = data.logPerfMetrics ?? false;
+			settings.logAudio = data.logAudio ?? false;
+			settings.logCamera = data.logCamera ?? false;
+			settings.logLockout = data.logLockout ?? false;
+			settings.logTouch = data.logTouch ?? false;
 			
 			loading = false;
 		} catch (error) {
@@ -128,6 +136,10 @@
 			params.append('logSystem', settings.logSystem);
 			params.append('logDisplay', settings.logDisplay);
 			params.append('logPerfMetrics', settings.logPerfMetrics);
+			params.append('logAudio', settings.logAudio);
+			params.append('logCamera', settings.logCamera);
+			params.append('logLockout', settings.logLockout);
+			params.append('logTouch', settings.logTouch);
 
 			const response = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -214,6 +226,10 @@
 		settings.logSystem = true;
 		settings.logDisplay = false;
 		settings.logPerfMetrics = false;
+		settings.logAudio = false;
+		settings.logCamera = false;
+		settings.logLockout = false;
+		settings.logTouch = false;
 		
 		await saveSettings();
 	}
@@ -458,6 +474,22 @@
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logPerfMetrics} disabled={!acknowledged}>
 								<span class="label-text text-sm">Perf Metrics</span>
+							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logAudio} disabled={!acknowledged}>
+								<span class="label-text text-sm">Audio</span>
+							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logCamera} disabled={!acknowledged}>
+								<span class="label-text text-sm">Camera</span>
+							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logLockout} disabled={!acknowledged}>
+								<span class="label-text text-sm">Lockout</span>
+							</label>
+							<label class="label cursor-pointer justify-start gap-3 px-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logTouch} disabled={!acknowledged}>
+								<span class="label-text text-sm">Touch</span>
 							</label>
 						</div>
 					</div>

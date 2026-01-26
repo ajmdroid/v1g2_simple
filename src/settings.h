@@ -46,6 +46,10 @@ struct DebugLogConfig {
     bool system;
     bool display;
     bool perfMetrics;
+    bool audio;
+    bool camera;
+    bool lockout;
+    bool touch;
 };
 
 // V1 operating modes (from ESP library)
@@ -152,6 +156,10 @@ struct V1Settings {
         bool logSystem;              // Include system/storage/events in debug log
         bool logDisplay;             // Include display latency events in debug log
         bool logPerfMetrics;         // Log BLE performance metrics periodically
+        bool logAudio;               // Include audio/TTS playback events in debug log
+        bool logCamera;              // Include camera alert events in debug log
+        bool logLockout;             // Include auto-lockout events in debug log
+        bool logTouch;               // Include touch input events in debug log
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -432,8 +440,12 @@ public:
     void setLogSystem(bool enable);
     void setLogDisplay(bool enable);
     void setLogPerfMetrics(bool enable);
+    void setLogAudio(bool enable);
+    void setLogCamera(bool enable);
+    void setLogLockout(bool enable);
+    void setLogTouch(bool enable);
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);

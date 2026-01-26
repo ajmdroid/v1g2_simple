@@ -2,11 +2,18 @@
 // Loads NDJSON camera database and provides fast proximity queries
 
 #include "camera_manager.h"
+#include "debug_logger.h"
 #include <ArduinoJson.h>
 #include <algorithm>
 #include <cmath>
 
 static constexpr bool DEBUG_LOGS = false;
+
+// Camera logging macro - logs to SD when category enabled
+#define CAMERA_LOGF(...) do { \
+    if (DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Camera)) debugLogger.logf(DebugLogCategory::Camera, __VA_ARGS__); \
+} while(0)
 
 // Global instance
 CameraManager cameraManager;

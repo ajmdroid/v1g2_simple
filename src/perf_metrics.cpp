@@ -98,7 +98,7 @@ void perfMetricsPrint() {
         (unsigned long)perfLatency.maxUs,
         (unsigned long)perfLatency.sampleCount);
     Serial.println("===========================");
-
+#elif PERF_METRICS
     Serial.println("Performance monitoring disabled (PERF_MONITORING=0)");
 #else
     Serial.println("Performance metrics disabled (PERF_METRICS=0)");

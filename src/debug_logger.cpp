@@ -43,6 +43,10 @@ bool DebugLogger::categoryAllowed(DebugLogCategory category) const {
         case DebugLogCategory::System:      return filter.system;
         case DebugLogCategory::Display:     return filter.display;
         case DebugLogCategory::PerfMetrics: return filter.perfMetrics;
+        case DebugLogCategory::Audio:       return filter.audio;
+        case DebugLogCategory::Camera:      return filter.camera;
+        case DebugLogCategory::Lockout:     return filter.lockout;
+        case DebugLogCategory::Touch:       return filter.touch;
         default: return false;
     }
 }

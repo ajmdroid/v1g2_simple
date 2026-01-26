@@ -9,6 +9,7 @@
 
 #include "audio_beep.h"
 #include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
+#include "debug_logger.h"     // For Audio logging category
 #include <Arduino.h>
 #include <Wire.h>
 #include "driver/i2s_std.h"   // New I2S standard driver (requires ESP-IDF 5.x)
@@ -20,8 +21,14 @@
 
 // Debug logging control - set to false for production to reduce serial overhead
 static constexpr bool AUDIO_DEBUG_LOGS = false;
-#define AUDIO_LOGF(...) do { if (AUDIO_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while(0)
-#define AUDIO_LOGLN(msg) do { if (AUDIO_DEBUG_LOGS) Serial.println(msg); } while(0)
+#define AUDIO_LOGF(...) do { \
+    if (AUDIO_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Audio)) debugLogger.logf(DebugLogCategory::Audio, __VA_ARGS__); \
+} while(0)
+#define AUDIO_LOGLN(msg) do { \
+    if (AUDIO_DEBUG_LOGS) Serial.println(msg); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Audio)) debugLogger.log(DebugLogCategory::Audio, msg); \
+} while(0)
 
 // ES8311 I2C address
 #define ES8311_ADDR 0x18

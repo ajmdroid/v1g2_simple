@@ -5,10 +5,14 @@
  */
 
 #include "touch_handler.h"
+#include "debug_logger.h"
 
 // Debug logging - set to false for production
 static constexpr bool TOUCH_DEBUG_LOGS = false;
-#define TOUCH_LOGF(...) do { if (TOUCH_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while(0)
+#define TOUCH_LOGF(...) do { \
+    if (TOUCH_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Touch)) debugLogger.logf(DebugLogCategory::Touch, __VA_ARGS__); \
+} while(0)
 
 // AXS15231B touch read command sequence
 static const uint8_t AXS_TOUCH_READ_CMD[] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0};

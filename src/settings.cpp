@@ -138,6 +138,10 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("logSystem", settings.logSystem);
     written += prefs.putBool("logDisplay", settings.logDisplay);
     written += prefs.putBool("logPerfMet", settings.logPerfMetrics);
+    written += prefs.putBool("logAudio", settings.logAudio);
+    written += prefs.putBool("logCamera", settings.logCamera);
+    written += prefs.putBool("logLockout", settings.logLockout);
+    written += prefs.putBool("logTouch", settings.logTouch);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -359,6 +363,10 @@ void SettingsManager::load() {
     settings.logSystem = preferences.getBool("logSystem", true);
     settings.logDisplay = preferences.getBool("logDisplay", false);
     settings.logPerfMetrics = preferences.getBool("logPerfMet", false);
+    settings.logAudio = preferences.getBool("logAudio", false);
+    settings.logCamera = preferences.getBool("logCamera", false);
+    settings.logLockout = preferences.getBool("logLockout", false);
+    settings.logTouch = preferences.getBool("logTouch", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -785,6 +793,26 @@ void SettingsManager::setLogPerfMetrics(bool enable) {
     save();
 }
 
+void SettingsManager::setLogAudio(bool enable) {
+    settings.logAudio = enable;
+    save();
+}
+
+void SettingsManager::setLogCamera(bool enable) {
+    settings.logCamera = enable;
+    save();
+}
+
+void SettingsManager::setLogLockout(bool enable) {
+    settings.logLockout = enable;
+    save();
+}
+
+void SettingsManager::setLogTouch(bool enable) {
+    settings.logTouch = enable;
+    save();
+}
+
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
     settings.voiceAlertMode = mode;
     save();
@@ -1117,6 +1145,10 @@ void SettingsManager::backupToSD() {
     doc["logSystem"] = settings.logSystem;
     doc["logDisplay"] = settings.logDisplay;
     doc["logPerfMetrics"] = settings.logPerfMetrics;
+    doc["logAudio"] = settings.logAudio;
+    doc["logCamera"] = settings.logCamera;
+    doc["logLockout"] = settings.logLockout;
+    doc["logTouch"] = settings.logTouch;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1328,6 +1360,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
     if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
     if (doc["logPerfMetrics"].is<bool>()) settings.logPerfMetrics = doc["logPerfMetrics"];
+    if (doc["logAudio"].is<bool>()) settings.logAudio = doc["logAudio"];
+    if (doc["logCamera"].is<bool>()) settings.logCamera = doc["logCamera"];
+    if (doc["logLockout"].is<bool>()) settings.logLockout = doc["logLockout"];
+    if (doc["logTouch"].is<bool>()) settings.logTouch = doc["logTouch"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

@@ -1597,6 +1597,18 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("logPerfMetrics")) {
         settingsManager.setLogPerfMetrics(server.arg("logPerfMetrics") == "true" || server.arg("logPerfMetrics") == "1");
     }
+    if (server.hasArg("logAudio")) {
+        settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1");
+    }
+    if (server.hasArg("logCamera")) {
+        settingsManager.setLogCamera(server.arg("logCamera") == "true" || server.arg("logCamera") == "1");
+    }
+    if (server.hasArg("logLockout")) {
+        settingsManager.setLogLockout(server.arg("logLockout") == "true" || server.arg("logLockout") == "1");
+    }
+    if (server.hasArg("logTouch")) {
+        settingsManager.setLogTouch(server.arg("logTouch") == "true" || server.arg("logTouch") == "1");
+    }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();

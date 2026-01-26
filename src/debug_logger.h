@@ -22,7 +22,11 @@ enum class DebugLogCategory {
     Gps,
     Obd,
     Display,
-    PerfMetrics
+    PerfMetrics,
+    Audio,
+    Camera,
+    Lockout,
+    Touch
 };
 
 struct DebugLogFilter {
@@ -34,6 +38,10 @@ struct DebugLogFilter {
     bool system = true;
     bool display = false;
     bool perfMetrics = false;
+    bool audio = false;
+    bool camera = false;
+    bool lockout = false;
+    bool touch = false;
 };
 
 class DebugLogger {

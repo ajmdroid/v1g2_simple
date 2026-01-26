@@ -6,11 +6,18 @@
 #include "lockout_manager.h"
 #include "storage_manager.h"
 #include "settings.h"
+#include "debug_logger.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <cmath>
 
 static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
+
+// Lockout logging macro - logs to SD when category enabled
+#define LOCKOUT_LOGF(...) do { \
+    if (DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Lockout)) debugLogger.logf(DebugLogCategory::Lockout, __VA_ARGS__); \
+} while(0)
 
 // Use global instances from main.cpp
 extern LockoutManager lockouts;
