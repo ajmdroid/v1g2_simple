@@ -614,6 +614,7 @@ static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;  // Remember pas
 // Camera test alert mode (from web UI)
 // Test cycles through: 1 camera → 2 cameras → 3 cameras to show card display
 static bool cameraTestActive = false;
+static bool cameraTestEnded = false;  // Triggers display restore after test ends
 static unsigned long cameraTestEndMs = 0;
 static int cameraTestPhase = 0;  // 0=1cam, 1=2cam, 2=3cam
 static unsigned long cameraTestPhaseStartMs = 0;
@@ -2257,9 +2258,12 @@ void loop() {
     // Drive color preview (band cycle) first; skip other updates if active
     if (colorPreviewActive) {
         driveColorPreview();
-    } else if (colorPreviewEnded) {
-        // Preview finished - restore normal display with fresh V1 data
+    } else if (colorPreviewEnded || cameraTestEnded) {
+        // Preview/test finished - restore normal display with fresh V1 data
+        bool wasColorPreview = colorPreviewEnded;
+        bool wasCameraTest = cameraTestEnded;
         colorPreviewEnded = false;
+        cameraTestEnded = false;
         // Force full redraw and immediately update with current parser state
         display.forceNextRedraw();
         if (bleClient.isConnected()) {
@@ -2275,8 +2279,11 @@ void loop() {
                 display.update(state);
             }
         } else {
-            display.showResting();
+            // V1 not connected - show scanning screen (not resting!)
+            display.showScanning();
         }
+        if (wasColorPreview) Serial.println("[Display] Color preview ended - restored display");
+        if (wasCameraTest) Serial.println("[Display] Camera test ended - restored display");
     }
 
     // Process battery manager (updates cached readings at 1Hz, handles power button)
@@ -2845,6 +2852,7 @@ void loop() {
         } else {
             // Test complete
             cameraTestActive = false;
+            cameraTestEnded = true;  // Trigger display restore on next loop
             cameraTestPhase = 0;
             display.clearCameraAlerts();
             Serial.println("[Camera] Test alert ended");

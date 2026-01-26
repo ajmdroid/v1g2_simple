@@ -426,7 +426,7 @@ void WiFiManager::setupWebServer() {
         if (isColorPreviewRunning()) {
             Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
             cancelColorPreview();
-            display.showResting();
+            // main.cpp loop handles display restore based on V1 connection state
             server.send(200, "application/json", "{\"success\":true,\"active\":false}");
         } else {
             Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
@@ -437,9 +437,9 @@ void WiFiManager::setupWebServer() {
     });
     server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
         if (!checkRateLimit()) return;
-        Serial.println("[HTTP] POST /api/displaycolors/clear - returning to scanning");
+        Serial.println("[HTTP] POST /api/displaycolors/clear - cancelling preview");
         cancelColorPreview();
-        display.showResting();  // Return to normal scanning state
+        // main.cpp loop handles display restore based on V1 connection state
         server.send(200, "application/json", "{\"success\":true,\"active\":false}");
     });
     
