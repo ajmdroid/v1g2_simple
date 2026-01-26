@@ -805,6 +805,6 @@
 				<button class="btn btn-sm" onclick={closeLogViewer}>Close</button>
 			</div>
 		</div>
-		<div class="modal-backdrop bg-black/50" onclick={closeLogViewer}></div>
+		<div class="modal-backdrop bg-black/50" role="button" tabindex="-1" onclick={closeLogViewer} onkeydown={(e) => e.key === 'Escape' && closeLogViewer()}></div>
 	</div>
 {/if}
