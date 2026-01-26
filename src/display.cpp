@@ -2509,13 +2509,21 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             needsRedraw = true;
         } else {
             // Check if any current alert is NOT in last set (set membership test)
+            // Use frequency tolerance (±5 MHz) to handle V1 jitter
+            const uint32_t FREQ_TOLERANCE_MHZ = 5;
             for (int i = 0; i < alertCount && i < 4 && !needsRedraw; i++) {
                 bool foundInLast = false;
                 for (int j = 0; j < 4; j++) {
-                    if (allAlerts[i].band == lastSecondary[j].band &&
-                        (allAlerts[i].band == BAND_LASER || allAlerts[i].frequency == lastSecondary[j].frequency)) {
-                        foundInLast = true;
-                        break;
+                    if (allAlerts[i].band == lastSecondary[j].band) {
+                        if (allAlerts[i].band == BAND_LASER) {
+                            foundInLast = true;
+                        } else {
+                            uint32_t diff = (allAlerts[i].frequency > lastSecondary[j].frequency) 
+                                ? (allAlerts[i].frequency - lastSecondary[j].frequency) 
+                                : (lastSecondary[j].frequency - allAlerts[i].frequency);
+                            if (diff <= FREQ_TOLERANCE_MHZ) foundInLast = true;
+                        }
+                        if (foundInLast) break;
                     }
                 }
                 if (!foundInLast) {
@@ -2785,11 +2793,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         // Otherwise, fall through to draw camera cards
     }
     
-    // Helper: check if two alerts match (same band + exact frequency)
+    // Helper: check if two alerts match (same band + frequency within tolerance)
+    // V1 frequency can jitter by a few MHz between frames - use ±5 MHz tolerance
     auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
         if (a.band != b.band) return false;
         if (a.band == BAND_LASER) return true;
-        return (a.frequency == b.frequency);
+        const uint32_t FREQ_TOLERANCE_MHZ = 5;
+        uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
+        return diff <= FREQ_TOLERANCE_MHZ;
     };
     
     // Helper: check if alert matches priority (returns false if priority is invalid)
@@ -2984,9 +2995,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             }
         } else {
             // V1 card - check if band/freq/direction changed (needs full card redraw)
+            // Use frequency tolerance (±5 MHz) to handle V1 jitter
+            const uint32_t FREQ_TOLERANCE_MHZ = 5;
             int slot = curr.slot;
             if (cards[slot].alert.band != last.band) return true;
-            if (cards[slot].alert.frequency != last.frequency) return true;
+            uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency) 
+                ? (cards[slot].alert.frequency - last.frequency) 
+                : (last.frequency - cards[slot].alert.frequency);
+            if (freqDiff > FREQ_TOLERANCE_MHZ) return true;
             if (cards[slot].alert.direction != last.direction) return true;
             if (curr.isGraced != last.isGraced) return true;
             if (muted != last.wasMuted) return true;
