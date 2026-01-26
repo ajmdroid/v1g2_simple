@@ -735,7 +735,6 @@ void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
-    secondaryCardsNeedRedraw = true;  // Force secondary cards redraw after screen clear
     s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
     s_forceBatteryRedraw = true;    // Force battery percent cache invalidation after screen clear
     s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
@@ -4559,8 +4558,6 @@ void V1Display::setCameraAlertState(bool active, const char* typeName, float dis
     } else {
         cameraCardTypeName[0] = '\0';
     }
-    // Force secondary cards redraw when camera state changes
-    secondaryCardsNeedRedraw = true;
 }
 
 const char* V1Display::bandToString(Band band) {

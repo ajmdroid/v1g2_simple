@@ -684,6 +684,33 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
     }
 }
 
+// Helper: Update camera card state BEFORE display.update() is called
+// This ensures the secondary card area shows camera info when V1 has alerts
+static void updateCameraCardState(bool v1HasAlerts) {
+    const V1Settings& dispSettings = settingsManager.get();
+    
+    // Test mode takes priority
+    if (cameraTestActive && millis() < cameraTestEndMs) {
+        if (v1HasAlerts) {
+            // Show as secondary card when V1 has alerts
+            display.setCameraAlertState(true, cameraTestTypeName, cameraTestDistance, dispSettings.colorCameraAlert);
+        } else {
+            display.setCameraAlertState(false, "", 0, 0);
+        }
+    } else if (cameraAlertActive) {
+        if (v1HasAlerts) {
+            // Show as secondary card when V1 has alerts
+            display.setCameraAlertState(true, currentCameraAlert.camera.getShortTypeName(), 
+                                        currentCameraAlert.distance_m, dispSettings.colorCameraAlert);
+        } else {
+            display.setCameraAlertState(false, "", 0, 0);
+        }
+    } else {
+        // No camera alert - clear card state
+        display.setCameraAlertState(false, "", 0, 0);
+    }
+}
+
 static void startAutoPush(int slotIndex) {
     static const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
     int clampedIndex = std::max(0, std::min(2, slotIndex));
@@ -1789,6 +1816,8 @@ void processBLEData() {
                 // Display just shows what V1 reports
 
                 // Update display FIRST for lowest latency
+                // Update camera card state BEFORE display.update() so secondary cards can show camera
+                updateCameraCardState(true);  // V1 has alerts, so camera shows as card
                 // Pass all alerts for multi-alert card display
                 V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
@@ -1884,6 +1913,7 @@ void processBLEData() {
                         if (alertPersistenceActive) {
                             alertPersistenceActive = false;
                         }
+                        updateCameraCardState(false);  // No V1 alerts, camera shows in main area
                         V1_PERF_START();
                         display.update(state);
                         V1_DISPLAY_END("display.resting");
@@ -1892,6 +1922,7 @@ void processBLEData() {
                     // Persistence disabled or no valid persisted alert
                     alertPersistenceActive = false;
                     alertClearedTime = 0;
+                    updateCameraCardState(false);  // No V1 alerts, camera shows in main area
                     V1_PERF_START();
                     display.update(state);
                     V1_DISPLAY_END("display.resting");
@@ -2177,8 +2208,10 @@ void loop() {
             if (parser.hasAlerts()) {
                 AlertData priority = parser.getPriorityAlert();
                 const auto& alerts = parser.getAllAlerts();
+                updateCameraCardState(true);  // V1 has alerts
                 display.update(priority, alerts.data(), parser.getAlertCount(), state);
             } else {
+                updateCameraCardState(false);  // No V1 alerts
                 display.update(state);
             }
         } else {
@@ -2258,8 +2291,10 @@ void loop() {
                     if (parser.hasAlerts()) {
                         AlertData priority = parser.getPriorityAlert();
                         const auto& alerts = parser.getAllAlerts();
+                        updateCameraCardState(true);  // V1 has alerts
                         display.update(priority, alerts.data(), parser.getAlertCount(), state);
                     } else {
+                        updateCameraCardState(false);  // No V1 alerts
                         display.update(state);
                     }
                 } else {

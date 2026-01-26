@@ -184,7 +184,6 @@ private:
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
     bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
-    bool secondaryCardsNeedRedraw = true;   // Force secondary cards redraw after screen clear
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     
     // Camera alert state for secondary card integration
