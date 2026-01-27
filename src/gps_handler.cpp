@@ -347,8 +347,12 @@ bool GPSHandler::update() {
     return false;
   }
   
-  // Read available GPS data (non-blocking)
-  char c = GPS.read();
+  // Read ALL available GPS data (critical - must drain buffer each call)
+  // At 9600 baud with 10Hz output, we get ~100+ chars/sec
+  // If we only read one char per update(), serial buffer overflows
+  while (gpsSerial.available() > 0) {
+    GPS.read();
+  }
   
   // Check if we have a complete NMEA sentence
   if (GPS.newNMEAreceived()) {
