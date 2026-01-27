@@ -1824,6 +1824,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
 
 // PERFORMANCE: Immediate proxy forwarding - zero latency path
 // Called directly from BLE callback context - no queue, no delay
+// Uses non-blocking mutex to avoid deadlock while preventing concurrent notifies
 void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
     if (!proxyEnabled || !proxyClientConnected) {
         return;
@@ -1845,12 +1846,28 @@ void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, ui
         targetChar = pProxyNotifyChar;
     }
     
-    // Try immediate notify; if it fails (stack busy), fall back to queue so we don't drop
-    if (targetChar && targetChar->notify(data, length)) {
-        proxyMetrics.sendCount++;
-    } else if (targetChar) {
-        proxyMetrics.errorCount++;
-        forwardToProxy(data, length, sourceCharUUID);  // enqueue for retry on main loop
+    if (!targetChar) {
+        return;
+    }
+    
+    // Try non-blocking mutex acquire to avoid concurrent notifies
+    // If mutex is held (processProxyQueue running), enqueue instead
+    if (xSemaphoreTake(bleNotifyMutex, 0) == pdTRUE) {
+        // Got mutex - safe to notify immediately
+        if (targetChar->notify(data, length)) {
+            proxyMetrics.sendCount++;
+        } else {
+            proxyMetrics.errorCount++;
+            // Notify failed (stack busy) - enqueue for retry
+            // Release mutex first to avoid recursive lock in forwardToProxy
+            xSemaphoreGive(bleNotifyMutex);
+            forwardToProxy(data, length, sourceCharUUID);
+            return;
+        }
+        xSemaphoreGive(bleNotifyMutex);
+    } else {
+        // Mutex held by processProxyQueue - enqueue to avoid race
+        forwardToProxy(data, length, sourceCharUUID);
     }
 }
 
