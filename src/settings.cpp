@@ -761,6 +761,11 @@ void SettingsManager::setStatusObdColor(uint16_t color) {
     save();
 }
 
+void SettingsManager::setCameraAlertColor(uint16_t color) {
+    settings.colorCameraAlert = color;
+    save();
+}
+
 void SettingsManager::setFreqUseBandColor(bool use) {
     settings.freqUseBandColor = use;
     save();

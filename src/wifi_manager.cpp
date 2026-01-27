@@ -1747,6 +1747,12 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setStatusObdColor(statusObdColor);
     }
     
+    // Handle camera alert color
+    if (server.hasArg("cameraAlert")) {
+        uint16_t cameraAlertColor = server.arg("cameraAlert").toInt();
+        settingsManager.setCameraAlertColor(cameraAlertColor);
+    }
+    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -1995,6 +2001,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["statusGpsWarn"] = s.colorStatusGpsWarn;
     doc["statusCam"] = s.colorStatusCam;
     doc["statusObd"] = s.colorStatusObd;
+    doc["cameraAlert"] = s.colorCameraAlert;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;

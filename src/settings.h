@@ -428,6 +428,7 @@ public:
     void setStatusGpsWarnColor(uint16_t color);
     void setStatusCamColor(uint16_t color);
     void setStatusObdColor(uint16_t color);
+    void setCameraAlertColor(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
