@@ -271,6 +271,11 @@ void GPSHandler::begin() {
   
   delay(100);
   
+  // Force full cold start to clear any corrupted ephemeris data
+  // This makes the GPS forget all satellite data and start fresh
+  GPS.sendCommand("$PMTK104*37");  // Full cold start
+  delay(500);  // Give module time to reset
+  
   // Configure GPS for optimal lockout performance
   // PA1616S supports 10Hz update rate - use it for smooth geofence detection
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);  // RMC (position) + GGA (fix quality)
@@ -280,7 +285,7 @@ void GPSHandler::begin() {
   delay(100);
   
   if (DEBUG_LOGS) {
-    Serial.println("[GPS] Adafruit PA1616S initialized (10Hz, GPS+GLONASS+Galileo)");
+    Serial.println("[GPS] Adafruit PA1616S initialized (10Hz, GPS+GLONASS+Galileo) - cold start issued");
     Serial.printf("[GPS] Wiring: TX->GPIO%d, RX->GPIO%d, EN->GPIO%d\n", GPS_TX_PIN, GPS_RX_PIN, GPS_EN_PIN);
   }
 }
