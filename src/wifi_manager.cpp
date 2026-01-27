@@ -2931,12 +2931,15 @@ void WiFiManager::handleCameraSyncOsm() {
     }
     
     // Overpass query for ALPR cameras in US
+    // - maxsize:1048576 limits response to 1MB to prevent OOM
+    // - timeout:60 reduces server-side timeout
+    // - out center qt 2000 limits to 2000 elements
     const char* overpassQuery = 
-        "[out:json][timeout:300];"
+        "[out:json][timeout:60][maxsize:1048576];"
         "area[\"ISO3166-1\"=\"US\"]->.usa;"
         "(node[\"surveillance:type\"=\"ALPR\"](area.usa);"
         "way[\"surveillance:type\"=\"ALPR\"](area.usa););"
-        "out center;";
+        "out center qt 2000;";
     
     HTTPClient http;
     http.setTimeout(60000);   // 1 minute timeout (max ~65s for uint16_t)
@@ -2976,12 +2979,34 @@ void WiFiManager::handleCameraSyncOsm() {
     int contentLength = http.getSize();
     Serial.printf("[OSM] Response size: %d bytes\n", contentLength);
     
+    // Check response size to prevent OOM (1MB limit)
+    constexpr int MAX_RESPONSE_SIZE = 1048576;  // 1MB
+    if (contentLength > MAX_RESPONSE_SIZE) {
+        Serial.printf("[OSM] Response too large: %d bytes (max %d)\n", contentLength, MAX_RESPONSE_SIZE);
+        http.end();
+        char errBuf[128];
+        snprintf(errBuf, sizeof(errBuf), 
+            "{\"success\":false,\"error\":\"Response too large (%d KB, max 1MB)\"}", contentLength / 1024);
+        server.send(413, "application/json", errBuf);
+        return;
+    }
+    
     // Stream the response to parse JSON
     WiFiClient* stream = http.getStreamPtr();
     
-    // Use streaming JSON parser
+    // Use JSON filter to only parse needed fields (reduces memory usage)
+    JsonDocument filter;
+    filter["elements"][0]["type"] = true;
+    filter["elements"][0]["lat"] = true;
+    filter["elements"][0]["lon"] = true;
+    filter["elements"][0]["center"]["lat"] = true;
+    filter["elements"][0]["center"]["lon"] = true;
+    
+    // Parse with filter and size limit
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, *stream);
+    DeserializationError error = deserializeJson(doc, *stream, 
+        DeserializationOption::Filter(filter),
+        DeserializationOption::NestingLimit(10));
     http.end();
     
     if (error) {
@@ -3012,9 +3037,23 @@ void WiFiManager::handleCameraSyncOsm() {
         return;
     }
     
-    // Write metadata header
+    // Write metadata header with date from GPS or compile time
     char dateBuf[32];
-    snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", 2026, 1, 26);  // TODO: use actual date
+    if (gpsHandler.hasValidTime()) {
+        // Use GPS time (most accurate)
+        GPSFix fix = gpsHandler.getFix();
+        snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", 2000 + fix.year, fix.month, fix.day);
+    } else {
+        // Fall back to compile date (__DATE__ = "Jan 27 2026")
+        // Parse __DATE__ which is "Mmm DD YYYY" format
+        const char* compileDate = __DATE__;  // e.g., "Jan 27 2026"
+        int year = 0, day = 0;
+        char monthStr[4] = {0};
+        sscanf(compileDate, "%3s %d %d", monthStr, &day, &year);
+        const char* months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+        int month = (strstr(months, monthStr) - months) / 3 + 1;
+        snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", year, month, day);
+    }
     file.printf("{\"_meta\":{\"name\":\"OSM ALPR (US)\",\"date\":\"%s\"}}\n", dateBuf);
     
     int written = 0;
