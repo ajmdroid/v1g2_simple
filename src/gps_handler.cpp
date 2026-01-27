@@ -196,6 +196,9 @@ bool GPSHandler::update() {
                        lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
     }
     
+    // Update ready state and heading smoothing
+    updateReadyState();
+    
     return true;
   } else {
     lastFix.valid = false;
@@ -252,6 +255,19 @@ GPSHandler::GPSHandler()
   moduleDetected = false;
   detectionComplete = false;
   detectionStartMs = 0;
+  
+  // Ready state
+  gpsReady = false;
+  goodFixStartMs = 0;
+  badFixStartMs = 0;
+  
+  // Heading smoothing
+  smoothedHeading = 0.0f;
+  smoothedHeadingValid = false;
+  
+  // Heading smoothing
+  smoothedHeading = 0.0f;
+  smoothedHeadingValid = false;
 }
 
 void GPSHandler::begin() {
@@ -428,10 +444,16 @@ bool GPSHandler::update() {
       debugLogger.logf(DebugLogCategory::Gps, "FIX: %.6f, %.6f | HDOP: %.1f | Sats: %d",
                        lastFix.latitude, lastFix.longitude, lastFix.hdop, lastFix.satellites);
       
+      // Update ready state and heading smoothing
+      updateReadyState();
+      
       return true;
     } else {
       // GPS has no fix yet
       lastFix.valid = false;
+      
+      // Update ready state (will mark as not ready if fix is bad)
+      updateReadyState();
       
       static uint32_t lastSearchLogSD_ada = 0;
       if (DEBUG_LOGS && (millis() % 5000 < 100)) {  // Log every 5 seconds
@@ -465,6 +487,74 @@ bool GPSHandler::update() {
 // ============================================================================
 // Common Implementation (shared by both GPS libraries)
 // ============================================================================
+
+void GPSHandler::updateReadyState() {
+  unsigned long now = millis();
+  
+  // Check if current fix meets quality thresholds
+  bool meetsQualityThreshold = (
+    lastFix.valid &&
+    lastFix.satellites >= READY_MIN_SATS &&
+    lastFix.hdop <= READY_MAX_HDOP &&
+    !isFixStale()
+  );
+  
+  if (meetsQualityThreshold) {
+    // Good fix - start/continue tracking
+    if (goodFixStartMs == 0) {
+      goodFixStartMs = now;  // Start tracking good fix duration
+    }
+    badFixStartMs = 0;  // Reset bad fix timer
+    
+    // Promote to ready after sustained good fix
+    if (!gpsReady && (now - goodFixStartMs >= READY_ACQUIRE_MS)) {
+      gpsReady = true;
+      Serial.printf("[GPS] Ready for navigation (sats=%d, hdop=%.1f)\n", 
+                    lastFix.satellites, lastFix.hdop);
+      debugLogger.logf(DebugLogCategory::Gps, "Ready for navigation (sats=%d, hdop=%.1f)",
+                       lastFix.satellites, lastFix.hdop);
+    }
+  } else {
+    // Bad fix - start/continue tracking
+    if (badFixStartMs == 0) {
+      badFixStartMs = now;  // Start tracking bad fix duration
+    }
+    goodFixStartMs = 0;  // Reset good fix timer
+    
+    // Demote from ready after grace period
+    if (gpsReady && (now - badFixStartMs >= READY_DEGRADE_MS)) {
+      gpsReady = false;
+      Serial.println("[GPS] Not ready (fix degraded)");
+      debugLogger.log(DebugLogCategory::Gps, "Not ready (fix degraded)");
+    }
+  }
+  
+  // Update heading smoothing
+  if (lastFix.valid && lastFix.speed_mps >= HEADING_MIN_SPEED_MPS) {
+    float rawHeading = lastFix.heading_deg;
+    
+    if (!smoothedHeadingValid) {
+      // Initialize with raw heading
+      smoothedHeading = rawHeading;
+      smoothedHeadingValid = true;
+    } else {
+      // Exponential smoothing: smoothed = α * raw + (1 - α) * smoothed
+      // Handle angle wrapping (0/360 boundary)
+      float delta = rawHeading - smoothedHeading;
+      if (delta > 180.0f) delta -= 360.0f;
+      if (delta < -180.0f) delta += 360.0f;
+      
+      smoothedHeading += HEADING_SMOOTH_ALPHA * delta;
+      
+      // Normalize to [0, 360)
+      if (smoothedHeading < 0.0f) smoothedHeading += 360.0f;
+      if (smoothedHeading >= 360.0f) smoothedHeading -= 360.0f;
+    }
+  } else {
+    // Speed too low - heading unreliable
+    smoothedHeadingValid = false;
+  }
+}
 
 bool GPSHandler::isFixStale(uint32_t maxAge_ms) const {
   return (millis() - lastFix.timestamp_ms) > maxAge_ms;

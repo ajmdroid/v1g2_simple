@@ -1486,7 +1486,7 @@ void processBLEData() {
                 static bool lockoutMuteSent = false;  // Track if we've sent mute for current alert
                 static uint32_t lastLockoutAlertId = 0xFFFFFFFF;  // Track which alert we muted
                 
-                if (gpsHandler.hasValidFix()) {
+                if (gpsHandler.isReadyForNavigation()) {
                     GPSFix fix = gpsHandler.getFix();
                     
                     // Check if priority alert is in a lockout zone
@@ -2580,7 +2580,7 @@ void loop() {
         
         // Regional cache refresh check - only when GPS has valid fix AND background load is complete
         // Skip cache rebuild while background loading is in progress
-        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.hasValidFix() && !cameraManager.isBackgroundLoading()) {
+        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.isReadyForNavigation() && !cameraManager.isBackgroundLoading()) {
             lastCacheCheckMs = now;
             
             GPSFix cacheFix = gpsHandler.getFix();
@@ -2619,7 +2619,7 @@ void loop() {
             );
             
             // Only check when we have a valid GPS fix
-            if (gpsHandler.hasValidFix()) {
+            if (gpsHandler.isReadyForNavigation()) {
                 GPSFix fix = gpsHandler.getFix();
                 float lat = fix.latitude;
                 float lon = fix.longitude;
@@ -2817,7 +2817,7 @@ void loop() {
         
         // Build/refresh regional cache now that full database is loaded
         // This ensures we have the most up-to-date cache for the current location
-        if (!bgLoadCacheBuilt && gpsHandler.hasValidFix()) {
+        if (!bgLoadCacheBuilt && gpsHandler.isReadyForNavigation()) {
             bgLoadCacheBuilt = true;
             GPSFix fix = gpsHandler.getFix();
             SerialLog.printf("[Camera] Rebuilding regional cache with full database at %.4f, %.4f\n",

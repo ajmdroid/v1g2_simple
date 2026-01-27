@@ -44,6 +44,7 @@ UPLOAD_FS=false
 UPLOAD_FW=false
 MONITOR=false
 SKIP_WEB=false
+RUN_TESTS=false
 PIO_ENV="$DEFAULT_ENV"
 UPLOAD_PORT=""
 
@@ -75,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_WEB=true
             shift
             ;;
+        --test|-t)
+            RUN_TESTS=true
+            shift
+            ;;
         --env|-e)
             PIO_ENV="$2"
             shift 2
@@ -91,8 +96,9 @@ while [[ $# -gt 0 ]]; do
             echo "  -f, --upload-fs    Upload filesystem after build (runs tests first)"
             echo "  -u, --upload       Upload firmware after build (runs tests first)"
             echo "  -m, --monitor      Open serial monitor after upload"
-            echo "  -a, --all          Upload filesystem, firmware, and monitor (runs tests first)"
+            echo "  -a, --all          Upload filesystem, firmware, and monitor"
             echo "  -s, --skip-web     Skip web interface build"
+            echo "  -t, --test         Run unit tests before upload (native environment)"
             echo "  -e, --env ENV      PlatformIO environment (default: waveshare-349)"
             echo "                     Windows users: use --env waveshare-349-windows"
             echo "  --upload-port PORT COM port for upload (e.g., COM6)"
@@ -104,6 +110,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -u -m           # Build firmware, upload, and monitor"
             echo "  $0 -f              # Build and upload filesystem only"
             echo "  $0 -s -u           # Skip web build, just build and upload firmware"
+            echo "  $0 --all --test    # Build, test, upload everything"
             echo "  $0 --all --env waveshare-349-windows  # Windows build"
             exit 0
             ;;
@@ -213,8 +220,23 @@ echo -e "${BLUE}📊 Build size:${NC}"
 "$PIO_CMD" run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
-# Step 4: Tests are disabled in build.sh (Windows hosts lack gcc/g++)
-# Run manually if desired: PIO native tests → `pio test -e native`
+# Step 4: Run tests if requested (requires gcc/g++ on host)
+if [ "$RUN_TESTS" = true ]; then
+    echo -e "${YELLOW}🧪 Running unit tests...${NC}"
+    "$PIO_CMD" test -e native
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Tests failed!${NC}"
+        echo -e "${YELLOW}💡 Tip: Install gcc/g++ if tests fail to compile${NC}"
+        if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
+            echo -e "${RED}   Aborting upload due to test failure.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ All tests passed${NC}"
+    fi
+    echo ""
+fi
 
 # Step 5: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then

@@ -4493,8 +4493,19 @@ void V1Display::drawStatusBar() {
     FILL_RECT(gpsX, statusY, 48, statusHeight, PALETTE_BG);
     
     if (gpsHasFix && gpsSats > 0) {
-        // GPS color based on satellite count
-        uint16_t gpsColor = (gpsSats >= 4) ? s.colorStatusGps : s.colorStatusGpsWarn;
+        // Check if GPS is ready for navigation (sustained good fix)
+        bool gpsReady = gpsHandler.isReadyForNavigation();
+        
+        // GPS color: dim if acquiring (not ready), normal colors if ready
+        uint16_t gpsColor;
+        if (!gpsReady) {
+            // Acquiring: dim color regardless of sat count
+            gpsColor = dimColor(s.colorStatusGps, 40);  // 40% brightness
+        } else {
+            // Ready: normal colors based on satellite count
+            gpsColor = (gpsSats >= 4) ? s.colorStatusGps : s.colorStatusGpsWarn;
+        }
+        
         tft->setTextColor(gpsColor);
         tft->setCursor(gpsX, statusY + 1);
         tft->printf("GPS %d", gpsSats);
