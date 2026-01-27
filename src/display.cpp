@@ -2967,7 +2967,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             cardsToDraw[cardsToDrawCount].bars = 0;
             cardsToDraw[cardsToDrawCount].isCamera = true;
             cardsToDraw[cardsToDrawCount].cameraIndex = cam;
-            cardsToDraw[cardsToDrawCount].isGraced = false;
+            cardsToDraw[cardsToDrawCount].isGraced = cameraCards[cam].isGraced;  // Use persistence state
             cardsToDrawCount++;
         }
     }
@@ -2997,9 +2997,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         if (curr.isCamera != last.isCamera) return true;
         
         if (curr.isCamera) {
-            // Camera card - check if camera index or type changed
+            // Camera card - check if camera index, type, or graced state changed
             int camIdx = curr.cameraIndex;
             if (camIdx != last.cameraIndex) return true;
+            if (curr.isGraced != last.isGraced) return true;  // Graced state changed
             if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
                 if (strcmp(cameraCards[camIdx].typeName, last.typeName) != 0) return true;
                 if (cameraCards[camIdx].color != last.color) return true;
@@ -3076,16 +3077,27 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             const char* camTypeName = cameraCards[camIdx].typeName;
             float camDistance = cameraCards[camIdx].distance_m;
             int currDistFt = static_cast<int>(camDistance * 3.28084f);
+            bool isGraced = cardsToDraw[i].isGraced;
             
-            if (needsFullRedraw) {
-                // === FULL CAMERA CARD REDRAW ===
+            // If graced, use muted grey colors instead of camera color
+            uint16_t borderCol = isGraced ? PALETTE_MUTED : camColor;
+            uint16_t contentCol = isGraced ? PALETTE_MUTED : TFT_WHITE;
+            uint16_t labelCol = isGraced ? PALETTE_MUTED : camColor;
+            uint16_t bgCol;
+            
+            if (isGraced) {
+                bgCol = 0x2104;  // Dark grey background for graced state
+            } else {
                 uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
                 uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
                 uint8_t b = (camColor & 0x1F) * 3 / 10;
-                uint16_t bgCol = (r << 11) | (g << 5) | b;
-                
+                bgCol = (r << 11) | (g << 5) | b;
+            }
+            
+            if (needsFullRedraw) {
+                // === FULL CAMERA CARD REDRAW ===
                 FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-                DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, camColor);
+                DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
                 
                 const int contentCenterY = cardY + 18;
                 int topRowY = cardY + 11;
@@ -3093,12 +3105,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 // Direction arrow
                 int arrowX = cardX + 18;
                 int arrowCY = contentCenterY;
-                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, TFT_WHITE);
+                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
                 
                 // Bottom row: Camera type name
                 const int bottomRowY = cardY + 38;
                 tft->setTextSize(1);
-                tft->setTextColor(camColor);
+                tft->setTextColor(labelCol);
                 int typeLen = strlen(camTypeName);
                 int typePixelWidth = typeLen * 6;
                 int typeX = cardX + (cardW - typePixelWidth) / 2;
@@ -3112,10 +3124,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 int labelX = cardX + 36;
                 
                 // Clear just the distance text area
-                uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
-                uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
-                uint8_t b = (camColor & 0x1F) * 3 / 10;
-                uint16_t bgCol = (r << 11) | (g << 5) | b;
                 FILL_RECT(labelX, topRowY - 2, cardW - 40, 18, bgCol);
                 
                 // Format and draw distance
@@ -3126,7 +3134,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                     snprintf(distStr, sizeof(distStr), "%.1fmi", camDistance / 1609.34f);
                 }
                 
-                tft->setTextColor(TFT_WHITE);
+                tft->setTextColor(contentCol);  // Use graced-aware color
                 tft->setTextSize(2);
                 int distLen = strlen(distStr);
                 int distPixelWidth = distLen * 12;
@@ -3145,6 +3153,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             // Update position tracking
             lastDrawnPositions[i].isCamera = true;
             lastDrawnPositions[i].cameraIndex = camIdx;
+            lastDrawnPositions[i].isGraced = isGraced;  // Track graced state
             strncpy(lastDrawnPositions[i].typeName, camTypeName, sizeof(lastDrawnPositions[i].typeName) - 1);
             lastDrawnPositions[i].color = camColor;
             lastDrawnPositions[i].band = BAND_NONE;
@@ -4564,6 +4573,11 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
         return;
     }
     
+    // Major state changes trigger expensive full card redraw
+    // Minor changes (count within active) use incremental updates
+    bool majorStateChanged = (active != lastCameraState) ||
+                             (active && v1HasAlerts != lastV1HasAlerts);
+    
     // Determine how to display cameras:
     // - If V1 has alerts: All cameras show as cards (V1 gets primary)
     // - If no V1 alerts and 1 camera: Primary camera in main area
@@ -4603,15 +4617,17 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     }
     
     // === DRAW/CLEAR CAMERA CARDS IN SECONDARY AREA ===
-    // ONLY force redraw when camera state actually changed
-    // This prevents constant full redraws when called every frame with no cameras
+    // Major state changes: force full redraw (camera on/off, v1HasAlerts change)
+    // Minor changes (count): incremental update without forcing all cards to redraw
     if (stateChanged) {
-        forceCardRedraw = true;
+        if (majorStateChanged) {
+            forceCardRedraw = true;
+        }
         // Call drawSecondaryAlertCards with empty V1 data to render/clear camera cards
         AlertData emptyPriority;  // Default constructor = invalid
         drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
         
-        // Flush to ensure card changes are visible (especially when clearing)
+        // Flush to ensure card changes are visible
         flush();
     }
     
@@ -4777,14 +4793,45 @@ void V1Display::clearCameraAlerts() {
 void V1Display::setCameraAlertState(int index, bool active, const char* typeName, float distance_m, uint16_t color) {
     if (index < 0 || index >= MAX_CAMERA_CARDS) return;
     
-    cameraCards[index].active = active;
-    cameraCards[index].distance_m = distance_m;
-    cameraCards[index].color = color;
+    unsigned long now = millis();
+    
     if (active && typeName) {
+        // Camera is actively being reported
+        cameraCards[index].active = true;
+        cameraCards[index].distance_m = distance_m;
+        cameraCards[index].color = color;
+        cameraCards[index].lastSeen = now;
+        cameraCards[index].isGraced = false;
         strncpy(cameraCards[index].typeName, typeName, sizeof(cameraCards[index].typeName) - 1);
         cameraCards[index].typeName[sizeof(cameraCards[index].typeName) - 1] = '\0';
     } else {
-        cameraCards[index].typeName[0] = '\0';
+        // Camera no longer being reported
+        // If it was active, enter grace period instead of immediate clear
+        if (cameraCards[index].active && cameraCards[index].lastSeen > 0) {
+            // Get grace period from settings (same as V1 alert persistence)
+            const V1Settings& settings = settingsManager.get();
+            uint8_t persistSec = settingsManager.getSlotAlertPersistSec(settings.activeSlot);
+            unsigned long gracePeriodMs = persistSec * 1000UL;
+            
+            unsigned long age = now - cameraCards[index].lastSeen;
+            if (age <= gracePeriodMs) {
+                // Still in grace period - mark as graced but keep visible
+                cameraCards[index].isGraced = true;
+                // Keep distance frozen at last known value
+            } else {
+                // Grace period expired - actually clear
+                cameraCards[index].active = false;
+                cameraCards[index].typeName[0] = '\0';
+                cameraCards[index].distance_m = 0.0f;
+                cameraCards[index].color = 0;
+                cameraCards[index].lastSeen = 0;
+                cameraCards[index].isGraced = false;
+            }
+        } else {
+            // Was never active or already cleared
+            cameraCards[index].active = false;
+            cameraCards[index].typeName[0] = '\0';
+        }
     }
     
     // Update active count
@@ -4800,6 +4847,10 @@ void V1Display::clearAllCameraAlerts() {
         cameraCards[i].typeName[0] = '\0';
         cameraCards[i].distance_m = 0.0f;
         cameraCards[i].color = 0;
+        cameraCards[i].lat = 0.0f;
+        cameraCards[i].lon = 0.0f;
+        cameraCards[i].lastSeen = 0;
+        cameraCards[i].isGraced = false;
     }
     activeCameraCount = 0;
 }

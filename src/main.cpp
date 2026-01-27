@@ -706,6 +706,13 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
 // This ensures the secondary card area shows camera info when V1 has alerts
 // Supports up to 3 cameras: primary in main area + 2 secondary cards
 static void updateCameraCardState(bool v1HasAlerts) {
+    // When V1 doesn't have alerts, camera display (including cards) is handled
+    // by updateCameraAlerts() to keep a single owner per frame and avoid redraw
+    // conflicts. Only manage card state here when V1 has active alerts.
+    if (!v1HasAlerts) {
+        return;
+    }
+
     const V1Settings& dispSettings = settingsManager.get();
     
     // Test mode takes priority - cycles through 1→2→3 cameras to demo card display
@@ -721,27 +728,31 @@ static void updateCameraCardState(bool v1HasAlerts) {
         // Test shows: phase 0 = 1 cam, phase 1 = 2 cams, phase 2 = 3 cams
         int numTestCameras = cameraTestPhase + 1;
         
-        // Secondary camera types (primary uses cameraTestTypeName set by user)
+        // Camera types and distances for test
+        // When V1 has alerts: ALL cameras become cards (primary goes to slot 0)
+        // When V1 idle: primary in main area, secondary cameras as cards
         static const char* secondaryTypes[] = {"SPEED", "ALPR"};
-        // Use decreasing distances to simulate approach (same formula as camera section)
-        static const float baseDistances[] = {800.0f, 1200.0f};
+        static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
         float dist0 = baseDistances[0] - (elapsed * 0.01f);
         float dist1 = baseDistances[1] - (elapsed * 0.01f);
+        float dist2 = baseDistances[2] - (elapsed * 0.01f);
         if (dist0 < 50.0f) dist0 = 50.0f;
         if (dist1 < 50.0f) dist1 = 50.0f;
+        if (dist2 < 50.0f) dist2 = 50.0f;
         
-        // Set up card states based on phase
-        // Card slot 0 = 2nd camera, Card slot 1 = 3rd camera (primary is main area)
-        if (numTestCameras >= 2) {
-            display.setCameraAlertState(0, true, secondaryTypes[0], dist0, dispSettings.colorCameraAlert);
+        // V1 has alerts: ALL cameras become cards (max 2 card slots)
+        // Slot 0 = primary (user-selected type), Slot 1 = 2nd camera
+        if (numTestCameras >= 1) {
+            display.setCameraAlertState(0, true, cameraTestTypeName, dist0, dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(0, false, "", 0, 0);
         }
-        if (numTestCameras >= 3) {
-            display.setCameraAlertState(1, true, secondaryTypes[1], dist1, dispSettings.colorCameraAlert);
+        if (numTestCameras >= 2) {
+            display.setCameraAlertState(1, true, secondaryTypes[0], dist1, dispSettings.colorCameraAlert);
         } else {
             display.setCameraAlertState(1, false, "", 0, 0);
         }
+        // Note: 3rd camera can't show as card (only 2 slots), would need V1 to clear
         return;  // Early return - test mode handled
     } else if (!activeCameraAlerts.empty()) {
         // Real camera alerts active
@@ -2824,9 +2835,10 @@ void loop() {
     
     // Update camera alert display (if active)
     // Test mode takes priority - cycles through 1→2→3 cameras
-    // NOTE: When V1 IS connected, updateCameraCardState() already handles card state
-    // and display.update() already draws them. Only call updateCameraAlerts() when
-    // V1 is NOT connected (camera shows in main area, not as card).
+    // Ownership rule: if V1 has alerts, cards are owned by updateCameraCardState()
+    // (camera becomes secondary). If V1 has no alerts, camera owns the main area
+    // and updateCameraAlerts() handles both main+cards. Never both in the same frame.
+    bool allowCameraMainDisplay = !v1HasActiveAlerts;  // Only one owner per frame
     if (cameraTestActive) {
         if (millis() < cameraTestEndMs) {
             // Simulate countdown for primary camera
@@ -2839,7 +2851,7 @@ void loop() {
             
             // When V1 is connected, cards are handled by updateCameraCardState() + display.update()
             // Only call updateCameraAlerts() when V1 is NOT connected (for main area display)
-            if (!v1HasActiveAlerts) {
+            if (allowCameraMainDisplay) {
                 const V1Settings& dispSettings = settingsManager.get();
                 
                 // Build camera info array based on test phase
@@ -2871,6 +2883,8 @@ void loop() {
             cameraTestActive = false;
             cameraTestEnded = true;  // Trigger display restore on next loop
             cameraTestPhase = 0;
+            // Always clear camera state when test ends (bypass grace period)
+            display.clearAllCameraAlerts();
             display.clearCameraAlerts();
             Serial.println("[Camera] Test alert ended");
         }
@@ -2884,9 +2898,13 @@ void loop() {
             camInfos[i].distance_m = activeCameraAlerts[i].distance_m;
             camInfos[i].color = dispSettings.colorCameraAlert;
         }
-        display.updateCameraAlerts(camInfos, count, v1HasActiveAlerts);
+        if (allowCameraMainDisplay) {
+            display.updateCameraAlerts(camInfos, count, v1HasActiveAlerts);
+        }
     } else {
-        display.clearCameraAlerts();
+        if (allowCameraMainDisplay) {
+            display.clearCameraAlerts();
+        }
     }
     
     // Speed-based volume: boost V1 volume at highway speeds

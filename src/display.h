@@ -206,6 +206,10 @@ private:
         char typeName[16] = {0};
         float distance_m = 0.0f;
         uint16_t color = 0;
+        float lat = 0.0f;              // For persistence matching
+        float lon = 0.0f;              // For persistence matching
+        unsigned long lastSeen = 0;    // For grace period persistence (like V1 cards)
+        bool isGraced = false;         // True when in grace period (greyed out)
     };
     CameraCardState cameraCards[MAX_CAMERA_CARDS];
     int activeCameraCount = 0;  // Number of active camera alerts (0-2)

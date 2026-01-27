@@ -178,21 +178,18 @@ enum class CameraDisplayPath {
  */
 CameraDisplayPath getCameraDisplayPath(bool cameraTestActive, bool v1Connected,
                                         bool v1HasAlerts, bool hasRealCameras) {
+    (void)v1Connected;  // Connection state no longer decides ownership
     // No cameras at all
     if (!cameraTestActive && !hasRealCameras) {
         return CameraDisplayPath::NONE;
     }
     
-    // Camera test OR real cameras active
-    if (v1Connected) {
-        // V1 connected: cameras show as CARDS
-        // Handled by updateCameraCardState() which is called before display.update()
+    // V1 has alerts → camera becomes secondary cards (set by updateCameraCardState)
+    // No V1 alerts → camera owns main area (updateCameraAlerts)
+    if (v1HasAlerts) {
         return CameraDisplayPath::CARD_VIA_UPDATE_CARD_STATE;
-    } else {
-        // V1 disconnected: primary camera shows in MAIN area
-        // Handled by updateCameraAlerts()
-        return CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS;
     }
+    return CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS;
 }
 
 /**
@@ -240,9 +237,9 @@ void simulateUpdateCameraCardState(bool cameraTestActive, bool v1Connected,
 void simulateUpdateCameraAlerts(bool cameraTestActive, bool v1Connected,
                                 bool v1HasAlerts, unsigned long elapsed, uint16_t color) {
     if (!cameraTestActive) return;
-    if (v1Connected) return;  // Skip when V1 connected (handled by updateCameraCardState)
+    if (v1HasAlerts) return;  // Skip when V1 has alerts (card path owns state)
     
-    // This path handles main area display when V1 disconnected
+    // This path handles main area display when V1 has no alerts
     // For this test, we just track that it was called
     g_tracker.updateCameraAlertsCalls++;
     
@@ -270,15 +267,13 @@ void simulateLoopIteration(bool cameraTestActive, bool v1Connected, bool v1HasAl
                                                           v1HasAlerts, hasRealCameras);
     
     // Simulate the actual code paths (as they exist in main.cpp)
-    
-    // Path 1: updateCameraCardState (called before display.update when V1 connected)
-    if (v1Connected && cameraTestActive) {
+    if (expectedPath == CameraDisplayPath::CARD_VIA_UPDATE_CARD_STATE) {
         simulateUpdateCameraCardState(cameraTestActive, v1Connected, elapsed, 0xFFFF);
     }
     
-    // Path 2: updateCameraAlerts (called later in loop, handles main area for V1 disconnected)
-    // The FIX was to skip this when V1 is connected
-    simulateUpdateCameraAlerts(cameraTestActive, v1Connected, v1HasAlerts, elapsed, 0xFFFF);
+    if (expectedPath == CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS) {
+        simulateUpdateCameraAlerts(cameraTestActive, v1Connected, v1HasAlerts, elapsed, 0xFFFF);
+    }
 }
 
 // ============================================================================
@@ -297,7 +292,7 @@ void test_camera_path_test_v1_disconnected() {
 
 void test_camera_path_test_v1_connected_no_alerts() {
     auto path = getCameraDisplayPath(true, true, false, false);
-    TEST_ASSERT_EQUAL(CameraDisplayPath::CARD_VIA_UPDATE_CARD_STATE, path);
+    TEST_ASSERT_EQUAL(CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS, path);
 }
 
 void test_camera_path_test_v1_connected_with_alerts() {
@@ -307,6 +302,11 @@ void test_camera_path_test_v1_connected_with_alerts() {
 
 void test_camera_path_real_cameras_v1_disconnected() {
     auto path = getCameraDisplayPath(false, false, false, true);
+    TEST_ASSERT_EQUAL(CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS, path);
+}
+
+void test_camera_path_real_cameras_v1_connected_no_alerts() {
+    auto path = getCameraDisplayPath(false, true, false, true);
     TEST_ASSERT_EQUAL(CameraDisplayPath::MAIN_VIA_UPDATE_CAMERA_ALERTS, path);
 }
 
@@ -609,6 +609,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_camera_path_test_v1_connected_no_alerts);
     RUN_TEST(test_camera_path_test_v1_connected_with_alerts);
     RUN_TEST(test_camera_path_real_cameras_v1_disconnected);
+    RUN_TEST(test_camera_path_real_cameras_v1_connected_no_alerts);
     RUN_TEST(test_camera_path_real_cameras_v1_connected);
     
     // Ownership conflict tests

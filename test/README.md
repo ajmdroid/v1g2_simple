@@ -147,7 +147,7 @@ When test mode ends:
   else → showScanning()  // NEVER showResting() when disconnected!
 ```
 
-## Display Ownership Integration Tests (20 tests) ⭐ NEW
+## Display Ownership Integration Tests (21 tests) ⭐ NEW
 
 Located in `test/test_integration/test_display_ownership.cpp`.
 
@@ -157,9 +157,9 @@ Located in `test/test_integration/test_display_ownership.cpp`.
 
 1. **Path Decision Logic** (6 tests) - Verifies correct code path is chosen:
    - No cameras → no display path active
-   - Camera test + V1 disconnected → `updateCameraAlerts` owns main area
-   - Camera test + V1 connected → `updateCameraCardState` owns cards
-   - Real cameras follow same rules
+   - Camera test + V1 idle/disconnected → `updateCameraAlerts` owns main area
+   - Camera test + V1 has alerts → `updateCameraCardState` owns cards
+   - Real cameras follow same rules (alerts = cards, no alerts = main)
 
 2. **Ownership Conflict Detection** (6 tests) - Catches dual-writer bugs:
    - Only ONE caller should write to camera card state per frame
@@ -182,8 +182,8 @@ Located in `test/test_integration/test_display_ownership.cpp`.
 Each display element should have ONE owner per frame:
 
 CAMERA CARDS:
-- V1 connected: updateCameraCardState() owns camera cards
-- V1 disconnected: updateCameraAlerts() owns camera cards
+- V1 has alerts: updateCameraCardState() owns camera cards
+- No V1 alerts: updateCameraAlerts() owns camera cards (even if V1 is connected/idle)
 - NEVER both in the same frame!
 
 MAIN DISPLAY:
