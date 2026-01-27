@@ -1821,6 +1821,9 @@ void V1Display::showScanning() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
     
+    // Force status bar redraw (GPS state may have changed since last scan screen)
+    s_forceStatusBarRedraw = true;
+    
     // Draw idle state elements
     drawTopCounter('0', false, true);
     // Volume indicator not shown in scanning state (no DisplayState available)

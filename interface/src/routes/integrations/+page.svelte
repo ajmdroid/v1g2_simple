@@ -249,7 +249,7 @@
 		try {
 			const res = await fetch('/api/gps/reset', { method: 'POST' });
 			if (res.ok) {
-				message = { type: 'success', text: 'GPS module reset initiated - searching for satellites...' };
+				message = { type: 'success', text: 'GPS cold start initiated - will take 30-90 seconds to get fix' };
 				// Refresh status after a short delay
 				setTimeout(fetchGpsStatus, 1000);
 			} else {
@@ -650,11 +650,11 @@
 							<span class="loading loading-spinner loading-xs"></span>
 							Resetting...
 						{:else}
-							🔄 Reset GPS Module
+							🔄 Cold Start GPS
 						{/if}
 					</button>
 					<div class="text-xs text-base-content/50">
-						Power cycles the GPS module to force re-acquisition of satellites.
+						Clears satellite data and forces fresh acquisition. Takes 30-90 seconds to get fix.
 					</div>
 				{/if}
 			</div>

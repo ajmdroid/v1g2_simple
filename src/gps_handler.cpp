@@ -337,13 +337,17 @@ void GPSHandler::reset() {
   digitalWrite(GPS_EN_PIN, LOW);
   delay(100);  // Allow GPS to power up
   
+  // Force full cold start to clear any corrupted ephemeris data
+  GPS.sendCommand("$PMTK104*37");
+  delay(500);  // Give module time to reset
+  
   // Re-configure GPS for PA1616S
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
   GPS.sendCommand(PGCMD_ANTENNA);
   
-  Serial.println("[GPS] Reset complete - module re-enabled and configured");
-  debugLogger.log(DebugLogCategory::Gps, "Reset complete - searching for satellites");
+  Serial.println("[GPS] Reset complete - cold start issued, searching for satellites");
+  debugLogger.log(DebugLogCategory::Gps, "Cold start reset - searching for satellites");
 }
 
 bool GPSHandler::update() {
