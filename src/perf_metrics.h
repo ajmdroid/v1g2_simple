@@ -63,6 +63,7 @@ struct PerfCounters {
     std::atomic<uint32_t> rxPackets{0};        // Total BLE notifications received
     std::atomic<uint32_t> rxBytes{0};          // Total bytes received
     std::atomic<uint32_t> queueDrops{0};       // Packets dropped (queue full)
+    std::atomic<uint32_t> oversizeDrops{0};    // Packets dropped (too large for buffer)
     std::atomic<uint32_t> queueHighWater{0};   // Max queue depth seen
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
@@ -83,6 +84,7 @@ struct PerfCounters {
         rxPackets.store(0, std::memory_order_relaxed);
         rxBytes.store(0, std::memory_order_relaxed);
         queueDrops.store(0, std::memory_order_relaxed);
+        oversizeDrops.store(0, std::memory_order_relaxed);
         queueHighWater.store(0, std::memory_order_relaxed);
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);

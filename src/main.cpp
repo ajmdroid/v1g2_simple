@@ -138,7 +138,7 @@ AutoLockoutManager autoLockouts;
 // Queue for BLE data - decouples BLE callbacks from display updates
 static QueueHandle_t bleDataQueue = nullptr;
 struct BLEDataPacket {
-    uint8_t data[128];  // V1 packets are typically <60 bytes; 128 gives headroom
+    uint8_t data[256];  // V1 packets typically <60 bytes; 256 handles long responses (B4E0)
     size_t length;
     uint16_t charUUID;  // Last 16-bit of characteristic UUID to identify source
     uint32_t tsMs;      // Timestamp for latency measurement
@@ -695,6 +695,10 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         // Track queue high-water mark for perf monitoring
         UBaseType_t queueDepth = uxQueueMessagesWaiting(bleDataQueue);
         PERF_MAX(queueHighWater, queueDepth);
+    } else if (length > sizeof(BLEDataPacket::data)) {
+        PERF_INC(oversizeDrops);  // Count oversize packets that can't be queued
+        Serial.printf("[BLE] WARNING: Dropped oversize packet (%d bytes > %d max)\n", 
+                      length, sizeof(BLEDataPacket::data));
     }
 }
 

@@ -2050,6 +2050,7 @@ void WiFiManager::handleDebugMetrics() {
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();

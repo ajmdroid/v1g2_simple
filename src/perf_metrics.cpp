@@ -52,10 +52,11 @@ bool perfMetricsCheckReport() {
     uint32_t minUsVal = perfLatency.minUs.load();
     uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
-    Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu\n",
+    Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
         (unsigned long)perfCounters.parseSuccesses.load(),
         (unsigned long)perfCounters.queueDrops.load(),
+        (unsigned long)perfCounters.oversizeDrops.load(),
         (unsigned long)perfCounters.queueHighWater.load(),
         (unsigned long)minUs,
         (unsigned long)avgUs,
@@ -85,8 +86,9 @@ void perfMetricsPrint() {
     Serial.printf("Parse: ok=%lu fail=%lu\n",
         (unsigned long)perfCounters.parseSuccesses.load(),
         (unsigned long)perfCounters.parseFailures.load());
-    Serial.printf("Queue: drops=%lu highWater=%lu\n",
+    Serial.printf("Queue: drops=%lu oversize=%lu highWater=%lu\n",
         (unsigned long)perfCounters.queueDrops.load(),
+        (unsigned long)perfCounters.oversizeDrops.load(),
         (unsigned long)perfCounters.queueHighWater.load());
     Serial.printf("Display: updates=%lu skips=%lu\n",
         (unsigned long)perfCounters.displayUpdates.load(),
@@ -115,6 +117,7 @@ String perfMetricsToJson() {
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
