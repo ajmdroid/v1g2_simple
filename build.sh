@@ -213,20 +213,8 @@ echo -e "${BLUE}📊 Build size:${NC}"
 "$PIO_CMD" run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
-# Step 4: Run tests before upload (if uploading)
-if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
-    echo -e "${YELLOW}🧪 Running unit tests...${NC}"
-    "$PIO_CMD" test -e native
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Tests failed! Aborting upload.${NC}"
-        echo -e "${RED}   Fix failing tests before uploading to device.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}✅ All tests passed${NC}"
-    echo ""
-fi
+# Step 4: Tests are disabled in build.sh (Windows hosts lack gcc/g++)
+# Run manually if desired: PIO native tests → `pio test -e native`
 
 # Step 5: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
