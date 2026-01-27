@@ -16,10 +16,16 @@ void DebugLogger::begin() {
 
 void DebugLogger::setEnabled(bool enabledFlag) {
     // Debug logging requires SD card - LittleFS is too small for 1GB log cap
+    bool wasEnabled = enabled;
     enabled = enabledFlag && storageManager.isReady() && storageManager.isSDCard();
-    if (enabled) {
+    
+    if (enabled && !wasEnabled) {
         rotateIfNeeded();
-        // Note: avoid recursive logging while enabling.
+        bufferPos = 0;
+        lastFlushMs = millis();
+    } else if (!enabled && wasEnabled) {
+        // Flush any remaining data before disabling
+        flushBuffer();
     }
 }
 
@@ -80,28 +86,77 @@ void DebugLogger::rotateIfNeeded() {
     }
 }
 
-void DebugLogger::writeLine(const char* line) {
+void DebugLogger::bufferLine(const char* line) {
     if (!enabled) return;
-    if (!storageManager.isReady()) return;
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!fs) return;
-
-    rotateIfNeeded();
-
-    // Use FILE_APPEND with create flag, or FILE_WRITE if file doesn't exist
-    File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);  // true = create if missing
-    if (!f) {
+    
+    size_t lineLen = strlen(line);
+    bool needsNewline = (lineLen == 0 || line[lineLen - 1] != '\n');
+    size_t totalLen = lineLen + (needsNewline ? 1 : 0);
+    
+    // If line is too big for buffer, flush first then write directly
+    if (totalLen > DEBUG_LOG_BUFFER_SIZE) {
+        flushBuffer();
+        // Write oversized line directly to file
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs) {
+            File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+            if (f) {
+                f.print(line);
+                if (needsNewline) f.print('\n');
+                f.close();
+            }
+        }
         return;
     }
-
-    f.print(line);
-    size_t len = strlen(line);
-    if (len == 0 || line[len - 1] != '\n') {
-        f.print('\n');
+    
+    // If line won't fit in remaining buffer, flush first
+    if (bufferPos + totalLen > DEBUG_LOG_BUFFER_SIZE) {
+        flushBuffer();
     }
-    f.flush();
-    f.close();
+    
+    // Append to buffer
+    memcpy(buffer + bufferPos, line, lineLen);
+    bufferPos += lineLen;
+    if (needsNewline) {
+        buffer[bufferPos++] = '\n';
+    }
+    
+    // Flush if buffer is getting full
+    if (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD) {
+        flushBuffer();
+    }
+}
+
+void DebugLogger::flushBuffer() {
+    if (bufferPos == 0) return;
+    if (!storageManager.isReady()) return;
+    
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) return;
+    
+    rotateIfNeeded();
+    
+    File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+    if (f) {
+        f.write((uint8_t*)buffer, bufferPos);
+        f.close();
+    }
+    
+    bufferPos = 0;
+    lastFlushMs = millis();
+}
+
+void DebugLogger::update() {
+    if (!enabled || bufferPos == 0) return;
+    
+    // Time-based flush
+    if (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) {
+        flushBuffer();
+    }
+}
+
+void DebugLogger::flush() {
+    flushBuffer();
 }
 
 void DebugLogger::logf(const char* fmt, ...) {
@@ -140,7 +195,7 @@ void DebugLogger::log(DebugLogCategory category, const char* message) {
     char line[320];
     unsigned long now = millis();
     snprintf(line, sizeof(line), "[%10lu ms] %s", now, message);
-    writeLine(line);
+    bufferLine(line);
 }
 
 bool DebugLogger::exists() const {

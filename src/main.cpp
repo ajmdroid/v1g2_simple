@@ -3052,6 +3052,9 @@ void loop() {
             batteryManager.powerOff();
         }
     }
+    
+    // Flush debug log buffer periodically (batched writes for SD performance)
+    debugLogger.update();
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
