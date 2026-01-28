@@ -241,153 +241,12 @@ static int volumeFadeSeenCount = 0;
 static bool speedVolumeBoostActive = false;       // True if volume is currently boosted
 static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before speed boost
 
-// Smart threat escalation tracking - detect signals ramping up over time
-// Trigger: was weak + now strong + sustained + not too many bogeys
-static constexpr int WEAK_THRESHOLD = 2;           // "Was weak" = 2 bars or less
-static constexpr int STRONG_THRESHOLD = 4;         // "Now strong" = 4+ bars
-static constexpr unsigned long SUSTAINED_MS = 500; // Must stay strong for 500ms (filter spikes)
-static constexpr unsigned long HISTORY_STALE_MS = 5000;  // Clear history if no update in 5s
-static constexpr int MAX_BOGEYS_FOR_ESCALATION = 4;      // Skip escalation in noisy environments
+// Smart threat escalation tracking moved to V1AlertModule
 
-struct AlertHistory {
-    uint32_t alertId;           // (band << 16) | freq
-    uint8_t currentBars;        // Latest reading
-    uint32_t lastUpdateMs;      // For staleness check
-    uint32_t strongSinceMs;     // When first hit strong threshold (0 = not strong)
-    bool wasWeak;               // True if ever seen at ≤2 bars (never cleared)
-    bool escalationAnnounced;   // One-shot flag
-};
-// NOTE: Bounds safety verified January 20, 2026 - all accesses check alertHistoryCount < 10
-static AlertHistory alertHistories[10];
-static uint8_t alertHistoryCount = 0;
-
-// Helper functions for secondary alert tracking
-// isAlertAnnounced, markAlertAnnounced moved to V1AlertModule
-
-// clearAnnouncedAlerts - clears both module's announced alerts AND local alert histories
+// clearAnnouncedAlerts - clears both module's announced alerts AND alert histories
 static void clearAnnouncedAlerts() {
     v1AlertModule.clearAnnouncedAlerts();
-    alertHistoryCount = 0;
-    memset(alertHistories, 0, sizeof(alertHistories));
-}
-
-// Alert history tracking for smart threat escalation
-static AlertHistory* findAlertHistory(uint32_t alertId) {
-    for (int i = 0; i < alertHistoryCount; i++) {
-        if (alertHistories[i].alertId == alertId) {
-            return &alertHistories[i];
-        }
-    }
-    return nullptr;
-}
-
-static AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now) {
-    // Find existing
-    AlertHistory* h = findAlertHistory(alertId);
-    if (h) return h;
-    
-    // Create new if space available
-    if (alertHistoryCount < 10) {
-        h = &alertHistories[alertHistoryCount++];
-        h->alertId = alertId;
-        h->currentBars = 0;
-        h->lastUpdateMs = now;
-        h->strongSinceMs = 0;  // Not strong yet
-        h->wasWeak = false;    // Will be set if bars <= WEAK_THRESHOLD
-        h->escalationAnnounced = false;
-        return h;
-    }
-    
-    // No space - find oldest stale entry to recycle
-    unsigned long oldestTime = now;
-    int oldestIdx = -1;
-    for (int i = 0; i < alertHistoryCount; i++) {
-        if (alertHistories[i].lastUpdateMs < oldestTime) {
-            oldestTime = alertHistories[i].lastUpdateMs;
-            oldestIdx = i;
-        }
-    }
-    if (oldestIdx >= 0) {
-        h = &alertHistories[oldestIdx];
-        h->alertId = alertId;
-        h->currentBars = 0;
-        h->lastUpdateMs = now;
-        h->strongSinceMs = 0;
-        h->wasWeak = false;
-        h->escalationAnnounced = false;
-        return h;
-    }
-    
-    return nullptr;
-}
-
-static void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
-    if (band == BAND_LASER) return;  // Laser excluded from smart tracking
-    
-    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
-    AlertHistory* h = getOrCreateAlertHistory(alertId, now);
-    if (!h) return;
-    
-    // Track if ever weak (permanent flag - never cleared)
-    if (bars <= WEAK_THRESHOLD) {
-        h->wasWeak = true;
-    }
-    
-    // Track sustained strong signal
-    if (bars >= STRONG_THRESHOLD) {
-        if (h->strongSinceMs == 0) {
-            h->strongSinceMs = now;  // Just became strong
-        }
-    } else {
-        h->strongSinceMs = 0;  // Dropped below strong, reset
-    }
-    
-    h->currentBars = bars;
-    h->lastUpdateMs = now;
-}
-
-static void cleanupStaleHistories(unsigned long now) {
-    for (int i = alertHistoryCount - 1; i >= 0; i--) {
-        if (now - alertHistories[i].lastUpdateMs > HISTORY_STALE_MS) {
-            // Remove by shifting
-            for (int j = i; j < alertHistoryCount - 1; j++) {
-                alertHistories[j] = alertHistories[j + 1];
-            }
-            alertHistoryCount--;
-        }
-    }
-}
-
-// Check if alert should trigger threat escalation announcement
-// Trigger: wasWeak + nowStrong + sustained 500ms + bogeys <= 4 + not muted + not announced
-static bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now) {
-    if (band == BAND_LASER) return false;  // Laser excluded
-    
-    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
-    AlertHistory* h = findAlertHistory(alertId);
-    if (!h) return false;
-    
-    // Check all conditions
-    bool wasWeak = h->wasWeak;
-    bool nowStrong = (h->currentBars >= STRONG_THRESHOLD);
-    bool sustained = (h->strongSinceMs > 0) && (now - h->strongSinceMs >= SUSTAINED_MS);
-    bool notNoisy = (totalBogeys <= MAX_BOGEYS_FOR_ESCALATION);
-    bool notAnnounced = !h->escalationAnnounced;
-    
-    if (wasWeak && nowStrong && sustained && notNoisy && notAnnounced) {
-        DEBUG_LOGF("[ThreatEscalation] TRIGGERED: band=%d freq=%u wasWeak=%d cur=%d strongFor=%lums bogeys=%d\n",
-                   (int)band, freq, h->wasWeak, h->currentBars, now - h->strongSinceMs, totalBogeys);
-        return true;
-    }
-    return false;
-}
-
-static void markThreatEscalationAnnounced(Band band, uint16_t freq) {
-    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
-    AlertHistory* h = findAlertHistory(alertId);
-    if (h) {
-        h->escalationAnnounced = true;
-    }
+    v1AlertModule.clearAlertHistories();
 }
 
 static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
@@ -1791,11 +1650,11 @@ void processBLEData() {
                             
                             uint16_t alertFreq = (uint16_t)alert.frequency;
                             uint8_t bars = V1AlertModule::getAlertBars(alert);
-                            updateAlertHistory(alert.band, alertFreq, bars, now);
+                            v1AlertModule.updateAlertHistory(alert.band, alertFreq, bars, now);
                         }
                         
                         // Cleanup stale histories (alerts that disappeared)
-                        cleanupStaleHistories(now);
+                        v1AlertModule.cleanupStaleHistories(now);
                         
                         // Second pass: check for any alert triggering smart escalation
                         // Only announce if cooldown has passed
@@ -1817,9 +1676,9 @@ void processBLEData() {
                                 if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                                 
                                 // Check smart escalation criteria (pass alertCount for bogey filter)
-                                if (shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
+                                if (v1AlertModule.shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
                                     // Mark as announced before building the message
-                                    markThreatEscalationAnnounced(alert.band, alertFreq);
+                                    v1AlertModule.markThreatEscalationAnnounced(alert.band, alertFreq);
                                     
                                     // Convert to audio types
                                     AlertBand audioBand;

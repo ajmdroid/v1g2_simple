@@ -210,6 +210,59 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
+---
+
+## Step 6: Move Alert History Tracking to Module
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 27, 2026
+**Commit:** [pending]
+
+**Objective:** Move the smart threat escalation tracking (AlertHistory struct, state, and functions). This tracks signal strength over time to detect threats ramping up.
+
+**Why this is safe:** Self-contained state cluster. Functions only interact with local state + makeAlertId.
+
+**Actions:**
+- [x] Add AlertHistory struct and constants to module
+- [x] Add alertHistories array and count as private members
+- [x] Add all history tracking methods
+- [x] Add clearAlertHistories() method
+- [x] Update clearAnnouncedAlerts() to call clearAlertHistories()
+- [x] Update main.cpp call sites
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added AlertHistory struct, constants, methods
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented all history tracking methods
+- src/main.cpp - removed ~120 lines (struct, constants, state, 6 functions), updated 4 call sites
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
+**Compilation Result:**
+-
+
+**Hardware Test Result:**
+-
+
+**Issues Encountered:**
+-
+
+**Rollback Required:**
+-
+
 ---
 
 ## Testing Checklist (After Each Step)
