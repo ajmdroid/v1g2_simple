@@ -93,26 +93,12 @@ void CameraAlertModule::process() {
             lastProgressLog = millis();
         }
         bgLoadLoggedComplete = false;
-        bgLoadCacheBuilt = false;
     } else if (!bgLoadLoggedComplete && cameraManager->getCameraCount() > 0) {
         bgLoadLoggedComplete = true;
         PERF_INC(cameraBgLoads);
         Serial.printf("[Camera] Background load complete: %d cameras ready\n",
                       cameraManager->getCameraCount());
-
-        // Build/refresh regional cache now that full database is loaded
-        if (!bgLoadCacheBuilt && gpsHandler && gpsHandler->isReadyForNavigation()) {
-            bgLoadCacheBuilt = true;
-            GPSFix fix = gpsHandler->getFix();
-            Serial.printf("[Camera] Rebuilding regional cache with full database at %.4f, %.4f\n",
-                          fix.latitude, fix.longitude);
-            if (cameraManager->buildRegionalCache(fix.latitude, fix.longitude, CACHE_RADIUS_MILES)) {
-                PERF_INC(cameraCacheRefreshes);
-                cameraManager->saveRegionalCache(&LittleFS, "/cameras_cache.json");
-                Serial.printf("[Camera] Regional cache updated: %d cameras\n",
-                              cameraManager->getRegionalCacheCount());
-            }
-        }
+        // Cache rebuild deferred to refreshRegionalCacheIfNeeded (respects GPS cooldown)
     }
 
     const V1Settings& camSettings = settings->get();
@@ -134,12 +120,26 @@ void CameraAlertModule::process() {
 void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1Settings& camSettings) {
     if (!gpsHandler) return;
 
+    // Track GPS ready transition for cooldown
+    bool gpsReady = gpsHandler->isReadyForNavigation();
+    if (gpsReady && !wasGpsReady) {
+        // GPS just became ready - start cooldown
+        gpsReadyAtMs = now;
+        Serial.println("[Camera] GPS ready - deferring cache operations for 3s");
+    }
+    wasGpsReady = gpsReady;
+
+    if (!gpsReady) return;
+
+    // Defer heavy operations during GPS ready cooldown (display lag prevention)
+    if (gpsReadyAtMs > 0 && (now - gpsReadyAtMs) < GPS_READY_COOLDOWN_MS) {
+        return;
+    }
+
     if (now - lastCacheCheckMs < CACHE_CHECK_INTERVAL_MS || cameraManager->isBackgroundLoading()) {
         return;
     }
     lastCacheCheckMs = now;
-
-    if (!gpsHandler->isReadyForNavigation()) return;
 
     GPSFix cacheFix = gpsHandler->getFix();
     bool needsRefresh = cameraManager->needsCacheRefresh(cacheFix.latitude, cacheFix.longitude, CACHE_REFRESH_DIST_MILES);
