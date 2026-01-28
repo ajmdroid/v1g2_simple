@@ -449,8 +449,43 @@
 
 **Commit:** ✅ Committed
 
+---
+
+## Step 12: Inline clearAnnouncedAlerts() Wrapper
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Remove the thin wrapper function `clearAnnouncedAlerts()` from main.cpp. Add a combined `clearAllAlertState()` method to V1AlertModule that clears all tracking in one call.
+
+**Why this is safe:** The wrapper just calls two existing module methods. Combining them reduces indirection.
+
+**Actions:**
+- [x] Add clearAllAlertState() to V1AlertModule (clears announced alerts, histories, priority stability, last announced)
+- [x] Replace clearAnnouncedAlerts() call in main.cpp with v1AlertModule.clearAllAlertState()
+- [x] Remove static clearAnnouncedAlerts() wrapper from main.cpp  
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files to Modify:**
+- src/modules/v1_alerts/v1_alert_module.h
+- src/modules/v1_alerts/v1_alert_module.cpp
+- src/main.cpp
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- None
+
 **Rollback Required:**
--
+- No
+
+**Commit:** ✅ Committed
 
 ---
 

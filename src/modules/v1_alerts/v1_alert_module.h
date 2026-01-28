@@ -55,6 +55,10 @@ public:
     void markAlertAnnounced(Band band, uint16_t freq);
     void clearAnnouncedAlerts();
     
+    // Combined clear - resets all tracking when alerts clear
+    // Clears: announced alerts, alert histories, last announced, priority stability
+    void clearAllAlertState();
+    
     // Alert history tracking - for smart threat escalation
     // Detects signals ramping up over time (weak -> strong)
     void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now);

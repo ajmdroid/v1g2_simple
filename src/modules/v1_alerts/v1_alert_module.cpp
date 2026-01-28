@@ -79,6 +79,14 @@ void V1AlertModule::clearAnnouncedAlerts() {
     memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
 }
 
+// Combined clear - resets all tracking when alerts clear
+void V1AlertModule::clearAllAlertState() {
+    clearAnnouncedAlerts();
+    clearAlertHistories();
+    resetLastAnnounced();
+    resetPriorityStability();
+}
+
 // ============================================================================
 // Alert History Tracking - Smart Threat Escalation
 // ============================================================================

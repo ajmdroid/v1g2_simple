@@ -223,12 +223,6 @@ static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before spee
 
 // Smart threat escalation tracking moved to V1AlertModule
 
-// clearAnnouncedAlerts - clears both module's announced alerts AND alert histories
-static void clearAnnouncedAlerts() {
-    v1AlertModule.clearAnnouncedAlerts();
-    v1AlertModule.clearAlertHistories();
-}
-
 // Helper moved to V1AlertModule: getAlertBars(), isBandEnabledForSecondary()
 
 // Speed cache - avoids issues with OBD poll timing jitter
@@ -1710,10 +1704,8 @@ void processBLEData() {
                     }
                 }
                 
-                // Reset voice alert tracking when alerts clear
-                v1AlertModule.resetLastAnnounced();
-                clearAnnouncedAlerts();
-                v1AlertModule.resetPriorityStability();
+                // Reset all alert tracking when alerts clear
+                v1AlertModule.clearAllAlertState();
                 
                 // Volume Fade: restore original volume when alerts clear
                 // Restore if we either:
