@@ -36,7 +36,13 @@ except ImportError:
     print("Error: 'requests' module not found. Install with: pip3 install requests")
     sys.exit(1)
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Multiple Overpass API endpoints (try in order if one fails)
+OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 
 # Camera type flags (matches camera_manager.h)
 CAMERA_FLAG_REDLIGHT = 1
@@ -141,19 +147,27 @@ way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassif
 out geom;
 """
     
-    try:
-        response = requests.post(
-            OVERPASS_URL,
-            data={'data': query},
-            timeout=30
-        )
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
+    # Try each endpoint for road snapping
+    data = None
+    for endpoint in OVERPASS_ENDPOINTS:
+        try:
+            response = requests.post(
+                endpoint,
+                data={'data': query},
+                timeout=30,
+                headers={'User-Agent': 'V1Simple-CameraDownloader/1.0'}
+            )
+            response.raise_for_status()
+            data = response.json()
+            break
+        except requests.exceptions.RequestException:
+            continue
+    
+    if data is None:
         if verbose:
-            print(f"  Road query failed: {e}")
+            print(f"  Road query failed on all endpoints")
         return None
     
-    data = response.json()
     ways = data.get('elements', [])
     
     if not ways:
@@ -297,6 +311,61 @@ def parse_osm_element(element: dict, camera_types: list) -> dict:
     return record
 
 
+def query_overpass_with_retry(query: str, max_retries: int = 3, verbose: bool = False) -> dict:
+    """
+    Query Overpass API with retry logic and multiple endpoints.
+    Tries each endpoint with exponential backoff on failure.
+    """
+    last_error = None
+    
+    for attempt in range(max_retries):
+        for endpoint in OVERPASS_ENDPOINTS:
+            try:
+                if verbose or attempt > 0:
+                    endpoint_name = endpoint.split('/')[2]
+                    print(f"  Trying {endpoint_name}..." + (f" (attempt {attempt+1})" if attempt > 0 else ""))
+                
+                response = requests.post(
+                    endpoint,
+                    data={'data': query},
+                    timeout=180,  # 3 minute timeout per request
+                    headers={'User-Agent': 'V1Simple-CameraDownloader/1.0'}
+                )
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.Timeout:
+                last_error = "timeout"
+                if verbose:
+                    print(f"    Timeout on {endpoint.split('/')[2]}")
+                continue
+                
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response else 'unknown'
+                last_error = f"HTTP {status}"
+                if verbose:
+                    print(f"    HTTP {status} on {endpoint.split('/')[2]}")
+                # 429 = rate limited, 504 = gateway timeout - try another endpoint
+                if status in [429, 502, 503, 504]:
+                    continue
+                # Other errors might be query-related
+                raise
+                
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                if verbose:
+                    print(f"    Error: {e}")
+                continue
+        
+        # All endpoints failed this attempt, wait before retry
+        if attempt < max_retries - 1:
+            wait_time = (attempt + 1) * 10  # 10s, 20s, 30s...
+            print(f"  All endpoints failed ({last_error}), waiting {wait_time}s before retry...")
+            time.sleep(wait_time)
+    
+    raise requests.exceptions.RequestException(f"All endpoints failed after {max_retries} attempts: {last_error}")
+
+
 def download_cameras(camera_types: list, state: str = None, verbose: bool = False) -> list:
     """Download camera data from Overpass API."""
     
@@ -310,20 +379,11 @@ def download_cameras(camera_types: list, state: str = None, verbose: bool = Fals
     print("This may take a few minutes...")
     
     try:
-        response = requests.post(
-            OVERPASS_URL,
-            data={'data': query},
-            timeout=600  # 10 minute timeout
-        )
-        response.raise_for_status()
-    except requests.exceptions.Timeout:
-        print("Error: Request timed out. Try a smaller area (--state)")
-        sys.exit(1)
+        data = query_overpass_with_retry(query, max_retries=3, verbose=verbose)
     except requests.exceptions.RequestException as e:
         print(f"Error: {e}")
-        sys.exit(1)
+        return None  # Return None instead of exiting - allows state-by-state to continue
     
-    data = response.json()
     elements = data.get('elements', [])
     print(f"Received {len(elements)} elements from OSM")
     
@@ -399,7 +459,10 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
     if 'speed' in camera_types:
         type_names.append('Speed')
     
-    area_name = US_STATES.get(state.upper(), "US") if state else "US"
+    if state:
+        area_name = US_STATES.get(state.upper(), state.upper())
+    else:
+        area_name = "US (All States)"
     
     meta = {
         '_meta': {
@@ -432,13 +495,107 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
         print(f"  - {type_names.get(t, 'Unknown')}: {count}")
 
 
+def download_all_states(camera_types: list, no_snap: bool, verbose: bool, 
+                        output_dir: str = 'camera_data/states') -> list:
+    """
+    Download cameras state-by-state and bundle together.
+    More reliable than a single US-wide query.
+    """
+    import os
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    all_cameras = []
+    successful_states = []
+    failed_states = []
+    
+    state_codes = sorted(US_STATES.keys())
+    total_states = len(state_codes)
+    
+    print(f"\n{'='*60}")
+    print(f"Downloading cameras for all {total_states} US states")
+    print(f"Camera types: {', '.join(camera_types)}")
+    print(f"Road snapping: {'disabled' if no_snap else 'enabled'}")
+    print(f"{'='*60}\n")
+    
+    for i, state in enumerate(state_codes):
+        state_name = US_STATES[state]
+        print(f"\n[{i+1}/{total_states}] {state} - {state_name}")
+        print("-" * 40)
+        
+        state_file = os.path.join(output_dir, f"{state.lower()}.json")
+        
+        # Check if state file already exists (for resume capability)
+        if os.path.exists(state_file):
+            print(f"  Found existing {state_file}, loading...")
+            try:
+                with open(state_file, 'r') as f:
+                    state_cameras = []
+                    for line in f:
+                        data = json.loads(line)
+                        if '_meta' not in data:
+                            state_cameras.append(data)
+                    all_cameras.extend(state_cameras)
+                    successful_states.append(state)
+                    print(f"  Loaded {len(state_cameras)} cameras from cache")
+                    continue
+            except Exception as e:
+                print(f"  Error loading cache: {e}, re-downloading...")
+        
+        try:
+            # Download this state
+            cameras = download_cameras(camera_types, state, verbose)
+            
+            if cameras is None:
+                # API error - add to failed list
+                print(f"  ✗ {state}: Download failed")
+                failed_states.append(state)
+            elif cameras:
+                # Enrich with road data (unless --no-snap)
+                if not no_snap:
+                    cameras = enrich_with_road_data(cameras, verbose)
+                
+                # Save state file for caching/resume
+                save_ndjson(cameras, state_file, camera_types, state)
+                
+                all_cameras.extend(cameras)
+                successful_states.append(state)
+                print(f"  ✓ {state}: {len(cameras)} cameras")
+            else:
+                print(f"  - {state}: No cameras found")
+                successful_states.append(state)  # No error, just empty
+                
+        except Exception as e:
+            print(f"  ✗ {state}: Error - {e}")
+            failed_states.append(state)
+        
+        # Longer delay between states to avoid rate limiting
+        if i < total_states - 1:
+            wait_time = 5 if not failed_states else 15  # Longer wait after failures
+            print(f"  Waiting {wait_time}s before next state...")
+            time.sleep(wait_time)
+    
+    print(f"\n{'='*60}")
+    print(f"Download Complete!")
+    print(f"  Successful: {len(successful_states)} states")
+    if failed_states:
+        print(f"  Failed: {len(failed_states)} states: {', '.join(failed_states)}")
+        print(f"  (Run again to retry failed states - cached states will be skipped)")
+    print(f"  Total cameras: {len(all_cameras)}")
+    print(f"{'='*60}")
+    
+    return all_cameras
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Download camera database from OpenStreetMap',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python3 download_cameras.py                         # All US cameras
+  python3 download_cameras.py                         # All US cameras (single query)
+  python3 download_cameras.py --all-states            # Download state-by-state (recommended!)
   python3 download_cameras.py --state CA              # California only
   python3 download_cameras.py --type alpr --state TX  # Texas ALPR only
   python3 download_cameras.py --no-snap               # Skip road snapping (faster)
@@ -452,6 +609,9 @@ Road snapping enriches each camera with:
   - Snap coordinates (road centerline position)
   - Corridor width (for cross-track distance filtering)
 This helps filter false alerts from parallel roads.
+
+RECOMMENDED: Use --all-states for reliable downloading of the full US database.
+This downloads each state individually (with caching for resume capability).
 """
     )
     
@@ -463,6 +623,10 @@ This helps filter false alerts from parallel roads.
     parser.add_argument('--state', '-s',
                        type=str,
                        help='US state code (e.g., CA, TX, NY)')
+    
+    parser.add_argument('--all-states',
+                       action='store_true',
+                       help='Download all states individually (recommended for full US)')
     
     parser.add_argument('--output', '-o',
                        type=str,
@@ -485,27 +649,36 @@ This helps filter false alerts from parallel roads.
         print(f"Valid codes: {', '.join(sorted(US_STATES.keys()))}")
         sys.exit(1)
     
+    # Can't use both --state and --all-states
+    if args.state and args.all_states:
+        print("Error: Cannot use both --state and --all-states")
+        sys.exit(1)
+    
     # Determine camera types
     if args.type == 'all':
         camera_types = ['alpr', 'redlight', 'speed']
     else:
         camera_types = [args.type]
     
-    # Download
-    cameras = download_cameras(camera_types, args.state, args.verbose)
+    # Download - either all states or single query
+    if args.all_states:
+        cameras = download_all_states(camera_types, args.no_snap, args.verbose)
+        state = None
+    else:
+        cameras = download_cameras(camera_types, args.state, args.verbose)
+        state = args.state
+        
+        if cameras and not args.no_snap:
+            cameras = enrich_with_road_data(cameras, args.verbose)
+        elif args.no_snap:
+            print("\nSkipping road snapping (--no-snap specified)")
     
     if not cameras:
         print("No cameras found!")
         sys.exit(1)
     
-    # Enrich with road data (unless --no-snap)
-    if not args.no_snap:
-        cameras = enrich_with_road_data(cameras, args.verbose)
-    else:
-        print("\nSkipping road snapping (--no-snap specified)")
-    
-    # Save
-    save_ndjson(cameras, args.output, camera_types, args.state)
+    # Save final bundled output
+    save_ndjson(cameras, args.output, camera_types, state)
     
     print("\n✓ Done! Copy this file to your SD card as /cameras.json")
     print("  or upload via the V1 Simple web UI.")
