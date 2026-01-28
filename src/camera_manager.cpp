@@ -240,15 +240,48 @@ bool CameraManager::parseCameraLine(const char* line, CameraRecord& record) {
   }
   
   // Corridor data for road-aware filtering (optional enrichment fields)
-  // roadBearing: -1 = not set, 0-359 = bearing in degrees
-  record.roadBearing = doc["rbr"] | -1;
-  // corridorWidthM: default 35m (typical 2-lane road width + margin)
-  record.corridorWidthM = doc["cwm"] | 35;
-  // bearingTolerance: default 30 degrees for heading match
-  record.bearingTolerance = doc["btol"] | 30;
-  // Snapped coordinates (road-centerline position)
-  record.snapLat = doc["slat"] | record.latitude;
-  record.snapLon = doc["slon"] | record.longitude;
+  // Supports two formats:
+  // 1. Online (download_cameras.py): rbr, cwm, btol, slat, slon
+  // 2. Offline (PostGIS pipeline): p1, p2, brg, w
+  
+  // Check for PostGIS format first (p1/p2 arrays)
+  if (doc["p1"].is<JsonArray>() && doc["p2"].is<JsonArray>()) {
+    JsonArray p1 = doc["p1"].as<JsonArray>();
+    JsonArray p2 = doc["p2"].as<JsonArray>();
+    
+    if (p1.size() >= 2 && p2.size() >= 2) {
+      // p1 and p2 are corridor endpoints [lat, lon]
+      float p1_lat = p1[0].as<float>();
+      float p1_lon = p1[1].as<float>();
+      float p2_lat = p2[0].as<float>();
+      float p2_lon = p2[1].as<float>();
+      
+      // Use midpoint as snap point
+      record.snapLat = (p1_lat + p2_lat) / 2.0f;
+      record.snapLon = (p1_lon + p2_lon) / 2.0f;
+      
+      // Bearing from brg field
+      record.roadBearing = doc["brg"] | -1;
+      
+      // Corridor width from w field (this is half-width in PostGIS format)
+      record.corridorWidthM = doc["w"] | 35;
+      
+      // Default bearing tolerance
+      record.bearingTolerance = 30;
+    }
+  } 
+  // Fall back to online format (rbr/slat/slon)
+  else {
+    // roadBearing: -1 = not set, 0-359 = bearing in degrees
+    record.roadBearing = doc["rbr"] | -1;
+    // corridorWidthM: default 35m (typical 2-lane road width + margin)
+    record.corridorWidthM = doc["cwm"] | 35;
+    // bearingTolerance: default 30 degrees for heading match
+    record.bearingTolerance = doc["btol"] | 30;
+    // Snapped coordinates (road-centerline position)
+    record.snapLat = doc["slat"] | record.latitude;
+    record.snapLon = doc["slon"] | record.longitude;
+  }
   
   return true;
 }

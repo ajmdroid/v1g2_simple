@@ -1,0 +1,2 @@
+# Requirements for camera enrichment pipeline
+psycopg2-binary>=2.9.0

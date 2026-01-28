@@ -1,0 +1,9 @@
+# Data files (too large for git)
+data/
+*.osm.pbf
+*.osm
+
+# Python
+__pycache__/
+*.pyc
+.venv/
