@@ -612,7 +612,11 @@ bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
     cluster.centerLon = obj["centerLon"].as<float>();
     cluster.radius_m = obj["radius_m"].as<float>();
     cluster.band = static_cast<Band>(obj["band"].as<int>());
+    cluster.frequency_khz = obj["frequency_khz"] | 0;
+    cluster.frequency_tolerance_khz = obj["frequency_tolerance_khz"] | 8000;  // Default 8 MHz
     cluster.hitCount = obj["hitCount"].as<int>();
+    cluster.stoppedHitCount = obj["stoppedHitCount"] | 0;
+    cluster.movingHitCount = obj["movingHitCount"] | 0;
     cluster.firstSeen = obj["firstSeen"].as<time_t>();
     cluster.lastSeen = obj["lastSeen"].as<time_t>();
     cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
@@ -667,7 +671,11 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
       obj["centerLon"] = cluster.centerLon;
       obj["radius_m"] = cluster.radius_m;
       obj["band"] = static_cast<int>(cluster.band);
+      obj["frequency_khz"] = cluster.frequency_khz;
+      obj["frequency_tolerance_khz"] = cluster.frequency_tolerance_khz;
       obj["hitCount"] = cluster.hitCount;
+      obj["stoppedHitCount"] = cluster.stoppedHitCount;
+      obj["movingHitCount"] = cluster.movingHitCount;
       obj["firstSeen"] = cluster.firstSeen;
     obj["lastSeen"] = cluster.lastSeen;
     obj["passWithoutAlertCount"] = cluster.passWithoutAlertCount;
