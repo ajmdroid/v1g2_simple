@@ -368,33 +368,28 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   
   // Check master enable
   if (!s.lockoutEnabled) {
+    LOCKOUT_LOGF("[AutoLockout] Skipped - lockout disabled\n");
     return;
   }
   
   // Ka band protection (user-configurable)
   if (s.lockoutKaProtection && band == BAND_KA) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] Not learning Ka band (protection enabled)\n");
-    }
+    LOCKOUT_LOGF("[AutoLockout] Skipped Ka band (protection enabled)\n");
     return;
   }
   
   // Filter weak signals (likely far away or irrelevant)
   if (signalStrength < MIN_SIGNAL_STRENGTH) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] Ignoring weak signal (strength: %d < %d)\n", 
-                    signalStrength, MIN_SIGNAL_STRENGTH);
-    }
+    LOCKOUT_LOGF("[AutoLockout] Skipped weak signal (strength: %d < %d)\n", 
+                  signalStrength, MIN_SIGNAL_STRENGTH);
     return;
   }
   
   // Filter strong signals (user-configurable, 0 = disabled)
   uint8_t maxSig = s.lockoutMaxSignalStrength;
   if (maxSig > 0 && signalStrength >= maxSig) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] Ignoring strong signal (strength: %d >= %d)\n", 
-                    signalStrength, maxSig);
-    }
+    LOCKOUT_LOGF("[AutoLockout] Skipped strong signal (strength: %d >= %d)\n", 
+                  signalStrength, maxSig);
     return;
   }
   
@@ -431,12 +426,19 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   
   bool isNewCluster = (clusterIdx < 0);
   
+  const char* bandStr = (band == BAND_X) ? "X" : (band == BAND_K) ? "K" : 
+                        (band == BAND_KA) ? "Ka" : "Laser";
+  
   if (clusterIdx >= 0) {
     // Add to existing cluster
     addEventToCluster(clusterIdx, event);
+    LOCKOUT_LOGF("[AutoLockout] Added to cluster %d: %s %.3fMHz strength=%d\n",
+                  clusterIdx, bandStr, frequency_khz/1000.0f, signalStrength);
   } else {
     // Create new cluster
     createNewCluster(event);
+    LOCKOUT_LOGF("[AutoLockout] Created NEW cluster: %s %.3fMHz @ (%.6f,%.6f) strength=%d\n",
+                  bandStr, frequency_khz/1000.0f, lat, lon, signalStrength);
   }
   
   // Release lock before saving
