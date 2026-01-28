@@ -62,6 +62,13 @@ public:
     bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now);
     void markThreatEscalationAnnounced(Band band, uint16_t freq);
     void clearAlertHistories();
+    
+    // Direction change throttling - prevents spamming when V1 arrow bounces
+    // Call resetDirectionThrottle() when priority alert changes
+    // Call shouldThrottleDirectionChange() before announcing direction-only changes
+    void resetDirectionThrottle(unsigned long now);
+    bool shouldThrottleDirectionChange(unsigned long now);  // Returns true if should skip announcement
+    uint8_t getDirectionChangeCount() const { return directionChangeCount; }  // For debug logging
 
 private:
     // Dependencies (set in begin())
@@ -102,6 +109,12 @@ private:
     // Private helpers for alert history
     AlertHistory* findAlertHistory(uint32_t alertId);
     AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now);
+    
+    // Direction change throttling state - prevents spam when V1 arrow bounces
+    static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;  // 10 second window
+    static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
+    uint8_t directionChangeCount = 0;
+    unsigned long directionChangeWindowStart = 0;
 };
 
 #endif // V1_ALERT_MODULE_H

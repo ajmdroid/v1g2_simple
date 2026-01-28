@@ -197,11 +197,7 @@ static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
 static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
 
-// Direction change throttling - stop announcing if arrow bounces too much
-static uint8_t directionChangeCount = 0;        // Count of direction changes for current alert
-static unsigned long directionChangeWindowStart = 0;  // When the throttle window started
-static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;  // 10 second window
-static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
+// Direction change throttling moved to V1AlertModule
 
 // Secondary alert tracking - moved to V1AlertModule
 // Keeping these timing constants here as they're used in the main loop
@@ -1498,8 +1494,7 @@ void processBLEData() {
                     if (alertChanged && cooldownPassed) {
                         // New alert - full announcement based on mode
                         // Reset direction change throttle for new alert
-                        directionChangeCount = 0;
-                        directionChangeWindowStart = now;
+                        v1AlertModule.resetDirectionThrottle(now);
                         
                         AlertBand audioBand;
                         bool validBand = true;
@@ -1532,28 +1527,21 @@ void processBLEData() {
                         // Same alert changed direction - announce direction + bogey count if changed
                         // But throttle if direction has been bouncing too much
                         
-                        // Check if throttle window expired - reset counter
-                        if (now - directionChangeWindowStart > DIRECTION_THROTTLE_WINDOW_MS) {
-                            directionChangeCount = 0;
-                            directionChangeWindowStart = now;
-                        }
+                        // Check throttle and update counter (handles window expiry internally)
+                        bool throttled = v1AlertModule.shouldThrottleDirectionChange(now);
                         
-                        // Increment change count
-                        directionChangeCount++;
-                        
-                        // Only announce if under throttle limit
-                        if (directionChangeCount <= DIRECTION_CHANGE_LIMIT) {
+                        if (!throttled) {
                             uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
-                            DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/%d]\n", 
+                            DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/3]\n", 
                                        currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount,
-                                       directionChangeCount, DIRECTION_CHANGE_LIMIT);
+                                       v1AlertModule.getDirectionChangeCount());
                             play_direction_only(audioDir, bogeyCountToAnnounce);
                             lastVoiceAlertTime = now;
                             lastPriorityAnnouncementTime = now;
                             priorityAnnounced = true;
                         } else {
                             DEBUG_LOGF("[VoiceAlert] Direction change THROTTLED: freq=%u changes=%d in window\n",
-                                       currentFreq, directionChangeCount);
+                                       currentFreq, v1AlertModule.getDirectionChangeCount());
                         }
                         // Always update tracking even if throttled
                         lastVoiceAlertDirection = priority.direction;

@@ -290,13 +290,44 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
 ---
 
-## Testing Checklist (After Each Step)
--
+## Step 8: Move Direction Change Throttling to Module
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move the direction change throttling state and logic to V1AlertModule. This prevents spamming voice announcements when the V1's direction arrow bounces.
+
+**Why this is safe:** Self-contained state cluster with simple timing logic. No external dependencies.
+
+**Actions:**
+- [x] Add direction throttle state and constants to module
+- [x] Add resetDirectionThrottle() and shouldThrottleDirectionChange() methods
+- [x] Update main.cpp to call module methods
+- [x] Remove local state/constants from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added methods + state + constants
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented throttle logic
+- src/main.cpp - removed ~5 lines of state/constants, updated 2 call sites
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- None
 
 **Rollback Required:**
--
+- No
 
 ---
 

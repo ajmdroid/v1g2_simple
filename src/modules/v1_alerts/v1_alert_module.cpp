@@ -210,3 +210,26 @@ void V1AlertModule::clearAlertHistories() {
     alertHistoryCount = 0;
     memset(alertHistories, 0, sizeof(alertHistories));
 }
+
+// Reset direction change throttle - call when priority alert changes
+void V1AlertModule::resetDirectionThrottle(unsigned long now) {
+    directionChangeCount = 0;
+    directionChangeWindowStart = now;
+}
+
+// Check if direction change should be throttled
+// Returns true if announcement should be skipped (too many changes in window)
+// Also handles window expiry reset and incrementing the counter
+bool V1AlertModule::shouldThrottleDirectionChange(unsigned long now) {
+    // Check if throttle window expired - reset counter
+    if (now - directionChangeWindowStart > DIRECTION_THROTTLE_WINDOW_MS) {
+        directionChangeCount = 0;
+        directionChangeWindowStart = now;
+    }
+    
+    // Increment change count
+    directionChangeCount++;
+    
+    // Return true if over limit (should throttle)
+    return directionChangeCount > DIRECTION_CHANGE_LIMIT;
+}
