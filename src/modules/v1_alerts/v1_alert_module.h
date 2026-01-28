@@ -7,6 +7,12 @@
 
 #include <Arduino.h>
 
+// Forward declarations (avoid including heavy headers)
+class V1BLEClient;
+class PacketParser;
+class V1Display;
+class SettingsManager;
+
 /**
  * V1AlertModule - Encapsulates all V1 alert handling
  * 
@@ -22,15 +28,23 @@ class V1AlertModule {
 public:
     V1AlertModule();
     
+    // Initialize with dependencies (call from setup())
+    void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings);
+    
     // Main update - call from loop()
     void update();
     
-    // Lifecycle
-    void begin();
+    // Cleanup
     void end();
     
 private:
-    // Module state (will be populated during migration)
+    // Dependencies (set in begin())
+    V1BLEClient* bleClient = nullptr;
+    PacketParser* parser = nullptr;
+    V1Display* display = nullptr;
+    SettingsManager* settings = nullptr;
+    
+    bool initialized = false;
 };
 
 #endif // V1_ALERT_MODULE_H

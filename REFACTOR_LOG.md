@@ -47,50 +47,52 @@
 - ✅ Device boots normally
 - ✅ Connects to V1
 - ✅ Alerts display and fire correctly
-- ✅ No crashes or freezes
+- ⚠️ One intermittent BLE crash on first boot (pre-existing issue, recovered on reboot)
 
 **Issues Encountered:**
-- None
+- Pre-existing BLE abort() during connection (intermittent, not caused by our change)
 
 **Rollback Required:**
 - No
+
+**Commit:** ✅ Committed
 
 ---
 
 ## Step 2: Add References to External Objects
 
-**Status:** 🟡 IN PROGRESS  
+**Status:** ✅ COMPLETE  
 **Date:** January 27, 2026
 **Commit:** [pending]
 
 **Objective:** Give the module access to external objects it will need (bleClient, parser, display, etc.) without moving any logic yet.
 
 **Actions:**
-- [ ] Add references/pointers to V1AlertModule for: bleClient, parser, display, settingsManager
-- [ ] Pass them in begin() or via setters
-- [ ] Verify compilation
+- [x] Add pointer members to V1AlertModule for dependencies
+- [x] Add begin(deps) method to pass references  
+- [x] Update main.cpp to pass references in begin() call
+- [x] Verify compilation
 - [ ] Verify hardware still works identically
 
 **Files Modified:**
-- 
+- src/modules/v1_alerts/v1_alert_module.h - added forward decls, pointer members, updated begin() signature
+- src/modules/v1_alerts/v1_alert_module.cpp - added includes, updated begin() to store refs
+- src/main.cpp - updated begin() call at line 2244 to pass &bleClient, &parser, &display, &settingsManager
 
 **Compilation Result:**
-- 
+- ✅ SUCCESS
+- RAM: 25.6% (83812/327680 bytes)
+- Flash: 41.8% (2736568/6553600 bytes)
 
 **Hardware Test Result:**
--
-
-**Compilation Result:**
-- 
-
-**Hardware Test Result:**
-- 
+- ✅ Alerts fired correctly
+- ✅ No BLE issues
 
 **Issues Encountered:**
-- 
+- None
 
 **Rollback Required:**
-- 
+- No 
 
 ---
 

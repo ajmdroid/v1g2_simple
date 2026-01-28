@@ -2239,8 +2239,8 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
-    // Initialize V1 Alert Module (Phase 1 refactoring - stub)
-    v1AlertModule.begin();
+    // Initialize V1 Alert Module (Phase 1 refactoring)
+    v1AlertModule.begin(&bleClient, &parser, &display, &settingsManager);
     
     // Auto-start WiFi if enabled in dev settings
     if (settingsManager.get().enableWifiAtBoot) {
