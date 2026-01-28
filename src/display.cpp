@@ -2809,7 +2809,8 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
         if (a.band != b.band) return false;
         if (a.band == BAND_LASER) return true;
-        const uint32_t FREQ_TOLERANCE_MHZ = 5;
+        // Use a small tolerance to handle V1 jitter without merging distinct nearby bogeys
+        const uint32_t FREQ_TOLERANCE_MHZ = 2;
         uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
         return diff <= FREQ_TOLERANCE_MHZ;
     };

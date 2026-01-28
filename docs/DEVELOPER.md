@@ -9,8 +9,9 @@ Technical documentation for developers working on the V1-Simple codebase.
 1. [Critical Rules](#critical-rules)
 2. [Common Bugs & Prevention](#common-bugs--prevention)
 3. [Display System](#display-system)
-4. [BLE Architecture](#ble-architecture)
-5. [Testing Checklist](#testing-checklist)
+4. [Camera Module](#camera-module)
+5. [BLE Architecture](#ble-architecture)
+6. [Testing Checklist](#testing-checklist)
 
 ---
 
@@ -236,6 +237,31 @@ Global flags set by `drawBaseFrame()` on full screen clear:
 **Rule**: Only `drawBaseFrame()` should set these to `true`.
 
 ---
+
+## Display Ownership Map
+
+Single owner per frame prevents redraw conflicts and flicker. Ownership is decided in `main.cpp` and enforced by tests in `test_display_ownership.cpp`.
+
+- **Main display**: `displayPreviewModule` owns when preview is active; otherwise `display.update(...)` owns when V1 has alerts; otherwise `cameraAlertModule.updateMainDisplay()` may draw cameras; if neither, scanning/resting screens render via `display.update(state)`.
+- **Camera cards**: Only `cameraAlertModule.updateCardStateForV1()` writes camera cards, and only when V1 has alerts (cards are secondary to V1 data).
+- **Voice**: `voiceModule.process()` drives V1 alert speech; `cameraAlertModule.startTest()` plays camera voice once per test and when a new primary camera enters range (if `cameraAudioEnabled`).
+- **Flush discipline**: Modules never call `display.flush()` directly; `display.update()` and preview paths flush once per frame. Tests enforce ≤1 flush per frame.
+- **End flags**: Preview/test end flags (`displayPreviewModule.consumeEnded()`, `cameraAlertModule.consumeTestEnded()`) are consumed once then cleared; callers must force a redraw with current state after consumption.
+- **Change detection**: All display writers must early-exit when unchanged and avoid setting any `force*Redraw` flag per frame (except `drawBaseFrame()`).
+
+Keep new display features aligned with this map and add ownership tests when introducing new display writers.
+
+---
+
+## Camera Module
+
+**Location**: `src/modules/camera/camera_alert_module.{h,cpp}`
+
+- **Role**: Owns camera alert discovery, distance sorting, and display/voice orchestration so main.cpp stays thin.
+- **Lifecycle hooks**: Call `begin(display, settingsManager, cameraManager, gpsHandler)` in `setup()`. Invoke `process()` once per `loop()` to refresh caches and background loads.
+- **Display integration**: Use `updateCardStateForV1()` when V1-connected card owners are decided, and `updateMainDisplay()` when V1 is disconnected or cameras should own the main area. Functions are change-detected to avoid redraw spam.
+- **Test/demo**: `startTest(CameraType)` kicks off camera test mode; `consumeTestEnded()` clears the ended flag after the UI reacts so endings are processed once.
+- **Dependencies**: Requires GPS fix for real alerts; respects display cache semantics (no direct flushes) and defers voice prompts to the voice module.
 
 ## BLE Architecture
 

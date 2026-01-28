@@ -52,7 +52,7 @@ bool perfMetricsCheckReport() {
     uint32_t minUsVal = perfLatency.minUs.load();
     uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
-    Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu\n",
+    Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu camLoad=%lu camCache=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
         (unsigned long)perfCounters.parseSuccesses.load(),
         (unsigned long)perfCounters.queueDrops.load(),
@@ -61,7 +61,9 @@ bool perfMetricsCheckReport() {
         (unsigned long)minUs,
         (unsigned long)avgUs,
         (unsigned long)perfLatency.maxUs.load(),
-        (unsigned long)perfCounters.displayUpdates.load());
+        (unsigned long)perfCounters.displayUpdates.load(),
+        (unsigned long)perfCounters.cameraBgLoads.load(),
+        (unsigned long)perfCounters.cameraCacheRefreshes.load());
     
     // Reset latency stats for next window (counters are cumulative)
     perfLatency.reset();
@@ -93,6 +95,9 @@ void perfMetricsPrint() {
     Serial.printf("Display: updates=%lu skips=%lu\n",
         (unsigned long)perfCounters.displayUpdates.load(),
         (unsigned long)perfCounters.displaySkips.load());
+    Serial.printf("Camera: bgLoads=%lu cacheRefreshes=%lu\n",
+        (unsigned long)perfCounters.cameraBgLoads.load(),
+        (unsigned long)perfCounters.cameraCacheRefreshes.load());
     Serial.printf("Connection: reconnects=%lu disconnects=%lu\n",
         (unsigned long)perfCounters.reconnects.load(),
         (unsigned long)perfCounters.disconnects.load());
@@ -121,6 +126,8 @@ String perfMetricsToJson() {
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["cameraBgLoads"] = perfCounters.cameraBgLoads.load();
+    doc["cameraCacheRefreshes"] = perfCounters.cameraCacheRefreshes.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     

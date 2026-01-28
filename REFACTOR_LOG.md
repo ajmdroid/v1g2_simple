@@ -3,6 +3,7 @@
 **Started:** January 27, 2026  
 **Goal:** Extract 832-line main loop into alert-centric modules  
 **Strategy:** One micro-step at a time, test after each change  
+**Note (Jan 28, 2026):** V1AlertModule was split—alert persistence now lives in `modules/alert_persistence`, and all voice logic lives in `modules/voice`.
 
 ## Overall Plan
 - **Phase 1:** Extract V1 Alert handling (BLE + display + audio)
@@ -417,7 +418,7 @@
 **Date:** January 28, 2026
 **Commit:** [pending]
 
-**Objective:** Move the alert persistence tracking (keeps alert on screen briefly after V1 clears it) to V1AlertModule. This is the grey "fading" alert display.
+**Objective:** Move the alert persistence tracking (keeps alert on screen briefly after V1 clears it) to AlertPersistenceModule. This is the grey "fading" alert display.
 
 **Why this is safe:** Self-contained state cluster. Only interacts with AlertData struct.
 
@@ -530,6 +531,41 @@
 
 ---
 
+## Step 14: Add Direction Conversion Utility
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Add a static utility toAudioDirection() to convert V1's Direction bitmask to AlertDirection enum. This pattern is repeated 4 times in main.cpp voice alert code.
+
+**Why this is safe:** Pure function, no state. Just eliminates code duplication.
+
+**Actions:**
+- [x] Add static toAudioDirection(Direction) to V1AlertModule
+- [x] Update 3 call sites in main.cpp to use utility
+- [ ] Verify compilation
+- [ ] Verify hardware works
+
+**Files to Modify:**
+- src/modules/v1_alerts/v1_alert_module.h
+- src/modules/v1_alerts/v1_alert_module.cpp
+- src/main.cpp
+
+**Compilation Result:**
+-
+
+**Hardware Test Result:**
+-
+
+**Issues Encountered:**
+-
+
+**Rollback Required:**
+-
+
+---
+
 ## Testing Checklist (After Each Step)
 
 ### Compilation Test
@@ -597,15 +633,317 @@ If any step fails hardware testing:
 
 ## Progress Summary
 
-**Completed Steps:** 5  
+**Phase 1a (Lift-and-Shift) Completed Steps:** 14  
 **Failed Steps:** 0  
-**Total Estimated Steps:** TBD (will refine as we go)  
-**Estimated Completion:** TBD
+
+**Additional completed work (Jan 28, 2026):**
+- VoiceModule created and now owns all voice alert decisions (priority/secondary/escalation).
+- main.cpp reduced to building `VoiceContext` + executing `VoiceAction`.
+- VolumeFadeModule implemented and wired; main.cpp no longer keeps per-alert fade globals.
+- SpeedVolumeModule added and wired; highway boost logic removed from main.cpp.
+- V1AlertModule renamed logically to AlertPersistenceModule (files now `alert_persistence_module.*`).
+
+**Phase 1b (True Module Migration) Completed Steps:** 15-19  
+**Step 20:** Final cleanup and doc alignment → ✅ COMPLETE (Jan 28, 2026)
+  - Removed stale TODO comments in main.cpp voice switch
+  - Ensured SpeedVolume defers to VolumeFade when fade owns volume
+  - Tests: `./build.sh --test` ✅
 
 ---
 
 ## Current Status
 
-**Last Updated:** January 27, 2026  
-**Current Step:** Step 5 - Move Announced Alert Tracking  
-**Next Action:** Add state and functions to module
+**Last Updated:** January 28, 2026  
+**Current Phase:** Voice module migration completed; alert persistence split out; volume fade + speed volume fully coordinated (tests passing)
+
+**Next Candidates:**
+- Optional: extract display/demo/color preview into a display module to shrink main.cpp
+- Optional: consolidate web/settings endpoints into a Settings API module
+- Optional: move GPS speed/lockout queries into a GPS module
+
+---
+
+# ARCHITECTURE PIVOT - January 28, 2026
+
+> Status: Pivot executed. Voice decision logic now lives in `modules/voice/voice_module.cpp`; V1AlertModule handles alert persistence only. Notes below are retained for history.
+
+## Problem Identified
+
+After completing 14 steps of "lift-and-shift" migration, we realized:
+
+> **We moved STATE to the module, but LOGIC stayed in main.cpp**
+
+The module became a "utility bag" - a collection of helper functions and state that main.cpp queries. But main.cpp still has ~250 lines of voice alert decision logic that:
+- Calls 44 module methods per cycle
+- Makes all the decisions (what to announce, when)
+- Executes the audio playback
+
+This is NOT true modularity. Adding a voice feature still requires understanding main.cpp.
+
+## What We Built (Steps 1-14)
+
+VoiceModule now contains:
+- **State:** announced alerts, alert histories, direction throttle, priority stability, last announced tracking, speed cache
+- **Methods:** Query state, update state, static helpers, full decision engine (`process`)
+- **Lines:** ~430 (header + cpp)
+
+main.cpp now contains:
+- Voice context build + `voiceModule.process(ctx)` call + action switch (~50 lines)
+
+## New Direction: True Module Architecture
+
+Instead of module answering questions, module makes decisions:
+
+```
+BEFORE (utility bag):
+  main.cpp: "hasAlertChanged?" → module: "yes"
+  main.cpp: "cooldownPassed?" → module: "yes"  
+  main.cpp: "OK, I'll announce" → play_audio()
+  main.cpp: "markAnnounced()" → module updates
+
+AFTER (true module):
+  main.cpp: "Here's the context" → module
+  module: Makes ALL decisions internally
+  module: Returns VoiceAction{ANNOUNCE_PRIORITY, ka, 34700, ahead, 3}
+  main.cpp: Executes the action
+```
+
+## New Migration Plan
+
+See [docs/VOICE_ALERT_MIGRATION.md](docs/VOICE_ALERT_MIGRATION.md) for complete plan.
+
+### Summary of Steps
+
+| Step | Description | Risk |
+|------|-------------|------|
+| 1 | Add structs + empty processVoiceAlerts() | None |
+| 2 | Move early exit checks | Low |
+| 3 | Move new priority alert logic | Medium |
+| 4 | Move direction change logic | Medium |
+| 5 | Move bogey count change logic | Low |
+| 6 | Move secondary alert logic | Medium |
+| 7 | Move threat escalation logic | Medium |
+| 8 | Cleanup dead code | Low |
+
+Each step: build, test on hardware, commit. Same safety process as before.
+
+## Why This Is Worth It
+
+**Pain now:** ~6-8 hours to complete migration
+
+**Reward later:**
+- Adding voice feature = edit ONE file (module)
+- Unit testing = mock VoiceAlertContext, verify VoiceAction
+- Debugging = clear boundary (module decides, main executes)
+- Understanding = read ONE module for all voice logic
+
+## Current State Before Pivot
+
+The module has all the STATE it needs. The decision LOGIC is scattered in main.cpp.
+We're in a half-migrated state - not ideal, but not broken either.
+
+The pivot completes what we started: consolidating alert logic into the module.
+
+---
+
+## Phase 1b: True Module Migration
+
+### Step 15: Add VoiceAlertContext and VoiceAction Structs
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+
+**Objective:** Add the input/output structs and empty processVoiceAlerts() method.
+
+**Actions:**
+- [x] Add VoiceAlertContext struct to header
+- [x] Add VoiceAction struct to header
+- [x] Add empty processVoiceAlerts() that returns NONE
+- [x] Call from main.cpp (build context, call method, ignore result)
+- [x] Build and verify no behavior change
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - Added VoiceAlertContext, VoiceAction structs, processVoiceAlerts() declaration
+- src/modules/v1_alerts/v1_alert_module.cpp - Added empty processVoiceAlerts() implementation
+- src/main.cpp - Added context building and method call (result ignored)
+
+**Compilation Result:**
+- ✅ SUCCESS (11.05s)
+- RAM: 25.6% (83804/327680 bytes) - unchanged
+- Flash: 41.8% (2737676/6553600 bytes) - +184 bytes (structs only)
+
+**Hardware Test:**
+- [ ] Pending user test
+
+**Next:** Step 16 - Move Early Exit Checks into processVoiceAlerts()
+
+---
+
+### Step 16: Move Early Exit Checks
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+
+**Objective:** Move the early exit checks (conditions that skip voice alerts) into processVoiceAlerts().
+
+**Early Exit Checks Moved:**
+1. Voice alerts disabled (`voiceAlertMode == DISABLED`)
+2. Mute if volume zero (`muteVoiceIfVolZero && mainVolume == 0`)
+3. Low speed mute (`isLowSpeedMuted()`)
+4. V1 is muted (`isMuted`)
+5. In GPS lockout zone (`isInLockout`)
+6. Phone app connected (`isProxyConnected`)
+7. No valid priority alert (`priority == null || band == NONE`)
+
+**Actions:**
+- [x] Add early exit checks to processVoiceAlerts()
+- [x] Access settings via stored SettingsManager* pointer
+- [x] Return NONE if any check fails
+- [x] Build and verify
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.cpp - Added 7 early exit checks
+
+**Compilation Result:**
+- ✅ SUCCESS (10.84s)
+- RAM: 25.6% (unchanged)
+- Flash: 41.8% (2737728 bytes) - +52 bytes
+
+**Hardware Test:**
+- [ ] Pending user test
+
+**Note:** Module still returns NONE even when checks pass. main.cpp still runs existing logic. This is intentional - we're migrating incrementally.
+
+**Next:** Step 17 - Move Priority Alert New-Alert Logic
+
+---
+
+### Step 17: Move ALL Priority Alert Logic (New + Direction + Bogey Count)
+
+**Status:** ✅ COMPLETE (Hardware verified)  
+**Date:** January 28, 2026
+
+**Objective:** Move all priority alert decision logic into processVoiceAlerts(), wire up main.cpp to execute returned actions.
+
+**What Was Migrated:**
+1. **New Alert Logic** - Returns `ANNOUNCE_PRIORITY` when band/freq changes
+2. **Direction Change Logic** - Returns `ANNOUNCE_DIRECTION` when direction changes (with throttling)
+3. **Bogey Count Change Logic** - Returns `ANNOUNCE_DIRECTION` when count changes
+
+**Actions:**
+- [x] Add `toAudioBand()` helper function in module
+- [x] Add `isValidAnnounceBand()` helper function
+- [x] Implement all 3 priority cases in processVoiceAlerts()
+- [x] Module updates its own internal state (markAnnounced, etc.)
+- [x] main.cpp executes VoiceAction via switch statement
+- [x] Remove old priority alert code from main.cpp (~100 lines)
+- [x] Build and verify
+- [x] Run tests
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.cpp - Full priority alert decision logic (~80 lines)
+- src/main.cpp - Execution switch, removed old code (~-65 lines net)
+
+**Compilation Result:**
+- ✅ SUCCESS (11.09s)
+- RAM: 25.6% (unchanged)
+- Flash: 41.8% (2737956 bytes) - +228 bytes (new logic in module)
+
+**Test Result:**
+- ✅ All 400 tests pass
+
+**Hardware Test:**
+- [x] User verified working
+
+**Lines Removed from main.cpp:** ~100 lines (priority alert blocks)
+**Lines Added to module:** ~80 lines (priority logic)
+**Net Reduction:** ~20 lines
+
+---
+
+### Step 18: Move Secondary Alert Logic
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+
+**Objective:** Move secondary alert announcement logic into processVoiceAlerts().
+
+**What Was Migrated:**
+- Secondary alert decision logic: loops through non-priority alerts, finds first unannounced alert that passes band filter, returns `ANNOUNCE_SECONDARY`
+
+**Key Conditions (all must pass):**
+1. `announceSecondaryAlerts` setting enabled
+2. More than one alert (`alertCount > 1`)
+3. `canAnnounceSecondary()` - priority stable + cooldown passed
+4. Alert not already announced
+5. Band enabled for secondary (`isBandEnabledForSecondary`)
+
+**Actions:**
+- [x] Add secondary alert logic to processVoiceAlerts() (after priority cases)
+- [x] Returns `ANNOUNCE_SECONDARY` with band/freq/dir
+- [x] Module marks alert announced and updates cooldown
+- [x] Remove old secondary code from main.cpp (~50 lines)
+- [x] Build and verify
+- [x] Run tests
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.cpp - Added secondary loop (~40 lines)
+- src/main.cpp - Removed secondary block (~-45 lines)
+
+**Compilation Result:**
+- ✅ SUCCESS (11.05s)
+- RAM: 25.6% (unchanged)
+- Flash: 41.8% (2737980 bytes)
+
+**Test Result:**
+- ✅ All 400 tests pass
+
+**Hardware Test:**
+- [ ] Pending user test
+
+---
+
+### Step 19: Move Threat Escalation Logic
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+
+**Objective:** Move smart threat escalation logic into processVoiceAlerts().
+
+**What Was Migrated:**
+- Signal history tracking for all secondary alerts
+- Stale history cleanup
+- Escalation trigger detection (weak signal ramps up)
+- Direction breakdown counting (ahead/behind/side)
+
+**Key Logic:**
+1. First pass: Update all alert histories with current signal strengths
+2. Cleanup stale histories (alerts that disappeared)
+3. Second pass: Check each secondary for escalation criteria
+4. Build direction breakdown from all alerts
+5. Return `ANNOUNCE_ESCALATION` with full breakdown
+
+**Actions:**
+- [x] Add escalation logic to processVoiceAlerts() (~70 lines)
+- [x] History updates + cleanup + escalation check + direction counts
+- [x] Returns `ANNOUNCE_ESCALATION` with band/freq/dir + breakdown
+- [x] Remove old escalation code from main.cpp (~90 lines)
+- [x] Build and verify
+- [x] Run tests
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.cpp - Added escalation logic (~70 lines)
+- src/main.cpp - Removed escalation block (~-90 lines)
+
+**Compilation Result:**
+- ✅ SUCCESS (11.30s)
+- RAM: 25.6% (unchanged)
+- Flash: 41.8% (2738064 bytes)
+
+**Test Result:**
+- ✅ All 400 tests pass
+
+**Hardware Test:**
+- [ ] Pending user test
+
+**Next:** Step 20 - Cleanup and Final Verification

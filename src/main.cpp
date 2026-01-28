@@ -41,7 +41,13 @@
 #include "camera_manager.h"
 #include "perf_metrics.h"
 #include "../include/config.h"
-#include "modules/v1_alerts/v1_alert_module.h"
+#include "modules/alert_persistence/alert_persistence_module.h"
+#include "modules/display/display_preview_module.h"
+#include "modules/camera/camera_alert_module.h"
+#include "modules/wifi/wifi_orchestrator.h"
+#include "modules/voice/voice_module.h"
+#include "modules/speed_volume/speed_volume_module.h"
+#include "modules/volume_fade/volume_fade_module.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
 #include <LittleFS.h>
@@ -133,8 +139,11 @@ GPSHandler gpsHandler;
 LockoutManager lockouts;
 AutoLockoutManager autoLockouts;
 
-// V1 Alert Module (Phase 1 refactoring - stub for now)
-V1AlertModule v1AlertModule;
+// Alert persistence module
+AlertPersistenceModule alertPersistenceModule;
+
+// Voice Module - handles voice announcement decisions
+VoiceModule voiceModule;
 
 // OBD-II handler uses global obdHandler from obd_handler.cpp
 // (included via obd_handler.h extern declaration)
@@ -156,31 +165,20 @@ unsigned long lastDisplayDraw = 0;  // Throttle display updates
 static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 50;  // Min 50ms between draws (~20fps) - flush alone takes 26ms
 static unsigned long lastAlertGapRecoverMs = 0;  // Throttle recovery when bands show but alerts are missing
 
-// Color preview state machine to keep demo visible and cycle bands
-static bool colorPreviewActive = false;
-static unsigned long colorPreviewStartMs = 0;
-static unsigned long colorPreviewDurationMs = 0;
-static int colorPreviewStep = 0;
-static bool colorPreviewEnded = false;
+// Color preview driver (demo band cycle)
+DisplayPreviewModule displayPreviewModule;
 
-struct ColorPreviewStep {
-    unsigned long offsetMs;
-    Band band;
-    uint8_t bars;
-    Direction dir;
-    uint32_t freqMHz;
-    bool muted;
-};
+void requestColorPreviewHold(uint32_t durationMs) {
+    displayPreviewModule.requestHold(durationMs);
+}
 
-// Sequence: X, K, Ka, Laser, then Ka muted - with arrow cycle and cards
-static const ColorPreviewStep COLOR_PREVIEW_STEPS[] = {
-    {300, BAND_X, 3, DIR_FRONT, 10525, false},
-    {1300, BAND_K, 5, DIR_SIDE, 24150, false},
-    {2300, BAND_KA, 6, DIR_REAR, 35500, false},
-    {3300, BAND_LASER, 8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0, false},
-    {4300, BAND_KA, 5, DIR_FRONT, 34700, true}   // Muted Ka to show mute badge
-};
-static constexpr int COLOR_PREVIEW_STEP_COUNT = sizeof(COLOR_PREVIEW_STEPS) / sizeof(COLOR_PREVIEW_STEPS[0]);
+bool isColorPreviewRunning() {
+    return displayPreviewModule.isRunning();
+}
+
+void cancelColorPreview() {
+    displayPreviewModule.cancel();
+}
 
 enum class DisplayMode {
     IDLE,
@@ -188,7 +186,7 @@ enum class DisplayMode {
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
 
-// Voice alert tracking moved to V1AlertModule
+// Voice alert tracking handled by VoiceModule
 
 // Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
@@ -203,164 +201,28 @@ static constexpr unsigned long OBD_CONNECT_DELAY_MS = 12000;  // 12 second delay
 bool cameraLoadPending = false;            // True if camera DB should be loaded
 bool cameraLoadComplete = false;           // True once loading finished
 
-// Volume fade tracking - reduce V1 volume after X seconds of continuous alert
-static unsigned long volumeFadeAlertStartMs = 0;  // When current alert session started (0 = no active alert)
-static uint8_t volumeFadeOriginalVol = 0xFF;      // Original main volume before fade (0xFF = not faded)
-static uint8_t volumeFadeOriginalMuteVol = 0;     // Original muted volume (to pass to setVolume)
-static bool volumeFadeActive = false;             // True if volume has been faded down
-static bool volumeFadeCommandSent = false;        // One-shot flag to send fade command once
-// Track seen frequencies during fade session - new frequencies restore volume, priority shuffling stays faded
-static constexpr int MAX_FADE_SEEN_FREQS = 12;    // Max alerts V1 can track
-static uint16_t volumeFadeSeenFreqs[MAX_FADE_SEEN_FREQS] = {0};
-static int volumeFadeSeenCount = 0;
+// Volume fade module - reduce V1 volume after X seconds of continuous alert
+VolumeFadeModule volumeFadeModule;
 
-// Speed-based volume tracking - boost volume at highway speeds
-// NOTE: Speed boost and volume fade can interact. Speed boost captures the pre-boost volume,
-// and volume fade captures the volume at alert start. When both are active, we need to 
-// restore to the correct "baseline" volume (before both adjustments).
-static bool speedVolumeBoostActive = false;       // True if volume is currently boosted
-static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before speed boost
+// Speed volume module - boost volume at highway speeds
+SpeedVolumeModule speedVolumeModule;
 
-// Smart threat escalation tracking moved to V1AlertModule
+// Camera alerts + test/demo handler
+CameraAlertModule cameraAlertModule;
 
-// Helper moved to V1AlertModule: getAlertBars(), isBandEnabledForSecondary(), speed helpers
+// Smart threat escalation tracking moved to VoiceModule
+
+// Helper moved to VoiceModule: getAlertBars(), isBandEnabledForSecondary(), speed helpers
 
 // WiFi manual startup - user must long-press BOOT to start AP
-
-void requestColorPreviewHold(uint32_t durationMs) {
-    colorPreviewActive = true;
-    colorPreviewStartMs = millis();
-    colorPreviewDurationMs = durationMs;
-    colorPreviewStep = 0;
-    colorPreviewEnded = false;
-}
-
-bool isColorPreviewRunning() {
-    return colorPreviewActive;
-}
-
-void cancelColorPreview() {
-    if (colorPreviewActive) {
-        colorPreviewActive = false;
-        colorPreviewEnded = true;  // Restore resting view on next loop
-    }
-}
-
-static inline bool isColorPreviewActive() {
-    if (!colorPreviewActive) return false;
-    unsigned long now = millis();
-    if (now - colorPreviewStartMs >= colorPreviewDurationMs) {
-        colorPreviewActive = false;
-        colorPreviewEnded = true;
-        return false;
-    }
-    return true;
-}
-
-static void driveColorPreview() {
-    if (!colorPreviewActive) return;
-
-    unsigned long now = millis();
-    unsigned long elapsed = now - colorPreviewStartMs;
-
-    // Advance through band samples while within duration
-    while (colorPreviewStep < COLOR_PREVIEW_STEP_COUNT && elapsed >= COLOR_PREVIEW_STEPS[colorPreviewStep].offsetMs) {
-        const auto& step = COLOR_PREVIEW_STEPS[colorPreviewStep];
-        AlertData previewAlert{};
-        previewAlert.band = step.band;
-        previewAlert.direction = step.dir;
-        previewAlert.frontStrength = step.bars;
-        previewAlert.rearStrength = 0;
-        previewAlert.frequency = step.freqMHz;
-        previewAlert.isValid = true;
-
-        DisplayState previewState{};
-        previewState.activeBands = step.band;
-        previewState.arrows = step.dir;
-        previewState.signalBars = step.bars;
-        previewState.muted = step.muted;
-
-        // Build array with secondary alerts to show cards during preview
-        // Start adding secondary alerts from step 1 onwards
-        AlertData allAlerts[3];
-        int alertCount = 1;
-        allAlerts[0] = previewAlert;
-        
-        if (colorPreviewStep >= 1) {
-            // Add X band as secondary card
-            allAlerts[alertCount].band = BAND_X;
-            allAlerts[alertCount].direction = DIR_FRONT;
-            allAlerts[alertCount].frontStrength = 3;
-            allAlerts[alertCount].frequency = 10525;
-            allAlerts[alertCount].isValid = true;
-            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_X);
-            alertCount++;
-        }
-        if (colorPreviewStep >= 2) {
-            // Add K band as secondary card
-            allAlerts[alertCount].band = BAND_K;
-            allAlerts[alertCount].direction = DIR_REAR;
-            allAlerts[alertCount].frontStrength = 0;
-            allAlerts[alertCount].rearStrength = 4;
-            allAlerts[alertCount].frequency = 24150;
-            allAlerts[alertCount].isValid = true;
-            previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_K);
-            alertCount++;
-        }
-
-        display.update(previewAlert, allAlerts, alertCount, previewState);
-        colorPreviewStep++;
-    }
-
-    if (elapsed >= colorPreviewDurationMs) {
-        colorPreviewActive = false;
-        colorPreviewEnded = true;
-    }
-}
 
 // Mute debounce - prevent flicker from rapid state changes  
 static bool debouncedMuteState = false;
 static unsigned long lastMuteChangeMs = 0;
 static constexpr unsigned long MUTE_DEBOUNCE_MS = 150;  // Ignore mute changes within 150ms
 
-// Alert persistence moved to V1AlertModule
+// Alert persistence handled by AlertPersistenceModule
 
-// Camera alert tracking - supports up to 3 simultaneous approaching cameras
-// Display: 1 primary (main area) + 2 secondary cards when no V1 alerts
-// When V1 has alerts: up to 2 cameras shown as cards (V1 gets primary)
-static constexpr int MAX_ACTIVE_CAMERAS = 3;
-static std::vector<NearbyCameraResult> activeCameraAlerts;  // Active approaching cameras, sorted by distance
-static unsigned long cameraAlertStartMs = 0;
-static unsigned long lastCameraCheckMs = 0;
-static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;  // Check every 500ms
-static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;  // Min distance before re-alerting same area
-
-// Track last alert position to avoid re-alerting same camera
-struct PassedCameraTracker {
-    float lat = 0.0f;
-    float lon = 0.0f;
-    unsigned long passedTimeMs = 0;
-};
-static std::vector<PassedCameraTracker> recentlyPassedCameras;
-static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;  // Remember passed cameras for 1 minute
-
-// Camera test alert mode (from web UI)
-// Test cycles through: 1 camera → 2 cameras → 3 cameras to show card display
-static bool cameraTestActive = false;
-static bool cameraTestEnded = false;  // Triggers display restore after test ends
-static unsigned long cameraTestEndMs = 0;
-static int cameraTestPhase = 0;  // 0=1cam, 1=2cam, 2=3cam
-static unsigned long cameraTestPhaseStartMs = 0;
-static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000;  // 3 seconds per phase
-static char cameraTestTypeName[16] = {0};
-static float cameraTestDistance = 500.0f;
-
-// Regional camera cache - rebuilds every 30min or when moved 50+ miles
-static unsigned long lastCacheCheckMs = 0;
-static constexpr unsigned long CACHE_CHECK_INTERVAL_MS = 30000;   // Check every 30 seconds
-static constexpr unsigned long CACHE_REFRESH_INTERVAL_MS = 1800000; // Force refresh every 30 minutes
-static constexpr float CACHE_RADIUS_MILES = 100.0f;    // Cache cameras within 100 miles
-static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f; // Refresh if moved 50+ miles from cache center
 
 // Triple-tap detection for profile cycling
 static unsigned long lastTapTime = 0;
@@ -432,94 +294,6 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
         PERF_INC(oversizeDrops);  // Count oversize packets that can't be queued
         Serial.printf("[BLE] WARNING: Dropped oversize packet (%d bytes > %d max)\n", 
                       length, sizeof(BLEDataPacket::data));
-    }
-}
-
-// Helper: Update camera card state BEFORE display.update() is called
-// This ensures the secondary card area shows camera info when V1 has alerts
-// Supports up to 3 cameras: primary in main area + 2 secondary cards
-static void updateCameraCardState(bool v1HasAlerts) {
-    // When V1 doesn't have alerts, camera display (including cards) is handled
-    // by updateCameraAlerts() to keep a single owner per frame and avoid redraw
-    // conflicts. Only manage card state here when V1 has active alerts.
-    if (!v1HasAlerts) {
-        return;
-    }
-
-    const V1Settings& dispSettings = settingsManager.get();
-    
-    // Test mode takes priority - cycles through 1→2→3 cameras to demo card display
-    if (cameraTestActive && millis() < cameraTestEndMs) {
-        // Update test phase (cycles every 3 seconds)
-        unsigned long elapsed = millis() - cameraTestPhaseStartMs;
-        int newPhase = (elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3;
-        if (newPhase != cameraTestPhase) {
-            cameraTestPhase = newPhase;
-            Serial.printf("[Camera] Test phase: %d camera(s)\n", cameraTestPhase + 1);
-        }
-        
-        // Test shows: phase 0 = 1 cam, phase 1 = 2 cams, phase 2 = 3 cams
-        int numTestCameras = cameraTestPhase + 1;
-        
-        // Camera types and distances for test
-        // When V1 has alerts: ALL cameras become cards (primary goes to slot 0)
-        // When V1 idle: primary in main area, secondary cameras as cards
-        static const char* secondaryTypes[] = {"SPEED", "ALPR"};
-        static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
-        float dist0 = baseDistances[0] - (elapsed * 0.01f);
-        float dist1 = baseDistances[1] - (elapsed * 0.01f);
-        float dist2 = baseDistances[2] - (elapsed * 0.01f);
-        if (dist0 < 50.0f) dist0 = 50.0f;
-        if (dist1 < 50.0f) dist1 = 50.0f;
-        if (dist2 < 50.0f) dist2 = 50.0f;
-        
-        // V1 has alerts: ALL cameras become cards (max 2 card slots)
-        // Slot 0 = primary (user-selected type), Slot 1 = 2nd camera
-        if (numTestCameras >= 1) {
-            display.setCameraAlertState(0, true, cameraTestTypeName, dist0, dispSettings.colorCameraAlert);
-        } else {
-            display.setCameraAlertState(0, false, "", 0, 0);
-        }
-        if (numTestCameras >= 2) {
-            display.setCameraAlertState(1, true, secondaryTypes[0], dist1, dispSettings.colorCameraAlert);
-        } else {
-            display.setCameraAlertState(1, false, "", 0, 0);
-        }
-        // Note: 3rd camera can't show as card (only 2 slots), would need V1 to clear
-        return;  // Early return - test mode handled
-    } else if (!activeCameraAlerts.empty()) {
-        // Real camera alerts active
-        if (v1HasAlerts) {
-            // V1 has priority - cameras 1 & 2 show as cards (max 2 card slots)
-            for (int i = 0; i < 2; i++) {
-                if (i < (int)activeCameraAlerts.size()) {
-                    display.setCameraAlertState(i, true, 
-                        activeCameraAlerts[i].camera.getShortTypeName(),
-                        activeCameraAlerts[i].distance_m, 
-                        dispSettings.colorCameraAlert);
-                } else {
-                    display.setCameraAlertState(i, false, "", 0, 0);
-                }
-            }
-        } else {
-            // No V1 alerts - primary camera (index 0) in main area
-            // Secondary cameras (index 1, 2) show as cards
-            int cardIdx = 0;
-            for (int i = 1; i < (int)activeCameraAlerts.size() && cardIdx < 2; i++) {
-                display.setCameraAlertState(cardIdx, true,
-                    activeCameraAlerts[i].camera.getShortTypeName(),
-                    activeCameraAlerts[i].distance_m,
-                    dispSettings.colorCameraAlert);
-                cardIdx++;
-            }
-            // Clear unused card slots
-            for (; cardIdx < 2; cardIdx++) {
-                display.setCameraAlertState(cardIdx, false, "", 0, 0);
-            }
-        }
-    } else {
-        // No camera alerts - clear all card states
-        display.clearAllCameraAlerts();
     }
 }
 
@@ -678,194 +452,20 @@ static void processAutoPush() {
     }
 }
 
-// Start WiFi after BLE connects to avoid radio contention during connection
-void startWifi() {
-    if (wifiManager.isSetupModeActive()) return;
-    
-    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-        debugLogger.log(DebugLogCategory::Wifi, "startWifi() requested");
-    }
-
-    SerialLog.println("[WiFi] Starting WiFi (manual start)...");
-    wifiManager.begin();
-    
-    // Reduce WiFi TX power to minimize interference with BLE
-    // WIFI_POWER_11dBm is a good balance - enough for local AP, less BLE interference
-    WiFi.setTxPower(WIFI_POWER_11dBm);
-    SerialLog.println("[WiFi] TX power reduced to 11dBm for BLE coexistence");
-    
-    // Set up callbacks for web interface
-    wifiManager.setStatusCallback([]() {
-        return "\"v1_connected\":" + String(bleClient.isConnected() ? "true" : "false");
-    });
-    
-    wifiManager.setAlertCallback([]() {
-        JsonDocument doc;
-        if (parser.hasAlerts()) {
-            AlertData alert = parser.getPriorityAlert();
-            doc["active"] = true;
-            const char* bandStr = "None";
-            if (alert.band == BAND_KA) bandStr = "Ka";
-            else if (alert.band == BAND_K) bandStr = "K";
-            else if (alert.band == BAND_X) bandStr = "X";
-            else if (alert.band == BAND_LASER) bandStr = "LASER";
-            doc["band"] = bandStr;
-            doc["strength"] = alert.frontStrength;
-            doc["frequency"] = alert.frequency;
-            doc["direction"] = alert.direction;
-        } else {
-            doc["active"] = false;
-        }
-        String json;
-        serializeJson(doc, json);
-        return json;
-    });
-    
-    // Set up command callback for dark mode and mute
-    wifiManager.setCommandCallback([](const char* cmd, bool state) {
-        if (strcmp(cmd, "display") == 0) {
-            return bleClient.setDisplayOn(state);
-        } else if (strcmp(cmd, "mute") == 0) {
-            return bleClient.setMute(state);
-        }
-        return false;
-    });
-
-    // Provide filesystem access for web profile/device APIs
-    wifiManager.setFilesystemCallback([]() -> fs::FS* {
-        return storageManager.isReady() ? storageManager.getFilesystem() : nullptr;
-    });
-    
-    // Manual profile push trigger from /api/profile/push
-    wifiManager.setProfilePushCallback([]() {
-        const V1Settings& s = settingsManager.get();
-        startAutoPush(s.activeSlot);
-        return true;
-    });
-    
-    // GPS status callback for web API
-    wifiManager.setGpsStatusCallback([]() {
-        JsonDocument doc;
-        
-        doc["enabled"] = gpsHandler.isEnabled();
-        doc["moduleDetected"] = gpsHandler.isModuleDetected();
-        doc["detectionComplete"] = gpsHandler.isDetectionComplete();
-        doc["hasValidFix"] = gpsHandler.hasValidFix();
-        
-        if (gpsHandler.isEnabled() && gpsHandler.isModuleDetected()) {
-            GPSFix fix = gpsHandler.getFix();
-            doc["latitude"] = fix.latitude;
-            doc["longitude"] = fix.longitude;
-            doc["satellites"] = fix.satellites;
-            doc["hdop"] = fix.hdop;
-            doc["speed_mph"] = fix.speed_mps * 2.237f;
-            doc["heading"] = fix.heading_deg;
-            doc["fixValid"] = fix.valid;
-            doc["fixStale"] = gpsHandler.isFixStale();
-            doc["moving"] = gpsHandler.isMoving();
-            
-            // GPS time if available
-            if (fix.unixTime > 0) {
-                doc["gpsTime"] = fix.unixTime;
-                char timeStr[32];
-                snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d UTC", fix.hour, fix.minute, fix.seconds);
-                doc["gpsTimeStr"] = timeStr;
-            }
-        }
-        
-        String json;
-        serializeJson(doc, json);
-        return json;
-    });
-    
-    // GPS reset callback for web API
-    wifiManager.setGpsResetCallback([]() {
-        gpsHandler.reset();
-    });
-    
-    // Camera status callback for web API
-    wifiManager.setCameraStatusCallback([]() {
-        JsonDocument doc;
-        
-        doc["loaded"] = cameraManager.isLoaded();
-        doc["count"] = cameraManager.getCameraCount();
-        
-        if (cameraManager.isLoaded()) {
-            doc["name"] = cameraManager.getDatabaseName();
-            doc["date"] = cameraManager.getDatabaseDate();
-            doc["redLightCount"] = cameraManager.getRedLightCount();
-            doc["speedCount"] = cameraManager.getSpeedCameraCount();
-            doc["alprCount"] = cameraManager.getALPRCount();
-            
-            // Regional cache info
-            if (cameraManager.hasRegionalCache()) {
-                JsonObject cache = doc["cache"].to<JsonObject>();
-                float cacheLat, cacheLon;
-                cameraManager.getCacheCenter(cacheLat, cacheLon);
-                cache["count"] = cameraManager.getRegionalCacheCount();
-                cache["centerLat"] = cacheLat;
-                cache["centerLon"] = cacheLon;
-                cache["radiusMiles"] = cameraManager.getCacheRadius();
-            }
-        }
-        
-        String json;
-        serializeJson(doc, json);
-        return json;
-    });
-    
-    // Camera reload callback for web API
-    wifiManager.setCameraReloadCallback([]() {
-        if (!storageManager.isReady() || !storageManager.isSDCard()) {
-            return false;
-        }
-        fs::FS* fs = storageManager.getFilesystem();
-        if (!fs) return false;
-        
-        return cameraManager.begin(fs);
-    });
-    
-    // Camera test callback for web API - triggers display + voice
-    wifiManager.setCameraTestCallback([](int type) {
-        // type: 0=red light, 1=speed, 2=ALPR, 3=red light+speed
-        
-        // Get camera type name for display
-        const char* typeName = "CAM";
-        CameraAlertType voiceType = CameraAlertType::SPEED;
-        switch (type) {
-            case 0:
-                typeName = "REDLIGHT";
-                voiceType = CameraAlertType::RED_LIGHT;
-                break;
-            case 1:
-                typeName = "SPEED";
-                voiceType = CameraAlertType::SPEED;
-                break;
-            case 2:
-                typeName = "ALPR";
-                voiceType = CameraAlertType::ALPR;
-                break;
-            case 3:
-                typeName = "RLS";
-                voiceType = CameraAlertType::RED_LIGHT_SPEED;
-                break;
-        }
-        
-        // Set up test alert mode - cycles through 1→2→3 cameras over 9 seconds
-        cameraTestActive = true;
-        cameraTestEndMs = millis() + 9000;  // 3 phases × 3 seconds each
-        cameraTestPhase = 0;
-        cameraTestPhaseStartMs = millis();
-        strncpy(cameraTestTypeName, typeName, sizeof(cameraTestTypeName) - 1);
-        cameraTestDistance = 500.0f;
-        
-        // Play voice alert
-        play_camera_voice(voiceType);
-        
-        Serial.printf("[Camera] Test alert: %s - cycling 1→2→3 cameras over 9s\n", typeName);
-    });
-    
-    SerialLog.println("[WiFi] Initialized");
+// WiFi orchestration helper encapsulates WiFi start + callback wiring
+static WifiOrchestrator& getWifiOrchestrator() {
+    static WifiOrchestrator orchestrator(
+        wifiManager,
+        debugLogger,
+        bleClient,
+        parser,
+        settingsManager,
+        storageManager,
+        gpsHandler,
+        cameraManager,
+        cameraAlertModule,
+        [](int slotIndex) { startAutoPush(slotIndex); });
+    return orchestrator;
 }
 
 // Callback when V1 connection is fully established
@@ -1016,7 +616,7 @@ void processBLEData() {
     processReplayData();
 #else
     // Normal BLE mode
-    if (colorPreviewActive) {
+    if (displayPreviewModule.isRunning()) {
         return;  // Hold preview on-screen; skip live data
     }
     BLEDataPacket pkt;
@@ -1158,7 +758,7 @@ void processBLEData() {
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
         
         if (parseOk) {
-            if (isColorPreviewActive()) {
+            if (displayPreviewModule.isRunning()) {
                 continue;  // Keep preview on-screen briefly
             }
             DisplayState state = parser.getDisplayState();
@@ -1225,7 +825,7 @@ void processBLEData() {
                     // Check if priority alert is in a lockout zone
                     if (priority.isValid && priority.band != BAND_NONE) {
                         priorityInLockout = lockouts.shouldMuteAlert(fix.latitude, fix.longitude, priority.band);
-                        uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, (uint16_t)priority.frequency);
+                        uint32_t currentAlertId = VoiceModule::makeAlertId(priority.band, (uint16_t)priority.frequency);
                         
                         // Auto-mute V1 if in lockout zone and not already muted
                         if (priorityInLockout && !state.muted) {
@@ -1246,7 +846,7 @@ void processBLEData() {
                         
                         // Record alert for auto-learning (even if locked out)
                         bool isMoving = gpsHandler.isMoving();
-                        uint8_t strength = V1AlertModule::getAlertBars(priority);
+                        uint8_t strength = VoiceModule::getAlertBars(priority);
                         float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
                                                   (uint32_t)priority.frequency, strength, 0, isMoving, heading);
@@ -1259,368 +859,98 @@ void processBLEData() {
                         // Skip priority (already recorded above)
                         if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
                         
-                        uint8_t strength = V1AlertModule::getAlertBars(alert);
+                        uint8_t strength = VoiceModule::getAlertBars(alert);
                         float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
                                                   (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving(), heading);
                     }
                 }
 
-                // Volume Fade: reduce V1 volume after X seconds of continuous unmuted alert
-                // Only applies when not muted - muted alerts should not trigger volume changes
-                if (alertSettings.alertVolumeFadeEnabled && !state.muted && !priorityInLockout) {
-                    unsigned long now = millis();
-                    uint16_t currentFreq = (uint16_t)priority.frequency;
-                    
-                    // Check if this is a new frequency we haven't seen during this fade session
-                    bool isNewFrequency = true;
-                    for (int i = 0; i < volumeFadeSeenCount; i++) {
-                        if (volumeFadeSeenFreqs[i] == currentFreq) {
-                            isNewFrequency = false;
-                            break;
-                        }
+                // Volume Fade: delegate to module
+                VolumeFadeContext fadeCtx;
+                fadeCtx.hasAlert = true;
+                fadeCtx.alertMuted = state.muted;
+                fadeCtx.alertInLockout = priorityInLockout;
+                fadeCtx.currentVolume = state.mainVolume;
+                fadeCtx.currentMuteVolume = state.muteVolume;
+                fadeCtx.currentFrequency = (uint16_t)priority.frequency;
+                fadeCtx.speedBoostActive = speedVolumeModule.isBoostActive();
+                fadeCtx.speedBoostOriginalVolume = speedVolumeModule.getOriginalVolume();
+                fadeCtx.now = now;
+                
+                VolumeFadeAction fadeAction = volumeFadeModule.process(fadeCtx);
+                if (fadeAction.hasAction()) {
+                    if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
+                        bleClient.setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
+                    } else if (fadeAction.type == VolumeFadeAction::Type::RESTORE) {
+                        bleClient.setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
                     }
-                    
-                    // New frequency while faded -> restore volume, restart fade timer
-                    if (volumeFadeActive && isNewFrequency) {
-                        DEBUG_LOGF("[VolumeFade] New frequency %d! Restoring volume to %d\n", currentFreq, volumeFadeOriginalVol);
-                        if (volumeFadeOriginalVol != 0xFF) {
-                            bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
-                        }
-                        // Restart fade timer but keep the same original volume baseline
-                        volumeFadeAlertStartMs = now;
-                        volumeFadeActive = false;
-                        volumeFadeCommandSent = false;
-                        // Add this new frequency to our seen list
-                        if (volumeFadeSeenCount < MAX_FADE_SEEN_FREQS) {
-                            volumeFadeSeenFreqs[volumeFadeSeenCount++] = currentFreq;
-                        }
-                    }
-                    
-                    // Start tracking on first alert of a session
-                    if (volumeFadeAlertStartMs == 0) {
-                        volumeFadeAlertStartMs = now;
-                        // Capture the "true" original volume - if speed boost is active,
-                        // use the pre-boost volume instead of current (boosted) volume
-                        if (speedVolumeBoostActive && speedVolumeOriginalVol != 0xFF) {
-                            volumeFadeOriginalVol = speedVolumeOriginalVol;
-                            DEBUG_LOGF("[VolumeFade] Alert started, using pre-speed-boost volume: %d\n", volumeFadeOriginalVol);
-                        } else {
-                            volumeFadeOriginalVol = state.mainVolume;  // Capture current volume
-                            DEBUG_LOGF("[VolumeFade] Alert started, original volume: %d\n", volumeFadeOriginalVol);
-                        }
-                        volumeFadeOriginalMuteVol = state.muteVolume;  // Capture muted volume too
-                        volumeFadeActive = false;
-                        volumeFadeCommandSent = false;
-                        // Track this frequency as the first one in this session
-                        volumeFadeSeenFreqs[0] = currentFreq;
-                        volumeFadeSeenCount = 1;
-                    }
-                    
-                    // Check if fade delay has elapsed
-                    unsigned long fadeDelayMs = alertSettings.alertVolumeFadeDelaySec * 1000UL;
-                    if (!volumeFadeCommandSent && (now - volumeFadeAlertStartMs) >= fadeDelayMs) {
-                        // Time to fade - send reduced volume to V1
-                        uint8_t fadeVol = alertSettings.alertVolumeFadeVolume;
-                        // Don't fade if already at or below target volume
-                        if (state.mainVolume > fadeVol) {
-                            DEBUG_LOGF("[VolumeFade] Fading volume from %d to %d after %lums\n", 
-                                       state.mainVolume, fadeVol, now - volumeFadeAlertStartMs);
-                            if (bleClient.setVolume(fadeVol, volumeFadeOriginalMuteVol)) {
-                                volumeFadeActive = true;
-                            }
-                        }
-                        volumeFadeCommandSent = true;  // Don't retry even if failed
-                    }
-                } else if (alertSettings.alertVolumeFadeEnabled && (state.muted || priorityInLockout)) {
-                    // Alert was muted or entered lockout - restore volume if we faded
-                    if (volumeFadeActive && volumeFadeOriginalVol != 0xFF) {
-                        DEBUG_LOGF("[VolumeFade] Alert muted/lockout - restoring volume to %d\n", volumeFadeOriginalVol);
-                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
-                    }
-                    // Reset tracking - will re-arm if alert unmutes
-                    volumeFadeAlertStartMs = 0;
-                    volumeFadeOriginalVol = 0xFF;
-                    volumeFadeOriginalMuteVol = 0;
-                    volumeFadeActive = false;
-                    volumeFadeCommandSent = false;
-                    volumeFadeSeenCount = 0;
                 }
 
-                // Voice alerts: announce new priority alert when no phone app connected
-                // Skip if alert is muted on V1 - user has already acknowledged/dismissed it
-                // Skip if alert is in a GPS lockout zone
-                // Skip if at low speed (parking lot mode)
-                bool muteForVolZero = alertSettings.muteVoiceIfVolZero && state.mainVolume == 0;
-                bool muteForLowSpeed = v1AlertModule.isLowSpeedMuted(millis());
-                if (alertSettings.voiceAlertMode != VOICE_MODE_DISABLED && 
-                    !muteForVolZero &&
-                    !muteForLowSpeed &&
-                    !state.muted &&  // Don't announce muted alerts
-                    !priorityInLockout &&  // Don't announce lockout zone alerts
-                    !bleClient.isProxyClientConnected() &&
-                    priority.isValid &&
-                    priority.band != BAND_NONE) {
-                    
-                    unsigned long now = millis();
-                    uint16_t currentFreq = (uint16_t)priority.frequency;
-                    // Check if this is a different alert (band OR frequency changed)
-                    // This handles Laser correctly - even though freq=0, band change triggers new announcement
-                    bool alertChanged = v1AlertModule.hasAlertChanged(priority.band, currentFreq);
-                    bool directionChanged = v1AlertModule.hasDirectionChanged(priority.direction);
-                    bool cooldownPassed = v1AlertModule.hasCooldownPassed(now);
-                    
-                    // Track priority stability for secondary alerts (use band+freq combo)
-                    uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, currentFreq);
-                    v1AlertModule.updatePriorityStability(currentAlertId, now);
-                    
-                    // Convert V1 direction to audio direction
-                    // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
-                    AlertDirection audioDir;
-                    if (priority.direction & DIR_FRONT) {
-                        audioDir = AlertDirection::AHEAD;
-                    } else if (priority.direction & DIR_REAR) {
-                        audioDir = AlertDirection::BEHIND;
-                    } else {
-                        audioDir = AlertDirection::SIDE;
-                    }
-                    
-                    // Track bogey count changes
-                    bool bogeyCountChanged = v1AlertModule.hasBogeyCountChanged((uint8_t)alertCount);
-                    bool bogeyCountCooldownPassed = v1AlertModule.hasBogeyCountCooldownPassed(now);
-                    
-                    // PRIORITY ALERT ANNOUNCEMENTS
-                    // Logic:
-                    // - New alert (band or freq changed): full announcement based on voice mode setting
-                    // - Same alert but direction changed: direction + bogey count if changed
-                    // - Same alert, same direction, but bogey count changed: direction + new count (shorter cooldown)
-                    bool priorityAnnounced = false;
-                    if (alertChanged && cooldownPassed) {
-                        // New alert - full announcement based on mode
-                        // Reset direction change throttle for new alert
-                        v1AlertModule.resetDirectionThrottle(now);
-                        
-                        AlertBand audioBand;
-                        bool validBand = true;
-                        switch (priority.band) {
-                            case BAND_LASER: audioBand = AlertBand::LASER; break;
-                            case BAND_KA:    audioBand = AlertBand::KA;    break;
-                            case BAND_K:     audioBand = AlertBand::K;     break;
-                            case BAND_X:     audioBand = AlertBand::X;     break;
-                            default:         validBand = false;            break;
-                        }
-                        
-                        if (validBand) {
-                            DEBUG_LOGF("[VoiceAlert] New priority: band=%d freq=%u dir=%d mode=%d dirEnabled=%d alerts=%d\n", 
-                                       (int)audioBand, currentFreq, (int)audioDir,
-                                       (int)alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, alertCount);
-                            play_frequency_voice(audioBand, currentFreq, audioDir,
+                // =========================================================================
+                // Voice Alert Processing (via VoiceModule)
+                // =========================================================================
+                // Build context for voice decision-making
+                VoiceContext voiceCtx;
+                voiceCtx.alerts = currentAlerts.data();
+                voiceCtx.alertCount = alertCount;
+                voiceCtx.priority = priority.isValid ? &priority : nullptr;
+                voiceCtx.isMuted = state.muted;
+                voiceCtx.isProxyConnected = bleClient.isProxyClientConnected();
+                voiceCtx.mainVolume = state.mainVolume;
+                voiceCtx.isInLockout = priorityInLockout;
+                voiceCtx.now = millis();
+                
+                // Get decision from voice module
+                VoiceAction voiceAction = voiceModule.process(voiceCtx);
+                
+                // Execute voice action from module
+                bool priorityAnnounced = false;
+                if (voiceAction.hasAction()) {
+                    switch (voiceAction.type) {
+                        case VoiceAction::Type::ANNOUNCE_PRIORITY:
+                            play_frequency_voice(voiceAction.band, voiceAction.freq, voiceAction.dir,
                                                  alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled,
-                                                 alertSettings.announceBogeyCount ? (uint8_t)alertCount : 1);
-                            v1AlertModule.updateLastAnnounced(priority.band, priority.direction, currentFreq, (uint8_t)alertCount, now);
-                            v1AlertModule.markPriorityAnnounced(now);
-                            v1AlertModule.markAlertAnnounced(priority.band, currentFreq);
+                                                 voiceAction.bogeyCount);
                             priorityAnnounced = true;
-                        }
-                    } else if (!alertChanged && directionChanged && cooldownPassed && 
-                               alertSettings.voiceDirectionEnabled) {
-                        // Same alert changed direction - announce direction + bogey count if changed
-                        // But throttle if direction has been bouncing too much
-                        
-                        // Check throttle and update counter (handles window expiry internally)
-                        bool throttled = v1AlertModule.shouldThrottleDirectionChange(now);
-                        
-                        if (!throttled) {
-                            uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
-                            DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/3]\n", 
-                                       currentFreq, (int)audioDir, alertCount, v1AlertModule.getLastBogeyCount(),
-                                       v1AlertModule.getDirectionChangeCount());
-                            play_direction_only(audioDir, bogeyCountToAnnounce);
-                            v1AlertModule.updateLastAnnouncedTime(now);
-                            v1AlertModule.markPriorityAnnounced(now);
+                            break;
+                            
+                        case VoiceAction::Type::ANNOUNCE_DIRECTION:
+                            play_direction_only(voiceAction.dir, voiceAction.bogeyCount);
                             priorityAnnounced = true;
-                        } else {
-                            DEBUG_LOGF("[VoiceAlert] Direction change THROTTLED: freq=%u changes=%d in window\n",
-                                       currentFreq, v1AlertModule.getDirectionChangeCount());
-                        }
-                        // Always update tracking even if throttled
-                        v1AlertModule.updateLastAnnouncedDirection(priority.direction, (uint8_t)alertCount);
-                    } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
-                               bogeyCountCooldownPassed && alertSettings.announceBogeyCount) {
-                        // Same alert, same direction, but bogey count changed - announce direction + new count
-                        // Uses shorter cooldown (2s) to be more responsive to count changes
-                        DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
-                                   currentFreq, (int)audioDir, alertCount, v1AlertModule.getLastBogeyCount());
-                        play_direction_only(audioDir, (uint8_t)alertCount);
-                        v1AlertModule.updateLastAnnouncedDirection(priority.direction, (uint8_t)alertCount);
-                        v1AlertModule.updateLastAnnouncedTime(now);
-                        v1AlertModule.markPriorityAnnounced(now);
-                        priorityAnnounced = true;
-                    }
-                    
-                    // SECONDARY ALERT ANNOUNCEMENTS
-                    // Only if: master toggle enabled, priority stable, gap after priority announcement
-                    // Secondary alerts are announced once when they appear - no direction/bogey updates
-                    if (!priorityAnnounced && 
-                        alertSettings.announceSecondaryAlerts &&
-                        alertCount > 1 &&
-                        v1AlertModule.canAnnounceSecondary(now)) {
-                        
-                        // Check non-priority alerts for unannounced frequencies
-                        for (int i = 0; i < alertCount; i++) {
-                            const AlertData& alert = currentAlerts[i];
-                            if (!alert.isValid || alert.band == BAND_NONE) continue;
+                            break;
                             
-                            uint16_t alertFreq = (uint16_t)alert.frequency;
+                        case VoiceAction::Type::ANNOUNCE_SECONDARY:
+                            play_frequency_voice(voiceAction.band, voiceAction.freq, voiceAction.dir,
+                                                 alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
+                            break;
                             
-                            // Skip priority alert (compare band+freq combo, not just freq)
-                            if (alert.band == priority.band && alertFreq == currentFreq) continue;
+                        case VoiceAction::Type::ANNOUNCE_ESCALATION:
+                            play_threat_escalation(voiceAction.band, voiceAction.freq, voiceAction.dir,
+                                                   voiceAction.bogeyCount, voiceAction.aheadCount,
+                                                   voiceAction.behindCount, voiceAction.sideCount);
+                            break;
                             
-                            // Skip if already announced
-                            if (v1AlertModule.isAlertAnnounced(alert.band, alertFreq)) continue;
-                            
-                            // Check band filter
-                            if (!V1AlertModule::isBandEnabledForSecondary(alert.band, alertSettings)) continue;
-                            
-                            // Announce this secondary alert
-                            AlertBand audioBand;
-                            bool validBand = true;
-                            switch (alert.band) {
-                                case BAND_LASER: audioBand = AlertBand::LASER; break;
-                                case BAND_KA:    audioBand = AlertBand::KA;    break;
-                                case BAND_K:     audioBand = AlertBand::K;     break;
-                                case BAND_X:     audioBand = AlertBand::X;     break;
-                                default:         validBand = false;            break;
-                            }
-                            
-                            if (validBand) {
-                                AlertDirection secDir;
-                                if (alert.direction & DIR_FRONT) {
-                                    secDir = AlertDirection::AHEAD;
-                                } else if (alert.direction & DIR_REAR) {
-                                    secDir = AlertDirection::BEHIND;
-                                } else {
-                                    secDir = AlertDirection::SIDE;
-                                }
-                                
-                                DEBUG_LOGF("[VoiceAlert] Secondary: band=%d freq=%u dir=%d\n", 
-                                           (int)audioBand, alertFreq, (int)secDir);
-                                // Secondary alerts: same voice mode, but no bogey count (keep it brief)
-                                play_frequency_voice(audioBand, alertFreq, secDir,
-                                                     alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
-                                v1AlertModule.markAlertAnnounced(alert.band, alertFreq);
-                                v1AlertModule.updateLastAnnouncedTime(now);  // Use same cooldown
-                                break;  // Only announce one secondary per cycle
-                            }
-                        }
-                    }
-                    
-                    // SMART THREAT ESCALATION: Track signal history and announce when weak signals ramp up
-                    // Update all secondary alert histories and check for escalation triggers
-                    if (alertSettings.announceSecondaryAlerts && alertCount > 1) {
-                        // First pass: update all alert histories with current signal strengths
-                        for (int i = 0; i < alertCount; i++) {
-                            const AlertData& alert = currentAlerts[i];
-                            if (!alert.isValid || alert.band == BAND_NONE) continue;
-                            if (alert.band == BAND_LASER) continue;  // Laser excluded from smart tracking
-                            
-                            uint16_t alertFreq = (uint16_t)alert.frequency;
-                            uint8_t bars = V1AlertModule::getAlertBars(alert);
-                            v1AlertModule.updateAlertHistory(alert.band, alertFreq, bars, now);
-                        }
-                        
-                        // Cleanup stale histories (alerts that disappeared)
-                        v1AlertModule.cleanupStaleHistories(now);
-                        
-                        // Second pass: check for any alert triggering smart escalation
-                        // Only announce if cooldown has passed
-                        if (v1AlertModule.hasBogeyCountCooldownPassed(now)) {
-                            for (int i = 0; i < alertCount; i++) {
-                                const AlertData& alert = currentAlerts[i];
-                                if (!alert.isValid || alert.band == BAND_NONE) continue;
-                                if (alert.band == BAND_LASER) continue;
-                                
-                                uint16_t alertFreq = (uint16_t)alert.frequency;
-                                
-                                // Skip priority alert
-                                if (alert.band == priority.band && alertFreq == currentFreq) continue;
-                                
-                                // Skip if muted
-                                if (state.muted) continue;
-                                
-                                // Skip if band not enabled for secondary
-                                if (!V1AlertModule::isBandEnabledForSecondary(alert.band, alertSettings)) continue;
-                                
-                                // Check smart escalation criteria (pass alertCount for bogey filter)
-                                if (v1AlertModule.shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {
-                                    // Mark as announced before building the message
-                                    v1AlertModule.markThreatEscalationAnnounced(alert.band, alertFreq);
-                                    
-                                    // Convert to audio types
-                                    AlertBand audioBand;
-                                    switch (alert.band) {
-                                        case BAND_KA: audioBand = AlertBand::KA; break;
-                                        case BAND_K:  audioBand = AlertBand::K; break;
-                                        case BAND_X:  audioBand = AlertBand::X; break;
-                                        default: continue;  // Skip unknown bands
-                                    }
-                                    
-                                    AlertDirection alertDir;
-                                    if (alert.direction & DIR_FRONT) {
-                                        alertDir = AlertDirection::AHEAD;
-                                    } else if (alert.direction & DIR_REAR) {
-                                        alertDir = AlertDirection::BEHIND;
-                                    } else {
-                                        alertDir = AlertDirection::SIDE;
-                                    }
-                                    
-                                    // Count all alerts by direction for breakdown
-                                    uint8_t aheadCount = 0, behindCount = 0, sideCount = 0;
-                                    for (int j = 0; j < alertCount; j++) {
-                                        const AlertData& a = currentAlerts[j];
-                                        if (!a.isValid || a.band == BAND_NONE) continue;
-                                        
-                                        if (a.direction & DIR_FRONT) {
-                                            aheadCount++;
-                                        } else if (a.direction & DIR_REAR) {
-                                            behindCount++;
-                                        } else {
-                                            sideCount++;
-                                        }
-                                    }
-                                    
-                                    uint8_t total = aheadCount + behindCount + sideCount;
-                                    DEBUG_LOGF("[VoiceAlert] Smart threat escalation: %s %u %s - %d bogeys (%d ahead, %d behind, %d side)\n",
-                                               alert.band == BAND_KA ? "Ka" : (alert.band == BAND_K ? "K" : "X"),
-                                               alertFreq, 
-                                               (alertDir == AlertDirection::AHEAD) ? "ahead" : 
-                                                   ((alertDir == AlertDirection::BEHIND) ? "behind" : "side"),
-                                               total, aheadCount, behindCount, sideCount);
-                                    
-                                    // Play full announcement: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
-                                    play_threat_escalation(audioBand, alertFreq, alertDir, 
-                                                          total, aheadCount, behindCount, sideCount);
-                                    v1AlertModule.updateLastAnnouncedTime(now);
-                                    break;  // Only one escalation announcement per cycle
-                                }
-                            }
-                        }
+                        case VoiceAction::Type::NONE:
+                        default:
+                            break;
                     }
                 }
+                // =========================================================================
 
                 // V1 is source of truth for mute state - no auto-unmute logic
                 // Display just shows what V1 reports
 
                 // Update display FIRST for lowest latency
                 // Update camera card state BEFORE display.update() so secondary cards can show camera
-                updateCameraCardState(true);  // V1 has alerts, so camera shows as card
+                cameraAlertModule.updateCardStateForV1(true);  // V1 has alerts, so camera shows as card
                 // Pass all alerts for multi-alert card display
                 V1_PERF_START();
                 display.update(priority, currentAlerts.data(), alertCount, state);
                 V1_DISPLAY_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
-                v1AlertModule.setPersistedAlert(priority);
+                alertPersistenceModule.setPersistedAlert(priority);
                 
             } else {
                 // No alerts from V1
@@ -1640,34 +970,29 @@ void processBLEData() {
                 }
                 
                 // Reset all alert tracking when alerts clear
-                v1AlertModule.clearAllAlertState();
+                voiceModule.clearAllState();
+                alertPersistenceModule.clearAllAlertState();
                 
-                // Volume Fade: restore original volume when alerts clear
-                // Restore if we either:
-                // 1. Actually faded (volumeFadeActive), OR
-                // 2. Had captured an original but fade was pending (volumeFadeAlertStartMs != 0)
-                //    This handles cases where alert cleared before fade delay elapsed
-                if (alertSettings.alertVolumeFadeEnabled && volumeFadeOriginalVol != 0xFF) {
-                    // Only send restore command if volume actually changed
-                    DisplayState restoreState = parser.getDisplayState();
-                    if (restoreState.mainVolume != volumeFadeOriginalVol) {
-                        DEBUG_LOGF("[VolumeFade] Alerts cleared - restoring volume from %d to %d\n", 
-                                   restoreState.mainVolume, volumeFadeOriginalVol);
-                        bleClient.setVolume(volumeFadeOriginalVol, volumeFadeOriginalMuteVol);
-                    }
+                // Volume Fade: handle restore via module when alerts clear
+                DisplayState restoreState = parser.getDisplayState();
+                VolumeFadeContext fadeCtx;
+                fadeCtx.hasAlert = false;
+                fadeCtx.alertMuted = false;
+                fadeCtx.alertInLockout = false;
+                fadeCtx.currentVolume = restoreState.mainVolume;
+                fadeCtx.currentMuteVolume = restoreState.muteVolume;
+                fadeCtx.currentFrequency = 0;
+                fadeCtx.speedBoostActive = speedVolumeModule.isBoostActive();
+                fadeCtx.speedBoostOriginalVolume = speedVolumeModule.getOriginalVolume();
+                fadeCtx.now = now;
+                
+                VolumeFadeAction fadeAction = volumeFadeModule.process(fadeCtx);
+                if (fadeAction.hasAction() && fadeAction.type == VolumeFadeAction::Type::RESTORE) {
+                    bleClient.setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
                 }
-                // Reset fade tracking regardless of whether fade was active
-                volumeFadeAlertStartMs = 0;
-                volumeFadeOriginalVol = 0xFF;
-                volumeFadeOriginalMuteVol = 0;
-                volumeFadeActive = false;
-                volumeFadeCommandSent = false;
-                volumeFadeSeenCount = 0;  // Clear seen frequencies for next session
                 
                 // Reset speed boost state - let it re-evaluate on next check
-                // This ensures speed boost re-engages properly after fade restores volume
-                speedVolumeBoostActive = false;
-                speedVolumeOriginalVol = 0xFF;
+                speedVolumeModule.reset();
                 
                 // Alert persistence: show last alert in grey for configured duration
                 const V1Settings& s = settingsManager.get();
@@ -1678,31 +1003,31 @@ void processBLEData() {
                 static int lastPersistenceSlot = -1;
                 if (s.activeSlot != lastPersistenceSlot) {
                     lastPersistenceSlot = s.activeSlot;
-                    v1AlertModule.clearPersistence();
+                    alertPersistenceModule.clearPersistence();
                 }
                 
-                if (persistSec > 0 && v1AlertModule.getPersistedAlert().isValid) {
+                if (persistSec > 0 && alertPersistenceModule.getPersistedAlert().isValid) {
                     // Start persistence timer on transition from alerts to no-alerts
-                    v1AlertModule.startPersistence(now);
+                    alertPersistenceModule.startPersistence(now);
                     
                     // Check if persistence timer still active
                     unsigned long persistMs = persistSec * 1000UL;
-                    if (v1AlertModule.shouldShowPersisted(now, persistMs)) {
+                    if (alertPersistenceModule.shouldShowPersisted(now, persistMs)) {
                         // Show persisted alert in dark grey
                         V1_PERF_START();
-                        display.updatePersisted(v1AlertModule.getPersistedAlert(), state);
+                        display.updatePersisted(alertPersistenceModule.getPersistedAlert(), state);
                         V1_DISPLAY_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
-                        updateCameraCardState(false);  // No V1 alerts, camera shows in main area
+                        cameraAlertModule.updateCardStateForV1(false);  // No V1 alerts, camera shows in main area
                         V1_PERF_START();
                         display.update(state);
                         V1_DISPLAY_END("display.resting");
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
-                    v1AlertModule.clearPersistence();
-                    updateCameraCardState(false);  // No V1 alerts, camera shows in main area
+                    alertPersistenceModule.clearPersistence();
+                    cameraAlertModule.updateCardStateForV1(false);  // No V1 alerts, camera shows in main area
                     V1_PERF_START();
                     display.update(state);
                     V1_DISPLAY_END("display.resting");
@@ -1794,6 +1119,12 @@ void setup() {
     
     // Show the current profile indicator
     display.drawProfileIndicator(settingsManager.get().activeSlot);
+
+    // Initialize display preview driver
+    displayPreviewModule.begin(&display);
+
+    // Initialize camera alert module (display + detection helpers)
+    cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
     
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
     
@@ -1933,7 +1264,16 @@ void setup() {
 #endif
     
     // Initialize V1 Alert Module (Phase 1 refactoring)
-    v1AlertModule.begin(&bleClient, &parser, &display, &settingsManager, &obdHandler, &gpsHandler);
+    alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager, &obdHandler, &gpsHandler);
+    
+    // Initialize Voice Module
+    voiceModule.begin(&settingsManager, &bleClient, &obdHandler, &gpsHandler);
+    
+    // Initialize Speed Volume Module
+    speedVolumeModule.begin(&settingsManager);
+    
+    // Initialize Volume Fade Module
+    volumeFadeModule.begin(&settingsManager);
     
     // Auto-start WiFi if enabled in dev settings
     if (settingsManager.get().enableWifiAtBoot) {
@@ -1941,7 +1281,7 @@ void setup() {
         if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
             debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start: starting AP");
         }
-        startWifi();
+        getWifiOrchestrator().startWifi();
         SerialLog.println("Setup complete - BLE scanning, WiFi auto-started");
         if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
             debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi auto-started)");
@@ -1956,7 +1296,7 @@ void setup() {
 
 void loop() {
     // Update V1 Alert Module (Phase 1 refactoring - stub for now)
-    v1AlertModule.update();
+    alertPersistenceModule.update();
     
     // Periodic perf metrics logging (every 60s if enabled)
     static unsigned long lastPerfLogMs = 0;
@@ -1981,34 +1321,36 @@ void loop() {
     audio_process_amp_timeout();
 
     // Drive color preview (band cycle) first; skip other updates if active
-    if (colorPreviewActive) {
-        driveColorPreview();
-    } else if (colorPreviewEnded || cameraTestEnded) {
-        // Preview/test finished - restore normal display with fresh V1 data
-        bool wasColorPreview = colorPreviewEnded;
-        bool wasCameraTest = cameraTestEnded;
-        colorPreviewEnded = false;
-        cameraTestEnded = false;
-        // Force full redraw and immediately update with current parser state
-        display.forceNextRedraw();
-        if (bleClient.isConnected()) {
-            // Immediately refresh with current V1 state (don't wait for next packet)
-            DisplayState state = parser.getDisplayState();
-            if (parser.hasAlerts()) {
-                AlertData priority = parser.getPriorityAlert();
-                const auto& alerts = parser.getAllAlerts();
-                updateCameraCardState(true);  // V1 has alerts
-                display.update(priority, alerts.data(), parser.getAlertCount(), state);
+    if (displayPreviewModule.isRunning()) {
+        displayPreviewModule.update();
+    } else {
+        bool previewEnded = displayPreviewModule.consumeEnded();
+        bool cameraTestEnded = cameraAlertModule.consumeTestEnded();
+        if (previewEnded || cameraTestEnded) {
+            // Preview/test finished - restore normal display with fresh V1 data
+            bool wasColorPreview = previewEnded;
+            bool wasCameraTest = cameraTestEnded;
+            // Force full redraw and immediately update with current parser state
+            display.forceNextRedraw();
+            if (bleClient.isConnected()) {
+                // Immediately refresh with current V1 state (don't wait for next packet)
+                DisplayState state = parser.getDisplayState();
+                if (parser.hasAlerts()) {
+                    AlertData priority = parser.getPriorityAlert();
+                    const auto& alerts = parser.getAllAlerts();
+                    cameraAlertModule.updateCardStateForV1(true);  // V1 has alerts
+                    display.update(priority, alerts.data(), parser.getAlertCount(), state);
+                } else {
+                    cameraAlertModule.updateCardStateForV1(false);  // No V1 alerts
+                    display.update(state);
+                }
             } else {
-                updateCameraCardState(false);  // No V1 alerts
-                display.update(state);
+                // V1 not connected - show scanning screen (not resting!)
+                display.showScanning();
             }
-        } else {
-            // V1 not connected - show scanning screen (not resting!)
-            display.showScanning();
+            if (wasColorPreview) Serial.println("[Display] Color preview ended - restored display");
+            if (wasCameraTest) Serial.println("[Display] Camera test ended - restored display");
         }
-        if (wasColorPreview) Serial.println("[Display] Color preview ended - restored display");
-        if (wasCameraTest) Serial.println("[Display] Camera test ended - restored display");
     }
 
     // Process battery manager (updates cached readings at 1Hz, handles power button)
@@ -2056,7 +1398,7 @@ void loop() {
                 wifiManager.stopSetupMode(true);
                 SerialLog.println("[WiFi] AP stopped (button long press)");
             } else {
-                startWifi();
+                getWifiOrchestrator().startWifi();
                 SerialLog.println("[WiFi] AP started (button long press)");
             }
             display.drawWiFiIndicator();
@@ -2083,10 +1425,10 @@ void loop() {
                     if (parser.hasAlerts()) {
                         AlertData priority = parser.getPriorityAlert();
                         const auto& alerts = parser.getAllAlerts();
-                        updateCameraCardState(true);  // V1 has alerts
+                        cameraAlertModule.updateCardStateForV1(true);  // V1 has alerts
                         display.update(priority, alerts.data(), parser.getAlertCount(), state);
                     } else {
-                        updateCameraCardState(false);  // No V1 alerts
+                        cameraAlertModule.updateCardStateForV1(false);  // No V1 alerts
                         display.update(state);
                     }
                 } else {
@@ -2222,7 +1564,7 @@ void loop() {
                     displayMode = DisplayMode::IDLE;
                     
                     // Clear persisted alert state on profile change
-                    v1AlertModule.clearPersistence();
+                    alertPersistenceModule.clearPersistence();
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
@@ -2277,188 +1619,8 @@ void loop() {
         }
     }
     
-    // Camera alert checking (requires GPS with valid fix)
-    const V1Settings& camSettings = settingsManager.get();
-    if (camSettings.cameraAlertsEnabled && cameraManager.isLoaded() && gpsHandler.isEnabled()) {
-        unsigned long now = millis();
-        
-        // Regional cache refresh check - only when GPS has valid fix AND background load is complete
-        // Skip cache rebuild while background loading is in progress
-        if (now - lastCacheCheckMs >= CACHE_CHECK_INTERVAL_MS && gpsHandler.isReadyForNavigation() && !cameraManager.isBackgroundLoading()) {
-            lastCacheCheckMs = now;
-            
-            GPSFix cacheFix = gpsHandler.getFix();
-            bool needsRefresh = cameraManager.needsCacheRefresh(cacheFix.latitude, cacheFix.longitude, CACHE_REFRESH_DIST_MILES);
-            
-            // Also refresh if cache is older than 30 minutes
-            if (!needsRefresh && cameraManager.hasRegionalCache()) {
-                // Force refresh every 30 minutes while driving
-                static unsigned long lastCacheRefreshMs = 0;
-                if (lastCacheRefreshMs == 0) lastCacheRefreshMs = now;
-                if (now - lastCacheRefreshMs >= CACHE_REFRESH_INTERVAL_MS) {
-                    needsRefresh = true;
-                    lastCacheRefreshMs = now;
-                }
-            }
-            
-            if (needsRefresh) {
-                Serial.printf("[Camera] Building regional cache at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
-                if (cameraManager.buildRegionalCache(cacheFix.latitude, cacheFix.longitude, CACHE_RADIUS_MILES)) {
-                    // Save to LittleFS for fast boot next time
-                    cameraManager.saveRegionalCache(&LittleFS, "/cameras_cache.json");
-                }
-            }
-        }
-        
-        if (now - lastCameraCheckMs >= CAMERA_CHECK_INTERVAL_MS) {
-            lastCameraCheckMs = now;
-            
-            // Clean up old "passed camera" entries
-            recentlyPassedCameras.erase(
-                std::remove_if(recentlyPassedCameras.begin(), recentlyPassedCameras.end(),
-                    [now](const PassedCameraTracker& p) { 
-                        return (now - p.passedTimeMs) > PASSED_CAMERA_MEMORY_MS; 
-                    }),
-                recentlyPassedCameras.end()
-            );
-            
-            // Only check when we have a valid GPS fix
-            if (gpsHandler.isReadyForNavigation()) {
-                GPSFix fix = gpsHandler.getFix();
-                float lat = fix.latitude;
-                float lon = fix.longitude;
-                float heading = fix.heading_deg;
-                float alertRadius = static_cast<float>(camSettings.cameraAlertDistanceM);
-                
-                // Update camera type filters from settings
-                cameraManager.setEnabledTypes(
-                    camSettings.cameraAlertRedLight,
-                    camSettings.cameraAlertSpeed,
-                    camSettings.cameraAlertALPR
-                );
-                
-                // Find all nearby cameras (sorted by distance, approaching first)
-                std::vector<NearbyCameraResult> nearbyCameras = cameraManager.findNearby(
-                    lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2);  // Get a few extra for filtering
-                
-                // Filter: only keep approaching cameras, exclude recently passed
-                std::vector<NearbyCameraResult> approachingCameras;
-                for (const auto& cam : nearbyCameras) {
-                    if (!cam.isApproaching) continue;
-                    
-                    // Check if this camera was recently passed (don't re-alert)
-                    bool recentlyPassed = false;
-                    for (const auto& passed : recentlyPassedCameras) {
-                        float dist = CameraManager::haversineDistance(
-                            cam.camera.latitude, cam.camera.longitude,
-                            passed.lat, passed.lon);
-                        if (dist < CAMERA_ALERT_COOLDOWN_M) {
-                            recentlyPassed = true;
-                            break;
-                        }
-                    }
-                    if (recentlyPassed) continue;
-                    
-                    approachingCameras.push_back(cam);
-                    if ((int)approachingCameras.size() >= MAX_ACTIVE_CAMERAS) break;
-                }
-                
-                // Check for cameras that were active but are no longer approaching (passed)
-                for (const auto& oldCam : activeCameraAlerts) {
-                    bool stillApproaching = false;
-                    for (const auto& newCam : approachingCameras) {
-                        // Match by position (within 50m)
-                        float dist = CameraManager::haversineDistance(
-                            oldCam.camera.latitude, oldCam.camera.longitude,
-                            newCam.camera.latitude, newCam.camera.longitude);
-                        if (dist < 50.0f) {
-                            stillApproaching = true;
-                            break;
-                        }
-                    }
-                    
-                    // Also check if we're moving away from the camera (distance increasing)
-                    if (!stillApproaching) {
-                        float currentDist = CameraManager::haversineDistance(
-                            lat, lon, oldCam.camera.latitude, oldCam.camera.longitude);
-                        // If distance increased by more than 100m, we've definitely passed it
-                        if (currentDist > oldCam.distance_m + 100.0f) {
-                            // Camera was passed - add to recently passed list
-                            PassedCameraTracker passed;
-                            passed.lat = oldCam.camera.latitude;
-                            passed.lon = oldCam.camera.longitude;
-                            passed.passedTimeMs = now;
-                            recentlyPassedCameras.push_back(passed);
-                            Serial.printf("[Camera] PASSED: %s (distance increased from %.0fm to %.0fm)\n", 
-                                        oldCam.camera.getTypeName(), oldCam.distance_m, currentDist);
-                        }
-                    }
-                }
-                
-                // Check for new cameras that weren't in the previous active list
-                for (const auto& newCam : approachingCameras) {
-                    bool wasAlreadyActive = false;
-                    for (const auto& oldCam : activeCameraAlerts) {
-                        float dist = CameraManager::haversineDistance(
-                            oldCam.camera.latitude, oldCam.camera.longitude,
-                            newCam.camera.latitude, newCam.camera.longitude);
-                        if (dist < 50.0f) {
-                            wasAlreadyActive = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!wasAlreadyActive) {
-                        // New camera entering alert range
-                        bool isPrimary = activeCameraAlerts.empty();
-                        Serial.printf("[Camera] ALERT: %s at %.0fm AHEAD%s\n",
-                            newCam.camera.getTypeName(),
-                            newCam.distance_m,
-                            isPrimary ? " (PRIMARY)" : " (SECONDARY)");
-                        
-                        // Play voice alert only for new primary camera
-                        if (isPrimary && camSettings.cameraAudioEnabled) {
-                            CameraAlertType voiceType = CameraAlertType::SPEED;
-                            CameraType camType = newCam.camera.getCameraType();
-                            switch (camType) {
-                                case CameraType::RedLightCamera:
-                                    voiceType = CameraAlertType::RED_LIGHT;
-                                    break;
-                                case CameraType::RedLightAndSpeed:
-                                    voiceType = CameraAlertType::RED_LIGHT_SPEED;
-                                    break;
-                                case CameraType::SpeedCamera:
-                                    voiceType = CameraAlertType::SPEED;
-                                    break;
-                                case CameraType::ALPR:
-                                    voiceType = CameraAlertType::ALPR;
-                                    break;
-                                default:
-                                    voiceType = CameraAlertType::SPEED;
-                                    break;
-                            }
-                            play_camera_voice(voiceType);
-                        }
-                        
-                        // If no active cameras, start timing
-                        if (activeCameraAlerts.empty()) {
-                            cameraAlertStartMs = now;
-                        }
-                    }
-                }
-                
-                // Update active camera list
-                activeCameraAlerts = approachingCameras;
-                
-                // Debug: log active camera count changes
-                static int lastCameraCount = 0;
-                if ((int)activeCameraAlerts.size() != lastCameraCount) {
-                    Serial.printf("[Camera] Active cameras: %d\n", (int)activeCameraAlerts.size());
-                    lastCameraCount = activeCameraAlerts.size();
-                }
-            }
-        }
-    }
+    // Camera alerts + cache maintenance (requires GPS with valid fix)
+    cameraAlertModule.process();
     
     // Process OBD updates (always runs - state machine handles enabled/disabled)
     // Check for delayed auto-connect trigger
@@ -2508,175 +1670,40 @@ void loop() {
         }
     }
     
-    // Monitor background camera load progress (optional: could show on display)
-    static bool bgLoadLoggedComplete = false;
-    static bool bgLoadCacheBuilt = false;  // Track if we've rebuilt cache after background load
-    if (cameraManager.isBackgroundLoading()) {
-        // Optionally log progress periodically
-        static unsigned long lastProgressLog = 0;
-        if (millis() - lastProgressLog > 10000) {  // Every 10 seconds
-            SerialLog.printf("[Camera] Background load: %d%% (%d cameras)\n",
-                            cameraManager.getLoadProgress(), cameraManager.getLoadedCount());
-            lastProgressLog = millis();
-        }
-        bgLoadLoggedComplete = false;
-        bgLoadCacheBuilt = false;
-    } else if (!bgLoadLoggedComplete && cameraManager.getCameraCount() > 0) {
-        // Log once when background load completes
-        bgLoadLoggedComplete = true;
-        SerialLog.printf("[Camera] Background load complete: %d cameras ready\n",
-                        cameraManager.getCameraCount());
-        
-        // Build/refresh regional cache now that full database is loaded
-        // This ensures we have the most up-to-date cache for the current location
-        if (!bgLoadCacheBuilt && gpsHandler.isReadyForNavigation()) {
-            bgLoadCacheBuilt = true;
-            GPSFix fix = gpsHandler.getFix();
-            SerialLog.printf("[Camera] Rebuilding regional cache with full database at %.4f, %.4f\n",
-                            fix.latitude, fix.longitude);
-            if (cameraManager.buildRegionalCache(fix.latitude, fix.longitude, CACHE_RADIUS_MILES)) {
-                cameraManager.saveRegionalCache(&LittleFS, "/cameras_cache.json");
-                SerialLog.printf("[Camera] Regional cache updated: %d cameras\n",
-                                cameraManager.getRegionalCacheCount());
-            }
-        }
-    }
-
     // Check if V1 has active alerts - determines if camera shows as main display or card
+    bool previewActive = displayPreviewModule.isRunning();
     bool v1HasActiveAlerts = parser.hasAlerts();
-    
-    // Update camera alert display (if active)
-    // Test mode takes priority - cycles through 1→2→3 cameras
-    // Ownership rule: if V1 has alerts, cards are owned by updateCameraCardState()
-    // (camera becomes secondary). If V1 has no alerts, camera owns the main area
-    // and updateCameraAlerts() handles both main+cards. Never both in the same frame.
-    bool allowCameraMainDisplay = !v1HasActiveAlerts;  // Only one owner per frame
-    if (cameraTestActive) {
-        if (millis() < cameraTestEndMs) {
-            // Simulate countdown for primary camera
-            cameraTestDistance -= 2.0f;  // Decrease distance to simulate approach
-            if (cameraTestDistance < 50.0f) cameraTestDistance = 50.0f;
-            
-            // Calculate current test phase (0=1cam, 1=2cam, 2=3cam)
-            unsigned long elapsed = millis() - cameraTestPhaseStartMs;
-            int numCameras = ((elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3) + 1;
-            
-            // When V1 is connected, cards are handled by updateCameraCardState() + display.update()
-            // Only call updateCameraAlerts() when V1 is NOT connected (for main area display)
-            if (allowCameraMainDisplay) {
-                const V1Settings& dispSettings = settingsManager.get();
-                
-                // Build camera info array based on test phase
-                // Primary (index 0) uses the user-selected test type
-                // Secondary cameras use different types for variety
-                static const char* secondaryTypes[] = {"SPEED", "ALPR", "RED LIGHT"};
-                static const float baseDistances[] = {500.0f, 800.0f, 1200.0f};
-                
-                V1Display::CameraAlertInfo camInfos[3];
-                // Primary camera: user-selected type (stored in cameraTestTypeName)
-                camInfos[0].typeName = cameraTestTypeName;
-                camInfos[0].distance_m = baseDistances[0] - (elapsed * 0.01f);
-                if (camInfos[0].distance_m < 50.0f) camInfos[0].distance_m = 50.0f;
-                camInfos[0].color = dispSettings.colorCameraAlert;
-                
-                // Secondary cameras: cycle through other types
-                for (int i = 1; i < numCameras; i++) {
-                    camInfos[i].typeName = secondaryTypes[i - 1];
-                    camInfos[i].distance_m = baseDistances[i] - (elapsed * 0.01f);
-                    if (camInfos[i].distance_m < 50.0f) camInfos[i].distance_m = 50.0f;
-                    camInfos[i].color = dispSettings.colorCameraAlert;
-                }
-                
-                display.updateCameraAlerts(camInfos, numCameras, v1HasActiveAlerts);
-            }
-            // When V1 IS connected, cards already handled by updateCameraCardState()
-        } else {
-            // Test complete
-            cameraTestActive = false;
-            cameraTestEnded = true;  // Trigger display restore on next loop
-            cameraTestPhase = 0;
-            // Always clear camera state when test ends (bypass grace period)
-            display.clearAllCameraAlerts();
-            display.clearCameraAlerts();
-            Serial.println("[Camera] Test alert ended");
-        }
-    } else if (!activeCameraAlerts.empty()) {
-        // Multi-camera display update
-        const V1Settings& dispSettings = settingsManager.get();
-        V1Display::CameraAlertInfo camInfos[MAX_ACTIVE_CAMERAS];
-        int count = std::min((int)activeCameraAlerts.size(), MAX_ACTIVE_CAMERAS);
-        for (int i = 0; i < count; i++) {
-            camInfos[i].typeName = activeCameraAlerts[i].camera.getTypeName();  // Full name for main display
-            camInfos[i].distance_m = activeCameraAlerts[i].distance_m;
-            camInfos[i].color = dispSettings.colorCameraAlert;
-        }
-        if (allowCameraMainDisplay) {
-            display.updateCameraAlerts(camInfos, count, v1HasActiveAlerts);
-        }
-    } else {
-        if (allowCameraMainDisplay) {
-            display.clearCameraAlerts();
-        }
+    cameraAlertModule.updateCardStateForV1(v1HasActiveAlerts);
+    if (!previewActive) {
+        cameraAlertModule.updateMainDisplay(v1HasActiveAlerts);
     }
     
-    // Speed-based volume: boost V1 volume at highway speeds
-    // Check periodically (not every loop) to avoid spamming V1
-    // NOTE: If volume fade is active/tracking, let fade handle volume control
-    static unsigned long lastSpeedVolumeCheck = 0;
-    static bool loggedSpeedVolumeSettings = false;
-    
-    if (bleClient.isConnected() && now - lastSpeedVolumeCheck > 2000) {  // Check every 2s
-        lastSpeedVolumeCheck = now;
-        const V1Settings& spdSettings = settingsManager.get();
+    // Speed-based volume: delegate to module (rate-limited internally)
+    if (bleClient.isConnected()) {
+        SpeedVolumeContext spdCtx;
+        spdCtx.bleConnected = true;
+        spdCtx.fadeTakingControl = volumeFadeModule.isTracking();
+        DisplayState state = parser.getDisplayState();
+        spdCtx.currentVolume = state.mainVolume;
+        spdCtx.currentMuteVolume = state.muteVolume;
+        spdCtx.speedMph = voiceModule.getCurrentSpeedMph(now);
+        spdCtx.now = now;
         
-        // One-time log of settings for debugging
-        if (!loggedSpeedVolumeSettings) {
-            SerialLog.printf("[SpeedVolume] Settings: enabled=%d threshold=%d boost=%d\n",
-                spdSettings.speedVolumeEnabled, spdSettings.speedVolumeThresholdMph, spdSettings.speedVolumeBoost);
-            SerialLog.printf("[LowSpeedMute] Settings: enabled=%d threshold=%d\n",
-                spdSettings.lowSpeedMuteEnabled, spdSettings.lowSpeedMuteThresholdMph);
-            loggedSpeedVolumeSettings = true;
-        }
-        
-        // Skip speed volume adjustments if volume fade has captured the volume
-        // (either during active fade or while tracking for potential fade)
-        bool fadeTakingControl = volumeFadeOriginalVol != 0xFF;
-        
-        if (spdSettings.speedVolumeEnabled && !fadeTakingControl) {
-            float speedMph = v1AlertModule.getCurrentSpeedMph(now);
-            
-            // Periodic debug: log speed check every 30s when at highway speeds
-            static unsigned long lastSpeedDebugLog = 0;
-            if (speedMph >= 40 && now - lastSpeedDebugLog > 30000) {
-                SerialLog.printf("[SpeedVolume] Check: speed=%.0f threshold=%d shouldBoost=%d boostActive=%d\n",
-                    speedMph, spdSettings.speedVolumeThresholdMph, 
-                    speedMph >= spdSettings.speedVolumeThresholdMph, speedVolumeBoostActive);
-                lastSpeedDebugLog = now;
-            }
-            
-            bool shouldBoost = speedMph >= spdSettings.speedVolumeThresholdMph;
-            
-            if (shouldBoost && !speedVolumeBoostActive) {
-                // Speed crossed threshold - boost volume
-                DisplayState state = parser.getDisplayState();
-                speedVolumeOriginalVol = state.mainVolume;
-                uint8_t boostedVol = std::min((int)state.mainVolume + spdSettings.speedVolumeBoost, 9);
-                if (boostedVol > state.mainVolume) {
-                    SerialLog.printf("[SpeedVolume] Speed %.0f mph >= %d threshold - boosting volume %d -> %d\n",
-                               speedMph, spdSettings.speedVolumeThresholdMph, state.mainVolume, boostedVol);
-                    bleClient.setVolume(boostedVol, state.muteVolume);
-                    speedVolumeBoostActive = true;
-                }
-            } else if (!shouldBoost && speedVolumeBoostActive) {
-                // Speed dropped below threshold - restore original volume
-                DisplayState state = parser.getDisplayState();
-                if (speedVolumeOriginalVol != 0xFF && state.mainVolume != speedVolumeOriginalVol) {
-                    SerialLog.printf("[SpeedVolume] Speed %.0f mph < %d threshold - restoring volume to %d\n",
-                               speedMph, spdSettings.speedVolumeThresholdMph, speedVolumeOriginalVol);
-                    bleClient.setVolume(speedVolumeOriginalVol, state.muteVolume);
-                }
-                speedVolumeBoostActive = false;
-                speedVolumeOriginalVol = 0xFF;
+        SpeedVolumeAction spdAction = speedVolumeModule.process(spdCtx);
+        if (spdAction.hasAction()) {
+            switch (spdAction.type) {
+                case SpeedVolumeAction::Type::BOOST:
+                    SerialLog.printf("[SpeedVolume] Boosting volume to %d (speed=%.0f)\n",
+                        spdAction.volume, spdCtx.speedMph);
+                    bleClient.setVolume(spdAction.volume, spdAction.muteVolume);
+                    break;
+                case SpeedVolumeAction::Type::RESTORE:
+                    SerialLog.printf("[SpeedVolume] Restoring volume to %d\n", spdAction.volume);
+                    bleClient.setVolume(spdAction.volume, spdAction.muteVolume);
+                    break;
+                case SpeedVolumeAction::Type::NONE:
+                default:
+                    break;
             }
         }
     }
@@ -2704,7 +1731,7 @@ void loop() {
     
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
-        if (!isColorPreviewActive()) {
+        if (!displayPreviewModule.isRunning()) {
             // Check connection status
             static bool wasConnected = false;
             bool isConnected = bleClient.isConnected();

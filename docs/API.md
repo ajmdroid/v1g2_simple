@@ -502,7 +502,16 @@ Upload a camera database CSV file.
 
 Trigger a test camera alert.
 
-**Request (form data):** `lat=37.7749&lon=-122.4194`
+**Request (query param):** `type=0|1|2|3`
+
+| type | Meaning | Voice/Display | Default |
+| --- | --- | --- | --- |
+| 0 | Red Light | REDLIGHT | ✓ (default) |
+| 1 | Speed | SPEED |  |
+| 2 | ALPR | ALPR |  |
+| 3 | Red Light + Speed | RLS |  |
+
+If omitted, `type=0` (Red Light) is used. The device cycles 1→2→3 simulated cameras over 9s and plays the corresponding voice prompt.
 
 ### POST /api/cameras/sync-osm
 

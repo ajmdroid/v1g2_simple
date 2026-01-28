@@ -147,26 +147,33 @@ We're taking a more incremental approach than originally planned - extracting st
 src/
 ├── main.cpp                         (~2800 lines, shrinking incrementally)
 ├── modules/
-│   └── v1_alerts/
-│       ├── v1_alert_module.h        (~180 lines)
-│       └── v1_alert_module.cpp      (~420 lines)
+│   ├── alert_persistence/
+│   │   ├── alert_persistence_module.h   (~110 lines)
+│   │   └── alert_persistence_module.cpp (~140 lines)
+│   ├── voice/
+│   │   ├── voice_module.h               (~220 lines)
+│   │   └── voice_module.cpp             (~450 lines)
+│   ├── volume_fade/
+│   │   ├── volume_fade_module.h         (~90 lines)
+│   │   └── volume_fade_module.cpp       (~130 lines)
+│   └── speed_volume/
+│       ├── speed_volume_module.h        (~70 lines)
+│       └── speed_volume_module.cpp      (~110 lines)
 └── [existing files unchanged]
 ```
 
-**V1AlertModule** encapsulates alert-related state and logic:
-- Static utilities (getAlertBars, makeAlertId, isBandEnabledForSecondary)
-- Announced alert tracking (deduplication)
-- Alert history tracking (smart threat escalation)
-- Direction change throttling
-- Priority stability tracking
-- Voice alert "last announced" tracking
-- Alert persistence (grey faded display)
-- Speed helpers (low-speed mute logic)
+**VoiceModule** owns all voice announcement decisions (priority/secondary/escalation) and cooldowns. main.cpp only builds a `VoiceContext` and executes the returned `VoiceAction`.
+
+**AlertPersistenceModule** keeps alerts on-screen briefly after they clear and provides one-call state resets for alert-related modules.
+
+**VolumeFadeModule** decides when to fade/restore volume for long-running alerts.
+
+**SpeedVolumeModule** boosts/restores volume at highway speeds while respecting active fades.
 
 ### Migration Process
 
 Each step follows a strict protocol:
-1. Add method/state to V1AlertModule
+1. Add method/state to the target module (Voice, Alert persistence, Volume fade)
 2. Update call sites in main.cpp
 3. Remove old code from main.cpp
 4. Build and test on hardware
@@ -176,8 +183,7 @@ See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
 
 ### Future Phases (Tentative)
 
-Once V1AlertModule is complete, we may continue with:
-- **Audio Module**: Volume fade, speed volume boost
+Next extractions (if we keep shrinking main.cpp):
 - **Display Module**: Color preview, demo mode
 - **Settings API**: Consolidate web endpoints
 - **GPS Module**: Speed caching, lockout queries
@@ -192,10 +198,13 @@ Or we may keep the current structure if it's working well.
 - Change risk: HIGH (adjacent code interactions)
 
 ### Current Progress:
-- V1AlertModule: ~600 lines extracted
-- main.cpp: ~2800 lines (reduced ~300 lines)
-- Alert tracking consolidated in one place
-- Change risk: LOWER (state in module)
+- VoiceModule: ~430 lines (all voice decisions consolidated)
+- AlertPersistenceModule: ~120 lines (alert persistence + clears)
+- VolumeFadeModule: ~120 lines (fade/restore decisions)
+- SpeedVolumeModule: ~90 lines (boost/restore decisions; defers to fade when fade owns volume)
+- main.cpp: ~2800 lines (reduced ~300 lines; voice/speed/fade logic removed)
+- Alert and voice tracking consolidated in modules
+- Change risk: LOWER (state/logic in modules)
 
 ### Target:
 - main.cpp: ~2000 lines (orchestration + features not yet extracted)
@@ -206,13 +215,13 @@ Or we may keep the current structure if it's working well.
 
 1. **Modules receive dependencies via begin()** - dependency injection for testability
 2. **Data flows DOWN** - main loop gets data and passes it to modules
-3. **State lives in ONE place** - e.g., announced alerts only in V1AlertModule
+3. **State lives in ONE place** - e.g., voice announcement state only in VoiceModule
 4. **Incremental migration** - never break working functionality
 
 ## What This Enables
 
-✅ **Change Locality**: Alert logic changes → edit V1AlertModule only  
-✅ **Testability**: Module can be unit tested with mocked dependencies  
+✅ **Change Locality**: Voice logic changes → edit VoiceModule; alert persistence → edit AlertPersistenceModule  
+✅ **Testability**: Modules can be unit tested with mocked dependencies  
 ✅ **Clarity**: Related state grouped together, easier to understand  
 ✅ **Confidence**: Clear boundaries → certain only X changes  
 

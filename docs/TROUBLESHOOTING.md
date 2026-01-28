@@ -179,6 +179,7 @@ Quick solutions for common issues with the V1-Simple device.
 3. **Check GPS**: Camera alerts require GPS fix
 4. **Check distance**: Default alert distance is 500m
 5. **Check audio**: Enable `cameraAudioEnabled` for sound
+6. **Run test alert**: From Web UI → Integrations → Test Camera Alerts to verify display/voice; type defaults to Red Light (`type=0`).
 
 ### OSM sync fails
 

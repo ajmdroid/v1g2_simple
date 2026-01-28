@@ -1,99 +1,100 @@
-/**
- * Mock settings.h for native unit testing
- * Provides minimal Settings struct and SettingsManager stub
- */
 #pragma once
+#ifndef SETTINGS_H
+#define SETTINGS_H
 
 #include "Arduino.h"
 #include <cstdint>
 
-// Font style enum
+// Voice alert modes (subset of real settings.h)
+enum VoiceAlertMode : uint8_t {
+    VOICE_MODE_DISABLED = 0,
+    VOICE_MODE_BAND_ONLY = 1,
+    VOICE_MODE_FREQ_ONLY = 2,
+    VOICE_MODE_BAND_FREQ = 3
+};
+
+// Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
-    FONT_STYLE_CLASSIC = 0,   // 7-segment LED style
-    FONT_STYLE_MODERN = 1,    // Montserrat Bold
-    FONT_STYLE_HEMI = 2,      // Hemi Head (retro speedometer)
-    FONT_STYLE_SERPENTINE = 3 // Serpentine Bold (JB's favorite)
+    FONT_STYLE_CLASSIC = 0,
+    FONT_STYLE_MODERN = 1,
+    FONT_STYLE_HEMI = 2,
+    FONT_STYLE_SERPENTINE = 3
 };
 
-// Theme names
-enum ColorTheme : uint8_t {
-    THEME_STANDARD = 0
-};
-
-// WiFi mode enum
-enum V1WiFiMode : uint8_t {
-    V1_WIFI_AP = 0,
-    V1_WIFI_APSTA = 1
-};
-
-// Settings structure with display-related fields
-struct Settings {
-    // Display settings
+// Mocked settings structure (superset of fields used in modules/tests)
+struct V1Settings {
+    // Display
     uint8_t brightness = 128;
     bool displayOn = true;
     FontStyle fontStyle = FONT_STYLE_CLASSIC;
-    ColorTheme colorTheme = THEME_STANDARD;
+    // Colors (kept for older display tests)
+    uint16_t colorX = 0x07E0;
+    uint16_t colorK = 0x07FF;
+    uint16_t colorKa = 0xF800;
+    uint16_t colorLaser = 0xFFFF;
+    uint16_t colorPhoto = 0xF81F;
+    uint16_t colorMuted = 0x8410;
+    uint16_t colorBogey = 0xFFE0;
     
-    // Color settings (RGB565)
-    uint16_t colorX = 0x07E0;      // Green for X band
-    uint16_t colorK = 0x07FF;      // Cyan for K band  
-    uint16_t colorKa = 0xF800;     // Red for Ka band
-    uint16_t colorLaser = 0xFFFF;  // White for Laser
-    uint16_t colorPhoto = 0xF81F;  // Magenta for Photo Radar
-    uint16_t colorMuted = 0x8410;  // Gray for muted
-    uint16_t colorBogey = 0xFFE0;  // Yellow for bogey counter
-    
-    // Audio settings
+    // Audio / voice
     uint8_t volume = 5;
+    VoiceAlertMode voiceAlertMode = VOICE_MODE_BAND_FREQ;
+    bool voiceDirectionEnabled = true;
+    bool announceBogeyCount = true;
+    bool muteVoiceIfVolZero = true;
+    
+    // Secondary alerts
+    bool announceSecondaryAlerts = true;
+    bool secondaryLaser = true;
+    bool secondaryKa = true;
+    bool secondaryK = true;
+    bool secondaryX = true;
+    
+    // Volume fade
     bool alertVolumeFadeEnabled = false;
     uint8_t alertVolumeFadeDelaySec = 5;
+    uint8_t alertVolumeFadeVolume = 3;
     
-    // GPS settings
+    // Speed-based volume
+    bool speedVolumeEnabled = false;
+    uint8_t speedVolumeThresholdMph = 45;
+    uint8_t speedVolumeBoost = 2;
+    
+    // Low-speed mute
+    bool lowSpeedMuteEnabled = false;
+    uint8_t lowSpeedMuteThresholdMph = 5;
+    
+    // Misc flags retained for compatibility
     bool gpsEnabled = true;
-    
-    // OBD settings
     bool obdEnabled = false;
-    
-    // BLE proxy settings
     bool bleProxyEnabled = true;
-    
-    // KITT scanner
     bool kittScannerEnabled = true;
 };
+
+// Backwards compatibility alias used by some legacy tests
+using Settings = V1Settings;
 
 // Settings manager stub
 class SettingsManager {
 public:
-    Settings settings;
+    V1Settings settings;
     
     void load() {}
     void save() {}
     void setDefaults() {}
     
+    const V1Settings& get() const { return settings; }
+    V1Settings& getMutable() { return settings; }
+    
+    // Convenience helpers used by some tests
     uint8_t getBrightness() const { return settings.brightness; }
     void setBrightness(uint8_t b) { settings.brightness = b; }
     
     bool isDisplayOn() const { return settings.displayOn; }
     void setDisplayOn(bool on) { settings.displayOn = on; }
-    
-    FontStyle getFontStyle() const { return settings.fontStyle; }
-    void setFontStyle(FontStyle style) { settings.fontStyle = style; }
-    
-    // Color getters
-    uint16_t getColorX() const { return settings.colorX; }
-    uint16_t getColorK() const { return settings.colorK; }
-    uint16_t getColorKa() const { return settings.colorKa; }
-    uint16_t getColorLaser() const { return settings.colorLaser; }
-    uint16_t getColorPhoto() const { return settings.colorPhoto; }
-    uint16_t getColorMuted() const { return settings.colorMuted; }
-    uint16_t getColorBogey() const { return settings.colorBogey; }
-    
-    bool isKittScannerEnabled() const { return settings.kittScannerEnabled; }
-    bool isGpsEnabled() const { return settings.gpsEnabled; }
-    bool isBleProxyEnabled() const { return settings.bleProxyEnabled; }
 };
 
 // Global settings instance
 extern SettingsManager settingsManager;
 
-#endif // settings mock
+#endif // SETTINGS_H

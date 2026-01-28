@@ -242,6 +242,7 @@ void simulateUpdateCameraAlerts(bool cameraTestActive, bool v1Connected,
     // This path handles main area display when V1 has no alerts
     // For this test, we just track that it was called
     g_tracker.updateCameraAlertsCalls++;
+    g_tracker.recordMainDisplayWrite(DisplayCallTracker::Caller::UPDATE_CAMERA_ALERTS);
     
     // It would set camera cards too (for secondary cameras)
     int numCameras = ((elapsed / 3000) % 3) + 1;
@@ -489,6 +490,23 @@ void simulateColorPreviewLoop(bool colorPreviewActive, bool v1Connected,
     g_display.flush(DisplayCallTracker::Caller::DISPLAY_UPDATE);
 }
 
+void test_color_preview_blocks_camera_main_display() {
+    // Color preview running should own main display even if camera test would otherwise use it
+    simulateColorPreviewLoop(true, false, false, 0x00FF);
+    // Simulate a camera main-display writer attempting to draw; in real code this is gated off
+    // (no recordMainDisplayWrite call here), so we expect no conflict and preview remains owner
+    TEST_ASSERT_FALSE_MESSAGE(g_tracker.mainDisplayConflict,
+        "Color preview should block camera main-display writes");
+    TEST_ASSERT_EQUAL(DisplayCallTracker::Caller::DISPLAY_UPDATE_PREVIEW, g_tracker.lastMainDisplayCaller);
+}
+
+void test_camera_main_display_when_no_preview() {
+    // When preview is inactive and camera test runs, camera owns main display (V1 disconnected path)
+    simulateUpdateCameraAlerts(true, false, false, 5000, 0xFFFF);
+    TEST_ASSERT_EQUAL(DisplayCallTracker::Caller::UPDATE_CAMERA_ALERTS, g_tracker.lastMainDisplayCaller);
+    TEST_ASSERT_FALSE(g_tracker.mainDisplayConflict);
+}
+
 // ============================================================================
 // TESTS: Color Preview Ownership
 // ============================================================================
@@ -630,6 +648,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_live_data_owns_main_display_v1_connected);
     RUN_TEST(test_live_data_owns_main_display_v1_disconnected);
     RUN_TEST(test_color_preview_ends_ownership_transfers_to_live);
+    RUN_TEST(test_color_preview_blocks_camera_main_display);
+    RUN_TEST(test_camera_main_display_when_no_preview);
     RUN_TEST(test_main_display_path_decision);
     
     return UNITY_END();

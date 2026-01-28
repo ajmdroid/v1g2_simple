@@ -1,0 +1,120 @@
+#include <unity.h>
+
+#include "../mocks/settings.h"  // Mock settings must be included before module sources
+#include "../../src/modules/volume_fade/volume_fade_module.h"
+#include "../../src/modules/volume_fade/volume_fade_module.cpp"  // Pull implementation when test_build_src=false
+
+// Extern from mocks
+SerialClass Serial;
+SettingsManager settingsManager;
+
+static VolumeFadeModule fade;
+
+void setUp() {
+    // Reset settings to defaults for each test
+    settingsManager.settings = V1Settings();
+    fade = VolumeFadeModule();
+    fade.begin(&settingsManager);
+}
+
+// Helper to build a common context
+static VolumeFadeContext makeCtx(bool hasAlert, unsigned long nowMs, uint8_t volume,
+                                 uint16_t freq, bool muted = false, bool inLockout = false,
+                                 bool speedBoostActive = false, uint8_t speedBoostOrig = 0xFF) {
+    VolumeFadeContext ctx;
+    ctx.hasAlert = hasAlert;
+    ctx.alertMuted = muted;
+    ctx.alertInLockout = inLockout;
+    ctx.currentVolume = volume;
+    ctx.currentMuteVolume = 0;
+    ctx.currentFrequency = freq;
+    ctx.speedBoostActive = speedBoostActive;
+    ctx.speedBoostOriginalVolume = speedBoostOrig;
+    ctx.now = nowMs;
+    return ctx;
+}
+
+void test_disabled_feature_returns_none() {
+    settingsManager.settings.alertVolumeFadeEnabled = false;
+    auto ctx = makeCtx(true, 1000, 7, 34700);
+    auto action = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action.type);
+}
+
+void test_fade_triggers_after_delay() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 2;  // 2s
+    settingsManager.settings.alertVolumeFadeVolume = 3;
+
+    auto ctx = makeCtx(true, 1000, 7, 34700);
+    auto action1 = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action1.type);
+    TEST_ASSERT_TRUE(fade.isTracking());  // original captured
+
+    ctx.now = 3500;  // beyond delay (>=2s later)
+    auto action2 = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, action2.type);
+    TEST_ASSERT_EQUAL_UINT8(3, action2.targetVolume);
+}
+
+void test_new_frequency_restores_when_faded() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 2;
+
+    auto ctx = makeCtx(true, 1000, 8, 34700);
+    fade.process(ctx);          // start tracking
+    ctx.now = 2200;             // trigger fade (>1s)
+    auto fadeAction = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+
+    // Now a new frequency arrives while faded, current volume already lowered
+    ctx = makeCtx(true, 2300, 2, 35500);  // different freq
+    auto restore = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(8, restore.restoreVolume);  // original captured volume
+}
+
+void test_muted_alert_restores_and_resets() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    auto ctx = makeCtx(true, 1000, 6, 24000);
+    fade.process(ctx);      // start
+    ctx.now = 2200;
+    fade.process(ctx);      // fade down
+
+    // Now alert becomes muted
+    auto mutedCtx = makeCtx(true, 2500, 1, 24000, true /*muted*/);
+    auto restore = fade.process(mutedCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(6, restore.restoreVolume);
+}
+
+void test_alert_clear_restores_if_needed() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 2;
+
+    auto ctx = makeCtx(true, 1000, 7, 24150);
+    fade.process(ctx);      // start
+    ctx.now = 2100;
+    fade.process(ctx);      // fade down
+    
+    // Alerts clear while volume is faded
+    auto clearCtx = makeCtx(false, 2300, 2, 0);
+    auto restore = fade.process(clearCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
+}
+
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    RUN_TEST(test_disabled_feature_returns_none);
+    RUN_TEST(test_fade_triggers_after_delay);
+    RUN_TEST(test_new_frequency_restores_when_faded);
+    RUN_TEST(test_muted_alert_restores_and_resets);
+    RUN_TEST(test_alert_clear_restores_if_needed);
+    return UNITY_END();
+}

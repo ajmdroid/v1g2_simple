@@ -75,6 +75,10 @@ struct PerfCounters {
     // Display
     std::atomic<uint32_t> displayUpdates{0};   // Frames drawn
     std::atomic<uint32_t> displaySkips{0};     // Updates skipped (throttled)
+
+    // Camera
+    std::atomic<uint32_t> cameraBgLoads{0};     // Background camera DB load completions
+    std::atomic<uint32_t> cameraCacheRefreshes{0}; // Regional cache builds/refeshes
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -92,6 +96,8 @@ struct PerfCounters {
         disconnects.store(0, std::memory_order_relaxed);
         displayUpdates.store(0, std::memory_order_relaxed);
         displaySkips.store(0, std::memory_order_relaxed);
+        cameraBgLoads.store(0, std::memory_order_relaxed);
+        cameraCacheRefreshes.store(0, std::memory_order_relaxed);
     }
 };
 
