@@ -44,6 +44,12 @@ public:
     // Static utility: Create unique alert ID from band and frequency
     // Used for tracking announced alerts, lockout state, etc.
     static uint32_t makeAlertId(Band band, uint16_t freq);
+    
+    // Announced alert tracking - for voice announcement deduplication
+    // Tracks which alerts have been announced this session
+    bool isAlertAnnounced(Band band, uint16_t freq);
+    void markAlertAnnounced(Band band, uint16_t freq);
+    void clearAnnouncedAlerts();
 
 private:
     // Dependencies (set in begin())
@@ -53,6 +59,12 @@ private:
     SettingsManager* settings = nullptr;
     
     bool initialized = false;
+    
+    // Announced alert tracking state
+    // Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
+    static constexpr int MAX_ANNOUNCED_ALERTS = 10;
+    uint32_t announcedAlertIds[MAX_ANNOUNCED_ALERTS] = {0};
+    uint8_t announcedAlertCount = 0;
 };
 
 #endif // V1_ALERT_MODULE_H

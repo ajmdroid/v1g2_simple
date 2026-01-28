@@ -203,11 +203,8 @@ static unsigned long directionChangeWindowStart = 0;  // When the throttle windo
 static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;  // 10 second window
 static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
 
-// Secondary alert tracking - announce non-priority alerts once
-// Use band<<16 | freq to create unique identifiers (handles Laser freq=0)
-// NOTE: Bounds safety verified January 20, 2026 - all accesses check announcedAlertCount < 10
-static uint32_t announcedAlertIds[10] = {0};  // All alerts announced this session (band<<16 | freq)
-static uint8_t announcedAlertCount = 0;
+// Secondary alert tracking - moved to V1AlertModule
+// Keeping these timing constants here as they're used in the main loop
 static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
 static unsigned long priorityStableSince = 0;  // When priority alert became stable
 static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
@@ -265,26 +262,11 @@ static AlertHistory alertHistories[10];
 static uint8_t alertHistoryCount = 0;
 
 // Helper functions for secondary alert tracking
-// makeAlertId moved to V1AlertModule::makeAlertId()
+// isAlertAnnounced, markAlertAnnounced moved to V1AlertModule
 
-static bool isAlertAnnounced(Band band, uint16_t freq) {
-    uint32_t id = V1AlertModule::makeAlertId(band, freq);
-    for (int i = 0; i < announcedAlertCount; i++) {
-        if (announcedAlertIds[i] == id) return true;
-    }
-    return false;
-}
-
-static void markAlertAnnounced(Band band, uint16_t freq) {
-    uint32_t id = V1AlertModule::makeAlertId(band, freq);
-    if (announcedAlertCount < 10 && !isAlertAnnounced(band, freq)) {
-        announcedAlertIds[announcedAlertCount++] = id;
-    }
-}
-
+// clearAnnouncedAlerts - clears both module's announced alerts AND local alert histories
 static void clearAnnouncedAlerts() {
-    announcedAlertCount = 0;
-    memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+    v1AlertModule.clearAnnouncedAlerts();
     alertHistoryCount = 0;
     memset(alertHistories, 0, sizeof(alertHistories));
 }
@@ -1693,7 +1675,7 @@ void processBLEData() {
                             lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                             lastVoiceAlertTime = now;
                             lastPriorityAnnouncementTime = now;
-                            markAlertAnnounced(priority.band, currentFreq);
+                            v1AlertModule.markAlertAnnounced(priority.band, currentFreq);
                             priorityAnnounced = true;
                         }
                     } else if (!alertChanged && directionChanged && cooldownPassed && 
@@ -1760,7 +1742,7 @@ void processBLEData() {
                             if (alert.band == priority.band && alertFreq == currentFreq) continue;
                             
                             // Skip if already announced
-                            if (isAlertAnnounced(alert.band, alertFreq)) continue;
+                            if (v1AlertModule.isAlertAnnounced(alert.band, alertFreq)) continue;
                             
                             // Check band filter
                             if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
@@ -1791,7 +1773,7 @@ void processBLEData() {
                                 // Secondary alerts: same voice mode, but no bogey count (keep it brief)
                                 play_frequency_voice(audioBand, alertFreq, secDir,
                                                      alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
-                                markAlertAnnounced(alert.band, alertFreq);
+                                v1AlertModule.markAlertAnnounced(alert.band, alertFreq);
                                 lastVoiceAlertTime = now;  // Use same cooldown
                                 break;  // Only announce one secondary per cycle
                             }

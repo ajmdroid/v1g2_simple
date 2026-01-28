@@ -44,3 +44,26 @@ uint8_t V1AlertModule::getAlertBars(const AlertData& a) {
 uint32_t V1AlertModule::makeAlertId(Band band, uint16_t freq) {
     return ((uint32_t)band << 16) | freq;
 }
+
+// Announced alert tracking - check if alert has been announced
+bool V1AlertModule::isAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    for (int i = 0; i < announcedAlertCount; i++) {
+        if (announcedAlertIds[i] == id) return true;
+    }
+    return false;
+}
+
+// Announced alert tracking - mark alert as announced
+void V1AlertModule::markAlertAnnounced(Band band, uint16_t freq) {
+    uint32_t id = makeAlertId(band, freq);
+    if (announcedAlertCount < MAX_ANNOUNCED_ALERTS && !isAlertAnnounced(band, freq)) {
+        announcedAlertIds[announcedAlertCount++] = id;
+    }
+}
+
+// Announced alert tracking - clear all announced alerts
+void V1AlertModule::clearAnnouncedAlerts() {
+    announcedAlertCount = 0;
+    memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+}

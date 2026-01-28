@@ -15,9 +15,9 @@
 ## Phase 1: V1 Alert Module
 
 ### Step 1: Create Module Structure
-**Status:** 🟡 IN PROGRESS  
+**Status:** ✅ COMPLETE  
 **Date:** January 27, 2026  
-**Commit:** [pending]
+**Commit:** ✅ Committed
 
 **Objective:** Create empty directory and stub files for v1_alerts module
 
@@ -72,7 +72,7 @@
 - [x] Add begin(deps) method to pass references  
 - [x] Update main.cpp to pass references in begin() call
 - [x] Verify compilation
-- [ ] Verify hardware still works identically
+- [x] Verify hardware still works identically
 
 **Files Modified:**
 - src/modules/v1_alerts/v1_alert_module.h - added forward decls, pointer members, updated begin() signature
@@ -92,11 +92,9 @@
 - None
 
 **Rollback Required:**
-- No 
+- No
 
----
-
-### Step 2: [Next step - TBD after Step 1 completes]
+**Commit:** ✅ Committed
 
 ---
 
@@ -115,8 +113,8 @@
 - [x] Include packet_parser.h in module header (for AlertData type)
 - [x] Update main.cpp to call V1AlertModule::getAlertBars() instead of local function
 - [x] Remove local getAlertBars() from main.cpp
-- [ ] Verify compilation
-- [ ] Verify hardware works
+- [x] Verify compilation
+- [x] Verify hardware works
 
 **Files Modified:**
 - src/modules/v1_alerts/v1_alert_module.h - added static getAlertBars(), included packet_parser.h
@@ -135,6 +133,8 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
 ---
 
 ## Step 4: Move makeAlertId Helper to Module
@@ -151,13 +151,52 @@
 - [x] Add makeAlertId() as public static method in V1AlertModule
 - [x] Update main.cpp to call V1AlertModule::makeAlertId()
 - [x] Remove local makeAlertId() from main.cpp
-- [ ] Verify compilation
-- [ ] Verify hardware works
+- [x] Verify compilation
+- [x] Verify hardware works
 
 **Files Modified:**
 - src/modules/v1_alerts/v1_alert_module.h - added static makeAlertId()
 - src/modules/v1_alerts/v1_alert_module.cpp - implemented makeAlertId()
 - src/main.cpp - 6 call sites updated, local function removed
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ Alerts work correctly
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
+**Commit:** ✅ Committed
+
+---
+
+## Step 5: Move Announced Alert Tracking to Module
+
+**Status:** ✅ COMPLETE  
+**Date:** January 27, 2026
+**Commit:** [pending]
+
+**Objective:** Move the announced alert tracking state and functions. This is a self-contained cluster for tracking which alerts have been voice-announced.
+
+**Why this is safe:** Self-contained state with simple accessor functions. No complex logic.
+
+**Actions:**
+- [x] Add announcedAlertIds array and count as private members
+- [x] Add isAlertAnnounced(), markAlertAnnounced(), clearAnnouncedAlerts() methods
+- [x] Update main.cpp to call module methods
+- [x] Remove local state/functions from main.cpp
+- [ ] Verify compilation
+- [ ] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added state and methods
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented methods
+- src/main.cpp - removed local state/functions, updated 3 call sites
 
 **Compilation Result:**
 - ✅ SUCCESS
@@ -240,7 +279,7 @@ If any step fails hardware testing:
 
 ## Progress Summary
 
-**Completed Steps:** 4  
+**Completed Steps:** 5  
 **Failed Steps:** 0  
 **Total Estimated Steps:** TBD (will refine as we go)  
 **Estimated Completion:** TBD
@@ -250,5 +289,5 @@ If any step fails hardware testing:
 ## Current Status
 
 **Last Updated:** January 27, 2026  
-**Current Step:** Step 3 - Move BLE Packet Queue Reading  
-**Next Action:** Add queue handle to module
+**Current Step:** Step 5 - Move Announced Alert Tracking  
+**Next Action:** Add state and functions to module
