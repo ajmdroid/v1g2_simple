@@ -411,6 +411,14 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   event.isMoving = isMoving;
   event.isPersistent = (duration_ms > 2000);  // >2 seconds = stationary source
   
+  if (DEBUG_LOGS) {
+    const char* bandStr = (band == BAND_X) ? "X" : (band == BAND_K) ? "K" : 
+                          (band == BAND_KA) ? "Ka" : "Laser";
+    Serial.printf("[AutoLockout] Recording alert: %s %.3fMHz @ (%.6f,%.6f) heading=%.0f strength=%d %s\n",
+                  bandStr, frequency_khz/1000.0f, lat, lon, heading, signalStrength,
+                  isMoving ? "moving" : "stopped");
+  }
+  
   // Lock for vector access
   ClusterLock lock(clusterMutex);
   if (!lock.ok()) {
@@ -421,12 +429,22 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   // Find or create cluster (now includes frequency matching)
   int clusterIdx = findCluster(lat, lon, band, frequency_khz);
   
+  bool isNewCluster = (clusterIdx < 0);
+  
   if (clusterIdx >= 0) {
     // Add to existing cluster
     addEventToCluster(clusterIdx, event);
   } else {
     // Create new cluster
     createNewCluster(event);
+  }
+  
+  // Release lock before saving
+  lock.~ClusterLock();
+  
+  // Save immediately when new cluster created for quick feedback
+  if (isNewCluster) {
+    saveToJSON("/v1profiles/auto_lockouts.json");
   }
 }
 

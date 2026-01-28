@@ -34,6 +34,10 @@
 	let gpsStatus = $state(null);
 	let resettingGps = $state(false);
 	
+	// Auto-lockout learning data
+	let lockoutClusters = $state([]);
+	let lockoutDataLoading = $state(false);
+	
 	// Camera database status
 	let cameraStatus = $state(null);
 	
@@ -259,6 +263,23 @@
 			message = { type: 'error', text: 'Connection error' };
 		} finally {
 			resettingGps = false;
+		}
+	}
+	
+	async function fetchLockoutData() {
+		if (lockoutDataLoading) return;
+		
+		lockoutDataLoading = true;
+		try {
+			const res = await fetch('/api/gps/auto-lockouts');
+			if (res.ok) {
+				const data = await res.json();
+				lockoutClusters = data.clusters || [];
+			}
+		} catch (e) {
+			console.error('Failed to fetch lockout data:', e);
+		} finally {
+			lockoutDataLoading = false;
 		}
 	}
 	
@@ -1004,6 +1025,98 @@
 				<p><strong>Ka Protection:</strong> Ka band is almost exclusively used by police. False Ka sources are extremely rare, so auto-learning Ka is disabled by default.</p>
 			</div>
 		</div>
+		
+		<!-- Learning Data View -->
+		{#if settings.lockoutEnabled}
+			<div class="card bg-base-200">
+				<div class="card-body space-y-4">
+					<div class="flex items-center justify-between">
+						<div>
+							<h2 class="card-title">📊 Learning Progress</h2>
+							<p class="text-sm text-base-content/60">View auto-lockout clusters stored on SD card</p>
+						</div>
+						<button 
+							class="btn btn-sm btn-outline" 
+							onclick={fetchLockoutData}
+							disabled={lockoutDataLoading}
+						>
+							{#if lockoutDataLoading}
+								<span class="loading loading-spinner loading-xs"></span>
+							{:else}
+								🔄 Refresh
+							{/if}
+						</button>
+					</div>
+					
+					{#if lockoutClusters.length === 0}
+						{#if lockoutDataLoading}
+							<div class="flex justify-center py-4">
+								<span class="loading loading-spinner loading-md"></span>
+							</div>
+						{:else}
+							<div class="alert alert-info">
+								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+								<span>No clusters learned yet. Drive past false alerts to begin learning.</span>
+							</div>
+						{/if}
+					{:else}
+						<div class="overflow-x-auto">
+							<table class="table table-xs table-zebra">
+								<thead>
+									<tr>
+										<th>Name</th>
+										<th>Band</th>
+										<th>Freq (MHz)</th>
+										<th>Hits</th>
+										<th>Status</th>
+										<th>Location</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each lockoutClusters as cluster}
+										<tr>
+											<td class="font-mono text-xs">{cluster.name || 'Unknown'}</td>
+											<td>
+												<span class="badge badge-sm">
+													{cluster.band === 1 ? 'X' : cluster.band === 2 ? 'K' : cluster.band === 4 ? 'Ka' : cluster.band === 8 ? 'Laser' : 'Unknown'}
+												</span>
+											</td>
+											<td class="font-mono text-xs">
+												{cluster.frequency_khz ? (cluster.frequency_khz / 1000).toFixed(3) : 'N/A'}
+											</td>
+											<td>
+												<div class="flex flex-col text-xs">
+													<span>🚗 {cluster.movingHitCount || 0}</span>
+													<span>🛑 {cluster.stoppedHitCount || 0}</span>
+												</div>
+											</td>
+											<td>
+												{#if cluster.isPromoted}
+													<span class="badge badge-success badge-sm">✓ Locked</span>
+												{:else}
+													<span class="badge badge-warning badge-sm">Learning</span>
+												{/if}
+											</td>
+											<td class="font-mono text-xs">
+												{cluster.centerLat?.toFixed(5)}, {cluster.centerLon?.toFixed(5)}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+						
+						<div class="text-sm text-base-content/60 mt-2">
+							<strong>Total:</strong> {lockoutClusters.length} cluster{lockoutClusters.length !== 1 ? 's' : ''}
+							<span class="mx-2">•</span>
+							<strong>Promoted:</strong> {lockoutClusters.filter(c => c.isPromoted).length}
+							<span class="mx-2">•</span>
+							<strong>Learning:</strong> {lockoutClusters.filter(c => !c.isPromoted).length}
+						</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
 		
 		<!-- Camera Alerts Section -->
 		<div class="card bg-base-200 mt-6" class:opacity-50={!acknowledged}>

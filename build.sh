@@ -235,6 +235,20 @@ if [ "$RUN_TESTS" = true ]; then
     else
         echo -e "${GREEN}✅ All tests passed${NC}"
     fi
+    
+    # Also check firmware compilation (catches platform-specific issues)
+    echo -e "${YELLOW}🔍 Checking firmware compilation...${NC}"
+    "$PIO_CMD" run $PIO_ARGS --target buildprog
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Firmware compilation check failed!${NC}"
+        if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
+            echo -e "${RED}   Aborting upload due to compilation failure.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ Firmware compiles without errors${NC}"
+    fi
     echo ""
 fi
 

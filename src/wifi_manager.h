@@ -189,6 +189,7 @@ private:
     void handleObdForget();
     void handleGpsStatus();
     void handleGpsReset();
+    void handleAutoLockouts();
     void handleCameraStatus();
     void handleCameraReload();
     void handleCameraUpload();

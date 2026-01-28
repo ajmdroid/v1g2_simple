@@ -125,21 +125,22 @@
 
 		try {
 			const params = new URLSearchParams();
-			params.append('enableWifiAtBoot', settings.enableWifiAtBoot);
-			params.append('enableDebugLogging', settings.enableDebugLogging);
-			params.append('kittScannerEnabled', settings.kittScannerEnabled);
-			params.append('logAlerts', settings.logAlerts);
-			params.append('logWifi', settings.logWifi);
-			params.append('logBle', settings.logBle);
-			params.append('logGps', settings.logGps);
-			params.append('logObd', settings.logObd);
-			params.append('logSystem', settings.logSystem);
-			params.append('logDisplay', settings.logDisplay);
-			params.append('logPerfMetrics', settings.logPerfMetrics);
-			params.append('logAudio', settings.logAudio);
-			params.append('logCamera', settings.logCamera);
-			params.append('logLockout', settings.logLockout);
-			params.append('logTouch', settings.logTouch);
+			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
+			params.append('enableDebugLogging', settings.enableDebugLogging.toString());
+			params.append('kittScannerEnabled', settings.kittScannerEnabled.toString());
+			params.append('logAlerts', settings.logAlerts.toString());
+			params.append('logWifi', settings.logWifi.toString());
+			params.append('logBle', settings.logBle.toString());
+			params.append('logGps', settings.logGps.toString());
+			params.append('logObd', settings.logObd.toString());
+			params.append('logSystem', settings.logSystem.toString());
+			params.append('logDisplay', settings.logDisplay.toString());
+			params.append('logPerfMetrics', settings.logPerfMetrics.toString());
+			params.append('logAudio', settings.logAudio.toString());
+			params.append('logCamera', settings.logCamera.toString());
+			params.append('logLockout', settings.logLockout.toString());
+			params.append('logTouch', settings.logTouch.toString());
+			params.append('skipPreview', 'true');
 
 			const response = await fetch('/api/displaycolors', {
 				method: 'POST',

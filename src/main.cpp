@@ -1514,8 +1514,9 @@ void processBLEData() {
                         // Record alert for auto-learning (even if locked out)
                         bool isMoving = gpsHandler.isMoving();
                         uint8_t strength = getAlertBars(priority);
+                        float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
-                                                  (uint32_t)priority.frequency, strength, 0, isMoving);
+                                                  (uint32_t)priority.frequency, strength, 0, isMoving, heading);
                     }
                     
                     // Record all secondary alerts for auto-learning too
@@ -1526,8 +1527,9 @@ void processBLEData() {
                         if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
                         
                         uint8_t strength = getAlertBars(alert);
+                        float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
-                                                  (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving());
+                                                  (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving(), heading);
                     }
                 }
 
@@ -2672,14 +2674,22 @@ void loop() {
                             break;
                         }
                     }
+                    
+                    // Also check if we're moving away from the camera (distance increasing)
                     if (!stillApproaching) {
-                        // Camera was passed - add to recently passed list
-                        PassedCameraTracker passed;
-                        passed.lat = oldCam.camera.latitude;
-                        passed.lon = oldCam.camera.longitude;
-                        passed.passedTimeMs = now;
-                        recentlyPassedCameras.push_back(passed);
-                        Serial.printf("[Camera] PASSED: %s\n", oldCam.camera.getTypeName());
+                        float currentDist = CameraManager::haversineDistance(
+                            lat, lon, oldCam.camera.latitude, oldCam.camera.longitude);
+                        // If distance increased by more than 100m, we've definitely passed it
+                        if (currentDist > oldCam.distance_m + 100.0f) {
+                            // Camera was passed - add to recently passed list
+                            PassedCameraTracker passed;
+                            passed.lat = oldCam.camera.latitude;
+                            passed.lon = oldCam.camera.longitude;
+                            passed.passedTimeMs = now;
+                            recentlyPassedCameras.push_back(passed);
+                            Serial.printf("[Camera] PASSED: %s (distance increased from %.0fm to %.0fm)\n", 
+                                        oldCam.camera.getTypeName(), oldCam.distance_m, currentDist);
+                        }
                     }
                 }
                 

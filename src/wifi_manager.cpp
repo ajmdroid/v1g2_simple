@@ -469,6 +469,7 @@ void WiFiManager::setupWebServer() {
     // GPS API routes
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/reset", HTTP_POST, [this]() { handleGpsReset(); });
+    server.on("/api/gps/auto-lockouts", HTTP_GET, [this]() { handleAutoLockouts(); });
     
     // Camera alerts API routes
     server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
@@ -852,6 +853,11 @@ void WiFiManager::handleSettingsApi() {
     doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
     doc["logDisplay"] = settings.logDisplay;
+    doc["logPerfMetrics"] = settings.logPerfMetrics;
+    doc["logAudio"] = settings.logAudio;
+    doc["logCamera"] = settings.logCamera;
+    doc["logLockout"] = settings.logLockout;
+    doc["logTouch"] = settings.logTouch;
     doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     String json;
@@ -1932,9 +1938,11 @@ void WiFiManager::handleDisplayColorsSave() {
         debugLogger.logf(DebugLogCategory::System, "Debug logging enabled via /api/displaycolors (size=%u bytes)", (unsigned int)debugLogger.size());
     }
     
-    // Trigger immediate display preview to show new colors
-    display.showDemo();
-    requestColorPreviewHold(5500);  // Hold ~5.5s and cycle bands during preview
+    // Trigger immediate display preview to show new colors (skip if requested)
+    if (!server.hasArg("skipPreview") || (server.arg("skipPreview") != "true" && server.arg("skipPreview") != "1")) {
+        display.showDemo();
+        requestColorPreviewHold(5500);  // Hold ~5.5s and cycle bands during preview
+    }
     
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -2809,6 +2817,28 @@ void WiFiManager::handleGpsReset() {
     gpsResetCallback();
     
     server.send(200, "application/json", "{\"success\":true,\"message\":\"GPS module reset initiated\"}");
+}
+
+void WiFiManager::handleAutoLockouts() {
+    markUiActivity();
+    
+    // Read auto-lockout data from SD card
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) {
+        server.send(503, "application/json", "{\"error\":\"SD card not available\"}");
+        return;
+    }
+    
+    File file = fs->open("/v1simple_auto_lockouts.json", "r");
+    if (!file) {
+        // No file yet - return empty data
+        server.send(200, "application/json", "{\"clusters\":[]}");
+        return;
+    }
+    
+    // Stream the file directly to client
+    server.streamFile(file, "application/json");
+    file.close();
 }
 
 void WiFiManager::handleCameraStatus() {
