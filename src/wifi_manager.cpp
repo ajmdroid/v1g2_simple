@@ -14,6 +14,7 @@
 #include "obd_handler.h"
 #include "gps_handler.h"
 #include "camera_manager.h"
+#include "modules/camera/camera_load_coordinator.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -31,9 +32,8 @@
 extern V1BLEClient bleClient;
 // External GPS handler for runtime enable/disable
 extern GPSHandler gpsHandler;
-// Camera load trigger flags (set when GPS enabled at runtime)
-extern bool cameraLoadPending;
-extern bool cameraLoadComplete;
+// Camera load coordinator (set when GPS enabled at runtime)
+extern CameraLoadCoordinator cameraLoadCoordinator;
 // Preview hold helper to keep color demo visible briefly
 extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
@@ -930,8 +930,8 @@ void WiFiManager::handleSettingsSave() {
             Serial.println("[WiFi] GPS enabled - starting GPS handler");
             gpsHandler.begin();
             // Trigger camera database loading if SD card available
-            if (storageManager.isSDCard() && !cameraLoadComplete) {
-                cameraLoadPending = true;
+            if (storageManager.isSDCard() && !cameraLoadCoordinator.isComplete()) {
+                cameraLoadCoordinator.markPending(true);
                 Serial.println("[WiFi] Camera database will load after V1 connects");
             }
         } else if (!enabled && wasEnabled) {

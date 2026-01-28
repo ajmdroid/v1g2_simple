@@ -13,6 +13,7 @@
 #include "camera_manager.h"
 #include "settings.h"
 #include "modules/camera/camera_alert_module.h"
+#include "modules/auto_push/auto_push_module.h"
 
 class WifiOrchestrator {
 public:
@@ -25,6 +26,7 @@ public:
                      GPSHandler& gpsHandler,
                      CameraManager& cameraManager,
                      CameraAlertModule& cameraAlertModule,
+                     AutoPushModule& autoPushModule,
                      std::function<void(int)> profilePushFn);
 
     void startWifi();
@@ -41,6 +43,7 @@ private:
     GPSHandler& gpsHandler;
     CameraManager& cameraManager;
     CameraAlertModule& cameraAlertModule;
+    AutoPushModule& autoPushModule;
     std::function<void(int)> profilePushFn;
     bool callbacksConfigured = false;
 };

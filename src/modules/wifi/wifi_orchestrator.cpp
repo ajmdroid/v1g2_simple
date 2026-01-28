@@ -8,7 +8,8 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    StorageManager& storageManager,
                                    GPSHandler& gpsHandler,
                                    CameraManager& cameraManager,
-                                   CameraAlertModule& cameraAlertModule,
+                                                                     CameraAlertModule& cameraAlertModule,
+                                                                     AutoPushModule& autoPushModule,
                                    std::function<void(int)> profilePushFn)
     : wifiManager(wifiManager),
       debugLogger(debugLogger),
@@ -19,6 +20,7 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
       gpsHandler(gpsHandler),
       cameraManager(cameraManager),
       cameraAlertModule(cameraAlertModule),
+            autoPushModule(autoPushModule),
       profilePushFn(std::move(profilePushFn)) {}
 
 void WifiOrchestrator::startWifi() {
@@ -55,7 +57,7 @@ void WifiOrchestrator::startWifi() {
 void WifiOrchestrator::configureCallbacks() {
     // V1 connection status
     wifiManager.setStatusCallback([this]() {
-        StaticJsonDocument<64> doc;
+        DynamicJsonDocument doc(64);
         doc["v1_connected"] = bleClient.isConnected();
         String json;
         serializeJson(doc, json);
@@ -64,7 +66,7 @@ void WifiOrchestrator::configureCallbacks() {
 
     // Current alert state
     wifiManager.setAlertCallback([this]() {
-        StaticJsonDocument<192> doc;
+        DynamicJsonDocument doc(192);
         if (parser.hasAlerts()) {
             AlertData alert = parser.getPriorityAlert();
             doc["active"] = true;
@@ -110,9 +112,14 @@ void WifiOrchestrator::configureCallbacks() {
         return false;
     });
 
+    // Auto-push executor status
+    wifiManager.setPushStatusCallback([this]() {
+        return autoPushModule.getStatusJson();
+    });
+
     // GPS status
     wifiManager.setGpsStatusCallback([this]() {
-        StaticJsonDocument<256> doc;
+        DynamicJsonDocument doc(256);
 
         doc["enabled"] = gpsHandler.isEnabled();
         doc["moduleDetected"] = gpsHandler.isModuleDetected();
@@ -151,7 +158,7 @@ void WifiOrchestrator::configureCallbacks() {
 
     // Camera status
     wifiManager.setCameraStatusCallback([this]() {
-        StaticJsonDocument<256> doc;
+        DynamicJsonDocument doc(256);
 
         doc["loaded"] = cameraManager.isLoaded();
         doc["count"] = cameraManager.getCameraCount();
@@ -192,5 +199,13 @@ void WifiOrchestrator::configureCallbacks() {
     // Camera test
     wifiManager.setCameraTestCallback([this](int type) {
         cameraAlertModule.startTest(type);
+    });
+
+    // Camera upload hook (optional future handling)
+    wifiManager.setCameraUploadCallback([this](const String& filename) {
+        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
+            debugLogger.logf(DebugLogCategory::Wifi, "Camera upload saved: %s", filename.c_str());
+        }
+        return true;  // signal success
     });
 }

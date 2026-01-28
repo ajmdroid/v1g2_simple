@@ -1,0 +1,52 @@
+#include "camera_load_coordinator.h"
+
+void CameraLoadCoordinator::begin(CameraManager* cameraMgr, StorageManager* storageMgr, DebugLogger* dbgLogger) {
+    cameraManager = cameraMgr;
+    storageManager = storageMgr;
+    debugLogger = dbgLogger;
+}
+
+void CameraLoadCoordinator::markPending(bool isPending) {
+    pending = isPending;
+    if (!isPending) {
+        complete = false;
+    }
+}
+
+void CameraLoadCoordinator::process(bool bleConnected) {
+    if (!cameraManager || !storageManager) return;
+    if (!pending || complete || !bleConnected) return;
+
+    pending = false;
+
+    Serial.println("[Camera] Initializing camera alerts...");
+    fs::FS* sdFs = storageManager->getFilesystem();
+
+    bool hasCachedData = cameraManager->loadRegionalCache(&LittleFS, "/cameras_cache.json");
+    if (hasCachedData) {
+        Serial.printf("[Camera] Regional cache loaded: %d cameras (instant alerts ready)\n", 
+                      cameraManager->getRegionalCacheCount());
+    }
+
+    if (sdFs && (sdFs->exists("/alpr.json") || sdFs->exists("/redlight_cam.json") || sdFs->exists("/speed_cam.json"))) {
+        cameraManager->setFilesystem(sdFs);
+
+        if (cameraManager->startBackgroundLoad()) {
+            Serial.println("[Camera] Background database load started (won't block V1)");
+        } else {
+            Serial.println("[Camera] Background load failed, using synchronous load...");
+            if (cameraManager->begin(sdFs)) {
+                Serial.printf("[Camera] Database loaded: %d cameras\n", 
+                              cameraManager->getCameraCount());
+                complete = true;
+            }
+        }
+    } else if (!hasCachedData) {
+        Serial.println("[Camera] No camera database or cache found");
+    }
+
+    // Mark complete if we have any data source ready
+    if (hasCachedData || (sdFs && cameraManager->isLoaded())) {
+        complete = true;
+    }
+}
