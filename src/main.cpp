@@ -188,16 +188,7 @@ enum class DisplayMode {
 };
 static DisplayMode displayMode = DisplayMode::IDLE;
 
-// Voice alerts tracking - announces priority alert when no app is connected
-static Band lastVoiceAlertBand = BAND_NONE;
-static Direction lastVoiceAlertDirection = DIR_NONE;
-static uint16_t lastVoiceAlertFrequency = 0xFFFF;  // Track frequency to avoid re-announcing same alert (0xFFFF = none)
-static uint8_t lastVoiceAlertBogeyCount = 0;  // Track bogey count to announce when it changes
-static unsigned long lastVoiceAlertTime = 0;
-static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
-static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
-
-// Direction change throttling and priority stability tracking moved to V1AlertModule
+// Voice alert tracking moved to V1AlertModule
 
 // Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
@@ -1449,11 +1440,9 @@ void processBLEData() {
                     uint16_t currentFreq = (uint16_t)priority.frequency;
                     // Check if this is a different alert (band OR frequency changed)
                     // This handles Laser correctly - even though freq=0, band change triggers new announcement
-                    bool bandChanged = (priority.band != lastVoiceAlertBand);
-                    bool frequencyChanged = (currentFreq != lastVoiceAlertFrequency);
-                    bool alertChanged = bandChanged || frequencyChanged;
-                    bool directionChanged = (priority.direction != lastVoiceAlertDirection);
-                    bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+                    bool alertChanged = v1AlertModule.hasAlertChanged(priority.band, currentFreq);
+                    bool directionChanged = v1AlertModule.hasDirectionChanged(priority.direction);
+                    bool cooldownPassed = v1AlertModule.hasCooldownPassed(now);
                     
                     // Track priority stability for secondary alerts (use band+freq combo)
                     uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, currentFreq);
@@ -1471,8 +1460,8 @@ void processBLEData() {
                     }
                     
                     // Track bogey count changes
-                    bool bogeyCountChanged = ((uint8_t)alertCount != lastVoiceAlertBogeyCount);
-                    bool bogeyCountCooldownPassed = (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
+                    bool bogeyCountChanged = v1AlertModule.hasBogeyCountChanged((uint8_t)alertCount);
+                    bool bogeyCountCooldownPassed = v1AlertModule.hasBogeyCountCooldownPassed(now);
                     
                     // PRIORITY ALERT ANNOUNCEMENTS
                     // Logic:
@@ -1502,11 +1491,7 @@ void processBLEData() {
                             play_frequency_voice(audioBand, currentFreq, audioDir,
                                                  alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled,
                                                  alertSettings.announceBogeyCount ? (uint8_t)alertCount : 1);
-                            lastVoiceAlertBand = priority.band;
-                            lastVoiceAlertDirection = priority.direction;
-                            lastVoiceAlertFrequency = currentFreq;
-                            lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                            lastVoiceAlertTime = now;
+                            v1AlertModule.updateLastAnnounced(priority.band, priority.direction, currentFreq, (uint8_t)alertCount, now);
                             v1AlertModule.markPriorityAnnounced(now);
                             v1AlertModule.markAlertAnnounced(priority.band, currentFreq);
                             priorityAnnounced = true;
@@ -1522,10 +1507,10 @@ void processBLEData() {
                         if (!throttled) {
                             uint8_t bogeyCountToAnnounce = (alertSettings.announceBogeyCount && bogeyCountChanged) ? (uint8_t)alertCount : 0;
                             DEBUG_LOGF("[VoiceAlert] Direction change: freq=%u dir=%d bogeys=%d (was %d) [change %d/3]\n", 
-                                       currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount,
+                                       currentFreq, (int)audioDir, alertCount, v1AlertModule.getLastBogeyCount(),
                                        v1AlertModule.getDirectionChangeCount());
                             play_direction_only(audioDir, bogeyCountToAnnounce);
-                            lastVoiceAlertTime = now;
+                            v1AlertModule.updateLastAnnouncedTime(now);
                             v1AlertModule.markPriorityAnnounced(now);
                             priorityAnnounced = true;
                         } else {
@@ -1533,17 +1518,16 @@ void processBLEData() {
                                        currentFreq, v1AlertModule.getDirectionChangeCount());
                         }
                         // Always update tracking even if throttled
-                        lastVoiceAlertDirection = priority.direction;
-                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
+                        v1AlertModule.updateLastAnnouncedDirection(priority.direction, (uint8_t)alertCount);
                     } else if (!alertChanged && !directionChanged && bogeyCountChanged && 
                                bogeyCountCooldownPassed && alertSettings.announceBogeyCount) {
                         // Same alert, same direction, but bogey count changed - announce direction + new count
                         // Uses shorter cooldown (2s) to be more responsive to count changes
                         DEBUG_LOGF("[VoiceAlert] Bogey count change: freq=%u dir=%d bogeys=%d (was %d)\n", 
-                                   currentFreq, (int)audioDir, alertCount, lastVoiceAlertBogeyCount);
+                                   currentFreq, (int)audioDir, alertCount, v1AlertModule.getLastBogeyCount());
                         play_direction_only(audioDir, (uint8_t)alertCount);
-                        lastVoiceAlertBogeyCount = (uint8_t)alertCount;
-                        lastVoiceAlertTime = now;
+                        v1AlertModule.updateLastAnnouncedDirection(priority.direction, (uint8_t)alertCount);
+                        v1AlertModule.updateLastAnnouncedTime(now);
                         v1AlertModule.markPriorityAnnounced(now);
                         priorityAnnounced = true;
                     }
@@ -1599,7 +1583,7 @@ void processBLEData() {
                                 play_frequency_voice(audioBand, alertFreq, secDir,
                                                      alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
                                 v1AlertModule.markAlertAnnounced(alert.band, alertFreq);
-                                lastVoiceAlertTime = now;  // Use same cooldown
+                                v1AlertModule.updateLastAnnouncedTime(now);  // Use same cooldown
                                 break;  // Only announce one secondary per cycle
                             }
                         }
@@ -1624,7 +1608,7 @@ void processBLEData() {
                         
                         // Second pass: check for any alert triggering smart escalation
                         // Only announce if cooldown has passed
-                        if (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS) {
+                        if (v1AlertModule.hasBogeyCountCooldownPassed(now)) {
                             for (int i = 0; i < alertCount; i++) {
                                 const AlertData& alert = currentAlerts[i];
                                 if (!alert.isValid || alert.band == BAND_NONE) continue;
@@ -1690,7 +1674,7 @@ void processBLEData() {
                                     // Play full announcement: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
                                     play_threat_escalation(audioBand, alertFreq, alertDir, 
                                                           total, aheadCount, behindCount, sideCount);
-                                    lastVoiceAlertTime = now;
+                                    v1AlertModule.updateLastAnnouncedTime(now);
                                     break;  // Only one escalation announcement per cycle
                                 }
                             }
@@ -1732,10 +1716,7 @@ void processBLEData() {
                 }
                 
                 // Reset voice alert tracking when alerts clear
-                lastVoiceAlertBand = BAND_NONE;
-                lastVoiceAlertDirection = DIR_NONE;
-                lastVoiceAlertFrequency = 0xFFFF;
-                lastVoiceAlertBogeyCount = 0;
+                v1AlertModule.resetLastAnnounced();
                 clearAnnouncedAlerts();
                 v1AlertModule.resetPriorityStability();
                 

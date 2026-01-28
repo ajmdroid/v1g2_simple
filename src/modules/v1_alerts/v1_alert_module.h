@@ -76,6 +76,18 @@ public:
     void markPriorityAnnounced(unsigned long now);  // Call when priority alert announced
     void resetPriorityStability();  // Call when all alerts clear
     bool canAnnounceSecondary(unsigned long now) const;  // Returns true if secondary announcement allowed
+    
+    // Voice alert "last announced" tracking - tracks what was last announced to avoid repeats
+    bool hasAlertChanged(Band band, uint16_t freq) const;  // Band or frequency changed?
+    bool hasDirectionChanged(Direction dir) const;
+    bool hasCooldownPassed(unsigned long now) const;       // 5s cooldown for new alerts
+    bool hasBogeyCountCooldownPassed(unsigned long now) const;  // 2s cooldown for count changes
+    bool hasBogeyCountChanged(uint8_t count) const;
+    void updateLastAnnounced(Band band, Direction dir, uint16_t freq, uint8_t bogeyCount, unsigned long now);
+    void updateLastAnnouncedDirection(Direction dir, uint8_t bogeyCount);  // Direction-only update
+    void updateLastAnnouncedTime(unsigned long now);  // Time-only update
+    void resetLastAnnounced();  // Call when alerts clear
+    uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount; }  // For debug logging
 
 private:
     // Dependencies (set in begin())
@@ -129,6 +141,15 @@ private:
     unsigned long lastPriorityAnnouncementTime = 0;
     unsigned long priorityStableSince = 0;
     uint32_t lastPriorityAlertId = 0xFFFFFFFF;
+    
+    // Voice alert "last announced" tracking state
+    static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
+    static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
+    Band lastVoiceAlertBand = BAND_NONE;
+    Direction lastVoiceAlertDirection = DIR_NONE;
+    uint16_t lastVoiceAlertFrequency = 0xFFFF;
+    uint8_t lastVoiceAlertBogeyCount = 0;
+    unsigned long lastVoiceAlertTime = 0;
 };
 
 #endif // V1_ALERT_MODULE_H

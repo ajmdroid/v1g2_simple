@@ -261,3 +261,51 @@ bool V1AlertModule::canAnnounceSecondary(unsigned long now) const {
            (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
            (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS);
 }
+
+// ============================================================================
+// Voice Alert "Last Announced" Tracking
+// ============================================================================
+
+bool V1AlertModule::hasAlertChanged(Band band, uint16_t freq) const {
+    return (band != lastVoiceAlertBand) || (freq != lastVoiceAlertFrequency);
+}
+
+bool V1AlertModule::hasDirectionChanged(Direction dir) const {
+    return dir != lastVoiceAlertDirection;
+}
+
+bool V1AlertModule::hasCooldownPassed(unsigned long now) const {
+    return (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+}
+
+bool V1AlertModule::hasBogeyCountCooldownPassed(unsigned long now) const {
+    return (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
+}
+
+bool V1AlertModule::hasBogeyCountChanged(uint8_t count) const {
+    return count != lastVoiceAlertBogeyCount;
+}
+
+void V1AlertModule::updateLastAnnounced(Band band, Direction dir, uint16_t freq, uint8_t bogeyCount, unsigned long now) {
+    lastVoiceAlertBand = band;
+    lastVoiceAlertDirection = dir;
+    lastVoiceAlertFrequency = freq;
+    lastVoiceAlertBogeyCount = bogeyCount;
+    lastVoiceAlertTime = now;
+}
+
+void V1AlertModule::updateLastAnnouncedDirection(Direction dir, uint8_t bogeyCount) {
+    lastVoiceAlertDirection = dir;
+    lastVoiceAlertBogeyCount = bogeyCount;
+}
+
+void V1AlertModule::updateLastAnnouncedTime(unsigned long now) {
+    lastVoiceAlertTime = now;
+}
+
+void V1AlertModule::resetLastAnnounced() {
+    lastVoiceAlertBand = BAND_NONE;
+    lastVoiceAlertDirection = DIR_NONE;
+    lastVoiceAlertFrequency = 0xFFFF;
+    lastVoiceAlertBogeyCount = 0;
+}

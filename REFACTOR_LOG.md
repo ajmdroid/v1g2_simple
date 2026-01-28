@@ -368,6 +368,45 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
+---
+
+## Step 10: Move Voice Alert "Last Announced" Tracking to Module
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move the voice alert tracking state (last announced band/direction/freq/bogeyCount/time) to V1AlertModule. This tracks what was last announced to avoid re-announcing the same alert.
+
+**Why this is safe:** Self-contained state cluster for tracking last announcement. No external dependencies.
+
+**Actions:**
+- [x] Add last announced state and cooldown constants to module
+- [x] Add methods: hasAlertChanged(), hasCooldownPassed(), updateLastAnnounced(), resetLastAnnounced(), etc.
+- [x] Update main.cpp call sites (~15 total)
+- [x] Remove local state/constants from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added 10 methods + 7 state vars + 2 constants
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented all last announced tracking methods
+- src/main.cpp - removed ~10 lines of state/constants, updated ~15 call sites
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
 ---
 
 ## Testing Checklist (After Each Step)
