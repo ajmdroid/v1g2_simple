@@ -5,10 +5,16 @@ Download camera database from OpenStreetMap via Overpass API.
 This script downloads ALPR, red light, and speed camera data from OpenStreetMap
 and converts it to NDJSON format compatible with the V1 Simple camera_manager.
 
+Features:
+- Downloads camera locations from OpenStreetMap
+- Road snapping: snaps cameras to nearest road centerline
+- Corridor enrichment: adds road bearing for accurate filtering
+
 Usage:
     python3 download_cameras.py                    # Download all camera types for US
     python3 download_cameras.py --state CA         # Download for specific state
     python3 download_cameras.py --type alpr        # Download only ALPR cameras
+    python3 download_cameras.py --no-snap          # Skip road snapping (faster)
     python3 download_cameras.py --output cameras.json  # Custom output filename
 
 Output file can be:
@@ -18,7 +24,9 @@ Output file can be:
 
 import argparse
 import json
+import math
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -52,6 +60,136 @@ US_STATES = {
     'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
     'WI': 'Wisconsin', 'WY': 'Wyoming', 'DC': 'District of Columbia'
 }
+
+# Default corridor parameters
+DEFAULT_CORRIDOR_WIDTH_M = 35  # Typical 2-lane road width + margin
+DEFAULT_BEARING_TOLERANCE = 30  # Degrees
+
+# Road snap search radius in meters
+ROAD_SNAP_RADIUS_M = 50
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance in meters between two lat/lon points."""
+    R = 6371000  # Earth radius in meters
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_phi/2)**2 + \
+        math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
+
+
+def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate bearing in degrees from point 1 to point 2."""
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_lambda = math.radians(lon2 - lon1)
+    
+    x = math.sin(delta_lambda) * math.cos(phi2)
+    y = math.cos(phi1) * math.sin(phi2) - \
+        math.sin(phi1) * math.cos(phi2) * math.cos(delta_lambda)
+    
+    bearing = math.degrees(math.atan2(x, y))
+    return (bearing + 360) % 360
+
+
+def point_to_segment_distance(px: float, py: float, 
+                               x1: float, y1: float, 
+                               x2: float, y2: float) -> tuple:
+    """
+    Find the closest point on a line segment to a given point.
+    Returns (distance, closest_lat, closest_lon, segment_bearing).
+    Uses simple planar math (good enough for short distances).
+    """
+    dx = x2 - x1
+    dy = y2 - y1
+    
+    if dx == 0 and dy == 0:
+        # Segment is a point
+        dist = haversine_distance(py, px, y1, x1)
+        bearing = 0
+        return (dist, y1, x1, bearing)
+    
+    # Calculate projection parameter t
+    t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+    
+    # Closest point on segment
+    closest_x = x1 + t * dx
+    closest_y = y1 + t * dy
+    
+    dist = haversine_distance(py, px, closest_y, closest_x)
+    bearing = calculate_bearing(y1, x1, y2, x2)
+    
+    return (dist, closest_y, closest_x, bearing)
+
+
+def snap_to_nearest_road(lat: float, lon: float, verbose: bool = False) -> dict:
+    """
+    Query OSM for nearby roads and snap camera to nearest road centerline.
+    Returns dict with snap coordinates and road bearing, or None if no road found.
+    """
+    # Build Overpass query for nearby roads
+    # Search for highways within ROAD_SNAP_RADIUS_M
+    query = f"""[out:json][timeout:30];
+way["highway"~"^(motorway|trunk|primary|secondary|tertiary|residential|unclassified)$"]
+  (around:{ROAD_SNAP_RADIUS_M},{lat},{lon});
+out geom;
+"""
+    
+    try:
+        response = requests.post(
+            OVERPASS_URL,
+            data={'data': query},
+            timeout=30
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        if verbose:
+            print(f"  Road query failed: {e}")
+        return None
+    
+    data = response.json()
+    ways = data.get('elements', [])
+    
+    if not ways:
+        return None
+    
+    # Find closest road segment
+    best_dist = float('inf')
+    best_snap = None
+    
+    for way in ways:
+        geometry = way.get('geometry', [])
+        if len(geometry) < 2:
+            continue
+        
+        # Check each segment in the way
+        for i in range(len(geometry) - 1):
+            p1 = geometry[i]
+            p2 = geometry[i + 1]
+            
+            dist, snap_lat, snap_lon, bearing = point_to_segment_distance(
+                lon, lat,  # Point (camera)
+                p1['lon'], p1['lat'],  # Segment start
+                p2['lon'], p2['lat']   # Segment end
+            )
+            
+            if dist < best_dist:
+                best_dist = dist
+                best_snap = {
+                    'slat': round(snap_lat, 6),
+                    'slon': round(snap_lon, 6),
+                    'rbr': int(round(bearing)),
+                    'cwm': DEFAULT_CORRIDOR_WIDTH_M,
+                    'btol': DEFAULT_BEARING_TOLERANCE
+                }
+    
+    return best_snap
 
 
 def build_overpass_query(camera_types: list, area_filter: str = None) -> str:
@@ -211,8 +349,46 @@ def download_cameras(camera_types: list, state: str = None, verbose: bool = Fals
     return unique_cameras
 
 
+def enrich_with_road_data(cameras: list, verbose: bool = False) -> list:
+    """
+    Enrich camera records with road corridor data via OSM road snapping.
+    This adds road bearing and snap coordinates for accurate filtering.
+    """
+    total = len(cameras)
+    enriched = 0
+    failed = 0
+    
+    print(f"\nEnriching {total} cameras with road data...")
+    print("(This queries OSM for each camera - may take a while)")
+    
+    for i, cam in enumerate(cameras):
+        # Progress indicator every 10 cameras
+        if (i + 1) % 10 == 0 or i == 0:
+            print(f"  Processing {i + 1}/{total}... ({enriched} enriched, {failed} failed)", 
+                  end='\r')
+        
+        snap_data = snap_to_nearest_road(cam['lat'], cam['lon'], verbose)
+        
+        if snap_data:
+            cam.update(snap_data)
+            enriched += 1
+        else:
+            failed += 1
+        
+        # Rate limiting - be nice to Overpass API
+        # Roughly 1 request per 100ms
+        time.sleep(0.1)
+    
+    print(f"\n  Enriched: {enriched}/{total} cameras ({failed} had no nearby road)")
+    
+    return cameras
+
+
 def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str = None):
     """Save cameras to NDJSON file."""
+    
+    # Count corridor-enriched cameras
+    enriched_count = sum(1 for cam in cameras if 'rbr' in cam)
     
     # Create metadata
     type_names = []
@@ -230,6 +406,7 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
             'name': f"OSM {'/'.join(type_names)} ({area_name})",
             'date': datetime.now().strftime('%Y-%m-%d'),
             'count': len(cameras),
+            'enriched': enriched_count,
             'source': 'OpenStreetMap via Overpass API'
         }
     }
@@ -241,6 +418,8 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
     
     print(f"\nSaved to: {output_path}")
     print(f"Total cameras: {len(cameras)}")
+    if enriched_count > 0:
+        print(f"Road-enriched: {enriched_count} ({enriched_count * 100 // len(cameras)}%)")
     
     # Count by type
     type_counts = {}
@@ -262,10 +441,17 @@ Examples:
   python3 download_cameras.py                         # All US cameras
   python3 download_cameras.py --state CA              # California only
   python3 download_cameras.py --type alpr --state TX  # Texas ALPR only
+  python3 download_cameras.py --no-snap               # Skip road snapping (faster)
   python3 download_cameras.py --output /path/to/sd/cameras.json
 
 After downloading, copy the file to your SD card as /cameras.json
 or upload via the web UI at http://192.168.4.1/integrations
+
+Road snapping enriches each camera with:
+  - Road bearing (for heading-based filtering)
+  - Snap coordinates (road centerline position)
+  - Corridor width (for cross-track distance filtering)
+This helps filter false alerts from parallel roads.
 """
     )
     
@@ -282,6 +468,10 @@ or upload via the web UI at http://192.168.4.1/integrations
                        type=str,
                        default='cameras.json',
                        help='Output filename (default: cameras.json)')
+    
+    parser.add_argument('--no-snap', 
+                       action='store_true',
+                       help='Skip road snapping (faster, but less accurate filtering)')
     
     parser.add_argument('--verbose', '-v',
                        action='store_true',
@@ -307,6 +497,12 @@ or upload via the web UI at http://192.168.4.1/integrations
     if not cameras:
         print("No cameras found!")
         sys.exit(1)
+    
+    # Enrich with road data (unless --no-snap)
+    if not args.no_snap:
+        cameras = enrich_with_road_data(cameras, args.verbose)
+    else:
+        print("\nSkipping road snapping (--no-snap specified)")
     
     # Save
     save_ndjson(cameras, args.output, camera_types, args.state)
