@@ -504,7 +504,7 @@ void setup() {
 
 void loop() {
     unsigned long now = millis();
-    // Update V1 Alert Module (Phase 1 refactoring - stub for now)
+    // Update alert persistence module (handles alert on-screen timing)
     alertPersistenceModule.update();
     perfReporterModule.process(now);
 

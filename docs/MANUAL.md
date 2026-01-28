@@ -248,7 +248,7 @@ V1 Gen2 (BLE)
 
 **Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to JBV1. Display updates are queued because SPI operations cannot run in BLE callback context.
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy forward), [src/main.cpp](src/main.cpp#L195-L210) (onV1Data callback), [src/main.cpp](src/main.cpp#L467-L540) (processBLEData)
+**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (display updates)
 
 ### Threading Model
 
@@ -1603,7 +1603,7 @@ No automated tests exist. Manual testing procedure:
 
 1. `onV1Data()` - BLE callback, forwards to proxy immediately then queues for display
 2. `forwardToProxyImmediate()` - Called in BLE callback, must complete fast (~1ms)
-3. `processBLEData()` - Main loop, target <10ms
+3. `BleQueueModule::process()` - Main loop, target <10ms
 4. `display.update()` + `flush()` - Target <15ms total
 
 **Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (onV1Data immediate forward), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)

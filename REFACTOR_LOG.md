@@ -1,22 +1,63 @@
 # Main.cpp Refactoring Migration Log
 
 **Started:** January 27, 2026  
-**Goal:** Extract 832-line main loop into alert-centric modules  
+**Completed:** January 28, 2026  
+**Goal:** Extract 832-line main loop into focused modules  
 **Strategy:** One micro-step at a time, test after each change  
-**Note (Jan 28, 2026):** V1AlertModule was split—alert persistence now lives in `modules/alert_persistence`, and all voice logic lives in `modules/voice`.
+**Final Result:** main.cpp reduced from ~3100 lines to ~615 lines; 14 modules created
 
-## Overall Plan
-- **Phase 1:** Extract V1 Alert handling (BLE + display + audio)
-- **Phase 2:** Extract Camera Alert handling  
-- **Phase 3:** Extract GPS/OBD services
-- **Phase 4:** Unify Settings API
+## Migration Complete ✅
+
+The refactoring effort has been completed. main.cpp is now a pure orchestrator (~615 lines) that wires modules together and dispatches to them in `loop()`.
+
+### Final Module Structure
+
+| Module | Location | Responsibility |
+|--------|----------|----------------|
+| AlertPersistence | `modules/alert_persistence/` | Alert on-screen persistence, state resets |
+| Voice | `modules/voice/` | Voice announcement decisions |
+| VolumeFade | `modules/volume_fade/` | Volume fade/restore for long alerts |
+| SpeedVolume | `modules/speed_volume/` | Highway speed volume boost |
+| DisplayPipeline | `modules/display/` | Alert rendering, V1 packet processing |
+| DisplayPreview | `modules/display/` | Color preview cycling |
+| DisplayRestore | `modules/display/` | Display state restoration |
+| BleQueue | `modules/ble/` | Thread-safe BLE data queue |
+| ConnectionState | `modules/ble/` | BLE connect/disconnect states |
+| TouchUI | `modules/touch/` | Touch-based settings overlay |
+| TapGesture | `modules/touch/` | Triple-tap and gesture handling |
+| Power | `modules/power/` | Battery, power button, sleep |
+| AutoPush | `modules/auto_push/` | V1 profile push on connect |
+| CameraLoad | `modules/camera/` | Background camera DB loading |
+| ObdAutoConnector | `modules/obd/` | OBD auto-connect |
+| AutoLockoutMaintenance | `modules/lockout/` | Periodic lockout maintenance |
+| PerfReporter | `modules/perf/` | Performance metrics |
+| WifiOrchestrator | `modules/wifi/` | WiFi/web server lifecycle |
+
+### Historical Notes
+
+The original V1AlertModule was split during migration:
+- Alert persistence → `modules/alert_persistence/`
+- Voice logic → `modules/voice/`
+- The `modules/v1_alerts/` directory no longer exists
+
+Steps 1-14 below document the initial lift-and-shift approach. Steps 15-19 document the pivot to true module architecture. The final cleanup (Step 20+) completed the migration with additional modules for BLE, display, touch, power, OBD, and camera subsystems.
 
 ---
 
-## Phase 1: V1 Alert Module
+## Overall Plan (Historical)
+- **Phase 1:** Extract V1 Alert handling → ✅ Replaced by Voice, AlertPersistence, DisplayPipeline modules
+- **Phase 2:** Extract Camera Alert handling → ✅ CameraLoadCoordinator handles background loading  
+- **Phase 3:** Extract GPS/OBD services → ✅ ObdAutoConnector handles OBD; GPS stays in core
+- **Phase 4:** Unify Settings API → Deferred (current API endpoints work well)
+
+---
+
+## Phase 1: V1 Alert Module (Historical)
+
+> **Note:** The original `v1_alerts` module was replaced by the current module structure. These steps are preserved for historical reference.
 
 ### Step 1: Create Module Structure
-**Status:** ✅ COMPLETE  
+**Status:** ✅ COMPLETE (superseded by current modules)  
 **Date:** January 27, 2026  
 **Commit:** ✅ Committed
 

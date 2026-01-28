@@ -142,53 +142,87 @@ We're taking a more incremental approach than originally planned - extracting st
 
 ### Current Approach: Incremental Module Migration
 
-**Structure:**
+**Structure (January 28, 2026):**
 ```
 src/
-├── main.cpp                         (~2800 lines, shrinking incrementally)
+├── main.cpp                         (~615 lines - orchestration only)
 ├── modules/
-│   ├── alert_persistence/
-│   │   ├── alert_persistence_module.h   (~110 lines)
-│   │   └── alert_persistence_module.cpp (~140 lines)
-│   ├── voice/
-│   │   ├── voice_module.h               (~220 lines)
-│   │   └── voice_module.cpp             (~450 lines)
-│   ├── volume_fade/
-│   │   ├── volume_fade_module.h         (~90 lines)
-│   │   └── volume_fade_module.cpp       (~130 lines)
-│   └── speed_volume/
-│       ├── speed_volume_module.h        (~70 lines)
-│       └── speed_volume_module.cpp      (~110 lines)
-└── [existing files unchanged]
+│   ├── alert_persistence/           Alert on-screen persistence + state resets
+│   │   ├── alert_persistence_module.h
+│   │   └── alert_persistence_module.cpp
+│   ├── auto_push/                   V1 profile auto-push on connect
+│   │   ├── auto_push_module.h
+│   │   └── auto_push_module.cpp
+│   ├── ble/                         BLE data queue + connection state
+│   │   ├── ble_queue_module.h/cpp
+│   │   └── connection_state_module.h/cpp
+│   ├── camera/                      Background camera DB loading
+│   │   ├── camera_load_coordinator.h
+│   │   └── camera_load_coordinator.cpp
+│   ├── display/                     Display pipeline + preview + restore
+│   │   ├── display_pipeline_module.h/cpp
+│   │   ├── display_preview_module.h/cpp
+│   │   └── display_restore_module.h/cpp
+│   ├── lockout/                     Auto-lockout maintenance
+│   │   ├── auto_lockout_maintenance.h
+│   │   └── auto_lockout_maintenance.cpp
+│   ├── obd/                         OBD auto-connect state machine
+│   │   ├── obd_auto_connector.h
+│   │   └── obd_auto_connector.cpp
+│   ├── perf/                        Performance metrics reporter
+│   │   ├── perf_reporter_module.h
+│   │   └── perf_reporter_module.cpp
+│   ├── power/                       Battery/power management
+│   │   ├── power_module.h
+│   │   └── power_module.cpp
+│   ├── speed_volume/                Highway speed volume boost
+│   │   ├── speed_volume_module.h
+│   │   └── speed_volume_module.cpp
+│   ├── touch/                       Touch UI + tap gestures
+│   │   ├── touch_ui_module.h/cpp
+│   │   └── tap_gesture_module.h/cpp
+│   ├── voice/                       Voice alert decisions
+│   │   ├── voice_module.h
+│   │   └── voice_module.cpp
+│   ├── volume_fade/                 Alert volume fade/restore
+│   │   ├── volume_fade_module.h
+│   │   └── volume_fade_module.cpp
+│   └── wifi/                        WiFi orchestration
+│       ├── wifi_orchestrator.h
+│       └── wifi_orchestrator.cpp
+└── [core services unchanged: ble_client, display, settings, etc.]
 ```
 
-**VoiceModule** owns all voice announcement decisions (priority/secondary/escalation) and cooldowns. main.cpp only builds a `VoiceContext` and executes the returned `VoiceAction`.
+**Module Responsibilities:**
 
-**AlertPersistenceModule** keeps alerts on-screen briefly after they clear and provides one-call state resets for alert-related modules.
-
-**VolumeFadeModule** decides when to fade/restore volume for long-running alerts.
-
-**SpeedVolumeModule** boosts/restores volume at highway speeds while respecting active fades.
+| Module | Responsibility |
+|--------|----------------|
+| **VoiceModule** | All voice announcement decisions (priority/secondary/escalation) and cooldowns |
+| **AlertPersistenceModule** | Keeps alerts on-screen after they clear; provides state resets |
+| **VolumeFadeModule** | Decides when to fade/restore volume for long-running alerts |
+| **SpeedVolumeModule** | Boosts volume at highway speeds; defers to fade when fade owns volume |
+| **DisplayPipelineModule** | Owns alert rendering, display state updates, and V1 packet processing |
+| **BleQueueModule** | Thread-safe BLE data queuing between callback and main loop |
+| **ConnectionStateModule** | Manages BLE connect/disconnect display states |
+| **TouchUiModule** | Touch-based settings UI overlay |
+| **TapGestureModule** | Triple-tap mute and other gestures |
+| **PowerModule** | Battery monitoring, power button, sleep |
+| **AutoPushModule** | Pushes V1 profiles on connect |
+| **CameraLoadCoordinator** | Background camera database loading |
+| **ObdAutoConnector** | OBD auto-connect after V1 connects |
+| **AutoLockoutMaintenance** | Periodic lockout zone maintenance |
+| **WifiOrchestrator** | WiFi/web server lifecycle |
 
 ### Migration Process
 
 Each step follows a strict protocol:
-1. Add method/state to the target module (Voice, Alert persistence, Volume fade)
+1. Add method/state to the target module
 2. Update call sites in main.cpp
 3. Remove old code from main.cpp
 4. Build and test on hardware
 5. Commit only after verification
 
 See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
-
-### Future Phases (Tentative)
-
-Next extractions (if we keep shrinking main.cpp):
-- **Display Module**: Color preview, demo mode
-- **Settings API**: Consolidate web endpoints
-- **GPS Module**: Speed caching, lockout queries
-
-Or we may keep the current structure if it's working well.
 
 ## Success Metrics
 
@@ -197,18 +231,10 @@ Or we may keep the current structure if it's working well.
 - Alert state scattered across 15+ static variables
 - Change risk: HIGH (adjacent code interactions)
 
-### Current Progress:
-- VoiceModule: ~430 lines (all voice decisions consolidated)
-- AlertPersistenceModule: ~120 lines (alert persistence + clears)
-- VolumeFadeModule: ~120 lines (fade/restore decisions)
-- SpeedVolumeModule: ~90 lines (boost/restore decisions; defers to fade when fade owns volume)
-- main.cpp: ~2800 lines (reduced ~300 lines; voice/speed/fade logic removed)
-- Alert and voice tracking consolidated in modules
-- Change risk: LOWER (state/logic in modules)
-
-### Target:
-- main.cpp: ~2000 lines (orchestration + features not yet extracted)
-- Each module: 200-600 lines (single responsibility)
+### After (January 28, 2026):
+- main.cpp: ~615 lines (orchestration only)
+- 14 focused modules in src/modules/
+- State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 
 ## Key Design Rules
