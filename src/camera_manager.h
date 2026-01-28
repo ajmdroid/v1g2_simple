@@ -21,7 +21,7 @@ enum class CameraType : uint8_t {
   Unknown = 0
 };
 
-// Compact camera record (~20 bytes per camera)
+// Compact camera record (~32 bytes per camera with corridor data)
 struct CameraRecord {
   float latitude;
   float longitude;
@@ -30,6 +30,16 @@ struct CameraRecord {
   uint8_t directionCount; // 0-2 directions
   uint16_t directions[2]; // Up to 2 directions (0-359 degrees)
   bool isMetric;          // true = kmh, false = mph
+  
+  // Road corridor metadata for filtering side-road false alerts
+  int16_t roadBearing;       // Road direction at camera (0-359, -1 = unknown)
+  uint8_t corridorWidthM;    // Half-width of road corridor in meters (25-50 typical)
+  uint8_t bearingTolerance;  // ±degrees for heading match (25-35 typical)
+  float snapLat;             // Road snap point latitude (for cross-track calc)
+  float snapLon;             // Road snap point longitude
+  
+  // Check if corridor data is available
+  bool hasCorridorData() const { return roadBearing >= 0; }
   
   CameraType getCameraType() const { return static_cast<CameraType>(type); }
   
@@ -201,6 +211,14 @@ private:
   
   // Check if heading is towards camera (within tolerance)
   static bool isHeadingTowards(float heading, float bearing, float tolerance = 45.0f);
+  
+  // Corridor matching helpers
+  static float angleDiff(float a, float b);
+  static float crossTrackDistance(float lat, float lon, 
+                                   float roadLat, float roadLon, 
+                                   int16_t roadBearing);
+  bool isOnCameraRoad(float lat, float lon, float heading,
+                      const CameraRecord& cam) const;
 };
 
 // Global instance

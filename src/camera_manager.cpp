@@ -239,6 +239,17 @@ bool CameraManager::parseCameraLine(const char* line, CameraRecord& record) {
     }
   }
   
+  // Corridor data for road-aware filtering (optional enrichment fields)
+  // roadBearing: -1 = not set, 0-359 = bearing in degrees
+  record.roadBearing = doc["rbr"] | -1;
+  // corridorWidthM: default 35m (typical 2-lane road width + margin)
+  record.corridorWidthM = doc["cwm"] | 35;
+  // bearingTolerance: default 30 degrees for heading match
+  record.bearingTolerance = doc["btol"] | 30;
+  // Snapped coordinates (road-centerline position)
+  record.snapLat = doc["slat"] | record.latitude;
+  record.snapLon = doc["slon"] | record.longitude;
+  
   return true;
 }
 
@@ -367,7 +378,7 @@ bool CameraManager::saveRegionalCache(fs::FS* filesystem, const char* path) {
   file.print(metaLine);
   
   // Write camera records as NDJSON
-  char line[128];
+  char line[256];  // Expanded for corridor fields
   for (const auto& cam : regionalCache) {
     int len = snprintf(line, sizeof(line), 
                        "{\"lat\":%.6f,\"lon\":%.6f,\"flg\":%d",
@@ -383,6 +394,14 @@ bool CameraManager::saveRegionalCache(fs::FS* filesystem, const char* path) {
         len += snprintf(line + len, sizeof(line) - len, ",%d", cam.directions[1]);
       }
       len += snprintf(line + len, sizeof(line) - len, "]");
+    }
+    
+    // Write corridor fields only if we have corridor data
+    if (cam.hasCorridorData()) {
+      len += snprintf(line + len, sizeof(line) - len, 
+                      ",\"rbr\":%d,\"cwm\":%d,\"btol\":%d,\"slat\":%.6f,\"slon\":%.6f",
+                      cam.roadBearing, cam.corridorWidthM, cam.bearingTolerance,
+                      cam.snapLat, cam.snapLon);
     }
     
     len += snprintf(line + len, sizeof(line) - len, "}\n");
@@ -531,6 +550,66 @@ bool CameraManager::isHeadingTowards(float heading, float bearing, float toleran
   return diff <= tolerance;
 }
 
+float CameraManager::angleDiff(float angle1, float angle2) {
+  float diff = fabs(angle1 - angle2);
+  if (diff > 180.0f) diff = 360.0f - diff;
+  return diff;
+}
+
+float CameraManager::crossTrackDistance(
+  float lat, float lon,
+  float roadLat, float roadLon,
+  int16_t roadBearing
+) {
+  // Cross-track distance: perpendicular distance from point to infinite line
+  // Line defined by roadLat/roadLon with bearing roadBearing
+  // 
+  // Formula: d_xt = asin(sin(d_13/R) * sin(θ_13 - θ_12)) * R
+  // Where:
+  //   d_13 = distance from road point to vehicle
+  //   θ_13 = bearing from road point to vehicle
+  //   θ_12 = road bearing
+  
+  float dist = haversineDistance(roadLat, roadLon, lat, lon);
+  if (dist < 1.0f) return 0.0f;  // On the point
+  
+  float bearingToVehicle = calculateBearing(roadLat, roadLon, lat, lon);
+  float bearingDiff = (bearingToVehicle - static_cast<float>(roadBearing)) * PI / 180.0f;
+  
+  // Cross-track distance (signed, but we want absolute)
+  float xtd = fabs(sin(bearingDiff) * dist);
+  
+  return xtd;
+}
+
+bool CameraManager::isOnCameraRoad(
+  float lat, float lon, float heading,
+  const CameraRecord& cam
+) const {
+  // If no corridor data, fall back to simple distance check
+  if (!cam.hasCorridorData()) {
+    return true;  // Assume on-road if no data
+  }
+  
+  // Check cross-track distance (perpendicular distance to road centerline)
+  float xtd = crossTrackDistance(lat, lon, cam.snapLat, cam.snapLon, cam.roadBearing);
+  if (xtd > static_cast<float>(cam.corridorWidthM)) {
+    return false;  // Too far from road centerline
+  }
+  
+  // Check heading alignment with road bearing
+  // Road can be traveled in either direction, so check both
+  float headingDiff = angleDiff(heading, static_cast<float>(cam.roadBearing));
+  float reverseHeadingDiff = angleDiff(heading, fmod(static_cast<float>(cam.roadBearing) + 180.0f, 360.0f));
+  float minHeadingDiff = fmin(headingDiff, reverseHeadingDiff);
+  
+  if (minHeadingDiff > static_cast<float>(cam.bearingTolerance)) {
+    return false;  // Heading doesn't match road direction
+  }
+  
+  return true;
+}
+
 bool CameraManager::hasNearbyCamera(float lat, float lon, float radius_m) const {
   const auto& queryList = getQueryCameras();
   if (queryList.empty()) return false;
@@ -586,6 +665,9 @@ bool CameraManager::getClosestCamera(
     float dist = haversineDistance(lat, lon, cam.latitude, cam.longitude);
     if (dist > radius_m) continue;
     
+    // Corridor check - skip cameras if we're not on their road
+    if (!isOnCameraRoad(lat, lon, heading_deg, cam)) continue;
+    
     // Prioritize cameras we're heading towards
     float bearing = calculateBearing(lat, lon, cam.latitude, cam.longitude);
     bool approaching = isHeadingTowards(heading_deg, bearing, 60.0f);
@@ -631,6 +713,9 @@ std::vector<NearbyCameraResult> CameraManager::findNearby(
     // Precise distance
     float dist = haversineDistance(lat, lon, cam.latitude, cam.longitude);
     if (dist > radius_m) continue;
+    
+    // Corridor check - skip cameras if we're not on their road
+    if (!isOnCameraRoad(lat, lon, heading_deg, cam)) continue;
     
     NearbyCameraResult r;
     r.camera = cam;
