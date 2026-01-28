@@ -233,3 +233,31 @@ bool V1AlertModule::shouldThrottleDirectionChange(unsigned long now) {
     // Return true if over limit (should throttle)
     return directionChangeCount > DIRECTION_CHANGE_LIMIT;
 }
+
+// Update priority stability tracking - call when checking priority alert
+void V1AlertModule::updatePriorityStability(uint32_t currentAlertId, unsigned long now) {
+    if (currentAlertId != lastPriorityAlertId) {
+        // Priority changed - reset stability timer
+        lastPriorityAlertId = currentAlertId;
+        priorityStableSince = now;
+    }
+}
+
+// Mark that priority was just announced
+void V1AlertModule::markPriorityAnnounced(unsigned long now) {
+    lastPriorityAnnouncementTime = now;
+}
+
+// Reset priority stability (call when all alerts clear)
+void V1AlertModule::resetPriorityStability() {
+    priorityStableSince = 0;
+    lastPriorityAlertId = 0xFFFFFFFF;
+}
+
+// Check if secondary alert can be announced
+// Requires: priority stable for PRIORITY_STABILITY_MS and gap of POST_PRIORITY_GAP_MS since announcement
+bool V1AlertModule::canAnnounceSecondary(unsigned long now) const {
+    return (priorityStableSince > 0) &&
+           (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
+           (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS);
+}

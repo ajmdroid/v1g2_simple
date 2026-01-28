@@ -69,6 +69,13 @@ public:
     void resetDirectionThrottle(unsigned long now);
     bool shouldThrottleDirectionChange(unsigned long now);  // Returns true if should skip announcement
     uint8_t getDirectionChangeCount() const { return directionChangeCount; }  // For debug logging
+    
+    // Priority stability tracking - controls when secondary alerts can be announced
+    // Secondary alerts require priority to be stable (unchanging) and a gap after announcement
+    void updatePriorityStability(uint32_t currentAlertId, unsigned long now);  // Call when priority alert checked
+    void markPriorityAnnounced(unsigned long now);  // Call when priority alert announced
+    void resetPriorityStability();  // Call when all alerts clear
+    bool canAnnounceSecondary(unsigned long now) const;  // Returns true if secondary announcement allowed
 
 private:
     // Dependencies (set in begin())
@@ -115,6 +122,13 @@ private:
     static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;  // Max changes before throttling
     uint8_t directionChangeCount = 0;
     unsigned long directionChangeWindowStart = 0;
+    
+    // Priority stability tracking state - controls secondary alert timing
+    static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;   // Priority must be stable 1s
+    static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;    // Wait 1.5s after priority announcement
+    unsigned long lastPriorityAnnouncementTime = 0;
+    unsigned long priorityStableSince = 0;
+    uint32_t lastPriorityAlertId = 0xFFFFFFFF;
 };
 
 #endif // V1_ALERT_MODULE_H

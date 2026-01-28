@@ -197,14 +197,7 @@ static unsigned long lastVoiceAlertTime = 0;
 static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;  // Min 5s between new alert announcements
 static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;  // Min 2s between bogey count-only updates
 
-// Direction change throttling moved to V1AlertModule
-
-// Secondary alert tracking - moved to V1AlertModule
-// Keeping these timing constants here as they're used in the main loop
-static unsigned long lastPriorityAnnouncementTime = 0;  // When priority was last announced
-static unsigned long priorityStableSince = 0;  // When priority alert became stable
-static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;  // Priority must be stable 1s before secondary
-static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;   // Wait 1.5s after priority announcement
+// Direction change throttling and priority stability tracking moved to V1AlertModule
 
 // Auto power-off timer - triggered when V1 disconnects and autoPowerOffMinutes > 0
 static unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
@@ -1464,11 +1457,7 @@ void processBLEData() {
                     
                     // Track priority stability for secondary alerts (use band+freq combo)
                     uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, currentFreq);
-                    static uint32_t lastPriorityAlertId = 0xFFFFFFFF;
-                    if (currentAlertId != lastPriorityAlertId) {
-                        lastPriorityAlertId = currentAlertId;
-                        priorityStableSince = now;
-                    }
+                    v1AlertModule.updatePriorityStability(currentAlertId, now);
                     
                     // Convert V1 direction to audio direction
                     // V1 uses bitmask (FRONT=1, SIDE=2, REAR=4), we simplify to primary direction
@@ -1518,7 +1507,7 @@ void processBLEData() {
                             lastVoiceAlertFrequency = currentFreq;
                             lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                             lastVoiceAlertTime = now;
-                            lastPriorityAnnouncementTime = now;
+                            v1AlertModule.markPriorityAnnounced(now);
                             v1AlertModule.markAlertAnnounced(priority.band, currentFreq);
                             priorityAnnounced = true;
                         }
@@ -1537,7 +1526,7 @@ void processBLEData() {
                                        v1AlertModule.getDirectionChangeCount());
                             play_direction_only(audioDir, bogeyCountToAnnounce);
                             lastVoiceAlertTime = now;
-                            lastPriorityAnnouncementTime = now;
+                            v1AlertModule.markPriorityAnnounced(now);
                             priorityAnnounced = true;
                         } else {
                             DEBUG_LOGF("[VoiceAlert] Direction change THROTTLED: freq=%u changes=%d in window\n",
@@ -1555,7 +1544,7 @@ void processBLEData() {
                         play_direction_only(audioDir, (uint8_t)alertCount);
                         lastVoiceAlertBogeyCount = (uint8_t)alertCount;
                         lastVoiceAlertTime = now;
-                        lastPriorityAnnouncementTime = now;
+                        v1AlertModule.markPriorityAnnounced(now);
                         priorityAnnounced = true;
                     }
                     
@@ -1565,8 +1554,7 @@ void processBLEData() {
                     if (!priorityAnnounced && 
                         alertSettings.announceSecondaryAlerts &&
                         alertCount > 1 &&
-                        (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
-                        (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS)) {
+                        v1AlertModule.canAnnounceSecondary(now)) {
                         
                         // Check non-priority alerts for unannounced frequencies
                         for (int i = 0; i < alertCount; i++) {
@@ -1749,7 +1737,7 @@ void processBLEData() {
                 lastVoiceAlertFrequency = 0xFFFF;
                 lastVoiceAlertBogeyCount = 0;
                 clearAnnouncedAlerts();
-                priorityStableSince = 0;
+                v1AlertModule.resetPriorityStability();
                 
                 // Volume Fade: restore original volume when alerts clear
                 // Restore if we either:

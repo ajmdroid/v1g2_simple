@@ -329,6 +329,45 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
+---
+
+## Step 9: Move Priority Stability Tracking to Module
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move the priority stability tracking state and constants to V1AlertModule. This controls when secondary alerts can be announced (priority must be stable for 1s, with a gap after priority announcement).
+
+**Why this is safe:** Self-contained timing state. No external dependencies beyond timestamp.
+
+**Actions:**
+- [x] Add priority stability state and constants to module
+- [x] Add methods: updatePriorityStability(), markPriorityAnnounced(), canAnnounceSecondary(), resetPriorityStability()
+- [x] Update main.cpp call sites (6 total)
+- [x] Remove local state/constants from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added methods + state + constants
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented priority stability logic
+- src/main.cpp - removed ~7 lines of state/constants, updated 6 call sites
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
 ---
 
 ## Testing Checklist (After Each Step)
