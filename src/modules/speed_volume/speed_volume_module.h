@@ -22,6 +22,15 @@ struct SpeedVolumeAction {
     bool hasAction() const { return type != Type::NONE; }
 };
 
+struct SpeedVolumeContext {
+    bool bleConnected = false;
+    bool fadeTakingControl = false;
+    uint8_t currentVolume = 0;
+    uint8_t currentMuteVolume = 0;
+    float speedMph = 0.0f;
+    unsigned long now = 0;
+};
+
 class SpeedVolumeModule {
 public:
     SpeedVolumeModule();
@@ -32,9 +41,15 @@ public:
                PacketParser* parser,
                VoiceModule* voiceModule,
                VolumeFadeModule* volumeFadeModule);
+
+    // Lightweight init for unit tests (no BLE/parser needed)
+    void begin(SettingsManager* settings);
     
     // Self-contained process: gathers context internally and executes BLE commands
     void process(unsigned long nowMs);
+
+    // Pure decision helper for tests (no BLE side effects)
+    SpeedVolumeAction process(const SpeedVolumeContext& ctx);
     
     void reset();
     bool isBoostActive() const { return boostActive; }
@@ -54,4 +69,3 @@ private:
     
     static constexpr unsigned long CHECK_INTERVAL_MS = 2000;
 };
-

@@ -2,6 +2,11 @@
 // Minimal NimBLE stubs for UNIT_TEST builds
 #include <stdint.h>
 #include <string>
+
+typedef void* SemaphoreHandle_t;
+
+static constexpr uint8_t BLE_ADDR_PUBLIC = 0;
+
 class NimBLEAddress {
 public:
     NimBLEAddress() = default;
