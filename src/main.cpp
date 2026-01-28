@@ -249,17 +249,7 @@ static void clearAnnouncedAlerts() {
     v1AlertModule.clearAlertHistories();
 }
 
-static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
-    switch (band) {
-        case BAND_LASER: return settings.secondaryLaser;
-        case BAND_KA:    return settings.secondaryKa;
-        case BAND_K:     return settings.secondaryK;
-        case BAND_X:     return settings.secondaryX;
-        default:         return false;
-    }
-}
-
-// Helper moved to V1AlertModule::getAlertBars() - use that instead
+// Helper moved to V1AlertModule: getAlertBars(), isBandEnabledForSecondary()
 
 // Speed cache - avoids issues with OBD poll timing jitter
 static float cachedSpeedMph = 0.0f;
@@ -1604,7 +1594,7 @@ void processBLEData() {
                             if (v1AlertModule.isAlertAnnounced(alert.band, alertFreq)) continue;
                             
                             // Check band filter
-                            if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
+                            if (!V1AlertModule::isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                             
                             // Announce this secondary alert
                             AlertBand audioBand;
@@ -1673,7 +1663,7 @@ void processBLEData() {
                                 if (state.muted) continue;
                                 
                                 // Skip if band not enabled for secondary
-                                if (!isBandEnabledForSecondary(alert.band, alertSettings)) continue;
+                                if (!V1AlertModule::isBandEnabledForSecondary(alert.band, alertSettings)) continue;
                                 
                                 // Check smart escalation criteria (pass alertCount for bogey filter)
                                 if (v1AlertModule.shouldAnnounceThreatEscalation(alert.band, alertFreq, (uint8_t)alertCount, now)) {

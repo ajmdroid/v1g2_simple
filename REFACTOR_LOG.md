@@ -251,13 +251,48 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
+---
+
+## Step 7: Move isBandEnabledForSecondary() to Module
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move the isBandEnabledForSecondary() helper function to V1AlertModule. Used for secondary alert voice announcements.
+
+**Why this is safe:** Simple pure function with no state, just checks V1Settings struct.
+
+**Actions:**
+- [x] Add static isBandEnabledForSecondary() method to module header
+- [x] Implement in module cpp
+- [x] Update main.cpp call sites (2 total)
+- [x] Remove local function from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added forward decl for V1Settings, added method declaration
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented isBandEnabledForSecondary()
+- src/main.cpp - removed ~8 lines, updated 2 call sites to use V1AlertModule::
+
 **Compilation Result:**
--
+- ✅ SUCCESS
 
 **Hardware Test Result:**
--
+- ✅ SUCCESS
 
 **Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
+---
+
+## Testing Checklist (After Each Step)
 -
 
 **Rollback Required:**

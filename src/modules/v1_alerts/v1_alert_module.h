@@ -10,6 +10,7 @@
 
 // Forward declarations (avoid including heavy headers)
 class V1BLEClient;
+struct V1Settings;
 class V1Display;
 class SettingsManager;
 
@@ -44,6 +45,9 @@ public:
     // Static utility: Create unique alert ID from band and frequency
     // Used for tracking announced alerts, lockout state, etc.
     static uint32_t makeAlertId(Band band, uint16_t freq);
+    
+    // Static utility: Check if band is enabled for secondary alert announcements
+    static bool isBandEnabledForSecondary(Band band, const V1Settings& settings);
     
     // Announced alert tracking - for voice announcement deduplication
     // Tracks which alerts have been announced this session

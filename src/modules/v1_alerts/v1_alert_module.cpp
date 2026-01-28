@@ -45,6 +45,17 @@ uint32_t V1AlertModule::makeAlertId(Band band, uint16_t freq) {
     return ((uint32_t)band << 16) | freq;
 }
 
+// Static utility: Check if band is enabled for secondary alert announcements
+bool V1AlertModule::isBandEnabledForSecondary(Band band, const V1Settings& settings) {
+    switch (band) {
+        case BAND_LASER: return settings.secondaryLaser;
+        case BAND_KA:    return settings.secondaryKa;
+        case BAND_K:     return settings.secondaryK;
+        case BAND_X:     return settings.secondaryX;
+        default:         return false;
+    }
+}
+
 // Announced alert tracking - check if alert has been announced
 bool V1AlertModule::isAlertAnnounced(Band band, uint16_t freq) {
     uint32_t id = makeAlertId(band, freq);
