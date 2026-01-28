@@ -88,6 +88,14 @@ public:
     void updateLastAnnouncedTime(unsigned long now);  // Time-only update
     void resetLastAnnounced();  // Call when alerts clear
     uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount; }  // For debug logging
+    
+    // Alert persistence - shows last alert briefly after V1 clears it (grey/faded display)
+    void setPersistedAlert(const AlertData& alert);  // Save alert for persistence
+    void startPersistence(unsigned long now);        // Start persistence timer when alert clears
+    void clearPersistence();                         // Clear persistence state
+    bool shouldShowPersisted(unsigned long now, unsigned long persistMs) const;  // Check if should display
+    const AlertData& getPersistedAlert() const { return persistedAlert; }
+    bool isPersistenceActive() const { return alertPersistenceActive; }
 
 private:
     // Dependencies (set in begin())
@@ -150,6 +158,11 @@ private:
     uint16_t lastVoiceAlertFrequency = 0xFFFF;
     uint8_t lastVoiceAlertBogeyCount = 0;
     unsigned long lastVoiceAlertTime = 0;
+    
+    // Alert persistence state - shows last alert briefly after V1 clears it
+    AlertData persistedAlert;
+    unsigned long alertClearedTime = 0;
+    bool alertPersistenceActive = false;
 };
 
 #endif // V1_ALERT_MODULE_H

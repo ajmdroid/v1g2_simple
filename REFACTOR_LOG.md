@@ -407,6 +407,51 @@
 **Rollback Required:**
 - No
 
+**Commit:** ✅ Committed
+
+---
+
+## Step 11: Move Alert Persistence Tracking to Module
+
+**Status:** ✅ COMPLETE  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move the alert persistence tracking (keeps alert on screen briefly after V1 clears it) to V1AlertModule. This is the grey "fading" alert display.
+
+**Why this is safe:** Self-contained state cluster. Only interacts with AlertData struct.
+
+**Actions:**
+- [x] Add persistence state to module (persistedAlert, alertClearedTime, alertPersistenceActive)
+- [x] Add methods: setPersistedAlert(), startPersistence(), clearPersistence(), shouldShowPersisted(), getPersistedAlert()
+- [x] Update main.cpp call sites (5 locations updated)
+- [x] Remove local state from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files to Modify:**
+- src/modules/v1_alerts/v1_alert_module.h
+- src/modules/v1_alerts/v1_alert_module.cpp
+- src/main.cpp
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ SUCCESS (after fixing two bugs: timer reset on every call, seconds vs milliseconds)
+
+**Issues Encountered:**
+- Bug 1: startPersistence() reset alertClearedTime on every call instead of only first transition
+- Bug 2: shouldShowPersisted() was passed seconds but expected milliseconds - fixed call site
+
+**Rollback Required:**
+- No
+
+**Commit:** ✅ Committed
+
+**Rollback Required:**
+-
+
 ---
 
 ## Testing Checklist (After Each Step)

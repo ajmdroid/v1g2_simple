@@ -309,3 +309,31 @@ void V1AlertModule::resetLastAnnounced() {
     lastVoiceAlertFrequency = 0xFFFF;
     lastVoiceAlertBogeyCount = 0;
 }
+
+// ============================================================================
+// Alert Persistence - shows last alert briefly after V1 clears it
+// ============================================================================
+
+void V1AlertModule::setPersistedAlert(const AlertData& alert) {
+    persistedAlert = alert;
+    alertPersistenceActive = false;  // Cancel any active persistence
+    alertClearedTime = 0;
+}
+
+void V1AlertModule::startPersistence(unsigned long now) {
+    // Only start timer on first call (transition from alerts to no-alerts)
+    if (persistedAlert.isValid && alertClearedTime == 0) {
+        alertClearedTime = now;
+        alertPersistenceActive = true;
+    }
+}
+
+void V1AlertModule::clearPersistence() {
+    persistedAlert = AlertData();
+    alertPersistenceActive = false;
+    alertClearedTime = 0;
+}
+
+bool V1AlertModule::shouldShowPersisted(unsigned long now, unsigned long persistMs) const {
+    return alertPersistenceActive && (now - alertClearedTime) < persistMs;
+}

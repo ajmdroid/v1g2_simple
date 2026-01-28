@@ -394,10 +394,7 @@ static bool debouncedMuteState = false;
 static unsigned long lastMuteChangeMs = 0;
 static constexpr unsigned long MUTE_DEBOUNCE_MS = 150;  // Ignore mute changes within 150ms
 
-// Alert persistence - show last alert in grey after V1 clears it
-static AlertData persistedAlert;
-static unsigned long alertClearedTime = 0;
-static bool alertPersistenceActive = false;
+// Alert persistence moved to V1AlertModule
 
 // Camera alert tracking - supports up to 3 simultaneous approaching cameras
 // Display: 1 primary (main area) + 2 secondary cards when no V1 alerts
@@ -1694,9 +1691,7 @@ void processBLEData() {
                 V1_DISPLAY_END("display.update(alerts)");
                 
                 // Save priority alert for potential persistence when alert clears
-                persistedAlert = priority;
-                alertPersistenceActive = false;  // Cancel any active persistence
-                alertClearedTime = 0;
+                v1AlertModule.setPersistedAlert(priority);
                 
             } else {
                 // No alerts from V1
@@ -1756,30 +1751,22 @@ void processBLEData() {
                 static int lastPersistenceSlot = -1;
                 if (s.activeSlot != lastPersistenceSlot) {
                     lastPersistenceSlot = s.activeSlot;
-                    persistedAlert = AlertData();
-                    alertPersistenceActive = false;
-                    alertClearedTime = 0;
+                    v1AlertModule.clearPersistence();
                 }
                 
-                if (persistSec > 0 && persistedAlert.isValid) {
+                if (persistSec > 0 && v1AlertModule.getPersistedAlert().isValid) {
                     // Start persistence timer on transition from alerts to no-alerts
-                    if (alertClearedTime == 0) {
-                        alertClearedTime = now;
-                        alertPersistenceActive = true;
-                    }
+                    v1AlertModule.startPersistence(now);
                     
                     // Check if persistence timer still active
                     unsigned long persistMs = persistSec * 1000UL;
-                    if (alertPersistenceActive && (now - alertClearedTime) < persistMs) {
+                    if (v1AlertModule.shouldShowPersisted(now, persistMs)) {
                         // Show persisted alert in dark grey
                         V1_PERF_START();
-                        display.updatePersisted(persistedAlert, state);
+                        display.updatePersisted(v1AlertModule.getPersistedAlert(), state);
                         V1_DISPLAY_END("display.persisted");
                     } else {
                         // Persistence expired - show normal resting
-                        if (alertPersistenceActive) {
-                            alertPersistenceActive = false;
-                        }
                         updateCameraCardState(false);  // No V1 alerts, camera shows in main area
                         V1_PERF_START();
                         display.update(state);
@@ -1787,8 +1774,7 @@ void processBLEData() {
                     }
                 } else {
                     // Persistence disabled or no valid persisted alert
-                    alertPersistenceActive = false;
-                    alertClearedTime = 0;
+                    v1AlertModule.clearPersistence();
                     updateCameraCardState(false);  // No V1 alerts, camera shows in main area
                     V1_PERF_START();
                     display.update(state);
@@ -2309,8 +2295,7 @@ void loop() {
                     displayMode = DisplayMode::IDLE;
                     
                     // Clear persisted alert state on profile change
-                    persistedAlert = AlertData();
-                    alertPersistenceActive = false;
+                    v1AlertModule.clearPersistence();
                     
                     const char* slotNames[] = {"Default", "Highway", "Comfort"};
                     SerialLog.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
