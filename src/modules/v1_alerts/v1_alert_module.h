@@ -40,6 +40,10 @@ public:
     // Static utility: Get signal bars for alert based on direction
     // Returns front strength if front, rear if rear, otherwise max of both
     static uint8_t getAlertBars(const AlertData& alert);
+    
+    // Static utility: Create unique alert ID from band and frequency
+    // Used for tracking announced alerts, lockout state, etc.
+    static uint32_t makeAlertId(Band band, uint16_t freq);
 
 private:
     // Dependencies (set in begin())

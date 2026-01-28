@@ -265,13 +265,10 @@ static AlertHistory alertHistories[10];
 static uint8_t alertHistoryCount = 0;
 
 // Helper functions for secondary alert tracking
-// Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
-static uint32_t makeAlertId(Band band, uint16_t freq) {
-    return ((uint32_t)band << 16) | freq;
-}
+// makeAlertId moved to V1AlertModule::makeAlertId()
 
 static bool isAlertAnnounced(Band band, uint16_t freq) {
-    uint32_t id = makeAlertId(band, freq);
+    uint32_t id = V1AlertModule::makeAlertId(band, freq);
     for (int i = 0; i < announcedAlertCount; i++) {
         if (announcedAlertIds[i] == id) return true;
     }
@@ -279,7 +276,7 @@ static bool isAlertAnnounced(Band band, uint16_t freq) {
 }
 
 static void markAlertAnnounced(Band band, uint16_t freq) {
-    uint32_t id = makeAlertId(band, freq);
+    uint32_t id = V1AlertModule::makeAlertId(band, freq);
     if (announcedAlertCount < 10 && !isAlertAnnounced(band, freq)) {
         announcedAlertIds[announcedAlertCount++] = id;
     }
@@ -345,7 +342,7 @@ static AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now
 static void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
     if (band == BAND_LASER) return;  // Laser excluded from smart tracking
     
-    uint32_t alertId = makeAlertId(band, freq);
+    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
     AlertHistory* h = getOrCreateAlertHistory(alertId, now);
     if (!h) return;
     
@@ -384,7 +381,7 @@ static void cleanupStaleHistories(unsigned long now) {
 static bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now) {
     if (band == BAND_LASER) return false;  // Laser excluded
     
-    uint32_t alertId = makeAlertId(band, freq);
+    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
     AlertHistory* h = findAlertHistory(alertId);
     if (!h) return false;
     
@@ -404,7 +401,7 @@ static bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t tot
 }
 
 static void markThreatEscalationAnnounced(Band band, uint16_t freq) {
-    uint32_t alertId = makeAlertId(band, freq);
+    uint32_t alertId = V1AlertModule::makeAlertId(band, freq);
     AlertHistory* h = findAlertHistory(alertId);
     if (h) {
         h->escalationAnnounced = true;
@@ -1491,7 +1488,7 @@ void processBLEData() {
                     // Check if priority alert is in a lockout zone
                     if (priority.isValid && priority.band != BAND_NONE) {
                         priorityInLockout = lockouts.shouldMuteAlert(fix.latitude, fix.longitude, priority.band);
-                        uint32_t currentAlertId = makeAlertId(priority.band, (uint16_t)priority.frequency);
+                        uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, (uint16_t)priority.frequency);
                         
                         // Auto-mute V1 if in lockout zone and not already muted
                         if (priorityInLockout && !state.muted) {
@@ -1639,7 +1636,7 @@ void processBLEData() {
                     bool cooldownPassed = (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
                     
                     // Track priority stability for secondary alerts (use band+freq combo)
-                    uint32_t currentAlertId = makeAlertId(priority.band, currentFreq);
+                    uint32_t currentAlertId = V1AlertModule::makeAlertId(priority.band, currentFreq);
                     static uint32_t lastPriorityAlertId = 0xFFFFFFFF;
                     if (currentAlertId != lastPriorityAlertId) {
                         lastPriorityAlertId = currentAlertId;

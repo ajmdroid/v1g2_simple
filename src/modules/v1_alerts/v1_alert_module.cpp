@@ -38,3 +38,9 @@ uint8_t V1AlertModule::getAlertBars(const AlertData& a) {
     if (a.direction & DIR_REAR) return a.rearStrength;
     return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
 }
+
+// Static utility: Create unique alert ID from band and frequency
+// Alert ID = (band << 16) | frequency - ensures Laser (freq=0) is unique per band
+uint32_t V1AlertModule::makeAlertId(Band band, uint16_t freq) {
+    return ((uint32_t)band << 16) | freq;
+}

@@ -137,6 +137,42 @@
 
 ---
 
+## Step 4: Move makeAlertId Helper to Module
+
+**Status:** ✅ COMPLETE  
+**Date:** January 27, 2026
+**Commit:** [pending]
+
+**Objective:** Move makeAlertId() helper to module. This is used for alert tracking and will be needed when we move the tracking state later.
+
+**Why this is safe:** Pure function with no state, just bit manipulation.
+
+**Actions:**
+- [x] Add makeAlertId() as public static method in V1AlertModule
+- [x] Update main.cpp to call V1AlertModule::makeAlertId()
+- [x] Remove local makeAlertId() from main.cpp
+- [ ] Verify compilation
+- [ ] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added static makeAlertId()
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented makeAlertId()
+- src/main.cpp - 6 call sites updated, local function removed
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ Alerts work correctly
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
+---
+
 ## Testing Checklist (After Each Step)
 
 ### Compilation Test
@@ -204,7 +240,7 @@ If any step fails hardware testing:
 
 ## Progress Summary
 
-**Completed Steps:** 3  
+**Completed Steps:** 4  
 **Failed Steps:** 0  
 **Total Estimated Steps:** TBD (will refine as we go)  
 **Estimated Completion:** TBD
