@@ -223,72 +223,7 @@ static uint8_t speedVolumeOriginalVol = 0xFF;     // Original volume before spee
 
 // Smart threat escalation tracking moved to V1AlertModule
 
-// Helper moved to V1AlertModule: getAlertBars(), isBandEnabledForSecondary()
-
-// Speed cache - avoids issues with OBD poll timing jitter
-static float cachedSpeedMph = 0.0f;
-static unsigned long cachedSpeedTimestamp = 0;
-static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;  // 5s cache - conservative for safety
-
-// Helper: get current speed in MPH from OBD (preferred) or GPS, with caching
-static float getCurrentSpeedMph() {
-    unsigned long now = millis();
-    
-    // Try OBD first (more accurate, works in tunnels/garages)
-    if (obdHandler.isModuleDetected() && obdHandler.hasValidData()) {
-        cachedSpeedMph = obdHandler.getSpeedMph();
-        cachedSpeedTimestamp = now;
-        return cachedSpeedMph;
-    }
-    
-    // Try GPS
-    if (gpsHandler.hasValidFix()) {
-        cachedSpeedMph = gpsHandler.getSpeed() * 2.237f;  // m/s to mph
-        cachedSpeedTimestamp = now;
-        return cachedSpeedMph;
-    }
-    
-    // Use cached speed if still reasonably fresh (handles OBD jitter)
-    if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
-        return cachedSpeedMph;
-    }
-    
-    // Cache expired - return 0
-    return 0.0f;
-}
-
-// Helper: check if we have any valid speed source (for low-speed mute logic)
-static bool hasValidSpeedSource() {
-    unsigned long now = millis();
-    // Fresh OBD or GPS data, or valid cache
-    return (obdHandler.isModuleDetected() && obdHandler.hasValidData()) ||
-           gpsHandler.hasValidFix() ||
-           (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
-}
-
-// Helper: check if voice should be muted due to low speed (parking lot mode)
-// Skip low-speed muting if a phone app (JBV1/V1Driver) is connected - it handles its own alerts
-static bool isLowSpeedMuted() {
-    const V1Settings& s = settingsManager.get();
-    if (!s.lowSpeedMuteEnabled) return false;
-    
-    // Don't mute if phone app is connected - let the app handle it
-    if (bleClient.isProxyClientConnected()) return false;
-    
-    // Only mute if we have a valid speed source - don't mute just because no GPS/OBD
-    if (!hasValidSpeedSource()) return false;
-    
-    float speedMph = getCurrentSpeedMph();
-    bool muted = speedMph < s.lowSpeedMuteThresholdMph;
-    if (muted) {
-        static unsigned long lastLogTime = 0;
-        if (millis() - lastLogTime > 5000) {  // Log every 5s max
-            SerialLog.printf("[LowSpeedMute] Voice muted: %.1f mph < %d threshold\n", speedMph, s.lowSpeedMuteThresholdMph);
-            lastLogTime = millis();
-        }
-    }
-    return muted;
-}
+// Helper moved to V1AlertModule: getAlertBars(), isBandEnabledForSecondary(), speed helpers
 
 // WiFi manual startup - user must long-press BOOT to start AP
 
@@ -1417,7 +1352,7 @@ void processBLEData() {
                 // Skip if alert is in a GPS lockout zone
                 // Skip if at low speed (parking lot mode)
                 bool muteForVolZero = alertSettings.muteVoiceIfVolZero && state.mainVolume == 0;
-                bool muteForLowSpeed = isLowSpeedMuted();
+                bool muteForLowSpeed = v1AlertModule.isLowSpeedMuted(millis());
                 if (alertSettings.voiceAlertMode != VOICE_MODE_DISABLED && 
                     !muteForVolZero &&
                     !muteForLowSpeed &&
@@ -1998,7 +1933,7 @@ void setup() {
 #endif
     
     // Initialize V1 Alert Module (Phase 1 refactoring)
-    v1AlertModule.begin(&bleClient, &parser, &display, &settingsManager);
+    v1AlertModule.begin(&bleClient, &parser, &display, &settingsManager, &obdHandler, &gpsHandler);
     
     // Auto-start WiFi if enabled in dev settings
     if (settingsManager.get().enableWifiAtBoot) {
@@ -2708,7 +2643,7 @@ void loop() {
         bool fadeTakingControl = volumeFadeOriginalVol != 0xFF;
         
         if (spdSettings.speedVolumeEnabled && !fadeTakingControl) {
-            float speedMph = getCurrentSpeedMph();
+            float speedMph = v1AlertModule.getCurrentSpeedMph(now);
             
             // Periodic debug: log speed check every 30s when at highway speeds
             static unsigned long lastSpeedDebugLog = 0;

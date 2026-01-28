@@ -6,16 +6,22 @@
 #include "packet_parser.h"
 #include "display.h"
 #include "settings.h"
+#include "obd_handler.h"
+#include "gps_handler.h"
+#include "debug_logger.h"
 
 V1AlertModule::V1AlertModule() {
     // Constructor - dependencies set in begin()
 }
 
-void V1AlertModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Display* disp, SettingsManager* sett) {
+void V1AlertModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Display* disp, SettingsManager* sett,
+                          OBDHandler* obd, GPSHandler* gps) {
     bleClient = ble;
     parser = pParser;
     display = disp;
     settings = sett;
+    obdHandler = obd;
+    gpsHandler = gps;
     initialized = true;
     
     Serial.println("[V1AlertModule] Initialized with dependencies");
@@ -344,4 +350,69 @@ void V1AlertModule::clearPersistence() {
 
 bool V1AlertModule::shouldShowPersisted(unsigned long now, unsigned long persistMs) const {
     return alertPersistenceActive && (now - alertClearedTime) < persistMs;
+}
+// ============================================================================
+// Speed Helpers - for voice alert low-speed muting logic
+// ============================================================================
+
+// Get current speed from OBD (preferred) or GPS, with caching
+float V1AlertModule::getCurrentSpeedMph(unsigned long now) {
+    // Try OBD first (more accurate, works in tunnels/garages)
+    if (obdHandler && obdHandler->isModuleDetected() && obdHandler->hasValidData()) {
+        cachedSpeedMph = obdHandler->getSpeedMph();
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
+    }
+    
+    // Try GPS
+    if (gpsHandler && gpsHandler->hasValidFix()) {
+        cachedSpeedMph = gpsHandler->getSpeed() * 2.237f;  // m/s to mph
+        cachedSpeedTimestamp = now;
+        return cachedSpeedMph;
+    }
+    
+    // Use cached speed if still reasonably fresh (handles OBD jitter)
+    if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
+        return cachedSpeedMph;
+    }
+    
+    // Cache expired - return 0
+    return 0.0f;
+}
+
+// Check if we have any valid speed source (for low-speed mute logic)
+bool V1AlertModule::hasValidSpeedSource(unsigned long now) const {
+    // Fresh OBD or GPS data, or valid cache
+    return (obdHandler && obdHandler->isModuleDetected() && obdHandler->hasValidData()) ||
+           (gpsHandler && gpsHandler->hasValidFix()) ||
+           (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
+}
+
+// Check if voice should be muted due to low speed (parking lot mode)
+bool V1AlertModule::isLowSpeedMuted(unsigned long now) const {
+    if (!settings) return false;
+    const V1Settings& s = settings->get();
+    
+    if (!s.lowSpeedMuteEnabled) return false;
+    
+    // Don't mute if phone app is connected - let the app handle it
+    if (bleClient && bleClient->isProxyClientConnected()) return false;
+    
+    // Only mute if we have a valid speed source - don't mute just because no GPS/OBD
+    if (!hasValidSpeedSource(now)) return false;
+    
+    // Need to call non-const version, but we can safely cast away const here
+    // because the cache update is just optimization, not semantic state
+    float speedMph = const_cast<V1AlertModule*>(this)->getCurrentSpeedMph(now);
+    bool muted = speedMph < s.lowSpeedMuteThresholdMph;
+    
+    if (muted) {
+        static unsigned long lastLogTime = 0;
+        if (now - lastLogTime > 5000) {  // Log every 5s max
+            Serial.printf("[LowSpeedMute] Voice muted: %.1f mph < %d threshold\n", speedMph, s.lowSpeedMuteThresholdMph);
+            lastLogTime = now;
+        }
+    }
+    
+    return muted;
 }

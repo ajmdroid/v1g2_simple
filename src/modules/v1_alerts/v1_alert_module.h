@@ -13,6 +13,8 @@ class V1BLEClient;
 struct V1Settings;
 class V1Display;
 class SettingsManager;
+class OBDHandler;
+class GPSHandler;
 
 /**
  * V1AlertModule - Encapsulates all V1 alert handling
@@ -30,7 +32,8 @@ public:
     V1AlertModule();
     
     // Initialize with dependencies (call from setup())
-    void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings);
+    void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings,
+               OBDHandler* obd = nullptr, GPSHandler* gps = nullptr);
     
     // Main update - call from loop()
     void update();
@@ -100,6 +103,11 @@ public:
     bool shouldShowPersisted(unsigned long now, unsigned long persistMs) const;  // Check if should display
     const AlertData& getPersistedAlert() const { return persistedAlert; }
     bool isPersistenceActive() const { return alertPersistenceActive; }
+    
+    // Speed helpers - for voice alert low-speed muting logic
+    float getCurrentSpeedMph(unsigned long now);     // Get speed from OBD (preferred) or GPS, with caching
+    bool hasValidSpeedSource(unsigned long now) const;  // Check if any speed source is available
+    bool isLowSpeedMuted(unsigned long now) const;   // Check if low-speed mute is active
 
 private:
     // Dependencies (set in begin())
@@ -107,6 +115,8 @@ private:
     PacketParser* parser = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
+    OBDHandler* obdHandler = nullptr;
+    GPSHandler* gpsHandler = nullptr;
     
     bool initialized = false;
     
@@ -167,6 +177,11 @@ private:
     AlertData persistedAlert;
     unsigned long alertClearedTime = 0;
     bool alertPersistenceActive = false;
+    
+    // Speed cache - avoids issues with OBD poll timing jitter
+    float cachedSpeedMph = 0.0f;
+    unsigned long cachedSpeedTimestamp = 0;
+    static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;  // 5s cache
 };
 
 #endif // V1_ALERT_MODULE_H

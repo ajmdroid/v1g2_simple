@@ -489,6 +489,47 @@
 
 ---
 
+## Step 13: Move Speed Helpers to V1AlertModule
+
+**Status:** 🟡 IN PROGRESS  
+**Date:** January 28, 2026
+**Commit:** [pending]
+
+**Objective:** Move speed helper functions (getCurrentSpeedMph, hasValidSpeedSource, isLowSpeedMuted) to V1AlertModule. These functions support voice alert logic and should live with the module.
+
+**Why this is safe:** Self-contained functions that query OBD/GPS state. No complex interactions.
+
+**Actions:**
+- [x] Add speed helpers to V1AlertModule as public methods
+- [x] Add speed cache state to module (cachedSpeedMph, cachedSpeedTimestamp)
+- [x] Update call sites in main.cpp to use v1AlertModule.methodName()
+- [x] Remove static functions and state from main.cpp
+- [x] Verify compilation
+- [x] Verify hardware works
+
+**Files to Modify:**
+- src/modules/v1_alerts/v1_alert_module.h
+- src/modules/v1_alerts/v1_alert_module.cpp
+- src/main.cpp
+
+**Compilation Result:**
+- ✅ SUCCESS (after fixing missing dependencies and SerialLog)
+
+**Hardware Test Result:**
+- ✅ SUCCESS
+
+**Issues Encountered:**
+- Missing forward declarations for OBDHandler/GPSHandler
+- Missing dependencies in begin() call
+- SerialLog is a #define in main.cpp only - used Serial directly
+
+**Rollback Required:**
+- No
+
+**Commit:** ✅ Committed
+
+---
+
 ## Testing Checklist (After Each Step)
 
 ### Compilation Test

@@ -136,62 +136,84 @@ void registerEndpoints(WebServer& server);
 ```
 **Why unified:** Adding a setting means editing ONE file, not 5.
 
-## Migration Strategy
+## Migration Strategy (Updated January 2026)
 
-### Phase 1: Extract BLE (Week 1)
-- Create `subsystems/ble_subsystem/`
-- Move 200 lines from main loop → `BLESubsystem::update()`
-- Main loop calls `ble.update()` and `ble.getLatestAlert()`
-- **Test thoroughly, commit**
+We're taking a more incremental approach than originally planned - extracting state and functions piece by piece rather than full subsystem rewrites. This is safer for a working production system.
 
-### Phase 2: Extract GPS/Camera (Week 2)  
-- Create `subsystems/gps_subsystem/`
-- Move GPS state machine + camera query logic
-- **Test, commit**
+### Current Approach: Incremental Module Migration
 
-### Phase 3: Extract Display Rendering (Week 3)
-- Create `subsystems/display_subsystem/`
-- Move alert rendering logic
-- **Test, commit**
+**Structure:**
+```
+src/
+├── main.cpp                         (~2800 lines, shrinking incrementally)
+├── modules/
+│   └── v1_alerts/
+│       ├── v1_alert_module.h        (~180 lines)
+│       └── v1_alert_module.cpp      (~420 lines)
+└── [existing files unchanged]
+```
 
-### Phase 4: Unify Settings API (Week 4)
-- Create `api/settings_api.cpp`
-- Move ALL settings endpoints from wifi_manager
-- **Test, commit**
+**V1AlertModule** encapsulates alert-related state and logic:
+- Static utilities (getAlertBars, makeAlertId, isBandEnabledForSecondary)
+- Announced alert tracking (deduplication)
+- Alert history tracking (smart threat escalation)
+- Direction change throttling
+- Priority stability tracking
+- Voice alert "last announced" tracking
+- Alert persistence (grey faded display)
+- Speed helpers (low-speed mute logic)
+
+### Migration Process
+
+Each step follows a strict protocol:
+1. Add method/state to V1AlertModule
+2. Update call sites in main.cpp
+3. Remove old code from main.cpp
+4. Build and test on hardware
+5. Commit only after verification
+
+See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
+
+### Future Phases (Tentative)
+
+Once V1AlertModule is complete, we may continue with:
+- **Audio Module**: Volume fade, speed volume boost
+- **Display Module**: Color preview, demo mode
+- **Settings API**: Consolidate web endpoints
+- **GPS Module**: Speed caching, lockout queries
+
+Or we may keep the current structure if it's working well.
 
 ## Success Metrics
 
-### Before:
-- Adding log flag: touch 5 places across 3 files
-- Main loop: 832 lines
+### Before (January 27, 2026):
+- Main loop: ~832 lines, main.cpp: ~3100 lines total
+- Alert state scattered across 15+ static variables
 - Change risk: HIGH (adjacent code interactions)
 
-### After:
-- Adding log flag: touch 1 file (settings_api.cpp)
-- Main loop: ~200 lines (orchestration)
+### Current Progress:
+- V1AlertModule: ~600 lines extracted
+- main.cpp: ~2800 lines (reduced ~300 lines)
+- Alert tracking consolidated in one place
+- Change risk: LOWER (state in module)
+
+### Target:
+- main.cpp: ~2000 lines (orchestration + features not yet extracted)
+- Each module: 200-600 lines (single responsibility)
 - Change risk: LOW (isolated modules)
-- Test coverage: Each module independently testable
 
 ## Key Design Rules
 
-1. **Subsystems never directly call each other** - only through main orchestration
-2. **Data flows DOWN** - main loop gets data and passes it
-3. **State lives in ONE place** - GPS position only in GPSSubsystem
-4. **API layer is isolated** - web handlers never directly modify hardware
-
-## File Size Targets
-
-- `main.cpp`: 150-250 lines (orchestration)
-- Each subsystem: 200-400 lines (single responsibility)
-- Each API file: 200-300 lines (one domain)
-- Drivers: Keep as-is (already focused)
+1. **Modules receive dependencies via begin()** - dependency injection for testability
+2. **Data flows DOWN** - main loop gets data and passes it to modules
+3. **State lives in ONE place** - e.g., announced alerts only in V1AlertModule
+4. **Incremental migration** - never break working functionality
 
 ## What This Enables
 
-✅ **Change Locality**: Modify BLE → edit BLE files only  
-✅ **Testability**: Mock GPSSubsystem, test alert logic  
-✅ **Onboarding**: New dev reads 300 lines, not 3000  
-✅ **Parallel Work**: Two features, two modules, no conflicts  
+✅ **Change Locality**: Alert logic changes → edit V1AlertModule only  
+✅ **Testability**: Module can be unit tested with mocked dependencies  
+✅ **Clarity**: Related state grouped together, easier to understand  
 ✅ **Confidence**: Clear boundaries → certain only X changes  
 
 ## What We're NOT Doing
@@ -199,12 +221,5 @@ void registerEndpoints(WebServer& server);
 ❌ **Not** making hundreds of tiny files (too scattered)  
 ❌ **Not** abstracting everything (premature generalization)  
 ❌ **Not** rewriting from scratch (incremental migration)  
-❌ **Not** changing behavior (pure refactoring)  
-
-## Next Steps
-
-1. Review this architecture → adjust if needed
-2. Create subsystems/ directory structure  
-3. Start Phase 1: BLESubsystem extraction
-4. Test on hardware after each phase
-5. Commit working code frequently
+❌ **Not** changing behavior (pure refactoring)
+❌ **Not** rushing - test after every change
