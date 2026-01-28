@@ -6,10 +6,10 @@
 #define V1_ALERT_MODULE_H
 
 #include <Arduino.h>
+#include "packet_parser.h"  // For AlertData type
 
 // Forward declarations (avoid including heavy headers)
 class V1BLEClient;
-class PacketParser;
 class V1Display;
 class SettingsManager;
 
@@ -37,6 +37,10 @@ public:
     // Cleanup
     void end();
     
+    // Static utility: Get signal bars for alert based on direction
+    // Returns front strength if front, rear if rear, otherwise max of both
+    static uint8_t getAlertBars(const AlertData& alert);
+
 private:
     // Dependencies (set in begin())
     V1BLEClient* bleClient = nullptr;

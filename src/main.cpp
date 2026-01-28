@@ -421,12 +421,7 @@ static bool isBandEnabledForSecondary(Band band, const V1Settings& settings) {
     }
 }
 
-// Helper: get signal bars for an alert based on direction (0-8 scale from V1)
-static uint8_t getAlertBars(const AlertData& a) {
-    if (a.direction & DIR_FRONT) return a.frontStrength;
-    if (a.direction & DIR_REAR) return a.rearStrength;
-    return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
-}
+// Helper moved to V1AlertModule::getAlertBars() - use that instead
 
 // Speed cache - avoids issues with OBD poll timing jitter
 static float cachedSpeedMph = 0.0f;
@@ -1517,7 +1512,7 @@ void processBLEData() {
                         
                         // Record alert for auto-learning (even if locked out)
                         bool isMoving = gpsHandler.isMoving();
-                        uint8_t strength = getAlertBars(priority);
+                        uint8_t strength = V1AlertModule::getAlertBars(priority);
                         float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, priority.band,
                                                   (uint32_t)priority.frequency, strength, 0, isMoving, heading);
@@ -1530,7 +1525,7 @@ void processBLEData() {
                         // Skip priority (already recorded above)
                         if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
                         
-                        uint8_t strength = getAlertBars(alert);
+                        uint8_t strength = V1AlertModule::getAlertBars(alert);
                         float heading = gpsHandler.getSmoothedHeading();
                         autoLockouts.recordAlert(fix.latitude, fix.longitude, alert.band,
                                                   (uint32_t)alert.frequency, strength, 0, gpsHandler.isMoving(), heading);
@@ -1816,7 +1811,7 @@ void processBLEData() {
                             if (alert.band == BAND_LASER) continue;  // Laser excluded from smart tracking
                             
                             uint16_t alertFreq = (uint16_t)alert.frequency;
-                            uint8_t bars = getAlertBars(alert);
+                            uint8_t bars = V1AlertModule::getAlertBars(alert);
                             updateAlertHistory(alert.band, alertFreq, bars, now);
                         }
                         

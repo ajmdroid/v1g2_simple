@@ -100,6 +100,43 @@
 
 ---
 
+## Step 3: Move getAlertBars Helper to Module
+
+**Status:** ✅ COMPLETE  
+**Date:** January 27, 2026
+**Commit:** [pending]
+
+**Objective:** Move a simple helper function into the module. This proves the module can be used by main.cpp's alert processing code without breaking anything.
+
+**Why this is safe:** It's a pure computation with no state. Same logic, different file. Easy to verify nothing changed.
+
+**Actions:**
+- [x] Add getAlertBars() as public static method in V1AlertModule
+- [x] Include packet_parser.h in module header (for AlertData type)
+- [x] Update main.cpp to call V1AlertModule::getAlertBars() instead of local function
+- [x] Remove local getAlertBars() from main.cpp
+- [ ] Verify compilation
+- [ ] Verify hardware works
+
+**Files Modified:**
+- src/modules/v1_alerts/v1_alert_module.h - added static getAlertBars(), included packet_parser.h
+- src/modules/v1_alerts/v1_alert_module.cpp - implemented getAlertBars()
+- src/main.cpp - 3 call sites updated to V1AlertModule::getAlertBars(), local function removed
+
+**Compilation Result:**
+- ✅ SUCCESS
+
+**Hardware Test Result:**
+- ✅ Alerts work correctly
+
+**Issues Encountered:**
+- None
+
+**Rollback Required:**
+- No
+
+---
+
 ## Testing Checklist (After Each Step)
 
 ### Compilation Test
@@ -167,7 +204,7 @@ If any step fails hardware testing:
 
 ## Progress Summary
 
-**Completed Steps:** 0  
+**Completed Steps:** 3  
 **Failed Steps:** 0  
 **Total Estimated Steps:** TBD (will refine as we go)  
 **Estimated Completion:** TBD
@@ -177,5 +214,5 @@ If any step fails hardware testing:
 ## Current Status
 
 **Last Updated:** January 27, 2026  
-**Current Step:** Step 1 - Create Module Structure  
-**Next Action:** Create directories and stub files
+**Current Step:** Step 3 - Move BLE Packet Queue Reading  
+**Next Action:** Add queue handle to module

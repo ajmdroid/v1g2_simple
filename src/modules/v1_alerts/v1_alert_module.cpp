@@ -31,3 +31,10 @@ void V1AlertModule::end() {
     // Cleanup - will be populated during migration
     initialized = false;
 }
+
+// Static utility: Get signal bars for alert based on direction
+uint8_t V1AlertModule::getAlertBars(const AlertData& a) {
+    if (a.direction & DIR_FRONT) return a.frontStrength;
+    if (a.direction & DIR_REAR) return a.rearStrength;
+    return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
+}
