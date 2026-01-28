@@ -41,6 +41,7 @@
 #include "camera_manager.h"
 #include "perf_metrics.h"
 #include "../include/config.h"
+#include "modules/v1_alerts/v1_alert_module.h"
 #define SerialLog Serial  // Alias: serial logger removed; use Serial directly
 #include <FS.h>
 #include <LittleFS.h>
@@ -131,6 +132,9 @@ TouchHandler touchHandler;
 GPSHandler gpsHandler;
 LockoutManager lockouts;
 AutoLockoutManager autoLockouts;
+
+// V1 Alert Module (Phase 1 refactoring - stub for now)
+V1AlertModule v1AlertModule;
 
 // OBD-II handler uses global obdHandler from obd_handler.cpp
 // (included via obd_handler.h extern declaration)
@@ -2235,6 +2239,9 @@ void setup() {
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
     
+    // Initialize V1 Alert Module (Phase 1 refactoring - stub)
+    v1AlertModule.begin();
+    
     // Auto-start WiFi if enabled in dev settings
     if (settingsManager.get().enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled - starting AP now...");
@@ -2255,6 +2262,9 @@ void setup() {
 }
 
 void loop() {
+    // Update V1 Alert Module (Phase 1 refactoring - stub for now)
+    v1AlertModule.update();
+    
     // Periodic perf metrics logging (every 60s if enabled)
     static unsigned long lastPerfLogMs = 0;
     if (settingsManager.get().logPerfMetrics && debugLogger.isEnabledFor(DebugLogCategory::PerfMetrics)) {
