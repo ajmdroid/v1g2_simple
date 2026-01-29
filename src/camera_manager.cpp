@@ -77,12 +77,20 @@ bool CameraManager::begin(fs::FS* filesystem) {
     loaded = loadDatabase("/speed_cam.json", true) || loaded;
   }
   
+  // Web UI uploaded files (binary format)
+  if (fs->exists("/alpr_osm.bin")) {
+    loaded = loadBinaryDatabase("/alpr_osm.bin", true) || loaded;
+  }
+  if (fs->exists("/alpr_upload.bin")) {
+    loaded = loadBinaryDatabase("/alpr_upload.bin", true) || loaded;
+  }
+  
   // Legacy/alternative file names (only if no primary files found)
   if (!loaded) {
     if (fs->exists("/cameras.json")) {
       return loadDatabase("/cameras.json", false);
     } else if (fs->exists("/alpr_osm.json")) {
-      // OSM ALPR data uploaded via web UI
+      // Legacy JSON format from older web UI
       return loadDatabase("/alpr_osm.json", false);
     } else if (fs->exists("/V140ExCam.json")) {
       return loadDatabase("/V140ExCam.json", false);

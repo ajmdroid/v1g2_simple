@@ -1189,17 +1189,20 @@
 							{/if}
 						</div>
 					{:else}
-						<div class="text-sm text-base-content/60">
-							<p>Place a camera database file on SD card:</p>
+					<div class="text-sm text-base-content/60">
+							<p>Place camera database files on SD card (binary format preferred):</p>
 							<ul class="list-disc list-inside mt-1 text-xs">
-								<li><code>/cameras.json</code></li>
-								<li><code>/V140ExCam.json</code></li>
-								<li><code>/excam.json</code></li>
+								<li><code>/alpr.bin</code> - ALPR cameras</li>
+								<li><code>/redlight_cam.bin</code> - Red light cameras</li>
+								<li><code>/speed_cam.bin</code> - Speed cameras</li>
 							</ul>
 							<p class="mt-2">
 								<a href="https://www.rdforum.org/threads/88426/" target="_blank" class="link link-primary text-xs">
 									Download from RDForum →
 								</a>
+							</p>
+							<p class="mt-1 text-xs text-base-content/50">
+								Use <code>tools/download_cameras.py</code> to convert JSON to binary.
 							</p>
 						</div>
 					{/if}
@@ -1253,7 +1256,7 @@
 					
 					<div class="bg-base-300 rounded-lg p-3 space-y-3">
 						<p class="text-xs text-base-content/60">
-							Upload a camera database file (NDJSON format). Generate one using the download tool or get from RDForum.
+							Upload a camera database file (NDJSON format). It will be converted to binary for fast loading.
 						</p>
 						
 						<!-- File Upload -->

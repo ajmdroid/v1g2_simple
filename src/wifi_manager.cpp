@@ -2903,18 +2903,93 @@ void WiFiManager::handleCameraUpload() {
     
     Serial.printf("[HTTP] POST /api/cameras/upload - received %d bytes\n", body.length());
     
-    // Save to SD card as ALPR database
-    const char* filename = "/alpr_osm.json";
+    // Parse NDJSON and convert to binary format for fast loading
+    // First pass: count valid records
+    int validCount = 0;
+    int lineStart = 0;
+    for (size_t i = 0; i <= body.length(); i++) {
+        if (i == body.length() || body[i] == '\n') {
+            if (i > lineStart) {
+                String line = body.substring(lineStart, i);
+                line.trim();
+                if (line.length() > 0 && line[0] == '{') {
+                    // Quick check for lat/lon
+                    if (line.indexOf("\"lat\"") >= 0 && line.indexOf("\"lon\"") >= 0) {
+                        validCount++;
+                    }
+                }
+            }
+            lineStart = i + 1;
+        }
+    }
+    
+    if (validCount == 0) {
+        server.send(400, "application/json", "{\"error\":\"No valid camera records found (need lat/lon)\"}");
+        return;
+    }
+    
+    // Save as binary format
+    const char* filename = "/alpr_upload.bin";
     File file = fs->open(filename, "w");
     if (!file) {
         server.send(500, "application/json", "{\"error\":\"Failed to create file on SD\"}");
         return;
     }
     
-    size_t written = file.print(body);
-    file.close();
+    // Write binary header
+    const uint8_t header[14] = {
+        'V', 'C', 'A', 'M',
+        0x01, 0x00,
+        (uint8_t)(validCount & 0xFF),
+        (uint8_t)((validCount >> 8) & 0xFF),
+        (uint8_t)((validCount >> 16) & 0xFF),
+        (uint8_t)((validCount >> 24) & 0xFF),
+        0x00, 0x00, 0x00, 0x00
+    };
+    file.write(header, 14);
     
-    Serial.printf("[HTTP] Saved %d bytes to %s\n", written, filename);
+    // Second pass: parse and write records
+    int written = 0;
+    lineStart = 0;
+    for (size_t i = 0; i <= body.length(); i++) {
+        if (i == body.length() || body[i] == '\n') {
+            if (i > lineStart) {
+                String line = body.substring(lineStart, i);
+                line.trim();
+                if (line.length() > 0 && line[0] == '{') {
+                    // Parse JSON line
+                    JsonDocument doc;
+                    if (deserializeJson(doc, line) == DeserializationError::Ok) {
+                        float lat = doc["lat"] | 0.0f;
+                        float lon = doc["lon"] | 0.0f;
+                        int flg = doc["flg"] | doc["flags"] | 4;  // Default to ALPR
+                        
+                        if (lat != 0.0f && lon != 0.0f) {
+                            // Determine camera type from flags
+                            uint8_t type = 4;  // Default ALPR
+                            if (flg & 1) type = 1;      // Red light
+                            else if (flg & 2) type = 2; // Speed
+                            
+                            // Write 24-byte binary record
+                            uint8_t record[24] = {0};
+                            memcpy(&record[0], &lat, 4);
+                            memcpy(&record[4], &lon, 4);
+                            memcpy(&record[8], &lat, 4);
+                            memcpy(&record[12], &lon, 4);
+                            record[20] = type;
+                            
+                            file.write(record, 24);
+                            written++;
+                        }
+                    }
+                }
+            }
+            lineStart = i + 1;
+        }
+    }
+    
+    file.close();
+    Serial.printf("[HTTP] Saved %d cameras to %s (binary)\n", written, filename);
     
     // If we have an upload callback (to trigger reload), call it
     if (cameraUploadCallback) {
@@ -2926,7 +3001,7 @@ void WiFiManager::handleCameraUpload() {
     
     char response[256];
     snprintf(response, sizeof(response), 
-             "{\"success\":true,\"bytes\":%d,\"file\":\"%s\",\"reloaded\":%s}",
+             "{\"success\":true,\"count\":%d,\"file\":\"%s\",\"reloaded\":%s}",
              written, filename, reloaded ? "true" : "false");
     
     server.send(200, "application/json", response);
@@ -3072,33 +3147,37 @@ void WiFiManager::handleCameraSyncOsm() {
         return;
     }
     
-    // Convert to NDJSON and save
-    const char* filename = "/alpr_osm.json";
+    // Save as binary format (much faster to load)
+    const char* filename = "/alpr_osm.bin";
     File file = fs->open(filename, "w");
     if (!file) {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to create file\"}");
         return;
     }
     
-    // Write metadata header with date from GPS or compile time
-    char dateBuf[32];
-    if (gpsHandler.hasValidTime()) {
-        // Use GPS time (most accurate)
-        GPSFix fix = gpsHandler.getFix();
-        snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", 2000 + fix.year, fix.month, fix.day);
-    } else {
-        // Fall back to compile date (__DATE__ = "Jan 27 2026")
-        // Parse __DATE__ which is "Mmm DD YYYY" format
-        const char* compileDate = __DATE__;  // e.g., "Jan 27 2026"
-        int year = 0, day = 0;
-        char monthStr[4] = {0};
-        sscanf(compileDate, "%3s %d %d", monthStr, &day, &year);
-        const char* months = "JanFebMarAprMayJunJulAugSepOctNovDec";
-        int month = (strstr(months, monthStr) - months) / 3 + 1;
-        snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", year, month, day);
+    // Count valid cameras first
+    int validCount = 0;
+    for (JsonObject el : elements) {
+        if (el["type"] == "node" || (el["type"] == "way" && el["center"].is<JsonObject>())) {
+            validCount++;
+        }
     }
-    file.printf("{\"_meta\":{\"name\":\"OSM ALPR (US)\",\"date\":\"%s\"}}\n", dateBuf);
     
+    // Write binary header: magic(4) + version(2) + count(4) + recordSize(4) = 14 bytes
+    // Binary record is 24 bytes (matches camera_manager.cpp BinaryRecord struct)
+    const uint8_t header[14] = {
+        'V', 'C', 'A', 'M',           // magic
+        0x01, 0x00,                   // version = 1 (little endian)
+        (uint8_t)(validCount & 0xFF), // count byte 0
+        (uint8_t)((validCount >> 8) & 0xFF),
+        (uint8_t)((validCount >> 16) & 0xFF),
+        (uint8_t)((validCount >> 24) & 0xFF),
+        0x00, 0x00, 0x00, 0x00        // recordSize = 0 (use default 24)
+    };
+    file.write(header, 14);
+    
+    // Write camera records (24 bytes each)
+    // BinaryRecord: lat(4) + lon(4) + snapLat(4) + snapLon(4) + bearing(2) + width(1) + tolerance(1) + type(1) + speedLimit(1) + flags(1) + reserved(1)
     int written = 0;
     for (JsonObject el : elements) {
         float lat = 0, lon = 0;
@@ -3113,13 +3192,26 @@ void WiFiManager::handleCameraSyncOsm() {
             continue;
         }
         
-        // Write NDJSON record: {"lat":...,"lon":...,"flg":4}
-        file.printf("{\"lat\":%.6f,\"lon\":%.6f,\"flg\":4}\n", lat, lon);
+        // Write 24-byte binary record
+        uint8_t record[24] = {0};
+        memcpy(&record[0], &lat, 4);    // lat
+        memcpy(&record[4], &lon, 4);    // lon
+        memcpy(&record[8], &lat, 4);    // snapLat (same as lat for ALPR)
+        memcpy(&record[12], &lon, 4);   // snapLon (same as lon for ALPR)
+        // bearing[16-17] = 0 (unknown)
+        // width[18] = 0
+        // tolerance[19] = 0
+        record[20] = 4;                 // type = 4 (ALPR)
+        // speedLimit[21] = 0
+        // flags[22] = 0
+        // reserved[23] = 0
+        
+        file.write(record, 24);
         written++;
     }
     
     file.close();
-    Serial.printf("[OSM] Saved %d cameras to %s\n", written, filename);
+    Serial.printf("[OSM] Saved %d cameras to %s (binary)\n", written, filename);
     
     // Trigger camera reload
     bool reloaded = cameraReloadCallback ? cameraReloadCallback() : false;
