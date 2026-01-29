@@ -92,7 +92,6 @@ public:
     // Callback for camera alerts
     void setCameraStatusCallback(std::function<String()> callback) { getCameraStatusJson = callback; }
     void setCameraReloadCallback(std::function<bool()> callback) { cameraReloadCallback = callback; }
-    void setCameraUploadCallback(std::function<bool(const String&)> callback) { cameraUploadCallback = callback; }
     void setCameraTestCallback(std::function<void(int)> callback) { cameraTestCallback = callback; }
     
     // Web activity tracking (for WiFi priority mode)
@@ -138,7 +137,6 @@ private:
     std::function<void()> gpsResetCallback;
     std::function<String()> getCameraStatusJson;
     std::function<bool()> cameraReloadCallback;
-    std::function<bool(const String&)> cameraUploadCallback;
     std::function<void(int)> cameraTestCallback;
     
     // Setup functions
@@ -192,9 +190,7 @@ private:
     void handleAutoLockouts();
     void handleCameraStatus();
     void handleCameraReload();
-    void handleCameraUpload();
     void handleCameraTest();
-    void handleCameraSyncOsm();
     void handleWifiClientStatus();
     void handleWifiClientScan();
     void handleWifiClientConnect();

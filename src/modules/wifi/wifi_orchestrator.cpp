@@ -200,12 +200,4 @@ void WifiOrchestrator::configureCallbacks() {
     wifiManager.setCameraTestCallback([this](int type) {
         cameraAlertModule.startTest(type);
     });
-
-    // Camera upload hook (optional future handling)
-    wifiManager.setCameraUploadCallback([this](const String& filename) {
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.logf(DebugLogCategory::Wifi, "Camera upload saved: %s", filename.c_str());
-        }
-        return true;  // signal success
-    });
 }

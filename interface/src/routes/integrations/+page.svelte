@@ -55,15 +55,6 @@
 	let obdScanning = $state(false);
 	let obdPin = $state('1234');
 	
-	// ALPR sync state
-	let alprSyncing = $state(false);
-	let alprSyncProgress = $state('');
-	let alprSyncCount = $state(0);
-	
-	// File upload state
-	let cameraFileUploading = $state(false);
-	let cameraFileInput = $state(null);
-	
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
@@ -109,106 +100,6 @@
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
-		}
-	}
-	
-	// Sync ALPR data from OpenStreetMap via device's WiFi connection
-	async function syncAlprFromOsm() {
-		if (alprSyncing) return;
-		
-		alprSyncing = true;
-		alprSyncProgress = 'Device is fetching ALPR data from OpenStreetMap...';
-		alprSyncCount = 0;
-		
-		try {
-			// Call the device endpoint that fetches OSM data directly
-			// Requires device to be connected to external WiFi (STA mode)
-			const res = await fetch('/api/cameras/sync-osm', { 
-				method: 'POST',
-				// Long timeout - OSM query can take 1-2 minutes
-				signal: AbortSignal.timeout(180000)
-			});
-			
-			const result = await res.json();
-			
-			if (!result.success) {
-				throw new Error(result.error || 'Sync failed');
-			}
-			
-			alprSyncCount = result.count;
-			alprSyncProgress = '';
-			await fetchCameraStatus();
-			message = { type: 'success', text: `Synced ${result.count} ALPR cameras from OpenStreetMap` };
-			
-		} catch (e) {
-			console.error('ALPR sync error:', e);
-			alprSyncProgress = '';
-			if (e.name === 'TimeoutError') {
-				message = { type: 'error', text: 'Sync timed out. The OSM query may take a while - try again.' };
-			} else {
-				message = { type: 'error', text: `Sync failed: ${e.message}` };
-			}
-		} finally {
-			alprSyncing = false;
-		}
-	}
-	
-	// Upload camera database file
-	async function uploadCameraFile(event) {
-		const file = event.target.files?.[0];
-		if (!file) return;
-		
-		cameraFileUploading = true;
-		message = null;
-		
-		try {
-			const text = await file.text();
-			
-			// Validate it looks like NDJSON
-			const lines = text.trim().split('\n');
-			if (lines.length < 2) {
-				throw new Error('File appears empty or invalid');
-			}
-			
-			// Check first non-meta line has lat/lon
-			let hasValidCamera = false;
-			for (const line of lines) {
-				try {
-					const obj = JSON.parse(line);
-					if (obj.lat !== undefined && obj.lon !== undefined) {
-						hasValidCamera = true;
-						break;
-					}
-				} catch { /* skip invalid lines */ }
-			}
-			
-			if (!hasValidCamera) {
-				throw new Error('File does not appear to contain valid camera data (no lat/lon found)');
-			}
-			
-			// Upload to device
-			const res = await fetch('/api/cameras/upload', {
-				method: 'POST',
-				headers: { 'Content-Type': 'text/plain' },
-				body: text
-			});
-			
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({ message: 'Upload failed' }));
-				throw new Error(err.message || `Upload failed: ${res.status}`);
-			}
-			
-			const result = await res.json();
-			await fetchCameraStatus();
-			message = { type: 'success', text: `Uploaded ${result.count || lines.length} cameras from ${file.name}` };
-			
-		} catch (e) {
-			console.error('Camera file upload error:', e);
-			message = { type: 'error', text: `Upload failed: ${e.message}` };
-		} finally {
-			cameraFileUploading = false;
-			// Reset file input
-			if (event.target) event.target.value = '';
 		}
 	}
 	
@@ -1190,20 +1081,21 @@
 						</div>
 					{:else}
 					<div class="text-sm text-base-content/60">
-							<p>Place camera database files on SD card (binary format preferred):</p>
+							<p class="font-semibold">📂 Copy camera database files to SD card:</p>
 							<ul class="list-disc list-inside mt-1 text-xs">
-								<li><code>/alpr.bin</code> - ALPR cameras</li>
+								<li><code>/alpr.bin</code> - ALPR cameras (~70k)</li>
 								<li><code>/redlight_cam.bin</code> - Red light cameras</li>
 								<li><code>/speed_cam.bin</code> - Speed cameras</li>
 							</ul>
-							<p class="mt-2">
-								<a href="https://www.rdforum.org/threads/88426/" target="_blank" class="link link-primary text-xs">
-									Download from RDForum →
-								</a>
-							</p>
-							<p class="mt-1 text-xs text-base-content/50">
-								Use <code>tools/download_cameras.py</code> to convert JSON to binary.
-							</p>
+							<div class="mt-3 p-2 bg-base-300 rounded-lg">
+								<p class="text-xs font-semibold">How to get camera files:</p>
+								<ol class="list-decimal list-inside text-xs mt-1 space-y-1">
+									<li>Download pre-built <code>.bin</code> files from releases</li>
+									<li>Or run <code>tools/download_cameras.py</code> on your computer</li>
+									<li>Copy the <code>.bin</code> files to SD card root</li>
+									<li>Reboot device or tap "Reload Database"</li>
+								</ol>
+							</div>
 						</div>
 					{/if}
 					
@@ -1248,82 +1140,6 @@
 							>
 								🚦📷 Both
 							</button>
-						</div>
-					</div>
-					
-					<!-- ALPR Sync from OpenStreetMap -->
-					<div class="divider my-2 text-xs text-base-content/50">Camera Database Upload</div>
-					
-					<div class="bg-base-300 rounded-lg p-3 space-y-3">
-						<p class="text-xs text-base-content/60">
-							Upload a camera database file (NDJSON format). It will be converted to binary for fast loading.
-						</p>
-						
-						<!-- File Upload -->
-						<div class="flex flex-col gap-2">
-							<label class="btn btn-sm btn-primary gap-2">
-								{#if cameraFileUploading}
-									<span class="loading loading-spinner loading-xs"></span>
-									Uploading...
-								{:else}
-									📁 Choose File
-								{/if}
-								<input 
-									type="file" 
-									class="hidden" 
-									accept=".json,.ndjson,.txt"
-									onchange={uploadCameraFile}
-									disabled={cameraFileUploading}
-								/>
-							</label>
-							
-							<p class="text-xs text-base-content/50">
-								Supports: cameras.json, V140ExCam.json, NDJSON files
-							</p>
-						</div>
-						
-						<div class="divider my-1 text-xs text-base-content/40">— or sync from internet —</div>
-						
-						<p class="text-xs text-base-content/60">
-							Sync ALPR cameras from OpenStreetMap. Requires V1 Simple to be connected to an external WiFi network (Settings → WiFi Client).
-						</p>
-						
-						{#if alprSyncProgress}
-							<div class="flex items-center gap-2 text-sm">
-								<span class="loading loading-spinner loading-sm"></span>
-								<span>{alprSyncProgress}</span>
-							</div>
-							{#if alprSyncCount > 0}
-								<div class="text-xs text-base-content/50">Found {alprSyncCount.toLocaleString()} cameras</div>
-							{/if}
-						{/if}
-						
-						<button 
-							class="btn btn-sm btn-info gap-2"
-							onclick={syncAlprFromOsm}
-							disabled={alprSyncing}
-						>
-							{#if alprSyncing}
-								<span class="loading loading-spinner loading-xs"></span>
-							{:else}
-								🌐
-							{/if}
-							Sync ALPR from OpenStreetMap
-						</button>
-						
-						<p class="text-xs text-base-content/50 mt-1">
-							⚠️ Requires WiFi connection to internet. ~80,000 US cameras, may take 1-2 minutes.
-						</p>
-						
-						<div class="divider my-1 text-xs text-base-content/40">— download tools —</div>
-						
-						<div class="flex flex-col gap-1">
-							<a href="https://github.com/user/v1-simple/blob/main/tools/download_cameras.py" target="_blank" class="link link-primary text-xs">
-								📥 Python download script (run on computer)
-							</a>
-							<a href="https://www.rdforum.org/threads/88426/" target="_blank" class="link link-primary text-xs">
-								📥 V140ExCam database from RDForum
-							</a>
 						</div>
 					</div>
 				{/if}
