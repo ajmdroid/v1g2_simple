@@ -2,8 +2,11 @@
  * ESP Packet Parser for V1 Gen2
  *
  * The V1G2 packets are framed with 0xAA ... 0xAB. Packet ID lives at byte 3,
- * payload begins at byte 5 (after dest/src/id/len). The payload layout matches
- * the v1g2-t4s3 logic: 0x31 = display/update, 0x43 = alert table entries.
+ * payload begins at byte 5 (after dest/src/id/len).
+ * 
+ * Protocol reference: v1g2-t4s3 (Kenny's original ESP32/T4 implementation)
+ * This code maintains compatibility with the original Valentine Research protocol.
+ * Packet IDs: 0x31 = display/update, 0x43 = alert table entries.
  */
 
 #include "packet_parser.h"
@@ -105,17 +108,14 @@ void PacketParser::resetAlertAssembly() {
     chunkCount = 0;
 }
 
-// Static flag for priority state reset - no longer used since we use V1's isPriority flag
-// Kept for API compatibility
-static bool s_resetPriorityStateFlag = false;
-
+// DEPRECATED: This method is no longer needed since we use V1's isPriority flag
+// (aux0 bit 7) directly from the packet data. Kept for API compatibility only.
 void PacketParser::resetPriorityState() {
-    // No-op: We now use V1's isPriority flag (aux0 bit 7) to determine priority
-    // No local state to reset
-    s_resetPriorityStateFlag = true;
+    // No-op: priority state is now read directly from V1 packets
 }
 
-// Static flag to signal alert count tracker reset on next call
+// Static flag to signal alert count tracker reset on next parseAlertData() call
+// Used on V1 disconnect to ensure clean state on reconnect
 static bool s_resetAlertCountFlag = false;
 
 void PacketParser::resetAlertCountTracker() {

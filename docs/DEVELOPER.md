@@ -83,6 +83,68 @@ The ESP32 has a single shared radio for WiFi and BLE. Rules:
 
 ---
 
+## Logging Strategy
+
+The codebase uses two logging mechanisms intentionally:
+
+### Serial/SerialLog (Direct Output)
+Use for:
+- **Critical errors** that must always be visible
+- **Startup messages** and initialization status
+- **Connection state changes** (BLE connect/disconnect)
+- **Performance-critical paths** where debugLogger overhead matters
+
+```cpp
+Serial.println("[BLE] Connected!");
+Serial.printf("[OBD] Speed: %d km/h\n", speed);
+```
+
+### debugLogger (Categorized Logging)
+Use for:
+- **Debug information** that can be toggled per-module
+- **SD card logging** for post-mortem analysis
+- **Verbose output** during development
+
+```cpp
+debugLogger.log(DebugLogCategory::Gps, "Fix acquired");
+debugLogger.logf(DebugLogCategory::Alerts, "Alert: %s %.3f", band, freq);
+```
+
+### Categories
+Enable/disable via web UI (Dev page → Log Categories):
+- System, WiFi, Alerts, BLE, GPS, OBD, Display, PerfMetrics, Audio, Camera, Lockout, Touch
+
+---
+
+## Testing Without Hardware (REPLAY_MODE)
+
+For UI/display testing without a physical V1 device, use REPLAY_MODE:
+
+### Enabling REPLAY_MODE
+
+1. Add to `platformio.ini` build flags:
+   ```ini
+   build_flags = 
+       ...existing flags...
+       -D REPLAY_MODE
+   ```
+
+2. Build and flash:
+   ```bash
+   pio run -e waveshare-349 -t upload
+   ```
+
+### What REPLAY_MODE Does
+- **Disables BLE scanning** - no V1 connection attempts
+- **Generates synthetic alert packets** - simulates V1 data for UI testing
+- **Enables display testing** - verify layouts, colors, animations
+- **No hardware required** - useful for CI/CD display validation
+
+### Disabling REPLAY_MODE
+Remove the `-D REPLAY_MODE` flag and rebuild for normal operation.
+
+---
+
 ## Common Bugs & Prevention
 
 ### Display Flashing / Constant Redraws

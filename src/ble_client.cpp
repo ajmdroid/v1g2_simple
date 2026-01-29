@@ -39,7 +39,8 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
     return sum;
 }
 
-// Task to restart advertising after delay (Kenny's v1g2-t4s3 approach for NimBLE 2.x)
+// Task to restart advertising after delay
+// Pattern derived from v1g2-t4s3 reference implementation for NimBLE 2.x dual-role stability
 // Only restarts if no client is connected
 static void restartAdvertisingTask(void* param) {
     vTaskDelay(pdMS_TO_TICKS(150));
@@ -289,7 +290,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         blePrefs.end();
     }
     
-    // Kenny's v1g2-t4s3 exact initialization pattern:
+    // BLE initialization pattern (derived from v1g2-t4s3 reference):
+    // This sequence is critical for NimBLE dual-role stability:
     // 1. init() with generic name
     // 2. setDeviceName() with the actual advertised name  
     // 3. setPower() and setMTU for better throughput
@@ -1141,7 +1143,7 @@ bool V1BLEClient::setDisplayOn(bool on) {
     // Mode 0 = completely off, Mode 1 = only BT icon visible
     // For "dark mode on" we want display OFF, for "dark mode off" we want display ON
     // 
-    // Based on Kenny's v1g2-t4s3 implementation:
+    // Packet format derived from v1g2-t4s3 reference implementation:
     // - reqTurnOnMainDisplay: 7-byte packet with payloadLength=1, no actual payload data
     // - reqTurnOffMainDisplay: 8-byte packet with payloadLength=2, only 1 mode byte in payload
     

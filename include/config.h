@@ -1,7 +1,12 @@
 /**
  * Configuration file for V1 Gen2 Simple Display
  * Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640x172)
- * Build trigger: audio files fix
+ * 
+ * This file contains:
+ * - Firmware version and board definitions
+ * - BLE UUIDs for V1 Gen2 protocol
+ * - ESP packet framing constants
+ * - Display layout and timing parameters
  */
 
 #ifndef CONFIG_H
@@ -15,7 +20,9 @@
 
 // Board-specific Power Management (Waveshare only)
 // Waveshare ESP32-S3-Touch-LCD-3.49
-#define PIN_POWER_ON    -1  // No dedicated power pin (check schematic)
+// Note: PIN_POWER_ON is not used on this board - power latch is handled
+// via TCA9554 I/O expander in batteryManager.begin()
+#define PIN_POWER_ON    -1
 #define DISPLAY_ROTATION    1     // Landscape mode (90 degree rotation)
 
 // Default Brightness

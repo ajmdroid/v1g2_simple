@@ -93,7 +93,6 @@ VoiceModule voiceModule;
 
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastStatusUpdate = 0;
-unsigned long lastLvTick = 0;
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -138,15 +137,6 @@ CameraLoadCoordinator cameraLoadCoordinator;
 ObdAutoConnector obdAutoConnector;
 AutoLockoutMaintenance autoLockoutMaintenance;
 DisplayRestoreModule displayRestoreModule;
-
-// Smart threat escalation tracking moved to VoiceModule
-
-// Helper moved to VoiceModule: getAlertBars(), isBandEnabledForSecondary(), speed helpers
-
-// WiFi manual startup - user must long-press BOOT to start AP
-
-// Alert persistence handled by AlertPersistenceModule
-
 
 // Callback for BLE data reception - just queues data, doesn't process
 // This runs in BLE task context, so we avoid SPI operations here
@@ -280,8 +270,6 @@ void setup() {
     cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
     
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
-    
-    lastLvTick = millis();
 
     // Mount storage (SD if available, else LittleFS) for profiles and settings
     SerialLog.println("[Setup] Mounting storage...");
@@ -505,8 +493,6 @@ void setup() {
 
 void loop() {
     unsigned long now = millis();
-    // Update alert persistence module (handles alert on-screen timing)
-    alertPersistenceModule.update();
     perfReporterModule.process(now);
 
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
