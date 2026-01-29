@@ -209,12 +209,13 @@ bool AutoLockoutManager::shouldPromoteCluster(const LearningCluster& cluster) co
   
   // Get runtime settings for learn count
   const V1Settings& s = settingsManager.get();
-  int requiredHits = s.lockoutLearnCount;
+  // Require at least 2 stopped hits, and more passes when moving (default 4).
+  int requiredStoppedHits = std::max<int>(PROMOTION_STOPPED_HIT_COUNT, s.lockoutLearnCount);
+  int requiredMovingHits  = std::max<int>(PROMOTION_MOVING_HIT_COUNT, s.lockoutLearnCount);
   
   // Check hit count threshold (different for stopped vs moving)
-  // Use runtime setting for the threshold
-  bool hasEnoughStoppedHits = cluster.stoppedHitCount >= requiredHits;
-  bool hasEnoughMovingHits = cluster.movingHitCount >= requiredHits;
+  bool hasEnoughStoppedHits = cluster.stoppedHitCount >= requiredStoppedHits;
+  bool hasEnoughMovingHits  = cluster.movingHitCount  >= requiredMovingHits;
   
   if (!hasEnoughStoppedHits && !hasEnoughMovingHits) return false;
   
@@ -1014,4 +1015,3 @@ bool AutoLockoutManager::checkAndRestoreFromSD() {
   }
   return false;
 }
-

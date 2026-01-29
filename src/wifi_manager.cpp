@@ -2822,23 +2822,29 @@ void WiFiManager::handleGpsReset() {
 void WiFiManager::handleAutoLockouts() {
     markUiActivity();
     
-    // Read auto-lockout data from SD card
+    // Prefer the live LittleFS file used by AutoLockoutManager
+    if (LittleFS.exists("/v1profiles/auto_lockouts.json")) {
+        File file = LittleFS.open("/v1profiles/auto_lockouts.json", "r");
+        if (file) {
+            server.streamFile(file, "application/json");
+            file.close();
+            return;
+        }
+    }
+
+    // Fallback: stream SD backup if present (older path)
     fs::FS* fs = storageManager.getFilesystem();
-    if (!fs) {
-        server.send(503, "application/json", "{\"error\":\"SD card not available\"}");
-        return;
+    if (fs) {
+        File file = fs->open("/v1simple_auto_lockouts.json", "r");
+        if (file) {
+            server.streamFile(file, "application/json");
+            file.close();
+            return;
+        }
     }
-    
-    File file = fs->open("/v1simple_auto_lockouts.json", "r");
-    if (!file) {
-        // No file yet - return empty data
-        server.send(200, "application/json", "{\"clusters\":[]}");
-        return;
-    }
-    
-    // Stream the file directly to client
-    server.streamFile(file, "application/json");
-    file.close();
+
+    // Nothing found
+    server.send(200, "application/json", "{\"clusters\":[]}");
 }
 
 void WiFiManager::handleCameraStatus() {

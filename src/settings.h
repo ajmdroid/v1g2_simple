@@ -244,7 +244,7 @@ struct V1Settings {
     bool lockoutKaProtection;       // Never auto-learn Ka band (real threats)
     bool lockoutDirectionalUnlearn; // Only unlearn when traveling same direction
     uint16_t lockoutFreqToleranceMHz;  // Frequency tolerance in MHz (default: 8)
-    uint8_t lockoutLearnCount;      // Hits needed to promote (default: 3)
+    uint8_t lockoutLearnCount;      // Hits needed to promote (default: 2)
     uint8_t lockoutUnlearnCount;    // Misses to demote auto-lockouts (default: 5)
     uint8_t lockoutManualDeleteCount; // Misses to demote manual lockouts (default: 25)
     uint8_t lockoutLearnIntervalHours;   // Hours between counted hits (default: 4)
@@ -371,7 +371,7 @@ struct V1Settings {
         lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
         lockoutDirectionalUnlearn(true),// Directional unlearn on (JBV1 default)
         lockoutFreqToleranceMHz(8),     // 8 MHz tolerance (JBV1 default)
-        lockoutLearnCount(3),           // 3 hits to learn (JBV1 default)
+        lockoutLearnCount(2),           // 2 hits to learn (faster clustering)
         lockoutUnlearnCount(5),         // 5 misses to unlearn auto (JBV1 default)
         lockoutManualDeleteCount(25),   // 25 misses to unlearn manual (JBV1 default)
         lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)

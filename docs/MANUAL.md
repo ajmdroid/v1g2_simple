@@ -1046,7 +1046,7 @@ Controls:
 - **Ka Protection:** Never auto-learn Ka band (real threats, default: on)
 - **Directional Unlearn:** Only unlearn when traveling same direction (default: on)
 - **Frequency Tolerance:** MHz tolerance for lockout matching (default: 8)
-- **Learn Count:** Hits needed to promote to lockout (default: 3)
+- **Learn Count:** Hits needed to promote to lockout (default: 2; moving alerts still need 4)
 - **Unlearn Count:** Passes without alert to demote auto-lockout (default: 5)
 - **Manual Delete Count:** Passes to demote manual lockouts (default: 25)
 - **Learn Interval:** Hours between counted hits (default: 4)
