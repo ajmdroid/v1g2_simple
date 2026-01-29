@@ -1,17 +1,6 @@
 -- osm2pgsql flex output configuration
 -- Extracts roads with relevant tags for camera enrichment
-
-local roads = osm2pgsql.define_way_table('roads', {
-    { column = 'osm_id', sql_type = 'bigint', create_only = true },
-    { column = 'name', type = 'text' },
-    { column = 'highway', type = 'text', not_null = true },
-    { column = 'maxspeed', type = 'text' },
-    { column = 'oneway', type = 'text' },
-    { column = 'ref', type = 'text' },
-    { column = 'lanes', type = 'text' },
-    { column = 'surface', type = 'text' },
-    { column = 'geom', type = 'linestring', projection = 3857, not_null = true },
-})
+-- Compatible with osm2pgsql 1.6+ (Ubuntu 22.04 repo version)
 
 -- Highway classes we care about (roads where cameras might be placed)
 local highway_classes = {
@@ -32,6 +21,19 @@ for _, v in ipairs(highway_classes) do
     highway_set[v] = true
 end
 
+-- Minimal roads table: one record per highway way
+-- In osm2pgsql 1.6.x flex mode, geometry column uses 'geometry' type directly
+local roads = osm2pgsql.define_way_table('roads', {
+    { column = 'highway', type = 'text', not_null = true },
+    { column = 'name', type = 'text' },
+    { column = 'ref', type = 'text' },
+    { column = 'oneway', type = 'text' },
+    { column = 'maxspeed', type = 'text' },
+    { column = 'maxspeed_forward', type = 'text' },
+    { column = 'maxspeed_backward', type = 'text' },
+    { column = 'geom', type = 'linestring', projection = 4326 },
+})
+
 function osm2pgsql.process_way(object)
     local highway = object.tags.highway
     
@@ -40,17 +42,16 @@ function osm2pgsql.process_way(object)
         return
     end
     
-    -- Insert the road
-    roads:insert({
-        osm_id = object.id,
-        name = object.tags.name,
+    -- Insert the road - geometry is passed via { create = ... } in older API
+    roads:add_row({
         highway = highway,
-        maxspeed = object.tags.maxspeed,
-        oneway = object.tags.oneway,
+        name = object.tags.name,
         ref = object.tags.ref,
-        lanes = object.tags.lanes,
-        surface = object.tags.surface,
-        geom = object:as_linestring(),
+        oneway = object.tags.oneway,
+        maxspeed = object.tags.maxspeed,
+        maxspeed_forward = object.tags['maxspeed:forward'],
+        maxspeed_backward = object.tags['maxspeed:backward'],
+        geom = { create = 'line' },
     })
 end
 

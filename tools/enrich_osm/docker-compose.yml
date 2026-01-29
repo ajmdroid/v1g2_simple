@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgis:
     image: postgis/postgis:16-3.4
@@ -13,35 +11,13 @@ services:
     volumes:
       - postgis_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./data:/data  # Mount for PBF files and camera data
+      - ./data:/data
     shm_size: 1g
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U osm -d osm"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-  osm2pgsql:
-    image: iboates/osm2pgsql:latest
-    container_name: v1simple_osm2pgsql
-    depends_on:
-      postgis:
-        condition: service_healthy
-    volumes:
-      - ./data:/data
-      - ./osm2pgsql.lua:/osm2pgsql.lua
-    profiles:
-      - import  # Only run when explicitly requested
-    command: >
-      osm2pgsql
-        --create
-        --slim
-        --drop
-        --database=postgresql://osm:osm@postgis:5432/osm
-        --output=flex
-        --style=/osm2pgsql.lua
-        --cache=2000
-        /data/us-latest.osm.pbf
 
 volumes:
   postgis_data:

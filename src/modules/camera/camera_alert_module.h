@@ -91,6 +91,9 @@ private:
     // Background load tracking (for logging)
     bool bgLoadLoggedComplete = false;
 
+    // Safety timeout - auto-clear stale alerts
+    unsigned long alertStartedAtMs = 0;
+
     // Constants
     static constexpr int MAX_ACTIVE_CAMERAS = 3;
     static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;  // 500ms
@@ -102,4 +105,5 @@ private:
     static constexpr unsigned long GPS_READY_COOLDOWN_MS = 3000;         // 3s after fix
     static constexpr float CACHE_RADIUS_MILES = 100.0f;
     static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f;
+    static constexpr unsigned long ALERT_MAX_DURATION_MS = 120000;  // 2 min max alert
 };

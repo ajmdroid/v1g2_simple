@@ -164,22 +164,78 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
 }
 
 void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Settings& camSettings) {
-    if (!gpsHandler || !gpsHandler->isReadyForNavigation()) return;
+    if (!gpsHandler || !gpsHandler->isReadyForNavigation()) {
+        // Safety: clear stale alerts if GPS lost for too long
+        if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
+            (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
+            Serial.println("[Camera] Safety timeout: clearing stale alerts (GPS lost)");
+            activeCameraAlerts.clear();
+            alertStartedAtMs = 0;
+            if (display) {
+                display->clearAllCameraAlerts();
+                display->clearCameraAlerts();
+            }
+        }
+        return;
+    }
 
     if (now - lastCameraCheckMs < CAMERA_CHECK_INTERVAL_MS) return;
     lastCameraCheckMs = now;
-
-    // Clean up old "passed camera" entries
-    recentlyPassedCameras.erase(
-        std::remove_if(recentlyPassedCameras.begin(), recentlyPassedCameras.end(),
-                       [now](const PassedCameraTracker& p) { return (now - p.passedTimeMs) > PASSED_CAMERA_MEMORY_MS; }),
-        recentlyPassedCameras.end());
 
     GPSFix fix = gpsHandler->getFix();
     float lat = fix.latitude;
     float lon = fix.longitude;
     float heading = fix.heading_deg;
     float alertRadius = static_cast<float>(camSettings.cameraAlertDistanceM);
+
+    // Safety check: if we have active alerts but NO cameras nearby at all
+    // (even with 2x search radius), clear immediately - we've left the area
+    if (!activeCameraAlerts.empty()) {
+        bool anyCamerasNearby = cameraManager->hasNearbyCamera(lat, lon, alertRadius * 2.0f);
+        if (!anyCamerasNearby) {
+            Serial.println("[Camera] No cameras in area - clearing stale alerts");
+            // Mark as passed so they don't re-alert if we return
+            for (const auto& cam : activeCameraAlerts) {
+                PassedCameraTracker passed;
+                passed.lat = cam.camera.latitude;
+                passed.lon = cam.camera.longitude;
+                passed.passedTimeMs = now;
+                recentlyPassedCameras.push_back(passed);
+            }
+            activeCameraAlerts.clear();
+            alertStartedAtMs = 0;
+            if (display) {
+                display->clearAllCameraAlerts();
+                display->clearCameraAlerts();
+            }
+            return;
+        }
+    }
+
+    // Also enforce max duration as final safety (shouldn't normally trigger)
+    if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
+        (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
+        Serial.println("[Camera] Safety timeout: clearing stale alerts (max duration)");
+        for (const auto& cam : activeCameraAlerts) {
+            PassedCameraTracker passed;
+            passed.lat = cam.camera.latitude;
+            passed.lon = cam.camera.longitude;
+            passed.passedTimeMs = now;
+            recentlyPassedCameras.push_back(passed);
+        }
+        activeCameraAlerts.clear();
+        alertStartedAtMs = 0;
+        if (display) {
+            display->clearAllCameraAlerts();
+            display->clearCameraAlerts();
+        }
+    }
+
+    // Clean up old "passed camera" entries
+    recentlyPassedCameras.erase(
+        std::remove_if(recentlyPassedCameras.begin(), recentlyPassedCameras.end(),
+                       [now](const PassedCameraTracker& p) { return (now - p.passedTimeMs) > PASSED_CAMERA_MEMORY_MS; }),
+        recentlyPassedCameras.end());
 
     // Update camera type filters from settings
     cameraManager->setEnabledTypes(
@@ -291,7 +347,15 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     }
 
     // Update active camera list
+    bool wasEmpty = activeCameraAlerts.empty();
     activeCameraAlerts = approachingCameras;
+    
+    // Track when alerts started (for safety timeout)
+    if (wasEmpty && !activeCameraAlerts.empty()) {
+        alertStartedAtMs = now;  // Alerts just started
+    } else if (activeCameraAlerts.empty()) {
+        alertStartedAtMs = 0;    // No alerts, reset timer
+    }
 
     // Debug: log active camera count changes
     static int lastCameraCount = 0;

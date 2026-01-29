@@ -1,4 +1,0 @@
-{"_meta": {"name": "OSM ALPR/Red Light/Speed (Alaska)", "date": "2026-01-28", "count": 3, "enriched": 3, "source": "OpenStreetMap via Overpass API"}}
-{"lat": 61.546749, "lon": -149.250933, "flg": 2, "slat": 61.546767, "slon": -149.250723, "rbr": 339, "cwm": 35, "btol": 30}
-{"lat": 61.554034, "lon": -149.244801, "flg": 2, "slat": 61.553918, "slon": -149.244788, "rbr": 257, "cwm": 35, "btol": 30}
-{"lat": 61.553609, "lon": -149.247199, "flg": 2, "slat": 61.55359, "slon": -149.247354, "rbr": 353, "cwm": 35, "btol": 30}

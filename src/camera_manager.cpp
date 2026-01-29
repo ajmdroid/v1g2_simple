@@ -54,16 +54,26 @@ bool CameraManager::begin(fs::FS* filesystem) {
   
   // Try to load default database from SD card
   // Load all available camera database files
+  // Prefer binary files (.bin) over JSON for faster loading
   bool loaded = false;
   
   // Primary camera database files (ALPR, red light, speed)
-  if (fs->exists("/alpr.json")) {
-    loaded = loadDatabase("/alpr.json", loaded) || loaded;  // First file clears, subsequent append
+  // Binary format loads 10-20x faster than JSON
+  if (fs->exists("/alpr.bin")) {
+    loaded = loadBinaryDatabase("/alpr.bin", loaded) || loaded;
+  } else if (fs->exists("/alpr.json")) {
+    loaded = loadDatabase("/alpr.json", loaded) || loaded;
   }
-  if (fs->exists("/redlight_cam.json")) {
+  
+  if (fs->exists("/redlight_cam.bin")) {
+    loaded = loadBinaryDatabase("/redlight_cam.bin", true) || loaded;
+  } else if (fs->exists("/redlight_cam.json")) {
     loaded = loadDatabase("/redlight_cam.json", true) || loaded;
   }
-  if (fs->exists("/speed_cam.json")) {
+  
+  if (fs->exists("/speed_cam.bin")) {
+    loaded = loadBinaryDatabase("/speed_cam.bin", true) || loaded;
+  } else if (fs->exists("/speed_cam.json")) {
     loaded = loadDatabase("/speed_cam.json", true) || loaded;
   }
   
@@ -167,6 +177,136 @@ bool CameraManager::loadDatabase(const char* path, bool append) {
     Serial.printf("[Camera] Types: %d red light, %d speed, %d ALPR\n",
                   getRedLightCount(), getSpeedCameraCount(), getALPRCount());
   }
+  
+  return addedCount > 0;
+}
+
+// Binary format header structure (14 bytes, packed to match Python struct.pack('<4sHII'))
+struct __attribute__((packed)) BinaryHeader {
+  char magic[4];        // "VCAM" - 4 bytes
+  uint16_t version;     // Format version (1) - 2 bytes (H in Python)
+  uint32_t count;       // Number of camera records - 4 bytes
+  uint32_t recordSize;  // Size of each record (24 bytes) - 4 bytes
+};
+
+// Binary record structure (24 bytes, packed)
+struct __attribute__((packed)) BinaryRecord {
+  float lat;            // 4 bytes
+  float lon;            // 4 bytes
+  float snapLat;        // 4 bytes - corridor snap point
+  float snapLon;        // 4 bytes - corridor snap point
+  int16_t bearing;      // 2 bytes - road bearing * 10
+  uint8_t width;        // 1 byte  - corridor width in meters
+  uint8_t tolerance;    // 1 byte  - bearing tolerance degrees
+  uint8_t type;         // 1 byte  - camera type
+  uint8_t speedLimit;   // 1 byte  - speed limit
+  uint8_t flags;        // 1 byte  - packed flags (isMetric, etc.)
+  uint8_t reserved;     // 1 byte  - padding for alignment
+};
+
+bool CameraManager::loadBinaryDatabase(const char* path, bool append) {
+  if (!fs) return false;
+  
+  File file = fs->open(path, "r");
+  if (!file) {
+    Serial.printf("[Camera] Failed to open binary %s\n", path);
+    return false;
+  }
+  
+  // Clear existing data only if not appending
+  if (!append) {
+    clear();
+  }
+  
+  Serial.printf("[Camera] Loading binary database from %s...\n", path);
+  uint32_t startTime = millis();
+  size_t startCount = cameras.size();
+  
+  // Read and validate header
+  BinaryHeader header;
+  if (file.read((uint8_t*)&header, sizeof(header)) != sizeof(header)) {
+    Serial.printf("[Camera] Failed to read binary header\n");
+    file.close();
+    return false;
+  }
+  
+  // Validate magic
+  if (memcmp(header.magic, "VCAM", 4) != 0) {
+    Serial.printf("[Camera] Invalid binary magic\n");
+    file.close();
+    return false;
+  }
+  
+  // Check version
+  if (header.version != 1) {
+    Serial.printf("[Camera] Unsupported binary version: %d\n", header.version);
+    file.close();
+    return false;
+  }
+  
+  // Validate record size
+  if (header.recordSize != sizeof(BinaryRecord)) {
+    Serial.printf("[Camera] Record size mismatch: expected %d, got %d\n", 
+                  sizeof(BinaryRecord), header.recordSize);
+    file.close();
+    return false;
+  }
+  
+  Serial.printf("[Camera] Binary file: %d records, %d bytes each\n", 
+                header.count, header.recordSize);
+  
+  // Reserve space for efficiency
+  cameras.reserve(cameras.size() + header.count);
+  
+  // Read records in batches for better performance
+  const size_t BATCH_SIZE = 64;
+  BinaryRecord batch[BATCH_SIZE];
+  size_t remaining = header.count;
+  size_t loaded = 0;
+  
+  while (remaining > 0) {
+    size_t toRead = min(remaining, BATCH_SIZE);
+    size_t bytesRead = file.read((uint8_t*)batch, toRead * sizeof(BinaryRecord));
+    
+    if (bytesRead != toRead * sizeof(BinaryRecord)) {
+      Serial.printf("[Camera] Unexpected end of binary file\n");
+      break;
+    }
+    
+    for (size_t i = 0; i < toRead; i++) {
+      CameraRecord record;
+      record.latitude = batch[i].lat;
+      record.longitude = batch[i].lon;
+      record.snapLat = batch[i].snapLat;
+      record.snapLon = batch[i].snapLon;
+      record.roadBearing = batch[i].bearing / 10.0f;
+      record.corridorWidthM = batch[i].width;
+      record.bearingTolerance = batch[i].tolerance;
+      record.type = batch[i].type;
+      record.speedLimit = batch[i].speedLimit;
+      record.isMetric = (batch[i].flags & 0x01) != 0;
+      
+      cameras.push_back(record);
+      loaded++;
+    }
+    
+    remaining -= toRead;
+    
+    // Progress indicator every 10000 records
+    if (DEBUG_LOGS && loaded % 10000 == 0) {
+      Serial.printf("[Camera] Loaded %d cameras...\n", loaded);
+    }
+  }
+  
+  file.close();
+  
+  // Build spatial index for fast queries
+  buildSpatialIndex();
+  
+  size_t addedCount = cameras.size() - startCount;
+  uint32_t elapsed = millis() - startTime;
+  Serial.printf("[Camera] Loaded %d cameras from %s in %dms (binary)\n", 
+                addedCount, path, elapsed);
   
   return addedCount > 0;
 }
@@ -885,10 +1025,11 @@ bool CameraManager::startBackgroundLoad() {
   
   // Create background task with low priority (1)
   // Lower than BLE (5) and display (2) to avoid interfering with UI
+  // Stack size increased to 8192 for binary batch buffer (64 * 24 = 1536 bytes)
   BaseType_t result = xTaskCreate(
     loadTaskEntry,          // Task function
     "CamLoad",              // Task name
-    4096,                   // Stack size (bytes)
+    8192,                   // Stack size (bytes) - increased for binary loading
     this,                   // Parameter (this pointer)
     1,                      // Priority (low)
     &loadTaskHandle         // Task handle
@@ -931,26 +1072,35 @@ void CameraManager::stopBackgroundLoad() {
 // Incremental database load with yielding - called from background task
 bool CameraManager::loadDatabaseIncremental() {
   // List of database files to load (in order)
+  // Check for binary files first, then fall back to JSON
   struct DatabaseFile {
-    const char* path;
+    const char* binPath;
+    const char* jsonPath;
+    bool useBinary;
     bool exists;
-    size_t approxLines;  // Estimate for progress calculation
+    size_t approxRecords;  // Estimate for progress calculation
   };
   
   DatabaseFile files[] = {
-    {"/alpr.json", false, 70000},       // Main ALPR database
-    {"/redlight_cam.json", false, 200},
-    {"/speed_cam.json", false, 1200}
+    {"/alpr.bin", "/alpr.json", false, false, 70000},
+    {"/redlight_cam.bin", "/redlight_cam.json", false, false, 200},
+    {"/speed_cam.bin", "/speed_cam.json", false, false, 1200}
   };
   const int numFiles = sizeof(files) / sizeof(files[0]);
   
-  // Check which files exist and count total
-  size_t totalLines = 0;
+  // Check which files exist (prefer binary)
+  size_t totalRecords = 0;
   int existingFiles = 0;
   for (int i = 0; i < numFiles; i++) {
-    if (fs->exists(files[i].path)) {
+    if (fs->exists(files[i].binPath)) {
       files[i].exists = true;
-      totalLines += files[i].approxLines;
+      files[i].useBinary = true;
+      totalRecords += files[i].approxRecords;
+      existingFiles++;
+    } else if (fs->exists(files[i].jsonPath)) {
+      files[i].exists = true;
+      files[i].useBinary = false;
+      totalRecords += files[i].approxRecords;
       existingFiles++;
     }
   }
@@ -961,10 +1111,10 @@ bool CameraManager::loadDatabaseIncremental() {
   }
   
   Serial.printf("[Camera] Background loading %d files (~%d records)...\n", 
-                existingFiles, totalLines);
+                existingFiles, totalRecords);
   
   uint32_t overallStart = millis();
-  size_t linesLoaded = 0;
+  size_t recordsLoaded = 0;
   bool firstFile = true;
   
   for (int fileIdx = 0; fileIdx < numFiles; fileIdx++) {
@@ -975,92 +1125,40 @@ bool CameraManager::loadDatabaseIncremental() {
     
     if (!files[fileIdx].exists) continue;
     
-    const char* path = files[fileIdx].path;
-    
-    File file = fs->open(path, "r");
-    if (!file) {
-      Serial.printf("[Camera] Failed to open %s\n", path);
-      continue;
-    }
-    
-    uint32_t fileStart = millis();
-    size_t fileRecords = 0;
-    size_t parseErrors = 0;
-    char lineBuffer[256];
-    size_t bufIdx = 0;
+    const char* path = files[fileIdx].useBinary ? 
+                       files[fileIdx].binPath : files[fileIdx].jsonPath;
     
     // Clear cameras only for first file
     if (firstFile) {
       if (cameraMutex && xSemaphoreTake(cameraMutex, portMAX_DELAY) == pdTRUE) {
         cameras.clear();
-        cameras.reserve(totalLines + 1000);
+        cameras.reserve(totalRecords + 1000);
         xSemaphoreGive(cameraMutex);
       }
       firstFile = false;
     }
     
-    while (file.available()) {
-      // Check for cancellation every 100 lines
-      if ((linesLoaded % 100) == 0) {
-        if (loadTaskShouldExit) {
-          file.close();
-          Serial.println("[Camera] Background load cancelled mid-file");
-          return false;
-        }
-        
-        // Update progress
-        loadProgressPercent = (totalLines > 0) ? 
-                              (linesLoaded * 100 / totalLines) : 0;
-        
-        // Yield to other tasks (allow BLE, display, etc. to run)
-        vTaskDelay(pdMS_TO_TICKS(1));  // 1ms yield
-      }
-      
-      char c = file.read();
-      
-      if (c == '\n' || c == '\r') {
-        if (bufIdx > 0) {
-          lineBuffer[bufIdx] = '\0';
-          
-          CameraRecord record;
-          if (parseCameraLine(lineBuffer, record)) {
-            // Thread-safe add to camera vector
-            if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-              cameras.push_back(record);
-              xSemaphoreGive(cameraMutex);
-              fileRecords++;
-            }
-          } else {
-            parseErrors++;
-          }
-          
-          linesLoaded++;
-          bufIdx = 0;
-        }
-      } else if (bufIdx < sizeof(lineBuffer) - 1) {
-        lineBuffer[bufIdx++] = c;
-      }
+    uint32_t fileStart = millis();
+    size_t fileRecords = 0;
+    
+    if (files[fileIdx].useBinary) {
+      // Fast binary load
+      fileRecords = loadBinaryDatabaseIncremental(path);
+    } else {
+      // Slow JSON load with yielding
+      fileRecords = loadJsonDatabaseIncremental(path);
     }
     
-    // Handle last line without newline
-    if (bufIdx > 0) {
-      lineBuffer[bufIdx] = '\0';
-      CameraRecord record;
-      if (parseCameraLine(lineBuffer, record)) {
-        if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-          cameras.push_back(record);
-          xSemaphoreGive(cameraMutex);
-          fileRecords++;
-        }
-      }
-      linesLoaded++;
-    }
+    recordsLoaded += fileRecords;
     
-    file.close();
+    // Update progress
+    loadProgressPercent = (totalRecords > 0) ? 
+                          (recordsLoaded * 100 / totalRecords) : 0;
     
     uint32_t fileElapsed = millis() - fileStart;
-    Serial.printf("[Camera] Loaded %d from %s in %dms (bg)\n", 
-                  fileRecords, path, fileElapsed);
+    Serial.printf("[Camera] Loaded %d from %s in %dms (bg%s)\n", 
+                  fileRecords, path, fileElapsed,
+                  files[fileIdx].useBinary ? ",bin" : "");
   }
   
   // Build spatial index after all files loaded
@@ -1073,4 +1171,176 @@ bool CameraManager::loadDatabaseIncremental() {
                 cameras.size(), totalElapsed);
   
   return !cameras.empty();
+}
+
+// Load binary file incrementally (with task yielding)
+size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
+  Serial.printf("[Camera] loadBinaryDatabaseIncremental v4: %s\n", path);
+  
+  File file = fs->open(path, "r");
+  if (!file) {
+    Serial.printf("[Camera] Failed to open %s\n", path);
+    return 0;
+  }
+  
+  Serial.printf("[Camera] File size: %d bytes\n", file.size());
+  
+  // Read header manually to avoid alignment issues on ESP32
+  // Binary format: VCAM (4) + version (4, uint32 LE) + count (4, LE) + recordSize (4, LE) = 16 bytes
+  uint8_t headerBuf[16];
+  size_t bytesRead = file.read(headerBuf, 16);
+  
+  if (bytesRead != 16) {
+    Serial.printf("[Camera] Failed to read header: got %d bytes\n", bytesRead);
+    file.close();
+    return 0;
+  }
+  
+  // Parse header fields manually (little-endian, all 4-byte fields after magic)
+  char magic[5] = {(char)headerBuf[0], (char)headerBuf[1], (char)headerBuf[2], (char)headerBuf[3], 0};
+  uint32_t version = headerBuf[4] | (headerBuf[5] << 8) | (headerBuf[6] << 16) | (headerBuf[7] << 24);
+  uint32_t count = headerBuf[8] | (headerBuf[9] << 8) | (headerBuf[10] << 16) | (headerBuf[11] << 24);
+  uint32_t recordSize = headerBuf[12] | (headerBuf[13] << 8) | (headerBuf[14] << 16) | (headerBuf[15] << 24);
+  
+  Serial.printf("[Camera] Header: magic=%s ver=%u count=%u recSize=%u\n",
+                magic, version, count, recordSize);
+  Serial.printf("[Camera] Raw: %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X\n",
+                headerBuf[0], headerBuf[1], headerBuf[2], headerBuf[3],
+                headerBuf[4], headerBuf[5], headerBuf[6], headerBuf[7],
+                headerBuf[8], headerBuf[9], headerBuf[10], headerBuf[11],
+                headerBuf[12], headerBuf[13], headerBuf[14], headerBuf[15]);
+  
+  if (memcmp(magic, "VCAM", 4) != 0) {
+    Serial.printf("[Camera] Invalid magic: %s\n", magic);
+    file.close();
+    return 0;
+  }
+  
+  if (version != 1) {
+    Serial.printf("[Camera] Invalid version: %d (expected 1)\n", version);
+    file.close();
+    return 0;
+  }
+  
+  // Handle legacy files that wrote recordSize=0
+  if (recordSize == 0) {
+    recordSize = sizeof(BinaryRecord);  // Default to 24
+    Serial.println("[Camera] recordSize=0 in header, using default 24");
+  }
+  
+  if (recordSize != sizeof(BinaryRecord)) {
+    Serial.printf("[Camera] Invalid record size: %d (expected %d)\n", 
+                  recordSize, sizeof(BinaryRecord));
+    file.close();
+    return 0;
+  }
+  
+  Serial.printf("[Camera] Binary: %u records to load\n", count);
+  
+  // Read records in batches
+  const size_t BATCH_SIZE = 64;
+  BinaryRecord batch[BATCH_SIZE];
+  size_t remaining = count;
+  size_t loaded = 0;
+  
+  while (remaining > 0 && !loadTaskShouldExit) {
+    size_t toRead = (remaining > BATCH_SIZE) ? BATCH_SIZE : remaining;
+    size_t bytesRead = file.read((uint8_t*)batch, toRead * sizeof(BinaryRecord));
+    
+    if (bytesRead != toRead * sizeof(BinaryRecord)) {
+      Serial.println("[Camera] Unexpected end of binary file");
+      break;
+    }
+    
+    // Add to camera vector (thread-safe)
+    if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      for (size_t i = 0; i < toRead; i++) {
+        CameraRecord record;
+        record.latitude = batch[i].lat;
+        record.longitude = batch[i].lon;
+        record.snapLat = batch[i].snapLat;
+        record.snapLon = batch[i].snapLon;
+        record.roadBearing = batch[i].bearing / 10.0f;
+        record.corridorWidthM = batch[i].width;
+        record.bearingTolerance = batch[i].tolerance;
+        record.type = batch[i].type;
+        record.speedLimit = batch[i].speedLimit;
+        record.isMetric = (batch[i].flags & 0x01) != 0;
+        cameras.push_back(record);
+      }
+      xSemaphoreGive(cameraMutex);
+    }
+    
+    loaded += toRead;
+    remaining -= toRead;
+    
+    // Yield every batch to allow other tasks to run
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  
+  file.close();
+  return loaded;
+}
+
+// Load JSON file incrementally (with task yielding) - slow path
+size_t CameraManager::loadJsonDatabaseIncremental(const char* path) {
+  File file = fs->open(path, "r");
+  if (!file) {
+    Serial.printf("[Camera] Failed to open %s\n", path);
+    return 0;
+  }
+  
+  size_t fileRecords = 0;
+  size_t linesProcessed = 0;
+  char lineBuffer[256];
+  size_t bufIdx = 0;
+  
+  while (file.available()) {
+    // Check for cancellation and yield every 100 lines
+    if ((linesProcessed % 100) == 0) {
+      if (loadTaskShouldExit) {
+        file.close();
+        return fileRecords;
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    
+    char c = file.read();
+    
+    if (c == '\n' || c == '\r') {
+      if (bufIdx > 0) {
+        lineBuffer[bufIdx] = '\0';
+        
+        CameraRecord record;
+        if (parseCameraLine(lineBuffer, record)) {
+          if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            cameras.push_back(record);
+            xSemaphoreGive(cameraMutex);
+            fileRecords++;
+          }
+        }
+        
+        linesProcessed++;
+        bufIdx = 0;
+      }
+    } else if (bufIdx < sizeof(lineBuffer) - 1) {
+      lineBuffer[bufIdx++] = c;
+    }
+  }
+  
+  // Handle last line without newline
+  if (bufIdx > 0) {
+    lineBuffer[bufIdx] = '\0';
+    CameraRecord record;
+    if (parseCameraLine(lineBuffer, record)) {
+      if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        cameras.push_back(record);
+        xSemaphoreGive(cameraMutex);
+        fileRecords++;
+      }
+    }
+  }
+  
+  file.close();
+  return fileRecords;
 }

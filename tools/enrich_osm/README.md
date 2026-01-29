@@ -1,42 +1,78 @@
-# OSM Camera Enrichment Pipeline
+# Offline camera enrichment (roads-only, disk-lean)
 
-Offline pipeline to enrich camera data with road corridor metadata from OpenStreetMap. This enables the V1 Simple device to reduce false "camera ahead" alerts on side/frontage roads by verifying the vehicle is actually on the camera's road corridor.
+This pipeline keeps disk use low by filtering to highways only, importing with osm2pgsql **flex** schema (roads table only), and merging road corridor metadata into the camera NDJSON files.
 
-## Overview
+## What it produces
+- Enriched NDJSON in `camera_data_enriched/<name>.json` with added fields:
+  - `p1`, `p2`: corridor endpoints `[lat, lon]`
+  - `w`: half-width meters (default 35)
+  - `brg`: bearing degrees 0..359 (p1 -> p2)
+  - `maxspeed`, `maxspeed_fwd`, `maxspeed_back`, `oneway`, `road_class`, `road_name`, `road_ref`
 
-This pipeline:
-1. Downloads US road data from OpenStreetMap (~10GB PBF file)
-2. Imports roads into a local PostGIS database
-3. Batch processes camera files to snap each camera to the nearest road
-4. Creates corridor segments and calculates bearings
-5. Outputs enriched NDJSON files ready for the device
+## Prereqs
+- Docker Desktop with at least **80–100GB** disk (full US) or ~20GB (state/region).
+- Python 3 + `pip install -r requirements.txt`.
 
-## Prerequisites
-
-- **Docker** and **Docker Compose** (v2+)
-- ~15GB disk space (10GB PBF + PostGIS data)
-- ~4GB RAM recommended
-
-## Quick Start
-
+## 1) Start PostGIS
 ```bash
-# 1. Start PostGIS and import OSM data (one-time, ~45 min)
-./import_osm.sh
-
-# 2. Enrich camera files
-python enrich_cameras.py ../../camera_data/cameras.json
-
-# 3. Find enriched output in ../../camera_data_enriched/
+cd tools/enrich_osm
+docker compose up -d postgis
 ```
 
-## Detailed Steps
-
-### Step 1: Download & Import OSM Data
+## 2) Import roads (disk-lean)
+- Default: full US from Geofabrik, roads-only via osmium filter.
+- Optional env vars:
+  - `PBF_URL` custom extract URL
+  - `CACHE_MB` (default 1024)
+  - `USE_FLAT_NODES=1` to store flat-nodes at `data/nodes.cache` (bigger disk, faster)
 
 ```bash
-# This downloads the US OSM extract and imports roads to PostGIS
-./import_osm.sh
+# Full US (roads-only)
+US_FULL=1 ./import_osm.sh
+
+# Smaller: state/region
+PBF_URL=https://download.geofabrik.de/north-america/us/california-latest.osm.pbf ./import_osm.sh
 ```
+
+Pipeline steps:
+1. Download PBF to `data/input.osm.pbf`
+2. `osmium tags-filter` keeps only `highway=*` to `data/roads.osm.pbf`
+3. `osm2pgsql` flex imports into table `roads`, drops slim tables, builds GiST index.
+
+## 3) Load cameras into PostGIS
+```bash
+./load_camera_ndjson_to_pg.py ../camera_data/speed_cam.json --table cameras_stage
+```
+(Repeat for other camera files, or one at a time.)
+
+## 4) Enrich (nearest road, corridor)
+```bash
+psql -v stage_table=cameras_stage \
+     -v out_table=cameras_enriched \
+     -v radius_m=120 -v span_m=60 -v width_m=35 \
+     -f enrich_cameras.sql
+```
+- `radius_m`: max search distance to a road
+- `span_m`: half-length along the road to build corridor endpoints
+- `width_m`: corridor half-width
+
+## 5) Export merged NDJSON
+```bash
+mkdir -p ../camera_data_enriched
+./export_and_merge.py --table cameras_enriched --output ../camera_data_enriched/speed_cam.json
+```
+
+## Sanity test (tiny run)
+1. Use a small extract (e.g., city PBF) and set `PBF_URL` to it.
+2. Limit camera load: `--limit 1000`
+3. Run steps 1–5 above. Confirm output has `p1/p2/brg/w`.
+
+## Disk footprint (full US, roads-only)
+- Input PBF: ~10–11GB
+- Osmium roads PBF: ~2–3GB
+- PostGIS roads table + indexes: ~10–15GB
+- Flat-nodes (optional): ~25–30GB
+- Camera outputs remain small (tens of MB). Only enriched NDJSON goes on-device.
 
 The import:
 - Downloads `us-latest.osm.pbf` from Geofabrik (~10GB)
