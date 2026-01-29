@@ -113,7 +113,7 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 
 // Voice alert tracking handled by VoiceModule
 
-static constexpr unsigned long OBD_CONNECT_DELAY_MS = 12000;  // 12 second delay after V1 connects
+static constexpr unsigned long OBD_CONNECT_DELAY_MS = 5000;  // 5 second delay after V1 connects
 
 // Volume fade module - reduce V1 volume after X seconds of continuous alert
 VolumeFadeModule volumeFadeModule;

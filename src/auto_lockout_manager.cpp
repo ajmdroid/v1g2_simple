@@ -23,31 +23,6 @@ static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 extern LockoutManager lockouts;
 extern SettingsManager settingsManager;
 
-// Atomic file write helper (same pattern as lockout_manager.cpp)
-namespace {
-bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
-  String tmpPath = String(path) + ".tmp";
-  File tmp = fs.open(tmpPath.c_str(), "w");
-  if (!tmp) {
-    return false;
-  }
-  size_t written = serializeJson(doc, tmp);
-  tmp.flush();
-  tmp.close();
-  if (written == 0) {
-    fs.remove(tmpPath.c_str());
-    return false;
-  }
-  fs.remove(path);
-  if (!fs.rename(tmpPath.c_str(), path)) {
-    // If rename fails, try to clean up
-    fs.remove(tmpPath.c_str());
-    return false;
-  }
-  return true;
-}
-}
-
 AutoLockoutManager::AutoLockoutManager() : clusterMutex(nullptr), lockoutManager(nullptr) {
   clusterMutex = xSemaphoreCreateMutex();
   if (!clusterMutex) {
@@ -707,7 +682,7 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
   } // End of lock scope
   
   // Atomic write: write to temp file then rename (prevents corruption on power loss)
-  bool ok = writeJsonFileAtomic(LittleFS, jsonPath, doc);
+  bool ok = StorageManager::writeJsonFileAtomic(LittleFS, jsonPath, doc);
 
   if (DEBUG_LOGS) {
     Serial.printf("[AutoLockout] Saved clusters (%d bytes)%s\n", 
@@ -896,7 +871,7 @@ bool AutoLockoutManager::backupToSD() {
   } // Lock released
   
   // Atomic write to SD
-  bool ok = writeJsonFileAtomic(*fs, "/v1simple_auto_lockouts.json", doc);
+  bool ok = StorageManager::writeJsonFileAtomic(*fs, "/v1simple_auto_lockouts.json", doc);
   
   if (DEBUG_LOGS) {
     Serial.printf("[AutoLockout] Backed up clusters to SD (%d bytes)%s\n", 

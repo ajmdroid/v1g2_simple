@@ -57,7 +57,7 @@ void WifiOrchestrator::startWifi() {
 void WifiOrchestrator::configureCallbacks() {
     // V1 connection status
     wifiManager.setStatusCallback([this]() {
-        DynamicJsonDocument doc(64);
+        JsonDocument doc;
         doc["v1_connected"] = bleClient.isConnected();
         String json;
         serializeJson(doc, json);
@@ -66,7 +66,7 @@ void WifiOrchestrator::configureCallbacks() {
 
     // Current alert state
     wifiManager.setAlertCallback([this]() {
-        DynamicJsonDocument doc(192);
+        JsonDocument doc;
         if (parser.hasAlerts()) {
             AlertData alert = parser.getPriorityAlert();
             doc["active"] = true;
@@ -119,7 +119,7 @@ void WifiOrchestrator::configureCallbacks() {
 
     // GPS status
     wifiManager.setGpsStatusCallback([this]() {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
 
         doc["enabled"] = gpsHandler.isEnabled();
         doc["moduleDetected"] = gpsHandler.isModuleDetected();
@@ -158,7 +158,7 @@ void WifiOrchestrator::configureCallbacks() {
 
     // Camera status
     wifiManager.setCameraStatusCallback([this]() {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
 
         doc["loaded"] = cameraManager.isLoaded();
         doc["count"] = cameraManager.getCameraCount();

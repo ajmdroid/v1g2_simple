@@ -6,7 +6,8 @@
         ap_password: '',
         proxy_ble: true,
         proxy_name: 'V1C-LE-S3',
-        autoPowerOffMinutes: 0
+        autoPowerOffMinutes: 0,
+        apTimeoutMinutes: 0
     });
 	
 	let loading = $state(true);
@@ -179,6 +180,24 @@
 		}
 	}
 	
+	async function toggleWifiClient(enabled) {
+		try {
+			const res = await fetch('/api/wifi/enable', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled })
+			});
+			if (res.ok) {
+				await fetchWifiStatus();
+				message = { type: 'success', text: enabled ? 'WiFi client enabled' : 'WiFi client disabled' };
+			} else {
+				message = { type: 'error', text: 'Failed to change WiFi setting' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		}
+	}
+	
 	function closeWifiModal() {
 		showWifiModal = false;
 		selectedNetwork = null;
@@ -198,8 +217,9 @@
 			formData.append('ap_ssid', settings.ap_ssid);
 			formData.append('ap_password', settings.ap_password);
 			formData.append('proxy_ble', settings.proxy_ble);
-            formData.append('proxy_name', settings.proxy_name);
-            formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
+			formData.append('proxy_name', settings.proxy_name);
+			formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
+			formData.append('apTimeoutMinutes', settings.apTimeoutMinutes);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -331,15 +351,57 @@
 						placeholder="At least 8 characters"
 					/>
 				</div>
+				
+				<div class="form-control mt-4">
+					<label class="label cursor-pointer">
+						<span class="label-text">AP Always On</span>
+						<input 
+							type="checkbox" 
+							class="toggle" 
+							checked={settings.apTimeoutMinutes === 0}
+							onchange={(e) => settings.apTimeoutMinutes = e.target.checked ? 0 : 15}
+						/>
+					</label>
+					{#if settings.apTimeoutMinutes > 0}
+					<label class="label" for="ap-timeout">
+						<span class="label-text">Auto-off after (minutes)</span>
+					</label>
+					<input 
+						id="ap-timeout"
+						type="range" 
+						class="range range-sm" 
+						min="5" 
+						max="60" 
+						step="5"
+						bind:value={settings.apTimeoutMinutes}
+					/>
+					<div class="label">
+						<span class="label-text-alt">
+							AP will turn off after {settings.apTimeoutMinutes} minutes of inactivity
+						</span>
+					</div>
+					{/if}
+				</div>
 			</div>
 		</div>
 		
 		<!-- WiFi Client (Connect to Network) -->
 		<div class="card bg-base-200">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">📶 WiFi Client</h2>
-				<p class="text-sm text-base-content/60">Connect to an existing WiFi network for internet access.</p>
+				<div class="flex justify-between items-center">
+					<div>
+						<h2 class="card-title">📶 WiFi Client</h2>
+						<p class="text-sm text-base-content/60">Connect to an existing WiFi network.</p>
+					</div>
+					<input 
+						type="checkbox" 
+						class="toggle toggle-primary" 
+						checked={wifiStatus.enabled}
+						onchange={(e) => toggleWifiClient(e.target.checked)}
+					/>
+				</div>
 				
+				{#if wifiStatus.enabled}
 				{#if wifiStatus.state === 'connected'}
 					<div class="alert alert-success">
 						<span>✓ Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
@@ -374,6 +436,11 @@
 					<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
 						🔍 Scan for Networks
 					</button>
+				{/if}
+				{:else}
+				<div class="text-sm text-base-content/50">
+					WiFi client is disabled. Enable to connect to a network.
+				</div>
 				{/if}
 			</div>
 		</div>

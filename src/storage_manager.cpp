@@ -104,3 +104,25 @@ void StorageManager::checkCameraDatabase() {
         Serial.println("[Storage] ✓ Camera database found");
     }
 }
+
+bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
+    String tmpPath = String(path) + ".tmp";
+    File tmp = fs.open(tmpPath.c_str(), "w");
+    if (!tmp) {
+        return false;
+    }
+    size_t written = serializeJson(doc, tmp);
+    tmp.flush();
+    tmp.close();
+    if (written == 0) {
+        fs.remove(tmpPath.c_str());
+        return false;
+    }
+    fs.remove(path);
+    if (!fs.rename(tmpPath.c_str(), path)) {
+        // If rename fails, try to clean up
+        fs.remove(tmpPath.c_str());
+        return false;
+    }
+    return true;
+}

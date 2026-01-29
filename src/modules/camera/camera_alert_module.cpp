@@ -117,6 +117,23 @@ void CameraAlertModule::process() {
     detectApproachingCameras(now, camSettings);
 }
 
+void CameraAlertModule::clearActiveCamerasAndMarkPassed(unsigned long now) {
+    // Mark all active cameras as passed so they don't re-alert if we return
+    for (const auto& cam : activeCameraAlerts) {
+        PassedCameraTracker passed;
+        passed.lat = cam.camera.latitude;
+        passed.lon = cam.camera.longitude;
+        passed.passedTimeMs = now;
+        recentlyPassedCameras.push_back(passed);
+    }
+    activeCameraAlerts.clear();
+    alertStartedAtMs = 0;
+    if (display) {
+        display->clearAllCameraAlerts();
+        display->clearCameraAlerts();
+    }
+}
+
 void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1Settings& camSettings) {
     if (!gpsHandler) return;
 
@@ -194,20 +211,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         bool anyCamerasNearby = cameraManager->hasNearbyCamera(lat, lon, alertRadius * 2.0f);
         if (!anyCamerasNearby) {
             Serial.println("[Camera] No cameras in area - clearing stale alerts");
-            // Mark as passed so they don't re-alert if we return
-            for (const auto& cam : activeCameraAlerts) {
-                PassedCameraTracker passed;
-                passed.lat = cam.camera.latitude;
-                passed.lon = cam.camera.longitude;
-                passed.passedTimeMs = now;
-                recentlyPassedCameras.push_back(passed);
-            }
-            activeCameraAlerts.clear();
-            alertStartedAtMs = 0;
-            if (display) {
-                display->clearAllCameraAlerts();
-                display->clearCameraAlerts();
-            }
+            clearActiveCamerasAndMarkPassed(now);
             return;
         }
     }
@@ -216,19 +220,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
         (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
         Serial.println("[Camera] Safety timeout: clearing stale alerts (max duration)");
-        for (const auto& cam : activeCameraAlerts) {
-            PassedCameraTracker passed;
-            passed.lat = cam.camera.latitude;
-            passed.lon = cam.camera.longitude;
-            passed.passedTimeMs = now;
-            recentlyPassedCameras.push_back(passed);
-        }
-        activeCameraAlerts.clear();
-        alertStartedAtMs = 0;
-        if (display) {
-            display->clearAllCameraAlerts();
-            display->clearCameraAlerts();
-        }
+        clearActiveCamerasAndMarkPassed(now);
     }
 
     // Clean up old "passed camera" entries

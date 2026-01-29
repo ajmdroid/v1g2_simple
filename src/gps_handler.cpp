@@ -6,7 +6,7 @@
 #include "debug_logger.h"
 #include <cmath>
 
-static constexpr bool DEBUG_LOGS = true;  // Set true for verbose GPS logging
+static constexpr bool DEBUG_LOGS = false;  // Set true for verbose GPS logging
 
 #ifdef USE_TINYGPS
 // ============================================================================

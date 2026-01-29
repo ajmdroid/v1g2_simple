@@ -82,9 +82,11 @@ T constrain(T x, T a, T b) {
 inline long random(long max) { return rand() % max; }
 inline long random(long min, long max) { return min + rand() % (max - min); }
 
-// Time functions (stub)
-inline unsigned long millis() { return 0; }
-inline unsigned long micros() { return 0; }
+// Time functions - use extern variables for test control
+extern unsigned long mockMillis;
+extern unsigned long mockMicros;
+inline unsigned long millis() { return mockMillis; }
+inline unsigned long micros() { return mockMicros; }
 inline void delay(unsigned long) {}
 inline void delayMicroseconds(unsigned int) {}
 

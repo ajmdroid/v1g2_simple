@@ -197,6 +197,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putInt("slot2mode", settings.slot2_comfort.mode);
     written += prefs.putString("lastV1Addr", settings.lastV1Address);
     written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
+    written += prefs.putUChar("apTimeout", settings.apTimeoutMinutes);
     written += prefs.putBool("gpsEnabled", settings.gpsEnabled);
     written += prefs.putBool("obdEnabled", settings.obdEnabled);
     written += prefs.putString("obdAddr", settings.obdDeviceAddress);
@@ -463,6 +464,7 @@ void SettingsManager::load() {
     settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
+    settings.apTimeoutMinutes = preferences.getUChar("apTimeout", 0);  // Default: always on
     settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
     settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
     settings.obdDeviceAddress = preferences.getString("obdAddr", "");
@@ -595,6 +597,11 @@ void SettingsManager::setProxyName(const String& name) {
 
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings.autoPowerOffMinutes = minutes;
+    save();
+}
+
+void SettingsManager::setApTimeoutMinutes(uint8_t minutes) {
+    settings.apTimeoutMinutes = minutes;
     save();
 }
 
@@ -1129,6 +1136,7 @@ void SettingsManager::backupToSD() {
     doc["proxyName"] = settings.proxyName;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     
     // === GPS/OBD Settings ===
     doc["gpsEnabled"] = settings.gpsEnabled;
@@ -1347,6 +1355,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
+    if (doc["apTimeoutMinutes"].is<int>()) settings.apTimeoutMinutes = doc["apTimeoutMinutes"];
     
     // === GPS/OBD Settings ===
     if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];

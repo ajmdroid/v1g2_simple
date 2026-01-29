@@ -229,6 +229,7 @@ struct V1Settings {
     
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
+    uint8_t apTimeoutMinutes;       // Minutes before AP auto-stops (0=always on, 5-60)
     
     // GPS settings
     bool gpsEnabled;          // Enable GPS module (default: off, auto-disabled if not found)
@@ -361,6 +362,7 @@ struct V1Settings {
         slot2_comfort(),
         lastV1Address(""),
         autoPowerOffMinutes(0),  // Default: disabled
+        apTimeoutMinutes(0),     // Default: always on (0=unlimited)
         gpsEnabled(false),       // GPS off by default (opt-in)
         obdEnabled(false),       // OBD off by default (opt-in)
         obdDeviceAddress(""),    // No saved OBD device
@@ -404,6 +406,8 @@ public:
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
     void setAutoPowerOffMinutes(uint8_t minutes);
+    void setApTimeoutMinutes(uint8_t minutes);
+    uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }
     void setBrightness(uint8_t brightness);
     void setDisplayOff(bool off);
     void setAutoPushEnabled(bool enabled);

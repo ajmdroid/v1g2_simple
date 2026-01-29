@@ -18,30 +18,6 @@ static constexpr size_t JSON_CAPACITY_BYTES = 16384;  // Sized for dozens of loc
 // Memory limit: ~60 bytes per lockout = ~30KB at 500 lockouts (safe for 320KB heap)
 static constexpr size_t MAX_LOCKOUTS = 500;
 
-namespace {
-bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
-  String tmpPath = String(path) + ".tmp";
-  File tmp = fs.open(tmpPath.c_str(), "w");
-  if (!tmp) {
-    return false;
-  }
-  size_t written = serializeJson(doc, tmp);
-  tmp.flush();
-  tmp.close();
-  if (written == 0) {
-    fs.remove(tmpPath.c_str());
-    return false;
-  }
-  fs.remove(path);
-  if (!fs.rename(tmpPath.c_str(), path)) {
-    // If rename fails, try to clean up
-    fs.remove(tmpPath.c_str());
-    return false;
-  }
-  return true;
-}
-}
-
 LockoutManager::LockoutManager() : lockoutMutex(nullptr) {
   lockoutMutex = xSemaphoreCreateMutex();
   if (!lockoutMutex) {
@@ -164,7 +140,7 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
     }
   }
   
-  bool ok = writeJsonFileAtomic(LittleFS, jsonPath, doc);
+  bool ok = StorageManager::writeJsonFileAtomic(LittleFS, jsonPath, doc);
 
   if (DEBUG_LOGS) {
     Serial.printf("[Lockout] Saved lockout zones (%d bytes)%s\n", ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
@@ -422,7 +398,7 @@ bool LockoutManager::backupToSD() {
     }
   }
   
-  bool ok = writeJsonFileAtomic(*fs, "/v1simple_lockouts.json", doc);
+  bool ok = StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockouts.json", doc);
   
   if (DEBUG_LOGS) {
     Serial.printf("[Lockout] Backed up lockouts to SD (%d bytes)%s\n", 

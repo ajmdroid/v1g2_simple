@@ -62,6 +62,7 @@ private:
     void handleRealDisplay(bool v1HasAlerts, const V1Settings& dispSettings);
     void refreshRegionalCacheIfNeeded(unsigned long now, const V1Settings& camSettings);
     void detectApproachingCameras(unsigned long now, const V1Settings& camSettings);
+    void clearActiveCamerasAndMarkPassed(unsigned long now);
 
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;

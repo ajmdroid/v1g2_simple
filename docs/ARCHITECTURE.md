@@ -244,6 +244,85 @@ See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
 3. **State lives in ONE place** - e.g., voice announcement state only in VoiceModule
 4. **Incremental migration** - never break working functionality
 
+## Dependency Injection Patterns
+
+The codebase uses two patterns for dependency injection. Both are valid; choose based on the module's needs.
+
+### Pattern 1: Direct Pointer Injection (Preferred for data dependencies)
+
+Used by most modules. Dependencies are passed as pointers in `begin()`:
+
+```cpp
+class DisplayPipelineModule {
+public:
+    void begin(V1Display* display, PacketParser* parser, SettingsManager* settings, ...);
+private:
+    V1Display* display = nullptr;
+    PacketParser* parser = nullptr;
+    // ...
+};
+```
+
+**Use when:**
+- Module needs to read state from dependencies (e.g., `parser->hasAlerts()`)
+- Module calls methods on dependencies (e.g., `ble->setMute(true)`)
+- Dependencies are core services used across many modules
+
+**Examples:** `DisplayPipelineModule`, `VoiceModule`, `TapGestureModule`, `ConnectionStateModule`
+
+### Pattern 2: Callback Injection (For action isolation)
+
+Used when a module should trigger actions without knowing the implementation:
+
+```cpp
+class TouchUiModule {
+public:
+    struct Callbacks {
+        std::function<bool()> isWifiSetupActive;
+        std::function<void()> stopWifiSetup;
+        std::function<void()> startWifi;
+        std::function<void()> restoreDisplay;
+    };
+    
+    void begin(V1Display* disp, TouchHandler* touch, SettingsManager* settings, const Callbacks& cbs);
+};
+```
+
+**Use when:**
+- Module should not depend on specific service implementations
+- Actions cross architectural boundaries (e.g., touch module controlling WiFi)
+- You want to decouple for easier testing or future flexibility
+
+**Example:** `TouchUiModule` - handles BOOT button but shouldn't know about `WifiManager` directly
+
+### Choosing a Pattern
+
+| Scenario | Pattern | Reason |
+|----------|---------|--------|
+| Read settings, display state | Direct pointers | Need full interface |
+| Send BLE commands | Direct pointers | Calling methods |
+| Toggle WiFi from touch | Callbacks | Crosses boundaries |
+| Trigger display refresh | Callbacks | Implementation-agnostic |
+
+### Testing Implications
+
+**Direct pointers:** Create mock classes in `test/mocks/` that track method calls:
+```cpp
+class V1BLEClient {
+public:
+    int setMuteCalls = 0;
+    bool setMute(bool mute) { setMuteCalls++; return true; }
+};
+```
+
+**Callbacks:** Pass lambdas that set test flags:
+```cpp
+TouchUiModule::Callbacks cbs{
+    .isWifiSetupActive = [&]() { return testWifiActive; },
+    .startWifi = [&]() { startWifiCalled = true; }
+};
+```
+
 ## What This Enables
 
 ✅ **Change Locality**: Voice logic changes → edit VoiceModule; alert persistence → edit AlertPersistenceModule  

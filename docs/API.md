@@ -28,29 +28,41 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 
 ### GET /api/status
 
-Get device status including V1 connection, GPS, and alerts.
+Get device status including V1 connection, WiFi, GPS, and alerts.
 
 **Response:**
 ```json
 {
-  "v1Connected": true,
-  "bleRssi": -65,
-  "batteryPercent": 85,
-  "batteryCharging": false,
-  "gps": {
-    "fix": true,
-    "lat": 37.7749,
-    "lon": -122.4194,
-    "speed": 45.5,
-    "heading": 180,
-    "satellites": 12,
-    "hdop": 1.2
+  "wifi": {
+    "setup_mode": true,
+    "ap_active": true,
+    "sta_connected": true,
+    "sta_ip": "192.168.1.100",
+    "ap_ip": "192.168.4.1",
+    "ssid": "HomeNetwork",
+    "rssi": -45,
+    "sta_enabled": true,
+    "sta_ssid": "HomeNetwork"
   },
-  "alerts": [...],
-  "muted": false,
-  "displayStyle": 0,
-  "freeHeap": 180000,
-  "uptime": 3600
+  "device": {
+    "uptime": 3600,
+    "heap_free": 180000,
+    "hostname": "v1g2",
+    "firmware_version": "3.0.7"
+  },
+  "battery": {
+    "voltage_mv": 4150,
+    "percentage": 85,
+    "on_battery": false,
+    "has_battery": true
+  },
+  "v1_connected": true,
+  "alert": {
+    "active": true,
+    "band": "Ka",
+    "frequency": 34700,
+    "strength": 5
+  }
 }
 ```
 
@@ -111,7 +123,8 @@ Get all device settings.
 | `proxy_ble` | boolean | - | Enable BLE proxy mode |
 | `proxy_name` | string | 0-32 chars | Custom device name for proxy |
 | `displayStyle` | int | 0-4 | Display theme (0=Classic) |
-| `autoPowerOffMinutes` | int | 0-60 | Auto power off (0=disabled) |
+| `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
+| `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `lockoutEnabled` | boolean | - | Enable auto-lockout |
 | `lockoutFreqToleranceMHz` | int | 1-50 | Frequency matching tolerance |
 | `cameraAlertDistanceM` | int | 100-2000 | Camera alert distance in meters |
@@ -588,7 +601,30 @@ Disconnect from current WiFi network.
 
 ### POST /api/wifi/forget
 
-Forget saved WiFi credentials.
+Forget saved WiFi credentials and disable WiFi client mode.
+
+### POST /api/wifi/enable
+
+Enable or disable WiFi client mode.
+
+**Request (JSON):**
+```json
+{
+  "enabled": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "WiFi client enabled"
+}
+```
+
+**Notes:**
+- When enabling: If saved credentials exist, automatically attempts to connect
+- When disabling: Disconnects from network and switches to AP-only mode
 
 ---
 

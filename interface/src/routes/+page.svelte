@@ -109,6 +109,9 @@
 					{:else}
 						AP Mode • {status.wifi.ap_ip}
 					{/if}
+					{#if status.wifi.sta_connected && status.wifi.ap_active}
+						<span class="text-xs opacity-60">(AP: {status.wifi.ap_ip})</span>
+					{/if}
 				</p>
 			</div>
 		</div>
@@ -149,7 +152,11 @@
 					</div>
 					{#if status.wifi.sta_connected}
 						<div class="text-xs {getRssiClass(status.wifi.rssi)}">
-							{status.wifi.rssi} dBm
+							{status.wifi.ssid} • {status.wifi.rssi} dBm
+						</div>
+					{:else if status.wifi.sta_enabled && status.wifi.sta_ssid}
+						<div class="text-xs text-warning">
+							Connecting to {status.wifi.sta_ssid}...
 						</div>
 					{/if}
 				{/if}

@@ -207,10 +207,11 @@ bool WiFiManager::startSetupMode() {
 
     Serial.printf("[SetupMode] AP started - connect to SSID shown on display\n");
     Serial.printf("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
-    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) {
+    uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
+    if (timeoutMins == 0) {
         Serial.println("[SetupMode] AP will remain on (no timeout)");
     } else {
-        Serial.printf("[SetupMode] AP auto-timeout set to %lu ms\n", WIFI_AP_AUTO_TIMEOUT_MS);
+        Serial.printf("[SetupMode] AP auto-timeout set to %d minutes\n", timeoutMins);
     }
 
     if (debugLogger.isEnabled()) {
@@ -482,14 +483,17 @@ void WiFiManager::setupWebServer() {
     server.on("/api/wifi/connect", HTTP_POST, [this]() { handleWifiClientConnect(); });
     server.on("/api/wifi/disconnect", HTTP_POST, [this]() { handleWifiClientDisconnect(); });
     server.on("/api/wifi/forget", HTTP_POST, [this]() { handleWifiClientForget(); });
+    server.on("/api/wifi/enable", HTTP_POST, [this]() { handleWifiClientEnable(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
 
 void WiFiManager::checkAutoTimeout() {
-    if (WIFI_AP_AUTO_TIMEOUT_MS == 0) return;  // Disabled by default
+    uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
+    if (timeoutMins == 0) return;  // Disabled (always on)
     if (setupModeState != SETUP_MODE_AP_ON) return;
 
+    unsigned long timeoutMs = (unsigned long)timeoutMins * 60UL * 1000UL;
     unsigned long now = millis();
     int staCount = WiFi.softAPgetStationNum();
     if (staCount > 0) {
@@ -501,7 +505,7 @@ void WiFiManager::checkAutoTimeout() {
         lastActivity = lastClientSeenMs;
     }
 
-    bool timeoutElapsed = (now - setupModeStartTime) >= WIFI_AP_AUTO_TIMEOUT_MS;
+    bool timeoutElapsed = (now - setupModeStartTime) >= timeoutMs;
     bool inactiveEnough = (lastActivity == 0) ? ((now - setupModeStartTime) >= WIFI_AP_INACTIVITY_GRACE_MS)
                                               : ((now - lastActivity) >= WIFI_AP_INACTIVITY_GRACE_MS);
 
@@ -731,11 +735,13 @@ void WiFiManager::handleStatus() {
         JsonObject wifi = doc["wifi"].to<JsonObject>();
         wifi["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
         wifi["ap_active"] = (setupModeState == SETUP_MODE_AP_ON);
-        wifi["sta_connected"] = false;  // AP-only
-        wifi["sta_ip"] = "";
+        wifi["sta_connected"] = (wifiClientState == WIFI_CLIENT_CONNECTED);
+        wifi["sta_ip"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.localIP().toString() : "";
         wifi["ap_ip"] = getAPIPAddress();
-        wifi["ssid"] = settings.apSSID;
-        wifi["rssi"] = 0;
+        wifi["ssid"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.SSID() : settings.apSSID;
+        wifi["rssi"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.RSSI() : 0;
+        wifi["sta_enabled"] = settings.wifiClientEnabled;
+        wifi["sta_ssid"] = settings.wifiClientSSID;
         
         // Device info
         JsonObject device = doc["device"].to<JsonObject>();
@@ -820,6 +826,7 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["obdEnabled"] = settings.obdEnabled;
     
@@ -907,6 +914,14 @@ void WiFiManager::handleSettingsSave() {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
         minutes = std::max(0, std::min(minutes, 60));  // Clamp 0-60 minutes
         settingsManager.setAutoPowerOffMinutes(minutes);
+    }
+    if (server.hasArg("apTimeoutMinutes")) {
+        int minutes = server.arg("apTimeoutMinutes").toInt();
+        // Clamp: 0=always on, or 5-60 minutes
+        if (minutes != 0) {
+            minutes = std::max(5, std::min(minutes, 60));
+        }
+        settingsManager.setApTimeoutMinutes(minutes);
     }
 
     // Display style setting
@@ -3040,4 +3055,46 @@ void WiFiManager::handleWifiClientForget() {
     WiFi.mode(WIFI_AP);
     
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
+}
+
+void WiFiManager::handleWifiClientEnable() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    
+    // Parse JSON body for enable state
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server.arg("plain"));
+    
+    if (err || !doc["enabled"].is<bool>()) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing enabled field\"}");
+        return;
+    }
+    
+    bool enable = doc["enabled"];
+    Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
+    
+    const V1Settings& settings = settingsManager.get();
+    
+    if (enable) {
+        // Enable WiFi client mode
+        settingsManager.setWifiClientEnabled(true);
+        
+        // If we have saved credentials, try to connect
+        if (settings.wifiClientSSID.length() > 0) {
+            WiFi.mode(WIFI_AP_STA);
+            wifiClientState = WIFI_CLIENT_CONNECTING;
+            String savedPassword = settingsManager.getWifiClientPassword();
+            connectToNetwork(settings.wifiClientSSID, savedPassword);
+        } else {
+            wifiClientState = WIFI_CLIENT_DISCONNECTED;
+        }
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client enabled\"}");
+    } else {
+        // Disable WiFi client mode
+        disconnectFromNetwork();
+        settingsManager.setWifiClientEnabled(false);
+        wifiClientState = WIFI_CLIENT_DISABLED;
+        WiFi.mode(WIFI_AP);
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client disabled\"}");
+    }
 }

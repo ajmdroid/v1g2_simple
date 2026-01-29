@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <ArduinoJson.h>
 
 // Waveshare 3.49 SD card pins (SDMMC interface)
 #if defined(DISPLAY_WAVESHARE_349)
@@ -53,6 +54,10 @@ public:
     uint32_t getAlprCount() const { return alprCount; }
     uint32_t getRedlightCount() const { return redlightCount; }
     uint32_t getSpeedCount() const { return speedCount; }
+    
+    // Atomic JSON file write utility (write to .tmp, then rename)
+    // Returns true on success. Used by lockout and auto-lockout managers.
+    static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
 
 private:
     void checkCameraDatabase();
