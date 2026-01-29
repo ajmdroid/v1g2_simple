@@ -315,11 +315,12 @@ void setup() {
             SerialLog.println("[Setup] GPS enabled - initializing...");
             gpsHandler.begin();
             
-            // Defer camera database loading until after V1 connects
-            // This keeps boot fast - camera loading can take several seconds for large DBs
+            // Start camera database loading immediately in background task
+            // With binary format this only takes ~1.6s for 71k cameras
+            // Loading runs in parallel with BLE/WiFi init
             if (storageManager.isSDCard()) {
-                cameraLoadCoordinator.markPending(true);
-                SerialLog.println("[Setup] Camera database will load after V1 connects");
+                SerialLog.println("[Setup] Starting camera database load (background)...");
+                cameraLoadCoordinator.startImmediateLoad();
             }
         } else {
             SerialLog.println("[Setup] GPS disabled in settings");

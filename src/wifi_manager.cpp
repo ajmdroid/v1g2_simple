@@ -929,10 +929,10 @@ void WiFiManager::handleSettingsSave() {
         if (enabled && !wasEnabled) {
             Serial.println("[WiFi] GPS enabled - starting GPS handler");
             gpsHandler.begin();
-            // Trigger camera database loading if SD card available
+            // Start camera database loading immediately if SD card available
             if (storageManager.isSDCard() && !cameraLoadCoordinator.isComplete()) {
-                cameraLoadCoordinator.markPending(true);
-                Serial.println("[WiFi] Camera database will load after V1 connects");
+                Serial.println("[WiFi] Starting camera database load (background)...");
+                cameraLoadCoordinator.startImmediateLoad();
             }
         } else if (!enabled && wasEnabled) {
             Serial.println("[WiFi] GPS disabled - stopping GPS handler");

@@ -13,12 +13,33 @@ void CameraLoadCoordinator::markPending(bool isPending) {
     }
 }
 
+void CameraLoadCoordinator::startImmediateLoad() {
+    // Start loading cameras now (don't wait for BLE connection)
+    // With binary format, loading is fast (~1.6s for 71k cameras)
+    if (!cameraManager || !storageManager) return;
+    if (loadStarted || complete) return;
+    
+    loadStarted = true;
+    pending = false;
+    
+    doLoad();
+}
+
 void CameraLoadCoordinator::process(bool bleConnected) {
     if (!cameraManager || !storageManager) return;
-    if (!pending || complete || !bleConnected) return;
+    if (!pending || complete) return;
+    
+    // Legacy path: if pending and BLE connected, start loading
+    // (This path is now rarely used since we call startImmediateLoad() at boot)
+    if (!bleConnected) return;
 
     pending = false;
+    loadStarted = true;
+    
+    doLoad();
+}
 
+void CameraLoadCoordinator::doLoad() {
     Serial.println("[Camera] Initializing camera alerts...");
     fs::FS* sdFs = storageManager->getFilesystem();
 
