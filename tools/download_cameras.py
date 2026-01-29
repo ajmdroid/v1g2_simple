@@ -25,6 +25,7 @@ Output file can be:
 import argparse
 import json
 import math
+import struct
 import sys
 import time
 from datetime import datetime
@@ -493,6 +494,63 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
         print(f"  - {type_names.get(t, 'Unknown')}: {count}")
 
 
+def save_binary(cameras: list, output_path: str, camera_types: list = None, state: str = None):
+    """
+    Save cameras to binary format for fast ESP32 loading.
+    
+    Binary format (matches camera_manager.cpp):
+    - Header (14 bytes): 'VCAM' + version(2) + count(4) + recordSize(4)
+    - Records (24 bytes each):
+        lat(f32) + lon(f32) + snapLat(f32) + snapLon(f32) +
+        bearing(u16) + width(u8) + tolerance(u8) + 
+        type(u8) + speedLimit(u8) + flags(u8) + reserved(u8)
+    """
+    count = len(cameras)
+    
+    with open(output_path, 'wb') as f:
+        # Write header: magic(4) + version(2) + count(4) + recordSize(4) = 14 bytes
+        header = b'VCAM'
+        header += struct.pack('<H', 1)  # version = 1
+        header += struct.pack('<I', count)  # camera count
+        header += struct.pack('<I', 24)  # record size = 24 bytes
+        f.write(header)
+        
+        # Write each camera record (24 bytes)
+        for cam in cameras:
+            lat = cam.get('lat', 0.0)
+            lon = cam.get('lon', 0.0)
+            snap_lat = cam.get('slt', lat)  # snap lat, or original if not enriched
+            snap_lon = cam.get('sln', lon)  # snap lon, or original if not enriched
+            bearing = int(cam.get('rbr', 0)) & 0xFFFF  # road bearing (0-359)
+            width = int(cam.get('cwm', 35)) & 0xFF  # corridor width meters
+            tolerance = int(cam.get('btol', 30)) & 0xFF  # bearing tolerance degrees
+            cam_type = cam.get('flg', 4) & 0xFF  # camera type (1=red, 2=speed, 4=alpr)
+            speed_limit = cam.get('spd', 0) & 0xFF  # speed limit if known
+            flags = 0  # reserved flags
+            
+            # Pack as: lat(f32) lon(f32) snapLat(f32) snapLon(f32) bearing(u16) width(u8) tol(u8) type(u8) speed(u8) flags(u8) reserved(u8)
+            record = struct.pack('<ffff', lat, lon, snap_lat, snap_lon)
+            record += struct.pack('<HBBBBBB', bearing, width, tolerance, cam_type, speed_limit, flags, 0)
+            f.write(record)
+    
+    # Stats
+    enriched_count = sum(1 for cam in cameras if 'rbr' in cam)
+    print(f"\nSaved binary: {output_path}")
+    print(f"  {count} cameras, {14 + count * 24} bytes")
+    if enriched_count > 0:
+        print(f"  Road-enriched: {enriched_count} ({enriched_count * 100 // count}%)")
+    
+    # Count by type
+    type_counts = {}
+    type_names_map = {1: 'Red Light', 2: 'Speed', 3: 'Red Light + Speed', 4: 'ALPR'}
+    for cam in cameras:
+        t = cam.get('flg', 2)
+        type_counts[t] = type_counts.get(t, 0) + 1
+    
+    for t, cnt in sorted(type_counts.items()):
+        print(f"    - {type_names_map.get(t, 'Unknown')}: {cnt}")
+
+
 def download_all_states(camera_types: list, no_snap: bool, verbose: bool, 
                         output_dir: str = 'camera_data/states') -> list:
     """
@@ -597,10 +655,12 @@ Examples:
   python3 download_cameras.py --state CA              # California only
   python3 download_cameras.py --type alpr --state TX  # Texas ALPR only
   python3 download_cameras.py --no-snap               # Skip road snapping (faster)
-  python3 download_cameras.py --output /path/to/sd/cameras.json
+  python3 download_cameras.py --sd-path /Volumes/SD   # Copy to mounted SD card
 
-After downloading, copy the file to your SD card as /cameras.json
-or upload via the web UI at http://192.168.4.1/integrations
+Output files (binary format for fast ESP32 loading):
+  - alpr.bin      - ALPR/license plate readers
+  - redlight.bin  - Red light cameras  
+  - speed.bin     - Speed cameras
 
 Road snapping enriches each camera with:
   - Road bearing (for heading-based filtering)
@@ -626,10 +686,18 @@ This downloads each state individually (with caching for resume capability).
                        action='store_true',
                        help='Download all states individually (recommended for full US)')
     
-    parser.add_argument('--output', '-o',
+    parser.add_argument('--output-dir', '-o',
                        type=str,
-                       default='cameras.json',
-                       help='Output filename (default: cameras.json)')
+                       default='.',
+                       help='Output directory for .bin files (default: current directory)')
+    
+    parser.add_argument('--sd-path',
+                       type=str,
+                       help='Path to mounted SD card (e.g., /Volumes/SD, E:\\). Copies .bin files directly.')
+    
+    parser.add_argument('--json',
+                       action='store_true',
+                       help='Also save NDJSON format (for debugging)')
     
     parser.add_argument('--no-snap', 
                        action='store_true',
@@ -651,6 +719,17 @@ This downloads each state individually (with caching for resume capability).
     if args.state and args.all_states:
         print("Error: Cannot use both --state and --all-states")
         sys.exit(1)
+    
+    # Validate SD path if specified
+    if args.sd_path:
+        sd_path = Path(args.sd_path)
+        if not sd_path.exists():
+            print(f"Error: SD card path does not exist: {args.sd_path}")
+            print("Make sure your SD card is mounted.")
+            sys.exit(1)
+        if not sd_path.is_dir():
+            print(f"Error: SD card path is not a directory: {args.sd_path}")
+            sys.exit(1)
     
     # Determine camera types
     if args.type == 'all':
@@ -675,11 +754,52 @@ This downloads each state individually (with caching for resume capability).
         print("No cameras found!")
         sys.exit(1)
     
-    # Save final bundled output
-    save_ndjson(cameras, args.output, camera_types, state)
+    # Group cameras by type
+    cameras_by_type = {'alpr': [], 'redlight': [], 'speed': []}
+    for cam in cameras:
+        flg = cam.get('flg', 4)
+        if flg == CAMERA_FLAG_ALPR:
+            cameras_by_type['alpr'].append(cam)
+        elif flg == CAMERA_FLAG_REDLIGHT:
+            cameras_by_type['redlight'].append(cam)
+        elif flg == CAMERA_FLAG_SPEED:
+            cameras_by_type['speed'].append(cam)
+        elif flg == CAMERA_FLAG_REDLIGHT_SPEED:
+            # Add to both
+            cameras_by_type['redlight'].append(cam)
+            cameras_by_type['speed'].append(cam)
     
-    print("\n✓ Done! Copy this file to your SD card as /cameras.json")
-    print("  or upload via the V1 Simple web UI.")
+    # Output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save binary files for each type with cameras
+    saved_files = []
+    for cam_type, cams in cameras_by_type.items():
+        if cams:
+            bin_path = output_dir / f"{cam_type}.bin"
+            save_binary(cams, str(bin_path), [cam_type], state)
+            saved_files.append((cam_type, bin_path, len(cams)))
+    
+    # Also save combined NDJSON if requested (for debugging)
+    if args.json:
+        json_path = output_dir / "cameras.json"
+        save_ndjson(cameras, str(json_path), camera_types, state)
+    
+    # Copy to SD card if path specified
+    if args.sd_path:
+        import shutil
+        sd_path = Path(args.sd_path)
+        print(f"\n📂 Copying to SD card: {sd_path}")
+        for cam_type, bin_path, count in saved_files:
+            dest = sd_path / bin_path.name
+            shutil.copy2(bin_path, dest)
+            print(f"  ✓ {bin_path.name} -> {dest}")
+        print(f"\n✓ Done! {len(saved_files)} file(s) copied to SD card.")
+        print("  Eject the SD card and insert into your device.")
+    else:
+        print(f"\n✓ Done! Binary files saved to: {output_dir.absolute()}")
+        print("  Copy the .bin file(s) to your SD card root directory.")
 
 
 if __name__ == '__main__':
