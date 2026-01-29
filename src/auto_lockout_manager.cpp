@@ -341,31 +341,35 @@ String AutoLockoutManager::generateClusterName(const LearningCluster& cluster) c
 void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t frequency_khz, 
                                       uint8_t signalStrength, uint16_t duration_ms, bool isMoving, float heading) {
   const V1Settings& s = settingsManager.get();
+  const char* bandStr = (band == BAND_X) ? "X" : (band == BAND_K) ? "K" : 
+                        (band == BAND_KA) ? "Ka" : "Laser";
   
   // Check master enable
   if (!s.lockoutEnabled) {
-    LOCKOUT_LOGF("[AutoLockout] Skipped - lockout disabled\n");
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (lockout disabled)\n",
+                  bandStr, frequency_khz/1000.0f, signalStrength);
     return;
   }
   
   // Ka band protection (user-configurable)
   if (s.lockoutKaProtection && band == BAND_KA) {
-    LOCKOUT_LOGF("[AutoLockout] Skipped Ka band (protection enabled)\n");
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (Ka protection)\n",
+                  bandStr, frequency_khz/1000.0f, signalStrength);
     return;
   }
   
   // Filter weak signals (likely far away or irrelevant)
   if (signalStrength < MIN_SIGNAL_STRENGTH) {
-    LOCKOUT_LOGF("[AutoLockout] Skipped weak signal (strength: %d < %d)\n", 
-                  signalStrength, MIN_SIGNAL_STRENGTH);
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (weak signal < %d)\n", 
+                  bandStr, frequency_khz/1000.0f, signalStrength, MIN_SIGNAL_STRENGTH);
     return;
   }
   
   // Filter strong signals (user-configurable, 0 = disabled)
   uint8_t maxSig = s.lockoutMaxSignalStrength;
   if (maxSig > 0 && signalStrength >= maxSig) {
-    LOCKOUT_LOGF("[AutoLockout] Skipped strong signal (strength: %d >= %d)\n", 
-                  signalStrength, maxSig);
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (strong signal >= %d)\n", 
+                  bandStr, frequency_khz/1000.0f, signalStrength, maxSig);
     return;
   }
   
@@ -402,19 +406,17 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   
   bool isNewCluster = (clusterIdx < 0);
   
-  const char* bandStr = (band == BAND_X) ? "X" : (band == BAND_K) ? "K" : 
-                        (band == BAND_KA) ? "Ka" : "Laser";
-  
   if (clusterIdx >= 0) {
     // Add to existing cluster
     addEventToCluster(clusterIdx, event);
-    LOCKOUT_LOGF("[AutoLockout] Added to cluster %d: %s %.3fMHz strength=%d\n",
-                  clusterIdx, bandStr, frequency_khz/1000.0f, signalStrength);
+    LearningCluster& c = clusters[clusterIdx];
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> CLUSTER #%d (hits=%d)\n",
+                  bandStr, frequency_khz/1000.0f, signalStrength, clusterIdx, (int)c.hitCount);
   } else {
     // Create new cluster
     createNewCluster(event);
-    LOCKOUT_LOGF("[AutoLockout] Created NEW cluster: %s %.3fMHz @ (%.6f,%.6f) strength=%d\n",
-                  bandStr, frequency_khz/1000.0f, lat, lon, signalStrength);
+    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> NEW CLUSTER @ (%.6f,%.6f)\n",
+                  bandStr, frequency_khz/1000.0f, signalStrength, lat, lon);
   }
   
   // Release lock before saving

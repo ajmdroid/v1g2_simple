@@ -4474,24 +4474,26 @@ void V1Display::drawStatusBar() {
     lastObdConnected = obdConnected;
     lastGpsEnabled = gpsEnabled;
     
-    // Status bar positioning
-    const int statusY = 1;           // Very top of screen
-    const int statusHeight = 10;     // Height for font size 1
-    const int leftMargin = 135;      // After band indicators
+    // Status bar positioning - using size 2 font (12x16 pixels per char)
+    // Layout: GPS on left edge, mute badge in center (when active), CAM/OBD on right
+    // This avoids overlap with the MUTED/LOCKOUT badge which draws centered in this area
+    const int statusY = 2;           // Near top of screen
+    const int statusHeight = 18;     // Height for font size 2
+    const int leftMargin = 140;      // After band indicators
     const int rightMargin = 200;     // Before signal bars
-    const int areaWidth = SCREEN_WIDTH - leftMargin - rightMargin;  // ~305 pixels
     
-    // Spacing: GPS on left, CAM center, OBD on right
-    const int gpsX = leftMargin + 10;
-    const int camX = leftMargin + areaWidth / 2 - 12;  // Center
-    const int obdX = leftMargin + areaWidth - 36;
+    // GPS on far left, CAM and OBD grouped on the right side (before signal bars)
+    // Size 2: each char is ~12px wide, "GPS 12" = 6 chars = 72px, "CAM" = 3 chars = 36px, "OBD" = 3 chars = 36px
+    const int gpsX = leftMargin + 5;            // GPS on left: x=145
+    const int obdX = SCREEN_WIDTH - rightMargin - 42;  // OBD on far right: x=398
+    const int camX = obdX - 50;                 // CAM just left of OBD: x=348
     
-    // Use built-in font size 1
-    tft->setTextSize(1);
+    // Use built-in font size 2 (larger, more readable)
+    tft->setTextSize(2);
     
     // ---- GPS indicator ----
     // Clear GPS area (wide enough for "GPS XX")
-    FILL_RECT(gpsX, statusY, 48, statusHeight, PALETTE_BG);
+    FILL_RECT(gpsX, statusY, 80, statusHeight, PALETTE_BG);
     
     if (gpsHasFix && gpsSats > 0) {
         // Check if GPS is ready for navigation (sustained good fix)
@@ -4519,7 +4521,7 @@ void V1Display::drawStatusBar() {
     
     // ---- CAM indicator ----
     // Clear CAM area
-    FILL_RECT(camX, statusY, 24, statusHeight, PALETTE_BG);
+    FILL_RECT(camX, statusY, 42, statusHeight, PALETTE_BG);
     
     if (showCam) {
         tft->setTextColor(s.colorStatusCam);
@@ -4529,7 +4531,7 @@ void V1Display::drawStatusBar() {
     
     // ---- OBD indicator ----
     // Clear OBD area
-    FILL_RECT(obdX, statusY, 24, statusHeight, PALETTE_BG);
+    FILL_RECT(obdX, statusY, 42, statusHeight, PALETTE_BG);
     
     if (obdConnected) {
         tft->setTextColor(s.colorStatusObd);

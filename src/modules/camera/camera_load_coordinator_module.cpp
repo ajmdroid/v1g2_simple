@@ -1,4 +1,4 @@
-#include "camera_load_coordinator.h"
+#include "camera_load_coordinator_module.h"
 
 void CameraLoadCoordinator::begin(CameraManager* cameraMgr, StorageManager* storageMgr, DebugLogger* dbgLogger) {
     cameraManager = cameraMgr;

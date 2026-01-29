@@ -374,7 +374,7 @@ void SettingsManager::load() {
     settings.logPerfMetrics = preferences.getBool("logPerfMet", false);
     settings.logAudio = preferences.getBool("logAudio", false);
     settings.logCamera = preferences.getBool("logCamera", false);
-    settings.logLockout = preferences.getBool("logLockout", false);
+    settings.logLockout = preferences.getBool("logLockout", true);
     settings.logTouch = preferences.getBool("logTouch", false);
     
     // Voice alert settings - migrate from old boolean to new mode

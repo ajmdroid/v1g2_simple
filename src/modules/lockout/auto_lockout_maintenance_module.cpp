@@ -1,4 +1,4 @@
-#include "auto_lockout_maintenance.h"
+#include "auto_lockout_maintenance_module.h"
 
 void AutoLockoutMaintenance::begin(AutoLockoutManager* mgr) {
     autoLockouts = mgr;

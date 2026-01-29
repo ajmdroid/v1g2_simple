@@ -228,8 +228,12 @@ void BleQueueModule::process() {
             if (power) {
                 power->onV1DataReceived();
             }
-            // Drain/parse always; only render/announce when preview is not active
-            if (!previewActive && displayPipeline) {
+            // Cancel preview immediately when live V1 data arrives
+            if (previewActive && preview) {
+                preview->cancel();
+                previewActive = false;
+            }
+            if (displayPipeline) {
                 displayPipeline->handleParsed(millis());
             }
         }

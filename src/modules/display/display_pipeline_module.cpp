@@ -75,7 +75,23 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         bool priorityInLockout = false;
 
-        if (gps && gps->isReadyForNavigation() && lockoutMgr && autoLockoutMgr) {
+        // Log alert visibility for lockout debugging
+        bool gpsReady = gps && gps->isReadyForNavigation();
+        bool lockoutSystemReady = gpsReady && lockoutMgr && autoLockoutMgr;
+
+        if (priority.isValid && priority.band != BAND_NONE && debug && debug->isEnabledFor(DebugLogCategory::Lockout)) {
+            const char* bandStr = (priority.band == BAND_X) ? "X" : (priority.band == BAND_K) ? "K" : 
+                                  (priority.band == BAND_KA) ? "Ka" : "Laser";
+            uint8_t strength = VoiceModule::getAlertBars(priority);
+            if (!lockoutSystemReady) {
+                const char* reason = !gps ? "no GPS" : !gps->isReadyForNavigation() ? "GPS not ready" : 
+                                     !lockoutMgr ? "no lockoutMgr" : "no autoLockoutMgr";
+                debug->logf(DebugLogCategory::Lockout, "[Lockout] Alert: %s %.3fMHz str=%d → SKIPPED (%s)",
+                           bandStr, priority.frequency/1000.0f, strength, reason);
+            }
+        }
+
+        if (lockoutSystemReady) {
             GPSFix fix = gps->getFix();
 
             if (priority.isValid && priority.band != BAND_NONE) {

@@ -1,4 +1,4 @@
-#include "obd_auto_connector.h"
+#include "obd_auto_connector_module.h"
 
 void ObdAutoConnector::begin(OBDHandler* handler) {
     obd = handler;

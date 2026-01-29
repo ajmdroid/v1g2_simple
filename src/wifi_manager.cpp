@@ -14,7 +14,7 @@
 #include "obd_handler.h"
 #include "gps_handler.h"
 #include "camera_manager.h"
-#include "modules/camera/camera_load_coordinator.h"
+#include "modules/camera/camera_load_coordinator_module.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
