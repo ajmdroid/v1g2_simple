@@ -105,6 +105,15 @@ jobs:
           cp tools/freq_audio/mulaw/*.mul data/audio/
           echo "Copied $(ls -1 data/audio/*.mul | wc -l) audio clips"
       
+      - name: Download camera databases
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          pip install requests
+          mkdir -p release/cameras
+          # Download US cameras (--no-snap for speed in CI, users can run locally for enriched data)
+          python3 tools/download_cameras.py --no-snap --output-dir release/cameras || echo "Camera download failed (non-fatal)"
+          ls -la release/cameras/ || true
+      
       - name: Build firmware
         if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349
@@ -169,6 +178,7 @@ jobs:
           files: |
             release/merged-firmware.bin
             release/manifest.json
+            release/cameras/*.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -196,5 +206,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Version bumped and committed" >> $GITHUB_STEP_SUMMARY
           echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Camera databases downloaded" >> $GITHUB_STEP_SUMMARY
           echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY
           echo "✅ Web flasher updated" >> $GITHUB_STEP_SUMMARY
