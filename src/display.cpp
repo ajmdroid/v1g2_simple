@@ -2182,11 +2182,15 @@ void V1Display::update(const DisplayState& state) {
     // Check if RSSI needs periodic refresh (every 2 seconds)
     bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
     
+    // Check if transitioning from Live mode (alerts) to Resting mode
+    bool leavingLiveMode = (currentScreen == ScreenMode::Live);
+    
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
         firstUpdate ||
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
+        leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     

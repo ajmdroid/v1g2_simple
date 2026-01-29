@@ -370,7 +370,7 @@ void setup() {
     debugLogger.begin();
     {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics};
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);

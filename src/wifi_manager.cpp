@@ -48,7 +48,7 @@ static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Requi
 
 static void applyDebugLogFilterFromSettings() {
     DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics};
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
     debugLogger.setFilter(filter);
 }
 
