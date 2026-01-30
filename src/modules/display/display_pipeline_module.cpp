@@ -208,7 +208,8 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         }
 
         voice->clearAllState();
-        alertPersistence->clearAllAlertState();
+        // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
+        // Persistence is cleared on slot change (below) or when window expires
 
         DisplayState restoreState = parser->getDisplayState();
         VolumeFadeContext fadeCtx;
@@ -249,6 +250,8 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
                 recordDisplayTiming("display.persisted", startUs, endUs);
                 recordPerfTiming("display.persisted", startUs, endUs);
             } else {
+                // Persistence window expired - clear flag so isPersistenceActive() returns false
+                alertPersistence->clearPersistence();
                 cameraAlert->updateCardStateForV1(false);
                 unsigned long startUs = micros();
                 display->update(state);
