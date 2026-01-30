@@ -227,7 +227,7 @@ V1 Gen2 (BLE)
 │                      (BLE task)                         │
 └───────────┬─────────────────────────────┬───────────────┘
             │                             │
-            │ IMMEDIATE                   │ Queue (64 slots)
+            │ IMMEDIATE                   │ Queue (72 slots)
             │ (zero latency)              │ (SPI-safe path)
             ▼                             ▼
      ┌─────────────┐               ┌─────────────┐
@@ -284,7 +284,7 @@ V1 Gen2 (BLE)
 
 ```
 1. delay(100)                          // USB stabilize
-2. Create bleDataQueue (64 slots)      // FreeRTOS queue
+2. Create bleDataQueue (72 slots)      // FreeRTOS queue
 3. Serial.begin(115200)
 4. batteryManager.begin()              // CRITICAL: Latch power early
 5. display.begin()                     // QSPI init, canvas allocation
@@ -429,7 +429,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 
 ### Queue / Buffering
 
-- **Queue:** 64-slot FreeRTOS queue, each slot 260 bytes (display path only)
+- **Queue:** 72-slot FreeRTOS queue, each slot 260 bytes (display path only)
 - **Proxy path:** Bypasses queue entirely - `forwardToProxyImmediate()` sends directly from BLE callback
 - **Overflow handling:** Drop oldest packet if full (only affects display, not proxy)
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
