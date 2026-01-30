@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <FS.h>
+#include <memory>
 #include <math.h>
 
 // Ensure the profiles directory exists on the active filesystem
@@ -88,15 +89,14 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     return false;
   }
 
-  // Use bounded JSON document to avoid heap churn; sized for typical lockout counts
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, file);
-  file.close();;
+  // Use bounded JSON document on the heap to avoid large stack frames
+  constexpr size_t MAX_LOCKOUT_DOC_SIZE = MAX_LOCKOUT_FILE_SIZE;
+  std::unique_ptr<StaticJsonDocument<MAX_LOCKOUT_DOC_SIZE>> doc(new StaticJsonDocument<MAX_LOCKOUT_DOC_SIZE>());
+  DeserializationError error = deserializeJson(*doc, file);
+  file.close();
   
   if (error) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] JSON parse error: %s\n", error.c_str());
-    }
+    Serial.printf("[Lockout] JSON parse error: %s\n", error.c_str());
     return false;
   }
   
@@ -111,7 +111,7 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   lockouts.clear();
   
   // Parse lockout array
-  JsonArray lockoutArray = doc["lockouts"].as<JsonArray>();
+  JsonArray lockoutArray = (*doc)["lockouts"].as<JsonArray>();
   for (JsonObject obj : lockoutArray) {
     Lockout lockout;
     lockout.name = obj["name"].as<String>();

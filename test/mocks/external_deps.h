@@ -4,7 +4,11 @@
  */
 #pragma once
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
 #include "Arduino.h"
+#endif
 #include <cstdint>
 
 // V1 BLE Client stub

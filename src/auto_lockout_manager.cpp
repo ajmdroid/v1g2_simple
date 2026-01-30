@@ -10,6 +10,7 @@
 #include "modules/perf/debug_macros.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <memory>
 #include <cmath>
 #include <algorithm>
 
@@ -28,6 +29,18 @@ static bool ensureProfilesDir(fs::FS* fs) {
 }
 
 // DEBUG_LOGS defined in debug_macros.h (included above)
+
+// Validate cluster data after parsing (matches LockoutManager::isValidLockout pattern)
+static bool isValidCluster(const LearningCluster& cluster) {
+  if (!isfinite(cluster.centerLat) || !isfinite(cluster.centerLon) || !isfinite(cluster.radius_m)) {
+    return false;
+  }
+  if (cluster.centerLat < -90.0f || cluster.centerLat > 90.0f) return false;
+  if (cluster.centerLon < -180.0f || cluster.centerLon > 180.0f) return false;
+  if (cluster.radius_m < 0.0f || cluster.radius_m > 10000.0f) return false;  // Sanity: 0-10km
+  if (cluster.hitCount < 0 || cluster.hitCount > 10000) return false;  // Sanity check
+  return true;
+}
 
 // Lockout logging macro - logs to SD when category enabled
 #define LOCKOUT_LOGF(...) do { \
@@ -585,8 +598,9 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
     return false;
   }
   
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, file);
+  // Heap-allocate a bounded StaticJsonDocument to avoid large stack frames
+  std::unique_ptr<StaticJsonDocument<MAX_SNAPSHOT_SIZE>> doc(new StaticJsonDocument<MAX_SNAPSHOT_SIZE>());
+  DeserializationError error = deserializeJson(*doc, file);
   file.close();
   
   if (error) {
@@ -599,7 +613,7 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
   
   clusters.clear();
   
-  JsonArray clusterArray = doc["clusters"].as<JsonArray>();
+  JsonArray clusterArray = (*doc)["clusters"].as<JsonArray>();
   for (JsonObject obj : clusterArray) {
     LearningCluster cluster;
     cluster.name = obj["name"].as<String>();
@@ -635,6 +649,13 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
       event.isMoving = eventObj["moving"].as<bool>();
       
       cluster.events.push_back(event);
+    }
+    
+    // Validate cluster data before adding (skip corrupted entries)
+    if (!isValidCluster(cluster)) {
+      Serial.printf("[AutoLockout] WARNING: Skipping invalid cluster '%s' (lat=%.2f, lon=%.2f)\n",
+                    cluster.name.c_str(), cluster.centerLat, cluster.centerLon);
+      continue;
     }
     
     clusters.push_back(cluster);

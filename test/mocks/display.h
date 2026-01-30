@@ -2,7 +2,11 @@
 #pragma once
 
 #include <cstdint>
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
 #include "Arduino.h"
+#endif
 
 // Forward declare AlertData
 struct AlertData;

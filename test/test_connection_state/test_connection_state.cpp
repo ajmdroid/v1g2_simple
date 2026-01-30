@@ -16,7 +16,9 @@
 static unsigned long mockMillis = 0;
 
 // Mocks
+#ifndef ARDUINO
 #include "../mocks/Arduino.h"
+#endif
 #include "../mocks/ble_client.h"
 #include "../mocks/display.h"
 #include "../mocks/packet_parser.h"
@@ -24,7 +26,9 @@ static unsigned long mockMillis = 0;
 #include "../mocks/modules/ble/ble_queue_module.h"
 
 // Globals for mocks
+#ifndef ARDUINO
 SerialClass Serial;
+#endif
 
 // Module instances
 static V1BLEClient bleClient;
@@ -294,9 +298,7 @@ void setUp() {
     connectionState.reset();
 }
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Connection transitions
     RUN_TEST(test_connect_transition_shows_resting);
     RUN_TEST(test_disconnect_transition_shows_scanning);
@@ -310,7 +312,21 @@ int main(int argc, char **argv) {
     // Disconnected indicator refresh
     RUN_TEST(test_disconnected_refreshes_indicators);
     RUN_TEST(test_connected_skips_indicator_refresh);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif
 

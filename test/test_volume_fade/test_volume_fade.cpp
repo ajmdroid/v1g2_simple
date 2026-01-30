@@ -5,7 +5,9 @@
 #include "../../src/modules/volume_fade/volume_fade_module.cpp"  // Pull implementation when test_build_src=false
 
 // Extern from mocks
+#ifndef ARDUINO
 SerialClass Serial;
+#endif
 SettingsManager settingsManager;
 
 static VolumeFadeModule fade;
@@ -109,12 +111,26 @@ void test_alert_clear_restores_if_needed() {
     TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
 }
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
+void runAllTests() {
     RUN_TEST(test_disabled_feature_returns_none);
     RUN_TEST(test_fade_triggers_after_delay);
     RUN_TEST(test_new_frequency_restores_when_faded);
     RUN_TEST(test_muted_alert_restores_and_resets);
     RUN_TEST(test_alert_clear_restores_if_needed);
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

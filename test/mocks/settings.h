@@ -2,7 +2,11 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
 #include "Arduino.h"
+#endif
 #include <cstdint>
 
 // Voice alert modes (subset of real settings.h)

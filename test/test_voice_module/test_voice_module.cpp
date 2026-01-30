@@ -7,7 +7,9 @@
 #include "../../src/modules/voice/voice_module.h"
 #include "../../src/modules/voice/voice_module.cpp"  // Include implementation for UNIT_TEST build
 
+#ifndef ARDUINO
 SerialClass Serial;
+#endif
 SettingsManager settingsManager;
 static V1BLEClient bleClient;
 static OBDHandler obdHandler;
@@ -103,10 +105,24 @@ void test_secondary_after_gap() {
     TEST_ASSERT_EQUAL_UINT16(10525, action.freq);
 }
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
+void runAllTests() {
     RUN_TEST(test_priority_new_alert);
     RUN_TEST(test_direction_change_after_priority);
     RUN_TEST(test_secondary_after_gap);
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

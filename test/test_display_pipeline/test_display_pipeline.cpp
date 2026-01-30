@@ -15,7 +15,9 @@
 #include <unity.h>
 
 // Mocks - must be included before module under test
+#ifndef ARDUINO
 #include "../mocks/Arduino.h"
+#endif
 #include "../mocks/settings.h"
 #include "../mocks/ble_client.h"
 #include "../mocks/display.h"
@@ -33,11 +35,13 @@
 #include "../../src/display_mode.h"
 
 // Define mock time variables (declared extern in Arduino.h)
+#ifndef ARDUINO
 unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 
 // Globals for mocks
 SerialClass Serial;
+#endif
 SettingsManager settingsManager;
 
 // Module instances
@@ -442,9 +446,7 @@ void setUp() {
     displayMode = DisplayMode::IDLE;
 }
 
-int main(int argc, char **argv) {
-    UNITY_BEGIN();
-    
+void runAllTests() {
     // Display mode transitions
     RUN_TEST(test_display_mode_transitions_to_live_when_alerts);
     RUN_TEST(test_display_mode_transitions_to_idle_when_no_alerts);
@@ -477,6 +479,20 @@ int main(int argc, char **argv) {
     
     // Voice state management
     RUN_TEST(test_voice_clears_state_when_alerts_clear);
-    
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char **argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif

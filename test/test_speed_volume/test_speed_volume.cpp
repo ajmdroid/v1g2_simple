@@ -4,7 +4,9 @@
 #include "../../src/modules/speed_volume/speed_volume_module.h"
 #include "../../src/modules/speed_volume/speed_volume_module.cpp"  // pull implementation for UNIT_TEST
 
+#ifndef ARDUINO
 SerialClass Serial;
+#endif
 SettingsManager settingsManager;
 static SpeedVolumeModule speedModule;
 
@@ -80,11 +82,25 @@ void test_fade_blocks_boost() {
     TEST_ASSERT_FALSE(speedModule.isBoostActive());
 }
 
-int main(int argc, char** argv) {
-    UNITY_BEGIN();
+void runAllTests() {
     RUN_TEST(test_disabled_returns_none);
     RUN_TEST(test_boost_then_restore);
     RUN_TEST(test_clamps_to_max_volume);
     RUN_TEST(test_fade_blocks_boost);
+}
+
+#ifdef ARDUINO
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runAllTests();
+    UNITY_END();
+}
+void loop() {}
+#else
+int main(int argc, char** argv) {
+    UNITY_BEGIN();
+    runAllTests();
     return UNITY_END();
 }
+#endif
