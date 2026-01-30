@@ -6,9 +6,11 @@
 #include <Arduino.h>
 #include <vector>
 #include <ctime>
+#include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "lockout_manager.h"  // For Band enum and LockoutManager
+#include "storage_manager.h"
 
 // Single alert event with location and metadata
 struct AlertEvent {
@@ -120,7 +122,21 @@ private:
   void pruneOldEvents();  // Remove events older than time window
   void pruneOldClusters();  // Remove stale clusters
   String generateClusterName(const LearningCluster& cluster) const;
-  
+  void relinkPromotedLockouts();
+
+  // Crash-safe logging/replay
+  bool replayLog();
+  void applyHitRecord(const JsonDocument& doc);
+  void applyMissRecord(const JsonDocument& doc);
+  void appendLogHit(const AlertEvent& event);
+  void appendLogMiss(float lat, float lon, float heading, time_t ts);
+  void appendLogRecord(const JsonDocument& doc);
+  void ensureLogExists();
+  void truncateLog();
+  void noteLogWrite();
+  fs::FS* logFs() const;
+  const char* logPath() const;
+
 public:
   AutoLockoutManager();
   
@@ -131,12 +147,14 @@ public:
   // Core functionality
   void recordAlert(float lat, float lon, Band band, uint32_t frequency_khz, 
                    uint8_t signalStrength, uint16_t duration_ms, bool isMoving, float heading = -1.0f);
-  void recordPassthrough(float lat, float lon, float heading = -1.0f);  // heading: GPS course (0-360, -1 = unknown)
+  void recordPassthrough(float lat, float lon, float heading = -1.0f, time_t tsOverride = 0);  // heading: GPS course (0-360, -1 = unknown)
   void update();  // Call periodically to check promotion/demotion
+  void maintenanceTick(unsigned long nowMs);  // snapshot/rotation scheduling
   
   // Storage
   bool loadFromJSON(const char* jsonPath);
   bool saveToJSON(const char* jsonPath);
+  bool rebuildFromLog();  // Exposed for boot recovery
   
   // SD card backup (survives firmware updates)
   bool backupToSD();
@@ -155,4 +173,13 @@ public:
   
   // Debug/diagnostics
   void printClusterStats() const;
+
+  // API export with derived fields (hits/unlearn remaining)
+  String exportStatusJson() const;
+
+private:
+  // Snapshot scheduling
+  size_t logSinceSnapshot = 0;
+  unsigned long lastSnapshotMs = 0;
+  bool replayingLog = false;
 };

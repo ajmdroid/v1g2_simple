@@ -11,11 +11,5 @@ void AutoLockoutMaintenance::process(unsigned long nowMs) {
         autoLockouts->update();
         lastUpdateMs = nowMs;
     }
-
-    if (nowMs - lastSaveMs > 300000) {
-        if (autoLockouts->getClusterCount() > 0) {
-            autoLockouts->saveToJSON("/v1profiles/auto_lockouts.json");
-        }
-        lastSaveMs = nowMs;
-    }
+    autoLockouts->maintenanceTick(nowMs);
 }

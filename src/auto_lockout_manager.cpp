@@ -7,11 +7,27 @@
 #include "storage_manager.h"
 #include "settings.h"
 #include "debug_logger.h"
+#include "modules/perf/debug_macros.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <cmath>
+#include <algorithm>
 
-static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
+// Ensure the profiles directory exists on the active filesystem
+static bool ensureProfilesDir(fs::FS* fs) {
+  if (!fs) {
+    Serial.println("[AutoLockout] ensureProfilesDir: no filesystem");
+    return false;
+  }
+  if (fs->exists("/v1profiles")) return true;
+  bool created = fs->mkdir("/v1profiles");
+  if (!created) {
+    Serial.println("[AutoLockout] ensureProfilesDir: mkdir /v1profiles FAILED");
+  }
+  return created;
+}
+
+// DEBUG_LOGS defined in debug_macros.h (included above)
 
 // Lockout logging macro - logs to SD when category enabled
 #define LOCKOUT_LOGF(...) do { \
@@ -22,12 +38,14 @@ static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 // Use global instances from main.cpp
 extern LockoutManager lockouts;
 extern SettingsManager settingsManager;
+extern StorageManager storageManager;
 
 AutoLockoutManager::AutoLockoutManager() : clusterMutex(nullptr), lockoutManager(nullptr) {
   clusterMutex = xSemaphoreCreateMutex();
   if (!clusterMutex) {
     Serial.println("[AutoLockout] Failed to create mutex!");
   }
+  lastSnapshotMs = millis();
 }
 AutoLockoutManager::~AutoLockoutManager() {
   if (clusterMutex) {
@@ -394,38 +412,33 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
                   isMoving ? "moving" : "stopped");
   }
   
-  // Lock for vector access
-  ClusterLock lock(clusterMutex);
-  if (!lock.ok()) {
-    LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for recordAlert\n");
-    return;
+  {
+    // Lock for vector access
+    ClusterLock lock(clusterMutex);
+    if (!lock.ok()) {
+      LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for recordAlert\n");
+      return;
+    }
+    
+    // Find or create cluster (now includes frequency matching)
+    int clusterIdx = findCluster(lat, lon, band, frequency_khz);
+    
+    if (clusterIdx >= 0) {
+      // Add to existing cluster
+      addEventToCluster(clusterIdx, event);
+      LearningCluster& c = clusters[clusterIdx];
+      LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> CLUSTER #%d (hits=%d)\n",
+                    bandStr, frequency_khz/1000.0f, signalStrength, clusterIdx, (int)c.hitCount);
+    } else {
+      // Create new cluster
+      createNewCluster(event);
+      LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> NEW CLUSTER @ (%.6f,%.6f)\n",
+                    bandStr, frequency_khz/1000.0f, signalStrength, lat, lon);
+    }
   }
   
-  // Find or create cluster (now includes frequency matching)
-  int clusterIdx = findCluster(lat, lon, band, frequency_khz);
-  
-  bool isNewCluster = (clusterIdx < 0);
-  
-  if (clusterIdx >= 0) {
-    // Add to existing cluster
-    addEventToCluster(clusterIdx, event);
-    LearningCluster& c = clusters[clusterIdx];
-    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> CLUSTER #%d (hits=%d)\n",
-                  bandStr, frequency_khz/1000.0f, signalStrength, clusterIdx, (int)c.hitCount);
-  } else {
-    // Create new cluster
-    createNewCluster(event);
-    LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> NEW CLUSTER @ (%.6f,%.6f)\n",
-                  bandStr, frequency_khz/1000.0f, signalStrength, lat, lon);
-  }
-  
-  // Release lock before saving
-  lock.~ClusterLock();
-  
-  // Save immediately when new cluster created for quick feedback
-  if (isNewCluster) {
-    saveToJSON("/v1profiles/auto_lockouts.json");
-  }
+  // Log hit (after releasing mutex)
+  appendLogHit(event);
 }
 
 // Helper: Calculate angular difference between two headings (0-180 degrees)
@@ -436,8 +449,9 @@ static float headingDifference(float h1, float h2) {
   return diff;
 }
 
-void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading) {
+void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading, time_t tsOverride) {
   time_t now = time(nullptr);
+  if (tsOverride != 0) now = tsOverride;
   
   // Get runtime settings
   const V1Settings& s = settingsManager.get();
@@ -485,6 +499,7 @@ void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading) 
           Serial.printf("[AutoLockout] Passthrough '%s' without alert (count: %d)\n",
                         cluster.name.c_str(), cluster.passWithoutAlertCount);
         }
+        appendLogMiss(lat, lon, heading, now);
       } else {
         if (DEBUG_LOGS) {
           Serial.printf("[AutoLockout] Skipped miss for '%s' (interval: %ld sec, need: %ld sec)\n",
@@ -551,85 +566,81 @@ void AutoLockoutManager::update() {
 }
 
 bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
-  if (!LittleFS.exists(jsonPath)) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] No learning data at %s\n", jsonPath);
-    }
-    // Try to restore from SD backup
-    if (checkAndRestoreFromSD()) {
-      return true;
-    }
-    return false;
-  }
-  
-  File file = LittleFS.open(jsonPath, "r");
-  if (!file) return false;
-  
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, file);
-  file.close();
-  
-  if (error) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] JSON parse error: %s\n", error.c_str());
-    }
-    return false;
-  }
-  
-  // Lock for vector modifications
-  ClusterLock lock(clusterMutex);
-  if (!lock.ok()) {
-    Serial.println("[AutoLockout] Failed to acquire mutex for load");
-    return false;
-  }
-    clusters.clear();
-  
-  JsonArray clusterArray = doc["clusters"].as<JsonArray>();
-  for (JsonObject obj : clusterArray) {
-    LearningCluster cluster;
-    cluster.name = obj["name"].as<String>();
-    cluster.centerLat = obj["centerLat"].as<float>();
-    cluster.centerLon = obj["centerLon"].as<float>();
-    cluster.radius_m = obj["radius_m"].as<float>();
-    cluster.band = static_cast<Band>(obj["band"].as<int>());
-    cluster.frequency_khz = obj["frequency_khz"] | 0;
-    cluster.frequency_tolerance_khz = obj["frequency_tolerance_khz"] | 8000;  // Default 8 MHz
-    cluster.hitCount = obj["hitCount"].as<int>();
-    cluster.stoppedHitCount = obj["stoppedHitCount"] | 0;
-    cluster.movingHitCount = obj["movingHitCount"] | 0;
-    cluster.firstSeen = obj["firstSeen"].as<time_t>();
-    cluster.lastSeen = obj["lastSeen"].as<time_t>();
-    cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
-    cluster.lastPassthrough = obj["lastPassthrough"].as<time_t>();
-    cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen for old data
-    cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
-    cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
-    cluster.isPromoted = obj["isPromoted"].as<bool>();
-    cluster.promotedLockoutIndex = obj["promotedLockoutIndex"].as<int>();
-    
-    // Load events (if present)
-    JsonArray eventsArray = obj["events"].as<JsonArray>();
-    for (JsonObject eventObj : eventsArray) {
-      AlertEvent event;
-      event.latitude = eventObj["lat"].as<float>();
-      event.longitude = eventObj["lon"].as<float>();
-      event.heading = eventObj["heading"] | -1.0f;  // Default to unknown
-      event.band = static_cast<Band>(eventObj["band"].as<int>());
-      event.signalStrength = eventObj["signal"].as<uint8_t>();
-      event.timestamp = eventObj["time"].as<time_t>();
-      event.isMoving = eventObj["moving"].as<bool>();
+  bool loadedSnapshot = false;
+  bool replayed = false;
+  fs::FS* fs = storageManager.getFilesystem();
+  if (fs && fs->exists(jsonPath)) {
+    File file = fs->open(jsonPath, "r");
+    if (file) {
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, file);
+      file.close();
       
-      cluster.events.push_back(event);
+      if (!error) {
+        ClusterLock lock(clusterMutex);
+        if (!lock.ok()) return false;
+        clusters.clear();
+        
+        JsonArray clusterArray = doc["clusters"].as<JsonArray>();
+        for (JsonObject obj : clusterArray) {
+          LearningCluster cluster;
+          cluster.name = obj["name"].as<String>();
+          cluster.centerLat = obj["centerLat"].as<float>();
+          cluster.centerLon = obj["centerLon"].as<float>();
+          cluster.radius_m = obj["radius_m"].as<float>();
+          cluster.band = static_cast<Band>(obj["band"].as<int>());
+          cluster.frequency_khz = obj["frequency_khz"] | 0;
+          cluster.frequency_tolerance_khz = obj["frequency_tolerance_khz"] | 8000;  // Default 8 MHz
+          cluster.hitCount = obj["hitCount"].as<int>();
+          cluster.stoppedHitCount = obj["stoppedHitCount"] | 0;
+          cluster.movingHitCount = obj["movingHitCount"] | 0;
+          cluster.firstSeen = obj["firstSeen"].as<time_t>();
+          cluster.lastSeen = obj["lastSeen"].as<time_t>();
+          cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
+          cluster.lastPassthrough = obj["lastPassthrough"].as<time_t>();
+          cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen for old data
+          cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
+          cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
+          cluster.isPromoted = obj["isPromoted"].as<bool>();
+          cluster.promotedLockoutIndex = obj["promotedLockoutIndex"].as<int>();
+          
+          // Load events (if present)
+          JsonArray eventsArray = obj["events"].as<JsonArray>();
+          for (JsonObject eventObj : eventsArray) {
+            AlertEvent event;
+            event.latitude = eventObj["lat"].as<float>();
+            event.longitude = eventObj["lon"].as<float>();
+            event.heading = eventObj["heading"] | -1.0f;  // Default to unknown
+            event.band = static_cast<Band>(eventObj["band"].as<int>());
+            event.signalStrength = eventObj["signal"].as<uint8_t>();
+            event.timestamp = eventObj["time"].as<time_t>();
+            event.isMoving = eventObj["moving"].as<bool>();
+            
+            cluster.events.push_back(event);
+          }
+          
+          clusters.push_back(cluster);
+        }
+        loadedSnapshot = true;
+      }
     }
-    
-    clusters.push_back(cluster);
   }
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[AutoLockout] Loaded %d learning clusters\n", clusters.size());
+  // Try SD restore if LittleFS missing/corrupt
+  if (!loadedSnapshot) {
+    checkAndRestoreFromSD();
   }
-  
-  return true;
+
+  // Replay any newer log entries
+  replayed = replayLog();
+  relinkPromotedLockouts();
+
+  SerialLog.printf("[AutoLockout] Load complete: clusters=%d snapshot=%s replay=%s\n",
+                   getClusterCount(),
+                   loadedSnapshot ? "yes" : "no",
+                   replayed ? "yes" : "no");
+
+  return loadedSnapshot || !clusters.empty();
 }
 
 bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
@@ -683,8 +694,21 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
   }
   } // End of lock scope
   
+  fs::FS* fs = storageManager.getFilesystem();
+  if (!fs) {
+    Serial.println("[AutoLockout] No filesystem available for save");
+    return false;
+  }
+  
+  // Ensure directory exists - if it fails, don't try to write
+  if (!ensureProfilesDir(fs)) {
+    Serial.printf("[AutoLockout] Cannot save: /v1profiles directory unavailable (SD=%s)\n",
+                  storageManager.isSDCard() ? "yes" : "no");
+    return false;
+  }
+  
   // Atomic write: write to temp file then rename (prevents corruption on power loss)
-  bool ok = StorageManager::writeJsonFileAtomic(LittleFS, jsonPath, doc);
+  bool ok = StorageManager::writeJsonFileAtomic(*fs, jsonPath, doc);
 
   if (DEBUG_LOGS) {
     Serial.printf("[AutoLockout] Saved clusters (%d bytes)%s\n", 
@@ -991,4 +1015,247 @@ bool AutoLockoutManager::checkAndRestoreFromSD() {
     return restoreFromSD();
   }
   return false;
+}
+
+bool AutoLockoutManager::rebuildFromLog() {
+  return replayLog();
+}
+
+// ============================================================================  
+// Crash-safe logging and replay  
+// ============================================================================
+
+fs::FS* AutoLockoutManager::logFs() const {
+  if (storageManager.isReady() && storageManager.isSDCard()) return storageManager.getFilesystem();
+  return &LittleFS;
+}
+
+const char* AutoLockoutManager::logPath() const {
+  if (storageManager.isReady() && storageManager.isSDCard()) return "/v1simple_auto_lockouts.log";
+  return "/auto_lockouts.log";
+}
+
+void AutoLockoutManager::ensureLogExists() {
+  fs::FS* fs = logFs();
+  if (!fs) return;
+  const char* path = logPath();
+  if (!fs->exists(path)) {
+    File f = fs->open(path, "w");
+    if (f) f.close();
+  }
+}
+
+void AutoLockoutManager::appendLogRecord(const JsonDocument& doc) {
+  if (replayingLog) return;
+  fs::FS* fs = logFs();
+  if (!fs) return;
+  const char* path = logPath();
+  File f = fs->open(path, "a");
+  if (!f) return;
+  serializeJson(doc, f);
+  f.print('\n');
+  f.close();
+  noteLogWrite();
+}
+
+void AutoLockoutManager::appendLogHit(const AlertEvent& event) {
+  JsonDocument doc;
+  doc["t"] = "hit";
+  doc["ts"] = static_cast<long>(event.timestamp);
+  doc["lat"] = event.latitude;
+  doc["lon"] = event.longitude;
+  doc["band"] = static_cast<int>(event.band);
+  doc["freq"] = event.frequency_khz;
+  doc["sig"] = event.signalStrength;
+  doc["dur"] = event.duration_ms;
+  doc["mv"] = event.isMoving;
+  doc["hd"] = event.heading;
+  doc["persist"] = event.isPersistent;
+  appendLogRecord(doc);
+}
+
+void AutoLockoutManager::appendLogMiss(float lat, float lon, float heading, time_t ts) {
+  JsonDocument doc;
+  doc["t"] = "miss";
+  doc["ts"] = static_cast<long>(ts);
+  doc["lat"] = lat;
+  doc["lon"] = lon;
+  doc["hd"] = heading;
+  appendLogRecord(doc);
+}
+
+void AutoLockoutManager::noteLogWrite() {
+  logSinceSnapshot++;
+}
+
+void AutoLockoutManager::truncateLog() {
+  fs::FS* fs = logFs();
+  if (!fs) return;
+  const char* path = logPath();
+  File f = fs->open(path, "w");
+  if (f) f.close();
+  logSinceSnapshot = 0;
+}
+
+bool AutoLockoutManager::replayLog() {
+  fs::FS* fs = logFs();
+  if (!fs) return false;
+  const char* path = logPath();
+  if (!fs->exists(path)) {
+    ensureLogExists();
+    return false;
+  }
+  File f = fs->open(path, "r");
+  if (!f) return false;
+  replayingLog = true;
+  size_t applied = 0;
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    if (line.length() == 0) continue;
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, line);
+    if (err) continue;
+    const char* t = doc["t"];
+    if (!t) continue;
+    if (strcmp(t, "hit") == 0) {
+      applyHitRecord(doc);
+      applied++;
+    } else if (strcmp(t, "miss") == 0) {
+      applyMissRecord(doc);
+      applied++;
+    }
+  }
+  f.close();
+  replayingLog = false;
+  if (applied > 0) {
+    update();  // run promotion/demotion after rebuild
+  }
+  SerialLog.printf("[AutoLockout] Log replay %s (%d events)\n",
+                   applied > 0 ? "applied" : "empty", (int)applied);
+  return applied > 0;
+}
+
+void AutoLockoutManager::applyHitRecord(const JsonDocument& doc) {
+  AlertEvent event{};
+  event.latitude = doc["lat"] | 0.0f;
+  event.longitude = doc["lon"] | 0.0f;
+  event.heading = doc["hd"] | -1.0f;
+  event.band = static_cast<Band>(doc["band"].as<int>());
+  event.frequency_khz = doc["freq"] | 0;
+  event.signalStrength = doc["sig"] | 0;
+  event.duration_ms = doc["dur"] | 0;
+  event.timestamp = doc["ts"] | time(nullptr);
+  event.isMoving = doc["mv"] | false;
+  event.isPersistent = doc["persist"] | false;
+
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return;
+
+  int clusterIdx = findCluster(event.latitude, event.longitude, event.band, event.frequency_khz);
+  if (clusterIdx >= 0) {
+    addEventToCluster(clusterIdx, event);
+  } else {
+    createNewCluster(event);
+  }
+}
+
+void AutoLockoutManager::applyMissRecord(const JsonDocument& doc) {
+  float lat = doc["lat"] | 0.0f;
+  float lon = doc["lon"] | 0.0f;
+  float heading = doc["hd"] | -1.0f;
+  time_t ts = doc["ts"] | time(nullptr);
+  recordPassthrough(lat, lon, heading, ts);
+}
+
+void AutoLockoutManager::relinkPromotedLockouts() {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return;
+  int lockoutCount = lockouts.getLockoutCount();
+  for (auto& c : clusters) {
+    if (!c.isPromoted) {
+      c.promotedLockoutIndex = -1;
+      continue;
+    }
+    c.promotedLockoutIndex = -1;
+    for (int i = 0; i < lockoutCount; i++) {
+      const Lockout* lo = lockouts.getLockoutAtIndex(i);
+      if (!lo) continue;
+      float dist = GPSHandler::haversineDistance(c.centerLat, c.centerLon, lo->latitude, lo->longitude);
+      bool bandMatch = ( (c.band == BAND_X && lo->muteX) ||
+                         (c.band == BAND_K && lo->muteK) ||
+                         (c.band == BAND_KA && lo->muteKa) ||
+                         (c.band == BAND_LASER && lo->muteLaser) );
+      if (dist <= 250.0f && bandMatch) {
+        c.promotedLockoutIndex = i;
+        break;
+      }
+    }
+  }
+}
+
+void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
+  if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
+    saveToJSON("/v1profiles/auto_lockouts.json");
+    truncateLog();
+    lastSnapshotMs = nowMs;
+  }
+}
+
+// ============================================================================  
+// API export  
+// ============================================================================
+
+String AutoLockoutManager::exportStatusJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc["clusters"].to<JsonArray>();
+
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return "{\"clusters\":[]}";
+
+  const V1Settings& s = settingsManager.get();
+  int reqStopped = std::max<int>(PROMOTION_STOPPED_HIT_COUNT, s.lockoutLearnCount);
+  int reqMoving  = std::max<int>(PROMOTION_MOVING_HIT_COUNT, s.lockoutLearnCount);
+  int unlearnReq = s.lockoutUnlearnCount;
+
+  for (const auto& c : clusters) {
+    JsonObject o = arr.add<JsonObject>();
+    o["name"] = c.name;
+    o["centerLat"] = c.centerLat;
+    o["centerLon"] = c.centerLon;
+    o["radius_m"] = c.radius_m;
+    o["band"] = static_cast<int>(c.band);
+    o["frequency_khz"] = c.frequency_khz;
+    o["hitCount"] = c.hitCount;
+    o["stoppedHitCount"] = c.stoppedHitCount;
+    o["movingHitCount"] = c.movingHitCount;
+    o["firstSeen"] = static_cast<long>(c.firstSeen);
+    o["lastSeen"] = static_cast<long>(c.lastSeen);
+    o["passWithoutAlertCount"] = c.passWithoutAlertCount;
+    o["lastPassthrough"] = static_cast<long>(c.lastPassthrough);
+    o["lastCountedHit"] = static_cast<long>(c.lastCountedHit);
+    o["lastCountedMiss"] = static_cast<long>(c.lastCountedMiss);
+    o["isPromoted"] = c.isPromoted;
+    o["promotedLockoutIndex"] = c.promotedLockoutIndex;
+
+    int remainingStopped = std::max(0, reqStopped - c.stoppedHitCount);
+    int remainingMoving  = std::max(0, reqMoving  - c.movingHitCount);
+    int hitsRemaining = c.isPromoted ? 0 : std::min(remainingStopped, remainingMoving);
+    int unlearnRemaining = c.isPromoted ? std::max(0, unlearnReq - c.passWithoutAlertCount) : unlearnReq;
+
+    o["hitsRemaining"] = hitsRemaining;
+    o["unlearnRemaining"] = unlearnRemaining;
+
+    const char* status = "pending";
+    if (c.isPromoted) {
+      if (unlearnRemaining <= 1) status = "demoting";
+      else status = "promoted";
+    } else if (hitsRemaining <= 0) {
+      status = "ready";
+    }
+    o["status"] = status;
+  }
+
+  String out;
+  serializeJson(doc, out);
+  return out;
 }

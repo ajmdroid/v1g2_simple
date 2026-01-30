@@ -9,6 +9,20 @@
 #include <FS.h>
 #include <math.h>
 
+// Ensure the profiles directory exists on the active filesystem
+static bool ensureProfilesDir(fs::FS* fs) {
+  if (!fs) {
+    Serial.println("[Lockout] ensureProfilesDir: no filesystem");
+    return false;
+  }
+  if (fs->exists("/v1profiles")) return true;
+  bool created = fs->mkdir("/v1profiles");
+  if (!created) {
+    Serial.println("[Lockout] ensureProfilesDir: mkdir /v1profiles FAILED");
+  }
+  return created;
+}
+
 static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 static constexpr float MIN_RADIUS_M = 5.0f;
 static constexpr float MAX_RADIUS_M = 5000.0f;  // generous upper bound
@@ -37,7 +51,8 @@ float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) c
 }
 
 bool LockoutManager::loadFromJSON(const char* jsonPath) {
-  if (!LittleFS.exists(jsonPath)) {
+  fs::FS* fs = storageManager.getFilesystem();
+  if (!fs || !fs->exists(jsonPath)) {
     if (DEBUG_LOGS) {
       Serial.printf("[Lockout] No lockout file found at %s\n", jsonPath);
     }
@@ -48,7 +63,7 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     return false;
   }
   
-  File file = LittleFS.open(jsonPath, "r");
+  File file = fs->open(jsonPath, "r");
   if (!file) {
     if (DEBUG_LOGS) {
       Serial.printf("[Lockout] Failed to open %s\n", jsonPath);
@@ -140,7 +155,20 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
     }
   }
   
-  bool ok = StorageManager::writeJsonFileAtomic(LittleFS, jsonPath, doc);
+  fs::FS* fs = storageManager.getFilesystem();
+  if (!fs) {
+    Serial.println("[Lockout] No filesystem available for save");
+    return false;
+  }
+  
+  // Ensure directory exists - if it fails, don't try to write
+  if (!ensureProfilesDir(fs)) {
+    Serial.printf("[Lockout] Cannot save: /v1profiles directory unavailable (SD=%s)\n",
+                  storageManager.isSDCard() ? "yes" : "no");
+    return false;
+  }
+  
+  bool ok = StorageManager::writeJsonFileAtomic(*fs, jsonPath, doc);
 
   if (DEBUG_LOGS) {
     Serial.printf("[Lockout] Saved lockout zones (%d bytes)%s\n", ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");

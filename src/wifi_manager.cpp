@@ -13,6 +13,7 @@
 #include "ble_client.h"
 #include "obd_handler.h"
 #include "gps_handler.h"
+#include "auto_lockout_manager.h"
 #include "camera_manager.h"
 #include "modules/camera/camera_load_coordinator_module.h"
 #include "perf_metrics.h"
@@ -34,6 +35,8 @@ extern V1BLEClient bleClient;
 extern GPSHandler gpsHandler;
 // Camera load coordinator (set when GPS enabled at runtime)
 extern CameraLoadCoordinator cameraLoadCoordinator;
+// Auto lockouts manager for API export
+extern AutoLockoutManager autoLockouts;
 // Preview hold helper to keep color demo visible briefly
 extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
@@ -2834,30 +2837,8 @@ void WiFiManager::handleGpsReset() {
 
 void WiFiManager::handleAutoLockouts() {
     markUiActivity();
-    
-    // Prefer the live LittleFS file used by AutoLockoutManager
-    if (LittleFS.exists("/v1profiles/auto_lockouts.json")) {
-        File file = LittleFS.open("/v1profiles/auto_lockouts.json", "r");
-        if (file) {
-            server.streamFile(file, "application/json");
-            file.close();
-            return;
-        }
-    }
-
-    // Fallback: stream SD backup if present (older path)
-    fs::FS* fs = storageManager.getFilesystem();
-    if (fs) {
-        File file = fs->open("/v1simple_auto_lockouts.json", "r");
-        if (file) {
-            server.streamFile(file, "application/json");
-            file.close();
-            return;
-        }
-    }
-
-    // Nothing found
-    server.send(200, "application/json", "{\"clusters\":[]}");
+    String body = autoLockouts.exportStatusJson();
+    server.send(200, "application/json", body);
 }
 
 void WiFiManager::handleCameraStatus() {

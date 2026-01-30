@@ -11,5 +11,4 @@ public:
 private:
     AutoLockoutManager* autoLockouts = nullptr;
     unsigned long lastUpdateMs = 0;
-    unsigned long lastSaveMs = 0;
 };

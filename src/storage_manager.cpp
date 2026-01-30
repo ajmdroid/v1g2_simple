@@ -109,17 +109,23 @@ bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocum
     String tmpPath = String(path) + ".tmp";
     File tmp = fs.open(tmpPath.c_str(), "w");
     if (!tmp) {
+        Serial.printf("[Storage] writeJsonFileAtomic: failed to open %s\n", tmpPath.c_str());
         return false;
     }
     size_t written = serializeJson(doc, tmp);
     tmp.flush();
     tmp.close();
     if (written == 0) {
+        Serial.printf("[Storage] writeJsonFileAtomic: wrote 0 bytes to %s\n", tmpPath.c_str());
         fs.remove(tmpPath.c_str());
         return false;
     }
-    fs.remove(path);
+    // Only remove old file if it exists (avoids VFS error log spam)
+    if (fs.exists(path)) {
+        fs.remove(path);
+    }
     if (!fs.rename(tmpPath.c_str(), path)) {
+        Serial.printf("[Storage] writeJsonFileAtomic: rename failed %s -> %s\n", tmpPath.c_str(), path);
         // If rename fails, try to clean up
         fs.remove(tmpPath.c_str());
         return false;

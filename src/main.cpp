@@ -277,6 +277,20 @@ void setup() {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem());
         audio_init_sd();  // Initialize SD-based frequency voice audio
+
+        // Ensure auto-lockout log exists on SD for crash-safe learning replay
+        if (storageManager.isSDCard()) {
+            fs::FS* fs = storageManager.getFilesystem();
+            if (fs && !fs->exists("/v1simple_auto_lockouts.log")) {
+                File logFile = fs->open("/v1simple_auto_lockouts.log", "w");
+                if (logFile) {
+                    logFile.close();
+                    SerialLog.println("[Setup] Created auto-lockout log on SD");
+                } else {
+                    SerialLog.println("[Setup] WARNING: Unable to create auto-lockout log on SD");
+                }
+            }
+        }
         
         // Validate profile references in auto-push slots
         // Clear references to profiles that don't exist
