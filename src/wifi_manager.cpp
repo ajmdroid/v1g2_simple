@@ -1813,7 +1813,9 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1");
     }
     if (server.hasArg("logFormat")) {
-        settingsManager.setLogFormat(server.arg("logFormat").toInt());
+        int fmt = server.arg("logFormat").toInt();
+        settingsManager.setLogFormat(fmt);
+        debugLogger.setFormat(fmt == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
     }
     if (server.hasArg("logAlerts")) {
         settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1");
