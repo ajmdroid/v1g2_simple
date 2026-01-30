@@ -158,7 +158,7 @@ void test_mute_debounce_accepts_stable_change() {
 // ============================================================================
 
 void test_display_throttle_skips_rapid_updates() {
-    static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 50;
+    static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 30;  // Match display_pipeline_module.h
     
     unsigned long lastDisplayDraw = 0;
     int drawCount = 0;
@@ -169,21 +169,21 @@ void test_display_throttle_skips_rapid_updates() {
     drawCount++;
     lastDisplayDraw = mockMillis;
     
-    // Time 30: too soon, skip
+    // Time 20: too soon, skip (20 < 30)
+    mockMillis = 20;
+    if (mockMillis - lastDisplayDraw >= DISPLAY_DRAW_MIN_MS) {
+        drawCount++;
+        lastDisplayDraw = mockMillis;
+    }
+    
+    // Time 30: exactly at threshold, OK to draw (30 - 0 = 30 >= 30)
     mockMillis = 30;
     if (mockMillis - lastDisplayDraw >= DISPLAY_DRAW_MIN_MS) {
         drawCount++;
         lastDisplayDraw = mockMillis;
     }
     
-    // Time 60: OK to draw again (60 - 0 = 60 >= 50)
-    mockMillis = 60;
-    if (mockMillis - lastDisplayDraw >= DISPLAY_DRAW_MIN_MS) {
-        drawCount++;
-        lastDisplayDraw = mockMillis;
-    }
-    
-    TEST_ASSERT_EQUAL(2, drawCount);  // 0ms and 60ms, not 30ms
+    TEST_ASSERT_EQUAL(2, drawCount);  // 0ms and 30ms, not 20ms
 }
 
 // ============================================================================

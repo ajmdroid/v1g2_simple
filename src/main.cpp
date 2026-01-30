@@ -558,9 +558,10 @@ void loop() {
     cameraLoadCoordinator.process(bleClient.isConnected());
     
     // Check if V1 has active alerts - determines if camera shows as main display or card
+    // Also treat persisted alerts as "V1 owns display" to avoid camera overwriting them
     bool previewActive = displayPreviewModule.isRunning();
     if (!previewActive) {
-        bool v1HasActiveAlerts = parser.hasAlerts();
+        bool v1HasActiveAlerts = parser.hasAlerts() || alertPersistenceModule.isPersistenceActive();
         cameraAlertModule.updateMainDisplay(v1HasActiveAlerts);
     }
     

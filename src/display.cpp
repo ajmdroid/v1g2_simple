@@ -2474,7 +2474,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static uint8_t lastBogeyByte = 0;  // Track V1's bogey counter byte for change detection
     static DisplayState lastMultiState;
     static bool firstRun = true;
-    static AlertData lastSecondary[4];
+    static AlertData lastSecondary[PacketParser::MAX_ALERTS];  // Track all 15 possible V1 alerts for change detection
     static uint8_t lastArrows = 0;
     static uint8_t lastSignalBars = 0;
     static uint8_t lastActiveBands = 0;
@@ -2485,7 +2485,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         lastBogeyByte = 0;
         lastMultiState = DisplayState();
         firstRun = true;
-        for (int i = 0; i < 4; i++) lastSecondary[i] = AlertData();
+        for (int i = 0; i < PacketParser::MAX_ALERTS; i++) lastSecondary[i] = AlertData();
         lastArrows = 0;
         lastSignalBars = 0;
         lastActiveBands = 0;
@@ -2517,7 +2517,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (!needsRedraw) {
         // Compare counts first
         int lastAlertCount = 0;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
             if (lastSecondary[i].band != BAND_NONE) lastAlertCount++;
         }
         if (alertCount != lastAlertCount) {
@@ -2526,9 +2526,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             // Check if any current alert is NOT in last set (set membership test)
             // Use frequency tolerance (±5 MHz) to handle V1 jitter
             const uint32_t FREQ_TOLERANCE_MHZ = 5;
-            for (int i = 0; i < alertCount && i < 4 && !needsRedraw; i++) {
+            for (int i = 0; i < alertCount && i < PacketParser::MAX_ALERTS && !needsRedraw; i++) {
                 bool foundInLast = false;
-                for (int j = 0; j < 4; j++) {
+                for (int j = 0; j < PacketParser::MAX_ALERTS; j++) {
                     if (allAlerts[i].band == lastSecondary[j].band) {
                         if (allAlerts[i].band == BAND_LASER) {
                             foundInLast = true;
@@ -2645,8 +2645,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastMainVol = state.mainVolume;
     lastMuteVol = state.muteVolume;
     s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
-    for (int i = 0; i < alertCount && i < 4; i++) {
-        lastSecondary[i] = allAlerts[i];
+    // Store all alerts for change detection (V1 supports up to 15)
+    // We only display primary + 2 cards, but track all for accurate change detection
+    for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
+        lastSecondary[i] = (i < alertCount) ? allAlerts[i] : AlertData();
     }
     
     DISP_PERF_START();
