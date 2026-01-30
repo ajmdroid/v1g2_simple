@@ -680,7 +680,7 @@ void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVo
 }
 
 void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
-                                        uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX) {
+                                        uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX, bool deferSave) {
     settings.colorBogey = bogey;
     settings.colorFrequency = freq;
     settings.colorArrowFront = arrowFront;
@@ -690,7 +690,7 @@ void SettingsManager::setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t a
     settings.colorBandKa = bandKa;
     settings.colorBandK = bandK;
     settings.colorBandX = bandX;
-    save();
+    if (!deferSave) save();
 }
 
 void SettingsManager::setWiFiIconColors(uint16_t icon, uint16_t connected) {
@@ -815,84 +815,84 @@ void SettingsManager::setHideRssiIndicator(bool hide) {
     save();
 }
 
-void SettingsManager::setKittScannerEnabled(bool enabled) {
+void SettingsManager::setKittScannerEnabled(bool enabled, bool deferSave) {
     settings.kittScannerEnabled = enabled;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setEnableWifiAtBoot(bool enable) {
+void SettingsManager::setEnableWifiAtBoot(bool enable, bool deferSave) {
     settings.enableWifiAtBoot = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setEnableDebugLogging(bool enable) {
+void SettingsManager::setEnableDebugLogging(bool enable, bool deferSave) {
     settings.enableDebugLogging = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogAlerts(bool enable) {
+void SettingsManager::setLogAlerts(bool enable, bool deferSave) {
     settings.logAlerts = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogWifi(bool enable) {
+void SettingsManager::setLogWifi(bool enable, bool deferSave) {
     settings.logWifi = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogBle(bool enable) {
+void SettingsManager::setLogBle(bool enable, bool deferSave) {
     settings.logBle = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogGps(bool enable) {
+void SettingsManager::setLogGps(bool enable, bool deferSave) {
     settings.logGps = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogObd(bool enable) {
+void SettingsManager::setLogObd(bool enable, bool deferSave) {
     settings.logObd = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogSystem(bool enable) {
+void SettingsManager::setLogSystem(bool enable, bool deferSave) {
     settings.logSystem = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogDisplay(bool enable) {
+void SettingsManager::setLogDisplay(bool enable, bool deferSave) {
     settings.logDisplay = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogPerfMetrics(bool enable) {
+void SettingsManager::setLogPerfMetrics(bool enable, bool deferSave) {
     settings.logPerfMetrics = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogAudio(bool enable) {
+void SettingsManager::setLogAudio(bool enable, bool deferSave) {
     settings.logAudio = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogCamera(bool enable) {
+void SettingsManager::setLogCamera(bool enable, bool deferSave) {
     settings.logCamera = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogLockout(bool enable) {
+void SettingsManager::setLogLockout(bool enable, bool deferSave) {
     settings.logLockout = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogTouch(bool enable) {
+void SettingsManager::setLogTouch(bool enable, bool deferSave) {
     settings.logTouch = enable;
-    save();
+    if (!deferSave) save();
 }
 
-void SettingsManager::setLogFormat(uint8_t format) {
+void SettingsManager::setLogFormat(uint8_t format, bool deferSave) {
     settings.logFormat = format;
-    save();
+    if (!deferSave) save();
 }
 
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {

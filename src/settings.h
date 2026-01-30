@@ -419,7 +419,7 @@ public:
     void setSlotColor(int slotNum, uint16_t color);
     void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume);
     void setDisplayColors(uint16_t bogey, uint16_t freq, uint16_t arrowFront, uint16_t arrowSide, uint16_t arrowRear,
-                          uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX);
+                          uint16_t bandL, uint16_t bandKa, uint16_t bandK, uint16_t bandX, bool deferSave = false);
     void setWiFiIconColors(uint16_t icon, uint16_t connected);
     void setBleIconColors(uint16_t connected, uint16_t disconnected);
     void setSignalBarColors(uint16_t bar1, uint16_t bar2, uint16_t bar3, uint16_t bar4, uint16_t bar5, uint16_t bar6);
@@ -443,22 +443,22 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
-    void setKittScannerEnabled(bool enabled);
-    void setEnableWifiAtBoot(bool enable);
-    void setEnableDebugLogging(bool enable);
-    void setLogAlerts(bool enable);
-    void setLogWifi(bool enable);
-    void setLogBle(bool enable);
-    void setLogGps(bool enable);
-    void setLogObd(bool enable);
-    void setLogSystem(bool enable);
-    void setLogDisplay(bool enable);
-    void setLogPerfMetrics(bool enable);
-    void setLogAudio(bool enable);
-    void setLogCamera(bool enable);
-    void setLogLockout(bool enable);
-    void setLogTouch(bool enable);
-    void setLogFormat(uint8_t format);  // 0 = TEXT, 1 = JSON
+    void setKittScannerEnabled(bool enabled, bool deferSave = false);
+    void setEnableWifiAtBoot(bool enable, bool deferSave = false);
+    void setEnableDebugLogging(bool enable, bool deferSave = false);
+    void setLogAlerts(bool enable, bool deferSave = false);
+    void setLogWifi(bool enable, bool deferSave = false);
+    void setLogBle(bool enable, bool deferSave = false);
+    void setLogGps(bool enable, bool deferSave = false);
+    void setLogObd(bool enable, bool deferSave = false);
+    void setLogSystem(bool enable, bool deferSave = false);
+    void setLogDisplay(bool enable, bool deferSave = false);
+    void setLogPerfMetrics(bool enable, bool deferSave = false);
+    void setLogAudio(bool enable, bool deferSave = false);
+    void setLogCamera(bool enable, bool deferSave = false);
+    void setLogLockout(bool enable, bool deferSave = false);
+    void setLogTouch(bool enable, bool deferSave = false);
+    void setLogFormat(uint8_t format, bool deferSave = false);  // 0 = TEXT, 1 = JSON
     uint8_t getLogFormat() const { return settings.logFormat; }
     DebugLogConfig getDebugLogConfig() const {
         return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch, settings.logFormat };

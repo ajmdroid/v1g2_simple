@@ -1674,19 +1674,25 @@ void WiFiManager::handleDisplayColorsSave() {
         Serial.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
     }
     
-    uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : 0xF800;
-    uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : 0xF800;
-    uint16_t arrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : 0xF800;
-    uint16_t arrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : 0xF800;
-    uint16_t arrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : 0xF800;
-    uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : 0x001F;
-    uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : 0xF800;
-    uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : 0x001F;
-    uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : 0x07E0;
-    
-    Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n", bogey, freq, arrowFront, arrowSide, arrowRear);
-    
-    settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX);
+    // Handle main display colors only if any color arg provided
+    if (server.hasArg("bogey") || server.hasArg("freq") || server.hasArg("arrowFront") ||
+        server.hasArg("arrowSide") || server.hasArg("arrowRear") || server.hasArg("bandL") ||
+        server.hasArg("bandKa") || server.hasArg("bandK") || server.hasArg("bandX")) {
+        const V1Settings& current = settingsManager.get();
+        uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : current.colorBogey;
+        uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : current.colorFrequency;
+        uint16_t arrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : current.colorArrowFront;
+        uint16_t arrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : current.colorArrowSide;
+        uint16_t arrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : current.colorArrowRear;
+        uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : current.colorBandL;
+        uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : current.colorBandKa;
+        uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : current.colorBandK;
+        uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : current.colorBandX;
+        
+        Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n", bogey, freq, arrowFront, arrowSide, arrowRear);
+        
+        settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX, true);
+    }
     
     // Handle WiFi icon colors if provided
     if (server.hasArg("wifiIcon") || server.hasArg("wifiConnected")) {
@@ -1804,54 +1810,54 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
     }
     if (server.hasArg("kittScannerEnabled")) {
-        settingsManager.setKittScannerEnabled(server.arg("kittScannerEnabled") == "true" || server.arg("kittScannerEnabled") == "1");
+        settingsManager.setKittScannerEnabled(server.arg("kittScannerEnabled") == "true" || server.arg("kittScannerEnabled") == "1", true);
     }
     if (server.hasArg("enableWifiAtBoot")) {
-        settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1");
+        settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1", true);
     }
     if (server.hasArg("enableDebugLogging")) {
-        settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1");
+        settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1", true);
     }
     if (server.hasArg("logFormat")) {
         int fmt = server.arg("logFormat").toInt();
-        settingsManager.setLogFormat(fmt);
+        settingsManager.setLogFormat(fmt, true);
         debugLogger.setFormat(fmt == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
     }
     if (server.hasArg("logAlerts")) {
-        settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1");
+        settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1", true);
     }
     if (server.hasArg("logWifi")) {
-        settingsManager.setLogWifi(server.arg("logWifi") == "true" || server.arg("logWifi") == "1");
+        settingsManager.setLogWifi(server.arg("logWifi") == "true" || server.arg("logWifi") == "1", true);
     }
     if (server.hasArg("logBle")) {
-        settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1");
+        settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1", true);
     }
     if (server.hasArg("logGps")) {
-        settingsManager.setLogGps(server.arg("logGps") == "true" || server.arg("logGps") == "1");
+        settingsManager.setLogGps(server.arg("logGps") == "true" || server.arg("logGps") == "1", true);
     }
     if (server.hasArg("logObd")) {
-        settingsManager.setLogObd(server.arg("logObd") == "true" || server.arg("logObd") == "1");
+        settingsManager.setLogObd(server.arg("logObd") == "true" || server.arg("logObd") == "1", true);
     }
     if (server.hasArg("logSystem")) {
-        settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1");
+        settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1", true);
     }
     if (server.hasArg("logDisplay")) {
-        settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1");
+        settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1", true);
     }
     if (server.hasArg("logPerfMetrics")) {
-        settingsManager.setLogPerfMetrics(server.arg("logPerfMetrics") == "true" || server.arg("logPerfMetrics") == "1");
+        settingsManager.setLogPerfMetrics(server.arg("logPerfMetrics") == "true" || server.arg("logPerfMetrics") == "1", true);
     }
     if (server.hasArg("logAudio")) {
-        settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1");
+        settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1", true);
     }
     if (server.hasArg("logCamera")) {
-        settingsManager.setLogCamera(server.arg("logCamera") == "true" || server.arg("logCamera") == "1");
+        settingsManager.setLogCamera(server.arg("logCamera") == "true" || server.arg("logCamera") == "1", true);
     }
     if (server.hasArg("logLockout")) {
-        settingsManager.setLogLockout(server.arg("logLockout") == "true" || server.arg("logLockout") == "1");
+        settingsManager.setLogLockout(server.arg("logLockout") == "true" || server.arg("logLockout") == "1", true);
     }
     if (server.hasArg("logTouch")) {
-        settingsManager.setLogTouch(server.arg("logTouch") == "true" || server.arg("logTouch") == "1");
+        settingsManager.setLogTouch(server.arg("logTouch") == "true" || server.arg("logTouch") == "1", true);
     }
     // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
     if (server.hasArg("voiceAlertMode")) {
