@@ -1750,7 +1750,7 @@ Based on code analysis:
 **Fragile areas requiring care:**
 
 1. **BLE Queue Overflow:** If BLE data arrives faster than display processing, oldest packets dropped.
-   - Location: [src/main.cpp](src/main.cpp#L48-L55) - `bleDataQueue` 64 slots
+   - Location: [src/main.cpp](src/main.cpp#L48-L55) - `bleDataQueue` 72 slots
    - Impact: Only affects local display; proxy forwarding is unaffected (immediate path)
    - Mitigation: Throttle display updates, process queue quickly
 
