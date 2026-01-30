@@ -1,0 +1,212 @@
+{
+  "metadata": {
+    "source": "debug_log",
+    "segment_index": 0,
+    "band": "Ka",
+    "duration_ms": 5221,
+    "peak_signal": 6,
+    "max_bogeys": 1
+  },
+  "alerts": [
+    {
+      "ts_offset_ms": 0,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 6,
+      "rear_signal": 6,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 301,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 4,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 420,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 6,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 574,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 722,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 6,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 841,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 4,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 1020,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 1141,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Rear",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 1301,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Rear",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 6,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 1440,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Rear",
+      "frequency_mhz": 35.498,
+      "front_signal": 6,
+      "rear_signal": 6,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 2461,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 6,
+      "rear_signal": 6,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 3303,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 6,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 3602,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 5,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 3905,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 4,
+      "rear_signal": 5,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 4201,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 4,
+      "rear_signal": 4,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 4652,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 3,
+      "rear_signal": 3,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 4772,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 2,
+      "rear_signal": 3,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 4921,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Side",
+      "frequency_mhz": 35.498,
+      "front_signal": 2,
+      "rear_signal": 0,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 5071,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Front",
+      "frequency_mhz": 35.498,
+      "front_signal": 2,
+      "rear_signal": 0,
+      "muted": false
+    },
+    {
+      "ts_offset_ms": 5221,
+      "count": 1,
+      "band": "Ka",
+      "direction": "Front",
+      "frequency_mhz": 35.498,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": false
+    }
+  ]
+}

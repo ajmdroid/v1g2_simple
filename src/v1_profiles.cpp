@@ -192,6 +192,13 @@ std::vector<String> V1ProfileManager::listProfiles() const {
                 name = name.substring(lastSlash + 1);
             }
             name = name.substring(0, name.length() - 5);  // Remove .json
+            
+            // Filter out system files that aren't user profiles
+            if (name == "lockouts" || name == "auto_lockouts" || 
+                name.startsWith("_") || name.startsWith(".")) {
+                continue;
+            }
+            
             profiles.push_back(name);
         }
         entry.close();

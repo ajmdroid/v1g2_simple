@@ -50,6 +50,7 @@ struct DebugLogConfig {
     bool camera;
     bool lockout;
     bool touch;
+    uint8_t format;  // 0 = TEXT, 1 = JSON (NDJSON for ELK)
 };
 
 // V1 operating modes (from ESP library)
@@ -165,6 +166,7 @@ struct V1Settings {
         bool logCamera;              // Include camera alert events in debug log
         bool logLockout;             // Include auto-lockout events in debug log
         bool logTouch;               // Include touch input events in debug log
+        uint8_t logFormat;           // Log format: 0 = TEXT, 1 = JSON (NDJSON for ELK)
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -456,8 +458,10 @@ public:
     void setLogCamera(bool enable);
     void setLogLockout(bool enable);
     void setLogTouch(bool enable);
+    void setLogFormat(uint8_t format);  // 0 = TEXT, 1 = JSON
+    uint8_t getLogFormat() const { return settings.logFormat; }
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch, settings.logFormat };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);

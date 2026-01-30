@@ -112,6 +112,21 @@ private:
   // - lockoutMaxSignalStrength: don't learn >= this (0=disabled)
   // - lockoutMaxDistanceM: max distance to learn (default 600m)
   
+  // Session statistics (reset on boot)
+  struct SessionStats {
+    uint32_t alertsProcessed = 0;       // Total alerts received
+    uint32_t alertsSkippedWeak = 0;     // Skipped due to weak signal
+    uint32_t alertsSkippedKa = 0;       // Skipped due to Ka protection
+    uint32_t alertsSkippedGps = 0;      // Skipped due to GPS not ready
+    uint32_t alertsSkippedDistance = 0; // Skipped due to max distance
+    uint32_t alertsSkippedInterval = 0; // Skipped due to interval timing
+    uint32_t clusterHits = 0;           // Existing cluster matches
+    uint32_t clustersCreated = 0;       // New clusters this session
+    uint32_t clustersPromoted = 0;      // Clusters promoted to lockouts
+    time_t sessionStart = 0;            // When stats started
+  };
+  SessionStats sessionStats;
+
   // Helper functions
   int findCluster(float lat, float lon, Band band, uint32_t frequency_khz) const;
   void addEventToCluster(int clusterIdx, const AlertEvent& event);
@@ -177,6 +192,10 @@ public:
 
   // API export with derived fields (hits/unlearn remaining)
   String exportStatusJson() const;
+  
+  // Session stats API
+  const SessionStats& getSessionStats() const { return sessionStats; }
+  void resetSessionStats();
 
 private:
   // Snapshot scheduling

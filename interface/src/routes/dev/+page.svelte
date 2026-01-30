@@ -6,6 +6,7 @@
 		enableWifiAtBoot: false,
 			enableDebugLogging: false,
 			kittScannerEnabled: false,
+			logFormat: 0, // 0=TEXT, 1=JSON
 			logAlerts: true,
 			logWifi: true,
 			logBle: false,
@@ -70,6 +71,7 @@
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableDebugLogging = data.enableDebugLogging || false;
 			settings.kittScannerEnabled = data.kittScannerEnabled || false;
+			settings.logFormat = data.logFormat ?? 0;
 			settings.logAlerts = data.logAlerts ?? true;
 			settings.logWifi = data.logWifi ?? true;
 			settings.logBle = data.logBle ?? false;
@@ -128,6 +130,7 @@
 			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			params.append('enableDebugLogging', settings.enableDebugLogging.toString());
 			params.append('kittScannerEnabled', settings.kittScannerEnabled.toString());
+			params.append('logFormat', settings.logFormat.toString());
 			params.append('logAlerts', settings.logAlerts.toString());
 			params.append('logWifi', settings.logWifi.toString());
 			params.append('logBle', settings.logBle.toString());
@@ -440,7 +443,28 @@
 				</div>
 
 				{#if settings.enableDebugLogging}
-					<div class="mt-4 space-y-2">
+					<div class="mt-4 space-y-3">
+						<!-- Log Format Toggle -->
+						<div class="flex items-center justify-between">
+							<div>
+								<h3 class="font-semibold text-sm opacity-70">Log Format</h3>
+								<p class="text-xs opacity-60">JSON is ELK/Elasticsearch-friendly (NDJSON)</p>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 1}>TEXT</span>
+								<input 
+									type="checkbox" 
+									class="toggle toggle-sm toggle-primary"
+									checked={settings.logFormat === 1}
+									onchange={(e) => settings.logFormat = e.target.checked ? 1 : 0}
+									disabled={!acknowledged}
+								/>
+								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 0}>JSON</span>
+							</div>
+						</div>
+
+						<div class="divider my-2"></div>
+
 						<h3 class="font-semibold text-sm opacity-70">Log Categories</h3>
 						<p class="text-xs opacity-60">Toggle specific channels to reduce noise while debugging.</p>
 						<div class="grid grid-cols-2 gap-3">

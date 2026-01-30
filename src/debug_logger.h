@@ -2,6 +2,10 @@
  * Debug Logger - optional SD/LittleFS log sink.
  * Writes timestamped lines when enabled in settings.
  * Uses buffered writes to minimize SD latency impact on real-time tasks.
+ * 
+ * Supports two log formats:
+ * - TEXT: Human-readable with millis/ISO timestamps
+ * - JSON: NDJSON format for ELK/Elasticsearch import
  */
 
 #ifndef DEBUG_LOGGER_H
@@ -9,10 +13,17 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <time.h>
 
 // Log file location and size cap (shared with UI/API)
 inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
 inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
+
+// Log format options
+enum class DebugLogFormat {
+    TEXT,   // Human-readable: [timestamp] message
+    JSON    // NDJSON for ELK: {"@timestamp":"...","level":"info","category":"alerts","message":"..."}
+};
 
 // Buffer settings for efficient SD writes
 inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB ring buffer
@@ -57,14 +68,26 @@ public:
     // Enable/disable logging; safe to call repeatedly.
     void setEnabled(bool enabledFlag);
     void setFilter(const DebugLogFilter& filter);
+    void setFormat(DebugLogFormat fmt) { logFormat = fmt; }
     bool isEnabled() const { return enabled; }
     bool isEnabledFor(DebugLogCategory category) const;
+    DebugLogFormat getFormat() const { return logFormat; }
+
+    // Time synchronization from GPS
+    void syncTimeFromGPS(int year, int month, int day, int hour, int minute, int second);
+    bool hasValidTime() const { return timeValid; }
+    time_t getUnixTime() const;
+    String getISO8601Timestamp() const;
 
     // Append formatted line (auto timestamp + newline).
     void logf(DebugLogCategory category, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
     void logf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
     void log(DebugLogCategory category, const char* message);
     void log(const char* message);
+    
+    // Structured logging for JSON format (key-value pairs)
+    void logEvent(DebugLogCategory category, const char* event, 
+                  const char* jsonFields = nullptr);  // Additional JSON fields
     
     // Buffer management - call periodically from main loop
     void update();  // Check if time-based flush needed
@@ -84,9 +107,19 @@ private:
     void flushBuffer();
     void rotateIfNeeded();
     bool categoryAllowed(DebugLogCategory category) const;
+    const char* categoryName(DebugLogCategory category) const;
+    void formatTextLine(char* dest, size_t destSize, DebugLogCategory category, const char* message);
+    void formatJsonLine(char* dest, size_t destSize, DebugLogCategory category, 
+                        const char* message, const char* extraFields = nullptr);
 
     bool enabled = false;
     DebugLogFilter filter;
+    DebugLogFormat logFormat = DebugLogFormat::TEXT;
+    
+    // Time tracking (synced from GPS)
+    bool timeValid = false;
+    time_t timeSyncEpoch = 0;       // Unix timestamp when time was synced
+    unsigned long timeSyncMillis = 0;  // millis() when time was synced
     
     // Ring buffer for batched writes
     char buffer[DEBUG_LOG_BUFFER_SIZE];

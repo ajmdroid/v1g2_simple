@@ -41,6 +41,7 @@ code_review.txt
 
 # Archived docs (keep local, don't track)
 docs/ARCHIVE.md
+docs/CODEBASE_REVIEW.md
 docs/GPS_ALERT_LOGGING.md
 docs/M10-25Q_TESTING.md
 docs/MODULE_DETECTION.md

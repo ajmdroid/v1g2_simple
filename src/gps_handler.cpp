@@ -427,6 +427,17 @@ bool GPSHandler::update() {
       timeinfo.tm_isdst = 0;  // UTC doesn't have DST
       lastFix.unixTime = mktime(&timeinfo);
       
+      // Sync debug logger time from GPS (once per session)
+      static bool timeSynced = false;
+      if (!timeSynced && GPS.year > 0 && GPS.month > 0) {
+        debugLogger.syncTimeFromGPS(2000 + GPS.year, GPS.month, GPS.day,
+                                     GPS.hour, GPS.minute, GPS.seconds);
+        timeSynced = true;
+        if (DEBUG_LOGS) {
+          Serial.println("[GPS] System time synced from GPS");
+        }
+      }
+      
       // Extract speed and heading
       lastFix.speed_mps = GPS.speed * 0.514444f;  // Convert knots to m/s
       lastFix.heading_deg = GPS.angle;

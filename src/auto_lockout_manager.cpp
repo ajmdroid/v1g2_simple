@@ -59,6 +59,7 @@ AutoLockoutManager::AutoLockoutManager() : clusterMutex(nullptr), lockoutManager
     Serial.println("[AutoLockout] Failed to create mutex!");
   }
   lastSnapshotMs = millis();
+  resetSessionStats();
 }
 AutoLockoutManager::~AutoLockoutManager() {
   if (clusterMutex) {
@@ -282,6 +283,9 @@ void AutoLockoutManager::promoteCluster(int clusterIdx) {
   cluster.promotedLockoutIndex = lockouts.getLockoutCount() - 1;
   cluster.passWithoutAlertCount = 0;  // Reset demotion counter
   
+  // Track session stat
+  sessionStats.clustersPromoted++;
+  
   if (DEBUG_LOGS) {
     Serial.printf("[AutoLockout] ✓ PROMOTED '%s' to lockout zone\n", cluster.name.c_str());
   }
@@ -375,6 +379,9 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   const char* bandStr = (band == BAND_X) ? "X" : (band == BAND_K) ? "K" : 
                         (band == BAND_KA) ? "Ka" : "Laser";
   
+  // Track total alerts
+  sessionStats.alertsProcessed++;
+  
   // Check master enable
   if (!s.lockoutEnabled) {
     LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (lockout disabled)\n",
@@ -384,6 +391,7 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   
   // Ka band protection (user-configurable)
   if (s.lockoutKaProtection && band == BAND_KA) {
+    sessionStats.alertsSkippedKa++;
     LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (Ka protection)\n",
                   bandStr, frequency_khz/1000.0f, signalStrength);
     return;
@@ -391,6 +399,7 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   
   // Filter weak signals (likely far away or irrelevant)
   if (signalStrength < MIN_SIGNAL_STRENGTH) {
+    sessionStats.alertsSkippedWeak++;
     LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (weak signal < %d)\n", 
                   bandStr, frequency_khz/1000.0f, signalStrength, MIN_SIGNAL_STRENGTH);
     return;
@@ -440,11 +449,13 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
       // Add to existing cluster
       addEventToCluster(clusterIdx, event);
       LearningCluster& c = clusters[clusterIdx];
+      sessionStats.clusterHits++;
       LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> CLUSTER #%d (hits=%d)\n",
                     bandStr, frequency_khz/1000.0f, signalStrength, clusterIdx, (int)c.hitCount);
     } else {
       // Create new cluster
       createNewCluster(event);
+      sessionStats.clustersCreated++;
       LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> NEW CLUSTER @ (%.6f,%.6f)\n",
                     bandStr, frequency_khz/1000.0f, signalStrength, lat, lon);
     }
@@ -831,7 +842,7 @@ void AutoLockoutManager::promoteClusterManually(int clusterIdx) {
     // Note: saveToJSON acquires its own lock, release this one first
   }
   // Lock released here, safe to call saveToJSON
-  saveToJSON("/v1profiles/auto_lockouts.json");
+  saveToJSON("/v1simple/auto_lockouts.json");
 }
 
 void AutoLockoutManager::deleteCluster(int clusterIdx) {
@@ -847,7 +858,7 @@ void AutoLockoutManager::deleteCluster(int clusterIdx) {
       }
     }
   }
-  saveToJSON("/v1profiles/auto_lockouts.json");
+  saveToJSON("/v1simple/auto_lockouts.json");
 }
 
 void AutoLockoutManager::clearAll() {
@@ -1063,7 +1074,7 @@ bool AutoLockoutManager::restoreFromSD() {
   }
   
   // Save to LittleFS
-  saveToJSON("/v1profiles/auto_lockouts.json");
+  saveToJSON("/v1simple/auto_lockouts.json");
   
   return true;
 }
@@ -1257,10 +1268,23 @@ void AutoLockoutManager::relinkPromotedLockouts() {
 
 void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
   if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
-    saveToJSON("/v1profiles/auto_lockouts.json");
+    saveToJSON("/v1simple/auto_lockouts.json");
     truncateLog();
     lastSnapshotMs = nowMs;
   }
+}
+
+void AutoLockoutManager::resetSessionStats() {
+  sessionStats.alertsProcessed = 0;
+  sessionStats.alertsSkippedWeak = 0;
+  sessionStats.alertsSkippedKa = 0;
+  sessionStats.alertsSkippedGps = 0;
+  sessionStats.alertsSkippedDistance = 0;
+  sessionStats.alertsSkippedInterval = 0;
+  sessionStats.clusterHits = 0;
+  sessionStats.clustersCreated = 0;
+  sessionStats.clustersPromoted = 0;
+  sessionStats.sessionStart = time(nullptr);
 }
 
 // ============================================================================  
@@ -1272,7 +1296,7 @@ String AutoLockoutManager::exportStatusJson() const {
   JsonArray arr = doc["clusters"].to<JsonArray>();
 
   ClusterLock lock(clusterMutex);
-  if (!lock.ok()) return "{\"clusters\":[]}";
+  if (!lock.ok()) return "{\"clusters\":[],\"session\":{}}";
 
   const V1Settings& s = settingsManager.get();
   int reqStopped = std::max<int>(PROMOTION_STOPPED_HIT_COUNT, s.lockoutLearnCount);
@@ -1316,6 +1340,17 @@ String AutoLockoutManager::exportStatusJson() const {
     }
     o["status"] = status;
   }
+
+  // Add session statistics
+  JsonObject session = doc["session"].to<JsonObject>();
+  session["alertsProcessed"] = sessionStats.alertsProcessed;
+  session["alertsSkippedWeak"] = sessionStats.alertsSkippedWeak;
+  session["alertsSkippedKa"] = sessionStats.alertsSkippedKa;
+  session["clusterHits"] = sessionStats.clusterHits;
+  session["clustersCreated"] = sessionStats.clustersCreated;
+  session["clustersPromoted"] = sessionStats.clustersPromoted;
+  session["sessionStart"] = static_cast<long>(sessionStats.sessionStart);
+  session["uptimeMs"] = millis();
 
   String out;
   serializeJson(doc, out);

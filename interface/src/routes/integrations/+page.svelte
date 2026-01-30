@@ -37,6 +37,7 @@
 	// Auto-lockout learning data
 	let lockoutClusters = $state([]);
 	let lockoutDataLoading = $state(false);
+	let sessionStats = $state(null);
 	
 	// Camera database status
 	let cameraStatus = $state(null);
@@ -166,6 +167,7 @@
 			if (res.ok) {
 				const data = await res.json();
 				lockoutClusters = data.clusters || [];
+				sessionStats = data.session || null;
 			}
 		} catch (e) {
 			console.error('Failed to fetch lockout data:', e);
@@ -1003,6 +1005,40 @@
 							<strong>Promoted:</strong> {lockoutClusters.filter(c => c.isPromoted).length}
 							<span class="mx-2">•</span>
 							<strong>Learning:</strong> {lockoutClusters.filter(c => !c.isPromoted).length}
+						</div>
+					{/if}
+					
+					<!-- Session Statistics -->
+					{#if sessionStats && sessionStats.alertsProcessed > 0}
+						<div class="divider">Session Stats (since boot)</div>
+						<div class="stats stats-vertical sm:stats-horizontal shadow bg-base-300 w-full">
+							<div class="stat">
+								<div class="stat-title">Alerts</div>
+								<div class="stat-value text-lg">{sessionStats.alertsProcessed.toLocaleString()}</div>
+								<div class="stat-desc">Processed</div>
+							</div>
+							<div class="stat">
+								<div class="stat-title">Filtered</div>
+								<div class="stat-value text-lg">{(sessionStats.alertsSkippedWeak + sessionStats.alertsSkippedKa).toLocaleString()}</div>
+								<div class="stat-desc">
+									{sessionStats.alertsSkippedWeak} weak, {sessionStats.alertsSkippedKa} Ka
+								</div>
+							</div>
+							<div class="stat">
+								<div class="stat-title">Clusters</div>
+								<div class="stat-value text-lg text-success">+{sessionStats.clustersCreated}</div>
+								<div class="stat-desc">{sessionStats.clusterHits.toLocaleString()} hits</div>
+							</div>
+							{#if sessionStats.clustersPromoted > 0}
+								<div class="stat">
+									<div class="stat-title">Promoted</div>
+									<div class="stat-value text-lg text-accent">{sessionStats.clustersPromoted}</div>
+									<div class="stat-desc">→ Lockouts</div>
+								</div>
+							{/if}
+						</div>
+						<div class="text-xs text-base-content/50 mt-2">
+							Uptime: {Math.floor((sessionStats.uptimeMs || 0) / 60000)} min
 						</div>
 					{/if}
 				</div>

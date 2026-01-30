@@ -7,6 +7,7 @@
 #include "storage_manager.h"
 
 #include <stdarg.h>
+#include <sys/time.h>  // For settimeofday
 
 DebugLogger debugLogger;
 
@@ -180,22 +181,142 @@ void DebugLogger::log(const char* message) {
 void DebugLogger::logf(DebugLogCategory category, const char* fmt, ...) {
     if (!categoryAllowed(category)) return;
 
-    char buffer[256];
+    char msgBuffer[256];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    vsnprintf(msgBuffer, sizeof(msgBuffer), fmt, args);
     va_end(args);
 
-    log(category, buffer);
+    log(category, msgBuffer);
 }
 
 void DebugLogger::log(DebugLogCategory category, const char* message) {
     if (!categoryAllowed(category)) return;
 
-    char line[320];
-    unsigned long now = millis();
-    snprintf(line, sizeof(line), "[%10lu ms] %s", now, message);
+    char line[512];
+    if (logFormat == DebugLogFormat::JSON) {
+        formatJsonLine(line, sizeof(line), category, message);
+    } else {
+        formatTextLine(line, sizeof(line), category, message);
+    }
     bufferLine(line);
+}
+
+void DebugLogger::logEvent(DebugLogCategory category, const char* event, const char* extraFields) {
+    if (!categoryAllowed(category)) return;
+    
+    char line[512];
+    if (logFormat == DebugLogFormat::JSON) {
+        formatJsonLine(line, sizeof(line), category, event, extraFields);
+    } else {
+        // For TEXT format, just log as message with any extra fields appended
+        char msg[256];
+        if (extraFields && extraFields[0]) {
+            snprintf(msg, sizeof(msg), "%s | %s", event, extraFields);
+        } else {
+            snprintf(msg, sizeof(msg), "%s", event);
+        }
+        formatTextLine(line, sizeof(line), category, msg);
+    }
+    bufferLine(line);
+}
+
+const char* DebugLogger::categoryName(DebugLogCategory category) const {
+    switch (category) {
+        case DebugLogCategory::Alerts:      return "alerts";
+        case DebugLogCategory::Wifi:        return "wifi";
+        case DebugLogCategory::Ble:         return "ble";
+        case DebugLogCategory::Gps:         return "gps";
+        case DebugLogCategory::Obd:         return "obd";
+        case DebugLogCategory::System:      return "system";
+        case DebugLogCategory::Display:     return "display";
+        case DebugLogCategory::PerfMetrics: return "perf";
+        case DebugLogCategory::Audio:       return "audio";
+        case DebugLogCategory::Camera:      return "camera";
+        case DebugLogCategory::Lockout:     return "lockout";
+        case DebugLogCategory::Touch:       return "touch";
+        default: return "unknown";
+    }
+}
+
+void DebugLogger::formatTextLine(char* dest, size_t destSize, DebugLogCategory category, const char* message) {
+    unsigned long now = millis();
+    
+    if (timeValid) {
+        // Use real timestamp if available
+        String ts = getISO8601Timestamp();
+        snprintf(dest, destSize, "[%s] [%10lu ms] %s", ts.c_str(), now, message);
+    } else {
+        // Fall back to millis only
+        snprintf(dest, destSize, "[%10lu ms] %s", now, message);
+    }
+}
+
+void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory category, 
+                                  const char* message, const char* extraFields) {
+    unsigned long now = millis();
+    String ts = timeValid ? getISO8601Timestamp() : String("1970-01-01T00:00:00Z");
+    
+    // Escape message for JSON (simple escape for quotes and backslashes)
+    char escapedMsg[256];
+    size_t j = 0;
+    for (size_t i = 0; message[i] && j < sizeof(escapedMsg) - 2; i++) {
+        if (message[i] == '"' || message[i] == '\\') {
+            escapedMsg[j++] = '\\';
+        }
+        escapedMsg[j++] = message[i];
+    }
+    escapedMsg[j] = '\0';
+    
+    if (extraFields && extraFields[0]) {
+        snprintf(dest, destSize, 
+            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"%s\",\"message\":\"%s\",%s}",
+            ts.c_str(), now, categoryName(category), escapedMsg, extraFields);
+    } else {
+        snprintf(dest, destSize, 
+            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"%s\",\"message\":\"%s\"}",
+            ts.c_str(), now, categoryName(category), escapedMsg);
+    }
+}
+
+// Time synchronization from GPS
+void DebugLogger::syncTimeFromGPS(int year, int month, int day, int hour, int minute, int second) {
+    struct tm timeinfo;
+    timeinfo.tm_year = year - 1900;  // tm_year is years since 1900
+    timeinfo.tm_mon = month - 1;      // tm_mon is 0-11
+    timeinfo.tm_mday = day;
+    timeinfo.tm_hour = hour;
+    timeinfo.tm_min = minute;
+    timeinfo.tm_sec = second;
+    timeinfo.tm_isdst = 0;  // UTC doesn't have DST
+    
+    timeSyncEpoch = mktime(&timeinfo);
+    timeSyncMillis = millis();
+    timeValid = true;
+    
+    // Also set ESP32 system time for time() calls elsewhere
+    struct timeval tv;
+    tv.tv_sec = timeSyncEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+}
+
+time_t DebugLogger::getUnixTime() const {
+    if (!timeValid) return 0;
+    
+    // Calculate current time based on sync point + elapsed millis
+    unsigned long elapsed = millis() - timeSyncMillis;
+    return timeSyncEpoch + (elapsed / 1000);
+}
+
+String DebugLogger::getISO8601Timestamp() const {
+    time_t now = getUnixTime();
+    if (now == 0) return "1970-01-01T00:00:00Z";
+    
+    struct tm* timeinfo = gmtime(&now);
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", timeinfo);
+    return String(buf);
 }
 
 bool DebugLogger::exists() const {

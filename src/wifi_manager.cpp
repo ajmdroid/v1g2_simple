@@ -854,6 +854,7 @@ void WiFiManager::handleSettingsApi() {
     // Development/Debug settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
+    doc["logFormat"] = settings.logFormat;
     doc["logAlerts"] = settings.logAlerts;
     doc["logWifi"] = settings.logWifi;
     doc["logBle"] = settings.logBle;
@@ -1810,6 +1811,9 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("enableDebugLogging")) {
         settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1");
+    }
+    if (server.hasArg("logFormat")) {
+        settingsManager.setLogFormat(server.arg("logFormat").toInt());
     }
     if (server.hasArg("logAlerts")) {
         settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1");

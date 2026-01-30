@@ -306,7 +306,7 @@ void setup() {
         // Initialize lockout managers (requires storage to be ready)
         autoLockouts.setLockoutManager(&lockouts);
         lockouts.loadFromJSON("/v1profiles/lockouts.json");
-        autoLockouts.loadFromJSON("/v1profiles/auto_lockouts.json");
+        autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
         SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
                         lockouts.getLockoutCount(), autoLockouts.getClusterCount());
 
@@ -386,10 +386,13 @@ void setup() {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
         DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
+        debugLogger.setFormat(cfg.format == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s)", storageManager.statusText().c_str());
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s, format=%s)", 
+                         storageManager.statusText().c_str(),
+                         debugLogger.getFormat() == DebugLogFormat::JSON ? "JSON" : "TEXT");
     }
 
     perfReporterModule.begin(&debugLogger, &settingsManager);

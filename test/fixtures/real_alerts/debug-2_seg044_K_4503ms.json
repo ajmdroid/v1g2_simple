@@ -1,0 +1,102 @@
+{
+  "metadata": {
+    "source": "debug_log",
+    "segment_index": 44,
+    "band": "K",
+    "duration_ms": 4503,
+    "peak_signal": 1,
+    "max_bogeys": 2
+  },
+  "alerts": [
+    {
+      "ts_offset_ms": 0,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.179,
+      "front_signal": 1,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 450,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.179,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 1320,
+      "count": 1,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.179,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 2282,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.095,
+      "front_signal": 1,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 2520,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.095,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 2941,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.095,
+      "front_signal": 1,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 3178,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.095,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 3631,
+      "count": 2,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.179,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    },
+    {
+      "ts_offset_ms": 4503,
+      "count": 1,
+      "band": "K",
+      "direction": "Front",
+      "frequency_mhz": 24.095,
+      "front_signal": 0,
+      "rear_signal": 0,
+      "muted": true
+    }
+  ]
+}

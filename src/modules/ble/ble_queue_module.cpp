@@ -1,7 +1,28 @@
 #include "ble_queue_module.h"
 #include "perf_metrics.h"
 #include "../../../include/config.h"
+#include "debug_logger.h"
 #include <algorithm>
+
+// External debug logger instance
+extern DebugLogger debugLogger;
+
+// Helper to log raw BLE packet as hex for replay capture
+// Format: [BLE:PKT] ts=12345 len=19 hex=AA040A430C...
+static void logPacketHex(uint32_t timestamp, const uint8_t* data, size_t length) {
+    if (!debugLogger.isEnabledFor(DebugLogCategory::Ble)) return;
+    if (length == 0 || length > 128) return;  // Sanity check
+    
+    // Build hex string (2 chars per byte + null)
+    char hexBuf[257];  // 128 bytes * 2 + null
+    for (size_t i = 0; i < length && i < 128; i++) {
+        snprintf(&hexBuf[i * 2], 3, "%02X", data[i]);
+    }
+    hexBuf[length * 2] = '\0';
+    
+    debugLogger.logf(DebugLogCategory::Ble, "[BLE:PKT] ts=%lu len=%u hex=%s",
+                     (unsigned long)timestamp, (unsigned)length, hexBuf);
+}
 
 #ifdef REPLAY_MODE
 // Sample replay data for UI testing
@@ -201,6 +222,9 @@ void BleQueueModule::process() {
         const uint8_t* packetPtr = rxBuffer.data();
 
         lastRxMillis = millis();
+
+        // Log raw packet hex for replay capture (gated by BLE debug category)
+        logPacketHex(lastRxMillis, packetPtr, packetSize);
 
         if (packetSize >= 12 && packetPtr[3] == PACKET_ID_RESP_USER_BYTES && profiles) {
             uint8_t userBytes[6];
