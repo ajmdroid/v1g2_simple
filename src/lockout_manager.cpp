@@ -89,9 +89,8 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     return false;
   }
 
-  // Use bounded JSON document on the heap to avoid large stack frames
-  constexpr size_t MAX_LOCKOUT_DOC_SIZE = MAX_LOCKOUT_FILE_SIZE;
-  std::unique_ptr<StaticJsonDocument<MAX_LOCKOUT_DOC_SIZE>> doc(new StaticJsonDocument<MAX_LOCKOUT_DOC_SIZE>());
+  // Use JsonDocument on the heap to avoid large stack frames
+  std::unique_ptr<JsonDocument> doc(new JsonDocument());
   DeserializationError error = deserializeJson(*doc, file);
   file.close();
   

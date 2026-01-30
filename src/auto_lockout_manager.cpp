@@ -598,8 +598,8 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
     return false;
   }
   
-  // Heap-allocate a bounded StaticJsonDocument to avoid large stack frames
-  std::unique_ptr<StaticJsonDocument<MAX_SNAPSHOT_SIZE>> doc(new StaticJsonDocument<MAX_SNAPSHOT_SIZE>());
+  // Heap-allocate JsonDocument to avoid large stack frames
+  std::unique_ptr<JsonDocument> doc(new JsonDocument());
   DeserializationError error = deserializeJson(*doc, file);
   file.close();
   
