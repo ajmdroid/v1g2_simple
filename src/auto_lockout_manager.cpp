@@ -565,65 +565,95 @@ void AutoLockoutManager::update() {
   }
 }
 
+// Helper: Try to load clusters from a specific filesystem
+// Returns true if successfully loaded, populates clusters vector
+// Caller must NOT hold clusterMutex - this function acquires it
+bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
+  if (!fs || !fs->exists(jsonPath)) return false;
+  
+  File file = fs->open(jsonPath, "r");
+  if (!file) return false;
+  
+  // Bound file size to prevent heap spikes from corrupted files
+  // Max reasonable size: 50 clusters × ~1.5KB each = ~75KB, use 100KB limit
+  constexpr size_t MAX_SNAPSHOT_SIZE = 100 * 1024;
+  size_t fileSize = file.size();
+  if (fileSize > MAX_SNAPSHOT_SIZE) {
+    Serial.printf("[AutoLockout] WARNING: Snapshot file too large (%u bytes > %u max), skipping\n", 
+                  (unsigned)fileSize, (unsigned)MAX_SNAPSHOT_SIZE);
+    file.close();
+    return false;
+  }
+  
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+  
+  if (error) {
+    Serial.printf("[AutoLockout] JSON parse error: %s\n", error.c_str());
+    return false;
+  }
+  
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return false;
+  
+  clusters.clear();
+  
+  JsonArray clusterArray = doc["clusters"].as<JsonArray>();
+  for (JsonObject obj : clusterArray) {
+    LearningCluster cluster;
+    cluster.name = obj["name"].as<String>();
+    cluster.centerLat = obj["centerLat"].as<float>();
+    cluster.centerLon = obj["centerLon"].as<float>();
+    cluster.radius_m = obj["radius_m"].as<float>();
+    cluster.band = static_cast<Band>(obj["band"].as<int>());
+    cluster.frequency_khz = obj["frequency_khz"] | 0;
+    cluster.frequency_tolerance_khz = obj["frequency_tolerance_khz"] | 8000;  // Default 8 MHz
+    cluster.hitCount = obj["hitCount"].as<int>();
+    cluster.stoppedHitCount = obj["stoppedHitCount"] | 0;
+    cluster.movingHitCount = obj["movingHitCount"] | 0;
+    cluster.firstSeen = obj["firstSeen"].as<time_t>();
+    cluster.lastSeen = obj["lastSeen"].as<time_t>();
+    cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
+    cluster.lastPassthrough = obj["lastPassthrough"].as<time_t>();
+    cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen for old data
+    cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
+    cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
+    cluster.isPromoted = obj["isPromoted"].as<bool>();
+    cluster.promotedLockoutIndex = obj["promotedLockoutIndex"].as<int>();
+    
+    // Load events (if present)
+    JsonArray eventsArray = obj["events"].as<JsonArray>();
+    for (JsonObject eventObj : eventsArray) {
+      AlertEvent event;
+      event.latitude = eventObj["lat"].as<float>();
+      event.longitude = eventObj["lon"].as<float>();
+      event.heading = eventObj["heading"] | -1.0f;  // Default to unknown
+      event.band = static_cast<Band>(eventObj["band"].as<int>());
+      event.signalStrength = eventObj["signal"].as<uint8_t>();
+      event.timestamp = eventObj["time"].as<time_t>();
+      event.isMoving = eventObj["moving"].as<bool>();
+      
+      cluster.events.push_back(event);
+    }
+    
+    clusters.push_back(cluster);
+  }
+  
+  return true;
+}
+
 bool AutoLockoutManager::loadFromJSON(const char* jsonPath) {
   bool loadedSnapshot = false;
   bool replayed = false;
-  fs::FS* fs = storageManager.getFilesystem();
-  if (fs && fs->exists(jsonPath)) {
-    File file = fs->open(jsonPath, "r");
-    if (file) {
-      JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, file);
-      file.close();
-      
-      if (!error) {
-        ClusterLock lock(clusterMutex);
-        if (!lock.ok()) return false;
-        clusters.clear();
-        
-        JsonArray clusterArray = doc["clusters"].as<JsonArray>();
-        for (JsonObject obj : clusterArray) {
-          LearningCluster cluster;
-          cluster.name = obj["name"].as<String>();
-          cluster.centerLat = obj["centerLat"].as<float>();
-          cluster.centerLon = obj["centerLon"].as<float>();
-          cluster.radius_m = obj["radius_m"].as<float>();
-          cluster.band = static_cast<Band>(obj["band"].as<int>());
-          cluster.frequency_khz = obj["frequency_khz"] | 0;
-          cluster.frequency_tolerance_khz = obj["frequency_tolerance_khz"] | 8000;  // Default 8 MHz
-          cluster.hitCount = obj["hitCount"].as<int>();
-          cluster.stoppedHitCount = obj["stoppedHitCount"] | 0;
-          cluster.movingHitCount = obj["movingHitCount"] | 0;
-          cluster.firstSeen = obj["firstSeen"].as<time_t>();
-          cluster.lastSeen = obj["lastSeen"].as<time_t>();
-          cluster.passWithoutAlertCount = obj["passWithoutAlertCount"].as<int>();
-          cluster.lastPassthrough = obj["lastPassthrough"].as<time_t>();
-          cluster.lastCountedHit = obj["lastCountedHit"] | cluster.lastSeen;  // Default to lastSeen for old data
-          cluster.lastCountedMiss = obj["lastCountedMiss"] | cluster.lastPassthrough;  // Default to lastPassthrough
-          cluster.createdHeading = obj["createdHeading"] | -1.0f;  // Default to unknown
-          cluster.isPromoted = obj["isPromoted"].as<bool>();
-          cluster.promotedLockoutIndex = obj["promotedLockoutIndex"].as<int>();
-          
-          // Load events (if present)
-          JsonArray eventsArray = obj["events"].as<JsonArray>();
-          for (JsonObject eventObj : eventsArray) {
-            AlertEvent event;
-            event.latitude = eventObj["lat"].as<float>();
-            event.longitude = eventObj["lon"].as<float>();
-            event.heading = eventObj["heading"] | -1.0f;  // Default to unknown
-            event.band = static_cast<Band>(eventObj["band"].as<int>());
-            event.signalStrength = eventObj["signal"].as<uint8_t>();
-            event.timestamp = eventObj["time"].as<time_t>();
-            event.isMoving = eventObj["moving"].as<bool>();
-            
-            cluster.events.push_back(event);
-          }
-          
-          clusters.push_back(cluster);
-        }
-        loadedSnapshot = true;
-      }
-    }
+  
+  // Try primary filesystem first, then secondary LittleFS as fallback
+  fs::FS* primaryFs = storageManager.getFilesystem();
+  fs::FS* secondaryFs = storageManager.getLittleFS();
+  
+  loadedSnapshot = tryLoadFromFS(primaryFs, jsonPath);
+  if (!loadedSnapshot && secondaryFs && secondaryFs != primaryFs) {
+    loadedSnapshot = tryLoadFromFS(secondaryFs, jsonPath);
   }
   
   // Try SD restore if LittleFS missing/corrupt
@@ -719,8 +749,19 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
     return false;
   }
   
-  // Auto-backup to SD card if available
-  backupToSD();
+  // Secondary backup to LittleFS when SD is primary
+  fs::FS* lfs = storageManager.getLittleFS();
+  if (lfs && lfs != fs) {
+    ensureProfilesDir(lfs);
+    if (!StorageManager::writeJsonFileAtomic(*lfs, jsonPath, doc)) {
+      Serial.println("[AutoLockout] WARNING: LittleFS mirror write failed (SD primary OK)");
+    }
+  }
+  
+  // Auto-backup to SD card if primary is LittleFS
+  if (!storageManager.isSDCard()) {
+    backupToSD();
+  }
   
   return true;
 }

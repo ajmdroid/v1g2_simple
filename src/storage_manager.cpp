@@ -12,13 +12,14 @@
 StorageManager storageManager;
 
 StorageManager::StorageManager()
-    : fs(nullptr), ready(false), usingSDMMC(false),
+    : fs(nullptr), ready(false), usingSDMMC(false), littlefsReady(false),
       cameraDbFound(false), alprCount(0), redlightCount(0), speedCount(0) {
 }
 
 bool StorageManager::begin() {
     ready = false;
     usingSDMMC = false;
+    littlefsReady = false;
 
 #if defined(DISPLAY_WAVESHARE_349)
     // Try SD_MMC first on Waveshare 3.49
@@ -34,6 +35,14 @@ bool StorageManager::begin() {
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
         Serial.printf("[Storage] SD card mounted (%lluMB)\n", cardSize);
         
+        // Also mount LittleFS as secondary for backups
+        // Use begin(false) to avoid auto-formatting existing data on transient errors
+        littlefsReady = LittleFS.begin(false);
+        if (!littlefsReady) {
+            Serial.println("[Storage] WARNING: LittleFS secondary mount failed - mirror backups disabled");
+            Serial.println("[Storage] (Run 'Format LittleFS' from maintenance if needed)");
+        }
+
         // Check for camera database files
         checkCameraDatabase();
         
@@ -48,6 +57,7 @@ bool StorageManager::begin() {
     if (LittleFS.begin(true)) {
         fs = &LittleFS;
         ready = true;
+        littlefsReady = true;
         Serial.println("[Storage] LittleFS mounted");
         return true;
     }

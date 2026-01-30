@@ -123,6 +123,7 @@ private:
   void pruneOldClusters();  // Remove stale clusters
   String generateClusterName(const LearningCluster& cluster) const;
   void relinkPromotedLockouts();
+  bool tryLoadFromFS(fs::FS* fs, const char* jsonPath);  // Load clusters from a specific FS
 
   // Crash-safe logging/replay
   bool replayLog();

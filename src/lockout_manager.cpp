@@ -56,11 +56,17 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     if (DEBUG_LOGS) {
       Serial.printf("[Lockout] No lockout file found at %s\n", jsonPath);
     }
-    // Try to restore from SD backup
-    if (checkAndRestoreFromSD()) {
-      return true;
+    // Try secondary LittleFS copy if SD is primary
+    fs::FS* lfs = storageManager.getLittleFS();
+    if (lfs && lfs->exists(jsonPath)) {
+      fs = lfs;
+    } else {
+      // Try to restore from SD backup
+      if (checkAndRestoreFromSD()) {
+        return true;
+      }
+      return false;
     }
-    return false;
   }
   
   File file = fs->open(jsonPath, "r");
@@ -71,10 +77,21 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     return false;
   }
 
+  // Bound file size to prevent heap spikes from corrupted files
+  // Max reasonable size: 500 lockouts × ~200 bytes each = ~100KB, use 150KB limit
+  constexpr size_t MAX_LOCKOUT_FILE_SIZE = 150 * 1024;
+  size_t fileSize = file.size();
+  if (fileSize > MAX_LOCKOUT_FILE_SIZE) {
+    Serial.printf("[Lockout] WARNING: File too large (%u bytes > %u max), skipping\n",
+                  (unsigned)fileSize, (unsigned)MAX_LOCKOUT_FILE_SIZE);
+    file.close();
+    return false;
+  }
+
   // Use bounded JSON document to avoid heap churn; sized for typical lockout counts
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, file);
-  file.close();
+  file.close();;
   
   if (error) {
     if (DEBUG_LOGS) {
@@ -178,8 +195,17 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
     return false;
   }
   
-  // Auto-backup to SD card if available (unless explicitly skipped)
-  if (!skipBackup) {
+  // Secondary backup to LittleFS when SD is primary
+  fs::FS* lfs = storageManager.getLittleFS();
+  if (!skipBackup && lfs && lfs != fs) {
+    ensureProfilesDir(lfs);
+    if (!StorageManager::writeJsonFileAtomic(*lfs, jsonPath, doc)) {
+      Serial.println("[Lockout] WARNING: LittleFS mirror write failed (SD primary OK)");
+    }
+  }
+  
+  // Auto-backup to SD card if primary is LittleFS
+  if (!skipBackup && !storageManager.isSDCard()) {
     backupToSD();
   }
   

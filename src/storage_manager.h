@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // Waveshare 3.49 SD card pins (SDMMC interface)
 #if defined(DISPLAY_WAVESHARE_349)
@@ -44,10 +45,13 @@ public:
 
     bool isReady() const { return ready; }
     bool isSDCard() const { return usingSDMMC; }
+    bool isLittleFSReady() const { return littlefsReady; }
     String statusText() const;
     
     // Get underlying filesystem
     fs::FS* getFilesystem() const { return fs; }
+    // Secondary LittleFS handle (available even when SD is primary)
+    fs::FS* getLittleFS() const { return littlefsReady ? &LittleFS : nullptr; }
     
     // Camera database info
     bool hasCameraDatabase() const { return cameraDbFound; }
@@ -66,6 +70,7 @@ private:
     fs::FS* fs;
     bool ready;
     bool usingSDMMC;
+    bool littlefsReady;
     bool cameraDbFound;
     uint32_t alprCount;
     uint32_t redlightCount;
