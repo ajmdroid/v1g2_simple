@@ -64,4 +64,8 @@ private:
     unsigned long lastReplayTime = 0;
     size_t replayIndex = 0;
 #endif
+
+#ifdef SERIAL_REPLAY_MODE
+    void processSerialReplay();
+#endif
 };

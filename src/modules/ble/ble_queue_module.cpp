@@ -24,6 +24,29 @@ static void logPacketHex(uint32_t timestamp, const uint8_t* data, size_t length)
                      (unsigned long)timestamp, (unsigned)length, hexBuf);
 }
 
+// Helper to parse hex string to bytes
+static size_t hexToBytes(const char* hex, uint8_t* out, size_t maxLen) {
+    size_t len = 0;
+    while (*hex && *(hex + 1) && len < maxLen) {
+        char hi = *hex++;
+        char lo = *hex++;
+        uint8_t val = 0;
+        
+        if (hi >= '0' && hi <= '9') val = (hi - '0') << 4;
+        else if (hi >= 'A' && hi <= 'F') val = (hi - 'A' + 10) << 4;
+        else if (hi >= 'a' && hi <= 'f') val = (hi - 'a' + 10) << 4;
+        else break;
+        
+        if (lo >= '0' && lo <= '9') val |= (lo - '0');
+        else if (lo >= 'A' && lo <= 'F') val |= (lo - 'A' + 10);
+        else if (lo >= 'a' && lo <= 'f') val |= (lo - 'a' + 10);
+        else break;
+        
+        out[len++] = val;
+    }
+    return len;
+}
+
 #ifdef REPLAY_MODE
 // Sample replay data for UI testing
 static const uint8_t REPLAY_PACKET_KA_ALERT[] = {
@@ -143,10 +166,14 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
 }
 
 void BleQueueModule::process() {
+    bool previewActive = preview && preview->isRunning();
+    
 #ifdef REPLAY_MODE
     processReplayData();
+#elif defined(SERIAL_REPLAY_MODE)
+    // Serial replay mode - read packets from USB serial
+    processSerialReplay();
 #else
-    bool previewActive = preview && preview->isRunning();
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
 
@@ -278,5 +305,51 @@ void BleQueueModule::processReplayData() {
 
     lastReplayTime = now;
     replayIndex = (replayIndex + 1) % REPLAY_SEQUENCE_LENGTH;
+}
+#endif
+
+#ifdef SERIAL_REPLAY_MODE
+void BleQueueModule::processSerialReplay() {
+    // Read lines from Serial in format: "hex=AABBCCDD..." or just raw hex "AABBCCDD"
+    // This allows the replay_ble.py tool to inject packets
+    static char lineBuf[600];  // Max 256 bytes = 512 hex chars + prefix
+    static size_t linePos = 0;
+    
+    while (Serial.available()) {
+        char c = Serial.read();
+        
+        if (c == '\n' || c == '\r') {
+            if (linePos > 0) {
+                lineBuf[linePos] = '\0';
+                
+                // Find hex data - look for "hex=" prefix or treat whole line as hex
+                const char* hexStart = lineBuf;
+                if (strstr(lineBuf, "hex=") != nullptr) {
+                    hexStart = strstr(lineBuf, "hex=") + 4;
+                }
+                
+                // Skip any whitespace
+                while (*hexStart == ' ' || *hexStart == '\t') hexStart++;
+                
+                // Parse hex to bytes
+                uint8_t pktBuf[256];
+                size_t pktLen = hexToBytes(hexStart, pktBuf, sizeof(pktBuf));
+                
+                if (pktLen >= 6 && pktBuf[0] == 0xAA && pktBuf[pktLen - 1] == 0xAB) {
+                    // Valid packet framing
+                    rxBuffer.insert(rxBuffer.end(), pktBuf, pktBuf + pktLen);
+                    Serial.printf("[SERIAL_REPLAY] Injected %d bytes\n", (int)pktLen);
+                    lastRxMillis = millis();
+                } else if (pktLen > 0) {
+                    Serial.printf("[SERIAL_REPLAY] Invalid packet (%d bytes, start=0x%02X)\n", 
+                                  (int)pktLen, pktLen > 0 ? pktBuf[0] : 0);
+                }
+                
+                linePos = 0;
+            }
+        } else if (linePos < sizeof(lineBuf) - 1) {
+            lineBuf[linePos++] = c;
+        }
+    }
 }
 #endif

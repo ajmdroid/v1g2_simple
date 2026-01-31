@@ -357,25 +357,37 @@ def replay_packets(packets: list, port: str, speed: float = 1.0, dry_run: bool =
     
     print(f"Opening {port}...")
     ser = serial.Serial(port, 115200, timeout=1)
-    time.sleep(2)  # Wait for device reset
+    time.sleep(2)  # Wait for device to be ready
+    
+    # Drain any pending output
+    while ser.in_waiting:
+        line = ser.readline()
+        print(f"  [device] {line.decode('utf-8', errors='replace').strip()}")
     
     print(f"Replaying {len(packets)} packets at {speed}x speed...")
+    print("Press Ctrl+C to stop\n")
     
     start_time = time.time()
     last_ts = 0
     
     try:
         for i, pkt in enumerate(packets):
-            # Calculate delay
+            # Calculate delay based on packet timestamps
             delay_ms = (pkt["ts"] - last_ts) / speed
             if delay_ms > 0:
                 time.sleep(delay_ms / 1000.0)
             
-            # Send packet as hex line
-            data = bytes.fromhex(pkt["hex"])
-            ser.write(data)
+            # Send packet as hex line (firmware expects "AABBCCDD\n" or "hex=AABBCCDD\n")
+            hex_line = f"{pkt['hex']}\n"
+            ser.write(hex_line.encode('ascii'))
+            ser.flush()
             
             last_ts = pkt["ts"]
+            
+            # Check for device responses
+            while ser.in_waiting:
+                response = ser.readline()
+                print(f"  [device] {response.decode('utf-8', errors='replace').strip()}")
             
             if i % 100 == 0:
                 elapsed = time.time() - start_time

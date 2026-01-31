@@ -459,6 +459,7 @@ void setup() {
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule, &cameraAlertModule);
 
 #ifndef REPLAY_MODE
+#ifndef SERIAL_REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
     const V1Settings& bleSettings = settingsManager.get();
     SerialLog.printf("Starting BLE (proxy: %s, name: %s)\n", 
@@ -485,6 +486,10 @@ void setup() {
     
     // Register V1 connection callback for auto-push
     bleClient.onV1Connected(onV1Connected);
+#else
+    SerialLog.println("[SERIAL_REPLAY_MODE] BLE disabled - reading packets from USB serial");
+    SerialLog.println("Send hex packets as: AABBCCDD... or hex=AABBCCDD...");
+#endif
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
@@ -539,7 +544,7 @@ void loop() {
 
     tapGestureModule.process(now);
     
-#ifndef REPLAY_MODE
+#if !defined(REPLAY_MODE) && !defined(SERIAL_REPLAY_MODE)
     // Process BLE events
     bleClient.process();
 #endif
