@@ -1254,8 +1254,8 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   
   Serial.printf("[Camera] Binary: %lu records to load\n", static_cast<unsigned long>(count));
   
-  // Read records in batches
-  const size_t BATCH_SIZE = 64;
+  // Read records in batches (128 records × 24 bytes = 3KB stack, safe for ESP32-S3)
+  const size_t BATCH_SIZE = 128;
   BinaryRecord batch[BATCH_SIZE];
   size_t remaining = count;
   size_t loaded = 0;
