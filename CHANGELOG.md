@@ -17,11 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - V1 packet parser (30 tests)
   - Run via `pio test -e native`
 
-- **Error Codes**: Structured error code system (`src/error_codes.h`)
-  - Categorized codes: BLE, GPS, Storage, WiFi, V1, System
-  - Helper macros for error classification
-  - Human-readable error strings
-
 - **Security Warning**: Default password warning banner in web UI
   - Shows on all pages when using factory default password
   - Dismissible per session

@@ -1810,7 +1810,14 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     }
     
     // Protect queue operations from concurrent access (BLE callback vs main loop)
-    SemaphoreGuard lock(bleNotifyMutex);
+    if (bleNotifyMutex && xSemaphoreTake(bleNotifyMutex, 0) != pdTRUE) {
+        // Queue busy – drop to avoid blocking in callback path
+        proxyMetrics.dropCount++;
+        if (proxyMetrics.dropCount % 10 == 1) {  // Log every 10th drop to avoid spam
+            Serial.printf("[Proxy] Drop #%lu (mutex busy)\n", proxyMetrics.dropCount);
+        }
+        return;
+    }
     
     // Queue packet for async send (non-blocking)
     // Use simple ring buffer with drop-oldest backpressure
@@ -1819,6 +1826,9 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
         proxyQueueTail = (proxyQueueTail + 1) % PROXY_QUEUE_SIZE;
         proxyQueueCount--;
         proxyMetrics.dropCount++;
+        if (proxyMetrics.dropCount % 10 == 1) {  // Log every 10th drop to avoid spam
+            Serial.printf("[Proxy] Drop #%lu (queue full)\n", proxyMetrics.dropCount);
+        }
     }
     
     // Add packet to queue
@@ -1832,6 +1842,10 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     // Track high water mark
     if (proxyQueueCount > proxyMetrics.queueHighWater) {
         proxyMetrics.queueHighWater = proxyQueueCount;
+    }
+
+    if (bleNotifyMutex) {
+        xSemaphoreGive(bleNotifyMutex);
     }
 }
 

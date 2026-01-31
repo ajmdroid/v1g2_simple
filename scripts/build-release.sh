@@ -30,6 +30,12 @@ mkdir -p "$RELEASE_DIR"
 cp .pio/build/waveshare-349/bootloader.bin "$RELEASE_DIR/"
 cp .pio/build/waveshare-349/partitions.bin "$RELEASE_DIR/"
 
+# Copy camera database files if they exist
+if ls camera_data/*.bin 1>/dev/null 2>&1; then
+    echo "📷 Copying camera database files..."
+    cp camera_data/*.bin "$RELEASE_DIR/"
+fi
+
 # Get boot_app0.bin from PlatformIO
 BOOT_APP0=$(find ~/.platformio/packages/framework-arduinoespressif32*/tools/partitions -name "boot_app0.bin" 2>/dev/null | head -1)
 if [ -z "$BOOT_APP0" ]; then

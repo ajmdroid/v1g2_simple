@@ -91,7 +91,7 @@ jobs:
         if: steps.check.outputs.should_release == 'true'
         run: |
           sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
-          sed -i 's/## V1 Simple Display - Version .*/## V1 Simple Display - Version ${{ steps.version.outputs.version }}/' docs/MANUAL.md
+          sed -i 's/^\\*\\*Version:\\*\\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
       
       # ========== BUILD ==========
       - name: Build web interface
@@ -125,7 +125,7 @@ jobs:
           
           esptool.py --chip esp32s3 merge_bin \
             -o release/merged-firmware.bin \
-            --flash_mode dio \
+            --flash_mode qio \
             --flash_freq 80m \
             --flash_size 16MB \
             0x0000 release/bootloader.bin \
@@ -169,7 +169,7 @@ jobs:
           files: |
             release/merged-firmware.bin
             release/manifest.json
-            camera_data/*.bin
+            release/*.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
