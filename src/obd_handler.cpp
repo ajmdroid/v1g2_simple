@@ -99,7 +99,7 @@ public:
     
     void onConfirmPasskey(NimBLEConnInfo& connInfo, uint32_t pass_key) override {
         // Device is asking us to confirm a displayed PIN
-        Serial.printf("[OBD] Security: Confirm passkey %06d - accepting\n", pass_key);
+        Serial.printf("[OBD] Security: Confirm passkey %06lu - accepting\n", static_cast<unsigned long>(pass_key));
         NimBLEDevice::injectConfirmPasskey(connInfo, true);
     }
     
@@ -134,10 +134,10 @@ OBDHandler::OBDHandler()
     , connectionFailures(0)
     , lastKnownRssi(-127)
     , pendingClientDelete(false)
-    , obdMutex(nullptr)
     , obdTaskHandle(nullptr)
     , taskRunning(false)
     , taskShouldExit(false) {
+    obdMutex = nullptr;
     
     // Initialize lastData with zero values
     lastData.speed_kph = 0;

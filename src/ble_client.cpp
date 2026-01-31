@@ -42,7 +42,7 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
 // Task to restart advertising after delay
 // Pattern derived from v1g2-t4s3 reference implementation for NimBLE 2.x dual-role stability
 // Only restarts if no client is connected
-static void restartAdvertisingTask(void* param) {
+[[maybe_unused]] static void restartAdvertisingTask(void* param) {
     vTaskDelay(pdMS_TO_TICKS(150));
     
     // Don't restart advertising if a client is already connected
@@ -654,7 +654,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
 
 bool V1BLEClient::connectToServer() {
     std::string addrStr = targetAddress.toString();
-    int addrType = hasTargetDevice ? targetDevice.getAddressType() : targetAddressType;
+    [[maybe_unused]] int addrType = hasTargetDevice ? targetDevice.getAddressType() : targetAddressType;
     
     // ========== CONNECTION GUARDS ==========
     // Prevent overlapping connection attempts which cause EBUSY errors
@@ -1710,7 +1710,7 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     );
     
     // Additional notify characteristic
-    NimBLECharacteristic* pNotifyAlt = pProxyService->createCharacteristic(
+    [[maybe_unused]] NimBLECharacteristic* pNotifyAlt = pProxyService->createCharacteristic(
         "92A0BCE0-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );

@@ -176,8 +176,8 @@ bool CameraManager::loadDatabase(const char* path, bool append) {
   
   size_t addedCount = cameras.size() - startCount;
   uint32_t elapsed = millis() - startTime;
-  Serial.printf("[Camera] Loaded %d cameras from %s in %dms (%d parse errors)\n", 
-                addedCount, path, elapsed, parseErrors);
+  Serial.printf("[Camera] Loaded %zu cameras from %s in %lums (%zu parse errors)\n", 
+                addedCount, path, static_cast<unsigned long>(elapsed), parseErrors);
   
   // Log type breakdown
   if (DEBUG_LOGS) {
@@ -246,21 +246,23 @@ bool CameraManager::loadBinaryDatabase(const char* path, bool append) {
   
   // Check version
   if (header.version != 1) {
-    Serial.printf("[Camera] Unsupported binary version: %d\n", header.version);
+    Serial.printf("[Camera] Unsupported binary version: %lu\n",
+                  static_cast<unsigned long>(header.version));
     file.close();
     return false;
   }
   
   // Validate record size
   if (header.recordSize != sizeof(BinaryRecord)) {
-    Serial.printf("[Camera] Record size mismatch: expected %d, got %d\n", 
-                  sizeof(BinaryRecord), header.recordSize);
+    Serial.printf("[Camera] Record size mismatch: expected %zu, got %lu\n", 
+                  sizeof(BinaryRecord), static_cast<unsigned long>(header.recordSize));
     file.close();
     return false;
   }
   
-  Serial.printf("[Camera] Binary file: %d records, %d bytes each\n", 
-                header.count, header.recordSize);
+  Serial.printf("[Camera] Binary file: %lu records, %lu bytes each\n", 
+                static_cast<unsigned long>(header.count),
+                static_cast<unsigned long>(header.recordSize));
   
   // Reserve space for efficiency
   cameras.reserve(cameras.size() + header.count);
@@ -312,8 +314,8 @@ bool CameraManager::loadBinaryDatabase(const char* path, bool append) {
   
   size_t addedCount = cameras.size() - startCount;
   uint32_t elapsed = millis() - startTime;
-  Serial.printf("[Camera] Loaded %d cameras from %s in %dms (binary)\n", 
-                addedCount, path, elapsed);
+  Serial.printf("[Camera] Loaded %zu cameras from %s in %lums (binary)\n", 
+                addedCount, path, static_cast<unsigned long>(elapsed));
   
   return addedCount > 0;
 }
@@ -502,8 +504,9 @@ bool CameraManager::buildRegionalCache(float lat, float lon, float radiusMiles) 
   xSemaphoreGive(cameraMutex);
   
   uint32_t elapsed = millis() - startTime;
-  Serial.printf("[Camera] Regional cache: %d of %d cameras within %.0f mi (took %dms)\n",
-                regionalCache.size(), cameras.size(), radiusMiles, elapsed);
+  Serial.printf("[Camera] Regional cache: %zu of %zu cameras within %.0f mi (took %lums)\n",
+                regionalCache.size(), cameras.size(), radiusMiles,
+                static_cast<unsigned long>(elapsed));
   
   return !regionalCache.empty();
 }
@@ -591,7 +594,8 @@ bool CameraManager::saveRegionalCache(fs::FS* filesystem, const char* path) {
   file.close();
   
   uint32_t elapsed = millis() - startTime;
-  Serial.printf("[Camera] Saved %d cameras to cache in %dms\n", regionalCache.size(), elapsed);
+  Serial.printf("[Camera] Saved %zu cameras to cache in %lums\n",
+                regionalCache.size(), static_cast<unsigned long>(elapsed));
   
   return true;
 }
@@ -666,8 +670,9 @@ bool CameraManager::loadRegionalCache(fs::FS* filesystem, const char* path) {
   
   cacheBuiltMs = millis();
   uint32_t elapsed = millis() - startTime;
-  Serial.printf("[Camera] Loaded %d cached cameras in %dms (center: %.4f,%.4f)\n",
-                regionalCache.size(), elapsed, cacheCenterLat, cacheCenterLon);
+  Serial.printf("[Camera] Loaded %zu cached cameras in %lums (center: %.4f,%.4f)\n",
+                regionalCache.size(), static_cast<unsigned long>(elapsed),
+                cacheCenterLat, cacheCenterLon);
   
   return true;
 }
@@ -1163,8 +1168,8 @@ bool CameraManager::loadDatabaseIncremental() {
                           (recordsLoaded * 100 / totalRecords) : 0;
     
     uint32_t fileElapsed = millis() - fileStart;
-    Serial.printf("[Camera] Loaded %d from %s in %dms (bg%s)\n", 
-                  fileRecords, path, fileElapsed,
+    Serial.printf("[Camera] Loaded %zu from %s in %lums (bg%s)\n", 
+                  fileRecords, path, static_cast<unsigned long>(fileElapsed),
                   files[fileIdx].useBinary ? ",bin" : "");
   }
   
@@ -1174,8 +1179,8 @@ bool CameraManager::loadDatabaseIncremental() {
   loadProgressPercent = 100;
   
   uint32_t totalElapsed = millis() - overallStart;
-  Serial.printf("[Camera] Background load complete: %d cameras in %dms\n",
-                cameras.size(), totalElapsed);
+  Serial.printf("[Camera] Background load complete: %zu cameras in %lums\n",
+                cameras.size(), static_cast<unsigned long>(totalElapsed));
   
   return !cameras.empty();
 }
@@ -1190,7 +1195,8 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
     return 0;
   }
   
-  Serial.printf("[Camera] File size: %d bytes\n", file.size());
+  Serial.printf("[Camera] File size: %llu bytes\n",
+                static_cast<unsigned long long>(file.size()));
   
   // Read header manually to avoid alignment issues on ESP32
   // Binary format: VCAM (4) + version (4, uint32 LE) + count (4, LE) + recordSize (4, LE) = 16 bytes
@@ -1198,7 +1204,7 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   size_t bytesRead = file.read(headerBuf, 16);
   
   if (bytesRead != 16) {
-    Serial.printf("[Camera] Failed to read header: got %d bytes\n", bytesRead);
+    Serial.printf("[Camera] Failed to read header: got %zu bytes\n", bytesRead);
     file.close();
     return 0;
   }
@@ -1209,8 +1215,11 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   uint32_t count = headerBuf[8] | (headerBuf[9] << 8) | (headerBuf[10] << 16) | (headerBuf[11] << 24);
   uint32_t recordSize = headerBuf[12] | (headerBuf[13] << 8) | (headerBuf[14] << 16) | (headerBuf[15] << 24);
   
-  Serial.printf("[Camera] Header: magic=%s ver=%u count=%u recSize=%u\n",
-                magic, version, count, recordSize);
+  Serial.printf("[Camera] Header: magic=%s ver=%lu count=%lu recSize=%lu\n",
+                magic,
+                static_cast<unsigned long>(version),
+                static_cast<unsigned long>(count),
+                static_cast<unsigned long>(recordSize));
   Serial.printf("[Camera] Raw: %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X\n",
                 headerBuf[0], headerBuf[1], headerBuf[2], headerBuf[3],
                 headerBuf[4], headerBuf[5], headerBuf[6], headerBuf[7],
@@ -1224,7 +1233,8 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   }
   
   if (version != 1) {
-    Serial.printf("[Camera] Invalid version: %d (expected 1)\n", version);
+    Serial.printf("[Camera] Invalid version: %lu (expected 1)\n",
+                  static_cast<unsigned long>(version));
     file.close();
     return 0;
   }
@@ -1236,13 +1246,13 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   }
   
   if (recordSize != sizeof(BinaryRecord)) {
-    Serial.printf("[Camera] Invalid record size: %d (expected %d)\n", 
-                  recordSize, sizeof(BinaryRecord));
+  Serial.printf("[Camera] Invalid record size: %lu (expected %zu)\n", 
+                static_cast<unsigned long>(recordSize), sizeof(BinaryRecord));
     file.close();
     return 0;
   }
   
-  Serial.printf("[Camera] Binary: %u records to load\n", count);
+  Serial.printf("[Camera] Binary: %lu records to load\n", static_cast<unsigned long>(count));
   
   // Read records in batches
   const size_t BATCH_SIZE = 64;

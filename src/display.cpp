@@ -338,9 +338,12 @@ V1Display::V1Display() {
 
 V1Display::~V1Display() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
     if (tft) delete tft;
     if (gfxPanel) delete gfxPanel;
     if (bus) delete bus;
+#pragma GCC diagnostic pop
 #endif
 }
 
@@ -1060,13 +1063,13 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     TFT_CALL(setTextSize)(2);  // Size 2 = ~16px height
     
     // Draw main volume "5V" in main volume color
-    char mainBuf[4];
+    char mainBuf[5];  // allow up to three digits plus suffix and null
     snprintf(mainBuf, sizeof(mainBuf), "%dV", mainVol);
     TFT_CALL(setTextColor)(s.colorVolumeMain, PALETTE_BG);
     GFX_drawString(tft, mainBuf, x, y);
     
     // Draw mute volume "0M" in mute volume color, offset to the right
-    char muteBuf[4];
+    char muteBuf[5];  // allow up to three digits plus suffix and null
     snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
     TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
     GFX_drawString(tft, muteBuf, x + 36, y);  // Aligned with RSSI number
@@ -1433,7 +1436,7 @@ void V1Display::drawBatteryIndicator() {
 
             FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
             int textW = bbox.xMax - bbox.xMin;
-            int textH = bbox.yMax - bbox.yMin;
+            [[maybe_unused]] int textH = bbox.yMax - bbox.yMin;
 
             // Position text at top-right corner - use fixed Y position near top
             int textX = SCREEN_WIDTH - textW - 4;
@@ -2758,7 +2761,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         int distanceFt = -1;        // Distance in feet for comparison
         uint16_t color = 0;
     } lastDrawnPositions[2];
-    static int lastDrawnCount = 0;
+    [[maybe_unused]] static int lastDrawnCount = 0;
     
     // Track profile changes - clear cards when profile rotates
     static int lastCardProfileSlot = -1;
@@ -2801,7 +2804,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         // Only fully return if no camera cards to draw
         if (!hasActiveCameras) {
             // Clear the card area
-            const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+            [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
             const int clearWidth = signalBarsX - startX;
             if (clearWidth > 0) {
                 FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
@@ -2929,7 +2932,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
     
     // For debug logging if needed
-    bool doDebug = false;
+    [[maybe_unused]] bool doDebug = false;
     
     // Helper: get signal bars for an alert based on direction
     auto getAlertBars = [](const AlertData& a) -> uint8_t {
@@ -2983,7 +2986,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
     
     // Track camera state for change detection (now tracks multiple cameras)
-    static int lastActiveCameraCount = 0;
+    [[maybe_unused]] static int lastActiveCameraCount = 0;
     
     // === INCREMENTAL UPDATE LOGIC ===
     // Instead of clearing all cards and redrawing, check each position independently
@@ -3053,7 +3056,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         return false;
     };
     
-    const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+    [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
     
     // Process each card position
     for (int i = 0; i < 2; i++) {
@@ -3110,7 +3113,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
                 
                 const int contentCenterY = cardY + 18;
-                int topRowY = cardY + 11;
+                [[maybe_unused]] int topRowY = cardY + 11;
                 
                 // Direction arrow
                 int arrowX = cardX + 18;
@@ -3130,7 +3133,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             
             // Draw distance (always when full redraw, or just update if dynamic)
             if (needsFullRedraw || needsDynamicUpdate) {
-                int topRowY = cardY + 11;
+                [[maybe_unused]] int topRowY = cardY + 11;
                 int labelX = cardX + 36;
                 
                 // Clear just the distance text area
@@ -3205,7 +3208,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
             
             const int contentCenterY = cardY + 18;
-            int topRowY = cardY + 11;
+            [[maybe_unused]] int topRowY = cardY + 11;
             
             // Direction arrow
             int arrowX = cardX + 18;
@@ -4301,8 +4304,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     auto drawSideArrow = [&](bool active, bool needsClear) {
         // Clear just the side arrow region if needed
         if (needsClear) {
-            const int headW = (int)(28 * scale);
-            const int headH = (int)(22 * scale);
+            [[maybe_unused]] const int headW = (int)(28 * scale);
+            [[maybe_unused]] const int headH = (int)(22 * scale);
             int sideTop = cy - headH - 2;
             int sideHeight = headH * 2 + 4;
             FILL_RECT(clearLeft, sideTop, clearWidth, sideHeight, PALETTE_BG);
@@ -4312,8 +4315,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = (int)(66 * scale);   // Center bar width
         const int barH = sideBarH;
-        const int headW = (int)(28 * scale);  // Arrow head width
-        const int headH = (int)(22 * scale);  // Arrow head height
+        [[maybe_unused]] const int headW = (int)(28 * scale);  // Arrow head width
+        [[maybe_unused]] const int headH = (int)(22 * scale);  // Arrow head height
         const int halfH = barH / 2;
 
         // Fill center bar
@@ -4337,7 +4340,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     };
 
     // Clear entire arrow region once, then redraw all
-    const int headH = (int)(22 * scale);
+    [[maybe_unused]] const int headH = (int)(22 * scale);
     int totalTop = topArrowCenterY - topH/2 - 2;
     int totalBottom = bottomArrowCenterY + bottomH/2 + 2;
     FILL_RECT(clearLeft, totalTop, clearWidth, totalBottom - totalTop, PALETTE_BG);
@@ -4400,7 +4403,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     const int barHeight = 10;
     const int barSpacing = 6;
 #endif
-    const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
+    [[maybe_unused]] const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
 
     // Place bars to the right of the band stack and vertically centered
 #if defined(DISPLAY_WAVESHARE_349)

@@ -264,6 +264,8 @@ struct V1Settings {
     bool cameraAudioEnabled;           // Play audio for camera alerts
     uint16_t colorCameraAlert;         // Camera alert display color (default: orange)
     
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wreorder"
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -308,6 +310,19 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         kittScannerEnabled(false),   // KITT scanner off by default (easter egg)
+        logAlerts(true),                 // Alert logging on by default
+        logWifi(true),                   // WiFi logging on by default
+        logBle(false),                   // BLE logging off by default
+        logGps(false),                   // GPS logging off by default
+        logObd(false),                   // OBD logging off by default
+        logSystem(true),                 // System/storage logging on by default
+        logDisplay(false),               // Display latency logging off by default
+        logPerfMetrics(false),           // Perf metrics logging off by default
+        logAudio(false),                 // Audio logging off by default
+        logCamera(false),                // Camera logging off by default
+        logLockout(false),               // Lockout logging off by default
+        logTouch(false),                 // Touch logging off by default
+        logFormat(0),
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -326,13 +341,6 @@ struct V1Settings {
         speedVolumeBoost(2),             // Add 2 volume levels when above threshold
         lowSpeedMuteEnabled(false),      // Low-speed voice mute disabled by default
         lowSpeedMuteThresholdMph(5),     // Mute voice below 5 mph (parking lot mode)
-        logAlerts(true),                 // Alert logging on by default
-        logWifi(true),                   // WiFi logging on by default
-        logBle(false),                   // BLE logging off by default
-        logGps(false),                   // GPS logging off by default
-        logObd(false),                   // OBD logging off by default
-        logSystem(true),                 // System/storage logging on by default
-        logDisplay(false),               // Display latency logging off by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -390,6 +398,7 @@ struct V1Settings {
         cameraAlertALPR(true),          // ALPR cameras on
         cameraAudioEnabled(true),       // Audio alerts on
         colorCameraAlert(0xFD20) {}     // Orange (camera alert color)
+#pragma GCC diagnostic pop
 };
 
 class SettingsManager {

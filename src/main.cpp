@@ -609,7 +609,7 @@ void loop() {
         lastStatusUpdate = now;
         
         if (bleClient.isConnected()) {
-            DisplayState state = parser.getDisplayState();
+            [[maybe_unused]] DisplayState state = parser.getDisplayState();
             if (parser.hasAlerts()) {
                 SerialLog.printf("Active alerts: %d\n", parser.getAlertCount());
             }

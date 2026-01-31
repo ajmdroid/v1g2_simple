@@ -134,6 +134,14 @@ jobs:
             0x10000 release/firmware.bin \
             0xc90000 release/littlefs.bin
           
+          # Optionally include camera databases if present
+          if compgen -G "camera_data/*.bin" > /dev/null; then
+            cp camera_data/*.bin release/ || true
+            echo "Included $(ls camera_data/*.bin | wc -l) camera DB file(s)."
+          else
+            echo "No camera_data/*.bin found; skipping camera DB assets."
+          fi
+          
           # Update manifest with version
           sed -i "s|\"version\": \".*\"|\"version\": \"${{ steps.version.outputs.tag }}\"|" docs/install/manifest.json
           cp docs/install/manifest.json release/
@@ -197,6 +205,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Version bumped and committed" >> $GITHUB_STEP_SUMMARY
           echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Camera databases downloaded" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Camera databases packaged when present" >> $GITHUB_STEP_SUMMARY
           echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY
           echo "✅ Web flasher updated" >> $GITHUB_STEP_SUMMARY

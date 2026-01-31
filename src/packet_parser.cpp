@@ -382,7 +382,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     // Byte0: high nibble = alert index (0-based), low nibble = alert count
     // The first alert sent (index 0) is the V1's priority alert
-    uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
+    [[maybe_unused]] uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
         alertCount = 0;

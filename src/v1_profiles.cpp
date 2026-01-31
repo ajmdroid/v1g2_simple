@@ -274,8 +274,10 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
             if (storedCrc != computedCrc) {
                 delete[] fileContent;
                 lastError = "CRC mismatch - profile file corrupted";
-                Serial.printf("[V1Profiles] %s (stored: %08X, computed: %08X)\n", 
-                    lastError.c_str(), storedCrc, computedCrc);
+                Serial.printf("[V1Profiles] %s (stored: %08lX, computed: %08lX)\n",
+                    lastError.c_str(),
+                    static_cast<unsigned long>(storedCrc),
+                    static_cast<unsigned long>(computedCrc));
                 return false;
             }
             Serial.println("[V1Profiles] CRC32 validated OK");
@@ -446,8 +448,8 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     // Step 6: Remove backup after successful save (optional - keep for extra safety)
     // fs->remove(bakPath);  // Uncomment to remove backup after success
     
-    Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08X)\n", 
-        profile.name.c_str(), written, crc);
+    Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08lX)\n",
+        profile.name.c_str(), written, static_cast<unsigned long>(crc));
     return ProfileSaveResult(true);
 }
 

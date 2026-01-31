@@ -141,7 +141,7 @@ void AutoLockoutManager::addEventToCluster(int clusterIdx, const AlertEvent& eve
     }
   } else {
     if (DEBUG_LOGS) {
-      Serial.printf("[AutoLockout] Skipped hit to cluster '%s' (interval: %ld sec, need: %ld sec)\n",
+      Serial.printf("[AutoLockout] Skipped hit to cluster '%s' (interval: %lld sec, need: %lld sec)\n",
                     cluster.name.c_str(), timeSinceLastHit, learnIntervalSec);
     }
   }
@@ -205,7 +205,7 @@ void AutoLockoutManager::createNewCluster(const AlertEvent& event) {
   clusters.push_back(cluster);
   
   if (DEBUG_LOGS) {
-    Serial.printf("[AutoLockout] Created cluster '%s' at (%.6f, %.6f) freq: %u kHz\n",
+    Serial.printf("[AutoLockout] Created cluster '%s' at (%.6f, %.6f) freq: %lu kHz\n",
                   cluster.name.c_str(), cluster.centerLat, cluster.centerLon, cluster.frequency_khz);
   }
 }
@@ -526,7 +526,7 @@ void AutoLockoutManager::recordPassthrough(float lat, float lon, float heading, 
         appendLogMiss(lat, lon, heading, now);
       } else {
         if (DEBUG_LOGS) {
-          Serial.printf("[AutoLockout] Skipped miss for '%s' (interval: %ld sec, need: %ld sec)\n",
+          Serial.printf("[AutoLockout] Skipped miss for '%s' (interval: %lld sec, need: %lld sec)\n",
                         cluster.name.c_str(), timeSinceLastMiss, unlearnIntervalSec);
         }
       }

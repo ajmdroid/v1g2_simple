@@ -2,7 +2,7 @@
 
 Complete API documentation for the V1-Simple web interface and REST endpoints.
 
-**Base URL**: `http://192.168.4.1` (default AP mode)  
+**Base URL**: `http://192.168.35.5` (default AP mode)  
 **Content-Type**: `application/x-www-form-urlencoded` (POST) or `application/json`
 
 ---
@@ -38,7 +38,7 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
     "ap_active": true,
     "sta_connected": true,
     "sta_ip": "192.168.1.100",
-    "ap_ip": "192.168.4.1",
+    "ap_ip": "192.168.35.5",
     "ssid": "HomeNetwork",
     "rssi": -45,
     "sta_enabled": true,
