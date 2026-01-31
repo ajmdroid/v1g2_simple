@@ -3,7 +3,15 @@
  */
 
 #include "perf_metrics.h"
+#include "debug_logger.h"
 #include <ArduinoJson.h>
+
+// PerfMetrics logging macro - logs to Serial AND debugLogger when PerfMetrics category enabled
+static constexpr bool PERF_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#define PERF_LOG(...) do { \
+    if (PERF_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::PerfMetrics)) debugLogger.logf(DebugLogCategory::PerfMetrics, __VA_ARGS__); \
+} while(0)
 
 // Global instances
 PerfCounters perfCounters;
@@ -52,7 +60,7 @@ bool perfMetricsCheckReport() {
     uint32_t minUsVal = perfLatency.minUs.load();
     uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
-    Serial.printf("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu camLoad=%lu camCache=%lu\n",
+    PERF_LOG("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu camLoad=%lu camCache=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
         (unsigned long)perfCounters.parseSuccesses.load(),
         (unsigned long)perfCounters.queueDrops.load(),

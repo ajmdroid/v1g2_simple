@@ -4,27 +4,34 @@
 #include "lockout_manager.h"
 #include "gps_handler.h"
 #include "storage_manager.h"
+#include "debug_logger.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <FS.h>
 #include <memory>
 #include <math.h>
 
+// Lockout logging macro - logs to Serial AND debugLogger when Lockout category enabled
+static constexpr bool LOCKOUT_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#define LOCKOUT_LOG(...) do { \
+    if (LOCKOUT_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Lockout)) debugLogger.logf(DebugLogCategory::Lockout, __VA_ARGS__); \
+} while(0)
+
 // Ensure the profiles directory exists on the active filesystem
 static bool ensureProfilesDir(fs::FS* fs) {
   if (!fs) {
-    Serial.println("[Lockout] ensureProfilesDir: no filesystem");
+    LOCKOUT_LOG("[Lockout] ensureProfilesDir: no filesystem\n");
     return false;
   }
   if (fs->exists("/v1profiles")) return true;
   bool created = fs->mkdir("/v1profiles");
   if (!created) {
-    Serial.println("[Lockout] ensureProfilesDir: mkdir /v1profiles FAILED");
+    LOCKOUT_LOG("[Lockout] ensureProfilesDir: mkdir /v1profiles FAILED\n");
   }
   return created;
 }
 
-static constexpr bool DEBUG_LOGS = false;  // Set true for verbose logging
 static constexpr float MIN_RADIUS_M = 5.0f;
 static constexpr float MAX_RADIUS_M = 5000.0f;  // generous upper bound
 static constexpr float DUP_EPSILON = 1e-4f;     // ~11m at equator
@@ -36,7 +43,7 @@ static constexpr size_t MAX_LOCKOUTS = 500;
 LockoutManager::LockoutManager() : lockoutMutex(nullptr) {
   lockoutMutex = xSemaphoreCreateMutex();
   if (!lockoutMutex) {
-    Serial.println("[Lockout] Failed to create mutex!");
+    LOCKOUT_LOG("[Lockout] Failed to create mutex!\n");
   }
 }
 
@@ -54,9 +61,7 @@ float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) c
 bool LockoutManager::loadFromJSON(const char* jsonPath) {
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs || !fs->exists(jsonPath)) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] No lockout file found at %s\n", jsonPath);
-    }
+    LOCKOUT_LOG("[Lockout] No lockout file found at %s\n", jsonPath);
     // Try secondary LittleFS copy if SD is primary
     fs::FS* lfs = storageManager.getLittleFS();
     if (lfs && lfs->exists(jsonPath)) {
@@ -72,9 +77,7 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   
   File file = fs->open(jsonPath, "r");
   if (!file) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Failed to open %s\n", jsonPath);
-    }
+    LOCKOUT_LOG("[Lockout] Failed to open %s\n", jsonPath);
     return false;
   }
 
@@ -83,8 +86,8 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   constexpr size_t MAX_LOCKOUT_FILE_SIZE = 150 * 1024;
   size_t fileSize = file.size();
   if (fileSize > MAX_LOCKOUT_FILE_SIZE) {
-    Serial.printf("[Lockout] WARNING: File too large (%u bytes > %u max), skipping\n",
-                  (unsigned)fileSize, (unsigned)MAX_LOCKOUT_FILE_SIZE);
+    LOCKOUT_LOG("[Lockout] WARNING: File too large (%u bytes > %u max), skipping\n",
+                (unsigned)fileSize, (unsigned)MAX_LOCKOUT_FILE_SIZE);
     file.close();
     return false;
   }
@@ -95,14 +98,14 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
   file.close();
   
   if (error) {
-    Serial.printf("[Lockout] JSON parse error: %s\n", error.c_str());
+    LOCKOUT_LOG("[Lockout] JSON parse error: %s\n", error.c_str());
     return false;
   }
   
   // Lock for vector modifications
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
-    Serial.println("[Lockout] Failed to acquire mutex for load");
+    LOCKOUT_LOG("[Lockout] Failed to acquire mutex for load\n");
     return false;
   }
   
@@ -124,23 +127,17 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
     lockout.muteLaser = obj["muteLaser"] | false;
 
     if (!isValidLockout(lockout)) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Skipping invalid lockout '%s'\n", lockout.name.c_str());
-      }
+      LOCKOUT_LOG("[Lockout] Skipping invalid lockout '%s'\n", lockout.name.c_str());
       continue;
     }
     if (isDuplicate(lockout)) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Skipping duplicate lockout '%s'\n", lockout.name.c_str());
-      }
+      LOCKOUT_LOG("[Lockout] Skipping duplicate lockout '%s'\n", lockout.name.c_str());
       continue;
     }
     lockouts.push_back(lockout);
   }
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Loaded %d lockout zones\n", lockouts.size());
-  }
+  LOCKOUT_LOG("[Lockout] Loaded %d lockout zones\n", lockouts.size());
   
   return true;
 }
@@ -153,7 +150,7 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
   {
     LockoutLock lock(lockoutMutex);
     if (!lock.ok()) {
-      Serial.println("[Lockout] Failed to acquire mutex for save");
+      LOCKOUT_LOG("[Lockout] Failed to acquire mutex for save\n");
       return false;
     }
     
@@ -173,22 +170,20 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
   
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs) {
-    Serial.println("[Lockout] No filesystem available for save");
+    LOCKOUT_LOG("[Lockout] No filesystem available for save\n");
     return false;
   }
   
   // Ensure directory exists - if it fails, don't try to write
   if (!ensureProfilesDir(fs)) {
-    Serial.printf("[Lockout] Cannot save: /v1profiles directory unavailable (SD=%s)\n",
-                  storageManager.isSDCard() ? "yes" : "no");
+    LOCKOUT_LOG("[Lockout] Cannot save: /v1profiles directory unavailable (SD=%s)\n",
+                storageManager.isSDCard() ? "yes" : "no");
     return false;
   }
   
   bool ok = StorageManager::writeJsonFileAtomic(*fs, jsonPath, doc);
 
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Saved lockout zones (%d bytes)%s\n", ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
-  }
+  LOCKOUT_LOG("[Lockout] Saved lockout zones (%d bytes)%s\n", ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   
   if (!ok) {
     return false;
@@ -199,7 +194,7 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
   if (!skipBackup && lfs && lfs != fs) {
     ensureProfilesDir(lfs);
     if (!StorageManager::writeJsonFileAtomic(*lfs, jsonPath, doc)) {
-      Serial.println("[Lockout] WARNING: LittleFS mirror write failed (SD primary OK)");
+      LOCKOUT_LOG("[Lockout] WARNING: LittleFS mirror write failed (SD primary OK)\n");
     }
   }
   
@@ -214,48 +209,40 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
 void LockoutManager::addLockout(const Lockout& lockout) {
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
-    Serial.println("[Lockout] Failed to acquire mutex for add");
+    LOCKOUT_LOG("[Lockout] Failed to acquire mutex for add\n");
     return;
   }
   
   // Enforce memory limit
   if (lockouts.size() >= MAX_LOCKOUTS) {
-    Serial.printf("[Lockout] Max lockout limit reached (%zu) - rejecting '%s'\n", 
-                  MAX_LOCKOUTS, lockout.name.c_str());
+    LOCKOUT_LOG("[Lockout] Max lockout limit reached (%zu) - rejecting '%s'\n", 
+                MAX_LOCKOUTS, lockout.name.c_str());
     return;
   }
   
   if (!isValidLockout(lockout)) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Rejecting invalid lockout '%s'\n", lockout.name.c_str());
-    }
+    LOCKOUT_LOG("[Lockout] Rejecting invalid lockout '%s'\n", lockout.name.c_str());
     return;
   }
   if (isDuplicate(lockout)) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Rejecting duplicate lockout '%s'\n", lockout.name.c_str());
-    }
+    LOCKOUT_LOG("[Lockout] Rejecting duplicate lockout '%s'\n", lockout.name.c_str());
     return;
   }
   lockouts.push_back(lockout);
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Added: %s (%.6f, %.6f, %.0fm)\n",
-                  lockout.name.c_str(), lockout.latitude, lockout.longitude, lockout.radius_m);
-  }
+  LOCKOUT_LOG("[Lockout] Added: %s (%.6f, %.6f, %.0fm)\n",
+              lockout.name.c_str(), lockout.latitude, lockout.longitude, lockout.radius_m);
 }
 
 void LockoutManager::removeLockout(int index) {
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
-    Serial.println("[Lockout] Failed to acquire mutex for remove");
+    LOCKOUT_LOG("[Lockout] Failed to acquire mutex for remove\n");
     return;
   }
   
   if (index >= 0 && index < (int)lockouts.size()) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Removed: %s\n", lockouts[index].name.c_str());
-    }
+    LOCKOUT_LOG("[Lockout] Removed: %s\n", lockouts[index].name.c_str());
     lockouts.erase(lockouts.begin() + index);
   }
 }
@@ -263,41 +250,33 @@ void LockoutManager::removeLockout(int index) {
 void LockoutManager::updateLockout(int index, const Lockout& lockout) {
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
-    Serial.println("[Lockout] Failed to acquire mutex for update");
+    LOCKOUT_LOG("[Lockout] Failed to acquire mutex for update\n");
     return;
   }
   
   if (index >= 0 && index < (int)lockouts.size()) {
     if (!isValidLockout(lockout)) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Rejecting invalid update for '%s'\n", lockout.name.c_str());
-      }
+      LOCKOUT_LOG("[Lockout] Rejecting invalid update for '%s'\n", lockout.name.c_str());
       return;
     }
     if (isDuplicate(lockout, index)) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Rejecting duplicate update for '%s'\n", lockout.name.c_str());
-      }
+      LOCKOUT_LOG("[Lockout] Rejecting duplicate update for '%s'\n", lockout.name.c_str());
       return;
     }
     lockouts[index] = lockout;
     
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Updated: %s\n", lockout.name.c_str());
-    }
+    LOCKOUT_LOG("[Lockout] Updated: %s\n", lockout.name.c_str());
   }
 }
 
 void LockoutManager::clearAll() {
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
-    Serial.println("[Lockout] Failed to acquire mutex for clearAll");
+    LOCKOUT_LOG("[Lockout] Failed to acquire mutex for clearAll\n");
     return;
   }
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Cleared all %d lockouts\n", lockouts.size());
-  }
+  LOCKOUT_LOG("[Lockout] Cleared all %d lockouts\n", lockouts.size());
   lockouts.clear();
 }
 
@@ -376,10 +355,8 @@ bool LockoutManager::shouldMuteAlert(float lat, float lon, Band band) const {
     }
     
     if (shouldMute) {
-      if (DEBUG_LOGS) {
-        Serial.printf("[Lockout] Muting alert (inside '%s', %.0fm from center)\n",
-                      lockout.name.c_str(), dist);
-      }
+      LOCKOUT_LOG("[Lockout] Muting alert (inside '%s', %.0fm from center)\n",
+                  lockout.name.c_str(), dist);
       return true;
     }
   }
@@ -413,9 +390,7 @@ std::vector<int> LockoutManager::getActiveLockouts(float lat, float lon) const {
 
 bool LockoutManager::backupToSD() {
   if (!storageManager.isReady() || !storageManager.isSDCard()) {
-    if (DEBUG_LOGS) {
-      Serial.println("[Lockout] SD card not available for backup");
-    }
+    LOCKOUT_LOG("[Lockout] SD card not available for backup\n");
     return false;
   }
   
@@ -433,7 +408,7 @@ bool LockoutManager::backupToSD() {
   {
     LockoutLock lock(lockoutMutex);
     if (!lock.ok()) {
-      Serial.println("[Lockout] Failed to acquire mutex for SD backup");
+      LOCKOUT_LOG("[Lockout] Failed to acquire mutex for SD backup\n");
       return false;
     }
     
@@ -453,10 +428,8 @@ bool LockoutManager::backupToSD() {
   
   bool ok = StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockouts.json", doc);
   
-  if (DEBUG_LOGS) {
-    Serial.printf("[Lockout] Backed up lockouts to SD (%d bytes)%s\n", 
-                  ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
-  }
+  LOCKOUT_LOG("[Lockout] Backed up lockouts to SD (%d bytes)%s\n", 
+              ok ? measureJson(doc) : 0, ok ? "" : " [FAILED]");
   
   return ok;
 }
@@ -483,17 +456,13 @@ bool LockoutManager::restoreFromSD() {
   file.close();
   
   if (error) {
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] SD backup parse error: %s\n", error.c_str());
-    }
+    LOCKOUT_LOG("[Lockout] SD backup parse error: %s\n", error.c_str());
     return false;
   }
   
   // Verify backup format
   if (doc["_type"] != "v1simple_lockouts_backup") {
-    if (DEBUG_LOGS) {
-      Serial.println("[Lockout] Invalid SD backup format");
-    }
+    LOCKOUT_LOG("[Lockout] Invalid SD backup format\n");
     return false;
   }
   
@@ -501,7 +470,7 @@ bool LockoutManager::restoreFromSD() {
   {
     LockoutLock lock(lockoutMutex);
     if (!lock.ok()) {
-      Serial.println("[Lockout] Failed to acquire mutex for SD restore");
+      LOCKOUT_LOG("[Lockout] Failed to acquire mutex for SD restore\n");
       return false;
     }
     
@@ -522,18 +491,14 @@ bool LockoutManager::restoreFromSD() {
       lockout.muteLaser = obj["muteLaser"] | false;
 
       if (!isValidLockout(lockout) || isDuplicate(lockout)) {
-        if (DEBUG_LOGS) {
-          Serial.printf("[Lockout] Skipping invalid/duplicate lockout '%s' from SD backup\n", lockout.name.c_str());
-        }
+        LOCKOUT_LOG("[Lockout] Skipping invalid/duplicate lockout '%s' from SD backup\n", lockout.name.c_str());
         continue;
       }
 
       lockouts.push_back(lockout);
     }
     
-    if (DEBUG_LOGS) {
-      Serial.printf("[Lockout] Restored %d lockouts from SD backup\n", lockouts.size());
-    }
+    LOCKOUT_LOG("[Lockout] Restored %d lockouts from SD backup\n", lockouts.size());
   }  // Release lock before calling saveToJSON
   
   // Save to LittleFS (will acquire its own lock)
@@ -545,9 +510,7 @@ bool LockoutManager::restoreFromSD() {
 bool LockoutManager::checkAndRestoreFromSD() {
   // Check if LittleFS is empty and SD backup exists
   if (lockouts.empty() && storageManager.isSDCard()) {
-    if (DEBUG_LOGS) {
-      Serial.println("[Lockout] LittleFS empty, checking for SD backup...");
-    }
+    LOCKOUT_LOG("[Lockout] LittleFS empty, checking for SD backup...\n");
     return restoreFromSD();
   }
   return false;

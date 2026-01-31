@@ -44,6 +44,13 @@ extern void cancelColorPreview();
 
 // Enable to dump LittleFS root on WiFi start (debug only); keep false for release
 static constexpr bool WIFI_DEBUG_FS_DUMP = false;
+static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+
+// WiFi logging macro - logs to Serial AND debugLogger when WiFi category enabled
+#define WIFI_LOG(...) do { \
+    if (WIFI_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) debugLogger.logf(DebugLogCategory::Wifi, __VA_ARGS__); \
+} while(0)
 
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
@@ -176,18 +183,18 @@ bool WiFiManager::isUiActive(unsigned long timeoutMs) const {
 bool WiFiManager::startSetupMode() {
     // Always-on AP; idempotent start
     if (setupModeState == SETUP_MODE_AP_ON) {
-        Serial.println("[SetupMode] Already active");
+        WIFI_LOG("[SetupMode] Already active\n");
         return true;
     }
 
-    Serial.println("[SetupMode] Starting AP (always-on mode)...");
+    WIFI_LOG("[SetupMode] Starting AP (always-on mode)...\n");
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
 
     // Check if WiFi client is enabled - use AP+STA mode
     const V1Settings& settings = settingsManager.get();
     if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
-        Serial.println("[SetupMode] WiFi client enabled, using AP+STA mode");
+        WIFI_LOG("[SetupMode] WiFi client enabled, using AP+STA mode\n");
         WiFi.mode(WIFI_AP_STA);
         wifiClientState = WIFI_CLIENT_DISCONNECTED;
     } else {
@@ -208,17 +215,13 @@ bool WiFiManager::startSetupMode() {
     EVENT_LOG(EVT_WIFI_AP_START, 0);
     EVENT_LOG(EVT_SETUP_MODE_ENTER, 0);
 
-    Serial.printf("[SetupMode] AP started - connect to SSID shown on display\n");
-    Serial.printf("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
+    WIFI_LOG("[SetupMode] AP started - connect to SSID shown on display\n");
+    WIFI_LOG("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
     uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
     if (timeoutMins == 0) {
-        Serial.println("[SetupMode] AP will remain on (no timeout)");
+        WIFI_LOG("[SetupMode] AP will remain on (no timeout)\n");
     } else {
-        Serial.printf("[SetupMode] AP auto-timeout set to %d minutes\n", timeoutMins);
-    }
-
-    if (debugLogger.isEnabled()) {
-        debugLogger.log(DebugLogCategory::Wifi, "Setup mode AP started");
+        WIFI_LOG("[SetupMode] AP auto-timeout set to %d minutes\n", timeoutMins);
     }
 
     return true;
@@ -229,7 +232,7 @@ bool WiFiManager::stopSetupMode(bool manual) {
         return false;
     }
 
-    Serial.println("[SetupMode] Stopping AP...");
+    WIFI_LOG("[SetupMode] Stopping AP...\n");
     server.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
@@ -257,7 +260,7 @@ void WiFiManager::setupAP() {
     String apSSID = settings.apSSID.length() ? settings.apSSID : "V1-Simple";
     String apPass = (settings.apPassword.length() >= 8) ? settings.apPassword : "setupv1g2";  // WPA2 requires 8+
     
-    Serial.printf("[SetupMode] Starting AP: %s (pass: ****)\n", apSSID.c_str());
+    WIFI_LOG("[SetupMode] Starting AP: %s (pass: ****)\n", apSSID.c_str());
     
     // Configure AP IP
     IPAddress apIP(192, 168, 35, 5);
@@ -267,24 +270,24 @@ void WiFiManager::setupAP() {
     if (!WiFi.softAPConfig(apIP, gateway, subnet)) {
         // NOTE: Intentional fallthrough - softAP will still work with default IP (192.168.4.1)
         // Device remains functional. Reviewed January 20, 2026.
-        Serial.println("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1");
+        WIFI_LOG("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1\n");
     }
     
     if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
-        Serial.println("[SetupMode] softAP failed!");
+        WIFI_LOG("[SetupMode] softAP failed!\n");
         return;
     }
     
-    Serial.printf("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+    WIFI_LOG("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
-        Serial.println("[SetupMode] ERROR: LittleFS mount failed (not formatting automatically)");
+        WIFI_LOG("[SetupMode] ERROR: LittleFS mount failed (not formatting automatically)\n");
         return;
     }
-    Serial.println("[SetupMode] LittleFS mounted");
+    WIFI_LOG("[SetupMode] LittleFS mounted\n");
     // Dump LittleFS root for diagnostics (opt-in to avoid startup stall)
     if (WIFI_DEBUG_FS_DUMP) {
         dumpLittleFSRoot();

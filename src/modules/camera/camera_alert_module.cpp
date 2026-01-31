@@ -3,7 +3,14 @@
 #include <algorithm>
 #include <LittleFS.h>
 
+#include "../../debug_logger.h"
 #include "../../perf_metrics.h"
+
+// Camera alert logging macro - logs to SD when category enabled
+#define CAMERA_LOG(...) do { \
+    Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Camera)) debugLogger.logf(DebugLogCategory::Camera, __VA_ARGS__); \
+} while(0)
 
 CameraAlertModule::CameraAlertModule() {}
 
@@ -62,7 +69,7 @@ void CameraAlertModule::startTest(int type) {
 
     play_camera_voice(params.voiceType);
 
-    Serial.printf("[Camera] Test alert: %s - cycling 1→2→3 cameras over 9s\n", params.typeName);
+    CAMERA_LOG("[Camera] Test alert: %s - cycling 1→2→3 cameras over 9s\n", params.typeName);
 }
 
 bool CameraAlertModule::ensureTestActive() {
@@ -71,10 +78,9 @@ bool CameraAlertModule::ensureTestActive() {
         cameraTestEnded = true;  // Signal caller to restore display
         cameraTestPhase = 0;
         if (display) {
-            display->clearAllCameraAlerts();
             display->clearCameraAlerts();
         }
-        Serial.println("[Camera] Test alert ended");
+        CAMERA_LOG("[Camera] Test alert ended\n");
     }
     return cameraTestActive;
 }
@@ -88,16 +94,16 @@ void CameraAlertModule::process() {
     if (cameraManager->isBackgroundLoading()) {
         static unsigned long lastProgressLog = 0;
         if (millis() - lastProgressLog > 10000) {  // Every 10 seconds
-            Serial.printf("[Camera] Background load: %d%% (%d cameras)\n",
-                          cameraManager->getLoadProgress(), cameraManager->getLoadedCount());
+            CAMERA_LOG("[Camera] Background load: %d%% (%d cameras)\n",
+                       cameraManager->getLoadProgress(), cameraManager->getLoadedCount());
             lastProgressLog = millis();
         }
         bgLoadLoggedComplete = false;
     } else if (!bgLoadLoggedComplete && cameraManager->getCameraCount() > 0) {
         bgLoadLoggedComplete = true;
         PERF_INC(cameraBgLoads);
-        Serial.printf("[Camera] Background load complete: %d cameras ready\n",
-                      cameraManager->getCameraCount());
+        CAMERA_LOG("[Camera] Background load complete: %d cameras ready\n",
+                   cameraManager->getCameraCount());
         // Cache rebuild deferred to refreshRegionalCacheIfNeeded (respects GPS cooldown)
     }
 
@@ -107,7 +113,6 @@ void CameraAlertModule::process() {
         activeCameraAlerts.clear();
         recentlyPassedCameras.clear();
         if (display) {
-            display->clearAllCameraAlerts();
             display->clearCameraAlerts();
         }
         return;
@@ -129,7 +134,6 @@ void CameraAlertModule::clearActiveCamerasAndMarkPassed(unsigned long now) {
     activeCameraAlerts.clear();
     alertStartedAtMs = 0;
     if (display) {
-        display->clearAllCameraAlerts();
         display->clearCameraAlerts();
     }
 }
@@ -142,7 +146,7 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
     if (gpsReady && !wasGpsReady) {
         // GPS just became ready - start cooldown
         gpsReadyAtMs = now;
-        Serial.println("[Camera] GPS ready - deferring cache operations for 3s");
+        CAMERA_LOG("[Camera] GPS ready - deferring cache operations for 3s\n");
     }
     wasGpsReady = gpsReady;
 
@@ -172,7 +176,7 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
     }
 
     if (needsRefresh) {
-        Serial.printf("[Camera] Building regional cache at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
+        CAMERA_LOG("[Camera] Building regional cache at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
         if (cameraManager->buildRegionalCache(cacheFix.latitude, cacheFix.longitude, CACHE_RADIUS_MILES)) {
             PERF_INC(cameraCacheRefreshes);
             cameraManager->saveRegionalCache(&LittleFS, "/cameras_cache.json");
@@ -185,11 +189,10 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         // Safety: clear stale alerts if GPS lost for too long
         if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
             (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
-            Serial.println("[Camera] Safety timeout: clearing stale alerts (GPS lost)");
+            CAMERA_LOG("[Camera] Safety timeout: clearing stale alerts (GPS lost)\n");
             activeCameraAlerts.clear();
             alertStartedAtMs = 0;
             if (display) {
-                display->clearAllCameraAlerts();
                 display->clearCameraAlerts();
             }
         }
@@ -210,7 +213,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     if (!activeCameraAlerts.empty()) {
         bool anyCamerasNearby = cameraManager->hasNearbyCamera(lat, lon, alertRadius * 2.0f);
         if (!anyCamerasNearby) {
-            Serial.println("[Camera] No cameras in area - clearing stale alerts");
+            CAMERA_LOG("[Camera] No cameras in area - clearing stale alerts\n");
             clearActiveCamerasAndMarkPassed(now);
             return;
         }
@@ -219,7 +222,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     // Also enforce max duration as final safety (shouldn't normally trigger)
     if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
         (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
-        Serial.println("[Camera] Safety timeout: clearing stale alerts (max duration)");
+        CAMERA_LOG("[Camera] Safety timeout: clearing stale alerts (max duration)\n");
         clearActiveCamerasAndMarkPassed(now);
     }
 
@@ -285,8 +288,8 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
                 passed.lon = oldCam.camera.longitude;
                 passed.passedTimeMs = now;
                 recentlyPassedCameras.push_back(passed);
-                Serial.printf("[Camera] PASSED: %s (distance increased from %.0fm to %.0fm)\n",
-                              oldCam.camera.getTypeName(), oldCam.distance_m, currentDist);
+                CAMERA_LOG("[Camera] PASSED: %s (distance increased from %.0fm to %.0fm)\n",
+                           oldCam.camera.getTypeName(), oldCam.distance_m, currentDist);
             }
         }
     }
@@ -307,10 +310,10 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         if (!wasAlreadyActive) {
             // New camera entering alert range
             bool isPrimary = activeCameraAlerts.empty();
-            Serial.printf("[Camera] ALERT: %s at %.0fm AHEAD%s\n",
-                          newCam.camera.getTypeName(),
-                          newCam.distance_m,
-                          isPrimary ? " (PRIMARY)" : " (SECONDARY)");
+            CAMERA_LOG("[Camera] ALERT: %s at %.0fm AHEAD%s\n",
+                       newCam.camera.getTypeName(),
+                       newCam.distance_m,
+                       isPrimary ? " (PRIMARY)" : " (SECONDARY)");
 
             // Play voice alert only for new primary camera
             if (isPrimary && camSettings.cameraAudioEnabled) {
@@ -352,7 +355,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     // Debug: log active camera count changes
     static int lastCameraCount = 0;
     if ((int)activeCameraAlerts.size() != lastCameraCount) {
-        Serial.printf("[Camera] Active cameras: %d\n", (int)activeCameraAlerts.size());
+        CAMERA_LOG("[Camera] Active cameras: %d\n", (int)activeCameraAlerts.size());
         lastCameraCount = (int)activeCameraAlerts.size();
     }
 }
@@ -398,7 +401,7 @@ void CameraAlertModule::handleTestCards(const V1Settings& dispSettings) {
     int newPhase = (elapsed / CAMERA_TEST_PHASE_DURATION_MS) % 3;
     if (newPhase != cameraTestPhase) {
         cameraTestPhase = newPhase;
-        Serial.printf("[Camera] Test phase: %d camera(s)\n", cameraTestPhase + 1);
+        CAMERA_LOG("[Camera] Test phase: %d camera(s)\n", cameraTestPhase + 1);
     }
 
     int numTestCameras = cameraTestPhase + 1;

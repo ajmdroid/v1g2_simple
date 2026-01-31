@@ -4,6 +4,7 @@
  */
 
 #include "display.h"
+#include "debug_logger.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include "v1simple_logo.h"  // Splash screen image (640x172)
@@ -18,6 +19,13 @@
 #include <esp_heap_caps.h>
 #include <cstring>
 #include "../include/FreeSansBold24pt7b.h"  // Custom font for band labels
+
+// Display logging macro - logs to Serial AND debugLogger when Display category enabled
+static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#define DISPLAY_LOG(...) do { \
+    if (DISPLAY_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Display)) debugLogger.logf(DebugLogCategory::Display, __VA_ARGS__); \
+} while(0)
 
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
@@ -483,15 +491,10 @@ bool V1Display::begin() {
     TFT_CALL(setTextSize)(2);
 #endif
 
-    Serial.println("Display initialized successfully!");
-    Serial.print("Screen: ");
-    Serial.print(SCREEN_WIDTH);
-    Serial.print("x");
-    Serial.println(SCREEN_HEIGHT);
+    DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
     // Initialize OpenFontRender for antialiased Modern font
-    Serial.println("Initializing OpenFontRender...");
-    Serial.printf("Font data size: %d bytes\n", sizeof(MontserratBold));
+    DISPLAY_LOG("[DISPLAY] Initializing OpenFontRender (font=%d bytes)\n", sizeof(MontserratBold));
     ofr.setSerial(Serial);  // Enable debug output
     ofr.showFreeTypeVersion();
     ofr.setDrawer(*tft);  // Use Arduino_GFX canvas for drawing (dereference pointer)

@@ -88,9 +88,20 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
 constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
 constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
-#define BLE_LOGF(...) do { if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); } while (0)
-#define BLE_LOGLN(msg) do { if (BLE_DEBUG_LOGS) Serial.println(msg); } while (0)
-#define BLE_SM_LOGF(...) do { if (BLE_STATE_MACHINE_LOGS) Serial.printf(__VA_ARGS__); } while (0)
+
+// BLE logging macros - log to Serial AND debugLogger when BLE category enabled
+#define BLE_LOGF(...) do { \
+    if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
+} while (0)
+#define BLE_LOGLN(msg) do { \
+    if (BLE_DEBUG_LOGS) Serial.println(msg); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.log(DebugLogCategory::Ble, msg); \
+} while (0)
+#define BLE_SM_LOGF(...) do { \
+    if (BLE_STATE_MACHINE_LOGS) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
+} while (0)
 } // namespace
 
 // Static instance for callbacks

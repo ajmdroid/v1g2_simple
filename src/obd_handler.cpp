@@ -29,12 +29,16 @@ OBDHandler obdHandler;
 // Static instance pointer for callbacks
 static OBDHandler* s_obdInstance = nullptr;
 
-// Logging macros
-#define OBD_LOGF(...) do { if (DEBUG_OBD) Serial.printf(__VA_ARGS__); } while(0)
-#define OBD_LOGLN(msg) do { if (DEBUG_OBD) Serial.println(msg); } while(0)
-
-// Debug logger macro for settings-enabled OBD logging
-#define OBD_DEBUG_LOGF(...) do { debugLogger.logf(DebugLogCategory::Obd, __VA_ARGS__); } while(0)
+// OBD logging macros - log to Serial (if DEBUG_OBD) AND debugLogger when OBD category enabled
+static constexpr bool DEBUG_OBD = false;  // Set true for verbose Serial logging
+#define OBD_LOGF(...) do { \
+    if (DEBUG_OBD) Serial.printf(__VA_ARGS__); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Obd)) debugLogger.logf(DebugLogCategory::Obd, __VA_ARGS__); \
+} while(0)
+#define OBD_LOGLN(msg) do { \
+    if (DEBUG_OBD) Serial.println(msg); \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Obd)) debugLogger.log(DebugLogCategory::Obd, msg); \
+} while(0)
 
 // Simple RAII lock for the OBD mutex
 class ObdLock {
@@ -184,7 +188,7 @@ void OBDHandler::begin() {
         // Wait for V1 to connect and settle before attempting OBD connection
         Serial.printf("[OBD] Saved device: %s (%s) - waiting for V1 to connect first\n", 
                       savedName.c_str(), savedAddr.c_str());
-        OBD_DEBUG_LOGF("[OBD] Saved device: %s - waiting for V1", savedName.c_str());
+        OBD_LOGF("[OBD] Saved device: %s - waiting for V1", savedName.c_str());
         
         targetAddress = NimBLEAddress(std::string(savedAddr.c_str()), BLE_ADDR_PUBLIC);
         targetDeviceName = savedName;
@@ -197,7 +201,7 @@ void OBDHandler::begin() {
     } else {
         // No saved device - wait for manual scan from UI
         Serial.println("[OBD] No saved device - waiting for manual scan");
-        OBD_DEBUG_LOGF("[OBD] No saved device configured");
+        OBD_LOGF("[OBD] No saved device configured");
         state = OBDState::IDLE;
         scanActive = false;
         detectionComplete = true;  // Not "failed", just idle
@@ -221,7 +225,7 @@ void OBDHandler::tryAutoConnect() {
     
     Serial.printf("[OBD] tryAutoConnect: Connecting to saved device %s (%s)\n",
                   targetDeviceName.c_str(), targetAddress.toString().c_str());
-    OBD_DEBUG_LOGF("[OBD] Auto-connecting to %s", targetDeviceName.c_str());
+    OBD_LOGF("[OBD] Auto-connecting to %s", targetDeviceName.c_str());
     
     // Reset connection failure counter for fresh auto-connect attempt
     connectionFailures = 0;
@@ -399,7 +403,7 @@ void OBDHandler::handleConnecting() {
     
     if (connectToDevice()) {
         Serial.println("[OBD] Connected! Discovering services...");
-        OBD_DEBUG_LOGF("[OBD] Connected to %s", targetDeviceName.c_str());
+        OBD_LOGF("[OBD] Connected to %s", targetDeviceName.c_str());
         if (discoverServices()) {
             Serial.println("[OBD] Services discovered, initializing ELM327...");
             // Reset failure counter on successful connection
@@ -407,7 +411,7 @@ void OBDHandler::handleConnecting() {
             state = OBDState::INITIALIZING;
         } else {
             Serial.println("[OBD] Service discovery failed");
-            OBD_DEBUG_LOGF("[OBD] Service discovery failed for %s", targetDeviceName.c_str());
+            OBD_LOGF("[OBD] Service discovery failed for %s", targetDeviceName.c_str());
             disconnect();
             connectionFailures++;
             Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
@@ -419,7 +423,7 @@ void OBDHandler::handleConnecting() {
         }
     } else {
         Serial.println("[OBD] Connection failed");
-        OBD_DEBUG_LOGF("[OBD] Connection failed to %s", targetDeviceName.c_str());
+        OBD_LOGF("[OBD] Connection failed to %s", targetDeviceName.c_str());
         connectionFailures++;
         Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
         if (connectionFailures >= MAX_CONNECTION_FAILURES) {
@@ -433,13 +437,13 @@ void OBDHandler::handleConnecting() {
 void OBDHandler::handleInitializing() {
     if (initializeELM327()) {
         Serial.println("[OBD] ELM327 initialized successfully");
-        OBD_DEBUG_LOGF("[OBD] ELM327 initialized - %s ready", targetDeviceName.c_str());
+        OBD_LOGF("[OBD] ELM327 initialized - %s ready", targetDeviceName.c_str());
         // Fully connected and ready - ensure failure counter is reset
         connectionFailures = 0;
         state = OBDState::READY;
     } else {
         Serial.println("[OBD] ELM327 initialization failed");
-        OBD_DEBUG_LOGF("[OBD] ELM327 init failed for %s", targetDeviceName.c_str());
+        OBD_LOGF("[OBD] ELM327 init failed for %s", targetDeviceName.c_str());
         disconnect();
         connectionFailures++;
         Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
@@ -455,7 +459,7 @@ void OBDHandler::handlePolling() {
     // Check if still connected
     if (pOBDClient && !pOBDClient->isConnected()) {
         Serial.println("[OBD] Connection lost");
-        OBD_DEBUG_LOGF("[OBD] Connection lost to %s", targetDeviceName.c_str());
+        OBD_LOGF("[OBD] Connection lost to %s", targetDeviceName.c_str());
         {
             ObdLock lock(obdMutex);
             if (lock.ok()) {
@@ -1004,7 +1008,7 @@ bool OBDHandler::requestSpeed() {
         if (lock.ok()) {
             lastData.valid = false;
         }
-        OBD_DEBUG_LOGF("[OBD] Speed query failed");
+        OBD_LOGF("[OBD] Speed query failed");
         return false;
     }
     
@@ -1023,7 +1027,7 @@ bool OBDHandler::requestSpeed() {
         // Log speed periodically when OBD logging is enabled
         if (millis() - lastSpeedLogMs >= SPEED_LOG_INTERVAL_MS) {
             lastSpeedLogMs = millis();
-            OBD_DEBUG_LOGF("[OBD] Speed: %d km/h (%.1f mph)", speedKph, lastData.speed_mph);
+            OBD_LOGF("[OBD] Speed: %d km/h (%.1f mph)", speedKph, lastData.speed_mph);
         }
         return true;
     }
