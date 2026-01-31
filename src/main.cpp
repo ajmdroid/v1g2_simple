@@ -52,6 +52,7 @@
 #include "modules/power/power_module.h"
 #include "modules/perf/perf_reporter_module.h"
 #include "modules/ble/ble_queue_module.h"
+#include "modules/ble/ble_serial_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
 #include "modules/camera/camera_load_coordinator_module.h"
@@ -455,11 +456,11 @@ void setup() {
                                 &speedVolumeModule,
                                 &debugLogger);
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &displayPipelineModule, &powerModule);
+    bleSerialModule.begin(&bleQueueModule);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule, &cameraAlertModule);
 
 #ifndef REPLAY_MODE
-#ifndef SERIAL_REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
     const V1Settings& bleSettings = settingsManager.get();
     SerialLog.printf("Starting BLE (proxy: %s, name: %s)\n", 
@@ -486,10 +487,6 @@ void setup() {
     
     // Register V1 connection callback for auto-push
     bleClient.onV1Connected(onV1Connected);
-#else
-    SerialLog.println("[SERIAL_REPLAY_MODE] BLE disabled - reading packets from USB serial");
-    SerialLog.println("Send hex packets as: AABBCCDD... or hex=AABBCCDD...");
-#endif
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
@@ -544,13 +541,16 @@ void loop() {
 
     tapGestureModule.process(now);
     
-#if !defined(REPLAY_MODE) && !defined(SERIAL_REPLAY_MODE)
+#ifndef REPLAY_MODE
     // Process BLE events
     bleClient.process();
 #endif
     
     // Process queued BLE data (safe for SPI - runs in main loop context)
     bleQueueModule.process();
+    
+    // Process serial BLE replay (if enabled via web UI)
+    bleSerialModule.process();
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();

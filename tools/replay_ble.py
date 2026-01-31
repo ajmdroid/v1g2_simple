@@ -59,6 +59,7 @@ def parse_ndjson_log(log_path: Path) -> dict:
     """Parse debug log (NDJSON or legacy plain-text format)."""
     packets = []
     alerts = []
+    seq = 0
     
     # Regex to extract packet data from message
     pkt_re = re.compile(r'\[BLE:PKT\]\s*ts=(\d+)\s+len=(\d+)\s+hex=([0-9A-Fa-f]+)')
@@ -101,8 +102,10 @@ def parse_ndjson_log(log_path: Path) -> dict:
                     packets.append({
                         "ts": pkt_ts,
                         "len": length,
-                        "hex": hex_data
+                        "hex": hex_data,
+                        "seq": seq,
                     })
+                    seq += 1
                 continue
             
             # Check for alert state
@@ -120,7 +123,7 @@ def parse_ndjson_log(log_path: Path) -> dict:
 
 
 def deduplicate_packets(packets: list) -> list:
-    """Remove duplicate packets at same timestamp."""
+    """Remove duplicate packets at same timestamp (preserve first seen order)."""
     seen = set()
     unique = []
     
@@ -130,7 +133,7 @@ def deduplicate_packets(packets: list) -> list:
             seen.add(key)
             unique.append(pkt)
     
-    return sorted(unique, key=lambda p: p["ts"])
+    return unique
 
 
 def decode_alert_packet(hex_data: str) -> dict:
@@ -240,6 +243,7 @@ def analyze_packets(packets: list) -> dict:
         }
     
     packets = deduplicate_packets(packets)
+    packets = sorted(packets, key=lambda p: p["ts"])
     
     # Calculate timing
     first_ts = packets[0]["ts"]
@@ -334,13 +338,17 @@ def extract_segment_packets(packets: list, start_ts: int, end_ts: int,
 
 
 def normalize_timestamps(packets: list) -> list:
-    """Normalize timestamps to start at 0."""
+    """Normalize timestamps to start at 0, preserving order and metadata."""
     if not packets:
         return []
     
     min_ts = min(p["ts"] for p in packets)
-    return [{"ts": p["ts"] - min_ts, "len": p["len"], "hex": p["hex"]} 
-            for p in packets]
+    out = []
+    for pkt in packets:
+        copy = dict(pkt)
+        copy["ts"] = pkt["ts"] - min_ts
+        out.append(copy)
+    return out
 
 
 def replay_packets(packets: list, port: str, speed: float = 1.0, dry_run: bool = False):
@@ -372,15 +380,19 @@ def replay_packets(packets: list, port: str, speed: float = 1.0, dry_run: bool =
     
     try:
         for i, pkt in enumerate(packets):
-            # Calculate delay based on packet timestamps
-            delay_ms = (pkt["ts"] - last_ts) / speed
-            if delay_ms > 0:
-                time.sleep(delay_ms / 1000.0)
+            # Calculate delay based on packet timestamps, adjusted for speed
+            delay_ms = int((pkt["ts"] - last_ts) / speed)
+            if delay_ms < 0:
+                delay_ms = 0
             
-            # Send packet as hex line (firmware expects "AABBCCDD\n" or "hex=AABBCCDD\n")
-            hex_line = f"{pkt['hex']}\n"
-            ser.write(hex_line.encode('ascii'))
+            # Send packet with timing: "PKT:delay_ms:HEXDATA\n"
+            # The firmware will wait delay_ms before injecting the packet
+            packet_line = f"PKT:{delay_ms}:{pkt['hex']}\n"
+            ser.write(packet_line.encode('ascii'))
             ser.flush()
+            
+            # Wait for the firmware to process (delay + small buffer)
+            time.sleep(delay_ms / 1000.0 + 0.005)
             
             last_ts = pkt["ts"]
             
@@ -429,6 +441,8 @@ def main():
                         help="Replay speed multiplier (default: 1.0)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Don't actually send, just show what would be sent")
+    parser.add_argument("--dedupe", action="store_true",
+                        help="Deduplicate packets (recommended for analysis, OFF for realistic replay)")
     
     args = parser.parse_args()
     
@@ -443,15 +457,22 @@ def main():
             data = json.load(f)
         packets = data.get("packets", [])
         alerts = data.get("alerts", [])
+        # If seq missing (older files), regenerate to preserve order
+        if packets and "seq" not in packets[0]:
+            for i, pkt in enumerate(packets):
+                pkt["seq"] = i
     else:
         print(f"Parsing log file: {args.input}", file=sys.stderr)
         data = parse_ndjson_log(args.input)
         packets = data["packets"]
         alerts = data["alerts"]
     
-    # Deduplicate
-    packets = deduplicate_packets(packets)
-    print(f"Loaded {len(packets)} unique packets, {len(alerts)} alert states", file=sys.stderr)
+    # Optional deduplication (off by default for fidelity)
+    if args.dedupe:
+        packets = deduplicate_packets(packets)
+        print(f"Loaded {len(packets)} unique packets, {len(alerts)} alert states", file=sys.stderr)
+    else:
+        print(f"Loaded {len(packets)} packets (no dedupe), {len(alerts)} alert states", file=sys.stderr)
     
     # Analysis mode
     if args.analyze:
@@ -470,7 +491,9 @@ def main():
     
     # Find segments
     if args.segments or args.extract_segment is not None or args.extract_alerts:
-        segments = find_alert_windows(packets, alerts, args.margin)
+        # Use time-sorted copy for segment detection, but keep original ordering intact
+        time_sorted = sorted(packets, key=lambda p: p["ts"])
+        segments = find_alert_windows(time_sorted, alerts, args.margin)
         
         if args.segments:
             print(f"\n=== Alert Segments ({len(segments)}) ===")
@@ -503,8 +526,8 @@ def main():
                 )
                 all_alert_packets.extend(seg_pkts)
             
-            # Dedupe again and normalize
-            packets = deduplicate_packets(all_alert_packets)
+            # Normalize (dedupe only if requested)
+            packets = deduplicate_packets(all_alert_packets) if args.dedupe else all_alert_packets
             packets = normalize_timestamps(packets)
             print(f"\nExtracted {len(packets)} packets from {len(segments)} alert windows",
                   file=sys.stderr)
@@ -514,6 +537,7 @@ def main():
         if not args.port and not args.dry_run:
             print("ERROR: --port required for replay (or use --dry-run)", file=sys.stderr)
             sys.exit(1)
+        packets = sorted(packets, key=lambda p: (p["ts"], p.get("seq", 0)))
         replay_packets(packets, args.port, args.speed, args.dry_run)
     
     # Output JSON
