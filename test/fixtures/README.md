@@ -23,14 +23,23 @@ Go to **Dev** → **Download Log** to get `debug.log`
 ### 4. Parse and Extract Fixtures
 
 ```bash
-# See statistics and find interesting segments
-python tools/parse_ble_log.py debug.log --stats --segments
+# Analyze log and show statistics
+python tools/replay_ble.py debug.log --analyze
 
-# Extract a specific segment (e.g., segment 0)
-python tools/parse_ble_log.py debug.log --extract-segment 0 -o test/fixtures/ka_alert.json
+# Find alert segments
+python tools/replay_ble.py debug.log --segments
 
-# Extract full log
-python tools/parse_ble_log.py debug.log -o test/fixtures/full_drive.json
+# Extract packets from a specific alert segment
+python tools/replay_ble.py debug.log --extract-segment 0 -o test/fixtures/ka_alert.json
+
+# Extract all packets around alert windows
+python tools/replay_ble.py debug.log --extract-alerts -o test/fixtures/all_alerts.json
+
+# Replay packets over serial (with timing)
+python tools/replay_ble.py test/fixtures/ka_alert.json --replay --port /dev/tty.usbserial-XXX
+
+# Dry-run replay (show what would be sent)
+python tools/replay_ble.py test/fixtures/ka_alert.json --replay --dry-run
 ```
 
 ## Fixture Format
