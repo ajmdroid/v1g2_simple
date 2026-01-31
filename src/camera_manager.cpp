@@ -188,10 +188,10 @@ bool CameraManager::loadDatabase(const char* path, bool append) {
   return addedCount > 0;
 }
 
-// Binary format header structure (14 bytes, packed to match Python struct.pack('<4sHII'))
+// Binary format header structure (16 bytes, packed to match Python struct.pack('<4sIII'))
 struct __attribute__((packed)) BinaryHeader {
   char magic[4];        // "VCAM" - 4 bytes
-  uint16_t version;     // Format version (1) - 2 bytes (H in Python)
+  uint32_t version;     // Format version (1) - 4 bytes
   uint32_t count;       // Number of camera records - 4 bytes
   uint32_t recordSize;  // Size of each record (24 bytes) - 4 bytes
 };

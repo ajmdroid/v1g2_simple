@@ -498,19 +498,19 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
     """
     Save cameras to binary format for fast ESP32 loading.
     
-    Binary format (matches camera_manager.cpp):
-    - Header (14 bytes): 'VCAM' + version(2) + count(4) + recordSize(4)
+    Binary format (matches camera_manager.cpp BinaryHeader/BinaryRecord):
+    - Header (16 bytes): 'VCAM' + version(4) + count(4) + recordSize(4)
     - Records (24 bytes each):
         lat(f32) + lon(f32) + snapLat(f32) + snapLon(f32) +
-        bearing(u16) + width(u8) + tolerance(u8) + 
+        bearing(i16, *10) + width(u8) + tolerance(u8) + 
         type(u8) + speedLimit(u8) + flags(u8) + reserved(u8)
     """
     count = len(cameras)
     
     with open(output_path, 'wb') as f:
-        # Write header: magic(4) + version(2) + count(4) + recordSize(4) = 14 bytes
+        # Write header: magic(4) + version(4) + count(4) + recordSize(4) = 16 bytes
         header = b'VCAM'
-        header += struct.pack('<H', 1)  # version = 1
+        header += struct.pack('<I', 1)  # version = 1 (uint32)
         header += struct.pack('<I', count)  # camera count
         header += struct.pack('<I', 24)  # record size = 24 bytes
         f.write(header)
@@ -521,22 +521,32 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
             lon = cam.get('lon', 0.0)
             snap_lat = cam.get('slt', lat)  # snap lat, or original if not enriched
             snap_lon = cam.get('sln', lon)  # snap lon, or original if not enriched
-            bearing = int(cam.get('rbr', 0)) & 0xFFFF  # road bearing (0-359)
+            
+            # Bearing: stored as bearing * 10 for 0.1 degree precision
+            # Use -1 sentinel for unknown bearings
+            raw_bearing = cam.get('rbr', None)
+            if raw_bearing is None:
+                bearing = -1  # -1 sentinel for unknown
+            else:
+                bearing = int(float(raw_bearing) * 10)  # Multiply by 10 for precision
+            
             width = int(cam.get('cwm', 35)) & 0xFF  # corridor width meters
             tolerance = int(cam.get('btol', 30)) & 0xFF  # bearing tolerance degrees
             cam_type = cam.get('flg', 4) & 0xFF  # camera type (1=red, 2=speed, 4=alpr)
-            speed_limit = cam.get('spd', 0) & 0xFF  # speed limit if known
+            speed_limit = int(cam.get('spd', 0) or 0) & 0xFF  # speed limit if known
             flags = 0  # reserved flags
+            if cam.get('unt') == 'kmh':
+                flags |= 0x01  # bit 0 = metric
             
-            # Pack as: lat(f32) lon(f32) snapLat(f32) snapLon(f32) bearing(u16) width(u8) tol(u8) type(u8) speed(u8) flags(u8) reserved(u8)
+            # Pack as: lat(f32) lon(f32) snapLat(f32) snapLon(f32) bearing(i16) width(u8) tol(u8) type(u8) speed(u8) flags(u8) reserved(u8)
             record = struct.pack('<ffff', lat, lon, snap_lat, snap_lon)
-            record += struct.pack('<HBBBBBB', bearing, width, tolerance, cam_type, speed_limit, flags, 0)
+            record += struct.pack('<hBBBBBB', bearing, width, tolerance, cam_type, speed_limit, flags, 0)
             f.write(record)
     
     # Stats
     enriched_count = sum(1 for cam in cameras if 'rbr' in cam)
     print(f"\nSaved binary: {output_path}")
-    print(f"  {count} cameras, {14 + count * 24} bytes")
+    print(f"  {count} cameras, {16 + count * 24} bytes")
     if enriched_count > 0:
         print(f"  Road-enriched: {enriched_count} ({enriched_count * 100 // count}%)")
     
