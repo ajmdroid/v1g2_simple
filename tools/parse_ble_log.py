@@ -5,8 +5,10 @@ Parse V1 Simple debug logs and extract BLE packets for replay testing.
 Usage:
     python tools/parse_ble_log.py debug.log -o test/fixtures/drive_capture.json
     
-Log format expected:
-    [     12345 ms] [BLE:PKT] ts=12345 len=19 hex=AA040A430C...
+Log formats supported:
+    1. Legacy format: [     12345 ms] [BLE:PKT] ts=12345 len=19 hex=AA040A430C...
+    2. NDJSON format: {"@timestamp":"...", "millis":12345, "category":"ble", 
+                       "message":"[BLE:PKT] ts=12345 len=19 hex=AA040A430C..."}
 
 Output JSON format:
     {
@@ -31,33 +33,60 @@ from datetime import datetime
 from pathlib import Path
 
 
-# Regex to match BLE packet log lines
-# Format: [     12345 ms] [BLE:PKT] ts=12345 len=19 hex=AA040A430C...
+# Regex to match BLE packet log lines (works for both formats)
+# Format: [BLE:PKT] ts=12345 len=19 hex=AA040A430C...
 PACKET_RE = re.compile(
+    r'\[BLE:PKT\]\s*ts=(\d+)\s+len=(\d+)\s+hex=([0-9A-Fa-f]+)'
+)
+
+# Legacy format with timestamp prefix
+LEGACY_PACKET_RE = re.compile(
     r'\[\s*(\d+)\s*ms\]\s*\[BLE:PKT\]\s*ts=(\d+)\s+len=(\d+)\s+hex=([0-9A-Fa-f]+)'
 )
 
 # Regex to match alert state changes (for correlation)
-# Format: [     12345 ms] [Alerts] count=1 pri=Ka dir=FRONT freq=34712 ...
+# Format: [Alerts] count=1 pri=Ka dir=FRONT freq=34712 ...
 ALERT_RE = re.compile(
+    r'\[Alerts\]\s*count=(\d+)\s+pri=(\w+)\s+dir=(\w+)\s+freq=(\d+)'
+)
+
+# Legacy alert format with timestamp
+LEGACY_ALERT_RE = re.compile(
     r'\[\s*(\d+)\s*ms\]\s*\[Alerts\]\s*count=(\d+)\s+pri=(\w+)\s+dir=(\w+)\s+freq=(\d+)'
 )
 
 
 def parse_log_file(log_path: Path) -> dict:
-    """Parse a debug log file and extract BLE packets."""
+    """Parse a debug log file and extract BLE packets.
+    
+    Supports both legacy plain-text format and NDJSON format.
+    """
     packets = []
     alerts = []  # For correlation/validation
     
     with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
         for line in f:
-            # Try to match BLE packet line
-            match = PACKET_RE.search(line)
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Try NDJSON format first
+            millis = None
+            message = line
+            if line.startswith('{'):
+                try:
+                    entry = json.loads(line)
+                    millis = entry.get("millis")
+                    message = entry.get("message", "")
+                except json.JSONDecodeError:
+                    pass
+            
+            # Try to match BLE packet
+            match = PACKET_RE.search(message)
             if match:
-                log_ts = int(match.group(1))  # Timestamp from log prefix
-                pkt_ts = int(match.group(2))  # Timestamp from packet data
-                length = int(match.group(3))
-                hex_data = match.group(4).upper()
+                pkt_ts = int(match.group(1))
+                length = int(match.group(2))
+                hex_data = match.group(3).upper()
                 
                 # Validate hex length matches declared length
                 if len(hex_data) != length * 2:
@@ -72,8 +101,38 @@ def parse_log_file(log_path: Path) -> dict:
                 })
                 continue
             
+            # Also check legacy format
+            match = LEGACY_PACKET_RE.search(message)
+            if match:
+                pkt_ts = int(match.group(2))
+                length = int(match.group(3))
+                hex_data = match.group(4).upper()
+                
+                if len(hex_data) != length * 2:
+                    continue
+                    
+                packets.append({
+                    "ts": pkt_ts,
+                    "len": length,
+                    "hex": hex_data
+                })
+                continue
+            
             # Try to match alert state line (for correlation)
-            match = ALERT_RE.search(line)
+            match = ALERT_RE.search(message)
+            if match:
+                ts = millis if millis else 0
+                alerts.append({
+                    "ts": ts,
+                    "count": int(match.group(1)),
+                    "band": match.group(2),
+                    "dir": match.group(3),
+                    "freq": int(match.group(4))
+                })
+                continue
+            
+            # Also check legacy alert format
+            match = LEGACY_ALERT_RE.search(message)
             if match:
                 alerts.append({
                     "ts": int(match.group(1)),
