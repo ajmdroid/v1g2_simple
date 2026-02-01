@@ -857,6 +857,13 @@ void WiFiManager::handleSettingsApi() {
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["obdEnabled"] = settings.obdEnabled;
+    doc["idleDisplayMode"] = static_cast<int>(settings.idleDisplayMode);
+    doc["obdPrimaryMetric"] = static_cast<int>(settings.obdPrimaryMetric);
+    doc["obdCard1Metric"] = static_cast<int>(settings.obdCard1Metric);
+    doc["obdCard2Metric"] = static_cast<int>(settings.obdCard2Metric);
+    doc["colorObdPrimary"] = settings.colorObdPrimary;
+    doc["colorObdCard1"] = settings.colorObdCard1;
+    doc["colorObdCard2"] = settings.colorObdCard2;
     
     // Auto-lockout settings (JBV1-style)
     doc["lockoutEnabled"] = settings.lockoutEnabled;
@@ -997,6 +1004,42 @@ void WiFiManager::handleSettingsSave() {
     }
     if (server.hasArg("obdPin")) {
         settingsManager.setObdPin(server.arg("obdPin"));
+    }
+    
+    // OBD idle display settings
+    if (server.hasArg("idleDisplayMode")) {
+        int mode = server.arg("idleDisplayMode").toInt();
+        mode = std::max(0, std::min(mode, 6));  // Clamp to valid range (0-6)
+        settingsManager.updateIdleDisplayMode(static_cast<IdleDisplayMode>(mode));
+    }
+    if (server.hasArg("obdPrimaryMetric")) {
+        int metric = server.arg("obdPrimaryMetric").toInt();
+        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
+        settingsManager.updateObdPrimaryMetric(static_cast<ObdMetric>(metric));
+    }
+    if (server.hasArg("obdCard1Metric")) {
+        int metric = server.arg("obdCard1Metric").toInt();
+        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
+        settingsManager.updateObdCard1Metric(static_cast<ObdMetric>(metric));
+    }
+    if (server.hasArg("obdCard2Metric")) {
+        int metric = server.arg("obdCard2Metric").toInt();
+        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
+        settingsManager.updateObdCard2Metric(static_cast<ObdMetric>(metric));
+    }
+    
+    // OBD card colors
+    if (server.hasArg("colorObdPrimary")) {
+        uint16_t color = server.arg("colorObdPrimary").toInt();
+        settingsManager.setObdPrimaryColor(color);
+    }
+    if (server.hasArg("colorObdCard1")) {
+        uint16_t color = server.arg("colorObdCard1").toInt();
+        settingsManager.setObdCard1Color(color);
+    }
+    if (server.hasArg("colorObdCard2")) {
+        uint16_t color = server.arg("colorObdCard2").toInt();
+        settingsManager.setObdCard2Color(color);
     }
     
     // Auto-lockout settings (JBV1-style)
@@ -1801,6 +1844,20 @@ void WiFiManager::handleDisplayColorsSave() {
         settingsManager.setStatusObdColor(statusObdColor);
     }
     
+    // Handle OBD card colors
+    if (server.hasArg("obdPrimary")) {
+        uint16_t obdPrimaryColor = server.arg("obdPrimary").toInt();
+        settingsManager.setObdPrimaryColor(obdPrimaryColor);
+    }
+    if (server.hasArg("obdCard1")) {
+        uint16_t obdCard1Color = server.arg("obdCard1").toInt();
+        settingsManager.setObdCard1Color(obdCard1Color);
+    }
+    if (server.hasArg("obdCard2")) {
+        uint16_t obdCard2Color = server.arg("obdCard2").toInt();
+        settingsManager.setObdCard2Color(obdCard2Color);
+    }
+    
     // Handle camera alert color
     if (server.hasArg("cameraAlert")) {
         uint16_t cameraAlertColor = server.arg("cameraAlert").toInt();
@@ -2062,6 +2119,9 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["statusGpsWarn"] = s.colorStatusGpsWarn;
     doc["statusCam"] = s.colorStatusCam;
     doc["statusObd"] = s.colorStatusObd;
+    doc["obdPrimary"] = s.colorObdPrimary;
+    doc["obdCard1"] = s.colorObdCard1;
+    doc["obdCard2"] = s.colorObdCard2;
     doc["cameraAlert"] = s.colorCameraAlert;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
@@ -2332,6 +2392,9 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorStatusGpsWarn"] = s.colorStatusGpsWarn;
     doc["colorStatusCam"] = s.colorStatusCam;
     doc["colorStatusObd"] = s.colorStatusObd;
+    doc["colorObdPrimary"] = s.colorObdPrimary;
+    doc["colorObdCard1"] = s.colorObdCard1;
+    doc["colorObdCard2"] = s.colorObdCard2;
     doc["colorWiFiConnected"] = s.colorWiFiConnected;
     doc["colorRssiV1"] = s.colorRssiV1;
     doc["colorRssiProxy"] = s.colorRssiProxy;
@@ -2559,6 +2622,9 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorStatusGpsWarn"].is<int>()) s.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
     if (doc["colorStatusCam"].is<int>()) s.colorStatusCam = doc["colorStatusCam"];
     if (doc["colorStatusObd"].is<int>()) s.colorStatusObd = doc["colorStatusObd"];
+    if (doc["colorObdPrimary"].is<int>()) s.colorObdPrimary = doc["colorObdPrimary"];
+    if (doc["colorObdCard1"].is<int>()) s.colorObdCard1 = doc["colorObdCard1"];
+    if (doc["colorObdCard2"].is<int>()) s.colorObdCard2 = doc["colorObdCard2"];
     if (doc["colorCameraAlert"].is<int>()) s.colorCameraAlert = doc["colorCameraAlert"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     

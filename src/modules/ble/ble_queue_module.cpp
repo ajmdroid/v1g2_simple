@@ -252,12 +252,15 @@ void BleQueueModule::process() {
             if (power) {
                 power->onV1DataReceived();
             }
-            // Cancel preview immediately when live V1 data arrives
-            if (previewActive && preview) {
+            // Only cancel preview when V1 has an actual alert (not on every packet)
+            // This allows color preview to run while V1 is connected but resting
+            if (previewActive && preview && parser->getAlertCount() > 0) {
                 preview->cancel();
                 previewActive = false;
             }
-            if (displayPipeline) {
+            // Skip display pipeline draws while preview is running so the demo isn't overwritten
+            bool previewStillRunning = preview && preview->isRunning();
+            if (!previewStillRunning && displayPipeline) {
                 uint32_t nowMs = millis();
                 if (lastNotifyTsMs != 0 && nowMs >= lastNotifyTsMs) {
                     perfRecordNotifyToDisplayMs(nowMs - lastNotifyTsMs);
@@ -284,5 +287,4 @@ void BleQueueModule::processReplayData() {
     replayIndex = (replayIndex + 1) % REPLAY_SEQUENCE_LENGTH;
 }
 #endif
-
 

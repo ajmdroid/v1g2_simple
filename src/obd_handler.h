@@ -1,13 +1,18 @@
-// OBD-II Handler for ELM327 BLE adapters
+// OBD-II Handler for BLE adapters
 // Provides vehicle speed data via Bluetooth Low Energy OBD-II adapter
 // 
-// Uses separate NimBLE client instance to connect to ELM327 device
+// Uses separate NimBLE client instance to connect to OBD adapter
 // while main BLE client maintains connection to V1.
 //
-// ELM327 BLE adapters typically use Nordic UART Service (NUS):
-// - Service UUID: 6e400001-b5a3-f393-e0a9-e50e24dcca9e
-// - TX Char (notifications): 6e400003-b5a3-f393-e0a9-e50e24dcca9e
-// - RX Char (write): 6e400002-b5a3-f393-e0a9-e50e24dcca9e
+// Common BLE UART services:
+// - Nordic UART Service (NUS):
+//   - Service UUID: 6e400001-b5a3-f393-e0a9-e50e24dcca9e
+//   - TX Char (notifications): 6e400003-b5a3-f393-e0a9-e50e24dcca9e
+//   - RX Char (write): 6e400002-b5a3-f393-e0a9-e50e24dcca9e
+// - OBDLink CX custom UART:
+//   - Service UUID: 0000fff0-0000-1000-8000-00805f9b34fb
+//   - Notify Char: 0000fff1-0000-1000-8000-00805f9b34fb
+//   - Write Char:  0000fff2-0000-1000-8000-00805f9b34fb
 
 #pragma once
 #include <Arduino.h>
@@ -28,6 +33,9 @@ struct OBDData {
     float speed_mph;        // Vehicle speed in mph
     uint16_t rpm;           // Engine RPM (PID 0x0C) / 4
     float voltage;          // Battery voltage (AT RV command)
+    int8_t oil_temp_c;      // Engine oil temperature in Celsius (VW Mode 22 PID F40C)
+    int8_t dsg_temp_c;      // DSG/transmission oil temp in Celsius (VW Mode 22 PID F40D)
+    int8_t intake_air_temp_c; // Intake air temperature in Celsius (PID 0x0F)
     bool valid;             // True if OBD connection is active and data is fresh
     uint32_t timestamp_ms;  // millis() when data was last updated
 };
@@ -39,11 +47,11 @@ struct OBDDeviceInfo {
     int rssi;              // Signal strength
 };
 
-// ELM327 BLE connection states
+// OBD BLE connection states
 enum class OBDState {
     OBD_DISABLED,       // OBD not enabled in settings
     IDLE,               // Waiting to start scan
-    SCANNING,           // Scanning for ELM327 device
+    SCANNING,           // Scanning for OBD adapter
     CONNECTING,         // Connecting to found device
     INITIALIZING,       // Sending AT init commands
     READY,              // Connected and initialized
@@ -63,9 +71,11 @@ private:
     uint32_t detectionStartMs;
     static constexpr uint32_t DETECTION_TIMEOUT_MS = 120000;  // 120 seconds for auto-reconnect scan
     
-    // ELM327 BLE device names typically contain these strings
+    // OBD BLE adapter names typically contain these strings
     // Zurich ZR-BT1 = rebranded Innova 1000 (also Hyper Tough HT500, Blcktec 430)
-    static constexpr const char* ELM327_NAME_PATTERNS[] = {
+    static constexpr const char* OBD_ADAPTER_NAME_PATTERNS[] = {
+        "OBDLink",     // OBDLink CX, MX+, LX, etc.
+        "VLINK",       // OBDLink app naming (iOS-VLINK, ANDROID-VLINK)
         "OBDII",
         "OBD2", 
         "ELM327",
@@ -81,9 +91,9 @@ private:
         "Blcktec",
         "BlueDriver"
     };
-    static constexpr int ELM327_NAME_PATTERN_COUNT = 14;
+    static constexpr int OBD_ADAPTER_NAME_PATTERN_COUNT = 16;
     
-    // Nordic UART Service UUIDs (used by most ELM327 BLE adapters)
+    // Nordic UART Service UUIDs (used by many BLE OBD adapters)
     static constexpr const char* NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     static constexpr const char* NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";  // Write to this
     static constexpr const char* NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";  // Notifications from this
@@ -190,6 +200,9 @@ public:
     bool requestSpeed();
     bool requestRPM();
     bool requestVoltage();
+    bool requestIntakeAirTemp();     // Standard PID 0x0F
+    bool requestOilTemp();           // VW Mode 22 PID F40C (engine ECU 7E0)
+    bool requestDsgTemp();           // VW Mode 22 PID F40D (trans ECU 7E1)
     
     // Disconnect
     void disconnect();
@@ -197,11 +210,11 @@ public:
     // Called by V1 BLE scan when any named device is found during OBD scan
     void onDeviceFound(const NimBLEAdvertisedDevice* device);
     
-    // Called by V1 BLE scan when an ELM327 device is found (for auto-connect)
-    void onELM327Found(const NimBLEAdvertisedDevice* device);
+    // Called by V1 BLE scan when an OBD adapter is found (for auto-connect)
+    void onObdAdapterFound(const NimBLEAdvertisedDevice* device);
     
-    // Check if a device name matches ELM327 patterns
-    static bool isELM327Device(const std::string& name);
+    // Check if a device name matches OBD adapter patterns
+    static bool isObdAdapterName(const std::string& name);
     
 private:
     // State machine handlers
@@ -213,7 +226,7 @@ private:
     // BLE operations
     bool connectToDevice();
     bool discoverServices();
-    bool initializeELM327();
+    bool initializeAdapter();
     bool sendATCommand(const char* cmd, String& response, uint32_t timeout_ms = 2000);
     void sendCommand(const char* cmd);
     
@@ -225,6 +238,8 @@ private:
     bool parseSpeedResponse(const String& response, uint8_t& speedKph);
     bool parseRPMResponse(const String& response, uint16_t& rpm);
     bool parseVoltageResponse(const String& response, float& voltage);
+    bool parseIntakeAirTempResponse(const String& response, int8_t& tempC);
+    bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC);
 };
 
 // Global OBD handler instance (extern declaration)

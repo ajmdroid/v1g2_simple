@@ -122,6 +122,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorStGpsW", settings.colorStatusGpsWarn);
     written += prefs.putUShort("colorStCam", settings.colorStatusCam);
     written += prefs.putUShort("colorStObd", settings.colorStatusObd);
+    written += prefs.putUShort("colorObdPri", settings.colorObdPrimary);
+    written += prefs.putUShort("colorObdC1", settings.colorObdCard1);
+    written += prefs.putUShort("colorObdC2", settings.colorObdCard2);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -204,6 +207,10 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("obdAddr", settings.obdDeviceAddress);
     written += prefs.putString("obdName", settings.obdDeviceName);
     written += prefs.putString("obdPin", settings.obdPin);
+    written += prefs.putUChar("idleDispMode", static_cast<uint8_t>(settings.idleDisplayMode));
+    written += prefs.putUChar("obdPrimary", static_cast<uint8_t>(settings.obdPrimaryMetric));
+    written += prefs.putUChar("obdCard1", static_cast<uint8_t>(settings.obdCard1Metric));
+    written += prefs.putUChar("obdCard2", static_cast<uint8_t>(settings.obdCard2Metric));
     written += prefs.putBool("lkoutEn", settings.lockoutEnabled);
     written += prefs.putBool("lkoutKaProt", settings.lockoutKaProtection);
     written += prefs.putBool("lkoutDirUnl", settings.lockoutDirectionalUnlearn);
@@ -352,6 +359,9 @@ void SettingsManager::load() {
     settings.colorStatusGpsWarn = preferences.getUShort("colorStGpsW", 0xFD20); // Orange for GPS weak
     settings.colorStatusCam = preferences.getUShort("colorStCam", 0x07FF);     // Cyan for CAM
     settings.colorStatusObd = preferences.getUShort("colorStObd", 0x07E0);     // Green for OBD
+    settings.colorObdPrimary = preferences.getUShort("colorObdPri", 0x001F);   // Blue for OBD primary
+    settings.colorObdCard1 = preferences.getUShort("colorObdC1", 0xFFE0);      // Yellow for OBD card 1
+    settings.colorObdCard2 = preferences.getUShort("colorObdC2", 0xF800);      // Red for OBD card 2
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -472,7 +482,11 @@ void SettingsManager::load() {
     settings.obdDeviceAddress = preferences.getString("obdAddr", "");
     settings.obdDeviceName = preferences.getString("obdName", "");
     settings.obdPin = preferences.getString("obdPin", "1234");
-    
+    settings.idleDisplayMode = static_cast<IdleDisplayMode>(preferences.getUChar("idleDispMode", 0));
+    settings.obdPrimaryMetric = static_cast<ObdMetric>(preferences.getUChar("obdPrimary", OBD_METRIC_SPEED));
+    settings.obdCard1Metric = static_cast<ObdMetric>(preferences.getUChar("obdCard1", OBD_METRIC_OIL_TEMP));
+    settings.obdCard2Metric = static_cast<ObdMetric>(preferences.getUChar("obdCard2", OBD_METRIC_IAT));
+
     // Auto-lockout settings (JBV1-style)
     settings.lockoutEnabled = preferences.getBool("lkoutEn", true);
     settings.lockoutKaProtection = preferences.getBool("lkoutKaProt", true);
@@ -772,6 +786,21 @@ void SettingsManager::setStatusObdColor(uint16_t color) {
 
 void SettingsManager::setCameraAlertColor(uint16_t color) {
     settings.colorCameraAlert = color;
+    save();
+}
+
+void SettingsManager::setObdPrimaryColor(uint16_t color) {
+    settings.colorObdPrimary = color;
+    save();
+}
+
+void SettingsManager::setObdCard1Color(uint16_t color) {
+    settings.colorObdCard1 = color;
+    save();
+}
+
+void SettingsManager::setObdCard2Color(uint16_t color) {
+    settings.colorObdCard2 = color;
     save();
 }
 
@@ -1151,6 +1180,10 @@ void SettingsManager::backupToSD() {
     doc["obdDeviceAddress"] = settings.obdDeviceAddress;
     doc["obdDeviceName"] = settings.obdDeviceName;
     doc["obdPin"] = settings.obdPin;
+    doc["idleDisplayMode"] = static_cast<int>(settings.idleDisplayMode);
+    doc["obdPrimaryMetric"] = static_cast<int>(settings.obdPrimaryMetric);
+    doc["obdCard1Metric"] = static_cast<int>(settings.obdCard1Metric);
+    doc["obdCard2Metric"] = static_cast<int>(settings.obdCard2Metric);
     
     // === Auto-Lockout Settings (JBV1-style) ===
     doc["lockoutEnabled"] = settings.lockoutEnabled;
@@ -1371,6 +1404,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["obdDeviceAddress"].is<const char*>()) settings.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
     if (doc["obdDeviceName"].is<const char*>()) settings.obdDeviceName = doc["obdDeviceName"].as<String>();
     if (doc["obdPin"].is<const char*>()) settings.obdPin = doc["obdPin"].as<String>();
+    if (doc["idleDisplayMode"].is<int>()) settings.idleDisplayMode = static_cast<IdleDisplayMode>(doc["idleDisplayMode"].as<int>());
+    if (doc["obdPrimaryMetric"].is<int>()) settings.obdPrimaryMetric = static_cast<ObdMetric>(doc["obdPrimaryMetric"].as<int>());
+    if (doc["obdCard1Metric"].is<int>()) settings.obdCard1Metric = static_cast<ObdMetric>(doc["obdCard1Metric"].as<int>());
+    if (doc["obdCard2Metric"].is<int>()) settings.obdCard2Metric = static_cast<ObdMetric>(doc["obdCard2Metric"].as<int>());
     
     // === Auto-Lockout Settings (JBV1-style) ===
     if (doc["lockoutEnabled"].is<bool>()) settings.lockoutEnabled = doc["lockoutEnabled"];

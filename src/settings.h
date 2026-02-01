@@ -77,6 +77,26 @@ enum VoiceAlertMode {
     VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
 };
 
+// Idle display mode (what to show in frequency area when no alerts)
+enum IdleDisplayMode {
+    IDLE_DISPLAY_NONE = 0,       // Normal resting display (blank/KITT)
+    IDLE_DISPLAY_SPEED = 1,      // Show current speed (mph)
+    IDLE_DISPLAY_OIL_TEMP = 2,   // Show engine oil temperature
+    IDLE_DISPLAY_DSG_TEMP = 3,   // Show DSG/transmission temperature
+    IDLE_DISPLAY_IAT = 4,        // Show intake air temperature
+    IDLE_DISPLAY_COMBO = 5,      // Cycle through available OBD data
+    IDLE_DISPLAY_OBD_CARDS = 6   // Primary metric + 2 cards (like camera alerts)
+};
+
+// OBD metric selection (for card-based idle display)
+enum ObdMetric {
+    OBD_METRIC_NONE = 0,         // No metric (empty/disabled)
+    OBD_METRIC_SPEED = 1,        // Vehicle speed (mph)
+    OBD_METRIC_OIL_TEMP = 2,     // Engine oil temperature (VW Mode 22)
+    OBD_METRIC_DSG_TEMP = 3,     // DSG transmission temperature (VW Mode 22)
+    OBD_METRIC_IAT = 4           // Intake air temperature (standard OBD)
+};
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -241,6 +261,15 @@ struct V1Settings {
     String obdDeviceAddress;  // Saved OBD device BLE address (e.g., "AA:BB:CC:DD:EE:FF")
     String obdDeviceName;     // Saved OBD device name (for display)
     String obdPin;            // PIN code for OBD adapter (typically "1234")
+    IdleDisplayMode idleDisplayMode; // What OBD data to show when no alerts (none/speed/oil/dsg/iat/combo/cards)
+    
+    // OBD card-based display settings (when idleDisplayMode == IDLE_DISPLAY_OBD_CARDS)
+    ObdMetric obdPrimaryMetric;  // Primary metric shown in frequency area (e.g., speed)
+    ObdMetric obdCard1Metric;    // First card metric (e.g., oil temp)
+    ObdMetric obdCard2Metric;    // Second card metric (e.g., IAT)
+    uint16_t colorObdPrimary;    // OBD cards primary metric color
+    uint16_t colorObdCard1;      // OBD cards card 1 color
+    uint16_t colorObdCard2;      // OBD cards card 2 color
     
     // Auto-Lockout settings (JBV1-style)
     bool lockoutEnabled;            // Master enable for auto-lockout system
@@ -377,7 +406,14 @@ struct V1Settings {
         obdEnabled(false),       // OBD off by default (opt-in)
         obdDeviceAddress(""),    // No saved OBD device
         obdDeviceName(""),       // No saved OBD device name
-        obdPin("1234"),          // Default ELM327 PIN
+        obdPin("1234"),          // Default OBD adapter PIN
+        idleDisplayMode(IDLE_DISPLAY_NONE), // No OBD data on idle screen by default
+        obdPrimaryMetric(OBD_METRIC_SPEED), // Default primary: speed
+        obdCard1Metric(OBD_METRIC_OIL_TEMP), // Default card 1: oil temp
+        obdCard2Metric(OBD_METRIC_IAT),     // Default card 2: intake air temp
+        colorObdPrimary(0x001F),            // Blue for primary metric
+        colorObdCard1(0xFFE0),              // Yellow for card 1
+        colorObdCard2(0xF800),              // Red for card 2
         // Auto-lockout defaults (JBV1 defaults)
         lockoutEnabled(true),           // Auto-lockout enabled by default
         lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
@@ -444,6 +480,9 @@ public:
     void setStatusCamColor(uint16_t color);
     void setStatusObdColor(uint16_t color);
     void setCameraAlertColor(uint16_t color);
+    void setObdPrimaryColor(uint16_t color);
+    void setObdCard1Color(uint16_t color);
+    void setObdCard2Color(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
@@ -563,6 +602,12 @@ public:
     void updateCameraAlertsEnabled(bool enabled) { settings.cameraAlertsEnabled = enabled; }
     void updateCameraAudioEnabled(bool enabled) { settings.cameraAudioEnabled = enabled; }
     void updateCameraAlertDistanceM(uint16_t meters) { settings.cameraAlertDistanceM = meters; }
+    
+    // OBD idle display settings (batch update - call save() after)
+    void updateIdleDisplayMode(IdleDisplayMode mode) { settings.idleDisplayMode = mode; }
+    void updateObdPrimaryMetric(ObdMetric metric) { settings.obdPrimaryMetric = metric; }
+    void updateObdCard1Metric(ObdMetric metric) { settings.obdCard1Metric = metric; }
+    void updateObdCard2Metric(ObdMetric metric) { settings.obdCard2Metric = metric; }
     
     // SD card backup/restore for display settings
     void backupToSD();

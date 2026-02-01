@@ -19,7 +19,7 @@
 
 #include "ble_client.h"
 #include "settings.h"
-#include "obd_handler.h"  // For ELM327 device detection during scan
+#include "obd_handler.h"  // For OBD adapter detection during scan
 #include "debug_logger.h"
 #include "perf_metrics.h"
 #include "../include/config.h"
@@ -1526,7 +1526,7 @@ void V1BLEClient::startScanning() {
 
 void V1BLEClient::startOBDScan() {
     // Start a BLE scan for OBD devices - works even when V1 is connected
-    // This allows scanning for ELM327 adapters without disconnecting from V1
+    // This allows scanning for OBD adapters without disconnecting from V1
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && !pScan->isScanning()) {
         Serial.println("[BLE] Starting OBD device scan (30 seconds)...");

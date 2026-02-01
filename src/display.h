@@ -128,6 +128,9 @@ public:
     void setLockoutMuted(bool lockout) { lockoutMuted = lockout; }
     bool isLockoutMuted() const { return lockoutMuted; }
     
+    // Preview OBD idle display with mock data (for color test routine)
+    void drawIdleObdDataPreview();
+    
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
@@ -157,6 +160,8 @@ private:
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawKittScanner();        // Knight Rider scanner animation for resting screen
+    void drawIdleObdData();        // Draw OBD data (speed/temps) on idle screen in frequency area
+    void drawObdIdleWithCards();   // Draw OBD with primary metric + two cards (like camera alerts)
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);

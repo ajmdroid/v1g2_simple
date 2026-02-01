@@ -104,9 +104,10 @@ void StorageManager::checkCameraDatabase() {
     
     // Quick existence check only - don't count lines during boot
     // This makes boot ~3 seconds faster by not reading 70K+ lines
-    bool hasAlpr = fs->exists("/alpr.json");
-    bool hasRedlight = fs->exists("/redlight_cam.json");
-    bool hasSpeed = fs->exists("/speed_cam.json");
+    // Check for both binary (.bin) and JSON (.json) formats
+    bool hasAlpr = fs->exists("/alpr.bin") || fs->exists("/alpr.json");
+    bool hasRedlight = fs->exists("/redlight_cam.bin") || fs->exists("/redlight_cam.json");
+    bool hasSpeed = fs->exists("/speed_cam.bin") || fs->exists("/speed_cam.json");
     
     cameraDbFound = hasAlpr || hasRedlight || hasSpeed;
     

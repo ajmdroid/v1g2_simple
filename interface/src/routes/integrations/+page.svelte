@@ -6,6 +6,14 @@
 		gpsEnabled: false,
 		obdEnabled: false,
 		obdPin: '1234',
+		idleDisplayMode: 0,  // 0=none, 1=speed, 2=oil, 3=dsg, 4=iat, 5=combo, 6=cards
+		obdPrimaryMetric: 1, // 0=none, 1=speed, 2=oil, 3=dsg, 4=iat
+		obdCard1Metric: 2,   // Default: oil temp
+		obdCard2Metric: 4,   // Default: IAT
+		// OBD card colors (RGB565)
+		colorObdPrimary: 0x001F,  // Blue for primary metric
+		colorObdCard1: 0xFFE0,    // Yellow for card 1
+		colorObdCard2: 0xF800,    // Red for card 2
 		// Auto-lockout settings
 		lockoutEnabled: true,
 		lockoutKaProtection: true,
@@ -38,6 +46,27 @@
 	let lockoutClusters = $state([]);
 	let lockoutDataLoading = $state(false);
 	let sessionStats = $state(null);
+	
+	// RGB565 color helpers
+	function rgb565ToHex(rgb565) {
+		const val = typeof rgb565 === 'number' ? rgb565 : 0;
+		const r = ((val >> 11) & 0x1F) << 3;
+		const g = ((val >> 5) & 0x3F) << 2;
+		const b = (val & 0x1F) << 3;
+		return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+	}
+	
+	function hexToRgb565(hex) {
+		if (!hex || hex.length < 7) return 0;
+		const r = parseInt(hex.slice(1, 3), 16) >> 3;
+		const g = parseInt(hex.slice(3, 5), 16) >> 2;
+		const b = parseInt(hex.slice(5, 7), 16) >> 3;
+		return (r << 11) | (g << 5) | b;
+	}
+	
+	function handleColorChange(key, hex) {
+		settings[key] = hexToRgb565(hex);
+	}
 	
 	// Camera database status
 	let cameraStatus = $state(null);
@@ -354,6 +383,13 @@
 			params.append('gpsEnabled', settings.gpsEnabled);
 			params.append('obdEnabled', settings.obdEnabled);
 			params.append('obdPin', obdPin);
+			params.append('idleDisplayMode', settings.idleDisplayMode);
+			params.append('obdPrimaryMetric', settings.obdPrimaryMetric);
+			params.append('obdCard1Metric', settings.obdCard1Metric);
+			params.append('obdCard2Metric', settings.obdCard2Metric);
+			params.append('colorObdPrimary', settings.colorObdPrimary);
+			params.append('colorObdCard1', settings.colorObdCard1);
+			params.append('colorObdCard2', settings.colorObdCard2);
 			params.append('lockoutEnabled', settings.lockoutEnabled);
 			params.append('lockoutKaProtection', settings.lockoutKaProtection);
 			params.append('lockoutDirectionalUnlearn', settings.lockoutDirectionalUnlearn);
@@ -578,12 +614,12 @@
 		<div class="card bg-base-200" class:opacity-50={!acknowledged}>
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🚗 OBD-II Module</h2>
-				<p class="text-sm text-base-content/60">Bluetooth ELM327 adapter for vehicle speed.</p>
+				<p class="text-sm text-base-content/60">Bluetooth OBD adapter (ELM327 compatible) for vehicle speed.</p>
 				
 				<label class="label cursor-pointer">
 					<div class="flex flex-col">
 						<span class="label-text">Enable OBD-II</span>
-						<span class="label-text-alt text-base-content/50">Connect to ELM327 BLE adapter</span>
+						<span class="label-text-alt text-base-content/50">Connect to OBD BLE adapter</span>
 					</div>
 					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.obdEnabled} disabled={!acknowledged} />
 				</label>
@@ -664,6 +700,137 @@
 							No devices found yet. Click "Scan for Devices" to search.
 						{/if}
 					</p>
+					
+					<!-- Idle Display Mode -->
+					<div class="divider text-sm">Idle Display</div>
+					
+					<div class="form-control">
+						<label class="label" for="idle-display">
+							<span class="label-text">Resting Screen Display</span>
+							<span class="label-text-alt">Show OBD data when no alerts</span>
+						</label>
+						<select 
+							id="idle-display"
+							class="select select-bordered w-full"
+							bind:value={settings.idleDisplayMode}
+						>
+							<option value={0}>None (normal resting screen)</option>
+							<option value={1}>Speed (MPH)</option>
+							<option value={2}>Engine Oil Temperature</option>
+							<option value={3}>DSG/Trans Temperature</option>
+							<option value={4}>Intake Air Temperature</option>
+							<option value={5}>Combo (cycle all)</option>
+							<option value={6}>Cards (primary + 2 cards)</option>
+						</select>
+						<div class="label">
+							<span class="label-text-alt text-base-content/50">VW/Audi vehicles: Oil &amp; DSG temps via Mode 22</span>
+						</div>
+					</div>
+					
+					<!-- OBD Cards Configuration (only shown when Cards mode selected) -->
+					{#if settings.idleDisplayMode === 6}
+						<div class="bg-base-300 rounded-lg p-4 space-y-3">
+							<p class="text-sm font-medium">Card Layout Configuration</p>
+							<p class="text-xs text-base-content/60">Choose which metrics appear in each position</p>
+							
+							<div class="form-control">
+								<label class="label py-1" for="obd-primary">
+									<span class="label-text text-sm">Primary (large display)</span>
+								</label>
+								<select 
+									id="obd-primary"
+									class="select select-bordered select-sm w-full"
+									bind:value={settings.obdPrimaryMetric}
+								>
+									<option value={1}>Speed (MPH)</option>
+									<option value={2}>Engine Oil Temperature</option>
+									<option value={3}>DSG/Trans Temperature</option>
+									<option value={4}>Intake Air Temperature</option>
+								</select>
+							</div>
+							
+							<div class="grid grid-cols-2 gap-3">
+								<div class="form-control">
+									<label class="label py-1" for="obd-card1">
+										<span class="label-text text-sm">Card 1</span>
+									</label>
+									<select 
+										id="obd-card1"
+										class="select select-bordered select-sm w-full"
+										bind:value={settings.obdCard1Metric}
+									>
+										<option value={0}>None</option>
+										<option value={1}>Speed</option>
+										<option value={2}>Oil Temp</option>
+										<option value={3}>DSG Temp</option>
+										<option value={4}>IAT</option>
+									</select>
+								</div>
+								
+								<div class="form-control">
+									<label class="label py-1" for="obd-card2">
+										<span class="label-text text-sm">Card 2</span>
+									</label>
+									<select 
+										id="obd-card2"
+										class="select select-bordered select-sm w-full"
+										bind:value={settings.obdCard2Metric}
+									>
+										<option value={0}>None</option>
+										<option value={1}>Speed</option>
+										<option value={2}>Oil Temp</option>
+										<option value={3}>DSG Temp</option>
+										<option value={4}>IAT</option>
+									</select>
+								</div>
+							</div>
+							
+							<!-- Card Colors -->
+							<div class="divider my-2 text-xs">Colors</div>
+							<p class="text-xs text-base-content/60 mb-2">Customize colors for each display element</p>
+							
+							<div class="grid grid-cols-3 gap-3">
+								<div class="form-control">
+									<label class="label py-1" for="color-primary">
+										<span class="label-text text-xs">Primary</span>
+									</label>
+									<input 
+										id="color-primary"
+										type="color"
+										class="w-full h-8 cursor-pointer rounded border-2 border-base-300"
+										value={rgb565ToHex(settings.colorObdPrimary)}
+										onchange={(e) => handleColorChange('colorObdPrimary', e.target.value)}
+									/>
+								</div>
+								
+								<div class="form-control">
+									<label class="label py-1" for="color-card1">
+										<span class="label-text text-xs">Card 1</span>
+									</label>
+									<input 
+										id="color-card1"
+										type="color"
+										class="w-full h-8 cursor-pointer rounded border-2 border-base-300"
+										value={rgb565ToHex(settings.colorObdCard1)}
+										onchange={(e) => handleColorChange('colorObdCard1', e.target.value)}
+									/>
+								</div>
+								
+								<div class="form-control">
+									<label class="label py-1" for="color-card2">
+										<span class="label-text text-xs">Card 2</span>
+									</label>
+									<input 
+										id="color-card2"
+										type="color"
+										class="w-full h-8 cursor-pointer rounded border-2 border-base-300"
+										value={rgb565ToHex(settings.colorObdCard2)}
+										onchange={(e) => handleColorChange('colorObdCard2', e.target.value)}
+									/>
+								</div>
+							</div>
+						</div>
+					{/if}
 				{/if}
 			</div>
 		</div>

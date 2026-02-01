@@ -1,10 +1,10 @@
 // OBD-II Handler Implementation
-// Full ELM327 BLE adapter support using NimBLE
+// BLE OBD adapter support using NimBLE
 //
 // ARCHITECTURE:
-// - Creates a separate NimBLE client instance for ELM327
-// - V1 BLE scan detects both V1 and ELM327 devices
-// - When ELM327 found, onELM327Found() is called to queue connection
+// - Creates a separate NimBLE client instance for OBD adapter
+// - V1 BLE scan detects both V1 and OBD adapters
+// - When adapter found, onObdAdapterFound() is called to queue connection
 // - State machine manages connection, initialization, and polling
 
 #include "obd_handler.h"
@@ -18,7 +18,7 @@ extern V1BLEClient bleClient;
 extern DebugLogger debugLogger;
 
 // Static constexpr definitions
-constexpr const char* OBDHandler::ELM327_NAME_PATTERNS[];
+constexpr const char* OBDHandler::OBD_ADAPTER_NAME_PATTERNS[];
 constexpr const char* OBDHandler::NUS_SERVICE_UUID;
 constexpr const char* OBDHandler::NUS_RX_CHAR_UUID;
 constexpr const char* OBDHandler::NUS_TX_CHAR_UUID;
@@ -74,7 +74,7 @@ static bool isValidHexString(const String& str, size_t expectedLen = 0) {
 static volatile bool s_authComplete = false;
 static volatile bool s_authSuccess = false;
 
-// Security callbacks for ELM327 pairing
+// Security callbacks for OBD adapter pairing
 class OBDSecurityCallbacks : public NimBLEClientCallbacks {
 public:
     void onConnect(NimBLEClient* pClient) override {
@@ -92,14 +92,19 @@ public:
     
     void onPassKeyEntry(NimBLEConnInfo& connInfo) override {
         // Device is asking us to enter a PIN
-        // Try common ELM327 PINs: 1234, 0000, 6789
-        Serial.println("[OBD] Security: PassKey entry requested - trying 1234");
-        NimBLEDevice::injectPassKey(connInfo, 1234);
+        // OBDLink CX uses 123456, cheap clones often use 1234
+        // Try OBDLink PIN first since it's our primary target
+        Serial.println("[OBD] Security: PassKey entry requested - trying 123456");
+        NimBLEDevice::injectPassKey(connInfo, 123456);
     }
     
     void onConfirmPasskey(NimBLEConnInfo& connInfo, uint32_t pass_key) override {
-        // Device is asking us to confirm a displayed PIN
-        Serial.printf("[OBD] Security: Confirm passkey %06lu - accepting\n", static_cast<unsigned long>(pass_key));
+        // Numeric Comparison pairing - OBDLink CX uses this (Secure Connections)
+        // Both devices display the same number and user confirms they match
+        // We auto-accept since ESP32 has no user input, but log it for debugging
+        Serial.printf("[OBD] Security: Numeric Comparison - passkey %06lu - auto-accepting\n", 
+                      static_cast<unsigned long>(pass_key));
+        // TODO: Could display this on Waveshare screen for user verification
         NimBLEDevice::injectConfirmPasskey(connInfo, true);
     }
     
@@ -144,6 +149,9 @@ OBDHandler::OBDHandler()
     lastData.speed_mph = 0;
     lastData.rpm = 0;
     lastData.voltage = 0;
+    lastData.oil_temp_c = -128;      // Invalid marker (no data yet)
+    lastData.dsg_temp_c = -128;      // Invalid marker (no data yet)
+    lastData.intake_air_temp_c = -128; // Invalid marker (no data yet)
     lastData.valid = false;
     lastData.timestamp_ms = 0;
     
@@ -299,15 +307,15 @@ void OBDHandler::clearFoundDevices() {
     foundDevices.clear();
 }
 
-bool OBDHandler::isELM327Device(const std::string& name) {
+bool OBDHandler::isObdAdapterName(const std::string& name) {
     if (name.empty()) return false;
     
     // Convert name to uppercase for case-insensitive matching
     String upperName = String(name.c_str());
     upperName.toUpperCase();
     
-    for (int i = 0; i < ELM327_NAME_PATTERN_COUNT; i++) {
-        String pattern = String(ELM327_NAME_PATTERNS[i]);
+    for (int i = 0; i < OBD_ADAPTER_NAME_PATTERN_COUNT; i++) {
+        String pattern = String(OBD_ADAPTER_NAME_PATTERNS[i]);
         pattern.toUpperCase();
         if (upperName.indexOf(pattern) >= 0) {
             return true;
@@ -316,7 +324,7 @@ bool OBDHandler::isELM327Device(const std::string& name) {
     return false;
 }
 
-void OBDHandler::onELM327Found(const NimBLEAdvertisedDevice* device) {
+void OBDHandler::onObdAdapterFound(const NimBLEAdvertisedDevice* device) {
     const std::string& name = device->getName();
     String addrStr = String(device->getAddress().toString().c_str());
     
@@ -337,7 +345,7 @@ void OBDHandler::onELM327Found(const NimBLEAdvertisedDevice* device) {
             info.name = String(name.c_str());
             info.rssi = device->getRSSI();
             foundDevices.push_back(info);
-            Serial.printf("[OBD] Found ELM327 device: '%s' [%s] RSSI:%d\n", 
+            Serial.printf("[OBD] Found OBD adapter: '%s' [%s] RSSI:%d\n", 
                           name.c_str(), addrStr.c_str(), info.rssi);
         }
     }
@@ -405,7 +413,7 @@ void OBDHandler::handleConnecting() {
         Serial.println("[OBD] Connected! Discovering services...");
         OBD_LOGF("[OBD] Connected to %s", targetDeviceName.c_str());
         if (discoverServices()) {
-            Serial.println("[OBD] Services discovered, initializing ELM327...");
+            Serial.println("[OBD] Services discovered, initializing adapter...");
             // Reset failure counter on successful connection
             connectionFailures = 0;
             state = OBDState::INITIALIZING;
@@ -435,15 +443,15 @@ void OBDHandler::handleConnecting() {
 }
 
 void OBDHandler::handleInitializing() {
-    if (initializeELM327()) {
-        Serial.println("[OBD] ELM327 initialized successfully");
-        OBD_LOGF("[OBD] ELM327 initialized - %s ready", targetDeviceName.c_str());
+    if (initializeAdapter()) {
+        Serial.println("[OBD] Adapter initialized successfully");
+        OBD_LOGF("[OBD] Adapter initialized - %s ready", targetDeviceName.c_str());
         // Fully connected and ready - ensure failure counter is reset
         connectionFailures = 0;
         state = OBDState::READY;
     } else {
-        Serial.println("[OBD] ELM327 initialization failed");
-        OBD_LOGF("[OBD] ELM327 init failed for %s", targetDeviceName.c_str());
+        Serial.println("[OBD] Adapter initialization failed");
+        OBD_LOGF("[OBD] Adapter init failed for %s", targetDeviceName.c_str());
         disconnect();
         connectionFailures++;
         Serial.printf("[OBD] Connection failures: %d/%d\n", connectionFailures, MAX_CONNECTION_FAILURES);
@@ -477,8 +485,66 @@ void OBDHandler::handlePolling() {
     }
     lastPollMs = millis();
     
-    // Request speed
+    // Always request speed (primary OBD function)
     requestSpeed();
+    
+    // Check settings for idle display mode - poll additional PIDs if needed
+    const V1Settings& s = settingsManager.get();
+    
+    // Helper: check if a metric needs a specific temperature PID
+    auto needsOilTemp = [&s]() -> bool {
+        if (s.idleDisplayMode == IDLE_DISPLAY_OIL_TEMP || s.idleDisplayMode == IDLE_DISPLAY_COMBO) return true;
+        if (s.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) {
+            return s.obdPrimaryMetric == OBD_METRIC_OIL_TEMP ||
+                   s.obdCard1Metric == OBD_METRIC_OIL_TEMP ||
+                   s.obdCard2Metric == OBD_METRIC_OIL_TEMP;
+        }
+        return false;
+    };
+    
+    auto needsDsgTemp = [&s]() -> bool {
+        if (s.idleDisplayMode == IDLE_DISPLAY_DSG_TEMP || s.idleDisplayMode == IDLE_DISPLAY_COMBO) return true;
+        if (s.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) {
+            return s.obdPrimaryMetric == OBD_METRIC_DSG_TEMP ||
+                   s.obdCard1Metric == OBD_METRIC_DSG_TEMP ||
+                   s.obdCard2Metric == OBD_METRIC_DSG_TEMP;
+        }
+        return false;
+    };
+    
+    auto needsIat = [&s]() -> bool {
+        if (s.idleDisplayMode == IDLE_DISPLAY_IAT || s.idleDisplayMode == IDLE_DISPLAY_COMBO) return true;
+        if (s.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) {
+            return s.obdPrimaryMetric == OBD_METRIC_IAT ||
+                   s.obdCard1Metric == OBD_METRIC_IAT ||
+                   s.obdCard2Metric == OBD_METRIC_IAT;
+        }
+        return false;
+    };
+    
+    // Temperature polling based on idle display setting
+    // Poll at slower rate since temps change slowly (30 polls = ~30 seconds at 1Hz)
+    // Oil/DSG temps change very slowly, IAT a bit faster but still slow
+    static uint8_t tempPollCounter = 0;
+    tempPollCounter++;
+    
+    if (tempPollCounter >= 30) {
+        tempPollCounter = 0;
+        
+        // Poll intake air temp (standard PID, fast)
+        if (needsIat()) {
+            requestIntakeAirTemp();
+        }
+        
+        // VW Mode 22 temperatures (oil and DSG) - only if needed
+        if (needsOilTemp()) {
+            requestOilTemp();
+        }
+        
+        if (needsDsgTemp()) {
+            requestDsgTemp();
+        }
+    }
 }
 
 bool OBDHandler::runStateMachine() {
@@ -707,12 +773,12 @@ bool OBDHandler::connectToDevice() {
         pOBDClient->setConnectionParams(12, 12, 0, 500);  // min, max, latency, timeout
     }
     
-    // Configure security for ELM327 adapters that require PIN pairing (e.g., Veepeak BLE+)
-    // IMPORTANT: Use Legacy Pairing (sc=false), NOT Secure Connections!
-    // Veepeak and most cheap ELM327 adapters only support legacy pairing with fixed PIN
-    // The security callbacks handle PIN entry (onPassKeyEntry injects 1234)
-    NimBLEDevice::setSecurityAuth(true, true, false);       // bonding, MITM, NO secure connections (legacy pairing)
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY); // We can "type" a PIN
+    // Configure security for OBDLink CX using Secure Connections with Numeric Comparison
+    // The CX displays a 6-digit number on both devices for user to verify they match
+    // ESP32 auto-accepts via onConfirmPasskey callback (no user input needed on our side)
+    // This is more secure than legacy PIN pairing and works within the 5-min bonding window
+    NimBLEDevice::setSecurityAuth(true, true, true);        // bonding, MITM, secure connections
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO); // Numeric comparison - auto-accept
     
     Serial.printf("[OBD] Attempting BLE connect (10s timeout, legacy pairing)...\n");
     
@@ -791,16 +857,16 @@ bool OBDHandler::discoverServices() {
     if (!pNUSService) {
         Serial.println("[OBD] Nordic UART Service not found, trying FFF0...");
         
-        // Some adapters use different service UUIDs - try FFF0 (common alternative)
+        // OBDLink CX uses FFF0/FFF1/FFF2
         pNUSService = pOBDClient->getService("FFF0");
         if (!pNUSService) {
-            // Try 0xFFE0 (another common ELM327 service)
+            // Try 0xFFE0 (another common BLE UART service)
             Serial.println("[OBD] FFF0 not found, trying FFE0...");
             pNUSService = pOBDClient->getService("FFE0");
         }
         
         if (!pNUSService) {
-            Serial.println("[OBD] No known ELM327 service found!");
+            Serial.println("[OBD] No known OBD BLE UART service found!");
             return false;
         }
         
@@ -836,7 +902,7 @@ bool OBDHandler::discoverServices() {
             Serial.println("[OBD] Failed to subscribe to notifications");
             return false;
         }
-        Serial.println("[OBD] Subscribed to ELM327 notifications");
+        Serial.println("[OBD] Subscribed to OBD adapter notifications");
     } else {
         Serial.println("[OBD] TX characteristic doesn't support notifications");
         return false;
@@ -856,7 +922,7 @@ void OBDHandler::notificationCallback(NimBLERemoteCharacteristic* pChar,
     for (size_t i = 0; i < length; i++) {
         char c = (char)pData[i];
         
-        // ELM327 uses '>' as command prompt (end of response)
+        // ELM327-compatible adapters use '>' as command prompt (end of response)
         if (c == '>') {
             s_obdInstance->responseComplete = true;
             return;
@@ -869,10 +935,10 @@ void OBDHandler::notificationCallback(NimBLERemoteCharacteristic* pChar,
     }
 }
 
-bool OBDHandler::initializeELM327() {
+bool OBDHandler::initializeAdapter() {
     String response;
     
-    // Reset ELM327
+    // Reset adapter
     Serial.println("[OBD] Sending ATZ (reset)...");
     if (!sendATCommand("ATZ", response, 3000)) {
         Serial.println("[OBD] ATZ failed");
@@ -880,9 +946,9 @@ bool OBDHandler::initializeELM327() {
     }
     Serial.printf("[OBD] ATZ response: %s\n", response.c_str());
     
-    // Check for ELM327 in response
+    // Check for ELM327-compatible response
     if (response.indexOf("ELM") < 0 && response.indexOf("elm") < 0) {
-        Serial.println("[OBD] Warning: ELM327 not confirmed in reset response");
+        Serial.println("[OBD] Warning: ELM327-compatible adapter not confirmed in reset response");
     }
     
     // Echo off
@@ -925,7 +991,7 @@ bool OBDHandler::initializeELM327() {
         Serial.printf("[OBD] Vehicle response: %s\n", response.c_str());
     }
     
-    // Small delay to let ELM327 settle before polling begins
+    // Small delay to let adapter settle before polling begins
     delay(200);
     
     return true;
@@ -1002,7 +1068,7 @@ bool OBDHandler::requestSpeed() {
     String response;
     
     // Send PID 0x0D (Vehicle Speed)
-    // First query after init may take longer as ELM327 establishes vehicle communication
+    // First query after init may take longer as adapter establishes vehicle communication
     if (!sendATCommand("010D", response, 1000)) {  // 1 second timeout for reliability
         ObdLock lock(obdMutex);
         if (lock.ok()) {
@@ -1144,6 +1210,180 @@ bool OBDHandler::parseVoltageResponse(const String& response, float& voltage) {
     return voltage > 0 && voltage < 20;  // Sanity check
 }
 
+bool OBDHandler::parseIntakeAirTempResponse(const String& response, int8_t& tempC) {
+    // Response format: "410FXX" where XX is temp + 40 (hex)
+    // Standard OBD PID 0x0F
+    
+    int idx = response.indexOf("410F");
+    if (idx < 0) {
+        idx = response.indexOf("410f");
+    }
+    if (idx < 0) {
+        return false;
+    }
+    
+    String hexVal = response.substring(idx + 4, idx + 6);
+    hexVal.trim();
+    
+    if (hexVal.length() < 2 || !isValidHexString(hexVal, 2)) {
+        return false;
+    }
+    
+    uint8_t raw = (uint8_t)strtoul(hexVal.c_str(), nullptr, 16);
+    tempC = (int8_t)(raw - 40);  // OBD temp offset
+    return true;
+}
+
+bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC) {
+    // VW Mode 22 response format (headers off, spaces off): "62F40CXX" or "62F40CXXXX"
+    // pidEcho should be like "F40C" or "F40D"
+    // Response starts with 62 (positive response to mode 22)
+    // 
+    // Example responses:
+    // - Single byte temp: "62F40C5A" -> 0x5A = 90 -> 90-40 = 50°C
+    // - Two byte temp: "62F40C005A" -> interpret as needed
+    
+    String pattern = String("62") + pidEcho;
+    int idx = response.indexOf(pattern);
+    if (idx < 0) {
+        // Try lowercase
+        pattern.toLowerCase();
+        idx = response.indexOf(pattern);
+    }
+    if (idx < 0) {
+        OBD_LOGF("[OBD] VW parse: pattern '%s' not found in response", pattern.c_str());
+        return false;
+    }
+    
+    // Get data after the PID echo (62 + 4 chars for PID = 6 chars total)
+    // Extract all remaining hex chars (up to 4)
+    String dataHex = response.substring(idx + 6, idx + 10);
+    dataHex.trim();
+    
+    OBD_LOGF("[OBD] VW parse: found at idx %d, data hex='%s'", idx, dataHex.c_str());
+    
+    // Try 1-byte value first (most common for VW temps via ELM327)
+    // Format: 62F40CXX where XX is temp+40
+    if (dataHex.length() >= 2 && isValidHexString(dataHex.substring(0, 2), 2)) {
+        uint8_t raw = (uint8_t)strtoul(dataHex.substring(0, 2).c_str(), nullptr, 16);
+        OBD_LOGF("[OBD] VW parse: 1-byte raw=0x%02X (%d)", raw, raw);
+        if (raw == 0) {
+            OBD_LOGF("[OBD] VW parse: raw is 0, sensor not ready");
+            return false;  // Sensor not ready
+        }
+        tempC = (int8_t)(raw - 40);
+        OBD_LOGF("[OBD] VW parse: 1-byte result=%d°C", tempC);
+        return true;
+    }
+    
+    OBD_LOGF("[OBD] VW parse: no valid hex data found");
+    return false;
+}
+
+bool OBDHandler::requestIntakeAirTemp() {
+    String response;
+    
+    // Send standard PID 0x0F (Intake Air Temperature)
+    if (!sendATCommand("010F", response, 500)) {
+        OBD_LOGF("[OBD] IAT: PID 010F query failed");
+        return false;
+    }
+    
+    OBD_LOGF("[OBD] IAT raw response: %s", response.c_str());
+    
+    int8_t tempC;
+    if (parseIntakeAirTempResponse(response, tempC)) {
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.intake_air_temp_c = tempC;
+            lastData.timestamp_ms = millis();
+        }
+        OBD_LOGF("[OBD] Intake Air: %d°C (%d°F)", tempC, (tempC * 9 / 5) + 32);
+        return true;
+    }
+    
+    OBD_LOGF("[OBD] IAT: parse failed for response: %s", response.c_str());
+    return false;
+}
+
+bool OBDHandler::requestOilTemp() {
+    String response;
+    
+    // Set header to Engine ECU (7E0) for VW
+    if (!sendATCommand("ATSH7E0", response, 500)) {
+        OBD_LOGF("[OBD] Oil temp: failed to set header 7E0");
+        return false;
+    }
+    
+    // Send VW Mode 22 PID F40C (oil temp)
+    if (!sendATCommand("22F40C", response, 500)) {
+        OBD_LOGF("[OBD] Oil temp: PID F40C query failed");
+        // Reset header to default before returning
+        sendATCommand("ATD", response, 200);  // Reset to defaults
+        return false;
+    }
+    
+    OBD_LOGF("[OBD] Oil temp raw response: %s", response.c_str());
+    
+    int8_t tempC;
+    if (parseVwMode22TempResponse(response, "F40C", tempC)) {
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.oil_temp_c = tempC;
+            lastData.timestamp_ms = millis();
+        }
+        OBD_LOGF("[OBD] Oil Temp: %d°C (%d°F)", tempC, (tempC * 9 / 5) + 32);
+        
+        // Reset header to default
+        sendATCommand("ATD", response, 200);
+        return true;
+    }
+    
+    OBD_LOGF("[OBD] Oil temp: parse failed for response: %s", response.c_str());
+    // Reset header to default
+    sendATCommand("ATD", response, 200);
+    return false;
+}
+
+bool OBDHandler::requestDsgTemp() {
+    String response;
+    
+    // Set header to Transmission ECU (7E1) for VW DSG
+    if (!sendATCommand("ATSH7E1", response, 500)) {
+        OBD_LOGF("[OBD] DSG temp: failed to set header 7E1");
+        return false;
+    }
+    
+    // Send VW Mode 22 PID F40D (DSG oil temp)
+    if (!sendATCommand("22F40D", response, 500)) {
+        OBD_LOGF("[OBD] DSG temp: PID F40D query failed");
+        // Reset header to default before returning
+        sendATCommand("ATD", response, 200);  // Reset to defaults
+        return false;
+    }
+    
+    OBD_LOGF("[OBD] DSG temp raw response: %s", response.c_str());
+    
+    int8_t tempC;
+    if (parseVwMode22TempResponse(response, "F40D", tempC)) {
+        ObdLock lock(obdMutex);
+        if (lock.ok()) {
+            lastData.dsg_temp_c = tempC;
+            lastData.timestamp_ms = millis();
+        }
+        OBD_LOGF("[OBD] DSG Temp: %d°C (%d°F)", tempC, (tempC * 9 / 5) + 32);
+        
+        // Reset header to default
+        sendATCommand("ATD", response, 200);
+        return true;
+    }
+    
+    OBD_LOGF("[OBD] DSG temp: parse failed for response: %s", response.c_str());
+    // Reset header to default
+    sendATCommand("ATD", response, 200);
+    return false;
+}
+
 void OBDHandler::disconnect() {
     if (pOBDClient) {
         if (pOBDClient->isConnected()) {
@@ -1187,7 +1427,7 @@ void OBDHandler::startScan() {
     }
     detectionStartMs = millis();
     
-    Serial.println("[OBD] Manual scan started - looking for ELM327 devices");
+    Serial.println("[OBD] Manual scan started - looking for OBD adapters");
     
     // Only scan if V1 is connected - OBD uses second BLE client which needs V1 stable first
     if (!bleClient.isConnected()) {
