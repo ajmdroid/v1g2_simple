@@ -39,6 +39,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
     DisplayState state = parser->getDisplayState();
     bool hasAlerts = parser->hasAlerts();
+    const V1Settings& settingsRef = settings->get();
 
     if (!hasAlerts && state.activeBands != BAND_NONE) {
         unsigned long gapNow = nowMs;
@@ -64,7 +65,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
     }
     lastDisplayDraw = nowMs;
 
-    const V1Settings& alertSettings = settings->get();
+    const V1Settings& alertSettings = settingsRef;
 
     if (hasAlerts) {
         AlertData priority = parser->getPriorityAlert();
@@ -211,7 +212,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
         // Persistence is cleared on slot change (below) or when window expires
 
-        DisplayState restoreState = parser->getDisplayState();
+        const DisplayState& restoreState = parser->getDisplayState();
         VolumeFadeContext fadeCtx;
         fadeCtx.hasAlert = false;
         fadeCtx.alertMuted = false;
@@ -230,7 +231,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         speedVolume->reset();
 
-        const V1Settings& s = settings->get();
+        const V1Settings& s = settingsRef;
         uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
 
         static int lastPersistenceSlot = -1;

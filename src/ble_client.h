@@ -181,6 +181,11 @@ public:
     // Process pending proxy notifications (call from main loop after display update)
     // Returns number of packets sent
     int processProxyQueue();
+
+    // Phone->V1 command drop counters (observability)
+    uint32_t getPhoneCmdDropsOverflow() const { return phoneCmdDropsOverflow; }
+    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }
+    uint32_t getPhoneCmdDropsLockBusy() const { return phoneCmdDropsLockBusy; }
     
     // Get proxy metrics (for instrumentation)
     const ProxyMetrics& getProxyMetrics() const { return proxyMetrics; }
@@ -247,6 +252,7 @@ private:
     // Synchronization primitives (mirroring Kenny's approach)
     SemaphoreHandle_t bleMutex = nullptr;
     SemaphoreHandle_t bleNotifyMutex = nullptr;
+    SemaphoreHandle_t phoneCmdMutex = nullptr;
     
     // Proxy queue for decoupling notify from hot path
     static constexpr size_t PROXY_QUEUE_SIZE = 8;  // Small queue, drop-oldest on overflow
@@ -255,15 +261,20 @@ private:
         uint8_t data[PROXY_PACKET_MAX];
         size_t length;
         uint16_t charUUID;
+        uint32_t tsMs;
     };
     ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
     
     // Phone→V1 command queue for safe writes (decoupled from callback context)
     static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
+    static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
     ProxyPacket phone2v1Queue[PHONE_CMD_QUEUE_SIZE];
     volatile size_t phone2v1QueueHead = 0;
     volatile size_t phone2v1QueueTail = 0;
     volatile size_t phone2v1QueueCount = 0;
+    volatile uint32_t phoneCmdDropsOverflow = 0;
+    volatile uint32_t phoneCmdDropsInvalid = 0;
+    volatile uint32_t phoneCmdDropsLockBusy = 0;
     volatile size_t proxyQueueHead = 0;  // Next write position
     volatile size_t proxyQueueTail = 0;  // Next read position
     volatile size_t proxyQueueCount = 0; // Current items in queue
@@ -298,6 +309,10 @@ private:
     
     // Called from connectToServer() after successful sync connect
     bool finishConnection();
+
+    // Queue phone->V1 commands from BLE callback context
+    bool enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
+    int processPhoneCommandQueue();
 
     // Diagnostic helper to log negotiated connection parameters
     void logConnParams(const char* tag);

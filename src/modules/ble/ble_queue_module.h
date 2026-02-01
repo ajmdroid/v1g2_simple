@@ -56,6 +56,7 @@ private:
 
     std::vector<uint8_t> rxBuffer;
     unsigned long lastRxMillis = 0;
+    uint32_t lastNotifyTsMs = 0;
 
     Config config;
 

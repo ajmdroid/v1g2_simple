@@ -102,6 +102,56 @@ struct PerfCounters {
 };
 
 // ============================================================================
+// Extended metrics for p95/max latency, loop jitter, heap stats
+// ==========================================================================
+struct PerfHistogramMs {
+    static constexpr size_t kBucketCount = 10;
+    uint32_t buckets[kBucketCount] = {0};
+    uint32_t total = 0;
+    uint32_t maxMs = 0;
+
+    void reset() {
+        for (size_t i = 0; i < kBucketCount; ++i) {
+            buckets[i] = 0;
+        }
+        total = 0;
+        maxMs = 0;
+    }
+};
+
+struct PerfExtendedMetrics {
+    PerfHistogramMs notifyToDisplayMs;
+    PerfHistogramMs notifyToProxyMs;
+    uint32_t loopMaxUs = 0;
+    uint32_t minFreeHeap = UINT32_MAX;
+    uint32_t minLargestBlock = UINT32_MAX;
+
+    void reset() {
+        notifyToDisplayMs.reset();
+        notifyToProxyMs.reset();
+        loopMaxUs = 0;
+        minFreeHeap = UINT32_MAX;
+        minLargestBlock = UINT32_MAX;
+    }
+};
+
+extern PerfExtendedMetrics perfExtended;
+
+void perfRecordNotifyToDisplayMs(uint32_t ms);
+void perfRecordNotifyToProxyMs(uint32_t ms);
+void perfRecordLoopJitterUs(uint32_t us);
+void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock);
+
+uint32_t perfGetNotifyToDisplayP95Ms();
+uint32_t perfGetNotifyToDisplayMaxMs();
+uint32_t perfGetNotifyToProxyP95Ms();
+uint32_t perfGetNotifyToProxyMaxMs();
+uint32_t perfGetLoopMaxUs();
+uint32_t perfGetMinFreeHeap();
+uint32_t perfGetMinLargestBlock();
+void perfExtendedResetWindow();
+
+// ============================================================================
 // Sampled latency tracking (only when PERF_METRICS=1)
 // Uses std::atomic for thread-safe access
 // ============================================================================

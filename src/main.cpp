@@ -58,6 +58,7 @@
 #include "modules/camera/camera_load_coordinator_module.h"
 #include "modules/obd/obd_auto_connector_module.h"
 #include "modules/lockout/auto_lockout_maintenance_module.h"
+#include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
@@ -511,6 +512,7 @@ void setup() {
 }
 
 void loop() {
+    unsigned long loopStartUs = micros();
     unsigned long now = millis();
     perfReporterModule.process(now);
 
@@ -535,6 +537,8 @@ void loop() {
 #if defined(DISPLAY_WAVESHARE_349)
     powerModule.process(now);
     if (touchUiModule.process(now, (digitalRead(BOOT_BUTTON_GPIO) == LOW))) {
+        perfRecordLoopJitterUs(micros() - loopStartUs);
+        perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
         return;  // Skip normal loop processing while in settings mode
     }
 #endif
@@ -572,6 +576,9 @@ void loop() {
     
     // Camera alerts + cache maintenance (requires GPS with valid fix)
     cameraAlertModule.process();
+
+    perfRecordLoopJitterUs(micros() - loopStartUs);
+    perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     
     // OBD processing and delayed auto-connect
     obdAutoConnector.process(now);

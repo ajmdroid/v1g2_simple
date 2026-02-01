@@ -15,6 +15,7 @@ static constexpr bool PERF_DEBUG_LOGS = false;  // Set true for verbose Serial l
 
 // Global instances
 PerfCounters perfCounters;
+PerfExtendedMetrics perfExtended;
 
 #if PERF_METRICS
 PerfLatency perfLatency;
@@ -27,6 +28,7 @@ uint32_t perfLastReportMs = 0;
 
 void perfMetricsInit() {
     perfCounters.reset();
+    perfExtended.reset();
 #if PERF_METRICS
     perfLatency.reset();
 #if PERF_MONITORING
@@ -38,9 +40,79 @@ void perfMetricsInit() {
 
 void perfMetricsReset() {
     perfCounters.reset();
+    perfExtended.reset();
 #if PERF_METRICS
     perfLatency.reset();
 #endif
+}
+
+namespace {
+static constexpr uint32_t kLatencyBucketsMs[PerfHistogramMs::kBucketCount] = {
+    1, 2, 5, 10, 20, 50, 100, 200, 500, UINT32_MAX
+};
+
+static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
+    if (ms > hist.maxMs) {
+        hist.maxMs = ms;
+    }
+    for (size_t i = 0; i < PerfHistogramMs::kBucketCount; ++i) {
+        if (ms <= kLatencyBucketsMs[i]) {
+            hist.buckets[i]++;
+            hist.total++;
+            return;
+        }
+    }
+}
+
+static uint32_t calcP95(const PerfHistogramMs& hist) {
+    if (hist.total == 0) {
+        return 0;
+    }
+    uint32_t target = (hist.total * 95 + 99) / 100;
+    uint32_t cumulative = 0;
+    for (size_t i = 0; i < PerfHistogramMs::kBucketCount; ++i) {
+        cumulative += hist.buckets[i];
+        if (cumulative >= target) {
+            return kLatencyBucketsMs[i];
+        }
+    }
+    return hist.maxMs;
+}
+} // namespace
+
+void perfRecordNotifyToDisplayMs(uint32_t ms) {
+    addLatencySample(perfExtended.notifyToDisplayMs, ms);
+}
+
+void perfRecordNotifyToProxyMs(uint32_t ms) {
+    addLatencySample(perfExtended.notifyToProxyMs, ms);
+}
+
+void perfRecordLoopJitterUs(uint32_t us) {
+    if (us > perfExtended.loopMaxUs) {
+        perfExtended.loopMaxUs = us;
+    }
+}
+
+void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock) {
+    if (freeHeap < perfExtended.minFreeHeap) {
+        perfExtended.minFreeHeap = freeHeap;
+    }
+    if (largestBlock < perfExtended.minLargestBlock) {
+        perfExtended.minLargestBlock = largestBlock;
+    }
+}
+
+uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
+uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
+uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
+uint32_t perfGetNotifyToProxyMaxMs() { return perfExtended.notifyToProxyMs.maxMs; }
+uint32_t perfGetLoopMaxUs() { return perfExtended.loopMaxUs; }
+uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 0 : perfExtended.minFreeHeap; }
+uint32_t perfGetMinLargestBlock() { return perfExtended.minLargestBlock == UINT32_MAX ? 0 : perfExtended.minLargestBlock; }
+
+void perfExtendedResetWindow() {
+    perfExtended.reset();
 }
 
 #if PERF_METRICS && PERF_MONITORING

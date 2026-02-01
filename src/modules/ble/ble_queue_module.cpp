@@ -4,6 +4,9 @@
 #include "debug_logger.h"
 #include <algorithm>
 
+// Maximum bytes to buffer from BLE RX before dropping
+static constexpr size_t RX_BUFFER_MAX = 512;
+
 // External debug logger instance
 extern DebugLogger debugLogger;
 
@@ -112,7 +115,7 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
     config = cfg;
 
     queueHandle = xQueueCreate(config.queueDepth, sizeof(BLEDataPacket));
-    rxBuffer.reserve(config.rxBufferCap);
+    rxBuffer.reserve(std::max(config.rxBufferCap, RX_BUFFER_MAX));
 }
 
 void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charUUID) {
@@ -151,11 +154,6 @@ void BleQueueModule::process() {
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
 
-    constexpr size_t RX_BUFFER_MAX = 512;
-    if (rxBuffer.capacity() < RX_BUFFER_MAX) {
-        rxBuffer.reserve(RX_BUFFER_MAX);
-    }
-
     while (queueHandle && xQueueReceive(queueHandle, &pkt, 0) == pdTRUE) {
         if (rxBuffer.size() < RX_BUFFER_MAX) {
             rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
@@ -169,6 +167,7 @@ void BleQueueModule::process() {
 
     if (latestPktTs != 0) {
         lastRxMillis = latestPktTs;
+        lastNotifyTsMs = latestPktTs;
     }
 #endif
 
@@ -259,7 +258,11 @@ void BleQueueModule::process() {
                 previewActive = false;
             }
             if (displayPipeline) {
-                displayPipeline->handleParsed(millis());
+                uint32_t nowMs = millis();
+                if (lastNotifyTsMs != 0 && nowMs >= lastNotifyTsMs) {
+                    perfRecordNotifyToDisplayMs(nowMs - lastNotifyTsMs);
+                }
+                displayPipeline->handleParsed(nowMs);
             }
         }
     }

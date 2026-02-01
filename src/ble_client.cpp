@@ -272,8 +272,11 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (!bleNotifyMutex) {
         bleNotifyMutex = xSemaphoreCreateMutex();
     }
+    if (!phoneCmdMutex) {
+        phoneCmdMutex = xSemaphoreCreateMutex();
+    }
     
-    if (!bleMutex || !bleNotifyMutex) {
+    if (!bleMutex || !bleNotifyMutex || !phoneCmdMutex) {
         Serial.println("ERROR: Failed to create BLE mutexes");
         return false;
     }
@@ -603,7 +606,7 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
 }
 
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
-    Serial.println("[BLE] onConnect callback - V1 connected!");
+    // NOTE: BLE callback - keep fast, no blocking operations
     if (instancePtr) {
         SemaphoreGuard lock(instancePtr->bleMutex);
         instancePtr->connected = true;
@@ -613,8 +616,9 @@ void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
 }
 
 void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
+    // NOTE: BLE callback - minimize blocking. Log disconnect reason for diagnostics.
     PERF_INC(disconnects);  // Count V1 disconnections
-    Serial.printf("[BLE] V1 disconnected (reason: %d)\n", reason);
+    BLE_LOGF("[BLE] V1 disconnected (reason: %d)\n", reason);
     
     // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
     // to ensure a clean reconnect next time.
@@ -629,7 +633,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         // Stop proxy advertising FIRST before any state changes
         if (instancePtr->proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
             NimBLEDevice::stopAdvertising();
-            delay(50);  // Brief settle time
+            // No delay here - callback must return quickly
         }
         
         SemaphoreGuard lock(instancePtr->bleMutex);
@@ -1353,6 +1357,14 @@ void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {
 }
 
 void V1BLEClient::process() {
+    // Process phone->V1 commands (up to queue size per loop to drain any backlog)
+    // Each call processes one command to minimize mutex hold time during BLE writes
+    for (int i = 0; i < MAX_PHONE_CMDS_PER_LOOP; i++) {
+        if (processPhoneCommandQueue() == 0) {
+            break;
+        }
+    }
+
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
     if (proxyAdvertisingStartMs != 0 && millis() >= proxyAdvertisingStartMs) {
         proxyAdvertisingStartMs = 0;  // Clear pending flag
@@ -1601,7 +1613,8 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 // ==================== BLE Proxy Server Functions ====================
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
-    Serial.printf("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+    // NOTE: BLE callback - keep fast
+    BLE_LOGF("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
     
     // Request connection parameters - use Android-compatible range
     // Min 15ms (12), Max 45ms (36), Latency 0, Timeout 4s (400)
@@ -1615,7 +1628,8 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
 }
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
-    Serial.printf("[BLE] JBV1/Phone disconnected (reason: %d)\n", reason);
+    // NOTE: BLE callback - keep fast
+    BLE_LOGF("[BLE] JBV1/Phone disconnected (reason: %d)\n", reason);
     if (bleClient) {
         bleClient->proxyClientConnected = false;
         // Resume advertising if V1 is still connected
@@ -1627,13 +1641,12 @@ void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimB
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
     // Forward commands from JBV1 to V1
+    // NOTE: This is a BLE callback - avoid blocking operations (Serial, delays, long locks)
     if (!pCharacteristic || !bleClient) {
-        Serial.println("ProxyWrite: null pCharacteristic or bleClient");
         return;
     }
     
     if (!bleClient->connected) {
-        Serial.println("ProxyWrite: V1 not connected");
         return;
     }
     
@@ -1643,7 +1656,6 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     size_t rawLen = attrValue.size();
     
     if (rawLen == 0 || !rawData || rawLen > 32) {
-        Serial.println("ProxyWrite: invalid data");
         return;
     }
     
@@ -1655,15 +1667,8 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     // Proxy command logging disabled - we confirmed JBV1 uses standard mute (0x34/0x35)
     // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
     
-    // Route to appropriate V1 characteristic based on source
-    // B6D4 (SHORT) -> V1 B6D4
-    // B8D2 (LONG) -> V1 B8D2 (for commands like voltage request)
-    // BAD4 -> V1 B6D4 (fallback)
-    if (sourceChar == 0xB8D2 && bleClient->pCommandCharLong) {
-        bleClient->pCommandCharLong->writeValue(cmdBuf, rawLen, false);
-    } else {
-        bleClient->sendCommand(cmdBuf, rawLen);
-    }
+    // Enqueue for main-loop processing to avoid BLE callback blocking
+    bleClient->enqueuePhoneCommand(cmdBuf, rawLen, sourceChar);
 }
 
 void V1BLEClient::initProxyServer(const char* deviceName) {
@@ -1836,6 +1841,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     memcpy(pkt.data, data, length);
     pkt.length = length;
     pkt.charUUID = sourceCharUUID;
+    pkt.tsMs = millis();
     proxyQueueHead = (proxyQueueHead + 1) % PROXY_QUEUE_SIZE;
     proxyQueueCount++;
     
@@ -1911,6 +1917,10 @@ int V1BLEClient::processProxyQueue() {
     // Process all queued packets (typically 1-2)
     while (proxyQueueCount > 0) {
         ProxyPacket& pkt = proxyQueue[proxyQueueTail];
+        uint32_t nowMs = millis();
+        if (pkt.tsMs != 0 && nowMs >= pkt.tsMs) {
+            perfRecordNotifyToProxyMs(nowMs - pkt.tsMs);
+        }
 
         NimBLECharacteristic* targetChar = nullptr;
         if (pkt.charUUID == 0xB4E0 && pProxyNotifyLongChar) {
@@ -1933,4 +1943,80 @@ int V1BLEClient::processProxyQueue() {
     }
     
     return sent;
+}
+
+bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
+    if (!data || length == 0 || length > 32) {
+        phoneCmdDropsInvalid++;
+        return false;
+    }
+
+    if (!phoneCmdMutex || xSemaphoreTake(phoneCmdMutex, 0) != pdTRUE) {
+        phoneCmdDropsLockBusy++;
+        return false;
+    }
+
+    if (phone2v1QueueCount >= PHONE_CMD_QUEUE_SIZE) {
+        phone2v1QueueTail = (phone2v1QueueTail + 1) % PHONE_CMD_QUEUE_SIZE;
+        phone2v1QueueCount--;
+        phoneCmdDropsOverflow++;
+    }
+
+    ProxyPacket& pkt = phone2v1Queue[phone2v1QueueHead];
+    memcpy(pkt.data, data, length);
+    pkt.length = length;
+    pkt.charUUID = sourceCharUUID;
+    phone2v1QueueHead = (phone2v1QueueHead + 1) % PHONE_CMD_QUEUE_SIZE;
+    phone2v1QueueCount++;
+
+    xSemaphoreGive(phoneCmdMutex);
+    return true;
+}
+
+int V1BLEClient::processPhoneCommandQueue() {
+    if (!connected) {
+        return 0;
+    }
+
+    // Dequeue one packet under lock, then send outside lock to minimize mutex hold time
+    // This prevents blocking forwardToProxyImmediate() during BLE writes
+    ProxyPacket pktCopy;
+    uint16_t charUUID = 0;
+    bool hasPacket = false;
+
+    if (phoneCmdMutex && xSemaphoreTake(phoneCmdMutex, 0) == pdTRUE) {
+        if (phone2v1QueueCount > 0) {
+            ProxyPacket& pkt = phone2v1Queue[phone2v1QueueTail];
+            memcpy(pktCopy.data, pkt.data, pkt.length);
+            pktCopy.length = pkt.length;
+            charUUID = pkt.charUUID;
+            phone2v1QueueTail = (phone2v1QueueTail + 1) % PHONE_CMD_QUEUE_SIZE;
+            phone2v1QueueCount--;
+            hasPacket = true;
+        }
+        xSemaphoreGive(phoneCmdMutex);
+    }
+
+    if (!hasPacket) {
+        return 0;
+    }
+
+    // Send outside queue lock - BLE write can take time
+    // Serialize writes with bleNotifyMutex to avoid concurrent notify/write
+    if (bleNotifyMutex) {
+        SemaphoreGuard lock(bleNotifyMutex);
+        if (charUUID == 0xB8D2 && pCommandCharLong) {
+            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
+        } else {
+            sendCommand(pktCopy.data, pktCopy.length);
+        }
+    } else {
+        if (charUUID == 0xB8D2 && pCommandCharLong) {
+            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
+        } else {
+            sendCommand(pktCopy.data, pktCopy.length);
+        }
+    }
+
+    return 1;
 }
