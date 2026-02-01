@@ -73,6 +73,7 @@ static bool isValidHexString(const String& str, size_t expectedLen = 0) {
 // Flag to track when authentication completes
 static volatile bool s_authComplete = false;
 static volatile bool s_authSuccess = false;
+static bool s_expectObdLink = false;  // Pairing mode selector
 
 // Security callbacks for OBD adapter pairing
 class OBDSecurityCallbacks : public NimBLEClientCallbacks {
@@ -92,10 +93,11 @@ public:
     
     void onPassKeyEntry(NimBLEConnInfo& connInfo) override {
         // Device is asking us to enter a PIN
-        // OBDLink CX uses 123456, cheap clones often use 1234
-        // Try OBDLink PIN first since it's our primary target
-        Serial.println("[OBD] Security: PassKey entry requested - trying 123456");
-        NimBLEDevice::injectPassKey(connInfo, 123456);
+        // OBDLink CX uses 123456 (Secure Connections). Many ELM327 clones use 1234.
+        uint32_t pin = s_expectObdLink ? 123456 : 1234;
+        Serial.printf("[OBD] Security: PassKey entry requested - using %s PIN %06lu\n",
+                      s_expectObdLink ? "OBDLink" : "legacy", (unsigned long)pin);
+        NimBLEDevice::injectPassKey(connInfo, pin);
     }
     
     void onConfirmPasskey(NimBLEConnInfo& connInfo, uint32_t pass_key) override {
@@ -132,6 +134,7 @@ OBDHandler::OBDHandler()
     , pTXChar(nullptr)
     , hasTargetDevice(false)
     , targetDeviceName("")
+    , targetIsObdLink(false)
     , scanActive(false)
     , scanStartMs(0)
     , responseComplete(false)
@@ -154,6 +157,9 @@ OBDHandler::OBDHandler()
     lastData.intake_air_temp_c = -128; // Invalid marker (no data yet)
     lastData.valid = false;
     lastData.timestamp_ms = 0;
+
+    // Reserve to avoid repeated reallocations during scans
+    foundDevices.reserve(12);
     
     s_obdInstance = this;
 }
@@ -200,6 +206,7 @@ void OBDHandler::begin() {
         
         targetAddress = NimBLEAddress(std::string(savedAddr.c_str()), BLE_ADDR_PUBLIC);
         targetDeviceName = savedName;
+        targetIsObdLink = isObdLinkName(std::string(savedName.c_str()));
         hasTargetDevice = true;
         
         // Stay idle - tryAutoConnect() will be called after V1 settles
@@ -324,6 +331,13 @@ bool OBDHandler::isObdAdapterName(const std::string& name) {
     return false;
 }
 
+bool OBDHandler::isObdLinkName(const std::string& name) {
+    if (name.empty()) return false;
+    String upper = String(name.c_str());
+    upper.toUpperCase();
+    return upper.indexOf("OBDLINK") >= 0 || upper.indexOf("OBD LINK") >= 0 || upper.indexOf("OBD-LINK") >= 0;
+}
+
 void OBDHandler::onObdAdapterFound(const NimBLEAdvertisedDevice* device) {
     const std::string& name = device->getName();
     String addrStr = String(device->getAddress().toString().c_str());
@@ -361,6 +375,7 @@ void OBDHandler::onObdAdapterFound(const NimBLEAdvertisedDevice* device) {
         targetAddress = device->getAddress();
         targetDeviceName = name.c_str();
         hasTargetDevice = true;
+        targetIsObdLink = isObdLinkName(name);
         
         // Mark as detected
         moduleDetected = true;
@@ -399,6 +414,48 @@ void OBDHandler::onDeviceFound(const NimBLEAdvertisedDevice* device) {
     foundDevices.push_back(info);
     Serial.printf("[OBD] Found BLE device #%d: '%s' [%s] RSSI:%d\n", 
                   (int)foundDevices.size(), name.c_str(), addrStr.c_str(), info.rssi);
+}
+
+void OBDHandler::onDeviceFoundDeferred(const char* name, const char* addr, int rssi) {
+    if (!name || !addr || name[0] == '\0' || addr[0] == '\0') {
+        return;
+    }
+    // Skip devices with very short names
+    size_t nameLen = strlen(name);
+    if (nameLen < 2) {
+        return;
+    }
+
+    String nameCopy(name);
+    String addrCopy(addr);
+    int rssiCopy = rssi;
+    int deviceCount = 0;
+    bool added = false;
+
+    {
+        ObdLock lock(obdMutex);
+
+        // Check if already in list
+        for (const auto& d : foundDevices) {
+            if (d.address == addrCopy) {
+                return;  // Already found
+            }
+        }
+
+        // Add to found devices list
+        OBDDeviceInfo info;
+        info.address = addrCopy;
+        info.name = nameCopy;
+        info.rssi = rssiCopy;
+        foundDevices.push_back(info);
+        deviceCount = static_cast<int>(foundDevices.size());
+        added = true;
+    }
+
+    if (added) {
+        Serial.printf("[OBD] Found BLE device #%d: '%s' [%s] RSSI:%d\n", 
+                      deviceCount, nameCopy.c_str(), addrCopy.c_str(), rssiCopy);
+    }
 }
 
 void OBDHandler::handleConnecting() {
@@ -773,14 +830,21 @@ bool OBDHandler::connectToDevice() {
         pOBDClient->setConnectionParams(12, 12, 0, 500);  // min, max, latency, timeout
     }
     
-    // Configure security for OBDLink CX using Secure Connections with Numeric Comparison
-    // The CX displays a 6-digit number on both devices for user to verify they match
-    // ESP32 auto-accepts via onConfirmPasskey callback (no user input needed on our side)
-    // This is more secure than legacy PIN pairing and works within the 5-min bonding window
-    NimBLEDevice::setSecurityAuth(true, true, true);        // bonding, MITM, secure connections
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO); // Numeric comparison - auto-accept
+    // Configure security per adapter:
+    // - OBDLink: Secure Connections + numeric comparison (PIN 123456)
+    // - Generic ELM327 clones: Legacy pairing with PIN 1234 (SC disabled)
+    s_expectObdLink = targetIsObdLink;
+    if (targetIsObdLink) {
+        NimBLEDevice::setSecurityAuth(true, true, true);         // bonding, MITM, SC on
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO); // Numeric comparison
+        Serial.println("[OBD] Security mode: OBDLink (SC + 123456)");
+    } else {
+        NimBLEDevice::setSecurityAuth(true, false, false);       // bonding only, legacy PIN
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY); // We supply the PIN (1234)
+        Serial.println("[OBD] Security mode: legacy PIN (1234, SC off)");
+    }
     
-    Serial.printf("[OBD] Attempting BLE connect (10s timeout, legacy pairing)...\n");
+    Serial.printf("[OBD] Attempting BLE connect (10s timeout)...\n");
     
     // Reset auth flags before connecting
     s_authComplete = false;
@@ -929,8 +993,9 @@ void OBDHandler::notificationCallback(NimBLERemoteCharacteristic* pChar,
         }
         
         // Filter out \r and \n, append others
-        if (c != '\r' && c != '\n' && s_obdInstance->responseBuffer.length() < RESPONSE_BUFFER_SIZE) {
-            s_obdInstance->responseBuffer += c;
+        if (c != '\r' && c != '\n' && s_obdInstance->responseLength < RESPONSE_BUFFER_SIZE) {
+            s_obdInstance->responseBuffer[s_obdInstance->responseLength++] = c;
+            s_obdInstance->responseBuffer[s_obdInstance->responseLength] = '\0';
         }
     }
 }
@@ -1006,7 +1071,8 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
         // Clear response buffer under lock
         ObdLock lock(obdMutex);
         if (!lock.ok()) return false;
-        responseBuffer = "";
+        responseLength = 0;
+        responseBuffer[0] = '\0';
         responseComplete = false;
     }
     
@@ -1318,8 +1384,8 @@ bool OBDHandler::requestOilTemp() {
     // Send VW Mode 22 PID F40C (oil temp)
     if (!sendATCommand("22F40C", response, 500)) {
         OBD_LOGF("[OBD] Oil temp: PID F40C query failed");
-        // Reset header to default before returning
-        sendATCommand("ATD", response, 200);  // Reset to defaults
+        // Reset header to broadcast 7DF (not ATD - we only want header reset, not full config reset)
+        sendATCommand("ATSH7DF", response, 200);
         return false;
     }
     
@@ -1334,14 +1400,14 @@ bool OBDHandler::requestOilTemp() {
         }
         OBD_LOGF("[OBD] Oil Temp: %d°C (%d°F)", tempC, (tempC * 9 / 5) + 32);
         
-        // Reset header to default
-        sendATCommand("ATD", response, 200);
+        // Reset header to standard 7DF
+        sendATCommand("ATSH7DF", response, 200);
         return true;
     }
     
     OBD_LOGF("[OBD] Oil temp: parse failed for response: %s", response.c_str());
-    // Reset header to default
-    sendATCommand("ATD", response, 200);
+    // Reset header to standard 7DF
+    sendATCommand("ATSH7DF", response, 200);
     return false;
 }
 
@@ -1357,8 +1423,8 @@ bool OBDHandler::requestDsgTemp() {
     // Send VW Mode 22 PID F40D (DSG oil temp)
     if (!sendATCommand("22F40D", response, 500)) {
         OBD_LOGF("[OBD] DSG temp: PID F40D query failed");
-        // Reset header to default before returning
-        sendATCommand("ATD", response, 200);  // Reset to defaults
+        // Reset header to standard 7DF before returning
+        sendATCommand("ATSH7DF", response, 200);
         return false;
     }
     
@@ -1373,14 +1439,14 @@ bool OBDHandler::requestDsgTemp() {
         }
         OBD_LOGF("[OBD] DSG Temp: %d°C (%d°F)", tempC, (tempC * 9 / 5) + 32);
         
-        // Reset header to default
-        sendATCommand("ATD", response, 200);
+        // Reset header to standard 7DF
+        sendATCommand("ATSH7DF", response, 200);
         return true;
     }
     
     OBD_LOGF("[OBD] DSG temp: parse failed for response: %s", response.c_str());
-    // Reset header to default
-    sendATCommand("ATD", response, 200);
+    // Reset header to standard 7DF
+    sendATCommand("ATSH7DF", response, 200);
     return false;
 }
 
@@ -1491,6 +1557,7 @@ bool OBDHandler::connectToAddress(const String& address, const String& name) {
     targetAddress = NimBLEAddress(std::string(address.c_str()), BLE_ADDR_PUBLIC);
     targetDeviceName = name.length() > 0 ? name : address;
     hasTargetDevice = true;
+    targetIsObdLink = isObdLinkName(std::string(targetDeviceName.c_str()));
     
     // Mark as detected and start connecting
     moduleDetected = true;

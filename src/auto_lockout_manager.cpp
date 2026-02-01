@@ -61,6 +61,43 @@ AutoLockoutManager::AutoLockoutManager() : clusterMutex(nullptr), lockoutManager
   lastSnapshotMs = millis();
   resetSessionStats();
 }
+
+void AutoLockoutManager::setLockoutManager(LockoutManager* manager) {
+  lockoutManager = manager;
+  
+  // Register callback to handle external lockout removals
+  // This keeps promotedLockoutIndex values in sync when lockouts are deleted
+  // through means other than demoteCluster() (e.g., future API endpoints)
+  if (manager) {
+    manager->setOnLockoutRemovedCallback([this](int removedIndex) {
+      onLockoutRemoved(removedIndex);
+    });
+  }
+}
+
+void AutoLockoutManager::onLockoutRemoved(int removedIndex) {
+  ClusterLock lock(clusterMutex);
+  if (!lock.ok()) return;
+  
+  // Update indices for all promoted clusters that pointed at or after the removed index
+  for (auto& c : clusters) {
+    if (!c.isPromoted) continue;
+    
+    if (c.promotedLockoutIndex == removedIndex) {
+      // This cluster's promoted lockout was removed externally
+      // Mark it as no longer promoted
+      c.isPromoted = false;
+      c.promotedLockoutIndex = -1;
+      if (DEBUG_LOGS) {
+        Serial.printf("[AutoLockout] Cluster '%s' lockout removed externally\n", c.name.c_str());
+      }
+    } else if (c.promotedLockoutIndex > removedIndex) {
+      // Adjust index to account for removal
+      c.promotedLockoutIndex--;
+    }
+  }
+}
+
 AutoLockoutManager::~AutoLockoutManager() {
   if (clusterMutex) {
     vSemaphoreDelete(clusterMutex);

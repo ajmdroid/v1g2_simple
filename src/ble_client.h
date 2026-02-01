@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <vector>
+#include <atomic>
 
 // Forward declarations
 class V1BLEClient;
@@ -246,7 +247,7 @@ private:
     NimBLECharacteristic* pProxyWriteChar;
     bool proxyEnabled;
     bool proxyServerInitialized;
-    bool proxyClientConnected; // Encapsulated status
+    std::atomic<bool> proxyClientConnected{false}; // Atomic for thread safety (set from BLE callbacks)
     String proxyName_;
     
     // Synchronization primitives (mirroring Kenny's approach)
@@ -264,6 +265,18 @@ private:
         uint32_t tsMs;
     };
     ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
+
+    // OBD scan results queue (defer OBD device discovery from BLE callback)
+    static constexpr size_t OBD_SCAN_QUEUE_SIZE = 8;
+    struct ObdScanItem {
+        char name[64];
+        char addr[18];
+        int rssi;
+    };
+    ObdScanItem obdScanQueue[OBD_SCAN_QUEUE_SIZE];
+    volatile size_t obdScanHead = 0;
+    volatile size_t obdScanTail = 0;
+    volatile size_t obdScanCount = 0;
     
     // Phone→V1 command queue for safe writes (decoupled from callback context)
     static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
@@ -282,8 +295,17 @@ private:
     
     DataCallback dataCallback;
     ConnectionCallback connectCallback;
-    bool connected;
-    bool shouldConnect;
+    std::atomic<bool> connected{false};      // Atomic for thread safety (set from BLE callbacks)
+    std::atomic<bool> shouldConnect{false};  // Atomic for thread safety (set from BLE callbacks)
+    std::atomic<bool> pendingConnectStateUpdate{false};   // Deferred update from BLE callbacks
+    std::atomic<bool> pendingDisconnectCleanup{false};    // Deferred cleanup from BLE callbacks
+    std::atomic<bool> pendingLastV1AddressValid{false};    // Deferred settings save from BLE scan callback
+    char pendingLastV1Address[18] = {0};                  // "AA:BB:CC:DD:EE:FF" + null
+    std::atomic<bool> pendingScanEndUpdate{false};         // Deferred scan-end state update from BLE callback
+    std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
+    std::atomic<bool> pendingObdScanComplete{false};       // Deferred OBD scan complete from BLE callback
+    char pendingScanTargetAddress[18] = {0};               // "AA:BB:CC:DD:EE:FF" + null
+    uint8_t pendingScanTargetAddressType = BLE_ADDR_PUBLIC;
     bool hasTargetDevice = false;
     NimBLEAdvertisedDevice targetDevice;
     NimBLEAddress targetAddress;
@@ -314,11 +336,17 @@ private:
     bool enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
     int processPhoneCommandQueue();
 
+    // Queue OBD scan results from BLE callback context
+    void enqueueObdScanResult(const char* name, const char* addr, int rssi);
+
     // Diagnostic helper to log negotiated connection parameters
     void logConnParams(const char* tag);
     
     // State transition helper
     void setBLEState(BLEState newState, const char* reason);
+
+    // Defer settings writes from BLE scan callback
+    void deferLastV1Address(const char* addr);
     
     // Internal connection attempt (called only from state machine)
     bool attemptConnection();

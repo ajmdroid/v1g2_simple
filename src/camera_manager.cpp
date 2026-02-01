@@ -449,11 +449,36 @@ void CameraManager::clear() {
 }
 
 // Helper to get the active camera list (regional cache if available, else full DB)
+// Thread-safety: returns regional cache if available (safe - only modified from main thread)
+// If background loading and no cache, returns empty vector to avoid iterator invalidation
 const std::vector<CameraRecord>& CameraManager::getQueryCameras() const {
   if (!regionalCache.empty()) {
     return regionalCache;
   }
+  // During background loading, cameras vector may be modified (push_back can reallocate)
+  // Return empty vector to prevent iterator invalidation crash
+  if (backgroundLoading) {
+    static const std::vector<CameraRecord> emptyVector;
+    return emptyVector;
+  }
   return cameras;
+}
+
+const std::vector<CameraRecord>* CameraManager::getQueryCamerasSnapshot(
+  std::vector<CameraRecord>& snapshot
+) const {
+  if (!regionalCache.empty()) {
+    return &regionalCache;
+  }
+  if (!backgroundLoading) {
+    return &cameras;
+  }
+  if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snapshot = cameras;
+    xSemaphoreGive(cameraMutex);
+    return &snapshot;
+  }
+  return &cameras;
 }
 
 // Build regional cache containing only cameras within radius of GPS position
@@ -796,15 +821,16 @@ bool CameraManager::isOnCameraRoad(
 }
 
 bool CameraManager::hasNearbyCamera(float lat, float lon, float radius_m) const {
-  const auto& queryList = getQueryCameras();
-  if (queryList.empty()) return false;
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
+  if (!queryList || queryList->empty()) return false;
   
   // Quick bounding box check first
   // At 45° latitude, 1° ≈ 111km lat, 78km lon
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
   
-  for (const auto& cam : queryList) {
+  for (const auto& cam : *queryList) {
     // Quick box check
     if (fabs(cam.latitude - lat) > latDelta) continue;
     if (fabs(cam.longitude - lon) > lonDelta) continue;
@@ -828,8 +854,9 @@ bool CameraManager::getClosestCamera(
   float radius_m,
   NearbyCameraResult& result
 ) const {
-  const auto& queryList = getQueryCameras();
-  if (queryList.empty()) return false;
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
+  if (!queryList || queryList->empty()) return false;
   
   float closestDist = radius_m + 1.0f;
   bool found = false;
@@ -838,7 +865,7 @@ bool CameraManager::getClosestCamera(
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
   
-  for (const auto& cam : queryList) {
+  for (const auto& cam : *queryList) {
     // Quick box check
     if (fabs(cam.latitude - lat) > latDelta) continue;
     if (fabs(cam.longitude - lon) > lonDelta) continue;
@@ -880,14 +907,20 @@ std::vector<NearbyCameraResult> CameraManager::findNearby(
   size_t maxResults
 ) const {
   std::vector<NearbyCameraResult> results;
-  const auto& queryList = getQueryCameras();
-  if (queryList.empty()) return results;
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
+  if (!queryList || queryList->empty()) return results;
+
+  // Reserve to minimize heap churn during per-loop scans
+  if (maxResults > 0) {
+    results.reserve(std::min(maxResults, queryList->size()));
+  }
   
   // Quick bounding box
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
   
-  for (const auto& cam : queryList) {
+  for (const auto& cam : *queryList) {
     // Quick box check
     if (fabs(cam.latitude - lat) > latDelta) continue;
     if (fabs(cam.longitude - lon) > lonDelta) continue;
@@ -949,9 +982,11 @@ bool CameraManager::isTypeEnabled(CameraType type) const {
 }
 
 size_t CameraManager::getRedLightCount() const {
-  const auto& queryList = getQueryCameras();
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
   size_t count = 0;
-  for (const auto& cam : queryList) {
+  if (!queryList) return count;
+  for (const auto& cam : *queryList) {
     if (cam.type == static_cast<uint8_t>(CameraType::RedLightCamera) ||
         cam.type == static_cast<uint8_t>(CameraType::RedLightAndSpeed)) {
       count++;
@@ -961,9 +996,11 @@ size_t CameraManager::getRedLightCount() const {
 }
 
 size_t CameraManager::getSpeedCameraCount() const {
-  const auto& queryList = getQueryCameras();
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
   size_t count = 0;
-  for (const auto& cam : queryList) {
+  if (!queryList) return count;
+  for (const auto& cam : *queryList) {
     if (cam.type == static_cast<uint8_t>(CameraType::SpeedCamera) ||
         cam.type == static_cast<uint8_t>(CameraType::RedLightAndSpeed)) {
       count++;
@@ -973,9 +1010,11 @@ size_t CameraManager::getSpeedCameraCount() const {
 }
 
 size_t CameraManager::getALPRCount() const {
-  const auto& queryList = getQueryCameras();
+  std::vector<CameraRecord> snapshot;
+  const auto* queryList = getQueryCamerasSnapshot(snapshot);
   size_t count = 0;
-  for (const auto& cam : queryList) {
+  if (!queryList) return count;
+  for (const auto& cam : *queryList) {
     if (cam.type == static_cast<uint8_t>(CameraType::ALPR)) {
       count++;
     }

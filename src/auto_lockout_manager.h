@@ -139,6 +139,7 @@ private:
   String generateClusterName(const LearningCluster& cluster) const;
   void relinkPromotedLockouts();
   bool tryLoadFromFS(fs::FS* fs, const char* jsonPath);  // Load clusters from a specific FS
+  void onLockoutRemoved(int removedIndex);  // Callback when lockout removed externally
 
   // Crash-safe logging/replay
   bool replayLog();
@@ -157,7 +158,8 @@ public:
   AutoLockoutManager();
   
   // Set reference to manual lockout manager (for promotion)
-  void setLockoutManager(LockoutManager* manager) { lockoutManager = manager; }
+  // Also registers callback to handle external lockout removals
+  void setLockoutManager(LockoutManager* manager);
   ~AutoLockoutManager();
   
   // Core functionality

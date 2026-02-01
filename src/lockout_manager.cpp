@@ -234,6 +234,12 @@ void LockoutManager::addLockout(const Lockout& lockout) {
               lockout.name.c_str(), lockout.latitude, lockout.longitude, lockout.radius_m);
 }
 
+// WARNING: If removing a lockout that was auto-promoted from AutoLockoutManager,
+// use AutoLockoutManager::demoteCluster() instead, which properly updates
+// promotedLockoutIndex for other clusters. Direct removal here will cause
+// stale indices in AutoLockoutManager until relinkPromotedLockouts() is called.
+// If a removal callback is registered, it will be called after removal to allow
+// index synchronization.
 void LockoutManager::removeLockout(int index) {
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
@@ -244,6 +250,13 @@ void LockoutManager::removeLockout(int index) {
   if (index >= 0 && index < (int)lockouts.size()) {
     LOCKOUT_LOG("[Lockout] Removed: %s\n", lockouts[index].name.c_str());
     lockouts.erase(lockouts.begin() + index);
+    
+    // Notify AutoLockoutManager to update indices (if callback registered)
+    // WARNING: Callback is invoked with lockoutMutex held.
+    // Do NOT call any LockoutManager methods from the callback or deadlock will occur.
+    if (onLockoutRemovedCallback) {
+      onLockoutRemovedCallback(index);
+    }
   }
 }
 

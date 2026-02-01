@@ -172,6 +172,10 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.queueDrops.load(),
         (unsigned long)perfCounters.oversizeDrops.load(),
         (unsigned long)perfCounters.queueHighWater.load());
+    Serial.printf("Queues: proxyHW=%lu phoneHW=%lu obdScanHW=%lu\n",
+        (unsigned long)perfCounters.proxyQueueHighWater.load(),
+        (unsigned long)perfCounters.phoneCmdQueueHighWater.load(),
+        (unsigned long)perfCounters.obdScanQueueHighWater.load());
     Serial.printf("Display: updates=%lu skips=%lu\n",
         (unsigned long)perfCounters.displayUpdates.load(),
         (unsigned long)perfCounters.displaySkips.load());
@@ -204,6 +208,9 @@ String perfMetricsToJson() {
     doc["queueDrops"] = perfCounters.queueDrops.load();
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
+    doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();
+    doc["phoneCmdQueueHighWater"] = perfCounters.phoneCmdQueueHighWater.load();
+    doc["obdScanQueueHighWater"] = perfCounters.obdScanQueueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["cameraBgLoads"] = perfCounters.cameraBgLoads.load();

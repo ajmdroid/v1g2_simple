@@ -140,8 +140,6 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
         PERF_MAX(queueHighWater, depth);
     } else if (length > sizeof(BLEDataPacket::data)) {
         PERF_INC(oversizeDrops);
-        Serial.printf("[BLE] WARNING: Dropped oversize packet (%d bytes > %d max)\n",
-                      (int)length, (int)sizeof(BLEDataPacket::data));
     }
 }
 
@@ -185,7 +183,10 @@ void BleQueueModule::process() {
     const size_t MAX_PACKET_SIZE = 512;
 
     while (true) {
-        auto startIt = std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
+        if (rxBuffer.empty()) break;
+        auto startIt = (rxBuffer[0] == ESP_PACKET_START)
+            ? rxBuffer.begin()
+            : std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
         if (startIt == rxBuffer.end()) {
             rxBuffer.clear();
             break;

@@ -11,7 +11,7 @@ void DisplayPreviewModule::begin(V1Display* disp) {
 void DisplayPreviewModule::requestHold(uint32_t durationMs) {
     previewActive = true;
     previewStartMs = millis();
-    previewDurationMs = durationMs;
+    previewDurationMs = durationMs + PREVIEW_TAIL_MS;
     previewStep = 0;
     previewEnded = false;
 }

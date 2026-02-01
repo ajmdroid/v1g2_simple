@@ -24,6 +24,7 @@
 #include "display_driver.h"
 #include "packet_parser.h"
 #include "../include/color_themes.h"
+#include "../include/display_layout.h"  // Centralized layout constants
 
 class V1Display {
 public:
@@ -182,7 +183,8 @@ private:
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    static constexpr int SECONDARY_ROW_HEIGHT = 54;  // Height reserved for secondary alert cards (with signal meter)
+    // Use centralized constant from display_layout.h
+    static constexpr int SECONDARY_ROW_HEIGHT = DisplayLayout::SECONDARY_ROW_HEIGHT;
 
     int currentProfileSlot = 0;  // Track current profile for display
     ScreenMode currentScreen = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws

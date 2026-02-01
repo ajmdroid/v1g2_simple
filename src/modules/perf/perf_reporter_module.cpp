@@ -21,9 +21,13 @@ void PerfReporterModule::process(unsigned long nowMs) {
     lastLogMs = nowMs;
 
     debugLogger->logf(DebugLogCategory::PerfMetrics,
-        "PerfMetrics: rx=%lu qDrop=%lu parseOK=%lu parseFail=%lu disc=%lu reconn=%lu dispP95=%lums dispMax=%lums prxP95=%lums prxMax=%lums loopMax=%luus heapMin=%lu blockMin=%lu",
+        "PerfMetrics: rx=%lu qDrop=%lu qHW=%lu prxHW=%lu phoneHW=%lu obdHW=%lu parseOK=%lu parseFail=%lu disc=%lu reconn=%lu dispP95=%lums dispMax=%lums prxP95=%lums prxMax=%lums loopMax=%luus heapMin=%lu blockMin=%lu",
         perfCounters.rxPackets.load(),
         perfCounters.queueDrops.load(),
+        perfCounters.queueHighWater.load(),
+        perfCounters.proxyQueueHighWater.load(),
+        perfCounters.phoneCmdQueueHighWater.load(),
+        perfCounters.obdScanQueueHighWater.load(),
         perfCounters.parseSuccesses.load(),
         perfCounters.parseFailures.load(),
         perfCounters.disconnects.load(),

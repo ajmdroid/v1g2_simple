@@ -53,6 +53,7 @@ private:
         {5500, BAND_KA,   5, DIR_FRONT, 34700, true,  false}  // Muted Ka
     };
     static constexpr int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
+    static constexpr uint32_t PREVIEW_TAIL_MS = 600;  // Extra time after last step to keep frame visible
 
     V1Display* display = nullptr;
 

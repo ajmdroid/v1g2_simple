@@ -65,6 +65,9 @@ struct PerfCounters {
     std::atomic<uint32_t> queueDrops{0};       // Packets dropped (queue full)
     std::atomic<uint32_t> oversizeDrops{0};    // Packets dropped (too large for buffer)
     std::atomic<uint32_t> queueHighWater{0};   // Max queue depth seen
+    std::atomic<uint32_t> proxyQueueHighWater{0}; // Max proxy queue depth
+    std::atomic<uint32_t> phoneCmdQueueHighWater{0}; // Max phone→V1 cmd queue depth
+    std::atomic<uint32_t> obdScanQueueHighWater{0}; // Max OBD scan queue depth
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
     
@@ -90,6 +93,9 @@ struct PerfCounters {
         queueDrops.store(0, std::memory_order_relaxed);
         oversizeDrops.store(0, std::memory_order_relaxed);
         queueHighWater.store(0, std::memory_order_relaxed);
+        proxyQueueHighWater.store(0, std::memory_order_relaxed);
+        phoneCmdQueueHighWater.store(0, std::memory_order_relaxed);
+        obdScanQueueHighWater.store(0, std::memory_order_relaxed);
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);
         reconnects.store(0, std::memory_order_relaxed);

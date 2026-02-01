@@ -6,6 +6,7 @@
 #include "display.h"
 #include "debug_logger.h"
 #include "../include/config.h"
+#include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/color_themes.h"
 #include "v1simple_logo.h"  // Splash screen image (640x172)
 #include "settings.h"
@@ -46,7 +47,8 @@ static bool ofrSerpentineInitialized = false;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
-static constexpr int PRIMARY_ZONE_HEIGHT = 95;  // Fixed height for primary display (with gap above cards)
+// Use centralized constant from display_layout.h
+using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
 // Force card redraw flag - set by update() when full screen is cleared
 static bool forceCardRedraw = false;
@@ -178,6 +180,9 @@ inline const ColorPalette& getColorPalette() {
 #define GFX_setTextDatum(d) do { _gfxCurrentTextDatum = (d); } while(0)
 
 // Arduino_GFX implementation of drawString with datum support (with coordinate transform)
+// NOTE: GFX fonts use baseline positioning with setCursor(). The getTextBounds() function
+// returns y1 as the offset from cursor to top of bounding box (typically negative for
+// characters that extend above the baseline). We must account for y1 when aligning.
 static inline void GFX_drawString(Arduino_Canvas* canvas, const char* str, int16_t x, int16_t y) {
     int16_t x1, y1;
     uint16_t w, h;
@@ -186,26 +191,31 @@ static inline void GFX_drawString(Arduino_Canvas* canvas, const char* str, int16
     int16_t drawX = x, drawY = y;
     
     // Apply horizontal alignment based on current datum
+    // x1 is the offset from cursor to left edge of bounding box
     switch (_gfxCurrentTextDatum) {
         case TC_DATUM: case MC_DATUM: case BC_DATUM:
-            drawX = x - w / 2;
+            drawX = x - x1 - w / 2;
             break;
         case TR_DATUM: case MR_DATUM: case BR_DATUM:
-            drawX = x - w;
+            drawX = x - x1 - w;
             break;
-        default: // TL, ML, BL - left aligned (default)
+        default: // TL, ML, BL - left aligned
+            drawX = x - x1;
             break;
     }
     
-    // Apply vertical alignment based on current datum  
+    // Apply vertical alignment based on current datum
+    // y1 is the offset from cursor (baseline) to top of bounding box (typically negative)
+    // To center: place cursor so that (cursor + y1 + h/2) = y, thus cursor = y - y1 - h/2
     switch (_gfxCurrentTextDatum) {
         case ML_DATUM: case MC_DATUM: case MR_DATUM:
-            drawY = y - h / 2;
+            drawY = y - y1 - h / 2;
             break;
         case BL_DATUM: case BC_DATUM: case BR_DATUM:
-            drawY = y - h;
+            drawY = y - y1 - h;
             break;
-        default: // TL, TC, TR - top aligned (default)
+        default: // TL, TC, TR - top aligned
+            drawY = y - y1;
             break;
     }
     
@@ -3383,11 +3393,17 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     }
     
     // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
+    const int labelClearW = 50;  // Width for "Ka" (widest label)
+    const int labelClearH = 34;  // Clear box height for 24pt font (covers tallest glyphs)
 #if defined(DISPLAY_WAVESHARE_349)
     const int x = 82;
     const int textSize = 1;   // No scaling - native 24pt for crisp rendering
-    const int spacing = 43;   // Increased spacing to spread labels vertically
-    const int startY = 55;    // Start position for L (moved down for 24pt)
+    const int labelHalfH = labelClearH / 2;
+    const int bottomMargin = 4;  // Preserve X position while leaving guard above bottom
+    const int xCenter = SCREEN_HEIGHT - bottomMargin - labelHalfH;  // Anchor X where user liked it
+    const int topMargin = DisplayLayout::STATUS_BAR_HEIGHT + 5;     // Nudge L ~3px closer to the top
+    const int spacing = (xCenter - topMargin) / 3;  // Evenly distribute remaining vertical space
+    const int startY = xCenter - (spacing * 3);     // Compute L position from anchored X
 #else
     const int x = 82;
     const int textSize = 1;   // No scaling
@@ -3414,8 +3430,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     
     // Clear and redraw each band label individually
     // Font is ~35px tall, labels are at ML_DATUM (middle-left), so text extends above/below Y
-    const int labelClearW = 50;  // Width for "Ka" (widest label)
-    const int labelClearH = 38;  // Height of 24pt font
     
     // Only redraw bands that changed
     uint8_t changedBands = cacheValid ? (effectiveBandMask ^ lastEffectiveMask) : 0xFF;

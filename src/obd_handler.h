@@ -18,6 +18,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <vector>
+#include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -107,6 +108,7 @@ private:
     NimBLEAddress targetAddress;
     bool hasTargetDevice;
     String targetDeviceName;
+    bool targetIsObdLink;
     
     // Found devices during scan
     std::vector<OBDDeviceInfo> foundDevices;
@@ -114,10 +116,12 @@ private:
     uint32_t scanStartMs;
     static constexpr uint32_t SCAN_DURATION_MS = 10000;  // 10 second scan
     
-    // Response buffer for AT commands
-    String responseBuffer;
+    // Response buffer for AT commands (fixed-size to avoid heap in BLE callback)
     static constexpr size_t RESPONSE_BUFFER_SIZE = 256;
+    char responseBuffer[RESPONSE_BUFFER_SIZE + 1] = {0};
+    size_t responseLength = 0;
     bool responseComplete;
+    std::atomic<uint32_t> notifyDropCount{0};
 
     // Polling timing
     uint32_t lastPollMs;
@@ -183,6 +187,7 @@ public:
     bool isScanActive() const { return scanActive; }
     std::vector<OBDDeviceInfo> getFoundDevices() const;  // Returns copy (thread-safe)
     void clearFoundDevices();
+    uint32_t getNotifyDropCount() const { return notifyDropCount.load(); }
     
     // Connect to specific device
     bool connectToAddress(const String& address, const String& name = "");
@@ -209,6 +214,8 @@ public:
     
     // Called by V1 BLE scan when any named device is found during OBD scan
     void onDeviceFound(const NimBLEAdvertisedDevice* device);
+    // Deferred from BLE callback (safe to call in main loop)
+    void onDeviceFoundDeferred(const char* name, const char* addr, int rssi);
     
     // Called by V1 BLE scan when an OBD adapter is found (for auto-connect)
     void onObdAdapterFound(const NimBLEAdvertisedDevice* device);
@@ -240,6 +247,9 @@ private:
     bool parseVoltageResponse(const String& response, float& voltage);
     bool parseIntakeAirTempResponse(const String& response, int8_t& tempC);
     bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC);
+
+    // Helper to detect OBDLink-branded adapters (use SC + 123456)
+    static bool isObdLinkName(const std::string& name);
 };
 
 // Global OBD handler instance (extern declaration)

@@ -5,6 +5,7 @@
 #pragma once
 #include <Arduino.h>
 #include <vector>
+#include <functional>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "packet_parser.h"  // For Band enum
@@ -47,6 +48,9 @@ private:
   std::vector<Lockout> lockouts;
   mutable SemaphoreHandle_t lockoutMutex;  // Protects lockouts vector
   
+  // Callback for lockout removal notification (for AutoLockoutManager index sync)
+  std::function<void(int)> onLockoutRemovedCallback;
+  
   // Helper: Calculate distance between two points (uses haversine)
   float distanceTo(float lat, float lon, const Lockout& lockout) const;
   bool isValidLockout(const Lockout& lockout) const;
@@ -70,6 +74,11 @@ public:
   void removeLockout(int index);
   void updateLockout(int index, const Lockout& lockout);
   void clearAll();
+  
+  // Register callback for lockout removal (used by AutoLockoutManager for index sync)
+  void setOnLockoutRemovedCallback(std::function<void(int)> callback) {
+    onLockoutRemovedCallback = callback;
+  }
   
   // Query functions
   int getLockoutCount() const;

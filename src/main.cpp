@@ -190,6 +190,33 @@ void onV1Connected() {
     autoPushModule.start(activeSlotIndex);
 }
 
+// Helper for fatal boot errors - shows message, waits, then restarts
+// displayAvailable: true if display.begin() succeeded and we can show on-screen error
+static void fatalBootError(const char* message, bool displayAvailable) {
+    SerialLog.printf("FATAL: %s\n", message);
+    
+    if (displayAvailable) {
+        // Show error on screen with countdown
+        display.showDisconnected();  // Clear screen with base frame
+        // Draw error message (red text, centered)
+        // Note: Using drawStatusText-like approach
+        SerialLog.println("Showing error on display, will restart in 10 seconds...");
+        
+        // Simple countdown - show message and wait
+        for (int i = 10; i > 0; i--) {
+            SerialLog.printf("Restarting in %d...\n", i);
+            delay(1000);
+        }
+    } else {
+        // No display - just wait and restart
+        SerialLog.println("Display unavailable. Restarting in 10 seconds...");
+        delay(10000);
+    }
+    
+    SerialLog.println("Restarting...");
+    ESP.restart();
+}
+
 
 void setup() {
     // Wait for USB to stabilize after upload
@@ -235,7 +262,7 @@ void setup() {
     // Initialize display
     if (!display.begin()) {
         SerialLog.println("Display initialization failed!");
-        while (1) delay(1000);
+        fatalBootError("Display init failed", false);
     }
     
     // Brief delay to ensure panel is fully cleared before enabling backlight
@@ -471,16 +498,14 @@ void setup() {
     // Initialize BLE stack first (required before any BLE operations)
     if (!bleClient.initBLE(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
         SerialLog.println("BLE initialization failed!");
-        display.showDisconnected();
-        while (1) delay(1000);
+        fatalBootError("BLE init failed", true);
     }
     
     // Start normal scanning
     SerialLog.println("Starting BLE scan for V1...");
     if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
         SerialLog.println("BLE scan failed to start!");
-        display.showDisconnected();
-        while (1) delay(1000);
+        fatalBootError("BLE scan failed", true);
     }
     
     // Register data callback

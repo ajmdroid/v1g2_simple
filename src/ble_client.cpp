@@ -77,6 +77,16 @@ private:
 };
 
 uint16_t shortUuid(const NimBLEUUID& uuid) {
+    NimBLEUUID uuid16 = uuid;
+    uuid16.to16();
+    if (uuid16.bitSize() == BLE_UUID_TYPE_16) {
+        const uint8_t* val = uuid16.getValue();
+        if (val) {
+            uint16_t out = 0;
+            memcpy(&out, val, sizeof(out));
+            return out;
+        }
+    }
     std::string s = uuid.toString();
     if (s.size() >= 8) {
         // UUID is like 92a0b2ce-9e05-11e2-aa59-f23c91aec05e → take b2ce
@@ -88,6 +98,7 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
 constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
 constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
+constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF to avoid callback blocking)
 
 // BLE logging macros - log to Serial AND debugLogger when BLE category enabled
 #define BLE_LOGF(...) do { \
@@ -103,6 +114,11 @@ constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transition
     if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
 } while (0)
 } // namespace
+
+// Spinlock for deferring settings writes from BLE scan callbacks
+static portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
+// Spinlock for deferring OBD scan results from BLE scan callbacks
+static portMUX_TYPE obdScanMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Static instance for callbacks
 static V1BLEClient* instancePtr = nullptr;
@@ -120,12 +136,11 @@ V1BLEClient::V1BLEClient()
     , pProxyWriteChar(nullptr)
     , proxyEnabled(false)
     , proxyServerInitialized(false)
-    , proxyClientConnected(false)
+    // proxyClientConnected - uses default member initializer (atomic)
     , proxyName_("V1-Proxy")
     , dataCallback(nullptr)
     , connectCallback(nullptr)
-    , connected(false)
-    , shouldConnect(false)
+    // connected, shouldConnect - use default member initializers (atomic)
     , hasTargetDevice(false)
     , targetAddress()
     , lastScanStart(0)
@@ -524,8 +539,10 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // When OBD is actively scanning, pass ALL named devices to handler
     // User can then select which one to connect to from the UI
     if (!name.empty() && obdHandler.isScanActive()) {
-        // Pass any named device to OBD handler when scanning
-        obdHandler.onDeviceFound(advertisedDevice);
+        // Defer OBD device discovery to main loop to avoid BLE callback work
+        if (bleClient) {
+            bleClient->enqueueObdScanResult(name.c_str(), addrStr.c_str(), rssi);
+        }
     }
     
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
@@ -546,8 +563,6 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     
     // *** FOUND V1! Stop scan and queue connection ***
     int advAddrType = advertisedDevice->getAddressType();
-    Serial.printf("[BLE] Found V1: '%s' [%s] RSSI:%d\n", 
-                  name.c_str(), addrStr.c_str(), rssi);
     
     // Check if we're already connecting or connected
     if (bleClient->bleState == BLEState::CONNECTING || 
@@ -558,12 +573,13 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // If OBD scan is active AND we're already connected to V1, let OBD scan continue
     // If NOT connected to V1, we should still connect - OBD scan can happen after
     if (obdHandler.isScanActive() && bleClient->connected) {
-        Serial.println("[BLE] OBD scan active (V1 connected) - ignoring additional V1");
         return;  // Already have V1, let OBD scan continue
     }
     
-    // Save this address for future fast reconnects
-    settingsManager.setLastV1Address(addrStr.c_str());
+    // Save this address for future fast reconnects (deferred to main loop)
+    if (bleClient) {
+        bleClient->deferLastV1Address(addrStr.c_str());
+    }
     
     // Stop scanning - state machine will handle the connection after settle time
     NimBLEScan* pScan = NimBLEDevice::getScan();
@@ -571,9 +587,8 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         pScan->stop();
     }
     
-    // Queue connection to this V1 device
-    SemaphoreGuard lock(bleClient->bleMutex);
-    if (lock.locked()) {
+    // Queue connection to this V1 device (non-blocking lock to avoid BLE callback stalls)
+    if (bleClient->bleMutex && xSemaphoreTake(bleClient->bleMutex, 0) == pdTRUE) {
         bleClient->targetDevice = *advertisedDevice;
         bleClient->targetAddress = bleClient->targetDevice.getAddress();
         bleClient->targetAddressType = advAddrType;  // Save for reconnect
@@ -581,6 +596,14 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         bleClient->shouldConnect = true;
         bleClient->scanStopRequestedMs = millis();
         bleClient->setBLEState(BLEState::SCAN_STOPPING, "V1 found");
+        xSemaphoreGive(bleClient->bleMutex);
+    } else if (bleClient) {
+        // Defer update to main loop if mutex is busy
+        portENTER_CRITICAL(&pendingAddrMux);
+        snprintf(bleClient->pendingScanTargetAddress, sizeof(bleClient->pendingScanTargetAddress), "%s", addrStr.c_str());
+        bleClient->pendingScanTargetAddressType = static_cast<uint8_t>(advAddrType);
+        bleClient->pendingScanTargetUpdate = true;
+        portEXIT_CRITICAL(&pendingAddrMux);
     }
 }
 
@@ -588,37 +611,46 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
     // If we were SCANNING and scan ended without finding V1, go back to DISCONNECTED
     // to allow process() to restart the scan
     if (instancePtr) {
-        SemaphoreGuard lock(instancePtr->bleMutex);
-        if (lock.locked()) {
+        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
             if (instancePtr->bleState == BLEState::SCANNING) {
                 // Scan ended without finding V1, go back to DISCONNECTED
                 instancePtr->setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1");
             }
             // If SCAN_STOPPING, process() will handle the transition
+            xSemaphoreGive(instancePtr->bleMutex);
+        } else {
+            instancePtr->pendingScanEndUpdate = true;
         }
     }
     
     // Notify OBD handler that scan has ended (if it was scanning)
     if (obdHandler.isScanActive()) {
-        Serial.println("[BLE] Scan ended - notifying OBD handler");
-        obdHandler.onScanComplete();
+        if (instancePtr) {
+            instancePtr->pendingObdScanComplete = true;
+        }
     }
 }
 
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
     // NOTE: BLE callback - keep fast, no blocking operations
     if (instancePtr) {
-        SemaphoreGuard lock(instancePtr->bleMutex);
-        instancePtr->connected = true;
-        instancePtr->setBLEState(BLEState::CONNECTED, "onConnect callback");
-        // Note: finishConnection() is called from connectToServer() after sync connect
+        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
+            instancePtr->connected = true;
+            instancePtr->setBLEState(BLEState::CONNECTED, "onConnect callback");
+            xSemaphoreGive(instancePtr->bleMutex);
+            // Note: finishConnection() is called from connectToServer() after sync connect
+        } else {
+            instancePtr->pendingConnectStateUpdate = true;
+        }
     }
 }
 
 void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
     // NOTE: BLE callback - minimize blocking. Log disconnect reason for diagnostics.
     PERF_INC(disconnects);  // Count V1 disconnections
-    BLE_LOGF("[BLE] V1 disconnected (reason: %d)\n", reason);
+    if (BLE_CALLBACK_LOGS) {
+        BLE_LOGF("[BLE] V1 disconnected (reason: %d)\n", reason);
+    }
     
     // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
     // to ensure a clean reconnect next time.
@@ -636,23 +668,27 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
             // No delay here - callback must return quickly
         }
         
-        SemaphoreGuard lock(instancePtr->bleMutex);
-        instancePtr->connected = false;
-        instancePtr->connectInProgress = false;  // Clear connection guard
-        instancePtr->connectStartMs = 0;  // Clear async connect timer
-        // Clear proxy client connection state too - can't proxy without V1 connection
-        instancePtr->proxyClientConnected = false;
-        // Do NOT clear pClient - we reuse it to prevent memory leaks
-        instancePtr->pRemoteService = nullptr;
-        instancePtr->pDisplayDataChar = nullptr;
-        instancePtr->pCommandChar = nullptr;
-        instancePtr->pCommandCharLong = nullptr;
-        // Reset verification state in case a write-verify was in progress
-        instancePtr->verifyPending = false;
-        instancePtr->verifyComplete = false;
-        instancePtr->verifyMatch = false;
-        // Set state to DISCONNECTED - will trigger scan restart in process()
-        instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
+        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
+            instancePtr->connected = false;
+            instancePtr->connectInProgress = false;  // Clear connection guard
+            instancePtr->connectStartMs = 0;  // Clear async connect timer
+            // Clear proxy client connection state too - can't proxy without V1 connection
+            instancePtr->proxyClientConnected = false;
+            // Do NOT clear pClient - we reuse it to prevent memory leaks
+            instancePtr->pRemoteService = nullptr;
+            instancePtr->pDisplayDataChar = nullptr;
+            instancePtr->pCommandChar = nullptr;
+            instancePtr->pCommandCharLong = nullptr;
+            // Reset verification state in case a write-verify was in progress
+            instancePtr->verifyPending = false;
+            instancePtr->verifyComplete = false;
+            instancePtr->verifyMatch = false;
+            // Set state to DISCONNECTED - will trigger scan restart in process()
+            instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
+            xSemaphoreGive(instancePtr->bleMutex);
+        } else {
+            instancePtr->pendingDisconnectCleanup = true;
+        }
     }
 }
 
@@ -1357,6 +1393,103 @@ void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {
 }
 
 void V1BLEClient::process() {
+    // Handle deferred BLE callback updates without blocking in callbacks
+    if (pendingConnectStateUpdate) {
+        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+            pendingConnectStateUpdate = false;
+            connected = true;
+            setBLEState(BLEState::CONNECTED, "deferred onConnect");
+            xSemaphoreGive(bleMutex);
+        }
+    }
+    if (pendingDisconnectCleanup) {
+        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+            pendingDisconnectCleanup = false;
+            connected = false;
+            connectInProgress = false;
+            connectStartMs = 0;
+            proxyClientConnected = false;
+            pRemoteService = nullptr;
+            pDisplayDataChar = nullptr;
+            pCommandChar = nullptr;
+            pCommandCharLong = nullptr;
+            verifyPending = false;
+            verifyComplete = false;
+            verifyMatch = false;
+            setBLEState(BLEState::DISCONNECTED, "deferred onDisconnect");
+            xSemaphoreGive(bleMutex);
+        }
+    }
+    if (pendingScanEndUpdate) {
+        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+            pendingScanEndUpdate = false;
+            if (bleState == BLEState::SCANNING) {
+                setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1 (deferred)");
+            }
+            xSemaphoreGive(bleMutex);
+        }
+    }
+    if (pendingScanTargetUpdate) {
+        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+            char addrCopy[sizeof(pendingScanTargetAddress)] = {0};
+            uint8_t addrTypeCopy = BLE_ADDR_PUBLIC;
+            bool havePending = false;
+            portENTER_CRITICAL(&pendingAddrMux);
+            if (pendingScanTargetUpdate) {
+                pendingScanTargetUpdate = false;
+                memcpy(addrCopy, pendingScanTargetAddress, sizeof(pendingScanTargetAddress));
+                addrCopy[sizeof(addrCopy) - 1] = '\0';
+                addrTypeCopy = pendingScanTargetAddressType;
+                havePending = true;
+            }
+            portEXIT_CRITICAL(&pendingAddrMux);
+            if (havePending) {
+                targetAddress = NimBLEAddress(std::string(addrCopy), addrTypeCopy);
+                targetAddressType = addrTypeCopy;
+                hasTargetDevice = true;
+                shouldConnect = true;
+                scanStopRequestedMs = millis();
+                setBLEState(BLEState::SCAN_STOPPING, "V1 found (deferred)");
+            }
+            xSemaphoreGive(bleMutex);
+        }
+    }
+    if (pendingLastV1AddressValid) {
+        char addrCopy[sizeof(pendingLastV1Address)] = {0};
+        bool shouldWrite = false;
+        portENTER_CRITICAL(&pendingAddrMux);
+        if (pendingLastV1AddressValid) {
+            pendingLastV1AddressValid = false;
+            memcpy(addrCopy, pendingLastV1Address, sizeof(pendingLastV1Address));
+            addrCopy[sizeof(addrCopy) - 1] = '\0';
+            shouldWrite = true;
+        }
+        portEXIT_CRITICAL(&pendingAddrMux);
+        if (shouldWrite) {
+            settingsManager.setLastV1Address(addrCopy);
+        }
+    }
+    if (pendingObdScanComplete) {
+        pendingObdScanComplete = false;
+        obdHandler.onScanComplete();
+    }
+    // Drain deferred OBD scan results (safe outside BLE callback)
+    while (obdScanCount > 0) {
+        ObdScanItem item;
+        bool haveItem = false;
+        portENTER_CRITICAL(&obdScanMux);
+        if (obdScanCount > 0) {
+            item = obdScanQueue[obdScanTail];
+            obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
+            obdScanCount--;
+            haveItem = true;
+        }
+        portEXIT_CRITICAL(&obdScanMux);
+        if (!haveItem) {
+            break;
+        }
+        obdHandler.onDeviceFoundDeferred(item.name, item.addr, item.rssi);
+    }
     // Process phone->V1 commands (up to queue size per loop to drain any backlog)
     // Each call processes one command to minimize mutex hold time during BLE writes
     for (int i = 0; i < MAX_PHONE_CMDS_PER_LOOP; i++) {
@@ -1614,7 +1747,9 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
     // NOTE: BLE callback - keep fast
-    BLE_LOGF("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+    if (BLE_CALLBACK_LOGS) {
+        BLE_LOGF("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+    }
     
     // Request connection parameters - use Android-compatible range
     // Min 15ms (12), Max 45ms (36), Latency 0, Timeout 4s (400)
@@ -1629,7 +1764,9 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
     // NOTE: BLE callback - keep fast
-    BLE_LOGF("[BLE] JBV1/Phone disconnected (reason: %d)\n", reason);
+    if (BLE_CALLBACK_LOGS) {
+        BLE_LOGF("[BLE] JBV1/Phone disconnected (reason: %d)\n", reason);
+    }
     if (bleClient) {
         bleClient->proxyClientConnected = false;
         // Resume advertising if V1 is still connected
@@ -1637,6 +1774,36 @@ void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimB
             NimBLEDevice::startAdvertising();
         }
     }
+}
+
+void V1BLEClient::deferLastV1Address(const char* addr) {
+    if (!addr || addr[0] == '\0') {
+        return;
+    }
+    portENTER_CRITICAL(&pendingAddrMux);
+    snprintf(pendingLastV1Address, sizeof(pendingLastV1Address), "%s", addr);
+    pendingLastV1AddressValid = true;
+    portEXIT_CRITICAL(&pendingAddrMux);
+}
+
+void V1BLEClient::enqueueObdScanResult(const char* name, const char* addr, int rssi) {
+    if (!name || !addr || name[0] == '\0' || addr[0] == '\0') {
+        return;
+    }
+    portENTER_CRITICAL(&obdScanMux);
+    if (obdScanCount >= OBD_SCAN_QUEUE_SIZE) {
+        // Drop oldest on overflow
+        obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
+        obdScanCount--;
+    }
+    ObdScanItem& item = obdScanQueue[obdScanHead];
+    snprintf(item.name, sizeof(item.name), "%s", name);
+    snprintf(item.addr, sizeof(item.addr), "%s", addr);
+    item.rssi = rssi;
+    obdScanHead = (obdScanHead + 1) % OBD_SCAN_QUEUE_SIZE;
+    obdScanCount++;
+    PERF_MAX(obdScanQueueHighWater, obdScanCount);
+    portEXIT_CRITICAL(&obdScanMux);
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
@@ -1818,9 +1985,6 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     if (bleNotifyMutex && xSemaphoreTake(bleNotifyMutex, 0) != pdTRUE) {
         // Queue busy – drop to avoid blocking in callback path
         proxyMetrics.dropCount++;
-        if (proxyMetrics.dropCount % 10 == 1) {  // Log every 10th drop to avoid spam
-            Serial.printf("[Proxy] Drop #%lu (mutex busy)\n", proxyMetrics.dropCount);
-        }
         return;
     }
     
@@ -1831,9 +1995,6 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
         proxyQueueTail = (proxyQueueTail + 1) % PROXY_QUEUE_SIZE;
         proxyQueueCount--;
         proxyMetrics.dropCount++;
-        if (proxyMetrics.dropCount % 10 == 1) {  // Log every 10th drop to avoid spam
-            Serial.printf("[Proxy] Drop #%lu (queue full)\n", proxyMetrics.dropCount);
-        }
     }
     
     // Add packet to queue
@@ -1849,6 +2010,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     if (proxyQueueCount > proxyMetrics.queueHighWater) {
         proxyMetrics.queueHighWater = proxyQueueCount;
     }
+    PERF_MAX(proxyQueueHighWater, proxyQueueCount);
 
     if (bleNotifyMutex) {
         xSemaphoreGive(bleNotifyMutex);
@@ -1968,6 +2130,7 @@ bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16
     pkt.charUUID = sourceCharUUID;
     phone2v1QueueHead = (phone2v1QueueHead + 1) % PHONE_CMD_QUEUE_SIZE;
     phone2v1QueueCount++;
+    PERF_MAX(phoneCmdQueueHighWater, phone2v1QueueCount);
 
     xSemaphoreGive(phoneCmdMutex);
     return true;

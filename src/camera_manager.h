@@ -181,6 +181,11 @@ private:
   bool loadDatabaseIncremental();  // Called by background task
   size_t loadBinaryDatabaseIncremental(const char* path);  // Fast binary load
   size_t loadJsonDatabaseIncremental(const char* path);    // Slow JSON fallback
+
+  // Returns the active camera list with a safe snapshot when background loading
+  const std::vector<CameraRecord>* getQueryCamerasSnapshot(
+    std::vector<CameraRecord>& snapshot
+  ) const;
   
   // Regional cache metadata
   float cacheCenterLat = 0.0f;

@@ -107,6 +107,7 @@ public:
     VoiceAction process(const VoiceContext& ctx);
     
     // State management - call when all alerts clear
+    void reset() { clearAllState(); }  // Alias for consistency with other modules
     void clearAllState();
     
     // =========================================================================

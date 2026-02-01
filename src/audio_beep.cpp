@@ -366,17 +366,39 @@ static std::atomic<bool> amp_is_warm{false};
 static std::atomic<unsigned long> amp_last_used_ms{0};
 static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;  // Keep amp on for 3 seconds after last audio
 
-// Audio task parameters for non-blocking playback
-struct AudioTaskParams {
+// ============================================================================
+// Pre-allocated audio buffers (no malloc in audio tasks)
+// These are safe to use without mutex because audio_playing atomic flag
+// ensures only one audio task runs at a time.
+// ============================================================================
+static constexpr int AUDIO_CHUNK_SAMPLES = 2048;  // Mono samples per chunk
+static constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;  // Stereo samples
+// Stereo buffer for PCM/mu-law to stereo conversion (8KB)
+static int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
+// Mu-law decode buffer for SD audio (2KB)
+static uint8_t g_mulawChunkBuffer[AUDIO_CHUNK_SAMPLES];
+// Pre-allocated task params (avoids malloc for param passing)
+static struct {
     const int16_t* pcm_data;
     int num_samples;
     int duration_ms;
-};
+} g_pcmTaskParams;
+
+static struct {
+    char filePaths[12][48];  // MAX_AUDIO_CLIPS paths
+    int numClips;
+} g_sdAudioTaskParams;
+
 static TaskHandle_t audioTaskHandle = NULL;
 
 // Background task for audio playback - runs on separate core to avoid blocking main loop
+// Uses pre-allocated g_stereoChunkBuffer - streams in chunks instead of full buffer
 static void audio_playback_task(void* pvParameters) {
-    AudioTaskParams* params = (AudioTaskParams*)pvParameters;
+    // Use pre-allocated params (no malloc needed)
+    const int16_t* pcm_data = g_pcmTaskParams.pcm_data;
+    int num_samples = g_pcmTaskParams.num_samples;
+    int duration_ms = g_pcmTaskParams.duration_ms;
+    (void)pvParameters;  // Unused - params are in global struct
     
     if (i2s_tx_chan == NULL) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
@@ -387,7 +409,6 @@ static void audio_playback_task(void* pvParameters) {
     if (!i2s_initialized) {
         AUDIO_LOGLN("[AUDIO] ERROR: I2S init failed!");
         audio_playing = false;
-        free(params);
         vTaskDelete(NULL);
         return;
     }
@@ -399,39 +420,41 @@ static void audio_playback_task(void* pvParameters) {
     set_speaker_amp(true);
     vTaskDelay(pdMS_TO_TICKS(100));
     
-    // Convert mono PCM to stereo for I2S Philips format
-    const int stereo_samples = params->num_samples * 2;
-    int16_t* buf = (int16_t*)malloc(stereo_samples * sizeof(int16_t));
-    if (!buf) {
-        AUDIO_LOGLN("[AUDIO] ERROR: malloc failed!");
-        set_speaker_amp(false);
-        audio_playing = false;
-        free(params);
-        vTaskDelete(NULL);
-        return;
+    // Stream mono PCM to stereo in chunks using pre-allocated buffer
+    // This avoids large dynamic allocation (was up to 147KB for warning audio)
+    int samples_remaining = num_samples;
+    int sample_offset = 0;
+    
+    while (samples_remaining > 0) {
+        int chunk_samples = (samples_remaining > AUDIO_CHUNK_SAMPLES) 
+                          ? AUDIO_CHUNK_SAMPLES : samples_remaining;
+        
+        // Convert chunk from mono to stereo using pre-allocated buffer
+        for (int i = 0; i < chunk_samples; ++i) {
+            int16_t sample = pgm_read_word(&pcm_data[sample_offset + i]);
+            g_stereoChunkBuffer[i * 2] = sample;       // Left channel
+            g_stereoChunkBuffer[i * 2 + 1] = sample;   // Right channel
+        }
+        
+        size_t bytes_written = 0;
+        esp_err_t err = i2s_channel_write(i2s_tx_chan, g_stereoChunkBuffer, 
+                                          chunk_samples * 2 * sizeof(int16_t), 
+                                          &bytes_written, portMAX_DELAY);
+        
+        if (err != ESP_OK) {
+            AUDIO_LOGF("[AUDIO] i2s_channel_write failed: %d\\n", err);
+            break;
+        }
+        
+        sample_offset += chunk_samples;
+        samples_remaining -= chunk_samples;
     }
     
-    // Copy mono to stereo (both channels)
-    for (int i = 0; i < params->num_samples; ++i) {
-        int16_t sample = pgm_read_word(&params->pcm_data[i]);
-        buf[i * 2] = sample;       // Left channel
-        buf[i * 2 + 1] = sample;   // Right channel
-    }
+    // Wait for DMA to finish
+    vTaskDelay(pdMS_TO_TICKS(duration_ms > 0 ? 100 : 50));
     
-    size_t bytes_written = 0;
-    esp_err_t err = i2s_channel_write(i2s_tx_chan, buf, stereo_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
-    
-    if (err != ESP_OK) {
-        AUDIO_LOGF("[AUDIO] i2s_channel_write failed: %d\\n", err);
-    }
-    
-    // Wait for audio to finish playing through DMA
-    vTaskDelay(pdMS_TO_TICKS(params->duration_ms + 100));
-    
-    free(buf);
     set_speaker_amp(false);
     audio_playing = false;
-    free(params);
     
     audioTaskHandle = NULL;
     vTaskDelete(NULL);
@@ -439,6 +462,7 @@ static void audio_playback_task(void* pvParameters) {
 
 // Helper to play any PCM audio (mono input, converts to stereo for I2S)
 // Now non-blocking - starts a FreeRTOS task for playback
+// Uses pre-allocated buffers - no malloc in task
 static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duration_ms) {
     // Atomic exchange: if already true, return; otherwise set to true
     if (audio_playing.exchange(true)) {
@@ -446,23 +470,18 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
         return;
     }
     
-    // Allocate params for the task (task will free it)
-    AudioTaskParams* params = (AudioTaskParams*)malloc(sizeof(AudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        audio_playing = false;
-        return;
-    }
-    params->pcm_data = pcm_data;
-    params->num_samples = num_samples;
-    params->duration_ms = duration_ms;
+    // Copy params to pre-allocated struct (protected by audio_playing flag)
+    g_pcmTaskParams.pcm_data = pcm_data;
+    g_pcmTaskParams.num_samples = num_samples;
+    g_pcmTaskParams.duration_ms = duration_ms;
     
     // Create task on core 1 (core 0 is for WiFi/BLE) with adequate stack
+    // Task params are passed via g_pcmTaskParams global (no malloc needed)
     BaseType_t result = xTaskCreatePinnedToCore(
         audio_playback_task,
         "audio_play",
         4096,           // Stack size
-        params,
+        nullptr,        // Params passed via global struct
         1,              // Priority (low)
         &audioTaskHandle,
         1               // Core 1
@@ -471,7 +490,6 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     if (result != pdPASS) {
         AUDIO_LOGLN("[AUDIO] ERROR: Failed to create audio task!");
         audio_playing = false;
-        free(params);
     }
 }
 
@@ -732,15 +750,54 @@ static const int16_t mulaw_decode_table[256] = {
 // Max clips for multi-segment audio playback
 static constexpr int MAX_AUDIO_CLIPS = 12;
 
-// Structure for SD audio playback task
+// Structure for SD audio playback task parameters (local preparation)
 struct SDAudioTaskParams {
     char filePaths[MAX_AUDIO_CLIPS][48];  // Up to 12 clips for threat escalation announcements
     int numClips;
 };
 
+// Forward declaration for helper function
+static void sd_audio_playback_task(void* pvParameters);
+
+// Helper to start SD audio task with pre-allocated params
+// Returns true if task started, false if already playing or failed
+// Caller should prepare a local SDAudioTaskParams, then call this
+static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
+    // Atomic exchange: if already true, abort; otherwise set to true
+    if (audio_playing.exchange(true)) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        return false;
+    }
+    
+    // Copy local params to pre-allocated global (protected by audio_playing flag)
+    g_sdAudioTaskParams.numClips = localParams.numClips;
+    for (int i = 0; i < localParams.numClips && i < 12; i++) {
+        strncpy(g_sdAudioTaskParams.filePaths[i], localParams.filePaths[i], 47);
+        g_sdAudioTaskParams.filePaths[i][47] = '\0';
+    }
+    
+    BaseType_t result = xTaskCreatePinnedToCore(
+        sd_audio_playback_task,
+        "sd_audio",
+        8192,
+        nullptr,  // Params passed via global struct
+        1,
+        &audioTaskHandle,
+        1
+    );
+    
+    if (result != pdPASS) {
+        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        audio_playing = false;
+        return false;
+    }
+    return true;
+}
+
 // Background task for SD audio concatenation playback (mu-law compressed)
+// Uses pre-allocated buffers - no malloc in task
 static void sd_audio_playback_task(void* pvParameters) {
-    SDAudioTaskParams* params = (SDAudioTaskParams*)pvParameters;
+    (void)pvParameters;  // Unused - params are in g_sdAudioTaskParams
     
     if (i2s_tx_chan == NULL) {
         i2s_init();
@@ -750,7 +807,6 @@ static void sd_audio_playback_task(void* pvParameters) {
     if (!i2s_initialized) {
         AUDIO_LOGLN("[AUDIO] ERROR: I2S init failed!");
         audio_playing = false;
-        free(params);
         vTaskDelete(NULL);
         return;
     }
@@ -775,47 +831,34 @@ static void sd_audio_playback_task(void* pvParameters) {
         AUDIO_LOGLN("[AUDIO] ERROR: audioFS is null!");
         // Don't disable amp here - let timeout handle it
         audio_playing = false;
-        free(params);
         vTaskDelete(NULL);
         return;
     }
     
-    // Play each clip in sequence
-    for (int i = 0; i < params->numClips; i++) {
-        File audioFile = audioFS->open(params->filePaths[i], "r");
+    // Play each clip in sequence using pre-allocated buffers
+    for (int i = 0; i < g_sdAudioTaskParams.numClips; i++) {
+        File audioFile = audioFS->open(g_sdAudioTaskParams.filePaths[i], "r");
         if (!audioFile) {
-            AUDIO_LOGF("[AUDIO] Failed to open: %s\n", params->filePaths[i]);
+            AUDIO_LOGF("[AUDIO] Failed to open: %s\n", g_sdAudioTaskParams.filePaths[i]);
             continue;
         }
         
-        // Allocate buffers for mu-law decode and stereo conversion
-        const int CHUNK_BYTES = 2048;  // Mu-law bytes to read at once
-        uint8_t* mulawChunk = (uint8_t*)malloc(CHUNK_BYTES);
-        int16_t* stereoChunk = (int16_t*)malloc(CHUNK_BYTES * 2 * sizeof(int16_t));
-        
-        if (!mulawChunk || !stereoChunk) {
-            AUDIO_LOGLN("[AUDIO] ERROR: chunk malloc failed!");
-            if (mulawChunk) free(mulawChunk);
-            if (stereoChunk) free(stereoChunk);
-            audioFile.close();
-            continue;
-        }
-        
+        // Use pre-allocated buffers (no malloc needed)
+        // g_mulawChunkBuffer: 2048 bytes for mu-law data
+        // g_stereoChunkBuffer: 2048*2 int16_t for stereo output
         size_t bytesRead;
-        while ((bytesRead = audioFile.read(mulawChunk, CHUNK_BYTES)) > 0) {
-            // Decode mu-law to stereo PCM
+        while ((bytesRead = audioFile.read(g_mulawChunkBuffer, AUDIO_CHUNK_SAMPLES)) > 0) {
+            // Decode mu-law to stereo PCM using pre-allocated buffer
             for (size_t j = 0; j < bytesRead; j++) {
-                int16_t sample = mulaw_decode_table[mulawChunk[j]];
-                stereoChunk[j * 2] = sample;       // Left
-                stereoChunk[j * 2 + 1] = sample;   // Right
+                int16_t sample = mulaw_decode_table[g_mulawChunkBuffer[j]];
+                g_stereoChunkBuffer[j * 2] = sample;       // Left
+                g_stereoChunkBuffer[j * 2 + 1] = sample;   // Right
             }
             
             size_t bytes_written = 0;
-            i2s_channel_write(i2s_tx_chan, stereoChunk, bytesRead * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+            i2s_channel_write(i2s_tx_chan, g_stereoChunkBuffer, bytesRead * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
         }
         
-        free(mulawChunk);
-        free(stereoChunk);
         audioFile.close();
     }
     
@@ -828,7 +871,6 @@ static void sd_audio_playback_task(void* pvParameters) {
     // Amp stays on - will be disabled by audio_process_timeout() after AMP_WARM_TIMEOUT_MS
     
     audio_playing = false;
-    free(params);
     audioTaskHandle = NULL;
     vTaskDelete(NULL);
 }
@@ -892,13 +934,9 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         return;
     }
     
-    // Allocate params for the task
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     // 1. Band clip (if mode includes band)
     if (mode == VOICE_MODE_BAND_ONLY || mode == VOICE_MODE_BAND_FREQ) {
@@ -910,7 +948,7 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
             default: break;
         }
         if (bandFile) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
         }
     }
     
@@ -919,17 +957,17 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
         // GHz clip
         int ghz = getGHz(band, freqMHz);
         if (ghz > 0) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
         }
         
         // Hundreds digit of MHz (first digit after decimal point)
         int mhz = freqMHz % 1000;
         int hundredsDigit = mhz / 100;
-        snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
         
         // Last two digits as natural number (tens file)
         int lastTwo = mhz % 100;
-        snprintf(params->filePaths[params->numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
     }
     
     // 5. Direction clip (if enabled)
@@ -941,50 +979,30 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
             case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
         }
         if (dirFile) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
         }
     }
     
     // 6-7. Bogey count (if > 1): "<count> bogeys"
-    if (bogeyCount > 1 && bogeyCount <= 10 && params->numClips < 6) {
+    if (bogeyCount > 1 && bogeyCount <= 10 && params.numClips < 6) {
         // Add count clip: use digit_X for 2-9, tens_10 for 10
         if (bogeyCount == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
         }
         // Add "bogeys" clip
-        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
         AUDIO_LOGF("[AUDIO] Adding bogey count: %d bogeys\n", bogeyCount);
     }
     
-    AUDIO_LOGF("[AUDIO] Playing %d clips for freq announcement\n", params->numClips);
-    for (int i = 0; i < params->numClips; i++) {
-        AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params->filePaths[i]);
+    AUDIO_LOGF("[AUDIO] Playing %d clips for freq announcement\n", params.numClips);
+    for (int i = 0; i < params.numClips; i++) {
+        AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params.filePaths[i]);
     }
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-    }
+    // Start task using pre-allocated global params
+    start_sd_audio_task(params);
 }
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
@@ -1001,12 +1019,9 @@ void play_band_only(AlertBand band) {
         return;
     }
     
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     const char* bandFile = nullptr;
     switch (band) {
@@ -1017,31 +1032,11 @@ void play_band_only(AlertBand band) {
     }
     
     if (bandFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
     }
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-    }
+    // Start task using pre-allocated global params
+    start_sd_audio_task(params);
 }
 
 // Play camera voice alert (e.g., "Red light camera ahead", "ALPR ahead")
@@ -1060,14 +1055,9 @@ void play_camera_voice(CameraAlertType type) {
         return;
     }
     
-    // Allocate params for the task
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        play_camera_alert_tone();
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     // Select camera type clip
     const char* camFile = nullptr;
@@ -1087,17 +1077,16 @@ void play_camera_voice(CameraAlertType type) {
     }
     
     if (camFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, camFile);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, camFile);
     }
     
     // Add "ahead" direction
-    snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+    snprintf(params.filePaths[params.numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
     
     // Check if first clip exists - if not, fall back to tone
-    if (audioFS && params->numClips > 0) {
-        if (!audioFS->exists(params->filePaths[0])) {
-            AUDIO_LOGF("[AUDIO] Camera clip not found: %s, using tone\n", params->filePaths[0]);
-            free(params);
+    if (audioFS && params.numClips > 0) {
+        if (!audioFS->exists(params.filePaths[0])) {
+            AUDIO_LOGF("[AUDIO] Camera clip not found: %s, using tone\n", params.filePaths[0]);
             play_camera_alert_tone();
             return;
         }
@@ -1105,28 +1094,9 @@ void play_camera_voice(CameraAlertType type) {
     
     AUDIO_LOGF("[AUDIO] Playing camera voice: %s + ahead\n", camFile);
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-        // Fall back to tone
+    // Start task using pre-allocated global params
+    if (!start_sd_audio_task(params)) {
+        // Fall back to tone if task failed to start
         play_camera_alert_tone();
     }
 }
@@ -1146,13 +1116,9 @@ void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
         return;
     }
     
-    // Allocate params for the task
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     // Just the direction clip
     const char* dirFile = nullptr;
@@ -1162,49 +1128,28 @@ void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
         case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
     }
     if (dirFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
     }
     
     // Add bogey count if provided and > 1
     if (bogeyCount > 1 && bogeyCount <= 10) {
         if (bogeyCount == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, bogeyCount);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
         AUDIO_LOGF("[AUDIO] Adding bogey count: %d bogeys\n", bogeyCount);
     }
     
-    if (params->numClips == 0) {
-        free(params);
+    if (params.numClips == 0) {
         return;
     }
     
-    AUDIO_LOGF("[AUDIO] Playing direction-only: %s\n", params->filePaths[0]);
+    AUDIO_LOGF("[AUDIO] Playing direction-only: %s\n", params.filePaths[0]);
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-    }
+    // Start task using pre-allocated global params
+    start_sd_audio_task(params);
 }
 
 // Call from main loop to handle amp warm timeout
@@ -1236,85 +1181,60 @@ void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t 
         return;
     }
     
-    // Allocate params for the task
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     // Total count: "[N]"
     if (total >= 2 && total <= 10) {
         if (total == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
         }
         // "bogeys"
-        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
     }
     
     // Add direction breakdown for non-zero counts
     // "[N] ahead" - only if ahead > 0
-    if (ahead > 0 && ahead <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (ahead > 0 && ahead <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (ahead == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
     }
     
     // "[N] behind" - only if behind > 0
-    if (behind > 0 && behind <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (behind > 0 && behind <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (behind == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
     }
     
     // "[N] side" - only if side > 0
-    if (side > 0 && side <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (side > 0 && side <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (side == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
     }
     
-    if (params->numClips == 0) {
-        free(params);
+    if (params.numClips == 0) {
         return;
     }
     
-    AUDIO_LOGF("[AUDIO] Playing bogey breakdown: %d clips\n", params->numClips);
+    AUDIO_LOGF("[AUDIO] Playing bogey breakdown: %d clips\n", params.numClips);
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-    }
+    // Start task using pre-allocated global params
+    start_sd_audio_task(params);
 }
 
 // Play threat escalation: "[Band] [freq] [direction] [N] bogeys, [X] ahead, [Y] behind"
@@ -1340,13 +1260,9 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
         return;
     }
     
-    // Allocate params for the task
-    SDAudioTaskParams* params = (SDAudioTaskParams*)malloc(sizeof(SDAudioTaskParams));
-    if (!params) {
-        AUDIO_LOGLN("[AUDIO] ERROR: param malloc failed!");
-        return;
-    }
-    params->numClips = 0;
+    // Prepare params on stack (no malloc needed)
+    SDAudioTaskParams params;
+    params.numClips = 0;
     
     // 1. Band clip
     const char* bandFile = nullptr;
@@ -1357,19 +1273,19 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
         default: break;
     }
     if (bandFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
     }
     
     // 2-4. Frequency clips
     int ghz = getGHz(band, freqMHz);
     if (ghz > 0) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
     }
     int mhz = freqMHz % 1000;
     int hundredsDigit = mhz / 100;
-    snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
+    snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, hundredsDigit);
     int lastTwo = mhz % 100;
-    snprintf(params->filePaths[params->numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
+    snprintf(params.filePaths[params.numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, lastTwo);
     
     // 5. Direction clip
     const char* dirFile = nullptr;
@@ -1379,74 +1295,54 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
         case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
     }
     if (dirFile) {
-        snprintf(params->filePaths[params->numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
     }
     
     // 6-7. Total bogey count if >= 2: "[N] bogeys"
-    if (total >= 2 && total <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (total >= 2 && total <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (total == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, total);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/bogeys.mul", AUDIO_PATH);
     }
     
     // 8-9. Direction breakdown: "[N] ahead" (only if > 0)
-    if (ahead > 0 && ahead <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (ahead > 0 && ahead <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (ahead == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, ahead);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
     }
     
     // 10-11. "[N] behind" (only if > 0)
-    if (behind > 0 && behind <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (behind > 0 && behind <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (behind == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, behind);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_behind.mul", AUDIO_PATH);
     }
     
     // 12. "[N] side" (only if > 0, may be truncated if clips exhausted)
-    if (side > 0 && side <= 10 && params->numClips < MAX_AUDIO_CLIPS - 2) {
+    if (side > 0 && side <= 10 && params.numClips < MAX_AUDIO_CLIPS - 2) {
         if (side == 10) {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_10.mul", AUDIO_PATH);
         } else {
-            snprintf(params->filePaths[params->numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/digit_%d.mul", AUDIO_PATH, side);
         }
-        snprintf(params->filePaths[params->numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/dir_side.mul", AUDIO_PATH);
     }
     
-    AUDIO_LOGF("[AUDIO] Playing threat escalation: %d clips\n", params->numClips);
-    for (int i = 0; i < params->numClips; i++) {
-        AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params->filePaths[i]);
+    AUDIO_LOGF("[AUDIO] Playing threat escalation: %d clips\n", params.numClips);
+    for (int i = 0; i < params.numClips; i++) {
+        AUDIO_LOGF("[AUDIO]   %d: %s\n", i, params.filePaths[i]);
     }
     
-    // Atomic exchange: if already true, abort; otherwise set to true
-    if (audio_playing.exchange(true)) {
-        AUDIO_LOGLN("[AUDIO] Already playing (race), skipping");
-        free(params);
-        return;
-    }
-    
-    BaseType_t result = xTaskCreatePinnedToCore(
-        sd_audio_playback_task,
-        "sd_audio",
-        8192,
-        params,
-        1,
-        &audioTaskHandle,
-        1
-    );
-    
-    if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
-        audio_playing = false;
-        free(params);
-    }
+    // Start task using pre-allocated global params
+    start_sd_audio_task(params);
 }

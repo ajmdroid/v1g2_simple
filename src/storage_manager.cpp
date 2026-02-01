@@ -117,6 +117,17 @@ void StorageManager::checkCameraDatabase() {
 }
 
 bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
+    // Ensure parent directory exists (prevents VFS fopen failures)
+    if (path && path[0] == '/') {
+        String parent(path);
+        int slash = parent.lastIndexOf('/');
+        if (slash > 0) {
+            parent = parent.substring(0, slash);
+            if (!fs.exists(parent)) {
+                fs.mkdir(parent);
+            }
+        }
+    }
     String tmpPath = String(path) + ".tmp";
     File tmp = fs.open(tmpPath.c_str(), "w");
     if (!tmp) {

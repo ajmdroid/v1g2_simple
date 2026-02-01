@@ -1169,10 +1169,15 @@ void test_layout_screen_dimensions() {
 
 void test_layout_primary_zone() {
     // Primary zone should fit within screen
+    // These values should match DisplayLayout:: constants in display_layout.h
     static constexpr int PRIMARY_ZONE_HEIGHT = 95;
     static constexpr int SECONDARY_ROW_HEIGHT = 54;
     
     TEST_ASSERT_TRUE(PRIMARY_ZONE_HEIGHT + SECONDARY_ROW_HEIGHT <= SCREEN_HEIGHT);
+    
+    // Verify values match expected (same as display_layout.h)
+    TEST_ASSERT_EQUAL(95, PRIMARY_ZONE_HEIGHT);
+    TEST_ASSERT_EQUAL(54, SECONDARY_ROW_HEIGHT);
 }
 
 // ============================================================================

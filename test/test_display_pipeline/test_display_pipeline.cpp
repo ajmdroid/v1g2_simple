@@ -416,7 +416,7 @@ void test_camera_alert_card_state_false_when_no_v1_alerts() {
 // ============================================================================
 
 void test_voice_clears_state_when_alerts_clear() {
-    voiceModule.reset();
+    voiceModule.resetMock();
     
     // When alerts clear, voice state should be cleared
     voiceModule.clearAllState();
@@ -440,7 +440,7 @@ void setUp() {
     autoLockoutManager.reset();
     cameraAlertModule.reset();
     alertPersistenceModule.reset();
-    voiceModule.reset();
+    voiceModule.resetMock();
     volumeFadeModule.reset();
     speedVolumeModule.reset();
     displayMode = DisplayMode::IDLE;
