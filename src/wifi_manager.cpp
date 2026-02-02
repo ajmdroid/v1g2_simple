@@ -2263,6 +2263,12 @@ void WiFiManager::handleDebugLogsMeta() {
     doc["logObd"] = cfg.obd;
     doc["logSystem"] = cfg.system;
     doc["logDisplay"] = cfg.display;
+    doc["logPerfMetrics"] = cfg.perfMetrics;
+    doc["logAudio"] = cfg.audio;
+    doc["logCamera"] = cfg.camera;
+    doc["logLockout"] = cfg.lockout;
+    doc["logTouch"] = cfg.touch;
+    doc["logFormat"] = cfg.format;
 
     String json;
     serializeJson(doc, json);

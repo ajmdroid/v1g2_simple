@@ -119,6 +119,13 @@ public:
   void getCacheCenter(float& lat, float& lon) const { lat = cacheCenterLat; lon = cacheCenterLon; }
   float getCacheRadius() const { return cacheRadiusMi; }
   
+  // Incremental (non-blocking) cache building - prevents main loop stalls
+  // Call startIncrementalCacheBuild() once, then continueIncrementalCacheBuild() each loop iteration
+  bool startIncrementalCacheBuild(float lat, float lon, float radiusMiles = 100.0f);
+  bool continueIncrementalCacheBuild(size_t maxCamerasPerIteration = 500);
+  bool isIncrementalBuildInProgress() const { return incrementalBuild.inProgress; }
+  bool finishIncrementalCacheBuild();  // Swap in completed cache
+  
   // Find cameras within radius of current position
   // Returns cameras sorted by distance (closest first)
   std::vector<NearbyCameraResult> findNearby(
@@ -192,6 +199,28 @@ private:
   float cacheCenterLon = 0.0f;
   float cacheRadiusMi = 0.0f;
   uint32_t cacheBuiltMs = 0;
+  
+  // Incremental cache build state (for non-blocking cache refresh)
+  struct IncrementalCacheBuildState {
+    bool inProgress = false;
+    size_t currentIndex = 0;
+    float targetLat = 0.0f;
+    float targetLon = 0.0f;
+    float radiusM = 0.0f;
+    float radiusMi = 0.0f;  // Store original radius in miles
+    float latDelta = 0.0f;
+    float lonDelta = 0.0f;
+    std::vector<CameraRecord> pendingCache;
+    uint32_t startTimeMs = 0;
+    
+    void reset() {
+      inProgress = false;
+      currentIndex = 0;
+      pendingCache.clear();
+      pendingCache.shrink_to_fit();
+    }
+  };
+  IncrementalCacheBuildState incrementalBuild;
   
   // Database metadata
   char databaseName[64] = {0};

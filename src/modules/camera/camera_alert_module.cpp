@@ -110,6 +110,11 @@ void CameraAlertModule::process() {
     const V1Settings& camSettings = settings->get();
     if (!camSettings.cameraAlertsEnabled || !cameraManager->isLoaded() || !gpsHandler || !gpsHandler->isEnabled()) {
         // Feature off or GPS unavailable: clear any stale camera UI/state
+        if (!activeCameraAlerts.empty()) {
+            CAMERA_LOG("[Camera] Feature disabled/GPS unavail - clearing %d active alerts (enabled=%d loaded=%d gps=%d)\n",
+                       (int)activeCameraAlerts.size(), camSettings.cameraAlertsEnabled, 
+                       cameraManager->isLoaded(), gpsHandler && gpsHandler->isEnabled());
+        }
         activeCameraAlerts.clear();
         recentlyPassedCameras.clear();
         if (display) {
@@ -157,6 +162,25 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
         return;
     }
 
+    // Continue any in-progress incremental cache build (non-blocking)
+    if (cameraManager->isIncrementalBuildInProgress()) {
+        // Process a batch of cameras each call - keeps main loop responsive
+        if (cameraManager->continueIncrementalCacheBuild(500)) {
+            // Build complete - finalize the cache
+            cameraManager->finishIncrementalCacheBuild();
+            PERF_INC(cameraCacheRefreshes);
+            // Defer save to next idle period to avoid blocking
+            pendingSaveCacheMs = now;
+        }
+        return;  // Don't check for new cache needs while building
+    }
+
+    // Handle deferred cache save (non-blocking, spread work over time)
+    if (pendingSaveCacheMs > 0 && (now - pendingSaveCacheMs) >= 100) {
+        cameraManager->saveRegionalCache(&LittleFS, "/cameras_cache.json");
+        pendingSaveCacheMs = 0;
+    }
+
     if (now - lastCacheCheckMs < CACHE_CHECK_INTERVAL_MS || cameraManager->isBackgroundLoading()) {
         return;
     }
@@ -176,11 +200,8 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
     }
 
     if (needsRefresh) {
-        CAMERA_LOG("[Camera] Building regional cache at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
-        if (cameraManager->buildRegionalCache(cacheFix.latitude, cacheFix.longitude, CACHE_RADIUS_MILES)) {
-            PERF_INC(cameraCacheRefreshes);
-            cameraManager->saveRegionalCache(&LittleFS, "/cameras_cache.json");
-        }
+        CAMERA_LOG("[Camera] Starting incremental cache build at %.4f, %.4f\n", cacheFix.latitude, cacheFix.longitude);
+        cameraManager->startIncrementalCacheBuild(cacheFix.latitude, cacheFix.longitude, CACHE_RADIUS_MILES);
     }
 }
 
@@ -380,7 +401,15 @@ void CameraAlertModule::updateCardStateForV1(bool v1HasAlerts) {
 
 void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
     if (!display || !settings) return;
-    if (v1HasAlerts) return;  // V1 owns display when alerts are active
+    if (v1HasAlerts) {
+        // V1 owns display when alerts are active - log this condition
+        static bool lastV1HasAlerts = false;
+        if (!lastV1HasAlerts) {
+            CAMERA_LOG("[Camera] V1 has alerts - deferring camera display to cards\n");
+        }
+        lastV1HasAlerts = v1HasAlerts;
+        return;
+    }
 
     const V1Settings& dispSettings = settings->get();
 
@@ -392,6 +421,7 @@ void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
     if (!activeCameraAlerts.empty()) {
         handleRealDisplay(v1HasAlerts, dispSettings);
     } else {
+        CAMERA_LOG("[Camera] updateMainDisplay: no active cameras, calling clearCameraAlerts\n");
         display->clearCameraAlerts();
     }
 }
@@ -473,6 +503,7 @@ void CameraAlertModule::handleRealCards(const V1Settings& dispSettings) {
 void CameraAlertModule::handleRealDisplay(bool v1HasAlerts, const V1Settings& dispSettings) {
     int count = std::min((int)activeCameraAlerts.size(), MAX_ACTIVE_CAMERAS);
     if (count == 0) {
+        CAMERA_LOG("[Camera] handleRealDisplay: no active cameras, calling clearCameraAlerts\n");
         display->clearCameraAlerts();
         return;
     }

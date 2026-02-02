@@ -80,6 +80,9 @@ private:
     // GPS ready cooldown - defer heavy operations after fix acquired
     bool wasGpsReady = false;
     unsigned long gpsReadyAtMs = 0;
+    
+    // Deferred cache save (non-blocking)
+    unsigned long pendingSaveCacheMs = 0;
 
     // Test/demo state
     bool cameraTestActive = false;
@@ -103,7 +106,7 @@ private:
     static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000; // 3s
     static constexpr unsigned long CACHE_CHECK_INTERVAL_MS = 30000;      // 30s
     static constexpr unsigned long CACHE_REFRESH_INTERVAL_MS = 1800000;  // 30 min
-    static constexpr unsigned long GPS_READY_COOLDOWN_MS = 3000;         // 3s after fix
+    static constexpr unsigned long GPS_READY_COOLDOWN_MS = 10000;        // 10s after fix (prevents display stalls)
     static constexpr float CACHE_RADIUS_MILES = 100.0f;
     static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f;
     static constexpr unsigned long ALERT_MAX_DURATION_MS = 120000;  // 2 min max alert

@@ -4,6 +4,13 @@
 #include "display.h"
 #include "modules/power/power_module.h"
 #include "modules/ble/ble_queue_module.h"
+#include "debug_logger.h"
+
+extern DebugLogger debugLogger;
+
+#define CONN_LOG(...) do { \
+    if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
+} while(0)
 
 void ConnectionStateModule::begin(V1BLEClient* bleClient,
                                   PacketParser* parserPtr,
@@ -36,6 +43,7 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             // Just connected
             display->showResting();
             Serial.println("V1 connected!");
+            CONN_LOG("[BLE] V1 connected");
         } else {
             // Just disconnected - reset stale state
             PacketParser::resetPriorityState();
@@ -44,6 +52,7 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             V1Display::resetChangeTracking();
             display->showScanning();
             Serial.println("V1 disconnected - Scanning...");
+            CONN_LOG("[BLE] V1 disconnected - scanning");
         }
         wasConnected = isConnected;
     }

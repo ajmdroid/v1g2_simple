@@ -1400,3 +1400,107 @@ size_t CameraManager::loadJsonDatabaseIncremental(const char* path) {
   file.close();
   return fileRecords;
 }
+// ============================================================================
+// Incremental Cache Building - Non-blocking cache construction
+// ============================================================================
+
+bool CameraManager::startIncrementalCacheBuild(float lat, float lon, float radiusMiles) {
+  // Don't start if already in progress
+  if (incrementalBuild.inProgress) {
+    Serial.println("[Camera] Incremental build already in progress");
+    return false;
+  }
+  
+  // Convert radius to meters and calculate lat/lon deltas for quick filtering
+  float radiusM = radiusMiles * 1609.34f;
+  float latDelta = radiusM / 111320.0f;  // ~111km per degree latitude
+  float lonDelta = radiusM / (111320.0f * cosf(lat * DEG_TO_RAD));
+  
+  // Initialize incremental state
+  incrementalBuild.inProgress = true;
+  incrementalBuild.currentIndex = 0;
+  incrementalBuild.targetLat = lat;
+  incrementalBuild.targetLon = lon;
+  incrementalBuild.radiusM = radiusM;
+  incrementalBuild.latDelta = latDelta;
+  incrementalBuild.lonDelta = lonDelta;
+  incrementalBuild.pendingCache.clear();
+  incrementalBuild.pendingCache.reserve(500);  // Reserve reasonable space
+  incrementalBuild.startTimeMs = millis();
+  incrementalBuild.radiusMi = radiusMiles;  // Store for finish
+  
+  Serial.printf("[Camera] Starting incremental cache build: %.6f, %.6f, %.0f mi\n",
+                lat, lon, radiusMiles);
+  
+  return true;
+}
+
+bool CameraManager::continueIncrementalCacheBuild(size_t maxCamerasPerCall) {
+  if (!incrementalBuild.inProgress) {
+    return true;  // Nothing to do, consider it complete
+  }
+  
+  // Brief mutex acquisition to read camera data
+  if (!cameraMutex || xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+    return false;  // Couldn't get mutex, try again later
+  }
+  
+  size_t totalCameras = cameras.size();
+  size_t processed = 0;
+  
+  while (incrementalBuild.currentIndex < totalCameras && processed < maxCamerasPerCall) {
+    const CameraRecord& cam = cameras[incrementalBuild.currentIndex];
+    
+    // Quick bounding box check first (very fast)
+    float latDiff = fabsf(cam.latitude - incrementalBuild.targetLat);
+    float lonDiff = fabsf(cam.longitude - incrementalBuild.targetLon);
+    
+    if (latDiff <= incrementalBuild.latDelta && lonDiff <= incrementalBuild.lonDelta) {
+      // Within bounding box, do precise distance check
+      float dist = haversineDistance(cam.latitude, cam.longitude,
+                                     incrementalBuild.targetLat, incrementalBuild.targetLon);
+      if (dist <= incrementalBuild.radiusM) {
+        incrementalBuild.pendingCache.push_back(cam);
+      }
+    }
+    
+    incrementalBuild.currentIndex++;
+    processed++;
+  }
+  
+  xSemaphoreGive(cameraMutex);
+  
+  // Check if complete
+  if (incrementalBuild.currentIndex >= totalCameras) {
+    return true;  // Build complete
+  }
+  
+  return false;  // More work to do
+}
+
+bool CameraManager::finishIncrementalCacheBuild() {
+  if (!incrementalBuild.inProgress) {
+    return false;
+  }
+  
+  // Brief mutex to swap the cache
+  if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    // Move the pending cache to the active cache
+    regionalCache = std::move(incrementalBuild.pendingCache);
+    cacheCenterLat = incrementalBuild.targetLat;
+    cacheCenterLon = incrementalBuild.targetLon;
+    cacheRadiusMi = incrementalBuild.radiusMi;
+    xSemaphoreGive(cameraMutex);
+  }
+  
+  uint32_t elapsed = millis() - incrementalBuild.startTimeMs;
+  Serial.printf("[Camera] Incremental cache complete: %zu cameras in %lu ms (non-blocking)\n",
+                regionalCache.size(), static_cast<unsigned long>(elapsed));
+  
+  // Reset state
+  incrementalBuild.inProgress = false;
+  incrementalBuild.pendingCache.clear();
+  incrementalBuild.pendingCache.shrink_to_fit();  // Release memory
+  
+  return true;
+}

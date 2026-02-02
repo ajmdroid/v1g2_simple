@@ -1789,6 +1789,11 @@ void V1Display::showResting(bool forceRedraw) {
 
         lastRestingPaletteRevision = paletteRevision;
         lastRestingProfileSlot = profileSlot;
+        
+        // Log screen mode transition for debugging display refresh issues
+        if (currentScreen != ScreenMode::Resting) {
+            DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen);
+        }
         currentScreen = ScreenMode::Resting;
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
@@ -2491,6 +2496,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Track screen mode transitions - force redraw when entering live mode from resting/scanning
     bool enteringLiveMode = (currentScreen != ScreenMode::Live);
+    if (enteringLiveMode) {
+        DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n", 
+                    (int)currentScreen, alertCount);
+    }
     currentScreen = ScreenMode::Live;
     
     // Always use multi-alert mode (raised layout for cards)
@@ -5232,6 +5241,16 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     static char lastTypeName[16] = {0};
     static int lastCameraCount = 0;
     static bool lastV1HasAlerts = false;
+    static unsigned long lastLogMs = 0;
+    
+    // Log state transitions (throttled to 1/sec for distance-only changes)
+    unsigned long now = millis();
+    bool stateTransition = (count > 0) != lastCameraState || count != lastCameraCount || v1HasAlerts != lastV1HasAlerts;
+    if (stateTransition || (count > 0 && (now - lastLogMs) >= 1000)) {
+        DISPLAY_LOG("[DISP] updateCameraAlerts: count=%d v1Has=%d lastCount=%d lastV1Has=%d wasCard=%d\n",
+                    count, v1HasAlerts, lastCameraCount, lastV1HasAlerts, lastWasCard);
+        lastLogMs = now;
+    }
     
     // Max supported: 1 primary + MAX_CAMERA_CARDS (2) = 3 cameras total
     // When V1 has alerts, max is MAX_CAMERA_CARDS since all become cards
@@ -5251,6 +5270,11 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     if (!stateChanged && !active) {
         // No cameras now, no cameras before - nothing to do
         return;
+    }
+    
+    // Log critical state transitions: camera alert being cleared
+    if (!active && lastCameraState) {
+        DISPLAY_LOG("[DISP] Camera alert CLEAR: lastCount=%d wasCard=%d\n", lastCameraCount, lastWasCard);
     }
     
     // Major state changes trigger expensive full card redraw
@@ -5376,6 +5400,7 @@ void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bo
     if (!active) {
         // Clear camera alert area if was previously shown
         if (lastCameraState) {
+            DISPLAY_LOG("[DISP] Clearing camera alert area: wasCard=%d\n", lastWasCard);
             if (!lastWasCard) {
                 // Clear main distance area
                 FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
@@ -5466,6 +5491,7 @@ void V1Display::clearCameraAlert() {
 
 void V1Display::clearCameraAlerts() {
 #if defined(DISPLAY_WAVESHARE_349)
+    DISPLAY_LOG("[DISP] clearCameraAlerts called\n");
     updateCameraAlerts(nullptr, 0, false);
 #endif
 }

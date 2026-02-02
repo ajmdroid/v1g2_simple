@@ -35,6 +35,39 @@ SettingsManager settingsManager;
 static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
 static const int SETTINGS_VERSION = 2;  // Increment when changing password encoding
 
+// NVS recovery: clear unused namespace when NVS is full
+// Returns true if space was freed
+static bool attemptNvsRecovery(const char* activeNs) {
+    Serial.println("[Settings] NVS space low - attempting recovery...");
+    
+    // Clear the inactive settings namespace to free space
+    const char* inactiveNs = nullptr;
+    if (strcmp(activeNs, SETTINGS_NS_A) == 0) {
+        inactiveNs = SETTINGS_NS_B;
+    } else if (strcmp(activeNs, SETTINGS_NS_B) == 0) {
+        inactiveNs = SETTINGS_NS_A;
+    }
+    
+    if (inactiveNs) {
+        Preferences prefs;
+        if (prefs.begin(inactiveNs, false)) {
+            prefs.clear();
+            prefs.end();
+            Serial.printf("[Settings] Cleared inactive namespace %s\n", inactiveNs);
+        }
+    }
+    
+    // Also clear legacy namespace if it exists
+    Preferences legacy;
+    if (legacy.begin(SETTINGS_NS_LEGACY, false)) {
+        legacy.clear();
+        legacy.end();
+        Serial.println("[Settings] Cleared legacy namespace");
+    }
+    
+    return true;
+}
+
 // Obfuscate a string using XOR (same function for encode/decode)
 static String xorObfuscate(const String& input) {
     if (input.length() == 0) return input;
@@ -242,8 +275,14 @@ bool SettingsManager::persistSettingsAtomically() {
     String stagingNs = getStagingNamespace(activeNs);
 
     if (!writeSettingsToNamespace(stagingNs.c_str())) {
-        Serial.println("[Settings] ERROR: Failed to write staging settings");
-        return false;
+        // First attempt failed - try NVS recovery and retry once
+        Serial.println("[Settings] First write attempt failed, trying NVS recovery...");
+        attemptNvsRecovery(activeNs.c_str());
+        
+        if (!writeSettingsToNamespace(stagingNs.c_str())) {
+            Serial.println("[Settings] ERROR: Failed to write staging settings even after recovery");
+            return false;
+        }
     }
 
     Preferences meta;
@@ -575,11 +614,30 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
     // Store password in separate namespace with obfuscation
     Preferences prefs;
     if (prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write
-        prefs.putString("password", xorObfuscate(password));
+        size_t written = prefs.putString("password", xorObfuscate(password));
         prefs.end();
-        Serial.println("[Settings] WiFi client credentials saved");
+        
+        if (written > 0) {
+            Serial.println("[Settings] WiFi client credentials saved");
+        } else {
+            // NVS might be full - try recovery and retry
+            Serial.println("[Settings] WiFi password save failed, trying NVS recovery...");
+            String activeNs = getActiveNamespace();
+            attemptNvsRecovery(activeNs.c_str());
+            
+            // Retry save
+            if (prefs.begin(WIFI_CLIENT_NS, false)) {
+                written = prefs.putString("password", xorObfuscate(password));
+                prefs.end();
+                if (written > 0) {
+                    Serial.println("[Settings] WiFi client credentials saved after recovery");
+                } else {
+                    Serial.println("[Settings] ERROR: WiFi password save failed even after recovery");
+                }
+            }
+        }
     } else {
-        Serial.println("[Settings] ERROR: Failed to save WiFi client password");
+        Serial.println("[Settings] ERROR: Failed to open WiFi client namespace");
     }
     
     save();
