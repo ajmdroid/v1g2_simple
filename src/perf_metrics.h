@@ -115,6 +115,7 @@ struct PerfHistogramMs {
     uint32_t buckets[kBucketCount] = {0};
     uint32_t total = 0;
     uint32_t maxMs = 0;
+    uint32_t overflow = 0;  // Samples exceeding max bucket (>1000ms)
 
     void reset() {
         for (size_t i = 0; i < kBucketCount; ++i) {
@@ -122,6 +123,7 @@ struct PerfHistogramMs {
         }
         total = 0;
         maxMs = 0;
+        overflow = 0;
     }
 };
 

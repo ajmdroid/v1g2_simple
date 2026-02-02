@@ -72,13 +72,17 @@ extern DebugLogger debugLogger;
 
 // Display latency macro - includes SD logging when debug logger enabled
 // Note: Requires debug_logger.h to be included and debugLogger to be available
+// Rate-limited SLOW logs to max 1/sec to prevent spam during stalls
 #define V1_DISPLAY_END_WITH_LOGGER(label, logger) do { \
+    static unsigned long _lastSlowLogMs = 0; \
     unsigned long _dur = micros() - _perfStart; \
     displayLatencySum += _dur; \
     displayLatencyCount++; \
     if (_dur > displayLatencyMax) displayLatencyMax = _dur; \
-    if (_dur > DISPLAY_SLOW_THRESHOLD_US && (logger).isEnabledFor(DebugLogCategory::Display)) { \
+    unsigned long _nowSlowChk = millis(); \
+    if (_dur > DISPLAY_SLOW_THRESHOLD_US && (logger).isEnabledFor(DebugLogCategory::Display) && (_nowSlowChk - _lastSlowLogMs >= 1000)) { \
         (logger).logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, _dur / 1000); \
+        _lastSlowLogMs = _nowSlowChk; \
     } \
     unsigned long _now = millis(); \
     if ((_now - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) { \

@@ -80,15 +80,25 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         bool gpsReady = gps && gps->isReadyForNavigation();
         bool lockoutSystemReady = gpsReady && lockoutMgr && autoLockoutMgr;
 
-        if (priority.isValid && priority.band != BAND_NONE && debug && debug->isEnabledFor(DebugLogCategory::Lockout)) {
-            const char* bandStr = (priority.band == BAND_X) ? "X" : (priority.band == BAND_K) ? "K" : 
-                                  (priority.band == BAND_KA) ? "Ka" : "Laser";
-            uint8_t strength = VoiceModule::getAlertBars(priority);
-            if (!lockoutSystemReady) {
-                const char* reason = !gps ? "no GPS" : !gps->isReadyForNavigation() ? "GPS not ready" : 
-                                     !lockoutMgr ? "no lockoutMgr" : "no autoLockoutMgr";
-                debug->logf(DebugLogCategory::Lockout, "[Lockout] Alert: %s %.3fMHz str=%d → SKIPPED (%s)",
-                           bandStr, priority.frequency/1000.0f, strength, reason);
+        // Rate-limited lockout skip logging with GPS state summary
+        static unsigned long lastLockoutSkipLogMs = 0;
+        static uint32_t lockoutSkipsGpsNotReady = 0;  // Counter for diagnostics
+        
+        if (priority.isValid && priority.band != BAND_NONE && !lockoutSystemReady) {
+            lockoutSkipsGpsNotReady++;
+            
+            if (debug && debug->isEnabledFor(DebugLogCategory::Lockout)) {
+                unsigned long nowMs = millis();
+                if (nowMs - lastLockoutSkipLogMs >= 5000) {  // Log at most every 5 seconds
+                    const char* bandStr = (priority.band == BAND_X) ? "X" : (priority.band == BAND_K) ? "K" : 
+                                          (priority.band == BAND_KA) ? "Ka" : "Laser";
+                    uint8_t strength = VoiceModule::getAlertBars(priority);
+                    const char* reason = !gps ? "no GPS" : !gps->isReadyForNavigation() ? "GPS not ready" : 
+                                         !lockoutMgr ? "no lockoutMgr" : "no autoLockoutMgr";
+                    debug->logf(DebugLogCategory::Lockout, "[Lockout] Alerts skipped: %lu (%s) | last: %s %.3fMHz str=%d",
+                               lockoutSkipsGpsNotReady, reason, bandStr, priority.frequency/1000.0f, strength);
+                    lastLockoutSkipLogMs = nowMs;
+                }
             }
         }
 
@@ -278,11 +288,16 @@ void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long
     displayLatencyCount++;
     if (dur > displayLatencyMax) displayLatencyMax = dur;
 
+    // Rate-limit SLOW logs to max 1/sec to prevent log spam during stalls
+    static unsigned long lastSlowLogMs = 0;
+    unsigned long nowMs = millis();
     if (dur > DISPLAY_SLOW_THRESHOLD_US && debug && debug->isEnabledFor(DebugLogCategory::Display)) {
-        debug->logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, dur / 1000);
+        if (nowMs - lastSlowLogMs >= 1000) {
+            debug->logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, dur / 1000);
+            lastSlowLogMs = nowMs;
+        }
     }
 
-    unsigned long nowMs = millis();
     if ((nowMs - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) {
         if (debug && debug->isEnabledFor(DebugLogCategory::Display)) {
             debug->logf(DebugLogCategory::Display, "Display: avg=%luus max=%luus n=%lu",

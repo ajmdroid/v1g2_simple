@@ -55,13 +55,17 @@ static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
     if (ms > hist.maxMs) {
         hist.maxMs = ms;
     }
+    // Always increment total - values > max bucket go into overflow
+    hist.total++;
     for (size_t i = 0; i < PerfHistogramMs::kBucketCount; ++i) {
         if (ms <= kLatencyBucketsMs[i]) {
             hist.buckets[i]++;
-            hist.total++;
             return;
         }
     }
+    // Value exceeds all buckets - counted in total but not in any bucket
+    // calcP95 will return maxMs for these overflow cases
+    hist.overflow++;
 }
 
 static uint32_t calcP95(const PerfHistogramMs& hist) {
