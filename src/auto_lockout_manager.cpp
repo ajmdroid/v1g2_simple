@@ -419,6 +419,14 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   // Track total alerts
   sessionStats.alertsProcessed++;
   
+  // Warn once about invalid maxSignalStrength config (must be 0 or > MIN_SIGNAL_STRENGTH)
+  static bool warnedInvalidMaxSig = false;
+  if (!warnedInvalidMaxSig && s.lockoutMaxSignalStrength > 0 && s.lockoutMaxSignalStrength <= MIN_SIGNAL_STRENGTH) {
+    Serial.printf("[AutoLockout] WARNING: lockoutMaxSignalStrength=%d <= MIN_SIGNAL_STRENGTH=%d, no signals can be learned! Set to 0 (disabled) or > %d\n",
+                  s.lockoutMaxSignalStrength, MIN_SIGNAL_STRENGTH, MIN_SIGNAL_STRENGTH);
+    warnedInvalidMaxSig = true;
+  }
+  
   // Check master enable
   if (!s.lockoutEnabled) {
     LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (lockout disabled)\n",
@@ -443,8 +451,9 @@ void AutoLockoutManager::recordAlert(float lat, float lon, Band band, uint32_t f
   }
   
   // Filter strong signals (user-configurable, 0 = disabled)
+  // Note: maxSig must be > MIN_SIGNAL_STRENGTH to have any valid learning range
   uint8_t maxSig = s.lockoutMaxSignalStrength;
-  if (maxSig > 0 && signalStrength >= maxSig) {
+  if (maxSig > 0 && maxSig > MIN_SIGNAL_STRENGTH && signalStrength >= maxSig) {
     LOCKOUT_LOGF("[AutoLockout] %s %.3fMHz str=%d -> SKIP (strong signal >= %d)\n", 
                   bandStr, frequency_khz/1000.0f, signalStrength, maxSig);
     return;
