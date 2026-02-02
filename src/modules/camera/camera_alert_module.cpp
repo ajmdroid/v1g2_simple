@@ -418,10 +418,19 @@ void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
         return;
     }
 
+    // Track state transitions to avoid spammy logging
+    static bool hadCameras = false;
+    
     if (!activeCameraAlerts.empty()) {
+        if (!hadCameras) {
+            hadCameras = true;  // Cameras appeared
+        }
         handleRealDisplay(v1HasAlerts, dispSettings);
     } else {
-        CAMERA_LOG("[Camera] updateMainDisplay: no active cameras, calling clearCameraAlerts\n");
+        if (hadCameras) {
+            CAMERA_LOG("[Camera] No active cameras - clearing display\n");
+            hadCameras = false;
+        }
         display->clearCameraAlerts();
     }
 }
@@ -503,7 +512,7 @@ void CameraAlertModule::handleRealCards(const V1Settings& dispSettings) {
 void CameraAlertModule::handleRealDisplay(bool v1HasAlerts, const V1Settings& dispSettings) {
     int count = std::min((int)activeCameraAlerts.size(), MAX_ACTIVE_CAMERAS);
     if (count == 0) {
-        CAMERA_LOG("[Camera] handleRealDisplay: no active cameras, calling clearCameraAlerts\n");
+        // This shouldn't happen - caller checks activeCameraAlerts.empty()
         display->clearCameraAlerts();
         return;
     }

@@ -172,14 +172,15 @@ bool GPSHandler::update() {
     lastFix.speed_mps = gps.speed.isValid() ? gps.speed.mps() : 0.0;
     lastFix.heading_deg = gps.course.isValid() ? gps.course.deg() : 0.0;
     
-    GPS_LOG("[GPS] Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
-            lastFix.latitude, lastFix.longitude, 
-            lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
-    if (gps.time.isValid() && gps.date.isValid()) {
-      GPS_LOG("[GPS] Time: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-              gps.date.year(), gps.date.month(), gps.date.day(),
-              gps.time.hour(), gps.time.minute(), gps.time.second());
+    // Throttle fix logs to every 5 seconds (GPS can update at 10Hz)
+    static uint32_t lastFixLog = 0;
+    if (millis() - lastFixLog > 5000) {
+      lastFixLog = millis();
+      GPS_LOG("[GPS] Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
+              lastFix.latitude, lastFix.longitude, 
+              lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
     }
+    // Time logging removed - redundant with fix log
     
     // Update ready state and heading smoothing
     updateReadyState();
@@ -408,12 +409,14 @@ bool GPSHandler::update() {
       lastFix.speed_mps = GPS.speed * 0.514444f;  // Convert knots to m/s
       lastFix.heading_deg = GPS.angle;
       
-      GPS_LOG("[GPS] FIX ACQUIRED: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
-              lastFix.latitude, lastFix.longitude, 
-              lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
-      GPS_LOG("[GPS] Time: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-              2000 + lastFix.year, lastFix.month, lastFix.day,
-              lastFix.hour, lastFix.minute, lastFix.seconds);
+      // Throttle fix logs to every 5 seconds (GPS can update at 10Hz)
+      static uint32_t lastFixLogAda = 0;
+      if (millis() - lastFixLogAda > 5000) {
+        lastFixLogAda = millis();
+        GPS_LOG("[GPS] Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
+                lastFix.latitude, lastFix.longitude, 
+                lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
+      }
       
       // Update ready state and heading smoothing
       updateReadyState();

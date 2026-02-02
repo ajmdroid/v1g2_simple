@@ -5491,7 +5491,7 @@ void V1Display::clearCameraAlert() {
 
 void V1Display::clearCameraAlerts() {
 #if defined(DISPLAY_WAVESHARE_349)
-    DISPLAY_LOG("[DISP] clearCameraAlerts called\n");
+    // Log is handled by updateCameraAlerts on actual state transition
     updateCameraAlerts(nullptr, 0, false);
 #endif
 }
