@@ -442,7 +442,7 @@ void setup() {
         runDoc["build"] = "unknown";
         #endif
         runDoc["board"] = "waveshare-349";
-        runDoc["queueDepth"] = 72;  // From BLE queue config
+        runDoc["queueDepth"] = 48;  // From BLE queue config (reduced from 72)
         runDoc["drawMinMs"] = 30;    // DISPLAY_DRAW_MIN_MS from display pipeline
         const V1Settings& runSettings = settingsManager.get();
         runDoc["wifi"] = runSettings.enableWifi;
