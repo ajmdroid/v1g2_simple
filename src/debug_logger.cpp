@@ -5,6 +5,7 @@
 
 #include "debug_logger.h"
 #include "storage_manager.h"
+#include "perf_metrics.h"
 
 #include <stdarg.h>
 #include <sys/time.h>  // For settimeofday
@@ -137,11 +138,14 @@ void DebugLogger::flushBuffer() {
     
     rotateIfNeeded();
     
+    uint32_t startUs = PERF_TIMESTAMP_US();
     File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
     if (f) {
         f.write((uint8_t*)buffer, bufferPos);
         f.close();
     }
+    uint32_t durUs = PERF_TIMESTAMP_US() - startUs;
+    perfRecordSdFlushUs(durUs);
     
     bufferPos = 0;
     lastFlushMs = millis();
@@ -163,7 +167,7 @@ void DebugLogger::flush() {
 void DebugLogger::logf(const char* fmt, ...) {
     if (!categoryAllowed(DebugLogCategory::System)) return;
 
-    char buffer[256];
+    char buffer[384];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, args);
@@ -181,7 +185,7 @@ void DebugLogger::log(const char* message) {
 void DebugLogger::logf(DebugLogCategory category, const char* fmt, ...) {
     if (!categoryAllowed(category)) return;
 
-    char msgBuffer[256];
+    char msgBuffer[384];
     va_list args;
     va_start(args, fmt);
     vsnprintf(msgBuffer, sizeof(msgBuffer), fmt, args);

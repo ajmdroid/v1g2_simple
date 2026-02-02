@@ -36,6 +36,7 @@
 	});
 	let logLoading = $state(true);
 	let logActionBusy = $state(false);
+	let presetBusy = $state(false);
 
 	// Log viewer state
 	let logViewerOpen = $state(false);
@@ -264,6 +265,54 @@
 		} finally {
 			await loadLogInfo();
 			logActionBusy = false;
+		}
+	}
+
+	async function applyBenchmarkPreset() {
+		if (!acknowledged) {
+			message = 'Please acknowledge the warning before changing logging presets';
+			return;
+		}
+		presetBusy = true;
+		message = '';
+		try {
+			const response = await fetch('/api/debug/benchmark', { method: 'POST' });
+			if (response.ok) {
+				message = 'Benchmark mode enabled (System + WiFi + PerfMetrics)';
+				await loadSettings();
+				await loadLogInfo();
+			} else {
+				message = 'Failed to enable Benchmark mode';
+			}
+		} catch (error) {
+			console.error('Benchmark preset failed:', error);
+			message = 'Failed to enable Benchmark mode';
+		} finally {
+			presetBusy = false;
+		}
+	}
+
+	async function triggerInvestigationBurst() {
+		if (!acknowledged) {
+			message = 'Please acknowledge the warning before starting investigation';
+			return;
+		}
+		presetBusy = true;
+		message = '';
+		try {
+			const response = await fetch('/api/debug/investigation', { method: 'POST' });
+			if (response.ok) {
+				message = 'Investigation burst started (20s)';
+				await loadSettings();
+				await loadLogInfo();
+			} else {
+				message = 'Failed to start Investigation burst';
+			}
+		} catch (error) {
+			console.error('Investigation burst failed:', error);
+			message = 'Failed to start Investigation burst';
+		} finally {
+			presetBusy = false;
 		}
 	}
 
@@ -519,6 +568,27 @@
 									disabled={!acknowledged}
 								/>
 								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 0}>JSON</span>
+							</div>
+						</div>
+
+						<div class="mt-4">
+							<h3 class="font-semibold text-sm opacity-70">Logging Presets</h3>
+							<p class="text-xs opacity-60">Quick toggles for low-noise benchmarking and short investigation bursts.</p>
+							<div class="btn-group w-full mt-2">
+								<button
+									class="btn btn-sm btn-outline flex-1"
+									onclick={applyBenchmarkPreset}
+									disabled={!acknowledged || presetBusy}
+								>
+									📊 Benchmark
+								</button>
+								<button
+									class="btn btn-sm btn-outline flex-1"
+									onclick={triggerInvestigationBurst}
+									disabled={!acknowledged || presetBusy}
+								>
+									🔍 Investigation (20s)
+								</button>
 							</div>
 						</div>
 

@@ -107,6 +107,36 @@ void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock) {
     }
 }
 
+void perfRecordWifiProcessUs(uint32_t us) {
+    if (us > perfExtended.wifiMaxUs) {
+        perfExtended.wifiMaxUs = us;
+    }
+}
+
+void perfRecordFsServeUs(uint32_t us) {
+    if (us > perfExtended.fsMaxUs) {
+        perfExtended.fsMaxUs = us;
+    }
+}
+
+void perfRecordSdFlushUs(uint32_t us) {
+    if (us > perfExtended.sdMaxUs) {
+        perfExtended.sdMaxUs = us;
+    }
+}
+
+void perfRecordFlushUs(uint32_t us) {
+    if (us > perfExtended.flushMaxUs) {
+        perfExtended.flushMaxUs = us;
+    }
+}
+
+void perfRecordBleDrainUs(uint32_t us) {
+    if (us > perfExtended.bleDrainMaxUs) {
+        perfExtended.bleDrainMaxUs = us;
+    }
+}
+
 uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
 uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
 uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
@@ -114,6 +144,11 @@ uint32_t perfGetNotifyToProxyMaxMs() { return perfExtended.notifyToProxyMs.maxMs
 uint32_t perfGetLoopMaxUs() { return perfExtended.loopMaxUs; }
 uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 0 : perfExtended.minFreeHeap; }
 uint32_t perfGetMinLargestBlock() { return perfExtended.minLargestBlock == UINT32_MAX ? 0 : perfExtended.minLargestBlock; }
+uint32_t perfGetWifiMaxUs() { return perfExtended.wifiMaxUs; }
+uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
+uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
+uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
+uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
 
 void perfExtendedResetWindow() {
     perfExtended.reset();

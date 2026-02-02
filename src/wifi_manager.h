@@ -175,6 +175,8 @@ private:
     void handleDebugEvents();
     void handleDebugEventsClear();
     void handleDebugEnable();
+    void handleDebugBenchmark();
+    void handleDebugInvestigation();
     void handleDebugLogsMeta();
     void handleDebugLogsDownload();
     void handleDebugLogsTail();

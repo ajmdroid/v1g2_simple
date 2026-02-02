@@ -17,6 +17,7 @@
 #include "gps_handler.h"
 #include "storage_manager.h"
 #include "audio_beep.h"
+#include "perf_metrics.h"
 #include <esp_heap_caps.h>
 #include <cstring>
 #include <algorithm>
@@ -98,6 +99,18 @@ static unsigned long _dispPerfStart = 0;
     if (_dur > 5000) Serial.printf("[DISP] %s: %luus\n", label, _dur); \
     _dispPerfStart = micros(); \
 } } while(0)
+
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+#define DISPLAY_FLUSH() do { \
+    if (tft) { \
+        uint32_t _start = PERF_TIMESTAMP_US(); \
+        tft->flush(); \
+        perfRecordFlushUs(PERF_TIMESTAMP_US() - _start); \
+    } \
+} while(0)
+#else
+#define DISPLAY_FLUSH() ((void)0)
+#endif
 
 // Utility: dim a 565 color by a percentage (default 60%) for subtle icons
 static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
@@ -475,7 +488,7 @@ bool V1Display::begin() {
     
     Serial.println("Filling screen with black...");
     tft->fillScreen(COLOR_BLACK);
-    tft->flush();
+    DISPLAY_FLUSH();
     Serial.println("Screen filled and flushed");
     
     // Turn on backlight (inverted: 0 = full brightness)
@@ -668,7 +681,7 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     tft->setCursor((SCREEN_WIDTH - 220) / 2, 155);
     tft->print("Touch sliders - BOOT to save");
     
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 }
 
@@ -703,7 +716,7 @@ void V1Display::hideBrightnessSlider() {
 void V1Display::clear() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->fillScreen(PALETTE_BG);
-    tft->flush();
+    DISPLAY_FLUSH();
 #else
     TFT_CALL(fillScreen)(PALETTE_BG);
 #endif
@@ -1688,9 +1701,7 @@ void V1Display::drawWiFiIndicator() {
 
 void V1Display::flush() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    if (tft) {
-        tft->flush();
-    }
+    DISPLAY_FLUSH();
 #endif
 }
 
@@ -1709,7 +1720,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 
     uint16_t* fb = tft->getFramebuffer();
     if (!fb) {
-        tft->flush();
+        DISPLAY_FLUSH();
         return;
     }
 
@@ -1798,7 +1809,7 @@ void V1Display::showResting(bool forceRedraw) {
         currentScreen = ScreenMode::Resting;
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-        tft->flush();
+    DISPLAY_FLUSH();
 #endif
     } else if (profileChanged) {
         // Only the profile changed while already resting; redraw just the indicator
@@ -1975,7 +1986,7 @@ void V1Display::showScanning() {
     lastState = DisplayState();
     
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 
     currentScreen = ScreenMode::Scanning;
@@ -2045,7 +2056,7 @@ void V1Display::showBootSplash() {
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display before enabling backlight
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 
     // Turn on backlight now that splash is drawn
@@ -2075,7 +2086,7 @@ void V1Display::showShutdown() {
     
     // Flush to display
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 }
 
@@ -2108,7 +2119,7 @@ void V1Display::showLowBattery() {
     
     // Flush to display
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 }
 
@@ -2255,7 +2266,7 @@ void V1Display::update(const DisplayState& state) {
         if (kittScannerActive) {
             drawKittScanner();
 #if defined(DISPLAY_WAVESHARE_349)
-            tft->flush();
+            DISPLAY_FLUSH();
 #endif
         } else if (obdCardsActive) {
             // OBD cards mode - use card-based display
@@ -2271,7 +2282,7 @@ void V1Display::update(const DisplayState& state) {
                 lastObdIdleUpdate = millis();
                 drawIdleObdData();
 #if defined(DISPLAY_WAVESHARE_349)
-                tft->flush();
+                DISPLAY_FLUSH();
 #endif
             }
         }
@@ -2311,7 +2322,7 @@ void V1Display::update(const DisplayState& state) {
             drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
         }
 #if defined(DISPLAY_WAVESHARE_349)
-        tft->flush();
+    DISPLAY_FLUSH();
 #endif
         lastState = state;
         return;
@@ -2419,7 +2430,7 @@ void V1Display::update(const DisplayState& state) {
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
 
 #if defined(DISPLAY_WAVESHARE_349)
-    tft->flush();  // Push canvas to display
+    DISPLAY_FLUSH();  // Push canvas to display
 #endif
 
     currentScreen = ScreenMode::Resting;  // Set screen mode after redraw complete
@@ -2485,7 +2496,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, true);
 
 #if defined(DISPLAY_WAVESHARE_349)
-    tft->flush();
+    DISPLAY_FLUSH();
 #endif
 }
 
@@ -2638,7 +2649,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
-        tft->flush();
+    DISPLAY_FLUSH();
 #endif
         return;
     }
@@ -2678,7 +2689,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
-        tft->flush();
+    DISPLAY_FLUSH();
 #endif
         return;
     }
@@ -2744,7 +2755,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Keep g_multiAlertMode true while in multi-alert - only reset when going to single-alert mode
 
 #if defined(DISPLAY_WAVESHARE_349)
-    tft->flush();
+    DISPLAY_FLUSH();
     DISP_PERF_LOG("flush");
 #endif
 

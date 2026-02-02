@@ -5,11 +5,13 @@
  */
 
 #include "wifi_manager.h"
+#include "perf_metrics.h"
 #include "settings.h"
 #include "display.h"
 #include "storage_manager.h"
 #include "debug_logger.h"
 #include "v1_profiles.h"
+#include "modules/perf/perf_reporter_module.h"
 #include "ble_client.h"
 #include "obd_handler.h"
 #include "gps_handler.h"
@@ -38,6 +40,7 @@ extern V1BLEClient bleClient;
 extern GPSHandler gpsHandler;
 // Camera load coordinator (set when GPS enabled at runtime)
 extern CameraLoadCoordinator cameraLoadCoordinator;
+extern PerfReporterModule perfReporterModule;
 // Auto lockouts manager for API export
 extern AutoLockoutManager autoLockouts;
 // Preview hold helper to keep color demo visible briefly
@@ -99,6 +102,7 @@ static void dumpLittleFSRoot() {
 
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
+    uint32_t startUs = PERF_TIMESTAMP_US();
     // Try compressed version first (only if client accepts gzip)
     String acceptEncoding = server.header("Accept-Encoding");
     bool clientAcceptsGzip = acceptEncoding.indexOf("gzip") >= 0;
@@ -123,6 +127,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
                     yield();  // Allow FreeRTOS to schedule other tasks (BLE queue drain)
                 }
                 file.close();
+                perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
                 return true;
             }
         }
@@ -139,6 +144,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
     server.streamFile(file, contentType);
     Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
     file.close();
+    perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
     return true;
 }
 
@@ -463,6 +469,8 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
+    server.on("/api/debug/benchmark", HTTP_POST, [this]() { handleDebugBenchmark(); });
+    server.on("/api/debug/investigation", HTTP_POST, [this]() { handleDebugInvestigation(); });
     server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
     server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
@@ -2245,6 +2253,12 @@ void WiFiManager::handleDebugMetrics() {
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
+    doc["loopMaxUs"] = perfGetLoopMaxUs();
+    doc["wifiMaxUs"] = perfGetWifiMaxUs();
+    doc["fsMaxUs"] = perfGetFsMaxUs();
+    doc["sdMaxUs"] = perfGetSdMaxUs();
+    doc["flushMaxUs"] = perfGetFlushMaxUs();
+    doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
@@ -2304,6 +2318,18 @@ void WiFiManager::handleDebugEnable() {
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
 }
 
+void WiFiManager::handleDebugBenchmark() {
+    if (!checkRateLimit()) return;
+    perfReporterModule.applyBenchmarkPreset(true);
+    server.send(200, "application/json", "{\"success\":true,\"mode\":\"benchmark\"}");
+}
+
+void WiFiManager::handleDebugInvestigation() {
+    if (!checkRateLimit()) return;
+    perfReporterModule.startInvestigationBurst(millis(), false);
+    server.send(200, "application/json", "{\"success\":true,\"mode\":\"investigation\",\"durationSec\":20}");
+}
+
 void WiFiManager::handleDebugLogsMeta() {
     if (!checkRateLimit()) return;
 
@@ -2339,6 +2365,8 @@ void WiFiManager::handleDebugLogsMeta() {
 void WiFiManager::handleDebugLogsDownload() {
     if (!checkRateLimit()) return;
 
+    uint32_t startUs = PERF_TIMESTAMP_US();
+
     if (!storageManager.isReady()) {
         server.send(503, "application/json", "{\"success\":false,\"error\":\"Storage not available\"}");
         return;
@@ -2361,6 +2389,7 @@ void WiFiManager::handleDebugLogsDownload() {
     server.sendHeader("Cache-Control", "no-cache");
     server.streamFile(f, "text/plain");
     f.close();
+    perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
 }
 
 void WiFiManager::handleDebugLogsTail() {

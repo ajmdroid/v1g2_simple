@@ -66,6 +66,7 @@
 #include "modules/perf/debug_macros.h"
 #include <FS.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -109,6 +110,49 @@ bool isColorPreviewRunning() {
 
 void cancelColorPreview() {
     displayPreviewModule.cancel();
+}
+
+static const char* resetReasonToString(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON: return "POWERON";
+        case ESP_RST_SW: return "SW";
+        case ESP_RST_PANIC: return "PANIC";
+        case ESP_RST_INT_WDT: return "WDT_INT";
+        case ESP_RST_TASK_WDT: return "WDT_TASK";
+        case ESP_RST_WDT: return "WDT";
+        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT: return "BROWNOUT";
+        case ESP_RST_SDIO: return "SDIO";
+        default: return "UNKNOWN";
+    }
+}
+
+static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
+    uint32_t mask = 0;
+    if (cfg.alerts) mask |= (1u << 0);
+    if (cfg.wifi) mask |= (1u << 1);
+    if (cfg.ble) mask |= (1u << 2);
+    if (cfg.gps) mask |= (1u << 3);
+    if (cfg.obd) mask |= (1u << 4);
+    if (cfg.system) mask |= (1u << 5);
+    if (cfg.display) mask |= (1u << 6);
+    if (cfg.perfMetrics) mask |= (1u << 7);
+    if (cfg.audio) mask |= (1u << 8);
+    if (cfg.camera) mask |= (1u << 9);
+    if (cfg.lockout) mask |= (1u << 10);
+    if (cfg.touch) mask |= (1u << 11);
+    return mask;
+}
+
+static uint32_t nextBootId() {
+    Preferences prefs;
+    if (!prefs.begin("v1boot", false)) {
+        return 0;
+    }
+    uint32_t bootId = prefs.getUInt("bootId", 0) + 1;
+    prefs.putUInt("bootId", bootId);
+    prefs.end();
+    return bootId;
 }
 
 static DisplayMode displayMode = DisplayMode::IDLE;
@@ -424,6 +468,38 @@ void setup() {
                          debugLogger.getFormat() == DebugLogFormat::JSON ? "JSON" : "TEXT");
     }
 
+    uint32_t bootId = nextBootId();
+    DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
+    uint32_t logMask = buildLogCategoryBitmap(bootCfg);
+    const V1Settings& bootSettings = settingsManager.get();
+    const char* scenario = "default";
+#ifdef GIT_SHA
+    const char* gitSha = GIT_SHA;
+#else
+    const char* gitSha = "unknown";
+#endif
+    const char* resetStr = resetReasonToString(resetReason);
+    const char* logFmtStr = (bootCfg.format == 1) ? "JSON" : "TEXT";
+    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logFormat=%s logCats=0x%08lX\n",
+                    (unsigned long)bootId,
+                    resetStr,
+                    gitSha,
+                    scenario,
+                    bootSettings.enableWifi ? "on" : "off",
+                    logFmtStr,
+                    (unsigned long)logMask);
+    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+        debugLogger.logf(DebugLogCategory::System,
+                         "BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logFormat=%s logCats=0x%08lX",
+                         (unsigned long)bootId,
+                         resetStr,
+                         gitSha,
+                         scenario,
+                         bootSettings.enableWifi ? "on" : "off",
+                         logFmtStr,
+                         (unsigned long)logMask);
+    }
+
     perfReporterModule.begin(&debugLogger, &settingsManager);
 
     // Emit RUN header for benchmark tracking (once per boot)
@@ -608,7 +684,9 @@ void loop() {
 #endif
     
     // Process queued BLE data (safe for SPI - runs in main loop context)
+    uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
     bleQueueModule.process();
+    perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
     
     // Process serial BLE replay (if enabled via web UI)
     bleSerialModule.process();
@@ -617,7 +695,9 @@ void loop() {
     autoPushModule.process();
 
     // Process WiFi/web server
+    uint32_t wifiStartUs = PERF_TIMESTAMP_US();
     wifiManager.process();
+    perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
     
     // Process GPS updates (if enabled - static allocation uses isEnabled())
     if (gpsHandler.isEnabled()) {
