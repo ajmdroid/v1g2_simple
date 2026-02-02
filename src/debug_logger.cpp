@@ -257,6 +257,15 @@ void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory c
     unsigned long now = millis();
     String ts = timeValid ? getISO8601Timestamp() : String("1970-01-01T00:00:00Z");
     
+    // Time source string for JSON
+    const char* sourceStr = "none";
+    switch (timeSource) {
+        case TimeSource::GPS: sourceStr = "gps"; break;
+        case TimeSource::NTP: sourceStr = "ntp"; break;
+        case TimeSource::ESTIMATED: sourceStr = "estimated"; break;
+        default: sourceStr = "none"; break;
+    }
+    
     // Escape message for JSON (simple escape for quotes and backslashes)
     char escapedMsg[256];
     size_t j = 0;
@@ -270,17 +279,30 @@ void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory c
     
     if (extraFields && extraFields[0]) {
         snprintf(dest, destSize, 
-            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"%s\",\"message\":\"%s\",%s}",
-            ts.c_str(), now, categoryName(category), escapedMsg, extraFields);
+            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"timeSource\":\"%s\",\"category\":\"%s\",\"message\":\"%s\",%s}",
+            ts.c_str(), now, sourceStr, categoryName(category), escapedMsg, extraFields);
     } else {
         snprintf(dest, destSize, 
-            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"%s\",\"message\":\"%s\"}",
-            ts.c_str(), now, categoryName(category), escapedMsg);
+            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"timeSource\":\"%s\",\"category\":\"%s\",\"message\":\"%s\"}",
+            ts.c_str(), now, sourceStr, categoryName(category), escapedMsg);
     }
+}
+
+// Validate GPS/NTP time is sane (year 2023-2050, month 1-12, day 1-31)
+static bool isTimeSane(int year, int month, int day) {
+    return (year >= 2023 && year <= 2050 && 
+            month >= 1 && month <= 12 && 
+            day >= 1 && day <= 31);
 }
 
 // Time synchronization from GPS
 void DebugLogger::syncTimeFromGPS(int year, int month, int day, int hour, int minute, int second) {
+    // Validate input before syncing
+    if (!isTimeSane(year, month, day)) {
+        Serial.printf("[DebugLogger] Invalid GPS time rejected: %d-%02d-%02d\n", year, month, day);
+        return;
+    }
+    
     struct tm timeinfo;
     timeinfo.tm_year = year - 1900;  // tm_year is years since 1900
     timeinfo.tm_mon = month - 1;      // tm_mon is 0-11
@@ -293,12 +315,19 @@ void DebugLogger::syncTimeFromGPS(int year, int month, int day, int hour, int mi
     timeSyncEpoch = mktime(&timeinfo);
     timeSyncMillis = millis();
     timeValid = true;
+    timeSource = TimeSource::GPS;
     
     // Also set ESP32 system time for time() calls elsewhere
     struct timeval tv;
     tv.tv_sec = timeSyncEpoch;
     tv.tv_usec = 0;
     settimeofday(&tv, nullptr);
+}
+
+// Time synchronization from NTP (reuses GPS sync but marks source as NTP)
+void DebugLogger::syncTimeFromNTP(int year, int month, int day, int hour, int minute, int second) {
+    syncTimeFromGPS(year, month, day, hour, minute, second);
+    timeSource = TimeSource::NTP;  // Override source to NTP
 }
 
 time_t DebugLogger::getUnixTime() const {

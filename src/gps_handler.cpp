@@ -396,13 +396,30 @@ bool GPSHandler::update() {
       timeinfo.tm_isdst = 0;  // UTC doesn't have DST
       lastFix.unixTime = mktime(&timeinfo);
       
-      // Sync debug logger time from GPS (once per session)
-      static bool timeSynced = false;
-      if (!timeSynced && GPS.year > 0 && GPS.month > 0) {
-        debugLogger.syncTimeFromGPS(2000 + GPS.year, GPS.month, GPS.day,
-                                     GPS.hour, GPS.minute, GPS.seconds);
-        timeSynced = true;
-        GPS_LOG("[GPS] System time synced from GPS\n");
+      // Sync debug logger time from GPS (periodic re-sync every 6 hours)
+      static unsigned long lastTimeSyncMs = 0;
+      const unsigned long RESYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;  // 6 hours
+      
+      if (GPS.year > 0 && GPS.month > 0) {
+        unsigned long now = millis();
+        bool needsSync = (lastTimeSyncMs == 0) || 
+                         ((now - lastTimeSyncMs) >= RESYNC_INTERVAL_MS);
+        
+        if (needsSync) {
+          // Check drift before sync (diagnostic)
+          if (debugLogger.hasValidTime()) {
+            time_t estimatedTime = debugLogger.getUnixTime();
+            int32_t drift = lastFix.unixTime - estimatedTime;
+            if (abs(drift) > 2) {
+              GPS_LOG("[GPS] Time drift: %d seconds before resync\n", drift);
+            }
+          }
+          
+          debugLogger.syncTimeFromGPS(2000 + GPS.year, GPS.month, GPS.day,
+                                       GPS.hour, GPS.minute, GPS.seconds);
+          lastTimeSyncMs = now;
+          GPS_LOG("[GPS] System time synced from GPS (UTC)\n");
+        }
       }
       
       // Extract speed and heading

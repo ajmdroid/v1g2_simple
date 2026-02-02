@@ -29,6 +29,8 @@
 #include <vector>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include "esp_sntp.h"
+#include <time.h>
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
@@ -718,8 +720,16 @@ void WiFiManager::checkWifiClientStatus() {
         }
         
         case WIFI_CLIENT_CONNECTED: {
+            // Sync time from NTP once per connection session
+            static bool ntpSyncedThisConnection = false;
+            if (!ntpSyncedThisConnection) {
+                syncTimeFromNTP();
+                ntpSyncedThisConnection = true;
+            }
+            
             if (status != WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_DISCONNECTED;
+                ntpSyncedThisConnection = false;  // Reset for next connection
                 Serial.println("[WiFiClient] Lost connection");
             }
             break;
@@ -747,6 +757,49 @@ void WiFiManager::checkWifiClientStatus() {
         default:
             break;
     }
+}
+
+// Sync system/log time from NTP (UTC). Called once per WiFi connection.
+void WiFiManager::syncTimeFromNTP() {
+    static bool sntpStarted = false;
+
+    if (!sntpStarted) {
+        // Configure SNTP servers (UTC). DST handled by clients if they need local time.
+        configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+        sntpStarted = true;
+    }
+
+    // Bounded wait for time to become valid.
+    struct tm timeinfo;
+    bool gotTime = false;
+    const int maxRetries = 8;
+    const int retryDelayMs = 150;
+    for (int i = 0; i < maxRetries; ++i) {
+        if (getLocalTime(&timeinfo, 0)) {
+            gotTime = true;
+            break;
+        }
+        delay(retryDelayMs);
+    }
+
+    if (!gotTime) {
+        Serial.println("[WiFiClient] NTP sync failed (timeout)");
+        return;
+    }
+
+    // Record time in debug logger and system clock (already set by getLocalTime)
+    debugLogger.syncTimeFromNTP(
+        timeinfo.tm_year + 1900,
+        timeinfo.tm_mon + 1,
+        timeinfo.tm_mday,
+        timeinfo.tm_hour,
+        timeinfo.tm_min,
+        timeinfo.tm_sec
+    );
+
+    Serial.printf("[WiFiClient] NTP time synced: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
+                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 }
 
 void WiFiManager::handleStatus() {

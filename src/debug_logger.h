@@ -73,8 +73,18 @@ public:
     bool isEnabledFor(DebugLogCategory category) const;
     DebugLogFormat getFormat() const { return logFormat; }
 
-    // Time synchronization from GPS
+    // Time source tracking
+    enum class TimeSource {
+        NONE,      // No time sync yet (1970 epoch)
+        GPS,       // Synced from GPS
+        NTP,       // Synced from NTP
+        ESTIMATED  // Derived from previous sync + millis()
+    };
+    TimeSource getTimeSource() const { return timeSource; }
+
+    // Time synchronization from GPS/NTP
     void syncTimeFromGPS(int year, int month, int day, int hour, int minute, int second);
+    void syncTimeFromNTP(int year, int month, int day, int hour, int minute, int second);
     bool hasValidTime() const { return timeValid; }
     time_t getUnixTime() const;
     String getISO8601Timestamp() const;
@@ -116,8 +126,9 @@ private:
     DebugLogFilter filter;
     DebugLogFormat logFormat = DebugLogFormat::TEXT;
     
-    // Time tracking (synced from GPS)
+    // Time tracking (synced from GPS/NTP)
     bool timeValid = false;
+    TimeSource timeSource = TimeSource::NONE;
     time_t timeSyncEpoch = 0;       // Unix timestamp when time was synced
     unsigned long timeSyncMillis = 0;  // millis() when time was synced
     
