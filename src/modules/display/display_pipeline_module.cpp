@@ -172,6 +172,16 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         VoiceAction voiceAction = voice->process(voiceCtx);
 
+        // Draw display FIRST (before audio) to eliminate perceived lag
+        // User sees the alert card immediately, then hears the announcement
+        cameraAlert->updateCardStateForV1(true);
+        unsigned long startUs = micros();
+        display->update(priority, currentAlerts.data(), alertCount, state);
+        unsigned long endUs = micros();
+        recordDisplayTiming("display.update(alerts)", startUs, endUs);
+        recordPerfTiming("display.update(alerts)", startUs, endUs);
+
+        // Play audio AFTER display update completes
         if (voiceAction.hasAction()) {
             switch (voiceAction.type) {
                 case VoiceAction::Type::ANNOUNCE_PRIORITY:
@@ -196,13 +206,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
                     break;
             }
         }
-
-        cameraAlert->updateCardStateForV1(true);
-        unsigned long startUs = micros();
-        display->update(priority, currentAlerts.data(), alertCount, state);
-        unsigned long endUs = micros();
-        recordDisplayTiming("display.update(alerts)", startUs, endUs);
-        recordPerfTiming("display.update(alerts)", startUs, endUs);
 
         alertPersistence->setPersistedAlert(priority);
 

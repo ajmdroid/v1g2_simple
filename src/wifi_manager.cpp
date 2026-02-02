@@ -118,6 +118,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
                 while (file.available()) {
                     size_t len = file.read(buf, sizeof(buf));
                     server.client().write(buf, len);
+                    yield();  // Allow FreeRTOS to schedule other tasks (BLE queue drain)
                 }
                 file.close();
                 return true;

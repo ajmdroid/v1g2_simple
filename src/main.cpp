@@ -426,6 +426,38 @@ void setup() {
 
     perfReporterModule.begin(&debugLogger, &settingsManager);
 
+    // Emit RUN header for benchmark tracking (once per boot)
+    // This provides build metadata and configuration snapshot for performance analysis
+    {
+        JsonDocument runDoc;
+        runDoc["fw"] = FIRMWARE_VERSION;
+        #ifdef GIT_SHA
+        runDoc["git"] = GIT_SHA;
+        #else
+        runDoc["git"] = "unknown";
+        #endif
+        #ifdef BUILD_TIMESTAMP
+        runDoc["build"] = BUILD_TIMESTAMP;
+        #else
+        runDoc["build"] = "unknown";
+        #endif
+        runDoc["board"] = "waveshare-349";
+        runDoc["queueDepth"] = 72;  // From BLE queue config
+        runDoc["drawMinMs"] = 30;    // DISPLAY_DRAW_MIN_MS from display pipeline
+        const V1Settings& runSettings = settingsManager.get();
+        runDoc["wifi"] = runSettings.enableWifi;
+        runDoc["proxy"] = runSettings.proxyBLE;
+        runDoc["logPerf"] = runSettings.logPerfMetrics;
+        runDoc["scenario"] = "default";  // TODO: Add scenario setting in future
+        
+        String runJson;
+        serializeJson(runDoc, runJson);
+        SerialLog.printf("RUN %s\n", runJson.c_str());
+        if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+            debugLogger.logf(DebugLogCategory::System, "RUN %s", runJson.c_str());
+        }
+    }
+
     SerialLog.println("==============================");
     SerialLog.println("WiFi Configuration:");
     SerialLog.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
