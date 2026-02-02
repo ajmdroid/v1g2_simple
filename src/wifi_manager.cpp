@@ -722,9 +722,15 @@ void WiFiManager::checkWifiClientStatus() {
         case WIFI_CLIENT_CONNECTED: {
             // Sync time from NTP once per connection session
             static bool ntpSyncedThisConnection = false;
+            static unsigned long lastNtpAttemptMs = 0;
             if (!ntpSyncedThisConnection) {
-                syncTimeFromNTP();
-                ntpSyncedThisConnection = true;
+                unsigned long now = millis();
+                if (now - lastNtpAttemptMs > 30000) {  // retry every 30s until success
+                    lastNtpAttemptMs = now;
+                    if (syncTimeFromNTP()) {
+                        ntpSyncedThisConnection = true;
+                    }
+                }
             }
             
             if (status != WL_CONNECTED) {
@@ -760,7 +766,7 @@ void WiFiManager::checkWifiClientStatus() {
 }
 
 // Sync system/log time from NTP (UTC). Called once per WiFi connection.
-void WiFiManager::syncTimeFromNTP() {
+bool WiFiManager::syncTimeFromNTP() {
     static bool sntpStarted = false;
 
     if (!sntpStarted) {
@@ -784,7 +790,7 @@ void WiFiManager::syncTimeFromNTP() {
 
     if (!gotTime) {
         Serial.println("[WiFiClient] NTP sync failed (timeout)");
-        return;
+        return false;
     }
 
     // Record time in debug logger and system clock (already set by getLocalTime)
@@ -800,6 +806,7 @@ void WiFiManager::syncTimeFromNTP() {
     Serial.printf("[WiFiClient] NTP time synced: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
                   timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    return true;
 }
 
 void WiFiManager::handleStatus() {

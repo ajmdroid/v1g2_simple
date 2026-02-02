@@ -70,7 +70,7 @@ public:
     String getConnectedSSID() const;  // Returns empty if not connected
     
     // NTP time sync (when WiFi connected)
-    void syncTimeFromNTP();
+    bool syncTimeFromNTP();
     
     // Callbacks for alert data (to display on web page)
     void setAlertCallback(std::function<String()> callback) { getAlertJson = callback; }
