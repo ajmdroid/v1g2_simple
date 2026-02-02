@@ -1,5 +1,5 @@
 // GPS Handler Implementation
-// Supports both Adafruit PA1616S and M10-25Q (via TinyGPSPlus)
+// Adafruit PA1616S only
 
 #include "gps_handler.h"
 #include "config.h"
@@ -87,175 +87,9 @@ void GPSHandler::reset() {
   
   Serial.println("[GPS] Power cycling GPS module...");
   
-  // Disable GPS module via EN pin (HIGH = disabled for PA1616S / Adafruit)
-  digitalWrite(GPS_EN_PIN, HIGH);
-  delay(500);  // Give module time to fully power down
-  
-  // Clear fix and detection state
-  lastFix.valid = false;
-  lastFix.latitude = 0;
-  lastFix.longitude = 0;
-  lastFix.satellites = 0;
-  lastFix.hdop = 999;
-  moduleDetected = false;
-  detectionComplete = false;
-  detectionStartMs = millis();
-  
-  // Re-enable GPS module (LOW = enabled)
-  digitalWrite(GPS_EN_PIN, LOW);
-  delay(100);  // Allow GPS to power up
-  
-  GPS_LOG("[GPS] Reset complete - module re-enabled\n");
-}
-
-bool GPSHandler::update() {
-  // Skip if not enabled or detection already failed
-  if (!enabled || (detectionComplete && !moduleDetected)) {
-    return false;
-  }
-  
-  // Feed TinyGPSPlus with available serial data
-  bool hasData = false;
-  while (gpsSerial.available() > 0) {
-    char c = gpsSerial.read();
-    gps.encode(c);
-    hasData = true;
-  }
-  
-  // Module detection: if we receive any NMEA data, module is present
-  if (!detectionComplete) {
-    if (hasData) {
-      moduleDetected = true;
-      detectionComplete = true;
-      GPS_LOG("[GPS] Module detected\n");
-    } else if (millis() - detectionStartMs > DETECTION_TIMEOUT_MS) {
-      detectionComplete = true;
-      moduleDetected = false;
-      GPS_LOG("[GPS] Module NOT detected (timeout) - GPS disabled\n");
-      return false;
-    }
-  }
-  
-  // Check if we have valid location data
-  if (gps.location.isValid() && gps.location.age() < 1000) {
-    lastFix.latitude = gps.location.lat();
-    lastFix.longitude = gps.location.lng();
-    lastFix.valid = true;
-    lastFix.timestamp_ms = millis();
-    
-    // Fix quality
-    lastFix.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : 999.0;
-    lastFix.satellites = gps.satellites.isValid() ? gps.satellites.value() : 0;
-    
-    // Time (UTC)
-    if (gps.time.isValid() && gps.date.isValid()) {
-      lastFix.hour = gps.time.hour();
-      lastFix.minute = gps.time.minute();
-      lastFix.seconds = gps.time.second();
-      lastFix.year = gps.date.year() - 2000;  // Store as years since 2000
-      lastFix.month = gps.date.month();
-      lastFix.day = gps.date.day();
-      
-      // Convert to Unix timestamp
-      struct tm timeinfo;
-      timeinfo.tm_year = gps.date.year() - 1900;  // tm_year is years since 1900
-      timeinfo.tm_mon = gps.date.month() - 1;     // tm_mon is 0-11
-      timeinfo.tm_mday = gps.date.day();
-      timeinfo.tm_hour = gps.time.hour();
-      timeinfo.tm_min = gps.time.minute();
-      timeinfo.tm_sec = gps.time.second();
-      timeinfo.tm_isdst = 0;  // UTC doesn't have DST
-      lastFix.unixTime = mktime(&timeinfo);
-    }
-    
-    // Speed and heading
-    lastFix.speed_mps = gps.speed.isValid() ? gps.speed.mps() : 0.0;
-    lastFix.heading_deg = gps.course.isValid() ? gps.course.deg() : 0.0;
-    
-    // Throttle fix logs to every 5 seconds (GPS can update at 10Hz)
-    static uint32_t lastFixLog = 0;
-    if (millis() - lastFixLog > 5000) {
-      lastFixLog = millis();
-      GPS_LOG("[GPS] Fix: %.6f, %.6f | HDOP: %.1f | Sats: %d | Speed: %.1f m/s\n",
-              lastFix.latitude, lastFix.longitude, 
-              lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
-    }
-    // Time logging removed - redundant with fix log
-    
-    // Update ready state and heading smoothing
-    updateReadyState();
-    
-    return true;
-  } else {
-    lastFix.valid = false;
-    
-    // Log search status every 5 seconds using static timer
-    static uint32_t lastSearchLog = 0;
-    if (millis() - lastSearchLog > 5000) {
-      lastSearchLog = millis();
-      GPS_LOG("[GPS] Searching... Sats: %d | Chars: %lu | Sentences: %lu | Checksum fail: %lu\n", 
-              gps.satellites.isValid() ? (int)gps.satellites.value() : 0,
-              gps.charsProcessed(),
-              gps.sentencesWithFix(),
-              gps.failedChecksum());
-    }
-  }
-  
-  return false;
-}
-
-#else
-// ============================================================================
-// Adafruit_GPS Implementation (for PA1616S)
-// ============================================================================
-
-GPSHandler::GPSHandler() 
-  : GPS(&Serial2), gpsSerial(Serial2), enabled(false) {
-  // Initialize lastFix with zero values
-  lastFix.latitude = 0;
-  lastFix.longitude = 0;
-  lastFix.valid = false;
-  lastFix.timestamp_ms = 0;
-  lastFix.hdop = 999;
-  lastFix.satellites = 0;
-  lastFix.hour = 0;
-  lastFix.minute = 0;
-  lastFix.seconds = 0;
-  lastFix.year = 0;
-  lastFix.month = 0;
-  lastFix.day = 0;
-  lastFix.unixTime = 0;
-  lastFix.speed_mps = 0;
-  lastFix.heading_deg = 0;
-  
-  // Module detection state
-  moduleDetected = false;
-  detectionComplete = false;
-  detectionStartMs = 0;
-  
-  // Ready state
-  gpsReady = false;
-  goodFixStartMs = 0;
-  badFixStartMs = 0;
-  
-  // Heading smoothing
-  smoothedHeading = 0.0f;
-  smoothedHeadingValid = false;
-  
-  // Heading smoothing
-  smoothedHeading = 0.0f;
-  smoothedHeadingValid = false;
-}
-
-void GPSHandler::begin() {
-  // Enable GPS module via EN pin (LOW = enabled)
-  pinMode(GPS_EN_PIN, OUTPUT);
-  digitalWrite(GPS_EN_PIN, LOW);
-  delay(50);  // Allow GPS to power up
-  
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  GPS.begin(GPS_BAUD);
-  enabled = true;
+  // ============================================================================
+  // Adafruit_GPS Implementation (for PA1616S)
+  // ============================================================================
   
   // Reset detection state on begin (allows re-enabling)
   moduleDetected = false;
@@ -465,10 +299,8 @@ bool GPSHandler::update() {
   return false;
 }
 
-#endif
-
 // ============================================================================
-// Common Implementation (shared by both GPS libraries)
+// Common Implementation
 // ============================================================================
 
 void GPSHandler::updateReadyState() {

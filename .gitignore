@@ -78,6 +78,7 @@ AUDIT_SUMMARY.md
 
 # Local test captures
 r8/
+bench_testing/
 TESTING_NOTES.md
 FUTURE_NOTES.md
 CLAUDE.md

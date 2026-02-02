@@ -1,16 +1,9 @@
-// GPS Handler for Adafruit PA1616S GPS Module (or M10-25Q with TinyGPSPlus)
+// GPS Handler for Adafruit PA1616S GPS Module
 // Manages GPS fix acquisition and provides location data for geofence lockouts
 
 #pragma once
 
-// Uncomment to use TinyGPSPlus (for M10-25Q or other u-blox modules)
-// #define USE_TINYGPS
-
-#ifdef USE_TINYGPS
-#include <TinyGPSPlus.h>
-#else
 #include <Adafruit_GPS.h>
-#endif
 
 #include <HardwareSerial.h>
 #include <Arduino.h>
@@ -39,11 +32,7 @@ struct GPSFix {
 
 class GPSHandler {
 private:
-#ifdef USE_TINYGPS
-  TinyGPSPlus gps;
-#else
   Adafruit_GPS GPS;
-#endif
   HardwareSerial& gpsSerial;
   GPSFix lastFix;
   

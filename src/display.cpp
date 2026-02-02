@@ -3371,34 +3371,49 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     static uint8_t lastEffectiveMask = 0xFF;  // Invalid initial value to force first draw
     static bool lastMuted = false;
     static bool cacheValid = false;
-
-    // Blink handling - V1 blinks at ~5Hz
+    
+    // Local blink timer - V1 blinks at ~5Hz, we match that
+    // Use same timer as arrows for synchronized blinking
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
     const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
-
+    
     unsigned long now = millis();
     if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
         blinkOn = !blinkOn;
         lastBlinkTime = now;
     }
-
+    
     // Apply blink: if flash bit is set and we're in OFF phase, treat band as inactive
     uint8_t effectiveBandMask = bandMask;
     if (!blinkOn) {
+        // Turn off bands that are flashing during the OFF phase
         effectiveBandMask &= ~bandFlashBits;
     }
-
+    
     // Check for forced invalidation (e.g., after screen clear)
     if (s_forceBandRedraw) {
         cacheValid = false;
         s_forceBandRedraw = false;
     }
-
-    // Early exit if nothing changed
+    
+    // Check if anything changed
     if (cacheValid && effectiveBandMask == lastEffectiveMask && muted == lastMuted) {
-        return;
+        return;  // Nothing changed, skip redraw
     }
+    
+    // Vertical L/Ka/K/X stack using FreeSansBold 24pt font for crisp look
+#if defined(DISPLAY_WAVESHARE_349)
+    const int x = 82;
+    const int textSize = 1;   // No scaling - native 24pt for crisp rendering
+    const int spacing = 43;   // Increased spacing to spread labels vertically
+    const int startY = 55;    // Start position for L (moved down for 24pt)
+#else
+    const int x = 82;
+    const int textSize = 1;   // No scaling
+    const int spacing = 30;   // Tighten spacing
+    const int startY = 30;    // Start position
+#endif
 
     const V1Settings& s = settingsManager.get();
     struct BandCell {
@@ -3413,108 +3428,69 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     };
 
     // Use 24pt font for crisp band labels (no scaling)
-    const int textSize = 1;
     TFT_CALL(setFont)(&FreeSansBold24pt7b);
     TFT_CALL(setTextSize)(textSize);
     GFX_setTextDatum(ML_DATUM);
 
-    // Measure glyph bounds once (per boot) so clear rects match the actual font metrics
-    struct LabelMetrics {
-        uint16_t w = 0;
-        uint16_t h = 0;
-    };
-    static LabelMetrics metrics[4];
-    static uint16_t maxW = 0;
-    static uint16_t maxH = 0;
-    static bool metricsInit = false;
-    if (!metricsInit) {
-        for (int i = 0; i < 4; ++i) {
-            int16_t x1, y1;
-            uint16_t w, h;
-            TFT_CALL(getTextBounds)(cells[i].label, 0, 0, &x1, &y1, &w, &h);
-            metrics[i].w = w;
-            metrics[i].h = h;
-            if (w > maxW) maxW = w;
-            if (h > maxH) maxH = h;
-        }
-        metricsInit = true;
+    // Arduino_GFX drawString uses baseline-aware bounds; adjust Y to match legacy placement
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    static bool s_bandBaselineInit = false;
+    static int16_t s_bandBaselineAdjust = 0;
+    if (!s_bandBaselineInit) {
+        int16_t x1, y1;
+        uint16_t w, h;
+        TFT_CALL(getTextBounds)("Ka", 0, 0, &x1, &y1, &w, &h);
+        s_bandBaselineAdjust = y1;  // y1 is typically negative for fonts with ascent
+        s_bandBaselineInit = true;
     }
-
-    // Layout constants
-    const int labelPad = 3;  // Small safety padding around measured bounds
-    const uint16_t labelClearH = maxH + (labelPad * 2);
-
-    // Horizontal placement: keep all clear/draw inside the reserved band column
-    const int columnLeft = DisplayLayout::BAND_COLUMN_X;           // usually 0
-    const int columnRight = DisplayLayout::BAND_COLUMN_X + DisplayLayout::BAND_COLUMN_WIDTH - 2; // small guard before cards
-    int x = columnRight - static_cast<int>(maxW) - labelPad;       // align right with a guard
-    if (x < columnLeft + labelPad) {
-        x = columnLeft + labelPad;  // avoid going negative
-    }
-    const int topMargin = DisplayLayout::STATUS_BAR_HEIGHT + 5;           // below status bar
-    const int bottomLimit = DisplayLayout::SECONDARY_ROW_Y - 2;           // guard above first card
-    int available = bottomLimit - topMargin - labelClearH;
-    if (available < 0) available = 0;
-    // Even spacing between 4 labels -> 3 gaps
-    int spacing = available / 3;
-    const int startY = topMargin + (labelClearH / 2);
-
-    // Build clear rectangles for each label and detect overlap risk
-    struct ClearRect {
-        int16_t x;
-        int16_t y;
-        uint16_t w;
-        uint16_t h;
-    } clearRects[4];
-
+#endif
+    
+    // Clear and redraw each band label individually
+    // Font is ~35px tall, labels are at ML_DATUM (middle-left), so text extends above/below Y
+    const int labelClearW = 50;  // Width for "Ka" (widest label)
+    const int labelClearH = 38;  // Height of 24pt font
+    
+    // Clear once for the whole band stack, then redraw all labels.
+    // This prevents per-label clears from cutting into neighboring letters.
+    int16_t unionX = x - 5;
+    int16_t unionY = 0;
+    uint16_t unionW = labelClearW;
+    uint16_t unionH = 0;
     for (int i = 0; i < 4; ++i) {
-        uint16_t clearW = metrics[i].w + (labelPad * 2);
-        uint16_t clearH = metrics[i].h + (labelPad * 2);
-        int16_t labelY = startY + i * spacing;
-        clearRects[i] = {
-            static_cast<int16_t>(x - labelPad),
-            static_cast<int16_t>(labelY - clearH / 2),
-            clearW,
-            clearH
-        };
-    }
-
-    // One-pass redraw for safety: clear the union area then draw all four labels.
-    // This avoids edge-wipe artifacts when blinking or if metrics ever slightly overlap.
-    int16_t unionX = clearRects[0].x;
-    int16_t unionY = clearRects[0].y;
-    uint16_t unionW = clearRects[0].w;
-    uint16_t unionH = clearRects[0].h;
-    for (int i = 1; i < 4; ++i) {
-        const auto& r = clearRects[i];
-        int16_t minX = std::min<int16_t>(unionX, r.x);
-        int16_t minY = std::min<int16_t>(unionY, r.y);
-        int16_t maxX = std::max<int16_t>(unionX + unionW, r.x + r.w);
-        int16_t maxY = std::max<int16_t>(unionY + unionH, r.y + r.h);
-        unionX = minX;
-        unionY = minY;
-        unionW = maxX - minX;
-        unionH = maxY - minY;
+        int labelY = startY + i * spacing;
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+        labelY += s_bandBaselineAdjust;
+#endif
+        int16_t y = static_cast<int16_t>(labelY - labelClearH / 2);
+        if (i == 0) {
+            unionY = y;
+            unionH = labelClearH;
+        } else {
+            int16_t maxY = static_cast<int16_t>(unionY + unionH);
+            int16_t newMaxY = static_cast<int16_t>(y + labelClearH);
+            if (y < unionY) unionY = y;
+            if (newMaxY > maxY) maxY = newMaxY;
+            unionH = static_cast<uint16_t>(maxY - unionY);
+        }
     }
     FILL_RECT(unionX, unionY, unionW, unionH, PALETTE_BG);
 
-    auto drawLabel = [&](int idx, bool isActive, int16_t labelY) {
-        uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[idx].color) : TFT_DARKGREY;
-        TFT_CALL(setTextColor)(col, PALETTE_BG);
-        GFX_drawString(tft, cells[idx].label, x, labelY);
-    };
-
     for (int i = 0; i < 4; ++i) {
         bool isActive = (effectiveBandMask & cells[i].mask) != 0;
-        int16_t labelY = startY + i * spacing;
-        drawLabel(i, isActive, labelY);
+        int labelY = startY + i * spacing;
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+        labelY += s_bandBaselineAdjust;
+#endif
+        uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
+        TFT_CALL(setTextColor)(col, PALETTE_BG);
+        GFX_drawString(tft, cells[i].label, x, labelY);
     }
-
+    
     // Update cache
     lastEffectiveMask = effectiveBandMask;
     lastMuted = muted;
     cacheValid = true;
-
+    
     // Reset to default font for other text
     TFT_CALL(setFont)(NULL);
     TFT_CALL(setTextSize)(1);
