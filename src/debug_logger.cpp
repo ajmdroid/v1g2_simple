@@ -154,10 +154,54 @@ void DebugLogger::flushBuffer() {
 void DebugLogger::update() {
     if (!enabled || bufferPos == 0) return;
     
-    // Time-based flush
+    // Time-based flush - but defer during WiFi transitions to avoid NVS contention
     if (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) {
+        // Defer flush during WiFi transitions unless deferral expired (max 5s)
+        if (wifiTransitionActive && !deferralExpired()) {
+            // Still defer - but check if buffer is critically full (>90%)
+            if (bufferPos < DEBUG_LOG_BUFFER_SIZE * 9 / 10) {
+                return;  // Safe to defer
+            }
+            // Buffer nearly full - force flush even during transition
+        }
         flushBuffer();
     }
+}
+
+void DebugLogger::notifyWifiTransition(bool stable) {
+    if (stable) {
+        // WiFi stable - clear deferral and flush any pending data
+        if (wifiTransitionActive) {
+            unsigned long deferredMs = millis() - wifiTransitionStartMs;
+            wifiTransitionActive = false;
+            wifiTransitionStartMs = 0;
+            // Immediately flush any buffered data that was deferred
+            if (enabled && bufferPos > 0) {
+                flushBuffer();
+            }
+            // Log the deferral duration after flushing (so it appears in logs)
+            if (enabled && categoryAllowed(DebugLogCategory::System)) {
+                char msg[96];
+                snprintf(msg, sizeof(msg), "[Logger] SD write deferral ended after %lums (WiFi stable)", deferredMs);
+                log(DebugLogCategory::System, msg);
+            }
+        }
+    } else {
+        // WiFi transitioning (disconnect, connecting, reconnecting)
+        if (!wifiTransitionActive) {
+            wifiTransitionActive = true;
+            wifiTransitionStartMs = millis();
+            // Log deferral start (this goes to buffer, won't block)
+            if (enabled && categoryAllowed(DebugLogCategory::System)) {
+                log(DebugLogCategory::System, "[Logger] SD write deferral started (WiFi transitioning)");
+            }
+        }
+    }
+}
+
+bool DebugLogger::deferralExpired() const {
+    if (!wifiTransitionActive) return true;
+    return (millis() - wifiTransitionStartMs) >= WIFI_TRANSITION_DEFER_MAX_MS;
 }
 
 void DebugLogger::flush() {

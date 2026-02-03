@@ -30,6 +30,9 @@ inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB ring buffer
 inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
 inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 1000;  // Flush every 1 second
 
+// WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
+inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
+
 // Log categories for selective filtering
 enum class DebugLogCategory {
     System,
@@ -105,6 +108,11 @@ public:
     // Buffer management - call periodically from main loop
     void update();  // Check if time-based flush needed
     void flush();   // Force flush buffer to SD (call on shutdown/crash)
+    
+    // WiFi transition deferral - defers SD writes during WiFi reconnection
+    // to avoid NVS/flash contention that can cause multi-second stalls
+    void notifyWifiTransition(bool stable);  // Called by WiFi manager on state changes
+    bool isFlushDeferred() const { return wifiTransitionActive && !deferralExpired(); }
 
     // File helpers
     bool exists() const;
@@ -139,6 +147,11 @@ private:
     char buffer[DEBUG_LOG_BUFFER_SIZE];
     size_t bufferPos = 0;
     unsigned long lastFlushMs = 0;
+    
+    // WiFi transition deferral state
+    bool wifiTransitionActive = false;      // True during WiFi reconnect/disconnect
+    unsigned long wifiTransitionStartMs = 0; // When deferral started
+    bool deferralExpired() const;
 };
 
 extern DebugLogger debugLogger;
