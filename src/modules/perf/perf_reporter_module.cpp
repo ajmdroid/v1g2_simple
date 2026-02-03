@@ -116,6 +116,11 @@ void PerfReporterModule::process(unsigned long nowMs) {
     
     if (!investigationActive && triggerCondition && cooldownExpired) {
         lastAutoTriggerMs = nowMs;
+        
+        // Capture incident - dump breadcrumb ring buffer to SD for post-mortem
+        const char* reason = (loopMaxUs > LOOP_STALL_THRESHOLD_US) ? "loopStall" : "queueDrop";
+        debugLogger->captureIncident(reason, loopMaxUs, qDropDelta);
+        
         // Log trigger event before starting investigation
         debugLogger->logf(DebugLogCategory::System,
             "investigation_triggered loopMax_us=%lu qDropDelta=%lu",

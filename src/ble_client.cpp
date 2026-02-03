@@ -186,6 +186,9 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     bleState = newState;
     stateEnteredMs = now;
     
+    // Breadcrumb for incident context (lightweight, always active)
+    debugLogger.breadcrumbf("BLE:%s->%s %s", bleStateToString(oldState), bleStateToString(newState), reason);
+    
     BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
                   now,
                   bleStateToString(oldState),

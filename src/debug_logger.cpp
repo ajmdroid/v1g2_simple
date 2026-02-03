@@ -204,6 +204,90 @@ bool DebugLogger::deferralExpired() const {
     return (millis() - wifiTransitionStartMs) >= WIFI_TRANSITION_DEFER_MAX_MS;
 }
 
+// ============= Breadcrumb Ring Buffer (Zero-Heap Incident Context) =============
+
+void DebugLogger::breadcrumb(const char* msg) {
+    if (!msg || !msg[0]) return;
+    
+    // Format: "[millis] message\n" - compact, parseable
+    char line[BREADCRUMB_MAX_LINE];
+    int len = snprintf(line, sizeof(line), "[%lu] %s\n", millis(), msg);
+    if (len <= 0) return;
+    if ((size_t)len >= sizeof(line)) len = sizeof(line) - 1;
+    
+    // Write to ring buffer (overwrite oldest on wrap)
+    for (int i = 0; i < len; i++) {
+        breadcrumbRing[breadcrumbHead] = line[i];
+        breadcrumbHead = (breadcrumbHead + 1) % BREADCRUMB_RING_SIZE;
+        if (breadcrumbCount < BREADCRUMB_RING_SIZE) {
+            breadcrumbCount++;
+        } else {
+            breadcrumbWrapped = true;
+        }
+    }
+}
+
+void DebugLogger::breadcrumbf(const char* fmt, ...) {
+    char msg[BREADCRUMB_MAX_LINE];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    breadcrumb(msg);
+}
+
+void DebugLogger::captureIncident(const char* reason, uint32_t loopMaxUs, uint32_t qDropDelta) {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) return;
+    if (breadcrumbCount == 0) return;  // Nothing to dump
+    
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) return;
+    
+    // Write incident header + breadcrumb dump
+    File f = fs->open(INCIDENT_LOG_PATH, FILE_APPEND, true);
+    if (!f) return;
+    
+    // Header with context
+    char ts[32];
+    if (timeValid) {
+        getISO8601Timestamp(ts, sizeof(ts));
+    } else {
+        strcpy(ts, "1970-01-01T00:00:00Z");
+    }
+    
+    f.printf("\n========== INCIDENT %s ==========\n", ts);
+    f.printf("Reason: %s\n", reason);
+    f.printf("loopMax_us: %lu, qDropDelta: %lu, millis: %lu\n", loopMaxUs, qDropDelta, millis());
+    f.printf("Breadcrumb buffer: %u bytes, wrapped: %s\n", breadcrumbCount, breadcrumbWrapped ? "yes" : "no");
+    f.println("--- Breadcrumb dump (oldest first) ---");
+    
+    // Dump ring buffer in chronological order
+    if (breadcrumbWrapped) {
+        // Buffer wrapped - read from head to end, then start to head
+        size_t readPos = breadcrumbHead;
+        for (size_t i = 0; i < BREADCRUMB_RING_SIZE; i++) {
+            f.write(breadcrumbRing[readPos]);
+            readPos = (readPos + 1) % BREADCRUMB_RING_SIZE;
+        }
+    } else {
+        // Buffer hasn't wrapped - read from start to count
+        f.write((uint8_t*)breadcrumbRing, breadcrumbCount);
+    }
+    
+    f.println("--- End breadcrumb dump ---\n");
+    f.close();
+    
+    // Log that we captured an incident
+    if (enabled && categoryAllowed(DebugLogCategory::System)) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "[Logger] Incident captured: %s (loopMax=%luus, qDrop=%lu)", 
+                 reason, loopMaxUs, qDropDelta);
+        log(DebugLogCategory::System, msg);
+    }
+}
+
+// ============= Main Logging Methods =============
+
 void DebugLogger::flush() {
     flushBuffer();
 }
@@ -346,14 +430,33 @@ void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory c
         default: sourceStr = "none"; break;
     }
     
-    // Escape message for JSON (simple escape for quotes and backslashes)
+    // Escape message for JSON - handle all control chars for NDJSON safety
+    // Must escape: " \ and control chars (0x00-0x1F)
     char escapedMsg[256];
     size_t j = 0;
-    for (size_t i = 0; message[i] && j < sizeof(escapedMsg) - 2; i++) {
-        if (message[i] == '"' || message[i] == '\\') {
+    for (size_t i = 0; message[i] && j < sizeof(escapedMsg) - 7; i++) {  // -7 for worst case \uXXXX + null
+        unsigned char c = (unsigned char)message[i];
+        if (c == '"') {
             escapedMsg[j++] = '\\';
+            escapedMsg[j++] = '"';
+        } else if (c == '\\') {
+            escapedMsg[j++] = '\\';
+            escapedMsg[j++] = '\\';
+        } else if (c == '\n') {
+            escapedMsg[j++] = '\\';
+            escapedMsg[j++] = 'n';
+        } else if (c == '\r') {
+            escapedMsg[j++] = '\\';
+            escapedMsg[j++] = 'r';
+        } else if (c == '\t') {
+            escapedMsg[j++] = '\\';
+            escapedMsg[j++] = 't';
+        } else if (c < 0x20) {
+            // Other control chars - use \uXXXX format
+            j += snprintf(escapedMsg + j, sizeof(escapedMsg) - j, "\\u%04x", c);
+        } else {
+            escapedMsg[j++] = c;
         }
-        escapedMsg[j++] = message[i];
     }
     escapedMsg[j] = '\0';
     

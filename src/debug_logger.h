@@ -26,12 +26,17 @@ enum class DebugLogFormat {
 };
 
 // Buffer settings for efficient SD writes
-inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB ring buffer
+inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
 inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
 inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 1000;  // Flush every 1 second
 
 // WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
 inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
+
+// Breadcrumb ring buffer for incident capture (verbose events kept in RAM, dumped on incident)
+inline constexpr size_t BREADCRUMB_RING_SIZE = 32768;  // 32KB ring buffer (configurable 32-128KB)
+inline constexpr size_t BREADCRUMB_MAX_LINE = 256;     // Max chars per breadcrumb entry
+inline constexpr const char* INCIDENT_LOG_PATH = "/incident.log";
 
 // Log categories for selective filtering
 enum class DebugLogCategory {
@@ -113,6 +118,13 @@ public:
     // to avoid NVS/flash contention that can cause multi-second stalls
     void notifyWifiTransition(bool stable);  // Called by WiFi manager on state changes
     bool isFlushDeferred() const { return wifiTransitionActive && !deferralExpired(); }
+    
+    // Breadcrumb ring buffer - records verbose events in RAM for incident capture
+    void breadcrumb(const char* msg);  // Add to ring (overwrites oldest)
+    void breadcrumbf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+    
+    // Incident capture - dumps breadcrumb ring to SD with context header
+    void captureIncident(const char* reason, uint32_t loopMaxUs, uint32_t qDropDelta);
 
     // File helpers
     bool exists() const;
@@ -152,6 +164,12 @@ private:
     bool wifiTransitionActive = false;      // True during WiFi reconnect/disconnect
     unsigned long wifiTransitionStartMs = 0; // When deferral started
     bool deferralExpired() const;
+    
+    // Breadcrumb ring buffer (static allocation - no heap)
+    char breadcrumbRing[BREADCRUMB_RING_SIZE];
+    size_t breadcrumbHead = 0;        // Write position
+    size_t breadcrumbCount = 0;       // Bytes used (up to BREADCRUMB_RING_SIZE)
+    bool breadcrumbWrapped = false;   // True after first wrap
 };
 
 extern DebugLogger debugLogger;
