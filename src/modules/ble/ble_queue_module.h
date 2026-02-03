@@ -10,7 +10,6 @@
 #include "display.h"
 #include "modules/display/display_preview_module.h"
 #include "modules/power/power_module.h"
-#include "modules/display/display_pipeline_module.h"
 #include "v1_profiles.h"
 
 class BleQueueModule {
@@ -26,9 +25,14 @@ public:
                PacketParser* parser,
                V1ProfileManager* profileMgr,
                DisplayPreviewModule* previewModule,
-               DisplayPipelineModule* displayPipeline,
                PowerModule* powerModule,
                Config cfg = Config());
+
+    // Returns timestamp of last successfully parsed packet (for display latency tracking)
+    uint32_t getLastParsedTimestamp() const { return lastParsedTsMs; }
+    
+    // Returns true if a packet was successfully parsed since last check (and clears flag)
+    bool consumeParsedFlag() { bool had = hadSuccessfulParse; hadSuccessfulParse = false; return had; }
 
     // Callback entry from BLE notifications.
     void onNotify(const uint8_t* data, size_t length, uint16_t charUUID);
@@ -50,13 +54,14 @@ private:
     PacketParser* parser = nullptr;
     V1ProfileManager* profiles = nullptr;
     DisplayPreviewModule* preview = nullptr;
-    DisplayPipelineModule* displayPipeline = nullptr;
     PowerModule* power = nullptr;
     QueueHandle_t queueHandle = nullptr;
 
     std::vector<uint8_t> rxBuffer;
     unsigned long lastRxMillis = 0;
     uint32_t lastNotifyTsMs = 0;
+    uint32_t lastParsedTsMs = 0;      // Timestamp of last successful parse (for display latency)
+    bool hadSuccessfulParse = false;  // Flag: at least one packet parsed since last check
 
     Config config;
 

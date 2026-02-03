@@ -593,7 +593,7 @@ void setup() {
                                 &voiceModule,
                                 &speedVolumeModule,
                                 &debugLogger);
-    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &displayPipelineModule, &powerModule);
+    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule);
     bleSerialModule.begin(&bleQueueModule);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule, &cameraAlertModule);
@@ -706,6 +706,20 @@ void loop() {
     uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
+    
+    // Drive display pipeline separately from BLE drain (decoupled for accurate timing)
+    // This is intentionally outside the bleDrain timing to isolate display latency
+    if (bleQueueModule.consumeParsedFlag()) {
+        // Skip display pipeline if preview is running (don't overwrite demo)
+        if (!displayPreviewModule.isRunning()) {
+            uint32_t nowMs = millis();
+            uint32_t parsedTs = bleQueueModule.getLastParsedTimestamp();
+            if (parsedTs != 0 && nowMs >= parsedTs) {
+                perfRecordNotifyToDisplayMs(nowMs - parsedTs);
+            }
+            displayPipelineModule.handleParsed(nowMs);
+        }
+    }
     
     // Process serial BLE replay (if enabled via web UI)
     bleSerialModule.process();

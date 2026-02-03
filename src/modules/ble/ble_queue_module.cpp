@@ -103,14 +103,12 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
                            PacketParser* parserPtr,
                            V1ProfileManager* profileMgr,
                            DisplayPreviewModule* previewModule,
-                           DisplayPipelineModule* displayPipelineModule,
                            PowerModule* powerModule,
                            Config cfg) {
     ble = bleClient;
     parser = parserPtr;
     profiles = profileMgr;
     preview = previewModule;
-    displayPipeline = displayPipelineModule;
     power = powerModule;
     config = cfg;
 
@@ -271,15 +269,10 @@ void BleQueueModule::process() {
                 preview->cancel();
                 previewActive = false;
             }
-            // Skip display pipeline draws while preview is running so the demo isn't overwritten
-            bool previewStillRunning = preview && preview->isRunning();
-            if (!previewStillRunning && displayPipeline) {
-                uint32_t nowMs = millis();
-                if (lastNotifyTsMs != 0 && nowMs >= lastNotifyTsMs) {
-                    perfRecordNotifyToDisplayMs(nowMs - lastNotifyTsMs);
-                }
-                displayPipeline->handleParsed(nowMs);
-            }
+            // Set flag and timestamp for main loop to drive display pipeline
+            // This decouples BLE processing from slow display updates
+            hadSuccessfulParse = true;
+            lastParsedTsMs = lastNotifyTsMs;
         }
     }
 }
