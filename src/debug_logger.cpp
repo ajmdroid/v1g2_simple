@@ -9,6 +9,7 @@
 
 #include <stdarg.h>
 #include <sys/time.h>  // For settimeofday
+#include <esp_heap_caps.h>  // For heap_caps_get_largest_free_block
 
 DebugLogger debugLogger;
 
@@ -695,14 +696,35 @@ void DebugLogger::setAsyncMode(bool async) {
     if (async) {
         // Enable async mode - create queue and task if not already running
         if (!writeQueue) {
+            // Log heap state before allocation for diagnostics
+            uint32_t freeHeap = ESP.getFreeHeap();
+            uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+            size_t fullQueueBytes = LOG_QUEUE_DEPTH * sizeof(LogQueueItem);
+            
+            // Try full queue size first
             writeQueue = xQueueCreate(LOG_QUEUE_DEPTH, sizeof(LogQueueItem));
+            
+            // If full queue fails, try smaller queue as fallback (16 items instead of 32)
+            if (!writeQueue && LOG_QUEUE_DEPTH > 16) {
+                Serial.printf("[Logger] Full queue (%u items, ~%u bytes) failed, trying reduced queue...\n",
+                              (unsigned)LOG_QUEUE_DEPTH, (unsigned)fullQueueBytes);
+                writeQueue = xQueueCreate(16, sizeof(LogQueueItem));
+            }
+            
             if (!writeQueue) {
-                // Queue creation failed - stay in sync mode
+                // Queue creation failed - stay in sync mode, log diagnostics
+                Serial.printf("[Logger] ERROR: Queue alloc failed (need ~%u bytes, heap=%u, block=%u)\n",
+                              (unsigned)fullQueueBytes, (unsigned)freeHeap, (unsigned)largestBlock);
                 if (enabled && categoryAllowed(DebugLogCategory::System)) {
-                    log(DebugLogCategory::System, "[Logger] ERROR: Failed to create async write queue");
+                    logf(DebugLogCategory::System, 
+                         "[Logger] ERROR: Queue alloc failed (need ~%u, heap=%u, block=%u)",
+                         (unsigned)fullQueueBytes, (unsigned)freeHeap, (unsigned)largestBlock);
                 }
                 return;
             }
+            
+            Serial.printf("[Logger] Queue created (heap before=%u, block=%u)\n",
+                          (unsigned)freeHeap, (unsigned)largestBlock);
         }
         
         if (!writerTaskHandle) {
@@ -719,6 +741,7 @@ void DebugLogger::setAsyncMode(bool async) {
             
             if (result != pdPASS) {
                 // Task creation failed - stay in sync mode
+                Serial.println("[Logger] ERROR: Failed to create writer task");
                 if (enabled && categoryAllowed(DebugLogCategory::System)) {
                     log(DebugLogCategory::System, "[Logger] ERROR: Failed to create writer task");
                 }

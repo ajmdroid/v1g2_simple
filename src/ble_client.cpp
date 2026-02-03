@@ -789,6 +789,9 @@ bool V1BLEClient::connectToServer() {
     const int attempts = 2;
     int lastErr = 0;
     
+    // Time the entire connect attempt sequence for perf attribution
+    uint32_t connectStartUs = micros();
+    
     for (int attempt = 1; attempt <= attempts && !connectedOk; ++attempt) {
         if (CONNECT_ATTEMPT_VERBOSE || attempt == attempts) {
             BLE_SM_LOGF("[BLE] Connect attempt %d/%d\n", attempt, attempts);
@@ -814,6 +817,9 @@ bool V1BLEClient::connectToServer() {
             }
         }
     }
+    
+    // Record BLE connect duration (includes retries and delays)
+    perfRecordBleConnectUs(micros() - connectStartUs);
     
     if (!connectedOk) {
         BLE_SM_LOGF("[BLE] Connection failed after %d attempts (last error: %d)\n", attempts, lastErr);
@@ -858,6 +864,8 @@ bool V1BLEClient::finishConnection() {
     logConnParams("post-connect");
     
     // NimBLE 2.x requires explicit service discovery
+    // Time the discovery phase for perf attribution
+    uint32_t discoveryStartUs = micros();
     int maxRetries = 3;
     for (int retry = 0; retry < maxRetries; retry++) {
         if (pClient->discoverAttributes()) {
@@ -865,8 +873,13 @@ bool V1BLEClient::finishConnection() {
         }
         delay(50);
     }
+    perfRecordBleDiscoveryUs(micros() - discoveryStartUs);
     
+    // Time the characteristic setup (subscribe) phase
+    uint32_t subscribeStartUs = micros();
     bool ok = setupCharacteristics();
+    perfRecordBleSubscribeUs(micros() - subscribeStartUs);
+    
     if (!ok) {
         Serial.println("[BLE] Setup failed");
         disconnect();

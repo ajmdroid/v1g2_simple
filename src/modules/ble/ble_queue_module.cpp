@@ -181,8 +181,18 @@ void BleQueueModule::process() {
 
     const size_t MIN_HEADER_SIZE = 6;
     const size_t MAX_PACKET_SIZE = 512;
+    
+    // Limit packets processed per cycle to prevent long stalls during bursts
+    // After reconnect, 100+ packets may be buffered - process in chunks to keep UI responsive
+    static constexpr size_t MAX_PACKETS_PER_CYCLE = 8;
+    size_t packetsProcessedThisCycle = 0;
 
     while (true) {
+        // Rate limit: don't process more than MAX_PACKETS_PER_CYCLE to keep loop responsive
+        if (packetsProcessedThisCycle >= MAX_PACKETS_PER_CYCLE) {
+            break;  // Continue next loop() iteration
+        }
+        
         if (rxBuffer.empty()) break;
         auto startIt = (rxBuffer[0] == ESP_PACKET_START)
             ? rxBuffer.begin()
@@ -233,6 +243,7 @@ void BleQueueModule::process() {
             ble->onUserBytesReceived(userBytes);
             profiles->setCurrentSettings(userBytes);
             rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+            packetsProcessedThisCycle++;
             continue;
         }
 
@@ -248,6 +259,7 @@ void BleQueueModule::process() {
         }
 
         rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+        packetsProcessedThisCycle++;
 
         if (parseOk) {
             if (power) {

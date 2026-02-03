@@ -696,8 +696,10 @@ void loop() {
     tapGestureModule.process(now);
     
 #ifndef REPLAY_MODE
-    // Process BLE events
+    // Process BLE events (includes blocking connect/discovery during reconnect)
+    uint32_t bleProcessStartUs = PERF_TIMESTAMP_US();
     bleClient.process();
+    perfRecordBleProcessUs(PERF_TIMESTAMP_US() - bleProcessStartUs);
 #endif
     
     // Process queued BLE data (safe for SPI - runs in main loop context)

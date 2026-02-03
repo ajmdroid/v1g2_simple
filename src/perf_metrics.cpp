@@ -137,6 +137,30 @@ void perfRecordBleDrainUs(uint32_t us) {
     }
 }
 
+void perfRecordBleConnectUs(uint32_t us) {
+    if (us > perfExtended.bleConnectMaxUs) {
+        perfExtended.bleConnectMaxUs = us;
+    }
+}
+
+void perfRecordBleDiscoveryUs(uint32_t us) {
+    if (us > perfExtended.bleDiscoveryMaxUs) {
+        perfExtended.bleDiscoveryMaxUs = us;
+    }
+}
+
+void perfRecordBleSubscribeUs(uint32_t us) {
+    if (us > perfExtended.bleSubscribeMaxUs) {
+        perfExtended.bleSubscribeMaxUs = us;
+    }
+}
+
+void perfRecordBleProcessUs(uint32_t us) {
+    if (us > perfExtended.bleProcessMaxUs) {
+        perfExtended.bleProcessMaxUs = us;
+    }
+}
+
 uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
 uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
 uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
@@ -149,6 +173,10 @@ uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
 uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
+uint32_t perfGetBleConnectMaxUs() { return perfExtended.bleConnectMaxUs; }
+uint32_t perfGetBleDiscoveryMaxUs() { return perfExtended.bleDiscoveryMaxUs; }
+uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
+uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 
 void perfExtendedResetWindow() {
     perfExtended.reset();

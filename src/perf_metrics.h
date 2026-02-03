@@ -138,6 +138,11 @@ struct PerfExtendedMetrics {
     uint32_t sdMaxUs = 0;
     uint32_t flushMaxUs = 0;
     uint32_t bleDrainMaxUs = 0;
+    // BLE connection path timing (for diagnosing reconnect stalls)
+    uint32_t bleConnectMaxUs = 0;     // pClient->connect() duration
+    uint32_t bleDiscoveryMaxUs = 0;   // discoverAttributes() duration
+    uint32_t bleSubscribeMaxUs = 0;   // setupCharacteristics() duration
+    uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -150,6 +155,10 @@ struct PerfExtendedMetrics {
         sdMaxUs = 0;
         flushMaxUs = 0;
         bleDrainMaxUs = 0;
+        bleConnectMaxUs = 0;
+        bleDiscoveryMaxUs = 0;
+        bleSubscribeMaxUs = 0;
+        bleProcessMaxUs = 0;
     }
 };
 
@@ -164,6 +173,10 @@ void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
 void perfRecordFlushUs(uint32_t us);
 void perfRecordBleDrainUs(uint32_t us);
+void perfRecordBleConnectUs(uint32_t us);
+void perfRecordBleDiscoveryUs(uint32_t us);
+void perfRecordBleSubscribeUs(uint32_t us);
+void perfRecordBleProcessUs(uint32_t us);
 
 uint32_t perfGetNotifyToDisplayP95Ms();
 uint32_t perfGetNotifyToDisplayMaxMs();
@@ -177,6 +190,10 @@ uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
 uint32_t perfGetFlushMaxUs();
 uint32_t perfGetBleDrainMaxUs();
+uint32_t perfGetBleConnectMaxUs();
+uint32_t perfGetBleDiscoveryMaxUs();
+uint32_t perfGetBleSubscribeMaxUs();
+uint32_t perfGetBleProcessMaxUs();
 void perfExtendedResetWindow();
 
 // ============================================================================

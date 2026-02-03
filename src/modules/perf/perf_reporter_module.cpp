@@ -71,16 +71,22 @@ void PerfReporterModule::process(unsigned long nowMs) {
     uint32_t sdMaxUs = perfGetSdMaxUs();
     uint32_t flushMaxUs = perfGetFlushMaxUs();
     uint32_t bleDrainMaxUs = perfGetBleDrainMaxUs();
+    // BLE connection path timing (for diagnosing reconnect stalls)
+    uint32_t bleConnectMaxUs = perfGetBleConnectMaxUs();
+    uint32_t bleDiscoveryMaxUs = perfGetBleDiscoveryMaxUs();
+    uint32_t bleSubscribeMaxUs = perfGetBleSubscribeMaxUs();
+    uint32_t bleProcessMaxUs = perfGetBleProcessMaxUs();
 
     // Build structured fields string for NDJSON (no message escaping needed)
-    char fields[384];
+    char fields[512];  // Increased from 384 for new fields
     snprintf(fields, sizeof(fields),
         "\"uptime_ms\":%lu,\"rx\":%lu,\"qDrop\":%lu,\"qHW\":%lu,\"prxHW\":%lu,"
         "\"phoneHW\":%lu,\"obdHW\":%lu,\"parseOK\":%lu,\"parseFail\":%lu,"
         "\"disc\":%lu,\"reconn\":%lu,\"dispP95_ms\":%lu,\"dispMax_ms\":%lu,"
         "\"prxP95_ms\":%lu,\"prxMax_ms\":%lu,\"loopMax_us\":%lu,"
         "\"heapMin\":%lu,\"blockMin\":%lu,\"wifiMax_us\":%lu,\"fsMax_us\":%lu,"
-        "\"sdMax_us\":%lu,\"flushMax_us\":%lu,\"bleDrainMax_us\":%lu",
+        "\"sdMax_us\":%lu,\"flushMax_us\":%lu,\"bleDrainMax_us\":%lu,"
+        "\"bleConnMax_us\":%lu,\"bleDiscMax_us\":%lu,\"bleSubsMax_us\":%lu,\"bleProcessMax_us\":%lu",
         (unsigned long)nowMs,
         (unsigned long)rxPackets,
         (unsigned long)qDrop,
@@ -103,7 +109,11 @@ void PerfReporterModule::process(unsigned long nowMs) {
         (unsigned long)fsMaxUs,
         (unsigned long)sdMaxUs,
         (unsigned long)flushMaxUs,
-        (unsigned long)bleDrainMaxUs);
+        (unsigned long)bleDrainMaxUs,
+        (unsigned long)bleConnectMaxUs,
+        (unsigned long)bleDiscoveryMaxUs,
+        (unsigned long)bleSubscribeMaxUs,
+        (unsigned long)bleProcessMaxUs);
 
     debugLogger->logPerfMetrics(fields);
 
