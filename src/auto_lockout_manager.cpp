@@ -1164,17 +1164,45 @@ void AutoLockoutManager::ensureLogExists() {
   }
 }
 
-void AutoLockoutManager::appendLogRecord(const JsonDocument& doc) {
-  if (replayingLog) return;
+// Synchronous write - used directly when async mode is off, or by writer task
+void AutoLockoutManager::appendLogRecordSync(const char* line) {
   fs::FS* fs = logFs();
   if (!fs) return;
   const char* path = logPath();
   File f = fs->open(path, "a");
   if (!f) return;
-  serializeJson(doc, f);
+  f.print(line);
   f.print('\n');
   f.close();
   noteLogWrite();
+}
+
+void AutoLockoutManager::appendLogRecord(const JsonDocument& doc) {
+  if (replayingLog) return;
+  
+  // Serialize to buffer
+  char buf[LOCKOUT_LOG_LINE_SIZE];
+  size_t len = serializeJson(doc, buf, sizeof(buf));
+  if (len == 0 || len >= sizeof(buf)) {
+    // Serialization failed or truncated
+    return;
+  }
+  
+  // If async mode enabled and queue exists, queue for background write
+  if (asyncLogMode && logWriteQueue) {
+    // Non-blocking send - if queue full, drop this entry (rare, only during burst)
+    if (xQueueSend(logWriteQueue, buf, 0) != pdTRUE) {
+      // Queue full - this is acceptable, we'll catch it next time
+      // Log dropped entries would only happen during extreme alert bursts
+      if (DEBUG_LOGS) {
+        Serial.println("[AutoLockout] Log queue full, entry dropped");
+      }
+    }
+    return;
+  }
+  
+  // Fall back to synchronous write
+  appendLogRecordSync(buf);
 }
 
 void AutoLockoutManager::appendLogHit(const AlertEvent& event) {
@@ -1314,6 +1342,9 @@ void AutoLockoutManager::relinkPromotedLockouts() {
 
 void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
   if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
+    // Flush any pending async log writes before snapshot
+    // This ensures log file is complete before truncation
+    flushLogQueue();
     saveToJSON("/v1simple/auto_lockouts.json");
     truncateLog();
     lastSnapshotMs = nowMs;
@@ -1401,4 +1432,86 @@ String AutoLockoutManager::exportStatusJson() const {
   String out;
   serializeJson(doc, out);
   return out;
+}
+
+// ============================================================================
+// Async Log Write Queue - Background SD I/O
+// ============================================================================
+
+void AutoLockoutManager::setAsyncLogMode(bool async) {
+  if (async == asyncLogMode) return;  // No change
+  
+  if (async) {
+    // Enable async mode - create queue and task if not already running
+    if (!logWriteQueue) {
+      logWriteQueue = xQueueCreate(LOCKOUT_LOG_QUEUE_DEPTH, LOCKOUT_LOG_LINE_SIZE);
+      
+      if (!logWriteQueue) {
+        // Queue creation failed - stay in sync mode
+        Serial.println("[AutoLockout] ERROR: Log queue alloc failed, using sync writes");
+        return;
+      }
+      Serial.printf("[AutoLockout] Log queue created (%u items x %u bytes)\n",
+                    (unsigned)LOCKOUT_LOG_QUEUE_DEPTH, (unsigned)LOCKOUT_LOG_LINE_SIZE);
+    }
+    
+    if (!logWriterTaskHandle) {
+      // Pin to Core 0 (protocol CPU) at low priority so it doesn't impact main loop on Core 1
+      BaseType_t result = xTaskCreatePinnedToCore(
+        logWriterTaskEntry,              // Entry function
+        "LockoutLogWriter",              // Task name
+        LOCKOUT_LOG_WRITER_STACK_SIZE,   // Stack size
+        this,                            // Parameter (this pointer)
+        1,                               // Priority (low - 1 above idle)
+        &logWriterTaskHandle,            // Task handle
+        0                                // Core 0 (protocol core)
+      );
+      
+      if (result != pdPASS) {
+        // Task creation failed - stay in sync mode
+        Serial.println("[AutoLockout] ERROR: Failed to create log writer task");
+        return;
+      }
+      Serial.println("[AutoLockout] Log writer task started on Core 0");
+    }
+    
+    asyncLogMode = true;
+    LOCKOUT_LOGF("[AutoLockout] Async log mode ENABLED\n");
+  } else {
+    // Disable async mode - flush pending items first
+    flushLogQueue();
+    asyncLogMode = false;
+    LOCKOUT_LOGF("[AutoLockout] Async log mode DISABLED\n");
+    // Note: Keep task/queue alive to avoid heap fragmentation
+  }
+}
+
+void AutoLockoutManager::flushLogQueue() {
+  if (!logWriteQueue) return;
+  
+  // Drain all pending items synchronously
+  char buf[LOCKOUT_LOG_LINE_SIZE];
+  while (xQueueReceive(logWriteQueue, buf, 0) == pdTRUE) {
+    appendLogRecordSync(buf);
+  }
+}
+
+// Static entry point for FreeRTOS task
+void AutoLockoutManager::logWriterTaskEntry(void* param) {
+  AutoLockoutManager* mgr = static_cast<AutoLockoutManager*>(param);
+  mgr->logWriterTaskLoop();
+}
+
+// Writer task main loop - runs on Core 0, drains queue to SD
+void AutoLockoutManager::logWriterTaskLoop() {
+  char buf[LOCKOUT_LOG_LINE_SIZE];
+  
+  for (;;) {
+    // Block waiting for items (portMAX_DELAY = wait forever)
+    // This is fine because we're on a dedicated low-priority task
+    if (xQueueReceive(logWriteQueue, buf, portMAX_DELAY) == pdTRUE) {
+      // Write to SD (this is the slow part - isolated from main loop!)
+      appendLogRecordSync(buf);
+    }
+  }
 }

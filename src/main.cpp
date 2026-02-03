@@ -382,6 +382,10 @@ void setup() {
         autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
         SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
                         lockouts.getLockoutCount(), autoLockouts.getClusterCount());
+        
+        // Enable async log mode for auto-lockout (background SD writes)
+        // This prevents alert hot path from blocking on SD I/O
+        autoLockouts.setAsyncLogMode(true);
 
         autoLockoutMaintenance.begin(&autoLockouts);
         

@@ -9,8 +9,15 @@
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include "lockout_manager.h"  // For Band enum and LockoutManager
 #include "storage_manager.h"
+
+// Async log write queue settings (background SD writes)
+inline constexpr size_t LOCKOUT_LOG_QUEUE_DEPTH = 16;       // Queue depth (16 items = ~4KB)
+inline constexpr size_t LOCKOUT_LOG_LINE_SIZE = 256;        // Max serialized JSON line size
+inline constexpr size_t LOCKOUT_LOG_WRITER_STACK_SIZE = 3072; // Writer task stack (3KB)
 
 // Single alert event with location and metadata
 struct AlertEvent {
@@ -148,11 +155,19 @@ private:
   void appendLogHit(const AlertEvent& event);
   void appendLogMiss(float lat, float lon, float heading, time_t ts);
   void appendLogRecord(const JsonDocument& doc);
+  void appendLogRecordSync(const char* line);  // Synchronous write (used by writer task)
   void ensureLogExists();
   void truncateLog();
   void noteLogWrite();
   fs::FS* logFs() const;
   const char* logPath() const;
+  
+  // Async log write queue infrastructure
+  QueueHandle_t logWriteQueue = nullptr;
+  TaskHandle_t logWriterTaskHandle = nullptr;
+  bool asyncLogMode = false;
+  static void logWriterTaskEntry(void* param);  // FreeRTOS task entry
+  void logWriterTaskLoop();                      // Task main loop
 
 public:
   AutoLockoutManager();
@@ -198,6 +213,11 @@ public:
   // Session stats API
   const SessionStats& getSessionStats() const { return sessionStats; }
   void resetSessionStats();
+  
+  // Async log mode control (background SD writes)
+  void setAsyncLogMode(bool async);  // Enable/disable background log writes
+  void flushLogQueue();              // Drain pending writes (call before snapshot)
+  bool isAsyncLogMode() const { return asyncLogMode; }
 
 private:
   // Snapshot scheduling
