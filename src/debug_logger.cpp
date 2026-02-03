@@ -210,12 +210,14 @@ void DebugLogger::breadcrumb(const char* msg) {
     if (!msg || !msg[0]) return;
     
     // Format: "[millis] message\n" - compact, parseable
+    // Format OUTSIDE critical section to minimize lock time
     char line[BREADCRUMB_MAX_LINE];
     int len = snprintf(line, sizeof(line), "[%lu] %s\n", millis(), msg);
     if (len <= 0) return;
     if ((size_t)len >= sizeof(line)) len = sizeof(line) - 1;
     
-    // Write to ring buffer (overwrite oldest on wrap)
+    // Write to ring buffer with spinlock (ISR-safe critical section)
+    portENTER_CRITICAL(&breadcrumbMux);
     for (int i = 0; i < len; i++) {
         breadcrumbRing[breadcrumbHead] = line[i];
         breadcrumbHead = (breadcrumbHead + 1) % BREADCRUMB_RING_SIZE;
@@ -225,6 +227,7 @@ void DebugLogger::breadcrumb(const char* msg) {
             breadcrumbWrapped = true;
         }
     }
+    portEXIT_CRITICAL(&breadcrumbMux);
 }
 
 void DebugLogger::breadcrumbf(const char* fmt, ...) {
@@ -243,7 +246,20 @@ void DebugLogger::captureIncident(const char* reason, uint32_t loopMaxUs, uint32
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return;
     
-    // Write incident header + breadcrumb dump
+    // PHASE 1: Snapshot ring buffer state under spinlock (fast, no SD I/O)
+    // This ensures consistent capture even if breadcrumbs are being written concurrently
+    size_t snapHead, snapCount;
+    bool snapWrapped;
+    
+    portENTER_CRITICAL(&breadcrumbMux);
+    snapHead = breadcrumbHead;
+    snapCount = breadcrumbCount;
+    snapWrapped = breadcrumbWrapped;
+    portEXIT_CRITICAL(&breadcrumbMux);
+    
+    if (snapCount == 0) return;  // Double-check after snapshot
+    
+    // PHASE 2: Write to SD (slow, outside critical section)
     File f = fs->open(INCIDENT_LOG_PATH, FILE_APPEND, true);
     if (!f) return;
     
@@ -258,20 +274,23 @@ void DebugLogger::captureIncident(const char* reason, uint32_t loopMaxUs, uint32
     f.printf("\n========== INCIDENT %s ==========\n", ts);
     f.printf("Reason: %s\n", reason);
     f.printf("loopMax_us: %lu, qDropDelta: %lu, millis: %lu\n", loopMaxUs, qDropDelta, millis());
-    f.printf("Breadcrumb buffer: %u bytes, wrapped: %s\n", breadcrumbCount, breadcrumbWrapped ? "yes" : "no");
+    f.printf("Breadcrumb buffer: %u bytes, wrapped: %s\n", snapCount, snapWrapped ? "yes" : "no");
     f.println("--- Breadcrumb dump (oldest first) ---");
     
-    // Dump ring buffer in chronological order
-    if (breadcrumbWrapped) {
+    // Dump ring buffer in chronological order using snapshot state
+    // Note: We read from breadcrumbRing[] without lock - acceptable since:
+    // 1. We're reading stale data at worst (snapshot was consistent)
+    // 2. New writes may overwrite, but header shows correct snapshot size
+    if (snapWrapped) {
         // Buffer wrapped - read from head to end, then start to head
-        size_t readPos = breadcrumbHead;
+        size_t readPos = snapHead;
         for (size_t i = 0; i < BREADCRUMB_RING_SIZE; i++) {
             f.write(breadcrumbRing[readPos]);
             readPos = (readPos + 1) % BREADCRUMB_RING_SIZE;
         }
     } else {
         // Buffer hasn't wrapped - read from start to count
-        f.write((uint8_t*)breadcrumbRing, breadcrumbCount);
+        f.write((uint8_t*)breadcrumbRing, snapCount);
     }
     
     f.println("--- End breadcrumb dump ---\n");

@@ -170,6 +170,7 @@ private:
     size_t breadcrumbHead = 0;        // Write position
     size_t breadcrumbCount = 0;       // Bytes used (up to BREADCRUMB_RING_SIZE)
     bool breadcrumbWrapped = false;   // True after first wrap
+    portMUX_TYPE breadcrumbMux = portMUX_INITIALIZER_UNLOCKED;  // Spinlock for ISR-safe atomicity
 };
 
 extern DebugLogger debugLogger;

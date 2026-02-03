@@ -88,33 +88,43 @@ class Incident:
 
 
 def parse_ndjson_log(filepath: str) -> tuple[list[BootSegment], dict]:
-    """Parse an NDJSON debug log file into boot segments and summary stats."""
+    """Parse an NDJSON debug log file into boot segments and summary stats.
+    
+    Handles malformed/truncated files gracefully - always produces a summary.
+    """
     
     segments: list[BootSegment] = []
     current_segment: Optional[BootSegment] = None
     line_count = 0
     parse_errors = 0
     text_lines = 0  # Non-NDJSON lines (legacy format)
+    truncated_lines = 0  # Lines that look truncated (no closing brace)
     
     # Thresholds for anomaly detection
     STALL_THRESHOLD_US = 500000  # 500ms
     HEAP_PRESSURE_THRESHOLD = 50000  # 50KB free heap
     WIFI_STALL_THRESHOLD_US = 1000000  # 1s
     
-    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-        for line in f:
-            line_count += 1
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Try to parse as NDJSON
-            if line.startswith('{'):
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError as e:
-                    parse_errors += 1
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line_count += 1
+                line = line.strip()
+                if not line:
                     continue
+                
+                # Try to parse as NDJSON
+                if line.startswith('{'):
+                    # Check for truncated JSON (no closing brace)
+                    if not line.rstrip().endswith('}'):
+                        truncated_lines += 1
+                        continue
+                    
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        parse_errors += 1
+                        continue
                 
                 cat = obj.get('cat', '')
                 ts = obj.get('ts', '')
@@ -225,12 +235,17 @@ def parse_ndjson_log(filepath: str) -> tuple[list[BootSegment], dict]:
                         start_time='unknown'
                     )
                     segments.append(current_segment)
+    except Exception as e:
+        # Catch any unexpected errors (corrupted file, I/O issues, etc.)
+        # Still return partial results
+        parse_errors += 1
     
     summary = {
         'total_lines': line_count,
         'parse_errors': parse_errors,
+        'truncated_lines': truncated_lines,
         'text_lines': text_lines,
-        'ndjson_lines': line_count - text_lines - parse_errors,
+        'ndjson_lines': line_count - text_lines - parse_errors - truncated_lines,
     }
     
     return segments, summary
@@ -323,7 +338,8 @@ def print_report(filepath: str, segments: list[BootSegment], summary: dict):
     print("=" * 72)
     print(f"\nFile: {filepath}")
     print(f"Lines: {summary['total_lines']:,} total, {summary['ndjson_lines']:,} NDJSON, "
-          f"{summary['text_lines']:,} text, {summary['parse_errors']} errors")
+          f"{summary['text_lines']:,} text, {summary['parse_errors']} errors, "
+          f"{summary.get('truncated_lines', 0)} truncated")
     print(f"Boot segments: {len(segments)}")
     
     if not segments:
