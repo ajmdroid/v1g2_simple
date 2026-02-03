@@ -978,6 +978,7 @@ void WiFiManager::handleSettingsApi() {
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
     doc["logFormat"] = settings.logFormat;
+    doc["logAsyncWrites"] = settings.logAsyncWrites;
     doc["logAlerts"] = settings.logAlerts;
     doc["logWifi"] = settings.logWifi;
     doc["logBle"] = settings.logBle;
@@ -1995,6 +1996,11 @@ void WiFiManager::handleDisplayColorsSave() {
         int fmt = server.arg("logFormat").toInt();
         settingsManager.setLogFormat(fmt, true);
         debugLogger.setFormat(fmt == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
+    }
+    if (server.hasArg("logAsyncWrites")) {
+        bool async = server.arg("logAsyncWrites") == "true" || server.arg("logAsyncWrites") == "1";
+        settingsManager.setLogAsyncWrites(async, true);
+        debugLogger.setAsyncMode(async);  // Apply immediately
     }
     if (server.hasArg("logAlerts")) {
         settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1", true);

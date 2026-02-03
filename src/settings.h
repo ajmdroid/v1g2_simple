@@ -51,6 +51,7 @@ struct DebugLogConfig {
     bool lockout;
     bool touch;
     uint8_t format;  // 0 = TEXT, 1 = JSON (NDJSON for ELK)
+    bool asyncWrites;  // Use background FreeRTOS task for SD writes (reduces main loop blocking)
 };
 
 // V1 operating modes (from ESP library)
@@ -187,6 +188,7 @@ struct V1Settings {
         bool logLockout;             // Include auto-lockout events in debug log
         bool logTouch;               // Include touch input events in debug log
         uint8_t logFormat;           // Log format: 0 = TEXT, 1 = JSON (NDJSON for ELK)
+        bool logAsyncWrites;         // Use background task for SD writes (reduces main loop blocking)
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -507,9 +509,10 @@ public:
     void setLogLockout(bool enable, bool deferSave = false);
     void setLogTouch(bool enable, bool deferSave = false);
     void setLogFormat(uint8_t format, bool deferSave = false);  // 0 = TEXT, 1 = JSON
+    void setLogAsyncWrites(bool enable, bool deferSave = false);  // Background task for SD writes
     uint8_t getLogFormat() const { return settings.logFormat; }
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch, settings.logFormat };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch, settings.logFormat, settings.logAsyncWrites };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);

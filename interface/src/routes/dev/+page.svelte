@@ -7,6 +7,7 @@
 			enableDebugLogging: false,
 			kittScannerEnabled: false,
 			logFormat: 0, // 0=TEXT, 1=JSON
+			logAsyncWrites: false, // Background task for SD writes
 			logAlerts: true,
 			logWifi: true,
 			logBle: false,
@@ -129,6 +130,7 @@
 			settings.enableDebugLogging = data.enableDebugLogging || false;
 			settings.kittScannerEnabled = data.kittScannerEnabled || false;
 			settings.logFormat = data.logFormat ?? 0;
+			settings.logAsyncWrites = data.logAsyncWrites ?? false;
 			settings.logAlerts = data.logAlerts ?? true;
 			settings.logWifi = data.logWifi ?? true;
 			settings.logBle = data.logBle ?? false;
@@ -188,6 +190,7 @@
 			params.append('enableDebugLogging', settings.enableDebugLogging.toString());
 			params.append('kittScannerEnabled', settings.kittScannerEnabled.toString());
 			params.append('logFormat', settings.logFormat.toString());
+			params.append('logAsyncWrites', settings.logAsyncWrites.toString());
 			params.append('logAlerts', settings.logAlerts.toString());
 			params.append('logWifi', settings.logWifi.toString());
 			params.append('logBle', settings.logBle.toString());
@@ -570,6 +573,20 @@
 								/>
 								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 0}>JSON</span>
 							</div>
+						</div>
+
+						<!-- Async Writes Toggle -->
+						<div class="flex items-center justify-between">
+							<div>
+								<h3 class="font-semibold text-sm opacity-70">Async SD Writes</h3>
+								<p class="text-xs opacity-60">Moves SD I/O to background task (+20KB RAM)</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-sm toggle-primary"
+								bind:checked={settings.logAsyncWrites}
+								disabled={!acknowledged}
+							/>
 						</div>
 
 						<div class="mt-4">

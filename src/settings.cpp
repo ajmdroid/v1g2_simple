@@ -182,6 +182,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("logLockout", settings.logLockout);
     written += prefs.putBool("logTouch", settings.logTouch);
     written += prefs.putUChar("logFormat", settings.logFormat);
+    written += prefs.putBool("logAsyncWr", settings.logAsyncWrites);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -427,6 +428,7 @@ void SettingsManager::load() {
     settings.logLockout = preferences.getBool("logLockout", true);
     settings.logTouch = preferences.getBool("logTouch", false);
     settings.logFormat = preferences.getUChar("logFormat", 0);  // 0 = TEXT (default)
+    settings.logAsyncWrites = preferences.getBool("logAsyncWr", true);  // On by default (better performance)
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -982,6 +984,11 @@ void SettingsManager::setLogFormat(uint8_t format, bool deferSave) {
     if (!deferSave) save();
 }
 
+void SettingsManager::setLogAsyncWrites(bool enable, bool deferSave) {
+    settings.logAsyncWrites = enable;
+    if (!deferSave) save();
+}
+
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
     settings.voiceAlertMode = mode;
     save();
@@ -1327,6 +1334,7 @@ void SettingsManager::backupToSD() {
     doc["logLockout"] = settings.logLockout;
     doc["logTouch"] = settings.logTouch;
     doc["logFormat"] = settings.logFormat;  // 0 = TEXT, 1 = JSON
+    doc["logAsyncWrites"] = settings.logAsyncWrites;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1551,6 +1559,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["logLockout"].is<bool>()) settings.logLockout = doc["logLockout"];
     if (doc["logTouch"].is<bool>()) settings.logTouch = doc["logTouch"];
     if (doc["logFormat"].is<int>()) settings.logFormat = doc["logFormat"].as<int>();
+    if (doc["logAsyncWrites"].is<bool>()) settings.logAsyncWrites = doc["logAsyncWrites"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

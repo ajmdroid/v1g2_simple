@@ -350,6 +350,25 @@ void DebugLogger::log(DebugLogCategory category, const char* message) {
     } else {
         formatTextLine(line, sizeof(line), category, message);
     }
+    
+    // Async mode: enqueue for background writer task
+    if (asyncMode && writeQueue) {
+        LogQueueItem item;
+        size_t len = strlen(line);
+        if (len >= LOG_QUEUE_LINE_SIZE) len = LOG_QUEUE_LINE_SIZE - 1;
+        memcpy(item.line, line, len);
+        item.line[len] = '\0';
+        item.length = static_cast<uint16_t>(len);
+        item.flags = LogQueueItem::FLAG_NONE;
+        
+        // Non-blocking send - drop if queue full to avoid blocking main loop
+        if (xQueueSend(writeQueue, &item, 0) != pdTRUE) {
+            asyncDropCount++;  // Atomically increment drop counter
+        }
+        return;
+    }
+    
+    // Sync mode: buffer directly
     bufferLine(line);
 }
 
@@ -369,6 +388,23 @@ void DebugLogger::logEvent(DebugLogCategory category, const char* event, const c
         }
         formatTextLine(line, sizeof(line), category, msg);
     }
+    
+    // Async mode: enqueue for background writer task
+    if (asyncMode && writeQueue) {
+        LogQueueItem item;
+        size_t len = strlen(line);
+        if (len >= LOG_QUEUE_LINE_SIZE) len = LOG_QUEUE_LINE_SIZE - 1;
+        memcpy(item.line, line, len);
+        item.line[len] = '\0';
+        item.length = static_cast<uint16_t>(len);
+        item.flags = LogQueueItem::FLAG_NONE;
+        
+        if (xQueueSend(writeQueue, &item, 0) != pdTRUE) {
+            asyncDropCount++;
+        }
+        return;
+    }
+    
     bufferLine(line);
 }
 
@@ -393,6 +429,23 @@ void DebugLogger::logPerfMetrics(const char* fields) {
         // TEXT format: METRICS prefix for grep-ability
         snprintf(line, sizeof(line), "[%10lu ms] METRICS %s", now, fields);
     }
+    
+    // Async mode: enqueue for background writer task
+    if (asyncMode && writeQueue) {
+        LogQueueItem item;
+        size_t len = strlen(line);
+        if (len >= LOG_QUEUE_LINE_SIZE) len = LOG_QUEUE_LINE_SIZE - 1;
+        memcpy(item.line, line, len);
+        item.line[len] = '\0';
+        item.length = static_cast<uint16_t>(len);
+        item.flags = LogQueueItem::FLAG_NONE;
+        
+        if (xQueueSend(writeQueue, &item, 0) != pdTRUE) {
+            asyncDropCount++;
+        }
+        return;
+    }
+    
     bufferLine(line);
 }
 
@@ -631,4 +684,113 @@ String DebugLogger::tail(size_t maxBytes) const {
 
     f.close();
     return content;
+}
+// =============================================================================
+// Async Write Mode - Background FreeRTOS Task for SD I/O
+// =============================================================================
+
+void DebugLogger::setAsyncMode(bool async) {
+    if (async == asyncMode) return;  // No change
+    
+    if (async) {
+        // Enable async mode - create queue and task if not already running
+        if (!writeQueue) {
+            writeQueue = xQueueCreate(LOG_QUEUE_DEPTH, sizeof(LogQueueItem));
+            if (!writeQueue) {
+                // Queue creation failed - stay in sync mode
+                if (enabled && categoryAllowed(DebugLogCategory::System)) {
+                    log(DebugLogCategory::System, "[Logger] ERROR: Failed to create async write queue");
+                }
+                return;
+            }
+        }
+        
+        if (!writerTaskHandle) {
+            // Pin to Core 0 (protocol CPU) at lowest priority so it doesn't impact display/main loop on Core 1
+            BaseType_t result = xTaskCreatePinnedToCore(
+                writerTaskEntry,           // Entry function
+                "LogWriter",               // Task name
+                LOG_WRITER_STACK_SIZE,     // Stack size (4KB)
+                this,                      // Parameter (this pointer)
+                1,                         // Priority (lowest - 1 above idle)
+                &writerTaskHandle,         // Task handle
+                0                          // Core 0 (protocol core)
+            );
+            
+            if (result != pdPASS) {
+                // Task creation failed - stay in sync mode
+                if (enabled && categoryAllowed(DebugLogCategory::System)) {
+                    log(DebugLogCategory::System, "[Logger] ERROR: Failed to create writer task");
+                }
+                return;
+            }
+        }
+        
+        asyncMode = true;
+        
+        if (enabled && categoryAllowed(DebugLogCategory::System)) {
+            log(DebugLogCategory::System, "[Logger] Async write mode ENABLED (writer task running on Core 0)");
+        }
+    } else {
+        // Disable async mode - flush any pending items and stop task
+        asyncMode = false;  // Set first so log() stops enqueueing
+        
+        // Signal task to drain queue (send a flush item)
+        if (writeQueue) {
+            LogQueueItem flushItem;
+            flushItem.length = 0;
+            flushItem.flags = LogQueueItem::FLAG_FLUSH_NOW;
+            xQueueSend(writeQueue, &flushItem, pdMS_TO_TICKS(100));
+            
+            // Wait briefly for task to drain
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        
+        if (enabled && categoryAllowed(DebugLogCategory::System)) {
+            log(DebugLogCategory::System, "[Logger] Async write mode DISABLED (sync writes restored)");
+        }
+        
+        // Note: We don't delete the task/queue - keep them for potential re-enable
+        // This avoids heap fragmentation from repeated create/delete cycles
+    }
+}
+
+// Static entry point for FreeRTOS task
+void DebugLogger::writerTaskEntry(void* param) {
+    DebugLogger* logger = static_cast<DebugLogger*>(param);
+    logger->writerTaskLoop();
+}
+
+// Writer task main loop - runs on Core 0, drains queue to SD
+void DebugLogger::writerTaskLoop() {
+    LogQueueItem item;
+    
+    for (;;) {
+        // Block waiting for items (indefinitely)
+        if (xQueueReceive(writeQueue, &item, portMAX_DELAY) == pdTRUE) {
+            // Check for flush-only signal (length=0)
+            if (item.length == 0 && (item.flags & LogQueueItem::FLAG_FLUSH_NOW)) {
+                // Drain remaining queue items
+                while (xQueueReceive(writeQueue, &item, 0) == pdTRUE) {
+                    if (item.length > 0) {
+                        // Write this item
+                        bufferLine(item.line);
+                    }
+                }
+                // Force flush buffer to SD
+                flushBuffer();
+                continue;
+            }
+            
+            // Normal item - buffer it
+            if (item.length > 0) {
+                bufferLine(item.line);
+            }
+            
+            // Periodic flush - check if buffer needs flushing
+            if (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD) {
+                flushBuffer();
+            }
+        }
+    }
 }

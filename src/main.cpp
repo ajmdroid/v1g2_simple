@@ -460,6 +460,8 @@ void setup() {
         DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
         debugLogger.setFormat(cfg.format == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
+        // NOTE: Async mode is enabled AFTER boot (in loop) to avoid heap fragmentation
+        // during BLE/WiFi/camera initialization. See asyncModeEnableMs below.
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
@@ -647,6 +649,21 @@ void setup() {
 void loop() {
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
+    
+    // Deferred async logging enablement - wait 5s after boot for BLE/WiFi/camera to settle
+    // This avoids heap fragmentation during heavy boot-time allocations
+    static bool asyncModeChecked = false;
+    if (!asyncModeChecked && now > 5000) {
+        asyncModeChecked = true;
+        DebugLogConfig cfg = settingsManager.getDebugLogConfig();
+        if (cfg.asyncWrites && !debugLogger.isAsyncMode()) {
+            debugLogger.setAsyncMode(true);
+            if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+                debugLogger.logf(DebugLogCategory::System, "[Logger] Async write mode enabled (deferred startup)");
+            }
+        }
+    }
+    
     perfReporterModule.process(now);
 
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
