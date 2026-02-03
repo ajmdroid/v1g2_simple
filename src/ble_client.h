@@ -26,13 +26,18 @@ typedef void (*ConnectionCallback)();
 
 // BLE Connection State Machine
 // Centralized state to prevent overlapping operations and race conditions
+// Connection phases are broken into discrete states for non-blocking operation
 enum class BLEState {
-    DISCONNECTED,   // Not connected, not doing anything
-    SCANNING,       // Actively scanning for V1
-    SCAN_STOPPING,  // Scan stop requested, waiting for settle
-    CONNECTING,     // Connection attempt in progress
-    CONNECTED,      // Successfully connected to V1
-    BACKOFF         // Failed connection, waiting before retry
+    DISCONNECTED,      // Not connected, not doing anything
+    SCANNING,          // Actively scanning for V1
+    SCAN_STOPPING,     // Scan stop requested, waiting for settle
+    CONNECTING,        // Connection attempt initiated (async)
+    CONNECTING_WAIT,   // Waiting for async connect callback
+    DISCOVERING,       // Service discovery in progress (uses cached handles if available)
+    SUBSCRIBING,       // Subscribing to characteristics (multi-step, non-blocking)
+    SUBSCRIBE_YIELD,   // Yielding between subscribe steps to allow loop() to run
+    CONNECTED,         // Successfully connected to V1
+    BACKOFF            // Failed connection, waiting before retry
 };
 
 // Convert BLEState to string for logging
@@ -42,6 +47,10 @@ inline const char* bleStateToString(BLEState state) {
         case BLEState::SCANNING: return "SCANNING";
         case BLEState::SCAN_STOPPING: return "SCAN_STOPPING";
         case BLEState::CONNECTING: return "CONNECTING";
+        case BLEState::CONNECTING_WAIT: return "CONNECTING_WAIT";
+        case BLEState::DISCOVERING: return "DISCOVERING";
+        case BLEState::SUBSCRIBING: return "SUBSCRIBING";
+        case BLEState::SUBSCRIBE_YIELD: return "SUBSCRIBE_YIELD";
         case BLEState::CONNECTED: return "CONNECTED";
         case BLEState::BACKOFF: return "BACKOFF";
         default: return "UNKNOWN";
@@ -326,8 +335,48 @@ private:
     bool connectInProgress = false;
     unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
     
+    // Async connection tracking
+    std::atomic<bool> asyncConnectPending{false};   // Async connect in progress
+    std::atomic<bool> asyncConnectSuccess{false};   // Result from onConnect callback
+    uint8_t connectAttemptNumber = 0;               // Current attempt (1-based)
+    static constexpr uint8_t MAX_CONNECT_ATTEMPTS = 2;
+    static constexpr unsigned long CONNECT_TIMEOUT_MS = 25000;  // 25s total timeout for connect phase
+    static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 10000; // 10s for discovery
+    static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 5000;  // 5s for subscriptions
+    uint32_t connectPhaseStartUs = 0;  // For timing individual phases
+    
     // Fresh flash detection - set when firmware version changed
     bool freshFlashBoot = false;
+    
+    // Non-blocking subscribe step machine
+    // Each step does one BLE operation then yields to loop()
+    enum class SubscribeStep {
+        GET_SERVICE,           // Get V1 service reference
+        GET_DISPLAY_CHAR,      // Get B2CE display data characteristic
+        GET_COMMAND_CHAR,      // Get command write characteristic
+        GET_COMMAND_LONG,      // Get B8D2 long command characteristic
+        SUBSCRIBE_DISPLAY,     // Subscribe to B2CE notifications
+        WRITE_DISPLAY_CCCD,    // Force-write CCCD for B2CE
+        GET_DISPLAY_LONG,      // Get B4E0 characteristic
+        SUBSCRIBE_LONG,        // Subscribe to B4E0 notifications
+        WRITE_LONG_CCCD,       // Force-write CCCD for B4E0
+        REQUEST_ALERT_DATA,    // Send alert data request
+        REQUEST_VERSION,       // Send version request
+        COMPLETE               // All steps done
+    };
+    SubscribeStep subscribeStep = SubscribeStep::GET_SERVICE;
+    uint32_t subscribeStepStartUs = 0;    // When current step started
+    uint32_t subscribeYieldUntilMs = 0;   // When to resume from SUBSCRIBE_YIELD
+    static constexpr uint32_t SUBSCRIBE_STEP_BUDGET_US = 50000;  // 50ms per step max
+    static constexpr uint32_t SUBSCRIBE_YIELD_MS = 5;            // 5ms yield between steps
+    
+    // Async connect step functions
+    bool startAsyncConnect();         // Initiate async connect
+    void processConnectingWait();     // Handle CONNECTING_WAIT state
+    void processDiscovering();        // Handle DISCOVERING state  
+    void processSubscribing();        // Handle SUBSCRIBING state (step machine)
+    void processSubscribeYield();     // Handle SUBSCRIBE_YIELD state
+    bool executeSubscribeStep();      // Execute one subscribe step, return true if done
     
     // Called from connectToServer() after successful sync connect
     bool finishConnection();

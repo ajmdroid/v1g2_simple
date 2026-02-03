@@ -1,0 +1,90 @@
+name: Stability Scorecard
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  scorecard:
+    name: Run Stability Scorecard
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate scorecard tool syntax
+        run: python3 -m py_compile tools/scorecard.py
+
+      - name: Run scorecard on base stable fixture
+        id: scorecard
+        run: |
+          python3 tools/scorecard.py test/fixtures/debug_base_stable.log
+          exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          if [ $exit_code -eq 0 ]; then
+            echo "grade=GREEN" >> $GITHUB_OUTPUT
+          elif [ $exit_code -eq 1 ]; then
+            echo "grade=YELLOW" >> $GITHUB_OUTPUT
+          elif [ $exit_code -eq 2 ]; then
+            echo "grade=RED" >> $GITHUB_OUTPUT
+          else
+            echo "grade=ERROR" >> $GITHUB_OUTPUT
+          fi
+          exit $exit_code
+
+      - name: Scorecard JSON output
+        if: always()
+        run: python3 tools/scorecard.py test/fixtures/debug_base_stable.log --json || true
+
+      - name: Fail on non-GREEN grade
+        if: steps.scorecard.outputs.grade != 'GREEN'
+        run: |
+          echo "::error::Scorecard grade is ${{ steps.scorecard.outputs.grade }}, expected GREEN"
+          exit 1
+
+  build:
+    name: PlatformIO Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run -e esp32-s3-devkitc-1
+
+  test:
+    name: PlatformIO Native Tests
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Run native tests
+        run: pio test -e native --verbose

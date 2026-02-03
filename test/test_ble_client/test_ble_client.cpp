@@ -23,12 +23,16 @@
  * BLE Connection State Machine (from ble_client.h)
  */
 enum class BLEState {
-    DISCONNECTED,   // Not connected, not doing anything
-    SCANNING,       // Actively scanning for V1
-    SCAN_STOPPING,  // Scan stop requested, waiting for settle
-    CONNECTING,     // Connection attempt in progress
-    CONNECTED,      // Successfully connected to V1
-    BACKOFF         // Failed connection, waiting before retry
+    DISCONNECTED,      // Not connected, not doing anything
+    SCANNING,          // Actively scanning for V1
+    SCAN_STOPPING,     // Scan stop requested, waiting for settle
+    CONNECTING,        // Connection attempt initiated (async)
+    CONNECTING_WAIT,   // Waiting for async connect callback
+    DISCOVERING,       // Service discovery in progress
+    SUBSCRIBING,       // Subscribing to characteristics (step machine)
+    SUBSCRIBE_YIELD,   // Yielding between subscribe steps
+    CONNECTED,         // Successfully connected to V1
+    BACKOFF            // Failed connection, waiting before retry
 };
 
 /**
@@ -40,6 +44,10 @@ const char* bleStateToString(BLEState state) {
         case BLEState::SCANNING: return "SCANNING";
         case BLEState::SCAN_STOPPING: return "SCAN_STOPPING";
         case BLEState::CONNECTING: return "CONNECTING";
+        case BLEState::CONNECTING_WAIT: return "CONNECTING_WAIT";
+        case BLEState::DISCOVERING: return "DISCOVERING";
+        case BLEState::SUBSCRIBING: return "SUBSCRIBING";
+        case BLEState::SUBSCRIBE_YIELD: return "SUBSCRIBE_YIELD";
         case BLEState::CONNECTED: return "CONNECTED";
         case BLEState::BACKOFF: return "BACKOFF";
         default: return "UNKNOWN";
@@ -266,8 +274,12 @@ void test_state_enum_values() {
     TEST_ASSERT_EQUAL_INT(1, static_cast<int>(BLEState::SCANNING));
     TEST_ASSERT_EQUAL_INT(2, static_cast<int>(BLEState::SCAN_STOPPING));
     TEST_ASSERT_EQUAL_INT(3, static_cast<int>(BLEState::CONNECTING));
-    TEST_ASSERT_EQUAL_INT(4, static_cast<int>(BLEState::CONNECTED));
-    TEST_ASSERT_EQUAL_INT(5, static_cast<int>(BLEState::BACKOFF));
+    TEST_ASSERT_EQUAL_INT(4, static_cast<int>(BLEState::CONNECTING_WAIT));
+    TEST_ASSERT_EQUAL_INT(5, static_cast<int>(BLEState::DISCOVERING));
+    TEST_ASSERT_EQUAL_INT(6, static_cast<int>(BLEState::SUBSCRIBING));
+    TEST_ASSERT_EQUAL_INT(7, static_cast<int>(BLEState::SUBSCRIBE_YIELD));
+    TEST_ASSERT_EQUAL_INT(8, static_cast<int>(BLEState::CONNECTED));
+    TEST_ASSERT_EQUAL_INT(9, static_cast<int>(BLEState::BACKOFF));
 }
 
 void test_all_states_have_strings() {
@@ -277,6 +289,10 @@ void test_all_states_have_strings() {
         BLEState::SCANNING,
         BLEState::SCAN_STOPPING,
         BLEState::CONNECTING,
+        BLEState::CONNECTING_WAIT,
+        BLEState::DISCOVERING,
+        BLEState::SUBSCRIBING,
+        BLEState::SUBSCRIBE_YIELD,
         BLEState::CONNECTED,
         BLEState::BACKOFF
     };
