@@ -209,7 +209,8 @@
 			});
 
 			if (response.ok) {
-				message = 'Settings saved! Changes will take effect on next reboot.';
+				message = 'Settings saved!';
+				await loadSettings();  // Reload to confirm persistence
 				await loadLogInfo();
 			} else {
 				message = 'Failed to save settings';

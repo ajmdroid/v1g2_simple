@@ -21,6 +21,13 @@ private:
     uint32_t lastQDrop = 0;
     bool investigationActive = false;
     unsigned long investigationEndMs = 0;
+    unsigned long lastAutoTriggerMs = 0;  // Cooldown for auto-trigger
+    
+    // Snapshot of log config before investigation (for restore)
+    DebugLogFilter savedFilter;
+    bool hasSavedConfig = false;
 
     void applyCurrentLogConfig();
+    void snapshotLogConfig();
+    void restoreLogConfig();
 };

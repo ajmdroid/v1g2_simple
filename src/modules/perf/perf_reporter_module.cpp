@@ -1,5 +1,10 @@
 #include "perf_reporter_module.h"
 
+// Auto-investigation cooldown: minimum 60 seconds between auto-triggers
+static constexpr unsigned long AUTO_TRIGGER_COOLDOWN_MS = 60000;
+// Loop stall threshold for auto-investigation (500ms)
+static constexpr uint32_t LOOP_STALL_THRESHOLD_US = 500000;
+
 void PerfReporterModule::begin(DebugLogger* dbgLogger, SettingsManager* settingsMgr) {
     debugLogger = dbgLogger;
     settings = settingsMgr;
@@ -7,13 +12,29 @@ void PerfReporterModule::begin(DebugLogger* dbgLogger, SettingsManager* settings
     lastQDrop = 0;
     investigationActive = false;
     investigationEndMs = 0;
+    lastAutoTriggerMs = 0;
+    hasSavedConfig = false;
+}
+
+void PerfReporterModule::snapshotLogConfig() {
+    if (!debugLogger || !settings || hasSavedConfig) return;
+    DebugLogConfig cfg = settings->getDebugLogConfig();
+    savedFilter = {cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, 
+                   cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
+    hasSavedConfig = true;
+}
+
+void PerfReporterModule::restoreLogConfig() {
+    if (!debugLogger || !settings || !hasSavedConfig) return;
+    debugLogger->setFilter(savedFilter);
+    hasSavedConfig = false;
 }
 
 void PerfReporterModule::process(unsigned long nowMs) {
     if (!debugLogger || !settings) return;
 
     if (investigationActive && nowMs >= investigationEndMs) {
-        applyBenchmarkPreset(false);
+        restoreLogConfig();
         investigationActive = false;
     }
 
@@ -51,8 +72,15 @@ void PerfReporterModule::process(unsigned long nowMs) {
     uint32_t flushMaxUs = perfGetFlushMaxUs();
     uint32_t bleDrainMaxUs = perfGetBleDrainMaxUs();
 
-    debugLogger->logf(DebugLogCategory::PerfMetrics,
-        "METRICS uptime_ms=%lu rx=%lu qDrop=%lu qHW=%lu prxHW=%lu phoneHW=%lu obdHW=%lu parseOK=%lu parseFail=%lu disc=%lu reconn=%lu dispP95=%lums dispMax=%lums prxP95=%lums prxMax=%lums loopMax_us=%lu heapMin=%lu blockMin=%lu wifiMax_us=%lu fsMax_us=%lu sdMax_us=%lu flushMax_us=%lu bleDrainMax_us=%lu",
+    // Build structured fields string for NDJSON (no message escaping needed)
+    char fields[384];
+    snprintf(fields, sizeof(fields),
+        "\"uptime_ms\":%lu,\"rx\":%lu,\"qDrop\":%lu,\"qHW\":%lu,\"prxHW\":%lu,"
+        "\"phoneHW\":%lu,\"obdHW\":%lu,\"parseOK\":%lu,\"parseFail\":%lu,"
+        "\"disc\":%lu,\"reconn\":%lu,\"dispP95_ms\":%lu,\"dispMax_ms\":%lu,"
+        "\"prxP95_ms\":%lu,\"prxMax_ms\":%lu,\"loopMax_us\":%lu,"
+        "\"heapMin\":%lu,\"blockMin\":%lu,\"wifiMax_us\":%lu,\"fsMax_us\":%lu,"
+        "\"sdMax_us\":%lu,\"flushMax_us\":%lu,\"bleDrainMax_us\":%lu",
         (unsigned long)nowMs,
         (unsigned long)rxPackets,
         (unsigned long)qDrop,
@@ -77,10 +105,21 @@ void PerfReporterModule::process(unsigned long nowMs) {
         (unsigned long)flushMaxUs,
         (unsigned long)bleDrainMaxUs);
 
+    debugLogger->logPerfMetrics(fields);
+
     uint32_t qDropDelta = (qDrop > lastQDrop) ? (qDrop - lastQDrop) : 0;
     lastQDrop = qDrop;
 
-    if (!investigationActive && (loopMaxUs > 200000 || qDropDelta > 0)) {
+    // Auto-trigger investigation on stalls, with 60s cooldown
+    bool triggerCondition = (loopMaxUs > LOOP_STALL_THRESHOLD_US || qDropDelta > 0);
+    bool cooldownExpired = (nowMs - lastAutoTriggerMs >= AUTO_TRIGGER_COOLDOWN_MS);
+    
+    if (!investigationActive && triggerCondition && cooldownExpired) {
+        lastAutoTriggerMs = nowMs;
+        // Log trigger event before starting investigation
+        debugLogger->logf(DebugLogCategory::System,
+            "investigation_triggered loopMax_us=%lu qDropDelta=%lu",
+            (unsigned long)loopMaxUs, (unsigned long)qDropDelta);
         startInvestigationBurst(nowMs, false);
     }
 
@@ -111,6 +150,10 @@ void PerfReporterModule::applyBenchmarkPreset(bool persist) {
 
 void PerfReporterModule::startInvestigationBurst(unsigned long nowMs, bool persist) {
     if (!debugLogger || !settings) return;
+    
+    // Snapshot current config before modifying (for restore after burst)
+    snapshotLogConfig();
+    
     bool deferSave = !persist;
 
     settings->setEnableDebugLogging(true, deferSave);

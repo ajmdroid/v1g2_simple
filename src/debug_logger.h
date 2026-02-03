@@ -87,7 +87,7 @@ public:
     void syncTimeFromNTP(int year, int month, int day, int hour, int minute, int second);
     bool hasValidTime() const { return timeValid; }
     time_t getUnixTime() const;
-    String getISO8601Timestamp() const;
+    void getISO8601Timestamp(char* buf, size_t bufSize) const;
 
     // Append formatted line (auto timestamp + newline).
     void logf(DebugLogCategory category, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -98,6 +98,9 @@ public:
     // Structured logging for JSON format (key-value pairs)
     void logEvent(DebugLogCategory category, const char* event, 
                   const char* jsonFields = nullptr);  // Additional JSON fields
+    
+    // Structured perf metrics (avoids message truncation)
+    void logPerfMetrics(const char* fields);  // Pre-formatted key=value pairs
     
     // Buffer management - call periodically from main loop
     void update();  // Check if time-based flush needed

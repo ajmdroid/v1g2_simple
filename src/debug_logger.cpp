@@ -225,6 +225,30 @@ void DebugLogger::logEvent(DebugLogCategory category, const char* event, const c
     bufferLine(line);
 }
 
+void DebugLogger::logPerfMetrics(const char* fields) {
+    if (!categoryAllowed(DebugLogCategory::PerfMetrics)) return;
+    
+    unsigned long now = millis();
+    char line[512];
+    
+    if (logFormat == DebugLogFormat::JSON) {
+        // Structured NDJSON: numeric fields are first-class, no message escaping
+        char ts[32];
+        if (timeValid) {
+            getISO8601Timestamp(ts, sizeof(ts));
+        } else {
+            strcpy(ts, "1970-01-01T00:00:00Z");
+        }
+        snprintf(line, sizeof(line),
+            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"perf\",%s}",
+            ts, now, fields);
+    } else {
+        // TEXT format: METRICS prefix for grep-ability
+        snprintf(line, sizeof(line), "[%10lu ms] METRICS %s", now, fields);
+    }
+    bufferLine(line);
+}
+
 const char* DebugLogger::categoryName(DebugLogCategory category) const {
     switch (category) {
         case DebugLogCategory::Alerts:      return "alerts";
@@ -247,9 +271,10 @@ void DebugLogger::formatTextLine(char* dest, size_t destSize, DebugLogCategory c
     unsigned long now = millis();
     
     if (timeValid) {
-        // Use real timestamp if available
-        String ts = getISO8601Timestamp();
-        snprintf(dest, destSize, "[%s] [%10lu ms] %s", ts.c_str(), now, message);
+        // Use real timestamp if available (heap-free)
+        char ts[32];
+        getISO8601Timestamp(ts, sizeof(ts));
+        snprintf(dest, destSize, "[%s] [%10lu ms] %s", ts, now, message);
     } else {
         // Fall back to millis only
         snprintf(dest, destSize, "[%10lu ms] %s", now, message);
@@ -259,7 +284,14 @@ void DebugLogger::formatTextLine(char* dest, size_t destSize, DebugLogCategory c
 void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory category, 
                                   const char* message, const char* extraFields) {
     unsigned long now = millis();
-    String ts = timeValid ? getISO8601Timestamp() : String("1970-01-01T00:00:00Z");
+    
+    // Heap-free timestamp
+    char ts[32];
+    if (timeValid) {
+        getISO8601Timestamp(ts, sizeof(ts));
+    } else {
+        strcpy(ts, "1970-01-01T00:00:00Z");
+    }
     
     // Time source string for JSON
     const char* sourceStr = "none";
@@ -284,11 +316,11 @@ void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory c
     if (extraFields && extraFields[0]) {
         snprintf(dest, destSize, 
             "{\"@timestamp\":\"%s\",\"millis\":%lu,\"timeSource\":\"%s\",\"category\":\"%s\",\"message\":\"%s\",%s}",
-            ts.c_str(), now, sourceStr, categoryName(category), escapedMsg, extraFields);
+            ts, now, sourceStr, categoryName(category), escapedMsg, extraFields);
     } else {
         snprintf(dest, destSize, 
             "{\"@timestamp\":\"%s\",\"millis\":%lu,\"timeSource\":\"%s\",\"category\":\"%s\",\"message\":\"%s\"}",
-            ts.c_str(), now, sourceStr, categoryName(category), escapedMsg);
+            ts, now, sourceStr, categoryName(category), escapedMsg);
     }
 }
 
@@ -342,14 +374,16 @@ time_t DebugLogger::getUnixTime() const {
     return timeSyncEpoch + (elapsed / 1000);
 }
 
-String DebugLogger::getISO8601Timestamp() const {
+void DebugLogger::getISO8601Timestamp(char* buf, size_t bufSize) const {
     time_t now = getUnixTime();
-    if (now == 0) return "1970-01-01T00:00:00Z";
+    if (now == 0 || bufSize < 21) {
+        if (bufSize > 0) strncpy(buf, "1970-01-01T00:00:00Z", bufSize - 1);
+        return;
+    }
     
-    struct tm* timeinfo = gmtime(&now);
-    char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", timeinfo);
-    return String(buf);
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);  // Thread-safe, no heap
+    strftime(buf, bufSize, "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
 }
 
 bool DebugLogger::exists() const {
