@@ -592,10 +592,13 @@ static const char* WIFI_CLIENT_NS = "v1wificlient";
 
 String SettingsManager::getWifiClientPassword() {
     Preferences prefs;
-    if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
+    if (!prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write (create namespace if missing)
         return "";
     }
-    String storedPwd = prefs.getString("password", "");
+    String storedPwd;
+    if (prefs.isKey("password")) {
+        storedPwd = prefs.getString("password", "");
+    }
     prefs.end();
     
     // Password is XOR obfuscated

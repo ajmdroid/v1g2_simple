@@ -131,9 +131,17 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
             File file = LittleFS.open(gzPath.c_str(), "r");
             if (file) {
                 size_t fileSize = file.size();
+                String etag = String("\"") + String(path) + ".gz-" + String(fileSize) + String("\"");
+                if (server.header("If-None-Match") == etag) {
+                    server.sendHeader("ETag", etag);
+                    server.send(304, contentType, "");
+                    file.close();
+                    return true;
+                }
                 server.setContentLength(fileSize);
                 server.sendHeader("Content-Encoding", "gzip");
                 server.sendHeader("Cache-Control", "max-age=86400");
+                server.sendHeader("ETag", etag);
                 server.send(200, contentType, "");
                 Serial.printf("[HTTP] 200 %s -> %s.gz (%u bytes)\n", path, path, fileSize);
                 
@@ -158,7 +166,15 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
         return false;
     }
     size_t fileSize = file.size();
+    String etag = String("\"") + String(path) + "-" + String(fileSize) + String("\"");
+    if (server.header("If-None-Match") == etag) {
+        server.sendHeader("ETag", etag);
+        server.send(304, contentType, "");
+        file.close();
+        return true;
+    }
     server.sendHeader("Cache-Control", "max-age=86400");
+    server.sendHeader("ETag", etag);
     server.streamFile(file, contentType);
     Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
     file.close();
@@ -233,9 +249,9 @@ bool WiFiManager::startSetupMode() {
     setupAP();
     setupWebServer();
 
-    // Collect Accept-Encoding header for GZIP support
-    const char* headerKeys[] = {"Accept-Encoding"};
-    server.collectHeaders(headerKeys, 1);
+    // Collect headers for GZIP support and caching
+    const char* headerKeys[] = {"Accept-Encoding", "If-None-Match"};
+    server.collectHeaders(headerKeys, 2);
 
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
