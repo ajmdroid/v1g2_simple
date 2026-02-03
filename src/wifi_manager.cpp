@@ -32,7 +32,25 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include "esp_sntp.h"
+#include "esp_netif_sntp.h"
 #include <time.h>
+
+// Async NTP sync state (callback runs in SNTP task context)
+static volatile bool s_ntpSyncPending = false;   // Waiting for sync
+static volatile bool s_ntpSyncComplete = false;  // Sync succeeded
+static struct tm s_ntpTimeInfo;                   // Cached time from callback
+static portMUX_TYPE s_ntpMux = portMUX_INITIALIZER_UNLOCKED;
+
+// NTP sync callback - called from lwIP SNTP task when time syncs
+static void onNtpTimeSynced(struct timeval *tv) {
+    portENTER_CRITICAL(&s_ntpMux);
+    // Cache the synced time for main loop to consume
+    time_t nowSecs = tv->tv_sec;
+    gmtime_r(&nowSecs, &s_ntpTimeInfo);
+    s_ntpSyncComplete = true;
+    s_ntpSyncPending = false;
+    portEXIT_CRITICAL(&s_ntpMux);
+}
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
@@ -746,22 +764,26 @@ void WiFiManager::checkWifiClientStatus() {
         }
         
         case WIFI_CLIENT_CONNECTED: {
-            // Sync time from NTP once per connection session
+            // Async NTP sync - non-blocking
             static bool ntpSyncedThisConnection = false;
-            static unsigned long lastNtpAttemptMs = 0;
+            static bool ntpStartedThisConnection = false;
+            
             if (!ntpSyncedThisConnection) {
-                unsigned long now = millis();
-                if (now - lastNtpAttemptMs > 30000) {  // retry every 30s until success
-                    lastNtpAttemptMs = now;
-                    if (syncTimeFromNTP()) {
-                        ntpSyncedThisConnection = true;
-                    }
+                if (!ntpStartedThisConnection) {
+                    // Start async NTP (returns immediately)
+                    startAsyncNtpSync();
+                    ntpStartedThisConnection = true;
+                }
+                // Poll for completion (non-blocking)
+                if (checkNtpSyncStatus()) {
+                    ntpSyncedThisConnection = true;
                 }
             }
             
             if (status != WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_DISCONNECTED;
                 ntpSyncedThisConnection = false;  // Reset for next connection
+                ntpStartedThisConnection = false;
                 Serial.println("[WiFiClient] Lost connection");
                 
                 // WiFi transitioning - defer SD writes to avoid NVS flash contention
@@ -795,48 +817,72 @@ void WiFiManager::checkWifiClientStatus() {
     }
 }
 
-// Sync system/log time from NTP (UTC). Called once per WiFi connection.
-bool WiFiManager::syncTimeFromNTP() {
-    static bool sntpStarted = false;
-
-    if (!sntpStarted) {
-        // Configure SNTP servers (UTC). DST handled by clients if they need local time.
-        configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
-        sntpStarted = true;
+// Start async NTP sync (non-blocking). Call checkNtpSyncStatus() to poll result.
+void WiFiManager::startAsyncNtpSync() {
+    static bool sntpInitialized = false;
+    
+    if (sntpInitialized) {
+        // Already running - just mark pending
+        portENTER_CRITICAL(&s_ntpMux);
+        s_ntpSyncPending = true;
+        portEXIT_CRITICAL(&s_ntpMux);
+        return;
     }
-
-    // Bounded wait for time to become valid.
-    struct tm timeinfo;
-    bool gotTime = false;
-    const int maxRetries = 8;
-    const int retryDelayMs = 150;
-    for (int i = 0; i < maxRetries; ++i) {
-        if (getLocalTime(&timeinfo, 0)) {
-            gotTime = true;
-            break;
-        }
-        delay(retryDelayMs);
+    
+    // Initialize SNTP with async callback (ESP-IDF modern API)
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
+        ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov", "time.google.com"));
+    config.sync_cb = onNtpTimeSynced;  // Async callback when time syncs
+    config.start = true;                // Auto-start SNTP service
+    
+    esp_err_t err = esp_netif_sntp_init(&config);
+    if (err == ESP_OK) {
+        sntpInitialized = true;
+        portENTER_CRITICAL(&s_ntpMux);
+        s_ntpSyncPending = true;
+        s_ntpSyncComplete = false;
+        portEXIT_CRITICAL(&s_ntpMux);
+        Serial.println("[WiFiClient] Async NTP sync started");
+    } else {
+        Serial.printf("[WiFiClient] SNTP init failed: %s\n", esp_err_to_name(err));
     }
+}
 
-    if (!gotTime) {
-        Serial.println("[WiFiClient] NTP sync failed (timeout)");
-        return false;
+// Check if async NTP sync completed (non-blocking). Returns true once on success.
+bool WiFiManager::checkNtpSyncStatus() {
+    portENTER_CRITICAL(&s_ntpMux);
+    bool complete = s_ntpSyncComplete;
+    struct tm timeinfo = s_ntpTimeInfo;  // Copy under lock
+    if (complete) {
+        s_ntpSyncComplete = false;  // Clear so we only return true once
     }
+    portEXIT_CRITICAL(&s_ntpMux);
+    
+    if (complete) {
+        // Sync succeeded - update debug logger with cached time
+        debugLogger.syncTimeFromNTP(
+            timeinfo.tm_year + 1900,
+            timeinfo.tm_mon + 1,
+            timeinfo.tm_mday,
+            timeinfo.tm_hour,
+            timeinfo.tm_min,
+            timeinfo.tm_sec
+        );
+        
+        Serial.printf("[WiFiClient] NTP time synced: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
+                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        return true;
+    }
+    return false;
+}
 
-    // Record time in debug logger and system clock (already set by getLocalTime)
-    debugLogger.syncTimeFromNTP(
-        timeinfo.tm_year + 1900,
-        timeinfo.tm_mon + 1,
-        timeinfo.tm_mday,
-        timeinfo.tm_hour,
-        timeinfo.tm_min,
-        timeinfo.tm_sec
-    );
-
-    Serial.printf("[WiFiClient] NTP time synced: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    return true;
+// Check if NTP sync is in progress
+bool WiFiManager::isNtpSyncPending() const {
+    portENTER_CRITICAL(&s_ntpMux);
+    bool pending = s_ntpSyncPending;
+    portEXIT_CRITICAL(&s_ntpMux);
+    return pending;
 }
 
 void WiFiManager::handleStatus() {

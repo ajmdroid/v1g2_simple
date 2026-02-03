@@ -69,8 +69,10 @@ public:
     void checkWifiClientStatus();  // Call in loop() to manage STA connection
     String getConnectedSSID() const;  // Returns empty if not connected
     
-    // NTP time sync (when WiFi connected)
-    bool syncTimeFromNTP();
+    // Async NTP time sync (non-blocking, when WiFi connected)
+    void startAsyncNtpSync();         // Start async NTP sync (returns immediately)
+    bool checkNtpSyncStatus();        // Check if sync completed (call in loop)
+    bool isNtpSyncPending() const;    // True if sync in progress
     
     // Callbacks for alert data (to display on web page)
     void setAlertCallback(std::function<String()> callback) { getAlertJson = callback; }
