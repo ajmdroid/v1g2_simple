@@ -131,6 +131,12 @@ void perfRecordFlushUs(uint32_t us) {
     }
 }
 
+void perfRecordDisplayRenderUs(uint32_t us) {
+    if (us > perfExtended.displayRenderMaxUs) {
+        perfExtended.displayRenderMaxUs = us;
+    }
+}
+
 void perfRecordBleDrainUs(uint32_t us) {
     if (us > perfExtended.bleDrainMaxUs) {
         perfExtended.bleDrainMaxUs = us;
@@ -172,6 +178,7 @@ uint32_t perfGetWifiMaxUs() { return perfExtended.wifiMaxUs; }
 uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
 uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
+uint32_t perfGetDisplayRenderMaxUs() { return perfExtended.displayRenderMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
 uint32_t perfGetBleConnectMaxUs() { return perfExtended.bleConnectMaxUs; }
 uint32_t perfGetBleDiscoveryMaxUs() { return perfExtended.bleDiscoveryMaxUs; }

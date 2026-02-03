@@ -1,5 +1,6 @@
 #include "display_pipeline_module.h"
 #include "audio_beep.h"  // play_frequency_voice, play_direction_only, play_threat_escalation
+#include "perf_metrics.h"  // perfRecordDisplayRenderUs
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1Display* displayPtr,
@@ -314,8 +315,12 @@ void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long
 }
 
 void DisplayPipelineModule::recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs) {
-    if (!PERF_TIMING_LOGS) return;
     unsigned long dur = endUs - startUs;
+    
+    // Always record to perf metrics for scorecard attribution
+    perfRecordDisplayRenderUs(dur);
+    
+    if (!PERF_TIMING_LOGS) return;
     perfTimingAccum += dur;
     perfTimingCount++;
     if (dur > perfTimingMax) perfTimingMax = dur;

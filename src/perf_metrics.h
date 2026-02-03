@@ -137,6 +137,7 @@ struct PerfExtendedMetrics {
     uint32_t fsMaxUs = 0;
     uint32_t sdMaxUs = 0;
     uint32_t flushMaxUs = 0;
+    uint32_t displayRenderMaxUs = 0;  // Full display render time (draw + flush)
     uint32_t bleDrainMaxUs = 0;
     // BLE connection path timing (for diagnosing reconnect stalls)
     uint32_t bleConnectMaxUs = 0;     // pClient->connect() duration
@@ -154,6 +155,7 @@ struct PerfExtendedMetrics {
         fsMaxUs = 0;
         sdMaxUs = 0;
         flushMaxUs = 0;
+        displayRenderMaxUs = 0;
         bleDrainMaxUs = 0;
         bleConnectMaxUs = 0;
         bleDiscoveryMaxUs = 0;
@@ -172,6 +174,7 @@ void perfRecordWifiProcessUs(uint32_t us);
 void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
 void perfRecordFlushUs(uint32_t us);
+void perfRecordDisplayRenderUs(uint32_t us);
 void perfRecordBleDrainUs(uint32_t us);
 void perfRecordBleConnectUs(uint32_t us);
 void perfRecordBleDiscoveryUs(uint32_t us);
@@ -189,6 +192,7 @@ uint32_t perfGetWifiMaxUs();
 uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
 uint32_t perfGetFlushMaxUs();
+uint32_t perfGetDisplayRenderMaxUs();
 uint32_t perfGetBleDrainMaxUs();
 uint32_t perfGetBleConnectMaxUs();
 uint32_t perfGetBleDiscoveryMaxUs();

@@ -66,6 +66,7 @@ class PerfRecord:
     ble_subs_max_us: int = 0
     ble_process_max_us: int = 0
     flush_max_us: int = 0
+    display_render_max_us: int = 0
     heap_min: int = 0
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -91,6 +92,7 @@ class PerfRecord:
             ble_subs_max_us=data.get("bleSubsMax_us", 0),
             ble_process_max_us=data.get("bleProcessMax_us", 0),
             flush_max_us=data.get("flushMax_us", 0),
+            display_render_max_us=data.get("displayRenderMax_us", 0),
             heap_min=data.get("heapMin", 0),
             raw=data,
         )
@@ -110,6 +112,7 @@ class PerfRecord:
             "fsMax_us": self.fs_max_us,
             "sdMax_us": self.sd_max_us,
             "flushMax_us": self.flush_max_us,
+            "displayRenderMax_us": self.display_render_max_us,
         }
 
     def find_attribution(self) -> Optional[str]:
