@@ -27,8 +27,8 @@ void DebugLogger::setEnabled(bool enabledFlag) {
         rotateIfNeeded();
         bufferPos = 0;
         lastFlushMs = millis();
-        // Enable async mode for non-blocking writes
-        enableAsyncMode();
+        // NOTE: Async mode must be enabled explicitly via enableAsyncMode()
+        // This allows caller to control when the background task starts
     } else if (!enabled && wasEnabled) {
         // Disable async mode first (drains queue)
         disableAsyncMode();
@@ -193,20 +193,25 @@ void DebugLogger::flushBufferAsync() {
     // Allocate message on heap (queue holds pointers, not data)
     WriteMessage* msg = new (std::nothrow) WriteMessage();
     if (!msg) {
-        // Heap exhausted - fall back to sync write
-        flushBufferSync();
+        // Heap exhausted - DROP, don't block (per project rules: drops OK, blocking NOT OK)
+        logDropCount++;
+        bufferPos = 0;  // Discard buffer
+        lastFlushMs = millis();
         return;
     }
     
-    // Copy buffer to message
-    memcpy(msg->data, buffer, bufferPos);
-    msg->length = bufferPos;
+    // Copy buffer to message (truncate if buffer > message size)
+    size_t copyLen = (bufferPos <= DEBUG_LOG_MESSAGE_SIZE) ? bufferPos : DEBUG_LOG_MESSAGE_SIZE;
+    memcpy(msg->data, buffer, copyLen);
+    msg->length = copyLen;
     
-    // Non-blocking queue send
+    // Non-blocking queue send (0 timeout - never block the hot path)
     if (xQueueSend(writeQueue, &msg, 0) != pdTRUE) {
-        // Queue full - delete message and fall back to sync
+        // Queue full - DROP, don't block (per project rules: drops OK, blocking NOT OK)
         delete msg;
-        flushBufferSync();
+        logDropCount++;
+        bufferPos = 0;  // Discard buffer
+        lastFlushMs = millis();
         return;
     }
     
@@ -602,8 +607,8 @@ void DebugLogger::enableAsyncMode() {
             Serial.println("[DebugLog] ERROR: Failed to create write queue");
             return;
         }
-        Serial.printf("[DebugLog] Write queue created (%u items)\n",
-                      (unsigned)DEBUG_LOG_QUEUE_DEPTH);
+        Serial.printf("[DebugLog] Write queue created (%u items x %u bytes/msg)\n",
+                      (unsigned)DEBUG_LOG_QUEUE_DEPTH, (unsigned)DEBUG_LOG_MESSAGE_SIZE);
     }
     
     // Create writer task on Core 0 at low priority

@@ -29,7 +29,9 @@ inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% fu
 inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
 
 // Async write task settings (Core 0, low priority)
-inline constexpr size_t DEBUG_LOG_QUEUE_DEPTH = 4;          // Queue up to 4 buffers (16KB total)
+// Message size kept small - each queued message is ~512 bytes, not 4KB
+inline constexpr size_t DEBUG_LOG_MESSAGE_SIZE = 512;       // Max bytes per queued message
+inline constexpr size_t DEBUG_LOG_QUEUE_DEPTH = 16;         // Queue up to 16 messages (~8KB total)
 inline constexpr size_t DEBUG_LOG_WRITER_STACK_SIZE = 3072; // Stack for writer task
 
 // WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
@@ -110,9 +112,11 @@ public:
     void flush();   // Force flush buffer to SD (call on shutdown/crash)
     
     // Async mode control (FreeRTOS task for non-blocking SD writes)
+    // NOTE: Not auto-enabled - must be explicitly called after setEnabled()
     void enableAsyncMode();   // Start background writer task on Core 0
     void disableAsyncMode();  // Stop task, switch to sync writes
     bool isAsyncMode() const { return asyncMode; }
+    uint32_t getDropCount() const { return logDropCount; }  // Messages dropped when queue full
     
     // WiFi transition deferral - defers SD writes during WiFi reconnection
     // to avoid NVS/flash contention that can cause multi-second stalls
@@ -161,11 +165,14 @@ private:
     QueueHandle_t writeQueue = nullptr;
     TaskHandle_t writerTaskHandle = nullptr;
     
-    // Queue message structure - contains buffer snapshot
+    // Queue message structure - small fixed-size buffer
     struct WriteMessage {
-        char data[DEBUG_LOG_BUFFER_SIZE];
+        char data[DEBUG_LOG_MESSAGE_SIZE];
         size_t length;
     };
+    
+    // Drop counter - tracks messages dropped when queue full (drops OK per project rules)
+    volatile uint32_t logDropCount = 0;
     
     void flushBufferSync();                          // Synchronous write (direct or from task)
     void flushBufferAsync();                         // Queue buffer for async write
