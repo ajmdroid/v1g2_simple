@@ -391,6 +391,17 @@ static struct {
 
 static TaskHandle_t audioTaskHandle = NULL;
 
+// ============================================================================
+// Static task allocation for SD audio playback
+// Pre-allocates stack and TCB at compile time to avoid heap allocation failures
+// when heap is low during alerts. This is critical because xTaskCreate fails
+// when there isn't enough contiguous heap for the stack (e.g., 32KB stack needs
+// 32KB+ contiguous heap, but we've seen heapMin as low as 6KB).
+// ============================================================================
+static constexpr int SD_AUDIO_TASK_STACK_SIZE = 8192;  // 32KB - needed for File I/O operations
+static StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
+static StaticTask_t g_sdAudioTaskTCB;
+
 // Background task for audio playback - runs on separate core to avoid blocking main loop
 // Uses pre-allocated g_stereoChunkBuffer - streams in chunks instead of full buffer
 static void audio_playback_task(void* pvParameters) {
@@ -776,17 +787,20 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
         g_sdAudioTaskParams.filePaths[i][47] = '\0';
     }
     
-    BaseType_t result = xTaskCreatePinnedToCore(
+    // Use static task creation - stack is pre-allocated at compile time
+    // This avoids heap allocation failures when heap is low during alerts
+    audioTaskHandle = xTaskCreateStaticPinnedToCore(
         sd_audio_playback_task,
         "sd_audio",
-        8192,
+        SD_AUDIO_TASK_STACK_SIZE,
         nullptr,  // Params passed via global struct
-        1,
-        &audioTaskHandle,
-        1
+        1,        // Priority (low)
+        g_sdAudioTaskStack,
+        &g_sdAudioTaskTCB,
+        1         // Core 1
     );
     
-    if (result != pdPASS) {
+    if (audioTaskHandle == NULL) {
         AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
         audio_playing = false;
         return false;
