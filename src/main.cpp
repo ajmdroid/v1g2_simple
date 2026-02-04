@@ -57,6 +57,7 @@
 #include "modules/obd/obd_auto_connector_module.h"
 #include "modules/lockout/auto_lockout_maintenance_module.h"
 #include "esp_heap_caps.h"
+#include "esp_core_dump.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
@@ -139,6 +140,79 @@ static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
     if (cfg.lockout) mask |= (1u << 10);
     if (cfg.touch) mask |= (1u << 11);
     return mask;
+}
+
+// ============================================================================
+// PANIC BREADCRUMBS: Log heap stats + coredump info on crash recovery
+// ============================================================================
+static void logPanicBreadcrumbs() {
+    esp_reset_reason_t reason = esp_reset_reason();
+    bool isCrash = (reason == ESP_RST_PANIC || 
+                    reason == ESP_RST_INT_WDT || 
+                    reason == ESP_RST_TASK_WDT || 
+                    reason == ESP_RST_WDT);
+    
+    if (!isCrash) return;
+    
+    Serial.println("\n!!! CRASH RECOVERY DETECTED !!!");
+    Serial.printf("Reset reason: %s\n", resetReasonToString(reason));
+    
+    // Log current heap stats (post-crash, but helpful for baseline)
+    uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    uint32_t minFreeHeap = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+    Serial.printf("Heap now: free=%lu, largest=%lu, minEver=%lu\n",
+                  (unsigned long)freeHeap, (unsigned long)largestBlock, (unsigned long)minFreeHeap);
+    
+    // Check for coredump
+    esp_core_dump_summary_t summary;
+    esp_err_t err = esp_core_dump_get_summary(&summary);
+    if (err == ESP_OK) {
+        Serial.println("Coredump found:");
+        Serial.printf("  Crashed task: %s\n", summary.exc_task);
+        Serial.printf("  Exception cause: %lu\n", (unsigned long)summary.ex_info.exc_cause);
+        Serial.printf("  Exception PC: 0x%08lx\n", (unsigned long)summary.exc_pc);
+        
+        // Print backtrace if available
+        if (summary.exc_bt_info.depth > 0) {
+            Serial.print("  Backtrace: ");
+            for (int i = 0; i < summary.exc_bt_info.depth && i < 16; i++) {
+                Serial.printf("0x%08lx ", (unsigned long)summary.exc_bt_info.bt[i]);
+            }
+            Serial.println();
+        }
+    } else {
+        Serial.printf("No coredump available (err=%d) - check serial log for backtrace\n", err);
+    }
+    
+    Serial.println("!!! END CRASH RECOVERY INFO !!!\n");
+    
+    // Best-effort: Try to write panic.txt to LittleFS (SD not mounted yet)
+    // This runs BEFORE storage init, so we use LittleFS directly
+    if (LittleFS.begin(true)) {  // true = format if mount fails
+        File f = LittleFS.open("/panic.txt", FILE_WRITE);
+        if (f) {
+            f.printf("CRASH at boot (millis=%lu)\n", millis());
+            f.printf("Reset reason: %s\n", resetReasonToString(reason));
+            f.printf("Heap: free=%lu, largest=%lu, minEver=%lu\n",
+                     (unsigned long)freeHeap, (unsigned long)largestBlock, (unsigned long)minFreeHeap);
+            
+            if (err == ESP_OK) {
+                f.printf("Task: %s\n", summary.exc_task);
+                f.printf("PC: 0x%08lx\n", (unsigned long)summary.exc_pc);
+                if (summary.exc_bt_info.depth > 0) {
+                    f.print("BT: ");
+                    for (int i = 0; i < summary.exc_bt_info.depth && i < 16; i++) {
+                        f.printf("0x%08lx ", (unsigned long)summary.exc_bt_info.bt[i]);
+                    }
+                    f.println();
+                }
+            }
+            f.close();
+            Serial.println("[PANIC] Wrote /panic.txt to LittleFS");
+        }
+        // Don't end LittleFS - let storage manager handle it
+    }
 }
 
 // Log NVS statistics and perform cleanup if needed
@@ -333,6 +407,9 @@ void setup() {
 
     Serial.begin(115200);
     delay(200);  // Reduced from 500ms - brief delay for serial init
+    
+    // PANIC BREADCRUMBS: Log crash info FIRST (before any other init)
+    logPanicBreadcrumbs();
     
     // Check NVS health early - before other subsystems start using it
     nvsHealthCheck();

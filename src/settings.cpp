@@ -418,7 +418,7 @@ void SettingsManager::load() {
     
     // Development/Debug settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
-    settings.enableDebugLogging = preferences.getBool("debugLog", true);  // Enable by default for diagnostics
+    settings.enableDebugLogging = preferences.getBool("debugLog", false);  // Off by default for stability
     settings.logAlerts = preferences.getBool("logAlerts", true);
     settings.logWifi = preferences.getBool("logWifi", false);
     settings.logBle = preferences.getBool("logBle", false);
