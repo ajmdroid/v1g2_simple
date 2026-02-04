@@ -194,7 +194,7 @@ void DebugLogger::flushBufferAsync() {
     WriteMessage* msg = new (std::nothrow) WriteMessage();
     if (!msg) {
         // Heap exhausted - DROP, don't block (per project rules: drops OK, blocking NOT OK)
-        logDropCount++;
+        logDropCount.fetch_add(1, std::memory_order_relaxed);
         bufferPos = 0;  // Discard buffer
         lastFlushMs = millis();
         return;
@@ -209,10 +209,17 @@ void DebugLogger::flushBufferAsync() {
     if (xQueueSend(writeQueue, &msg, 0) != pdTRUE) {
         // Queue full - DROP, don't block (per project rules: drops OK, blocking NOT OK)
         delete msg;
-        logDropCount++;
+        logDropCount.fetch_add(1, std::memory_order_relaxed);
         bufferPos = 0;  // Discard buffer
         lastFlushMs = millis();
         return;
+    }
+    
+    // Track queue high-water mark (for monitoring queue pressure)
+    UBaseType_t depth = uxQueueMessagesWaiting(writeQueue);
+    uint32_t oldHW = logQueueHW.load(std::memory_order_relaxed);
+    while (depth > oldHW && !logQueueHW.compare_exchange_weak(oldHW, depth, std::memory_order_relaxed)) {
+        // CAS loop to update max
     }
     
     // Buffer queued successfully - clear local buffer

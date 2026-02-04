@@ -15,6 +15,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <time.h>
+#include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -116,7 +117,8 @@ public:
     void enableAsyncMode();   // Start background writer task on Core 0
     void disableAsyncMode();  // Stop task, switch to sync writes
     bool isAsyncMode() const { return asyncMode; }
-    uint32_t getDropCount() const { return logDropCount; }  // Messages dropped when queue full
+    uint32_t getDropCount() const { return logDropCount.load(std::memory_order_relaxed); }  // Messages dropped when queue full
+    uint32_t getQueueHighWater() const { return logQueueHW.load(std::memory_order_relaxed); }  // Max queue depth observed
     
     // WiFi transition deferral - defers SD writes during WiFi reconnection
     // to avoid NVS/flash contention that can cause multi-second stalls
@@ -171,8 +173,9 @@ private:
         size_t length;
     };
     
-    // Drop counter - tracks messages dropped when queue full (drops OK per project rules)
-    volatile uint32_t logDropCount = 0;
+    // Metrics - atomic for cross-core safety (Core 1 writes, Core 0 reader task)
+    std::atomic<uint32_t> logDropCount{0};    // Messages dropped (queue full or heap exhausted)
+    std::atomic<uint32_t> logQueueHW{0};      // Queue high-water mark (max depth observed)
     
     void flushBufferSync();                          // Synchronous write (direct or from task)
     void flushBufferAsync();                         // Queue buffer for async write

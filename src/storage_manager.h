@@ -60,6 +60,14 @@ public:
     SemaphoreHandle_t getSDMutex() const { return sdMutex; }
     
     // RAII helper for automatic mutex acquisition
+    // 
+    // SD ACCESS POLICY (enforced for stability):
+    // - Core 1 (main loop): MUST use SDTryLock (0-timeout) - skip/defer on failure
+    // - Core 0 (writer tasks): MAY use SDLock (blocking) - owns SD access
+    // - Boot/shutdown: MAY use SDLock (blocking) - no real-time constraints
+    //
+    // Rationale: Tier-1 paths (BLE→parse→display) must NEVER block for Tier-7 (logging/persistence).
+    // "Drops OK, blocking NOT OK"
     class SDLock {
     public:
         explicit SDLock(SemaphoreHandle_t mutex, TickType_t timeout = pdMS_TO_TICKS(1000)) 
@@ -73,6 +81,31 @@ public:
         operator bool() const { return acquired_; }
         
         // Manual early release - useful when you want to release lock before scope ends
+        void release() {
+            if (acquired_ && mutex_) {
+                xSemaphoreGive(mutex_);
+                acquired_ = false;
+            }
+        }
+    private:
+        SemaphoreHandle_t mutex_;
+        bool acquired_;
+    };
+    
+    // Non-blocking try-lock for Core 1 paths - NEVER blocks, returns immediately
+    // Use this from main loop to enforce the "no blocking" invariant
+    class SDTryLock {
+    public:
+        explicit SDTryLock(SemaphoreHandle_t mutex) 
+            : mutex_(mutex), acquired_(false) {
+            if (mutex_) {
+                acquired_ = (xSemaphoreTake(mutex_, 0) == pdTRUE);  // 0 timeout = instant
+            }
+        }
+        ~SDTryLock() { release(); }
+        bool acquired() const { return acquired_; }
+        operator bool() const { return acquired_; }
+        
         void release() {
             if (acquired_ && mutex_) {
                 xSemaphoreGive(mutex_);
