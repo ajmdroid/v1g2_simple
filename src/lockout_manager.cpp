@@ -59,27 +59,44 @@ float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) c
 }
 
 bool LockoutManager::loadFromJSON(const char* jsonPath) {
-  // Acquire SD mutex to protect file I/O
-  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
-  if (!sdLock) {
-    LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for load\n");
+  fs::FS* fs = nullptr;
+  bool needsRestore = false;
+  
+  // Acquire SD mutex to check file existence
+  {
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+      LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for load\n");
+      return false;
+    }
+    
+    fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(jsonPath)) {
+      LOCKOUT_LOG("[Lockout] No lockout file found at %s\n", jsonPath);
+      // Try secondary LittleFS copy if SD is primary
+      fs::FS* lfs = storageManager.getLittleFS();
+      if (lfs && lfs->exists(jsonPath)) {
+        fs = lfs;
+      } else {
+        // Need to try SD restore - but must release lock first to avoid deadlock
+        needsRestore = true;
+      }
+    }
+  }  // Release SD lock before calling checkAndRestoreFromSD
+  
+  if (needsRestore) {
+    // Try to restore from SD backup (acquires its own lock)
+    if (checkAndRestoreFromSD()) {
+      return true;
+    }
     return false;
   }
   
-  fs::FS* fs = storageManager.getFilesystem();
-  if (!fs || !fs->exists(jsonPath)) {
-    LOCKOUT_LOG("[Lockout] No lockout file found at %s\n", jsonPath);
-    // Try secondary LittleFS copy if SD is primary
-    fs::FS* lfs = storageManager.getLittleFS();
-    if (lfs && lfs->exists(jsonPath)) {
-      fs = lfs;
-    } else {
-      // Try to restore from SD backup
-      if (checkAndRestoreFromSD()) {
-        return true;
-      }
-      return false;
-    }
+  // Re-acquire lock for actual file read
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+  if (!sdLock) {
+    LOCKOUT_LOG("[Lockout] Failed to re-acquire SD mutex for load\n");
+    return false;
   }
   
   File file = fs->open(jsonPath, "r");

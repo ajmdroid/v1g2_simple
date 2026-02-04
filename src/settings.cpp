@@ -364,6 +364,11 @@ void SettingsManager::load() {
     // Determine WiFi mode based on client enabled state
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
+    // Debug: Log WiFi client settings on load
+    Serial.printf("[Settings] WiFi client: enabled=%s, SSID='%s'\n",
+                  settings.wifiClientEnabled ? "true" : "false",
+                  settings.wifiClientSSID.c_str());
+    
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);

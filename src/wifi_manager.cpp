@@ -772,12 +772,9 @@ void WiFiManager::checkWifiClientStatus() {
         
         case WIFI_CLIENT_DISCONNECTED:
         case WIFI_CLIENT_FAILED: {
-            // Defer WiFi client operations until V1 is connected
-            // This prevents WiFi.begin() from blocking BLE scan/connect
-            if (isV1Connected && !isV1Connected()) {
-                // V1 not connected yet - defer auto-reconnect
-                break;
-            }
+            // Note: Previously deferred WiFi until V1 connected to avoid blocking BLE.
+            // Removed: WiFi.begin() is non-blocking on ESP32-S3, and users want
+            // auto-connect for log download testing without V1 present.
             
             // Auto-reconnect if we have saved credentials
             const V1Settings& settings = settingsManager.get();
