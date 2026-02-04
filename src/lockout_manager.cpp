@@ -60,7 +60,7 @@ float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) c
 
 bool LockoutManager::loadFromJSON(const char* jsonPath) {
   // Acquire SD mutex to protect file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for load\n");
     return false;
@@ -182,7 +182,7 @@ bool LockoutManager::saveToJSON(const char* jsonPath, bool skipBackup) {
   }
   
   // Acquire SD mutex to protect file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for save\n");
     return false;
@@ -422,7 +422,7 @@ bool LockoutManager::backupToSD() {
   }
   
   // Acquire SD mutex to protect file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for backup\n");
     return false;
@@ -474,7 +474,7 @@ bool LockoutManager::restoreFromSD() {
   }
   
   // Acquire SD mutex to protect file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for restore\n");
     return false;

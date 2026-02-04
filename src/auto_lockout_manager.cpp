@@ -639,7 +639,7 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
   if (!fs || !fs->exists(jsonPath)) return false;
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) return false;
   
   File file = fs->open(jsonPath, "r");
@@ -811,7 +811,7 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
   }
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     Serial.println("[AutoLockout] Failed to acquire SD mutex for save");
     return false;
@@ -1025,7 +1025,7 @@ bool AutoLockoutManager::backupToSD() {
   } // Lock released
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     Serial.println("[AutoLockout] Failed to acquire SD mutex for backup");
     return false;
@@ -1048,7 +1048,7 @@ bool AutoLockoutManager::restoreFromSD() {
   }
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) {
     if (DEBUG_LOGS) {
       Serial.println("[AutoLockout] Failed to acquire SD mutex for restore");
@@ -1185,7 +1185,7 @@ void AutoLockoutManager::ensureLogExists() {
   if (!fs) return;
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) return;
   
   const char* path = logPath();
@@ -1201,7 +1201,7 @@ void AutoLockoutManager::appendLogRecordSync(const char* line) {
   if (!fs) return;
   
   // Mutex protection for SD access - critical for thread safety with Core 0 writer task
-  StorageManager::SDLock lock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
   if (!lock) return;  // Failed to acquire mutex
   
   const char* path = logPath();
@@ -1276,7 +1276,7 @@ void AutoLockoutManager::truncateLog() {
   if (!fs) return;
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) return;
   
   const char* path = logPath();
@@ -1290,7 +1290,7 @@ bool AutoLockoutManager::replayLog() {
   if (!fs) return false;
   
   // Acquire SD mutex for file I/O
-  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
   if (!sdLock) return false;
   
   const char* path = logPath();

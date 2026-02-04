@@ -114,9 +114,9 @@ public:
         bool acquired_;
     };
     
-    // Backwards compatibility alias - deprecated, use SDLockBlocking
-    // TODO: Remove after all call sites updated
-    using SDLock = SDLockBlocking;
+    // NOTE: No SDLock alias exposed here - forces explicit choice between
+    // SDLockBlocking (Core 0/boot) and SDTryLock (Core 1 loop).
+    // This prevents accidental misuse by construction.
     
     // Non-blocking try-lock for Core 1 paths - NEVER blocks, returns immediately
     // Use this from main loop to enforce the "no blocking" invariant
