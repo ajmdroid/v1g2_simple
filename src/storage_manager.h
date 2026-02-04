@@ -59,19 +59,37 @@ public:
     // when multiple cores/tasks may access SD simultaneously
     SemaphoreHandle_t getSDMutex() const { return sdMutex; }
     
-    // RAII helper for automatic mutex acquisition
-    // 
+    // Global try-lock failure counter (for monitoring SD contention from Core 1)
+    static inline uint32_t sdTryLockFailCount = 0;
+    
+    // =========================================================================
     // SD ACCESS POLICY (enforced for stability):
-    // - Core 1 (main loop): MUST use SDTryLock (0-timeout) - skip/defer on failure
-    // - Core 0 (writer tasks): MAY use SDLock (blocking) - owns SD access
-    // - Boot/shutdown: MAY use SDLock (blocking) - no real-time constraints
+    // =========================================================================
+    // - Core 1 (main loop): MUST use SDTryLock - skip/defer on failure
+    // - Core 0 (writer tasks): Use SDLock with portMAX_DELAY (owns SD access)
+    // - Boot/shutdown: Use SDLock with explicit timeout
     //
-    // Rationale: Tier-1 paths (BLE→parse→display) must NEVER block for Tier-7 (logging/persistence).
+    // Rationale: Tier-1 paths (BLE→parse→display) must NEVER block for Tier-7.
     // "Drops OK, blocking NOT OK"
+    //
+    // NO DEFAULT TIMEOUT - forces explicit choice at every call site.
+    // =========================================================================
+    
+    // Blocking lock - for Core 0 writer tasks and boot/shutdown ONLY
+    // NO default timeout - caller MUST specify:
+    //   SDLock(mutex, portMAX_DELAY)      - writer task owns SD, block forever
+    //   SDLock(mutex, pdMS_TO_TICKS(x))   - boot/shutdown with bounded wait
     class SDLock {
     public:
-        explicit SDLock(SemaphoreHandle_t mutex, TickType_t timeout = pdMS_TO_TICKS(1000)) 
+        // No default timeout - forces explicit choice
+        explicit SDLock(SemaphoreHandle_t mutex, TickType_t timeout) 
             : mutex_(mutex), acquired_(false) {
+            // DEBUG: Catch accidental blocking locks on Core 1 (real-time core)
+            #ifdef DEBUG
+            if (xPortGetCoreID() == 1 && timeout > 0) {
+                Serial.println("[WARN] SDLock with timeout>0 on Core 1 - use SDTryLock!");
+            }
+            #endif
             if (mutex_) {
                 acquired_ = (xSemaphoreTake(mutex_, timeout) == pdTRUE);
             }
@@ -94,12 +112,16 @@ public:
     
     // Non-blocking try-lock for Core 1 paths - NEVER blocks, returns immediately
     // Use this from main loop to enforce the "no blocking" invariant
+    // Increments sdTryLockFailCount on failure for monitoring
     class SDTryLock {
     public:
         explicit SDTryLock(SemaphoreHandle_t mutex) 
             : mutex_(mutex), acquired_(false) {
             if (mutex_) {
                 acquired_ = (xSemaphoreTake(mutex_, 0) == pdTRUE);  // 0 timeout = instant
+                if (!acquired_) {
+                    sdTryLockFailCount++;  // Track contention for monitoring
+                }
             }
         }
         ~SDTryLock() { release(); }
