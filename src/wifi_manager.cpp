@@ -2427,10 +2427,42 @@ void WiFiManager::handleDebugLogsDownload() {
         return;
     }
 
+    // Use chunked transfer with yields to avoid SD timeouts during WiFi+BLE activity
+    // Reading large files with streamFile() causes DMA contention and SD timeouts
+    size_t fileSize = f.size();
+    
     server.sendHeader("Content-Type", "text/plain");
     server.sendHeader("Content-Disposition", "attachment; filename=\"debug.log\"");
     server.sendHeader("Cache-Control", "no-cache");
-    server.streamFile(f, "text/plain");
+    server.setContentLength(fileSize);
+    server.send(200, "text/plain", "");
+    
+    // Chunked read with yields - 4KB chunks with yield every chunk
+    // This prevents SD read timeouts by letting WiFi/BLE tasks run
+    const size_t CHUNK_SIZE = 4096;
+    uint8_t* buffer = (uint8_t*)malloc(CHUNK_SIZE);
+    if (!buffer) {
+        f.close();
+        return;
+    }
+    
+    size_t totalSent = 0;
+    while (f.available() && server.client().connected()) {
+        size_t toRead = min(CHUNK_SIZE, (size_t)f.available());
+        size_t bytesRead = f.read(buffer, toRead);
+        if (bytesRead > 0) {
+            server.client().write(buffer, bytesRead);
+            totalSent += bytesRead;
+        }
+        // Yield after each chunk to let WiFi/BLE handle their tasks
+        yield();
+        // Small delay every 32KB to ensure WiFi stack stays healthy
+        if ((totalSent % 32768) == 0) {
+            delay(1);
+        }
+    }
+    
+    free(buffer);
     f.close();
     perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
 }
