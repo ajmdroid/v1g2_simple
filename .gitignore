@@ -87,6 +87,6 @@ QUALITY_ROADMAP.md
 ARCHITECTURE_NOTES.md
 VOICE_ALERT_MIGRATION.md
 REFACTOR_LOG.md
-VOICE_ALERT_MIGRATION.md
 camera_data/
+camera_data_enriched/
 .github/instructions/v1_simple.instructions.md
