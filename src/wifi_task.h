@@ -35,7 +35,7 @@
 // Feature Flag - Set to 0 to disable WiFi task and use legacy behavior
 // ============================================================================
 #ifndef WIFI_TASK_ENABLED
-#define WIFI_TASK_ENABLED 0  // Stage 1: Disabled by default (infrastructure only)
+#define WIFI_TASK_ENABLED 1  // Stage 2: Task enabled - monitors WiFi status on Core 0
 #endif
 
 // ============================================================================
