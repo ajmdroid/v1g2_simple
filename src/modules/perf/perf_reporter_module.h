@@ -10,7 +10,6 @@ class PerfReporterModule {
 public:
     void begin(DebugLogger* dbgLogger, SettingsManager* settingsMgr);
     void process(unsigned long nowMs);
-    void applyBenchmarkPreset(bool persist);
     void startInvestigationBurst(unsigned long nowMs, bool persist = false);
     bool isInvestigationActive() const { return investigationActive; }
 

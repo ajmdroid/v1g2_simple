@@ -5,8 +5,6 @@
 	let settings = $state({
 		enableWifiAtBoot: false,
 			enableDebugLogging: false,
-			logFormat: 0, // 0=TEXT, 1=JSON
-			logAsyncWrites: false, // Background task for SD writes
 			logAlerts: true,
 			logWifi: true,
 			logBle: false,
@@ -36,7 +34,6 @@
 	});
 	let logLoading = $state(true);
 	let logActionBusy = $state(false);
-	let presetBusy = $state(false);
 
 	// Log viewer state
 	let logViewerOpen = $state(false);
@@ -71,8 +68,6 @@
 			
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableDebugLogging = data.enableDebugLogging || false;
-			settings.logFormat = data.logFormat ?? 0;
-			settings.logAsyncWrites = data.logAsyncWrites ?? false;
 			settings.logAlerts = data.logAlerts ?? true;
 			settings.logWifi = data.logWifi ?? true;
 			settings.logBle = data.logBle ?? false;
@@ -130,8 +125,6 @@
 			const params = new URLSearchParams();
 			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			params.append('enableDebugLogging', settings.enableDebugLogging.toString());
-			params.append('logFormat', settings.logFormat.toString());
-			params.append('logAsyncWrites', settings.logAsyncWrites.toString());
 			params.append('logAlerts', settings.logAlerts.toString());
 			params.append('logWifi', settings.logWifi.toString());
 			params.append('logBle', settings.logBle.toString());
@@ -210,54 +203,6 @@
 		} finally {
 			await loadLogInfo();
 			logActionBusy = false;
-		}
-	}
-
-	async function applyBenchmarkPreset() {
-		if (!acknowledged) {
-			message = 'Please acknowledge the warning before changing logging presets';
-			return;
-		}
-		presetBusy = true;
-		message = '';
-		try {
-			const response = await fetch('/api/debug/benchmark', { method: 'POST' });
-			if (response.ok) {
-				message = 'Benchmark mode enabled (System + WiFi + PerfMetrics)';
-				await loadSettings();
-				await loadLogInfo();
-			} else {
-				message = 'Failed to enable Benchmark mode';
-			}
-		} catch (error) {
-			console.error('Benchmark preset failed:', error);
-			message = 'Failed to enable Benchmark mode';
-		} finally {
-			presetBusy = false;
-		}
-	}
-
-	async function triggerInvestigationBurst() {
-		if (!acknowledged) {
-			message = 'Please acknowledge the warning before starting investigation';
-			return;
-		}
-		presetBusy = true;
-		message = '';
-		try {
-			const response = await fetch('/api/debug/investigation', { method: 'POST' });
-			if (response.ok) {
-				message = 'Investigation burst started (20s)';
-				await loadSettings();
-				await loadLogInfo();
-			} else {
-				message = 'Failed to start Investigation burst';
-			}
-		} catch (error) {
-			console.error('Investigation burst failed:', error);
-			message = 'Failed to start Investigation burst';
-		} finally {
-			presetBusy = false;
 		}
 	}
 
@@ -493,62 +438,6 @@
 
 				{#if settings.enableDebugLogging}
 					<div class="mt-4 space-y-3">
-						<!-- Log Format Toggle -->
-						<div class="flex items-center justify-between">
-							<div>
-								<h3 class="font-semibold text-sm opacity-70">Log Format</h3>
-								<p class="text-xs opacity-60">JSON is ELK/Elasticsearch-friendly (NDJSON)</p>
-							</div>
-							<div class="flex items-center gap-2">
-								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 1}>TEXT</span>
-								<input 
-									type="checkbox" 
-									class="toggle toggle-sm toggle-primary"
-									checked={settings.logFormat === 1}
-									onchange={(e) => settings.logFormat = e.target.checked ? 1 : 0}
-									disabled={!acknowledged}
-								/>
-								<span class="text-xs font-medium" class:opacity-40={settings.logFormat === 0}>JSON</span>
-							</div>
-						</div>
-
-						<!-- Async Writes Toggle -->
-						<div class="flex items-center justify-between">
-							<div>
-								<h3 class="font-semibold text-sm opacity-70">Async SD Writes</h3>
-								<p class="text-xs opacity-60">Moves SD I/O to background task (+20KB RAM)</p>
-							</div>
-							<input 
-								type="checkbox" 
-								class="toggle toggle-sm toggle-primary"
-								bind:checked={settings.logAsyncWrites}
-								disabled={!acknowledged}
-							/>
-						</div>
-
-						<div class="mt-4">
-							<h3 class="font-semibold text-sm opacity-70">Logging Presets</h3>
-							<p class="text-xs opacity-60">Quick toggles for low-noise benchmarking and short investigation bursts.</p>
-							<div class="btn-group w-full mt-2">
-								<button
-									class="btn btn-sm btn-outline flex-1"
-									onclick={applyBenchmarkPreset}
-									disabled={!acknowledged || presetBusy}
-								>
-									📊 Benchmark
-								</button>
-								<button
-									class="btn btn-sm btn-outline flex-1"
-									onclick={triggerInvestigationBurst}
-									disabled={!acknowledged || presetBusy}
-								>
-									🔍 Investigation (20s)
-								</button>
-							</div>
-						</div>
-
-						<div class="divider my-2"></div>
-
 						<h3 class="font-semibold text-sm opacity-70">Log Categories</h3>
 						<p class="text-xs opacity-60">Toggle specific channels to reduce noise while debugging.</p>
 						<div class="grid grid-cols-2 gap-3">

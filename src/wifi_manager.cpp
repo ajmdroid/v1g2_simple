@@ -502,8 +502,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
     server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
-    server.on("/api/debug/benchmark", HTTP_POST, [this]() { handleDebugBenchmark(); });
-    server.on("/api/debug/investigation", HTTP_POST, [this]() { handleDebugInvestigation(); });
     server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
     server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
@@ -1024,8 +1022,6 @@ void WiFiManager::handleSettingsApi() {
     // Development/Debug settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
-    doc["logFormat"] = settings.logFormat;
-    doc["logAsyncWrites"] = settings.logAsyncWrites;
     doc["logAlerts"] = settings.logAlerts;
     doc["logWifi"] = settings.logWifi;
     doc["logBle"] = settings.logBle;
@@ -2035,16 +2031,6 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("enableDebugLogging")) {
         settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1", true);
     }
-    if (server.hasArg("logFormat")) {
-        int fmt = server.arg("logFormat").toInt();
-        settingsManager.setLogFormat(fmt, true);
-        debugLogger.setFormat(fmt == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
-    }
-    if (server.hasArg("logAsyncWrites")) {
-        bool async = server.arg("logAsyncWrites") == "true" || server.arg("logAsyncWrites") == "1";
-        settingsManager.setLogAsyncWrites(async, true);
-        debugLogger.setAsyncMode(async);  // Apply immediately
-    }
     if (server.hasArg("logAlerts")) {
         settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1", true);
     }
@@ -2388,18 +2374,6 @@ void WiFiManager::handleDebugEnable() {
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
 }
 
-void WiFiManager::handleDebugBenchmark() {
-    if (!checkRateLimit()) return;
-    perfReporterModule.applyBenchmarkPreset(true);
-    server.send(200, "application/json", "{\"success\":true,\"mode\":\"benchmark\"}");
-}
-
-void WiFiManager::handleDebugInvestigation() {
-    if (!checkRateLimit()) return;
-    perfReporterModule.startInvestigationBurst(millis(), false);
-    server.send(200, "application/json", "{\"success\":true,\"mode\":\"investigation\",\"durationSec\":20}");
-}
-
 void WiFiManager::handleDebugLogsMeta() {
     if (!checkRateLimit()) return;
 
@@ -2425,7 +2399,6 @@ void WiFiManager::handleDebugLogsMeta() {
     doc["logCamera"] = cfg.camera;
     doc["logLockout"] = cfg.lockout;
     doc["logTouch"] = cfg.touch;
-    doc["logFormat"] = cfg.format;
 
     String json;
     serializeJson(doc, json);

@@ -50,8 +50,6 @@ struct DebugLogConfig {
     bool camera;
     bool lockout;
     bool touch;
-    uint8_t format;  // 0 = TEXT, 1 = JSON (NDJSON for ELK)
-    bool asyncWrites;  // Use background FreeRTOS task for SD writes (reduces main loop blocking)
 };
 
 // V1 operating modes (from ESP library)
@@ -186,8 +184,6 @@ struct V1Settings {
         bool logCamera;              // Include camera alert events in debug log
         bool logLockout;             // Include auto-lockout events in debug log
         bool logTouch;               // Include touch input events in debug log
-        uint8_t logFormat;           // Log format: 0 = TEXT, 1 = JSON (NDJSON for ELK)
-        bool logAsyncWrites;         // Use background task for SD writes (reduces main loop blocking)
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -351,7 +347,6 @@ struct V1Settings {
         logCamera(false),                // Camera logging off by default
         logLockout(false),               // Lockout logging off by default
         logTouch(false),                 // Touch logging off by default
-        logFormat(0),
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -505,11 +500,8 @@ public:
     void setLogCamera(bool enable, bool deferSave = false);
     void setLogLockout(bool enable, bool deferSave = false);
     void setLogTouch(bool enable, bool deferSave = false);
-    void setLogFormat(uint8_t format, bool deferSave = false);  // 0 = TEXT, 1 = JSON
-    void setLogAsyncWrites(bool enable, bool deferSave = false);  // Background task for SD writes
-    uint8_t getLogFormat() const { return settings.logFormat; }
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch, settings.logFormat, settings.logAsyncWrites };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);

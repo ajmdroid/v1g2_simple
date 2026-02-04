@@ -143,28 +143,6 @@ void PerfReporterModule::process(unsigned long nowMs) {
     perfExtendedResetWindow();
 }
 
-void PerfReporterModule::applyBenchmarkPreset(bool persist) {
-    if (!debugLogger || !settings) return;
-    bool deferSave = !persist;
-
-    settings->setEnableDebugLogging(true, deferSave);
-    settings->setLogSystem(true, deferSave);
-    settings->setLogPerfMetrics(true, deferSave);
-    settings->setLogWifi(true, deferSave);
-
-    settings->setLogAlerts(false, deferSave);
-    settings->setLogBle(false, deferSave);
-    settings->setLogGps(false, deferSave);
-    settings->setLogObd(false, deferSave);
-    settings->setLogDisplay(false, deferSave);
-    settings->setLogAudio(false, deferSave);
-    settings->setLogCamera(false, deferSave);
-    settings->setLogLockout(false, deferSave);
-    settings->setLogTouch(false, deferSave);
-
-    applyCurrentLogConfig();
-}
-
 void PerfReporterModule::startInvestigationBurst(unsigned long nowMs, bool persist) {
     if (!debugLogger || !settings) return;
     
@@ -198,6 +176,5 @@ void PerfReporterModule::applyCurrentLogConfig() {
     DebugLogConfig cfg = settings->getDebugLogConfig();
     DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
     debugLogger->setFilter(filter);
-    debugLogger->setFormat(cfg.format == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
     debugLogger->setEnabled(settings->get().enableDebugLogging);
 }

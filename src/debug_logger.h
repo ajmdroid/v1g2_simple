@@ -1,11 +1,9 @@
 /**
- * Debug Logger - optional SD/LittleFS log sink.
- * Writes timestamped lines when enabled in settings.
- * Uses buffered writes to minimize SD latency impact on real-time tasks.
+ * Debug Logger - optional SD log sink.
+ * Writes timestamped JSON lines when enabled in settings.
+ * Uses buffered async writes to minimize SD latency impact on real-time tasks.
  * 
- * Supports two log formats:
- * - TEXT: Human-readable with millis/ISO timestamps
- * - JSON: NDJSON format for ELK/Elasticsearch import
+ * Log format: NDJSON (newline-delimited JSON) for ELK/Elasticsearch import
  */
 
 #ifndef DEBUG_LOGGER_H
@@ -22,12 +20,6 @@
 // Log file location and size cap (shared with UI/API)
 inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
 inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
-
-// Log format options
-enum class DebugLogFormat {
-    TEXT,   // Human-readable: [timestamp] message
-    JSON    // NDJSON for ELK: {"@timestamp":"...","level":"info","category":"alerts","message":"..."}
-};
 
 // Buffer settings for efficient SD writes
 inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
@@ -96,10 +88,8 @@ public:
     // Enable/disable logging; safe to call repeatedly.
     void setEnabled(bool enabledFlag);
     void setFilter(const DebugLogFilter& filter);
-    void setFormat(DebugLogFormat fmt) { logFormat = fmt; }
     bool isEnabled() const { return enabled; }
     bool isEnabledFor(DebugLogCategory category) const;
-    DebugLogFormat getFormat() const { return logFormat; }
 
     // Time source tracking
     enum class TimeSource {
@@ -166,13 +156,11 @@ private:
     void rotateIfNeeded();
     bool categoryAllowed(DebugLogCategory category) const;
     const char* categoryName(DebugLogCategory category) const;
-    void formatTextLine(char* dest, size_t destSize, DebugLogCategory category, const char* message);
     void formatJsonLine(char* dest, size_t destSize, DebugLogCategory category, 
                         const char* message, const char* extraFields = nullptr);
 
     bool enabled = false;
     DebugLogFilter filter;
-    DebugLogFormat logFormat = DebugLogFormat::TEXT;
     
     // Time tracking (synced from GPS/NTP)
     bool timeValid = false;

@@ -346,11 +346,7 @@ void DebugLogger::log(DebugLogCategory category, const char* message) {
     if (!categoryAllowed(category)) return;
 
     char line[512];
-    if (logFormat == DebugLogFormat::JSON) {
-        formatJsonLine(line, sizeof(line), category, message);
-    } else {
-        formatTextLine(line, sizeof(line), category, message);
-    }
+    formatJsonLine(line, sizeof(line), category, message);
     
     // Async mode: enqueue for background writer task
     if (asyncMode && writeQueue) {
@@ -377,18 +373,7 @@ void DebugLogger::logEvent(DebugLogCategory category, const char* event, const c
     if (!categoryAllowed(category)) return;
     
     char line[512];
-    if (logFormat == DebugLogFormat::JSON) {
-        formatJsonLine(line, sizeof(line), category, event, extraFields);
-    } else {
-        // For TEXT format, just log as message with any extra fields appended
-        char msg[256];
-        if (extraFields && extraFields[0]) {
-            snprintf(msg, sizeof(msg), "%s | %s", event, extraFields);
-        } else {
-            snprintf(msg, sizeof(msg), "%s", event);
-        }
-        formatTextLine(line, sizeof(line), category, msg);
-    }
+    formatJsonLine(line, sizeof(line), category, event, extraFields);
     
     // Async mode: enqueue for background writer task
     if (asyncMode && writeQueue) {
@@ -415,21 +400,16 @@ void DebugLogger::logPerfMetrics(const char* fields) {
     unsigned long now = millis();
     char line[512];
     
-    if (logFormat == DebugLogFormat::JSON) {
-        // Structured NDJSON: numeric fields are first-class, no message escaping
-        char ts[32];
-        if (timeValid) {
-            getISO8601Timestamp(ts, sizeof(ts));
-        } else {
-            strcpy(ts, "1970-01-01T00:00:00Z");
-        }
-        snprintf(line, sizeof(line),
-            "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"perf\",%s}",
-            ts, now, fields);
+    // Structured NDJSON: numeric fields are first-class, no message escaping
+    char ts[32];
+    if (timeValid) {
+        getISO8601Timestamp(ts, sizeof(ts));
     } else {
-        // TEXT format: METRICS prefix for grep-ability
-        snprintf(line, sizeof(line), "[%10lu ms] METRICS %s", now, fields);
+        strcpy(ts, "1970-01-01T00:00:00Z");
     }
+    snprintf(line, sizeof(line),
+        "{\"@timestamp\":\"%s\",\"millis\":%lu,\"category\":\"perf\",%s}",
+        ts, now, fields);
     
     // Async mode: enqueue for background writer task
     if (asyncMode && writeQueue) {
@@ -465,20 +445,6 @@ const char* DebugLogger::categoryName(DebugLogCategory category) const {
         case DebugLogCategory::Lockout:     return "lockout";
         case DebugLogCategory::Touch:       return "touch";
         default: return "unknown";
-    }
-}
-
-void DebugLogger::formatTextLine(char* dest, size_t destSize, DebugLogCategory category, const char* message) {
-    unsigned long now = millis();
-    
-    if (timeValid) {
-        // Use real timestamp if available (heap-free)
-        char ts[32];
-        getISO8601Timestamp(ts, sizeof(ts));
-        snprintf(dest, destSize, "[%s] [%10lu ms] %s", ts, now, message);
-    } else {
-        // Fall back to millis only
-        snprintf(dest, destSize, "[%10lu ms] %s", now, message);
     }
 }
 

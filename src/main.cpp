@@ -463,15 +463,13 @@ void setup() {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
         DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
-        debugLogger.setFormat(cfg.format == 1 ? DebugLogFormat::JSON : DebugLogFormat::TEXT);
         // NOTE: Async mode is enabled AFTER boot (in loop) to avoid heap fragmentation
         // during BLE/WiFi/camera initialization. See asyncModeEnableMs below.
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s, format=%s)", 
-                         storageManager.statusText().c_str(),
-                         debugLogger.getFormat() == DebugLogFormat::JSON ? "JSON" : "TEXT");
+        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s, format=JSON)", 
+                         storageManager.statusText().c_str());
     }
 
     uint32_t bootId = nextBootId();
@@ -485,24 +483,21 @@ void setup() {
     const char* gitSha = "unknown";
 #endif
     const char* resetStr = resetReasonToString(resetReason);
-    const char* logFmtStr = (bootCfg.format == 1) ? "JSON" : "TEXT";
-    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logFormat=%s logCats=0x%08lX\n",
+    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logCats=0x%08lX\n",
                     (unsigned long)bootId,
                     resetStr,
                     gitSha,
                     scenario,
                     bootSettings.enableWifi ? "on" : "off",
-                    logFmtStr,
                     (unsigned long)logMask);
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
         debugLogger.logf(DebugLogCategory::System,
-                         "BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logFormat=%s logCats=0x%08lX",
+                         "BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logCats=0x%08lX",
                          (unsigned long)bootId,
                          resetStr,
                          gitSha,
                          scenario,
                          bootSettings.enableWifi ? "on" : "off",
-                         logFmtStr,
                          (unsigned long)logMask);
     }
 
@@ -661,11 +656,11 @@ void loop() {
     
     // Deferred async logging enablement - wait 5s after boot for BLE/WiFi/camera to settle
     // This avoids heap fragmentation during heavy boot-time allocations
+    // Async mode is always enabled for non-blocking SD writes
     static bool asyncModeChecked = false;
     if (!asyncModeChecked && now > 5000) {
         asyncModeChecked = true;
-        DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        if (cfg.asyncWrites && !debugLogger.isAsyncMode()) {
+        if (!debugLogger.isAsyncMode()) {
             debugLogger.setAsyncMode(true);
             if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
                 debugLogger.logf(DebugLogCategory::System, "[Logger] Async write mode enabled (deferred startup)");
