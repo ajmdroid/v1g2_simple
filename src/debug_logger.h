@@ -26,11 +26,6 @@ inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush eve
 // WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
 inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
 
-// Breadcrumb ring buffer for incident capture (verbose events kept in RAM, dumped on incident)
-inline constexpr size_t BREADCRUMB_RING_SIZE = 32768;  // 32KB ring buffer (configurable 32-128KB)
-inline constexpr size_t BREADCRUMB_MAX_LINE = 256;     // Max chars per breadcrumb entry
-inline constexpr const char* INCIDENT_LOG_PATH = "/incident.log";
-
 // Log categories for selective filtering
 enum class DebugLogCategory {
     System,
@@ -49,7 +44,7 @@ enum class DebugLogCategory {
 
 struct DebugLogFilter {
     bool alerts = true;
-    bool wifi = true;
+    bool wifi = false;
     bool ble = false;
     bool gps = false;
     bool obd = false;
@@ -113,13 +108,6 @@ public:
     // Render state guard - defers SD writes during display render to avoid collision
     void notifyRenderState(bool rendering);  // Call with true before render, false after
     bool isRenderActive() const { return renderActive; }
-    
-    // Breadcrumb ring buffer - records verbose events in RAM for incident capture
-    void breadcrumb(const char* msg);  // Add to ring (overwrites oldest)
-    void breadcrumbf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-    
-    // Incident capture - dumps breadcrumb ring to SD with context header
-    void captureIncident(const char* reason, uint32_t loopMaxUs, uint32_t qDropDelta);
 
     // File helpers
     bool exists() const;
@@ -160,13 +148,6 @@ private:
     
     // Render state guard - prevents SD flush during display render
     volatile bool renderActive = false;     // True during display.update()
-    
-    // Breadcrumb ring buffer (static allocation - no heap)
-    char breadcrumbRing[BREADCRUMB_RING_SIZE];
-    size_t breadcrumbHead = 0;        // Write position
-    size_t breadcrumbCount = 0;       // Bytes used (up to BREADCRUMB_RING_SIZE)
-    bool breadcrumbWrapped = false;   // True after first wrap
-    portMUX_TYPE breadcrumbMux = portMUX_INITIALIZER_UNLOCKED;  // Spinlock for ISR-safe atomicity
 };
 
 extern DebugLogger debugLogger;

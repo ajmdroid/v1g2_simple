@@ -415,7 +415,7 @@ void SettingsManager::load() {
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
     settings.enableDebugLogging = preferences.getBool("debugLog", true);  // Enable by default for diagnostics
     settings.logAlerts = preferences.getBool("logAlerts", true);
-    settings.logWifi = preferences.getBool("logWifi", true);
+    settings.logWifi = preferences.getBool("logWifi", false);
     settings.logBle = preferences.getBool("logBle", false);
     settings.logGps = preferences.getBool("logGps", false);
     settings.logObd = preferences.getBool("logObd", false);
@@ -424,7 +424,7 @@ void SettingsManager::load() {
     settings.logPerfMetrics = preferences.getBool("logPerfMet", false);
     settings.logAudio = preferences.getBool("logAudio", false);
     settings.logCamera = preferences.getBool("logCamera", false);
-    settings.logLockout = preferences.getBool("logLockout", true);
+    settings.logLockout = preferences.getBool("logLockout", false);
     settings.logTouch = preferences.getBool("logTouch", false);
     
     // Voice alert settings - migrate from old boolean to new mode

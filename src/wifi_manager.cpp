@@ -676,7 +676,6 @@ bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
     
     // WiFi transitioning - defer SD writes to avoid NVS flash contention
     debugLogger.notifyWifiTransition(false);
-    debugLogger.breadcrumbf("WiFi:connect ssid=%s", ssid.c_str());
     
     pendingConnectSSID = ssid;
     pendingConnectPassword = password;
@@ -712,7 +711,6 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 // WiFi stable - resume SD writes (NVS contention window closed)
                 debugLogger.notifyWifiTransition(true);
-                debugLogger.breadcrumbf("WiFi:connected ip=%s", WiFi.localIP().toString().c_str());
                 
                 // Save credentials on successful connection
                 if (pendingConnectSSID.length() > 0) {
@@ -726,7 +724,6 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 // WiFi stable (failed but not transitioning) - resume SD writes
                 debugLogger.notifyWifiTransition(true);
-                debugLogger.breadcrumbf("WiFi:failed status=%d", status);
                 
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
@@ -737,7 +734,6 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 // WiFi stable (timed out) - resume SD writes
                 debugLogger.notifyWifiTransition(true);
-                debugLogger.breadcrumb("WiFi:timeout");
                 
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
@@ -770,7 +766,6 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 // WiFi transitioning - defer SD writes to avoid NVS flash contention
                 debugLogger.notifyWifiTransition(false);
-                debugLogger.breadcrumb("WiFi:lost");
             }
             break;
         }

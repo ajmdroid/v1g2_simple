@@ -783,12 +783,6 @@ void loop() {
     perfRecordLoopJitterUs(micros() - loopStartUs);
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     
-    // Breadcrumb long loop iterations for incident context (>100ms threshold)
-    unsigned long loopDurationUs = micros() - loopStartUs;
-    if (loopDurationUs > 100000) {
-        debugLogger.breadcrumbf("longLoop %lums", loopDurationUs / 1000);
-    }
-    
     // OBD processing and delayed auto-connect
     obdAutoConnector.process(now);
 
