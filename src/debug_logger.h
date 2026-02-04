@@ -1,7 +1,7 @@
 /**
  * Debug Logger - optional SD log sink.
  * Writes timestamped JSON lines when enabled in settings.
- * Uses buffered async writes to minimize SD latency impact on real-time tasks.
+ * Uses buffered writes (4KB buffer, 1s flush) to minimize SD latency impact.
  * 
  * Log format: NDJSON (newline-delimited JSON) for ELK/Elasticsearch import
  */
@@ -12,10 +12,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <time.h>
-#include <atomic>
 #include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/task.h>
 
 // Log file location and size cap (shared with UI/API)
 inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
@@ -33,11 +30,6 @@ inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max defe
 inline constexpr size_t BREADCRUMB_RING_SIZE = 32768;  // 32KB ring buffer (configurable 32-128KB)
 inline constexpr size_t BREADCRUMB_MAX_LINE = 256;     // Max chars per breadcrumb entry
 inline constexpr const char* INCIDENT_LOG_PATH = "/incident.log";
-
-// Async write queue settings (Phase 2: background SD writes)
-inline constexpr size_t LOG_QUEUE_DEPTH = 32;          // Queue depth (32 items)
-inline constexpr size_t LOG_QUEUE_LINE_SIZE = 512;     // Max formatted line size
-inline constexpr size_t LOG_WRITER_STACK_SIZE = 4096;  // Writer task stack (4KB)
 
 // Log categories for selective filtering
 enum class DebugLogCategory {
@@ -68,17 +60,6 @@ struct DebugLogFilter {
     bool camera = false;
     bool lockout = false;
     bool touch = false;
-};
-
-// Queue item for async write mode
-struct LogQueueItem {
-    char line[LOG_QUEUE_LINE_SIZE];  // Pre-formatted log line
-    uint16_t length;                  // Actual length (avoid strlen in writer)
-    uint8_t flags;                    // Special flags (flush, incident, etc.)
-    
-    static constexpr uint8_t FLAG_NONE = 0;
-    static constexpr uint8_t FLAG_FLUSH_NOW = 1;       // Force immediate flush
-    static constexpr uint8_t FLAG_INCIDENT = 2;        // Incident capture request
 };
 
 class DebugLogger {
@@ -136,11 +117,6 @@ public:
     // Incident capture - dumps breadcrumb ring to SD with context header
     void captureIncident(const char* reason, uint32_t loopMaxUs, uint32_t qDropDelta);
 
-    // Async write mode - moves SD I/O to background task (Phase 2)
-    void setAsyncMode(bool async);  // Enable/disable async writes
-    bool isAsyncMode() const { return asyncMode; }
-    uint32_t getAsyncDropCount() const { return asyncDropCount; }  // Logs dropped due to full queue
-
     // File helpers
     bool exists() const;
     size_t size() const;  // Returns 0 if file missing
@@ -184,16 +160,6 @@ private:
     size_t breadcrumbCount = 0;       // Bytes used (up to BREADCRUMB_RING_SIZE)
     bool breadcrumbWrapped = false;   // True after first wrap
     portMUX_TYPE breadcrumbMux = portMUX_INITIALIZER_UNLOCKED;  // Spinlock for ISR-safe atomicity
-    
-    // Async write mode - background task for SD I/O (Phase 2)
-    bool asyncMode = false;
-    QueueHandle_t writeQueue = nullptr;
-    TaskHandle_t writerTaskHandle = nullptr;
-    std::atomic<uint32_t> asyncDropCount{0};  // Logs dropped due to full queue
-    
-    // Writer task entry point (static for xTaskCreate)
-    static void writerTaskEntry(void* param);
-    void writerTaskLoop();  // Instance method called by entry point
 };
 
 extern DebugLogger debugLogger;

@@ -462,8 +462,6 @@ void setup() {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
         DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
-        // NOTE: Async mode is enabled AFTER boot (in loop) to avoid heap fragmentation
-        // during BLE/WiFi/camera initialization. See asyncModeEnableMs below.
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
@@ -646,10 +644,6 @@ void setup() {
 void loop() {
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
-    
-    // NOTE: Async logging disabled - causes DMA heap fragmentation that breaks SD card access
-    // after ~30 seconds of runtime. Using synchronous buffered writes instead (4KB buffer, 1s flush).
-    // See commit history for async implementation if heap issues are resolved in future.
     
     perfReporterModule.process(now);
 

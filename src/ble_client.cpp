@@ -1232,15 +1232,6 @@ void V1BLEClient::logConnParams(const char* tag) {
 }
 
 // NOTE: setupCharacteristics() has been replaced by the step machine (executeSubscribeStep)
-// The step machine breaks the work into non-blocking steps to prevent loop() stalls.
-// This legacy function is kept for reference but should NOT be called.
-#if 0  // DEPRECATED - use step machine instead
-bool V1BLEClient::setupCharacteristics() {
-    // ... legacy blocking code removed ...
-    return false;
-}
-#endif
-
 void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar, 
                                   uint8_t* pData, 
                                   size_t length, 
