@@ -5069,20 +5069,18 @@ void V1Display::drawStatusBar() {
     lastGpsEnabled = gpsEnabled;
     
     // Status bar positioning - using size 2 font (12x16 pixels per char)
-    // Layout: GPS on left edge, mute badge in center (when active), CAM/OBD on right
-    // This avoids overlap with the MUTED/LOCKOUT badge which draws centered in this area
+    // Layout: GPS on left edge, MUTED badge in center, CAM/OBD on right
+    // GPS is positioned to not overlap with MUTED badge (X=120-350)
+    // CAM/OBD are positioned to the right of where MUTED badge would appear
     const int statusY = 2;           // Near top of screen
     const int statusHeight = 18;     // Height for font size 2
     const int leftMargin = 140;      // After band indicators
-    const int rightMargin = 200;     // Before signal bars
     
-    // GPS/CAM/OBD evenly spaced in the status bar area (between band indicators and signal bars)
-    // Available area: X=140 to X=440 (300px wide)
-    // Size 2: each char is ~12px wide, "GPS 12" = 6 chars = 72px, "CAM" = 3 chars = 36px, "OBD" = 3 chars = 36px
-    // Layout: GPS at start, CAM at 1/3, OBD at 2/3
+    // Layout: GPS on left (doesn't overlap MUTED), CAM/OBD on right (after MUTED area)
+    // MUTED badge is centered ~X=225-335, so put CAM/OBD starting at X=355
     const int gpsX = leftMargin + 5;            // GPS on left: x=145
-    const int camX = leftMargin + 100;          // CAM in middle: x=240
-    const int obdX = leftMargin + 195;          // OBD on right: x=335
+    const int camX = 355;                       // CAM after MUTED area
+    const int obdX = 400;                       // OBD after CAM
     
     // Use built-in font size 2 (larger, more readable)
     tft->setTextSize(2);
