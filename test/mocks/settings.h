@@ -72,7 +72,6 @@ struct V1Settings {
     bool gpsEnabled = true;
     bool obdEnabled = false;
     bool bleProxyEnabled = true;
-    bool kittScannerEnabled = true;
 };
 
 // Backwards compatibility alias used by some legacy tests

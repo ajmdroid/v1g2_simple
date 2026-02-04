@@ -80,7 +80,7 @@ enum VoiceAlertMode {
 
 // Idle display mode (what to show in frequency area when no alerts)
 enum IdleDisplayMode {
-    IDLE_DISPLAY_NONE = 0,       // Normal resting display (blank/KITT)
+    IDLE_DISPLAY_NONE = 0,       // Normal resting display (blank)
     IDLE_DISPLAY_SPEED = 1,      // Show current speed (mph)
     IDLE_DISPLAY_OIL_TEMP = 2,   // Show engine oil temperature
     IDLE_DISPLAY_DSG_TEMP = 3,   // Show DSG/transmission temperature
@@ -170,7 +170,6 @@ struct V1Settings {
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
-    bool kittScannerEnabled;     // KITT scanner animation on resting screen (easter egg)
     
     // Development/Debug settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
@@ -340,7 +339,6 @@ struct V1Settings {
         hideBatteryIcon(false),  // Show battery icon by default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
-        kittScannerEnabled(false),   // KITT scanner off by default (easter egg)
         logAlerts(true),                 // Alert logging on by default
         logWifi(true),                   // WiFi logging on by default
         logBle(false),                   // BLE logging off by default
@@ -493,7 +491,6 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
-    void setKittScannerEnabled(bool enabled, bool deferSave = false);
     void setEnableWifiAtBoot(bool enable, bool deferSave = false);
     void setEnableDebugLogging(bool enable, bool deferSave = false);
     void setLogAlerts(bool enable, bool deferSave = false);

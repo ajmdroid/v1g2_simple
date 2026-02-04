@@ -166,7 +166,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideBle", settings.hideBleIcon);
     written += prefs.putBool("hideVol", settings.hideVolumeIndicator);
     written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
-    written += prefs.putBool("kittScanner", settings.kittScannerEnabled);
     written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
     written += prefs.putBool("debugLog", settings.enableDebugLogging);
     written += prefs.putBool("logAlerts", settings.logAlerts);
@@ -410,7 +409,6 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
-    settings.kittScannerEnabled = preferences.getBool("kittScanner", false);
     
     // Development/Debug settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
@@ -907,11 +905,6 @@ void SettingsManager::setHideRssiIndicator(bool hide) {
     save();
 }
 
-void SettingsManager::setKittScannerEnabled(bool enabled, bool deferSave) {
-    settings.kittScannerEnabled = enabled;
-    if (!deferSave) save();
-}
-
 void SettingsManager::setEnableWifiAtBoot(bool enable, bool deferSave) {
     settings.enableWifiAtBoot = enable;
     if (!deferSave) save();
@@ -1321,7 +1314,6 @@ void SettingsManager::backupToSD() {
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
-    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
     doc["logAlerts"] = settings.logAlerts;
@@ -1546,7 +1538,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
-    if (doc["kittScannerEnabled"].is<bool>()) settings.kittScannerEnabled = doc["kittScannerEnabled"];
     if (doc["enableWifiAtBoot"].is<bool>()) settings.enableWifiAtBoot = doc["enableWifiAtBoot"];
     if (doc["enableDebugLogging"].is<bool>()) settings.enableDebugLogging = doc["enableDebugLogging"];
     if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];

@@ -160,7 +160,6 @@ private:
     void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);      // Hemi Head font (retro speedometer)
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
-    void drawKittScanner();        // Knight Rider scanner animation for resting screen
     void drawIdleObdData();        // Draw OBD data (speed/temps) on idle screen in frequency area
     void drawObdIdleWithCards();   // Draw OBD with primary metric + two cards (like camera alerts)
     void drawStatusText(const char* text, uint16_t color);
@@ -220,11 +219,6 @@ private:
     };
     CameraCardState cameraCards[MAX_CAMERA_CARDS];
     int activeCameraCount = 0;  // Number of active camera alerts (0-2)
-    
-    // KITT scanner animation state
-    float kittPosition = 0.0f;              // Current scanner position (0.0 to 1.0)
-    int kittDirection = 1;                  // Scanner direction: 1=right, -1=left
-    unsigned long lastKittUpdate = 0;       // Last scanner animation update time
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

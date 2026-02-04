@@ -53,7 +53,6 @@
 #include "modules/power/power_module.h"
 #include "modules/perf/perf_reporter_module.h"
 #include "modules/ble/ble_queue_module.h"
-#include "modules/ble/ble_serial_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
 #include "modules/camera/camera_load_coordinator_module.h"
@@ -599,7 +598,6 @@ void setup() {
                                 &speedVolumeModule,
                                 &debugLogger);
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule);
-    bleSerialModule.begin(&bleQueueModule);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule, &cameraAlertModule);
 
@@ -731,9 +729,6 @@ void loop() {
             displayPipelineModule.handleParsed(nowMs);
         }
     }
-    
-    // Process serial BLE replay (if enabled via web UI)
-    bleSerialModule.process();
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();

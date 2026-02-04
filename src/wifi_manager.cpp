@@ -18,7 +18,6 @@
 #include "auto_lockout_manager.h"
 #include "camera_manager.h"
 #include "modules/camera/camera_load_coordinator_module.h"
-#include "modules/ble/ble_serial_module.h"
 #include "perf_metrics.h"
 #include "event_ring.h"
 #include "audio_beep.h"
@@ -509,27 +508,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
     server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
     server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
-    
-    // BLE Serial Replay API
-    server.on("/api/debug/ble-serial", HTTP_GET, [this]() {
-        JsonDocument doc;
-        doc["enabled"] = bleSerialModule.isEnabled();
-        doc["packetsReceived"] = bleSerialModule.getPacketsReceived();
-        doc["lastPacketMs"] = bleSerialModule.getLastPacketMs();
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
-    });
-    server.on("/api/debug/ble-serial", HTTP_POST, [this]() {
-        bool enable = server.arg("enabled") == "true" || server.arg("enabled") == "1";
-        bleSerialModule.setEnabled(enable);
-        JsonDocument doc;
-        doc["success"] = true;
-        doc["enabled"] = bleSerialModule.isEnabled();
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
-    });
     
     // OBD-II API routes
     server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
@@ -1060,7 +1038,6 @@ void WiFiManager::handleSettingsApi() {
     doc["logCamera"] = settings.logCamera;
     doc["logLockout"] = settings.logLockout;
     doc["logTouch"] = settings.logTouch;
-    doc["kittScannerEnabled"] = settings.kittScannerEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -2052,9 +2029,6 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideRssiIndicator")) {
         settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
     }
-    if (server.hasArg("kittScannerEnabled")) {
-        settingsManager.setKittScannerEnabled(server.arg("kittScannerEnabled") == "true" || server.arg("kittScannerEnabled") == "1", true);
-    }
     if (server.hasArg("enableWifiAtBoot")) {
         settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1", true);
     }
@@ -2297,7 +2271,6 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    doc["kittScannerEnabled"] = s.kittScannerEnabled;
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
     doc["enableDebugLogging"] = s.enableDebugLogging;
     doc["logAlerts"] = s.logAlerts;
@@ -2601,7 +2574,6 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    doc["kittScannerEnabled"] = s.kittScannerEnabled;
     
     // Development/Debug
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
@@ -2829,7 +2801,6 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
-    if (doc["kittScannerEnabled"].is<bool>()) s.kittScannerEnabled = doc["kittScannerEnabled"];
     
     // Development/Debug
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];

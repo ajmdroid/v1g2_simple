@@ -1781,12 +1781,9 @@ void V1Display::showResting(bool forceRedraw) {
         // Direction arrows all dimmed
         drawDirectionArrow(DIR_NONE, false);
         
-        // Frequency display: KITT scanner if enabled, otherwise normal frequency display
+        // Frequency display
         const V1Settings& s = settingsManager.get();
-        if (s.kittScannerEnabled) {
-            // KITT scanner will be drawn on each frame in the periodic update
-            // Just clear the area here
-        } else if (s.displayStyle != DISPLAY_STYLE_MODERN) {
+        if (s.displayStyle != DISPLAY_STYLE_MODERN) {
             drawFrequency(0, BAND_NONE);
         }
         
@@ -2255,20 +2252,14 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    // Check if KITT scanner is enabled and needs continuous animation
-    const V1Settings& sKitt = settingsManager.get();
-    bool kittScannerActive = sKitt.kittScannerEnabled && !volumeWarningActive;
-    bool obdIdleActive = (sKitt.idleDisplayMode != IDLE_DISPLAY_NONE) && obdHandler.hasValidData() && !volumeWarningActive;
-    bool obdCardsActive = (sKitt.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) && obdHandler.hasValidData() && !volumeWarningActive;
+    // Check if OBD idle display is enabled and needs continuous animation
+    const V1Settings& sIdle = settingsManager.get();
+    bool obdIdleActive = (sIdle.idleDisplayMode != IDLE_DISPLAY_NONE) && obdHandler.hasValidData() && !volumeWarningActive;
+    bool obdCardsActive = (sIdle.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) && obdHandler.hasValidData() && !volumeWarningActive;
     
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
-        // Nothing changed - but KITT scanner or OBD idle display may need periodic updates
-        if (kittScannerActive) {
-            drawKittScanner();
-#if defined(DISPLAY_WAVESHARE_349)
-            DISPLAY_FLUSH();
-#endif
-        } else if (obdCardsActive) {
+        // Nothing changed - but OBD idle display may need periodic updates
+        if (obdCardsActive) {
             // OBD cards mode - use card-based display
             static uint32_t lastObdCardsUpdate = 0;
             if (millis() - lastObdCardsUpdate > 1000) {
@@ -2406,8 +2397,6 @@ void V1Display::update(const DisplayState& state) {
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
-    } else if (s.kittScannerEnabled) {
-        drawKittScanner();  // Knight Rider easter egg
     } else if (s.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS && obdHandler.hasValidData()) {
         drawObdIdleWithCards();  // OBD card-based display (primary + 2 cards)
     } else if (s.idleDisplayMode != IDLE_DISPLAY_NONE && obdHandler.hasValidData()) {
@@ -4105,106 +4094,6 @@ void V1Display::drawVolumeZeroWarning() {
     }
 }
 
-// KITT scanner animation (Knight Rider style scanning LED bar)
-// Draws a red "eye" that sweeps back and forth in the frequency area
-void V1Display::drawKittScanner() {
-    const unsigned long KITT_FRAME_MS = 16;  // ~60fps animation
-    unsigned long now = millis();
-    
-    if (now - lastKittUpdate < KITT_FRAME_MS) {
-        return;  // Not time to update yet
-    }
-    lastKittUpdate = now;
-    
-    // Scanner layout - centered in the frequency display area
-#if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 160;   // After band indicators  
-    const int rightMargin = 220;  // Before signal bars
-#else
-    const int leftMargin = 10;
-    const int rightMargin = 130;
-#endif
-    
-    const int scannerWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int eyeWidth = 50;       // Width of the bright center
-    const int tailLength = 400;    // Length of the fading trail (longer = more "always lit" like KITT)
-    const int barHeight = 25;      // Height of the scanner bar
-    // Center vertically in full screen height (172 pixels), not just primary zone
-    const int barY = (SCREEN_HEIGHT - barHeight) / 2;
-    
-    // Animation speed: faster sweep (~0.5 second full cycle)
-    const float speedPerFrame = 0.055f;
-    
-    // Update position
-    kittPosition += speedPerFrame * kittDirection;
-    
-    // Bounce at edges
-    if (kittPosition >= 1.0f) {
-        kittPosition = 1.0f;
-        kittDirection = -1;
-    } else if (kittPosition <= 0.0f) {
-        kittPosition = 0.0f;
-        kittDirection = 1;
-    }
-    
-    // Calculate eye center position
-    int eyeCenter = leftMargin + (int)(kittPosition * (scannerWidth - eyeWidth)) + eyeWidth / 2;
-    
-    // Clear the scanner area
-    FILL_RECT(leftMargin, barY, scannerWidth, barHeight, PALETTE_BG);
-    
-    // Draw the leading glow (dimmer, in front of the eye - brightest far away, dimmest near eye)
-    int leadLength = tailLength;  // Same length as trailing for full coverage
-    for (int i = 0; i < leadLength; i += 4) {
-        int leadX = eyeCenter + (kittDirection * (eyeWidth/2 + i));
-        if (leadX < leftMargin || leadX > leftMargin + scannerWidth - 4) continue;
-        
-        // Reverse fade: dim near eye, brighter far away (but still subtle overall)
-        float fade = (float)i / leadLength;  // 0 near eye, 1 far away
-        fade = fade * 0.40f;  // Keep it subtle - max 40% brightness
-        
-        // Red color with fading intensity
-        uint8_t r = (uint8_t)(31 * fade);
-        uint16_t color = (r << 11);
-        
-        FILL_RECT(leadX, barY, 4, barHeight, color);
-    }
-    
-    // Draw the trail (fading red segments behind the eye)
-    for (int i = 0; i < tailLength; i += 4) {
-        int trailX = eyeCenter - (kittDirection * (eyeWidth/2 + i));
-        if (trailX < leftMargin || trailX > leftMargin + scannerWidth - 4) continue;
-        
-        // Fade from bright to dim based on distance
-        float fade = 1.0f - ((float)i / tailLength);
-        fade = fade * fade;  // Quadratic falloff for more dramatic effect
-        fade = fade * 0.6f;  // Cap max brightness at 60%
-        
-        // Red color with fading intensity
-        uint8_t r = (uint8_t)(31 * fade);  // 5-bit red for RGB565
-        uint16_t color = (r << 11);  // Pure red, varying intensity
-        
-        FILL_RECT(trailX, barY, 4, barHeight, color);
-    }
-    
-    // Draw the bright eye center (gradient effect)
-    for (int i = 0; i < eyeWidth; i += 2) {
-        int x = eyeCenter - eyeWidth/2 + i;
-        if (x < leftMargin || x > leftMargin + scannerWidth - 2) continue;
-        
-        // Brightest in center, dimmer at edges
-        float distFromCenter = fabsf((float)(i - eyeWidth/2) / (eyeWidth/2));
-        float brightness = 1.0f - (distFromCenter * 0.5f);
-        
-        // Bright red/orange at center
-        uint8_t r = 31;  // Full red
-        uint8_t g = (uint8_t)(20 * brightness * brightness);  // Add some orange tint at center
-        uint16_t color = (r << 11) | (g << 5);
-        
-        FILL_RECT(x, barY, 2, barHeight, color);
-    }
-}
-
 // Draw OBD data in the frequency area when idle (no alerts)
 // Shows speed, oil temp, DSG temp, or intake air temp based on idleDisplayMode setting
 void V1Display::drawIdleObdData() {
@@ -4222,7 +4111,7 @@ void V1Display::drawIdleObdData() {
     
     OBDData obd = obdHandler.getData();
     
-    // Frequency area dimensions (similar to KITT scanner)
+    // Frequency area dimensions
 #if defined(DISPLAY_WAVESHARE_349)
     const int leftMargin = 160;   // After band indicators  
     const int rightMargin = 220;  // Before signal bars

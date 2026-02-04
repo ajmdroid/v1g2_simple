@@ -5,7 +5,6 @@
 	let settings = $state({
 		enableWifiAtBoot: false,
 			enableDebugLogging: false,
-			kittScannerEnabled: false,
 			logFormat: 0, // 0=TEXT, 1=JSON
 			logAsyncWrites: false, // Background task for SD writes
 			logAlerts: true,
@@ -54,12 +53,6 @@
 	let metricsAutoRefresh = $state(false);
 	let metricsRefreshInterval = $state(null);
 
-	// BLE Serial Replay state
-	let bleSerialEnabled = $state(false);
-	let bleSerialLoading = $state(false);
-	let bleSerialStats = $state({ packetsReceived: 0, lastPacketMs: 0 });
-	let bleSerialRefreshInterval = $state(null);
-
 	const formatBytes = (bytes) => {
 		if (!bytes) return '0 B';
 		if (bytes < 1024) return `${bytes} B`;
@@ -68,58 +61,8 @@
 	};
 
 	onMount(async () => {
-		await Promise.all([loadSettings(), loadLogInfo(), loadBleSerialStatus()]);
+		await Promise.all([loadSettings(), loadLogInfo()]);
 	});
-
-	// BLE Serial Replay functions
-	async function loadBleSerialStatus() {
-		try {
-			const response = await fetch('/api/debug/ble-serial');
-			if (response.ok) {
-				const data = await response.json();
-				bleSerialEnabled = data.enabled;
-				bleSerialStats.packetsReceived = data.packetsReceived || 0;
-				bleSerialStats.lastPacketMs = data.lastPacketMs || 0;
-				
-				// Start polling if enabled
-				if (bleSerialEnabled && !bleSerialRefreshInterval) {
-					bleSerialRefreshInterval = setInterval(loadBleSerialStatus, 2000);
-				}
-			}
-		} catch (error) {
-			console.error('Failed to load BLE serial status:', error);
-		}
-	}
-
-	async function toggleBleSerial(event) {
-		bleSerialLoading = true;
-		const enable = event.target.checked;
-		try {
-			const response = await fetch('/api/debug/ble-serial', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: `enabled=${enable}`
-			});
-			if (response.ok) {
-				const data = await response.json();
-				bleSerialEnabled = data.enabled;
-				message = `BLE Serial Replay ${bleSerialEnabled ? 'enabled' : 'disabled'}`;
-				
-				// Start/stop polling
-				if (bleSerialEnabled && !bleSerialRefreshInterval) {
-					bleSerialRefreshInterval = setInterval(loadBleSerialStatus, 2000);
-				} else if (!bleSerialEnabled && bleSerialRefreshInterval) {
-					clearInterval(bleSerialRefreshInterval);
-					bleSerialRefreshInterval = null;
-				}
-			}
-		} catch (error) {
-			console.error('Failed to toggle BLE serial:', error);
-			message = 'Failed to toggle BLE Serial Replay';
-		} finally {
-			bleSerialLoading = false;
-		}
-	}
 
 	async function loadSettings() {
 		try {
@@ -128,7 +71,6 @@
 			
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableDebugLogging = data.enableDebugLogging || false;
-			settings.kittScannerEnabled = data.kittScannerEnabled || false;
 			settings.logFormat = data.logFormat ?? 0;
 			settings.logAsyncWrites = data.logAsyncWrites ?? false;
 			settings.logAlerts = data.logAlerts ?? true;
@@ -188,7 +130,6 @@
 			const params = new URLSearchParams();
 			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			params.append('enableDebugLogging', settings.enableDebugLogging.toString());
-			params.append('kittScannerEnabled', settings.kittScannerEnabled.toString());
 			params.append('logFormat', settings.logFormat.toString());
 			params.append('logAsyncWrites', settings.logAsyncWrites.toString());
 			params.append('logAlerts', settings.logAlerts.toString());
@@ -330,7 +271,6 @@
 
 		settings.enableWifiAtBoot = false;
 		settings.enableDebugLogging = false;
-		settings.kittScannerEnabled = false;
 		settings.logAlerts = true;
 		settings.logWifi = true;
 		settings.logBle = false;
@@ -456,9 +396,6 @@
 	onDestroy(() => {
 		stopAutoRefresh();
 		stopMetricsAutoRefresh();
-		if (bleSerialRefreshInterval) {
-			clearInterval(bleSerialRefreshInterval);
-		}
 	});
 </script>
 
@@ -717,52 +654,6 @@
 			</div>
 		</div>
 
-		<!-- BLE Serial Replay -->
-		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
-			<div class="card-body">
-				<h2 class="card-title">🔄 BLE Serial Replay</h2>
-				<p class="text-xs opacity-70">
-					Enable to receive V1 BLE packets over USB serial for testing/replay.
-					Use with <code class="text-primary">replay_ble.py</code> tool.
-				</p>
-				
-				<div class="form-control mt-2">
-					<label class="label cursor-pointer">
-						<div>
-							<span class="label-text font-semibold">Enable Serial Replay</span>
-							<p class="text-xs opacity-70 mt-1">
-								Accepts packets via USB serial alongside real BLE
-							</p>
-						</div>
-						<input 
-							type="checkbox" 
-							class="toggle toggle-primary"
-							checked={bleSerialEnabled}
-							onchange={toggleBleSerial}
-							disabled={!acknowledged || bleSerialLoading}
-						/>
-					</label>
-				</div>
-				
-				{#if bleSerialEnabled}
-					<div class="mt-2 text-xs opacity-70 bg-base-300 rounded p-2">
-						<div class="flex justify-between">
-							<span>Packets received:</span>
-							<span class="font-mono">{bleSerialStats.packetsReceived}</span>
-						</div>
-						<div class="flex justify-between">
-							<span>Last packet:</span>
-							<span class="font-mono">{bleSerialStats.lastPacketMs ? `${((Date.now() - bleSerialStats.lastPacketMs) / 1000).toFixed(1)}s ago` : 'none'}</span>
-						</div>
-					</div>
-				{/if}
-				
-				<p class="text-[11px] opacity-60 mt-2">
-					Format: <code>PKT:delay_ms:HEXDATA</code> or just <code>HEXDATA</code>
-				</p>
-			</div>
-		</div>
-
 		<!-- Performance Metrics -->
 		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
 			<div class="card-body">
@@ -911,30 +802,6 @@
 						{/if}
 					</div>
 				{/if}
-			</div>
-		</div>
-
-		<!-- Fun & Experimental -->
-		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
-			<div class="card-body">
-				<h2 class="card-title">Fun & Experimental</h2>
-				
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<div>
-							<span class="label-text font-semibold">🔴 KITT Scanner Mode</span>
-							<p class="text-xs opacity-70 mt-1">
-								Knight Rider style alert animation (easter egg)
-							</p>
-						</div>
-						<input 
-							type="checkbox" 
-							class="toggle toggle-error"
-							bind:checked={settings.kittScannerEnabled}
-							disabled={!acknowledged}
-						/>
-					</label>
-				</div>
 			</div>
 		</div>
 
