@@ -85,8 +85,11 @@ public:
         explicit SDLock(SemaphoreHandle_t mutex, TickType_t timeout) 
             : mutex_(mutex), acquired_(false) {
             // DEBUG: Catch accidental blocking locks on Core 1 (real-time core)
+            // Rate-limited: warns once per boot to avoid log spam
             #ifdef DEBUG
-            if (xPortGetCoreID() == 1 && timeout > 0) {
+            static bool warned = false;
+            if (!warned && xPortGetCoreID() == 1 && timeout > 0) {
+                warned = true;
                 Serial.println("[WARN] SDLock with timeout>0 on Core 1 - use SDTryLock!");
             }
             #endif
