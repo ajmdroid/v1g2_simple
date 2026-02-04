@@ -796,7 +796,14 @@ bool V1BLEClient::startAsyncConnect() {
     if (pClient->isConnected()) {
         Serial.println("[BLE] Client thinks it's connected, disconnecting first");
         pClient->disconnect();
-        // No blocking delay - will proceed on next loop iteration
+        // Give NimBLE time to process the disconnect
+        vTaskDelay(pdMS_TO_TICKS(100));
+        // If still "connected" after delay, need a harder reset
+        if (pClient->isConnected()) {
+            Serial.println("[BLE] Client still thinks it's connected after disconnect - hard reset");
+            hardResetBLEClient();
+            return false;  // Will retry on next process() cycle
+        }
     }
     
     // Clear async state before initiating connect
