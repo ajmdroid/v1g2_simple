@@ -50,7 +50,6 @@
 #include "modules/touch/tap_gesture_module.h"
 #include "modules/wifi/wifi_orchestrator_module.h"
 #include "modules/power/power_module.h"
-#include "modules/perf/perf_reporter_module.h"
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
@@ -71,8 +70,6 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
-
-// Debug macros and perf timing utilities are in modules/perf/debug_macros.h
 
 // Global objects
 V1BLEClient bleClient;
@@ -96,7 +93,6 @@ VoiceModule voiceModule;
 // (included via obd_handler.h extern declaration)
 
 unsigned long lastDisplayUpdate = 0;
-unsigned long lastStatusUpdate = 0;
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -238,7 +234,6 @@ AutoPushModule autoPushModule;
 TouchUiModule touchUiModule;
 TapGestureModule tapGestureModule;
 PowerModule powerModule;
-PerfReporterModule perfReporterModule;
 BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
 DisplayPipelineModule displayPipelineModule;
@@ -565,8 +560,6 @@ void setup() {
                          (unsigned long)logMask);
     }
 
-    perfReporterModule.begin(&debugLogger, &settingsManager);
-
     // Emit RUN header for benchmark tracking (debug log only, not serial)
     if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
         JsonDocument runDoc;
@@ -700,8 +693,6 @@ void setup() {
 void loop() {
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
-    
-    perfReporterModule.process(now);
 
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
     // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
@@ -780,7 +771,7 @@ void loop() {
         
         // Auto-disable GPS if module not detected after timeout
         if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
-            SerialLog.println("[GPS] Module not detected - disabling GPS");
+            Serial.println("[GPS] Module not detected - disabling GPS");
             gpsHandler.end();  // Static allocation - use end() instead of delete
             settingsManager.setGpsEnabled(false);
         }
@@ -826,18 +817,6 @@ void loop() {
         if (!displayPreviewModule.isRunning()) {
             // Handle connection state transitions (connect/disconnect, stale data re-request)
             connectionStateModule.process(now);
-        }
-    }
-    
-    // Status update (print to serial) - only when DEBUG_LOGS enabled
-    if (DEBUG_LOGS && now - lastStatusUpdate >= STATUS_UPDATE_MS) {
-        lastStatusUpdate = now;
-        
-        if (bleClient.isConnected()) {
-            [[maybe_unused]] DisplayState state = parser.getDisplayState();
-            if (parser.hasAlerts()) {
-                SerialLog.printf("Active alerts: %d\n", parser.getAlertCount());
-            }
         }
     }
     

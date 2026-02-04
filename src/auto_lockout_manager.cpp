@@ -28,8 +28,6 @@ static bool ensureProfilesDir(fs::FS* fs) {
   return created;
 }
 
-// DEBUG_LOGS defined in debug_macros.h (included above)
-
 // Validate cluster data after parsing (matches LockoutManager::isValidLockout pattern)
 static bool isValidCluster(const LearningCluster& cluster) {
   if (!isfinite(cluster.centerLat) || !isfinite(cluster.centerLon) || !isfinite(cluster.radius_m)) {
@@ -44,7 +42,6 @@ static bool isValidCluster(const LearningCluster& cluster) {
 
 // Lockout logging macro - logs to SD when category enabled
 #define LOCKOUT_LOGF(...) do { \
-    if (DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
     if (debugLogger.isEnabledFor(DebugLogCategory::Lockout)) debugLogger.logf(DebugLogCategory::Lockout, __VA_ARGS__); \
 } while(0)
 

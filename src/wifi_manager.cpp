@@ -11,7 +11,6 @@
 #include "storage_manager.h"
 #include "debug_logger.h"
 #include "v1_profiles.h"
-#include "modules/perf/perf_reporter_module.h"
 #include "ble_client.h"
 #include "obd_handler.h"
 #include "gps_handler.h"
@@ -19,7 +18,6 @@
 #include "camera_manager.h"
 #include "modules/camera/camera_load_coordinator_module.h"
 #include "perf_metrics.h"
-#include "event_ring.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "../include/config.h"
@@ -57,7 +55,6 @@ extern V1BLEClient bleClient;
 extern GPSHandler gpsHandler;
 // Camera load coordinator (set when GPS enabled at runtime)
 extern CameraLoadCoordinator cameraLoadCoordinator;
-extern PerfReporterModule perfReporterModule;
 // Auto lockouts manager for API export
 extern AutoLockoutManager autoLockouts;
 // Preview hold helper to keep color demo visible briefly
@@ -255,9 +252,6 @@ bool WiFiManager::startSetupMode() {
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
 
-    EVENT_LOG(EVT_WIFI_AP_START, 0);
-    EVENT_LOG(EVT_SETUP_MODE_ENTER, 0);
-
     WIFI_LOG("[SetupMode] AP started - connect to SSID shown on display\n");
     WIFI_LOG("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
     uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
@@ -285,8 +279,6 @@ bool WiFiManager::stopSetupMode(bool manual) {
         debugLogger.log(DebugLogCategory::Wifi, manual ? "Setup mode AP stopped (manual)" : "Setup mode AP stopped (timeout)");
     }
 
-    EVENT_LOG(EVT_WIFI_AP_STOP, 0);
-    EVENT_LOG(EVT_SETUP_MODE_EXIT, manual ? 1 : 0);
     return true;
 }
 
@@ -497,10 +489,8 @@ void WiFiManager::setupWebServer() {
     server.on("/api/settings/backup", HTTP_GET, [this]() { handleSettingsBackup(); });
     server.on("/api/settings/restore", HTTP_POST, [this]() { handleSettingsRestore(); });
     
-    // Debug API routes (performance metrics and event ring)
+    // Debug API routes (performance metrics)
     server.on("/api/debug/metrics", HTTP_GET, [this]() { handleDebugMetrics(); });
-    server.on("/api/debug/events", HTTP_GET, [this]() { handleDebugEvents(); });
-    server.on("/api/debug/events/clear", HTTP_POST, [this]() { handleDebugEventsClear(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
     server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
@@ -2351,17 +2341,6 @@ void WiFiManager::handleDebugMetrics() {
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleDebugEvents() {
-    String json = eventRingToJson();
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleDebugEventsClear() {
-    if (!checkRateLimit()) return;
-    eventRingClear();
-    server.send(200, "application/json", "{\"success\":true}");
 }
 
 void WiFiManager::handleDebugEnable() {
