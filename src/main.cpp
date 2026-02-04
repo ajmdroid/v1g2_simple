@@ -500,9 +500,8 @@ void setup() {
 
     perfReporterModule.begin(&debugLogger, &settingsManager);
 
-    // Emit RUN header for benchmark tracking (once per boot)
-    // This provides build metadata and configuration snapshot for performance analysis
-    {
+    // Emit RUN header for benchmark tracking (debug log only, not serial)
+    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
         JsonDocument runDoc;
         runDoc["fw"] = FIRMWARE_VERSION;
         #ifdef GIT_SHA
@@ -516,29 +515,19 @@ void setup() {
         runDoc["build"] = "unknown";
         #endif
         runDoc["board"] = "waveshare-349";
-        runDoc["queueDepth"] = 48;  // From BLE queue config (reduced from 72)
-        runDoc["drawMinMs"] = 30;    // DISPLAY_DRAW_MIN_MS from display pipeline
+        runDoc["queueDepth"] = 48;
+        runDoc["drawMinMs"] = 30;
         const V1Settings& runSettings = settingsManager.get();
         runDoc["wifi"] = runSettings.enableWifi;
         runDoc["proxy"] = runSettings.proxyBLE;
         runDoc["logPerf"] = runSettings.logPerfMetrics;
-        runDoc["scenario"] = "default";  // TODO: Add scenario setting in future
+        runDoc["scenario"] = "default";
         
         String runJson;
         serializeJson(runDoc, runJson);
-        SerialLog.printf("RUN %s\n", runJson.c_str());
-        if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-            debugLogger.logf(DebugLogCategory::System, "RUN %s", runJson.c_str());
-        }
+        debugLogger.logf(DebugLogCategory::System, "RUN %s", runJson.c_str());
     }
 
-    SerialLog.println("==============================");
-    SerialLog.println("WiFi Configuration:");
-    SerialLog.printf("  enableWifi: %s\n", settingsManager.get().enableWifi ? "YES" : "NO");
-    SerialLog.printf("  wifiMode: %d\n", settingsManager.get().wifiMode);
-    SerialLog.printf("  apSSID: %s\n", settingsManager.get().apSSID.c_str());
-    SerialLog.println("==============================");
-    
     // WiFi startup behavior - either auto-start or wait for BOOT button
     if (settingsManager.get().enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled (dev setting)");

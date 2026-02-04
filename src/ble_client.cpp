@@ -96,8 +96,8 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 }
 // Debug log controls
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
-constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
-constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
+constexpr bool CONNECT_ATTEMPT_VERBOSE = true;   // Individual connect attempt logs
+constexpr bool BLE_STATE_MACHINE_LOGS = true;    // BLE state machine transitions (high frequency during reconnect)
 constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF to avoid callback blocking)
 
 // BLE logging macros - log to Serial AND debugLogger when BLE category enabled
@@ -322,35 +322,30 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         blePrefs.end();
     }
     
-    // BLE initialization pattern (derived from v1g2-t4s3 reference):
-    // This sequence is critical for NimBLE dual-role stability:
+    // BLE initialization pattern for NimBLE dual-role stability:
     // 1. init() with generic name
     // 2. setDeviceName() with the actual advertised name  
     // 3. setPower() and setMTU for better throughput
-    // 4. Create proxy server BEFORE scanning (critical for NimBLE dual-role stability)
-    // 5. Start advertising then immediately stop (initializes BLE stack)
+    // 4. Create proxy server BEFORE scanning (critical for dual-role)
+    // 5. Start advertising then stop (initializes BLE stack)
     // 6. After V1 connects, advertising restarts via startProxyAdvertising()
     if (proxyEnabled) {
-        Serial.println("Proxy mode enabled - creating server BEFORE scanning (Kenny's pattern)");
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
         
-        // Create proxy server NOW, BEFORE scanning starts
-        // This is Kenny's critical pattern - server exists but doesn't advertise
-        // until V1 connection is established
+        // Create proxy server before scanning for dual-role stability
         initProxyServer(proxyName_.c_str());
         proxyServerInitialized = true;
-        Serial.println("Proxy server created - now ready to scan");
     } else {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
     
-    // Create client ONCE during init (Kenny's pattern) - reuse for all connection attempts
-    // DON'T delete/recreate on connection failures - causes callback pointer corruption
+    // Create client once during init - reuse for all connection attempts
+    // Don't delete/recreate on failures - causes callback pointer corruption
     if (!pClient) {
         pClient = NimBLEDevice::createClient();
         if (!pClient) {
@@ -391,13 +386,14 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScanCallbacks = new ScanCallbacks(this);
     pScan->setScanCallbacks(pScanCallbacks);
     pScan->setActiveScan(true);  // Request scan response to get device names
-    // ESP32-S3 WiFi coexistence: use 50% duty cycle to give WiFi AP radio time
+    // ESP32-S3 WiFi coexistence: use 75% duty cycle for reliable V1 discovery
+    // Higher duty = more BLE radio time = faster discovery, but less WiFi throughput
     pScan->setInterval(160);  // 100ms interval 
-    pScan->setWindow(80);     // 50ms window - 50% duty cycle
+    pScan->setWindow(120);    // 75ms window - 75% duty cycle (was 50%)
     pScan->setMaxResults(0);  // Unlimited results
     // Filter duplicate advertisements to reduce scan load and radio time
     pScan->setDuplicateFilter(true);
-    Serial.println("Scan configured: interval=160 (100ms), window=80 (50ms), active=true, 50% duty, 10s duration");
+    Serial.println("Scan configured: interval=160 (100ms), window=120 (75ms), active=true, 75% duty, 10s duration");
     
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
     lastScanStart = millis();
@@ -2129,15 +2125,11 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     pAdvertising->setMinInterval(0x50);   // 50ms in 0.625ms units = ~50ms
     pAdvertising->setMaxInterval(0xA0);   // 100ms in 0.625ms units = ~100ms
     
-    // Kenny's pattern: Start advertising then immediately stop
-    // This initializes the advertising stack and ensures clean state
-    // Without this, the advertising state may be undefined when scanning starts
+    // Start/stop advertising to initialize the stack cleanly before scanning
     pAdvertising->start();
-    delay(50);  // Brief settle time
+    delay(50);
     NimBLEDevice::stopAdvertising();
     delay(50);
-    
-    Serial.println("Proxy service created with 6 characteristics (full V1 API)");
 }
 
 bool V1BLEClient::isProxyAdvertising() const {
