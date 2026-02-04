@@ -3,6 +3,9 @@
  * Writes timestamped JSON lines when enabled in settings.
  * Uses buffered writes (4KB buffer, 1s flush) to minimize SD latency impact.
  * 
+ * Async mode (default when SD available): Uses FreeRTOS task on Core 0
+ * to perform SD writes off the main loop, preventing display/alert latency.
+ * 
  * Log format: NDJSON (newline-delimited JSON) for ELK/Elasticsearch import
  */
 
@@ -13,6 +16,8 @@
 #include <FS.h>
 #include <time.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 // Log file location and size cap (shared with UI/API)
 inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
@@ -22,6 +27,10 @@ inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (S
 inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
 inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
 inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
+
+// Async write task settings (Core 0, low priority)
+inline constexpr size_t DEBUG_LOG_QUEUE_DEPTH = 4;          // Queue up to 4 buffers (16KB total)
+inline constexpr size_t DEBUG_LOG_WRITER_STACK_SIZE = 3072; // Stack for writer task
 
 // WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
 inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
@@ -100,6 +109,11 @@ public:
     void update();  // Check if time-based flush needed
     void flush();   // Force flush buffer to SD (call on shutdown/crash)
     
+    // Async mode control (FreeRTOS task for non-blocking SD writes)
+    void enableAsyncMode();   // Start background writer task on Core 0
+    void disableAsyncMode();  // Stop task, switch to sync writes
+    bool isAsyncMode() const { return asyncMode; }
+    
     // WiFi transition deferral - defers SD writes during WiFi reconnection
     // to avoid NVS/flash contention that can cause multi-second stalls
     void notifyWifiTransition(bool stable);  // Called by WiFi manager on state changes
@@ -141,6 +155,22 @@ private:
     char buffer[DEBUG_LOG_BUFFER_SIZE];
     size_t bufferPos = 0;
     unsigned long lastFlushMs = 0;
+    
+    // Async mode state (FreeRTOS task + queue for non-blocking writes)
+    bool asyncMode = false;
+    QueueHandle_t writeQueue = nullptr;
+    TaskHandle_t writerTaskHandle = nullptr;
+    
+    // Queue message structure - contains buffer snapshot
+    struct WriteMessage {
+        char data[DEBUG_LOG_BUFFER_SIZE];
+        size_t length;
+    };
+    
+    void flushBufferSync();                          // Synchronous write (direct or from task)
+    void flushBufferAsync();                         // Queue buffer for async write
+    static void writerTaskEntry(void* param);        // FreeRTOS task entry point
+    void writerTaskLoop();                           // Task main loop
     
     // WiFi transition deferral state
     bool wifiTransitionActive = false;      // True during WiFi reconnect/disconnect

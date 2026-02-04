@@ -10,6 +10,7 @@
 #include <stdarg.h>
 #include <sys/time.h>  // For settimeofday
 #include <esp_heap_caps.h>  // For heap_caps_get_largest_free_block
+#include <new>  // For std::nothrow
 
 DebugLogger debugLogger;
 
@@ -26,7 +27,11 @@ void DebugLogger::setEnabled(bool enabledFlag) {
         rotateIfNeeded();
         bufferPos = 0;
         lastFlushMs = millis();
+        // Enable async mode for non-blocking writes
+        enableAsyncMode();
     } else if (!enabled && wasEnabled) {
+        // Disable async mode first (drains queue)
+        disableAsyncMode();
         // Flush any remaining data before disabling
         flushBuffer();
     }
@@ -146,6 +151,17 @@ void DebugLogger::flushBuffer() {
     if (bufferPos == 0) return;
     if (!storageManager.isReady()) return;
     
+    if (asyncMode && writeQueue) {
+        flushBufferAsync();
+    } else {
+        flushBufferSync();
+    }
+}
+
+void DebugLogger::flushBufferSync() {
+    if (bufferPos == 0) return;
+    if (!storageManager.isReady()) return;
+    
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return;
     
@@ -167,6 +183,34 @@ void DebugLogger::flushBuffer() {
     uint32_t durUs = PERF_TIMESTAMP_US() - startUs;
     perfRecordSdFlushUs(durUs);
     
+    bufferPos = 0;
+    lastFlushMs = millis();
+}
+
+void DebugLogger::flushBufferAsync() {
+    if (bufferPos == 0 || !writeQueue) return;
+    
+    // Allocate message on heap (queue holds pointers, not data)
+    WriteMessage* msg = new (std::nothrow) WriteMessage();
+    if (!msg) {
+        // Heap exhausted - fall back to sync write
+        flushBufferSync();
+        return;
+    }
+    
+    // Copy buffer to message
+    memcpy(msg->data, buffer, bufferPos);
+    msg->length = bufferPos;
+    
+    // Non-blocking queue send
+    if (xQueueSend(writeQueue, &msg, 0) != pdTRUE) {
+        // Queue full - delete message and fall back to sync
+        delete msg;
+        flushBufferSync();
+        return;
+    }
+    
+    // Buffer queued successfully - clear local buffer
     bufferPos = 0;
     lastFlushMs = millis();
 }
@@ -542,4 +586,128 @@ String DebugLogger::tail(size_t maxBytes) const {
 
     f.close();
     return content;
+}
+
+// ============================================================================
+// Async Mode - FreeRTOS task for non-blocking SD writes
+// ============================================================================
+
+void DebugLogger::enableAsyncMode() {
+    if (asyncMode) return;  // Already enabled
+    
+    // Create queue for write messages (pointers to WriteMessage structs)
+    if (!writeQueue) {
+        writeQueue = xQueueCreate(DEBUG_LOG_QUEUE_DEPTH, sizeof(WriteMessage*));
+        if (!writeQueue) {
+            Serial.println("[DebugLog] ERROR: Failed to create write queue");
+            return;
+        }
+        Serial.printf("[DebugLog] Write queue created (%u items)\n",
+                      (unsigned)DEBUG_LOG_QUEUE_DEPTH);
+    }
+    
+    // Create writer task on Core 0 at low priority
+    if (!writerTaskHandle) {
+        BaseType_t result = xTaskCreatePinnedToCore(
+            writerTaskEntry,                // Entry function
+            "DebugLogWriter",               // Task name
+            DEBUG_LOG_WRITER_STACK_SIZE,    // Stack size
+            this,                           // Parameter (this pointer)
+            1,                              // Priority (low - 1 above idle)
+            &writerTaskHandle,              // Task handle
+            0                               // Core 0 (protocol core)
+        );
+        
+        if (result != pdPASS) {
+            Serial.println("[DebugLog] ERROR: Failed to create writer task");
+            return;
+        }
+        Serial.println("[DebugLog] Writer task started on Core 0");
+    }
+    
+    asyncMode = true;
+}
+
+void DebugLogger::disableAsyncMode() {
+    if (!asyncMode) return;
+    
+    asyncMode = false;
+    
+    // Flush any pending data synchronously
+    if (bufferPos > 0) {
+        flushBufferSync();
+    }
+    
+    // Drain and process remaining queued messages synchronously
+    if (writeQueue) {
+        WriteMessage* msg = nullptr;
+        while (xQueueReceive(writeQueue, &msg, 0) == pdTRUE) {
+            if (msg) {
+                // Write directly with mutex protection
+                fs::FS* fs = storageManager.getFilesystem();
+                if (fs) {
+                    StorageManager::SDLock lock(storageManager.getSDMutex());
+                    if (lock) {
+                        rotateIfNeededUnlocked(fs);
+                        File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+                        if (f) {
+                            f.write((uint8_t*)msg->data, msg->length);
+                            f.close();
+                        }
+                    }
+                }
+                delete msg;
+            }
+        }
+    }
+    
+    // Note: We don't delete the task or queue - they can be re-enabled
+    // This avoids complexity of task termination synchronization
+    Serial.println("[DebugLog] Async mode disabled, using sync writes");
+}
+
+void DebugLogger::writerTaskEntry(void* param) {
+    DebugLogger* self = static_cast<DebugLogger*>(param);
+    self->writerTaskLoop();
+}
+
+void DebugLogger::writerTaskLoop() {
+    Serial.println("[DebugLog] Writer task running");
+    
+    while (true) {
+        WriteMessage* msg = nullptr;
+        
+        // Block waiting for messages (portMAX_DELAY = infinite wait)
+        if (xQueueReceive(writeQueue, &msg, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+        
+        if (!msg) continue;
+        
+        // Write to SD with mutex protection
+        if (storageManager.isReady()) {
+            fs::FS* fs = storageManager.getFilesystem();
+            if (fs) {
+                StorageManager::SDLock lock(storageManager.getSDMutex());
+                if (lock) {
+                    rotateIfNeededUnlocked(fs);
+                    
+                    uint32_t startUs = micros();
+                    File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+                    if (f) {
+                        f.write((uint8_t*)msg->data, msg->length);
+                        f.close();
+                    }
+                    uint32_t durUs = micros() - startUs;
+                    perfRecordSdFlushUs(durUs);
+                }
+            }
+        }
+        
+        // Free the message
+        delete msg;
+        
+        // Yield to allow other tasks to run
+        taskYIELD();
+    }
 }
