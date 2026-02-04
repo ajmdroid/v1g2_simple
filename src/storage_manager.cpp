@@ -13,7 +13,12 @@ StorageManager storageManager;
 
 StorageManager::StorageManager()
     : fs(nullptr), ready(false), usingSDMMC(false), littlefsReady(false),
-      cameraDbFound(false), alprCount(0), redlightCount(0), speedCount(0) {
+      cameraDbFound(false), alprCount(0), redlightCount(0), speedCount(0), sdMutex(nullptr) {
+    // Create SD access mutex - critical for thread safety across cores
+    sdMutex = xSemaphoreCreateMutex();
+    if (!sdMutex) {
+        Serial.println("[Storage] CRITICAL: Failed to create SD mutex!");
+    }
 }
 
 bool StorageManager::begin() {

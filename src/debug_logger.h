@@ -122,6 +122,7 @@ private:
     void bufferLine(const char* line);
     void flushBuffer();
     void rotateIfNeeded();
+    void rotateIfNeededUnlocked(fs::FS* fs);  // Internal - caller must hold SD mutex
     bool categoryAllowed(DebugLogCategory category) const;
     const char* categoryName(DebugLogCategory category) const;
     void formatJsonLine(char* dest, size_t destSize, DebugLogCategory category, 

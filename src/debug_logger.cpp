@@ -77,6 +77,15 @@ void DebugLogger::rotateIfNeeded() {
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return;
 
+    // Mutex protection for SD access
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) return;  // Failed to acquire mutex
+
+    rotateIfNeededUnlocked(fs);
+}
+
+// Internal helper - caller must hold SD mutex
+void DebugLogger::rotateIfNeededUnlocked(fs::FS* fs) {
     if (!fs->exists(DEBUG_LOG_PATH)) return;
 
     File f = fs->open(DEBUG_LOG_PATH, FILE_READ);
@@ -99,14 +108,17 @@ void DebugLogger::bufferLine(const char* line) {
     // If line is too big for buffer, flush first then write directly
     if (totalLen > DEBUG_LOG_BUFFER_SIZE) {
         flushBuffer();
-        // Write oversized line directly to file
+        // Write oversized line directly to file (with mutex protection)
         fs::FS* fs = storageManager.getFilesystem();
         if (fs) {
-            File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
-            if (f) {
-                f.print(line);
-                if (needsNewline) f.print('\n');
-                f.close();
+            StorageManager::SDLock lock(storageManager.getSDMutex());
+            if (lock) {
+                File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+                if (f) {
+                    f.print(line);
+                    if (needsNewline) f.print('\n');
+                    f.close();
+                }
             }
         }
         return;
@@ -137,7 +149,14 @@ void DebugLogger::flushBuffer() {
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return;
     
-    rotateIfNeeded();
+    // Mutex protection for SD access (includes rotateIfNeeded)
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) {
+        // Failed to acquire mutex - don't block, try again next cycle
+        return;
+    }
+    
+    rotateIfNeededUnlocked(fs);  // Already holding mutex
     
     uint32_t startUs = PERF_TIMESTAMP_US();
     File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
@@ -438,6 +457,8 @@ bool DebugLogger::exists() const {
     if (!storageManager.isReady()) return false;
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) return false;
     return fs->exists(DEBUG_LOG_PATH);
 }
 
@@ -445,6 +466,8 @@ size_t DebugLogger::size() const {
     if (!storageManager.isReady()) return 0;
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return 0;
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) return 0;
     File f = fs->open(DEBUG_LOG_PATH, FILE_READ);
     if (!f) return 0;
     size_t sz = f.size();
@@ -456,6 +479,8 @@ bool DebugLogger::clear() {
     if (!storageManager.isReady()) return false;
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) return false;
     if (fs->exists(DEBUG_LOG_PATH)) {
         return fs->remove(DEBUG_LOG_PATH);
     }
@@ -466,6 +491,10 @@ String DebugLogger::tail(size_t maxBytes) const {
     if (!storageManager.isReady()) return "[Storage not ready]";
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return "[Filesystem unavailable]";
+    
+    StorageManager::SDLock lock(storageManager.getSDMutex());
+    if (!lock) return "[SD busy]";
+    
     if (!fs->exists(DEBUG_LOG_PATH)) return "[No log file]";
 
     File f = fs->open(DEBUG_LOG_PATH, FILE_READ);

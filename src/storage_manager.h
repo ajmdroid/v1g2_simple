@@ -12,6 +12,8 @@
 #include <FS.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // Waveshare 3.49 SD card pins (SDMMC interface)
 #if defined(DISPLAY_WAVESHARE_349)
@@ -53,6 +55,35 @@ public:
     // Secondary LittleFS handle (available even when SD is primary)
     fs::FS* getLittleFS() const { return littlefsReady ? &LittleFS : nullptr; }
     
+    // Thread-safe SD access mutex - MUST be held during all file operations
+    // when multiple cores/tasks may access SD simultaneously
+    SemaphoreHandle_t getSDMutex() const { return sdMutex; }
+    
+    // RAII helper for automatic mutex acquisition
+    class SDLock {
+    public:
+        explicit SDLock(SemaphoreHandle_t mutex, TickType_t timeout = pdMS_TO_TICKS(1000)) 
+            : mutex_(mutex), acquired_(false) {
+            if (mutex_) {
+                acquired_ = (xSemaphoreTake(mutex_, timeout) == pdTRUE);
+            }
+        }
+        ~SDLock() { release(); }
+        bool acquired() const { return acquired_; }
+        operator bool() const { return acquired_; }
+        
+        // Manual early release - useful when you want to release lock before scope ends
+        void release() {
+            if (acquired_ && mutex_) {
+                xSemaphoreGive(mutex_);
+                acquired_ = false;
+            }
+        }
+    private:
+        SemaphoreHandle_t mutex_;
+        bool acquired_;
+    };
+    
     // Camera database info
     bool hasCameraDatabase() const { return cameraDbFound; }
     uint32_t getAlprCount() const { return alprCount; }
@@ -75,6 +106,7 @@ private:
     uint32_t alprCount;
     uint32_t redlightCount;
     uint32_t speedCount;
+    SemaphoreHandle_t sdMutex;
 };
 
 // Global instance

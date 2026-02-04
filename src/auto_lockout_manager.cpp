@@ -638,6 +638,10 @@ void AutoLockoutManager::update() {
 bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
   if (!fs || !fs->exists(jsonPath)) return false;
   
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) return false;
+  
   File file = fs->open(jsonPath, "r");
   if (!file) return false;
   
@@ -656,6 +660,7 @@ bool AutoLockoutManager::tryLoadFromFS(fs::FS* fs, const char* jsonPath) {
   std::unique_ptr<JsonDocument> doc(new JsonDocument());
   DeserializationError error = deserializeJson(*doc, file);
   file.close();
+  sdLock.release();  // Release lock after file I/O, before mutex/CPU work
   
   if (error) {
     Serial.printf("[AutoLockout] JSON parse error: %s\n", error.c_str());
@@ -802,6 +807,13 @@ bool AutoLockoutManager::saveToJSON(const char* jsonPath) {
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs) {
     Serial.println("[AutoLockout] No filesystem available for save");
+    return false;
+  }
+  
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) {
+    Serial.println("[AutoLockout] Failed to acquire SD mutex for save");
     return false;
   }
   
@@ -1012,6 +1024,13 @@ bool AutoLockoutManager::backupToSD() {
     }
   } // Lock released
   
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) {
+    Serial.println("[AutoLockout] Failed to acquire SD mutex for backup");
+    return false;
+  }
+  
   // Atomic write to SD
   bool ok = StorageManager::writeJsonFileAtomic(*fs, "/v1simple_auto_lockouts.json", doc);
   
@@ -1025,6 +1044,15 @@ bool AutoLockoutManager::backupToSD() {
 
 bool AutoLockoutManager::restoreFromSD() {
   if (!storageManager.isReady() || !storageManager.isSDCard()) {
+    return false;
+  }
+  
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) {
+    if (DEBUG_LOGS) {
+      Serial.println("[AutoLockout] Failed to acquire SD mutex for restore");
+    }
     return false;
   }
   
@@ -1043,6 +1071,7 @@ bool AutoLockoutManager::restoreFromSD() {
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, file);
   file.close();
+  sdLock.release();  // Release lock after file I/O, before CPU/mutex work
   
   if (error) {
     if (DEBUG_LOGS) {
@@ -1154,6 +1183,11 @@ const char* AutoLockoutManager::logPath() const {
 void AutoLockoutManager::ensureLogExists() {
   fs::FS* fs = logFs();
   if (!fs) return;
+  
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) return;
+  
   const char* path = logPath();
   if (!fs->exists(path)) {
     File f = fs->open(path, "w");
@@ -1165,6 +1199,11 @@ void AutoLockoutManager::ensureLogExists() {
 void AutoLockoutManager::appendLogRecordSync(const char* line) {
   fs::FS* fs = logFs();
   if (!fs) return;
+  
+  // Mutex protection for SD access - critical for thread safety with Core 0 writer task
+  StorageManager::SDLock lock(storageManager.getSDMutex());
+  if (!lock) return;  // Failed to acquire mutex
+  
   const char* path = logPath();
   File f = fs->open(path, "a");
   if (!f) return;
@@ -1235,6 +1274,11 @@ void AutoLockoutManager::noteLogWrite() {
 void AutoLockoutManager::truncateLog() {
   fs::FS* fs = logFs();
   if (!fs) return;
+  
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) return;
+  
   const char* path = logPath();
   File f = fs->open(path, "w");
   if (f) f.close();
@@ -1244,18 +1288,35 @@ void AutoLockoutManager::truncateLog() {
 bool AutoLockoutManager::replayLog() {
   fs::FS* fs = logFs();
   if (!fs) return false;
+  
+  // Acquire SD mutex for file I/O
+  StorageManager::SDLock sdLock(storageManager.getSDMutex());
+  if (!sdLock) return false;
+  
   const char* path = logPath();
   if (!fs->exists(path)) {
+    // Release lock before calling ensureLogExists (which acquires its own lock)
+    sdLock.release();
     ensureLogExists();
     return false;
   }
   File f = fs->open(path, "r");
   if (!f) return false;
-  replayingLog = true;
-  size_t applied = 0;
+  
+  // Read all lines first, then release lock before processing
+  std::vector<String> lines;
   while (f.available()) {
     String line = f.readStringUntil('\n');
-    if (line.length() == 0) continue;
+    if (line.length() > 0) {
+      lines.push_back(line);
+    }
+  }
+  f.close();
+  sdLock.release();  // Release lock before CPU-intensive JSON parsing
+  
+  replayingLog = true;
+  size_t applied = 0;
+  for (const auto& line : lines) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, line);
     if (err) continue;
@@ -1269,7 +1330,6 @@ bool AutoLockoutManager::replayLog() {
       applied++;
     }
   }
-  f.close();
   replayingLog = false;
   if (applied > 0) {
     update();  // run promotion/demotion after rebuild

@@ -1203,6 +1203,13 @@ void SettingsManager::backupToSD() {
         return;  // SD not available, skip silently
     }
     
+    // Acquire SD mutex to protect file I/O
+    StorageManager::SDLock sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        Serial.println("[Settings] Failed to acquire SD mutex for backup");
+        return;
+    }
+    
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return;
     
@@ -1398,6 +1405,13 @@ void SettingsManager::backupToSD() {
 // Restore ALL settings from SD card
 bool SettingsManager::restoreFromSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return false;
+    }
+    
+    // Acquire SD mutex to protect file I/O
+    StorageManager::SDLock sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        Serial.println("[Settings] Failed to acquire SD mutex for restore");
         return false;
     }
     
