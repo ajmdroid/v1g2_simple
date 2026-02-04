@@ -262,6 +262,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("camALPR", settings.cameraAlertALPR);
     written += prefs.putBool("camAudio", settings.cameraAudioEnabled);
     written += prefs.putUShort("camColor", settings.colorCameraAlert);
+    
+    // NVS validity marker - used to detect if NVS was wiped
+    written += prefs.putInt("nvsValid", SETTINGS_VERSION);
 
     prefs.end();
     Serial.printf("[Settings] Wrote %d bytes to namespace %s\n", written, ns);
@@ -1159,38 +1162,39 @@ void SettingsManager::setLastV1Address(const String& addr) {
 }
 // Check if NVS appears to be in default state (likely erased during reflash)
 bool SettingsManager::checkNeedsRestore() {
-    // If brightness is default (200) AND all colors are default, NVS was likely erased
-    // We check multiple values to reduce false positives
-    // Must check BOTH display settings AND slot settings - user may have customized
-    // slots but not colors (or vice versa)
+    // Check if NVS was likely wiped by looking for the settings version marker
+    // If settingsVer is missing (defaults to 1, triggers migration message),
+    // that's a strong indicator NVS was erased during a partition table change
+    // 
+    // We use a dedicated "nvsValid" marker that's only set after a successful save
+    // If this marker is missing but an SD backup exists, we should restore
     
-    // If ANY slot has a non-default profile name or mode, NVS has real data
-    bool slotsAreDefault = 
-        settings.slot0_default.profileName.isEmpty() &&
-        settings.slot0_default.mode == V1_MODE_UNKNOWN &&
-        settings.slot1_highway.profileName.isEmpty() &&
-        settings.slot1_highway.mode == V1_MODE_UNKNOWN &&
-        settings.slot2_comfort.profileName.isEmpty() &&
-        settings.slot2_comfort.mode == V1_MODE_UNKNOWN &&
-        settings.slot0DarkMode == false &&
-        settings.slot1DarkMode == false &&
-        settings.slot2DarkMode == false &&
-        settings.slot0AlertPersist == 0 &&
-        settings.slot1AlertPersist == 0 &&
-        settings.slot2AlertPersist == 0;
+    String activeNs = getActiveNamespace();
+    Preferences checkPrefs;
+    if (!checkPrefs.begin(activeNs.c_str(), true)) {
+        // Can't even open the namespace - definitely needs restore
+        return true;
+    }
     
-    bool colorsAreDefault = 
-        settings.brightness == 200 &&
-        settings.colorBogey == 0xF800 &&
-        settings.colorBandL == 0x001F &&
-        settings.colorBar1 == 0x07E0 &&
-        settings.hideWifiIcon == false &&
-        settings.hideProfileIndicator == false &&
-        settings.hideBatteryIcon == false;
+    // Check for our validity marker - set to current version after successful save
+    int nvsMarker = checkPrefs.getInt("nvsValid", 0);
+    int settingsVer = checkPrefs.getInt("settingsVer", 0);
+    checkPrefs.end();
     
-    // Only restore if BOTH slots AND colors are at defaults
-    // If either has been customized, NVS has real user data
-    return slotsAreDefault && colorsAreDefault;
+    // If neither marker exists, NVS was likely wiped
+    if (nvsMarker == 0 && settingsVer == 0) {
+        Serial.println("[Settings] NVS appears empty (no version markers)");
+        return true;
+    }
+    
+    // Also check if brightness is still at exact default - common indicator of wipe
+    // combined with missing settingsVer (which would be >= 2 if properly saved)
+    if (settingsVer <= 1 && settings.brightness == 200) {
+        Serial.println("[Settings] NVS appears default (v1 migration + default brightness)");
+        return true;
+    }
+    
+    return false;
 }
 
 // Backup display/color settings to SD card
