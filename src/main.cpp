@@ -66,6 +66,8 @@
 #include <FS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <nvs_flash.h>
+#include <nvs.h>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -141,6 +143,68 @@ static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
     if (cfg.lockout) mask |= (1u << 10);
     if (cfg.touch) mask |= (1u << 11);
     return mask;
+}
+
+// Log NVS statistics and perform cleanup if needed
+static void nvsHealthCheck() {
+    nvs_stats_t stats;
+    if (nvs_get_stats(NULL, &stats) == ESP_OK) {
+        uint32_t usedPct = (stats.used_entries * 100) / stats.total_entries;
+        Serial.printf("[NVS] Entries: %lu/%lu used (%lu%%), namespaces: %lu, free: %lu\n",
+                      (unsigned long)stats.used_entries, 
+                      (unsigned long)stats.total_entries,
+                      (unsigned long)usedPct,
+                      (unsigned long)stats.namespace_count,
+                      (unsigned long)stats.free_entries);
+        
+        // If NVS is >80% full, attempt recovery
+        if (usedPct > 80) {
+            Serial.println("[NVS] WARNING: NVS >80% full, clearing stale data...");
+            
+            // Clear legacy settings namespace if it exists
+            Preferences legacy;
+            if (legacy.begin("v1settings", false)) {
+                legacy.clear();
+                legacy.end();
+                Serial.println("[NVS] Cleared legacy v1settings namespace");
+            }
+            
+            // Clear inactive settings namespace
+            Preferences meta;
+            String activeNs = "";
+            if (meta.begin("v1settingsMeta", true)) {
+                activeNs = meta.getString("active", "");
+                meta.end();
+            }
+            
+            const char* inactiveNs = nullptr;
+            if (activeNs == "v1settingsA") {
+                inactiveNs = "v1settingsB";
+            } else if (activeNs == "v1settingsB") {
+                inactiveNs = "v1settingsA";
+            }
+            
+            if (inactiveNs) {
+                Preferences inactive;
+                if (inactive.begin(inactiveNs, false)) {
+                    inactive.clear();
+                    inactive.end();
+                    Serial.printf("[NVS] Cleared inactive namespace %s\n", inactiveNs);
+                }
+            }
+            
+            // Log stats after cleanup
+            if (nvs_get_stats(NULL, &stats) == ESP_OK) {
+                usedPct = (stats.used_entries * 100) / stats.total_entries;
+                Serial.printf("[NVS] After cleanup: %lu/%lu used (%lu%%)\n",
+                              (unsigned long)stats.used_entries, 
+                              (unsigned long)stats.total_entries,
+                              (unsigned long)usedPct);
+            }
+        }
+    } else {
+        Serial.println("[NVS] WARNING: Could not get NVS stats");
+    }
 }
 
 static uint32_t nextBootId() {
@@ -274,6 +338,9 @@ void setup() {
 
     Serial.begin(115200);
     delay(200);  // Reduced from 500ms - brief delay for serial init
+    
+    // Check NVS health early - before other subsystems start using it
+    nvsHealthCheck();
     
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
