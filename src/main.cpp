@@ -42,6 +42,7 @@
 #include "camera_manager.h"
 #include "perf_metrics.h"
 #include "../include/config.h"
+#include "wifi_task.h"  // WiFi FreeRTOS task infrastructure (Stage 1)
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/display/display_preview_module.h"
 #include "modules/camera/camera_alert_module.h"
@@ -647,6 +648,12 @@ void setup() {
         if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
             debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi idle until BOOT long-press)");
         }
+    }
+    
+    // Initialize WiFi task infrastructure (Stage 1: creates mutex/queue, no behavior change)
+    // This prepares for future migration of WiFi operations to Core 0
+    if (!wifiTaskInit()) {
+        SerialLog.println("[WiFiTask] WARNING: Init failed - will use legacy WiFi handling");
     }
 }
 
