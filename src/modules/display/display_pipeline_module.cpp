@@ -176,9 +176,11 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         // Draw display FIRST (before audio) to eliminate perceived lag
         // User sees the alert card immediately, then hears the announcement
         cameraAlert->updateCardStateForV1(true);
+        if (debug) debug->notifyRenderState(true);  // Defer SD flush during render
         unsigned long startUs = micros();
         display->update(priority, currentAlerts.data(), alertCount, state);
         unsigned long endUs = micros();
+        if (debug) debug->notifyRenderState(false);
         recordDisplayTiming("display.update(alerts)", startUs, endUs);
         recordPerfTiming("display.update(alerts)", startUs, endUs);
 
@@ -259,27 +261,33 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
             unsigned long persistMs = persistSec * 1000UL;
             if (alertPersistence->shouldShowPersisted(nowMs, persistMs)) {
+                if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
                 display->updatePersisted(alertPersistence->getPersistedAlert(), state);
                 unsigned long endUs = micros();
+                if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.persisted", startUs, endUs);
                 recordPerfTiming("display.persisted", startUs, endUs);
             } else {
                 // Persistence window expired - clear flag so isPersistenceActive() returns false
                 alertPersistence->clearPersistence();
                 cameraAlert->updateCardStateForV1(false);
+                if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
                 display->update(state);
                 unsigned long endUs = micros();
+                if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.resting", startUs, endUs);
                 recordPerfTiming("display.resting", startUs, endUs);
             }
         } else {
             alertPersistence->clearPersistence();
             cameraAlert->updateCardStateForV1(false);
+            if (debug) debug->notifyRenderState(true);
             unsigned long startUs = micros();
             display->update(state);
             unsigned long endUs = micros();
+            if (debug) debug->notifyRenderState(false);
             recordDisplayTiming("display.resting", startUs, endUs);
             recordPerfTiming("display.resting", startUs, endUs);
         }

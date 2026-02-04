@@ -21,7 +21,7 @@ inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (S
 // Buffer settings for efficient SD writes
 inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
 inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
-inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 1000;  // Flush every 1 second
+inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
 
 // WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
 inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
@@ -110,6 +110,10 @@ public:
     void notifyWifiTransition(bool stable);  // Called by WiFi manager on state changes
     bool isFlushDeferred() const { return wifiTransitionActive && !deferralExpired(); }
     
+    // Render state guard - defers SD writes during display render to avoid collision
+    void notifyRenderState(bool rendering);  // Call with true before render, false after
+    bool isRenderActive() const { return renderActive; }
+    
     // Breadcrumb ring buffer - records verbose events in RAM for incident capture
     void breadcrumb(const char* msg);  // Add to ring (overwrites oldest)
     void breadcrumbf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -153,6 +157,9 @@ private:
     bool wifiTransitionActive = false;      // True during WiFi reconnect/disconnect
     unsigned long wifiTransitionStartMs = 0; // When deferral started
     bool deferralExpired() const;
+    
+    // Render state guard - prevents SD flush during display render
+    volatile bool renderActive = false;     // True during display.update()
     
     // Breadcrumb ring buffer (static allocation - no heap)
     char breadcrumbRing[BREADCRUMB_RING_SIZE];

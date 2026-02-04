@@ -155,7 +155,7 @@ void DebugLogger::flushBuffer() {
 void DebugLogger::update() {
     if (!enabled || bufferPos == 0) return;
     
-    // Time-based flush - but defer during WiFi transitions to avoid NVS contention
+    // Time-based flush - but defer during WiFi transitions or display render
     if (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) {
         // Defer flush during WiFi transitions unless deferral expired (max 5s)
         if (wifiTransitionActive && !deferralExpired()) {
@@ -164,6 +164,15 @@ void DebugLogger::update() {
                 return;  // Safe to defer
             }
             // Buffer nearly full - force flush even during transition
+        }
+        // Defer flush during display render to avoid SD/render collision
+        // This prevents the "perfect storm" where SD+render coincide
+        if (renderActive) {
+            // Buffer not critical - skip this flush, will catch next cycle
+            if (bufferPos < DEBUG_LOG_BUFFER_SIZE * 9 / 10) {
+                return;
+            }
+            // Buffer nearly full - must flush even during render
         }
         flushBuffer();
     }
@@ -203,6 +212,12 @@ void DebugLogger::notifyWifiTransition(bool stable) {
 bool DebugLogger::deferralExpired() const {
     if (!wifiTransitionActive) return true;
     return (millis() - wifiTransitionStartMs) >= WIFI_TRANSITION_DEFER_MAX_MS;
+}
+
+void DebugLogger::notifyRenderState(bool rendering) {
+    // Simple flag to prevent SD flush during display render
+    // Volatile write is atomic on ESP32, no lock needed
+    renderActive = rendering;
 }
 
 // ============= Breadcrumb Ring Buffer (Zero-Heap Incident Context) =============
