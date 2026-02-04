@@ -59,10 +59,34 @@ float LockoutManager::distanceTo(float lat, float lon, const Lockout& lockout) c
 }
 
 bool LockoutManager::loadFromJSON(const char* jsonPath) {
-  fs::FS* fs = nullptr;
-  bool needsRestore = false;
+  // =========================================================================
+  // CT's "Unlocked Helpers" pattern:
+  // 1. Check file existence WITHOUT lock (just a hint)
+  // 2. If missing, call restore (which has its own lock)
+  // 3. If found, read file with lock scoped ONLY around open/read/close
+  // 4. Parse JSON WITHOUT lock (CPU work)
+  // 5. Update data structures with data lock
+  // Key: No function holding SDLock calls another function that takes SDLock
+  // =========================================================================
   
-  // Acquire SD mutex to check file existence
+  fs::FS* fs = storageManager.getFilesystem();
+  fs::FS* lfs = storageManager.getLittleFS();
+  
+  // Step 1: Quick existence check (no lock needed - just a hint)
+  bool primaryExists = fs && fs->exists(jsonPath);
+  bool secondaryExists = lfs && lfs != fs && lfs->exists(jsonPath);
+  
+  if (!primaryExists && !secondaryExists) {
+    LOCKOUT_LOG("[Lockout] No lockout file found at %s\n", jsonPath);
+    // Step 2: Try restore from SD backup (acquires its own locks internally)
+    return checkAndRestoreFromSD();
+  }
+  
+  // Choose filesystem to use
+  fs::FS* useFs = primaryExists ? fs : lfs;
+  
+  // Step 3: Read file with lock scoped ONLY around file I/O
+  std::unique_ptr<JsonDocument> doc(new JsonDocument());
   {
     StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
     if (!sdLock) {
@@ -70,63 +94,33 @@ bool LockoutManager::loadFromJSON(const char* jsonPath) {
       return false;
     }
     
-    fs = storageManager.getFilesystem();
-    if (!fs || !fs->exists(jsonPath)) {
-      LOCKOUT_LOG("[Lockout] No lockout file found at %s\n", jsonPath);
-      // Try secondary LittleFS copy if SD is primary
-      fs::FS* lfs = storageManager.getLittleFS();
-      if (lfs && lfs->exists(jsonPath)) {
-        fs = lfs;
-      } else {
-        // Need to try SD restore - but must release lock first to avoid deadlock
-        needsRestore = true;
-      }
+    File file = useFs->open(jsonPath, "r");
+    if (!file) {
+      LOCKOUT_LOG("[Lockout] Failed to open %s\n", jsonPath);
+      return false;
     }
-  }  // Release SD lock before calling checkAndRestoreFromSD
-  
-  if (needsRestore) {
-    // Try to restore from SD backup (acquires its own lock)
-    if (checkAndRestoreFromSD()) {
-      return true;
-    }
-    return false;
-  }
-  
-  // Re-acquire lock for actual file read
-  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
-  if (!sdLock) {
-    LOCKOUT_LOG("[Lockout] Failed to re-acquire SD mutex for load\n");
-    return false;
-  }
-  
-  File file = fs->open(jsonPath, "r");
-  if (!file) {
-    LOCKOUT_LOG("[Lockout] Failed to open %s\n", jsonPath);
-    return false;
-  }
 
-  // Bound file size to prevent heap spikes from corrupted files
-  // Max reasonable size: 500 lockouts × ~200 bytes each = ~100KB, use 150KB limit
-  constexpr size_t MAX_LOCKOUT_FILE_SIZE = 150 * 1024;
-  size_t fileSize = file.size();
-  if (fileSize > MAX_LOCKOUT_FILE_SIZE) {
-    LOCKOUT_LOG("[Lockout] WARNING: File too large (%u bytes > %u max), skipping\n",
-                (unsigned)fileSize, (unsigned)MAX_LOCKOUT_FILE_SIZE);
+    // Bound file size to prevent heap spikes
+    constexpr size_t MAX_LOCKOUT_FILE_SIZE = 150 * 1024;
+    size_t fileSize = file.size();
+    if (fileSize > MAX_LOCKOUT_FILE_SIZE) {
+      LOCKOUT_LOG("[Lockout] WARNING: File too large (%u bytes > %u max), skipping\n",
+                  (unsigned)fileSize, (unsigned)MAX_LOCKOUT_FILE_SIZE);
+      file.close();
+      return false;
+    }
+
+    DeserializationError error = deserializeJson(*doc, file);
     file.close();
-    return false;
-  }
-
-  // Use JsonDocument on the heap to avoid large stack frames
-  std::unique_ptr<JsonDocument> doc(new JsonDocument());
-  DeserializationError error = deserializeJson(*doc, file);
-  file.close();
+    // SD lock released here at scope exit
+    
+    if (error) {
+      LOCKOUT_LOG("[Lockout] JSON parse error: %s\n", error.c_str());
+      return false;
+    }
+  }  // SD lock released
   
-  if (error) {
-    LOCKOUT_LOG("[Lockout] JSON parse error: %s\n", error.c_str());
-    return false;
-  }
-  
-  // Lock for vector modifications
+  // Step 4: Parse already done above, Step 5: Lock for vector modifications
   LockoutLock lock(lockoutMutex);
   if (!lock.ok()) {
     LOCKOUT_LOG("[Lockout] Failed to acquire mutex for load\n");
@@ -490,41 +484,50 @@ bool LockoutManager::restoreFromSD() {
     return false;
   }
   
-  // Acquire SD mutex to protect file I/O
-  StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
-  if (!sdLock) {
-    LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for restore\n");
-    return false;
-  }
-  
   fs::FS* fs = storageManager.getFilesystem();
   if (!fs) return false;
   
-  if (!fs->exists("/v1simple_lockouts.json")) {
-    return false;
-  }
-  
-  File file = fs->open("/v1simple_lockouts.json", "r");
-  if (!file) {
-    return false;
-  }
+  // =========================================================================
+  // CT's "Unlocked Helpers" pattern:
+  // Lock ONLY around file I/O, release before calling saveToJSON
+  // =========================================================================
   
   JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, file);
-  file.close();
   
-  if (error) {
-    LOCKOUT_LOG("[Lockout] SD backup parse error: %s\n", error.c_str());
-    return false;
-  }
+  // Step 1: Read file with lock scoped ONLY around file I/O
+  {
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+      LOCKOUT_LOG("[Lockout] Failed to acquire SD mutex for restore\n");
+      return false;
+    }
+    
+    if (!fs->exists("/v1simple_lockouts.json")) {
+      return false;
+    }
+    
+    File file = fs->open("/v1simple_lockouts.json", "r");
+    if (!file) {
+      return false;
+    }
+    
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    // SD lock released here at scope exit
+    
+    if (error) {
+      LOCKOUT_LOG("[Lockout] SD backup parse error: %s\n", error.c_str());
+      return false;
+    }
+  }  // SD lock released before any other lock-taking calls
   
-  // Verify backup format
+  // Step 2: Validate format (no lock needed - CPU work)
   if (doc["_type"] != "v1simple_lockouts_backup") {
     LOCKOUT_LOG("[Lockout] Invalid SD backup format\n");
     return false;
   }
   
-  // Lock for vector modifications
+  // Step 3: Update data structures with data lock (not SD lock)
   {
     LockoutLock lock(lockoutMutex);
     if (!lock.ok()) {
@@ -532,7 +535,6 @@ bool LockoutManager::restoreFromSD() {
       return false;
     }
     
-    // Clear and restore
     lockouts.clear();
     
     JsonArray lockoutArray = doc["lockouts"].as<JsonArray>();
@@ -557,9 +559,9 @@ bool LockoutManager::restoreFromSD() {
     }
     
     LOCKOUT_LOG("[Lockout] Restored %d lockouts from SD backup\n", lockouts.size());
-  }  // Release lock before calling saveToJSON
+  }  // Data lock released
   
-  // Save to LittleFS (will acquire its own lock)
+  // Step 4: Save to LittleFS (acquires its own SD lock internally)
   saveToJSON("/v1profiles/lockouts.json", true);  // Skip re-backup while restoring
   
   return true;
