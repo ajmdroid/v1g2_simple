@@ -811,6 +811,13 @@ void WiFiManager::checkWifiClientStatus() {
         
         case WIFI_CLIENT_DISCONNECTED:
         case WIFI_CLIENT_FAILED: {
+            // Defer WiFi client operations until V1 is connected
+            // This prevents WiFi.begin() from blocking BLE scan/connect
+            if (isV1Connected && !isV1Connected()) {
+                // V1 not connected yet - defer auto-reconnect
+                break;
+            }
+            
             // Auto-reconnect if we have saved credentials
             const V1Settings& settings = settingsManager.get();
             if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {

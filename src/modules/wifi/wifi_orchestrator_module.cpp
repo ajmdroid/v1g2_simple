@@ -200,4 +200,9 @@ void WifiOrchestrator::configureCallbacks() {
     wifiManager.setCameraTestCallback([this](int type) {
         cameraAlertModule.startTest(type);
     });
+
+    // V1 connection state (used to defer WiFi client operations until V1 is connected)
+    wifiManager.setV1ConnectedCallback([this]() {
+        return bleClient.isConnected();
+    });
 }

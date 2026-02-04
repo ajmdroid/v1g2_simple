@@ -99,6 +99,9 @@ public:
     void setCameraReloadCallback(std::function<bool()> callback) { cameraReloadCallback = callback; }
     void setCameraTestCallback(std::function<void(int)> callback) { cameraTestCallback = callback; }
     
+    // Callback for V1 connection state (used to defer WiFi client operations)
+    void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
+    
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
@@ -143,6 +146,7 @@ private:
     std::function<String()> getCameraStatusJson;
     std::function<bool()> cameraReloadCallback;
     std::function<void(int)> cameraTestCallback;
+    std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
     
     // Setup functions
     void setupAP();
