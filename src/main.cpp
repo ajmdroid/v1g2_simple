@@ -647,19 +647,9 @@ void loop() {
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
     
-    // Deferred async logging enablement - wait 5s after boot for BLE/WiFi/camera to settle
-    // This avoids heap fragmentation during heavy boot-time allocations
-    // Async mode is always enabled for non-blocking SD writes
-    static bool asyncModeChecked = false;
-    if (!asyncModeChecked && now > 5000) {
-        asyncModeChecked = true;
-        if (!debugLogger.isAsyncMode()) {
-            debugLogger.setAsyncMode(true);
-            if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-                debugLogger.logf(DebugLogCategory::System, "[Logger] Async write mode enabled (deferred startup)");
-            }
-        }
-    }
+    // NOTE: Async logging disabled - causes DMA heap fragmentation that breaks SD card access
+    // after ~30 seconds of runtime. Using synchronous buffered writes instead (4KB buffer, 1s flush).
+    // See commit history for async implementation if heap issues are resolved in future.
     
     perfReporterModule.process(now);
 
