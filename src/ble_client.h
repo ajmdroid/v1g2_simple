@@ -325,10 +325,10 @@ private:
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
-    // ESP32-S3 WiFi coexistence: radio needs time after scan to be ready for connect
-    // WiFi AP sends beacons every 100ms - need to wait for a clear window
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 200;
-    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 600;  // Shorter settle on reconnects; longer only on cold boot
+    // ESP32-S3 BLE: radio needs time after scan to be ready for connect
+    // Cold boot needs significantly more time for NimBLE stack to stabilize
+    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 750;  // 750ms on cold boot - BLE stack needs warmup
     bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts
@@ -339,10 +339,10 @@ private:
     std::atomic<bool> asyncConnectPending{false};   // Async connect in progress
     std::atomic<bool> asyncConnectSuccess{false};   // Result from onConnect callback
     uint8_t connectAttemptNumber = 0;               // Current attempt (1-based)
-    static constexpr uint8_t MAX_CONNECT_ATTEMPTS = 2;
-    static constexpr unsigned long CONNECT_TIMEOUT_MS = 25000;  // 25s total timeout for connect phase
-    static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 10000; // 10s for discovery
-    static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 5000;  // 5s for subscriptions
+    static constexpr uint8_t MAX_CONNECT_ATTEMPTS = 5;          // 5 attempts - more retries
+    static constexpr unsigned long CONNECT_TIMEOUT_MS = 3000;   // 3s timeout - if it works, it's fast
+    static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
+    static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
     uint32_t connectPhaseStartUs = 0;  // For timing individual phases
     
     // Fresh flash detection - set when firmware version changed
@@ -404,8 +404,8 @@ private:
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
     static constexpr uint8_t MAX_BACKOFF_FAILURES = 5;
-    static constexpr unsigned long BACKOFF_BASE_MS = 500;    // 500ms base - quick retry
-    static constexpr unsigned long BACKOFF_MAX_MS = 5000;    // 5 seconds max
+    static constexpr unsigned long BACKOFF_BASE_MS = 200;    // 200ms base - quick retry
+    static constexpr unsigned long BACKOFF_MAX_MS = 1500;    // 1.5s max - keep retries snappy
     
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // 150ms matches Kenny's v1g2-t4s3 approach - just enough for radio to settle
