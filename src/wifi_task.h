@@ -35,7 +35,7 @@
 // Feature Flag - Set to 0 to disable WiFi task and use legacy behavior
 // ============================================================================
 #ifndef WIFI_TASK_ENABLED
-#define WIFI_TASK_ENABLED 1  // Stage 2: Task enabled - monitors WiFi status on Core 0
+#define WIFI_TASK_ENABLED 0  // DISABLED: Task on Core 0 interferes with BLE connection
 #endif
 
 // ============================================================================
