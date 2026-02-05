@@ -16,15 +16,24 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     if (!display || !touchHandler || !settings) return false;
 
     // BOOT button handling: short press enters/exits adjust mode; long press toggles WiFi
+    // Very long press (10s) triggers delete logs mode
     if (bootPressed && !bootWasPressed) {
         bootPressStart = nowMs;
         wifiToggleTriggered = false;
+        deleteLogsTriggered = false;
     }
 
     // Long press for WiFi toggle (only when not in adjust mode or delete logs mode)
-    if (bootPressed && !wifiToggleTriggered && !brightnessAdjustMode && !deleteLogsMode) {
+    if (bootPressed && !wifiToggleTriggered && !deleteLogsTriggered && !brightnessAdjustMode && !deleteLogsMode) {
         unsigned long pressDuration = nowMs - bootPressStart;
-        if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+        
+        // 10+ second hold triggers delete logs mode
+        if (pressDuration >= DELETE_LOGS_LONG_PRESS_MS) {
+            deleteLogsTriggered = true;
+            enterDeleteLogsMode();
+        }
+        // 4+ second hold toggles WiFi (only if not already triggered delete logs)
+        else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
             wifiToggleTriggered = true;
             if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive()) {
                 if (callbacks.stopWifiSetup) callbacks.stopWifiSetup();
@@ -38,7 +47,7 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
 
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = nowMs - bootPressStart;
-        if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
+        if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered && !deleteLogsTriggered) {
             if (deleteLogsMode) {
                 // BOOT press exits delete logs mode without deleting
                 exitDeleteLogsMode(false);
@@ -69,30 +78,6 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
         }
         return true;  // consume loop while adjusting
     }
-
-    // Touch long-press detection for delete logs screen (only when idle)
-    int16_t touchX, touchY;
-    bool touchPressed = touchHandler->getTouchPoint(touchX, touchY);
-    
-    if (touchPressed && !touchWasPressed) {
-        touchPressStart = nowMs;
-        deleteLogsTriggered = false;
-    }
-    
-    if (touchPressed && !deleteLogsTriggered) {
-        unsigned long pressDuration = nowMs - touchPressStart;
-        if (pressDuration >= DELETE_LOGS_LONG_PRESS_MS) {
-            deleteLogsTriggered = true;
-            enterDeleteLogsMode();
-        }
-    }
-    
-    if (!touchPressed && touchWasPressed) {
-        // Touch released - reset tracking
-        deleteLogsTriggered = false;
-    }
-    
-    touchWasPressed = touchPressed;
 
     return false;
 }

@@ -60,15 +60,11 @@ private:
     unsigned long bootPressStart = 0;
     bool bootWasPressed = false;
     bool wifiToggleTriggered = false;
-    
-    // Touch long-press tracking for delete logs
-    unsigned long touchPressStart = 0;
-    bool touchWasPressed = false;
-    bool deleteLogsTriggered = false;
+    bool deleteLogsTriggered = false;  // Track if 10s BOOT hold triggered delete mode
 
     // Timing constants (mirrors previous inline logic)
     static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;
     static constexpr unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;
     static constexpr unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;
-    static constexpr unsigned long DELETE_LOGS_LONG_PRESS_MS = 2000;  // 2 second touch hold
+    static constexpr unsigned long DELETE_LOGS_LONG_PRESS_MS = 10000;  // 10 second BOOT button hold
 };
