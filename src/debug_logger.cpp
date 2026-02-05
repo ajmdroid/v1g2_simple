@@ -491,11 +491,28 @@ void DebugLogger::syncTimeFromGPS(int year, int month, int day, int hour, int mi
     saveTimeToCache();
 }
 
-// Time synchronization from NTP (reuses GPS sync but marks source as NTP)
+// Time synchronization from NTP
 void DebugLogger::syncTimeFromNTP(int year, int month, int day, int hour, int minute, int second) {
-    syncTimeFromGPS(year, month, day, hour, minute, second);
-    timeSource = TimeSource::NTP;  // Override source to NTP
-    saveTimeToCache();  // Persist to NVS for next boot
+    struct tm timeinfo;
+    timeinfo.tm_year = year - 1900;
+    timeinfo.tm_mon = month - 1;
+    timeinfo.tm_mday = day;
+    timeinfo.tm_hour = hour;
+    timeinfo.tm_min = minute;
+    timeinfo.tm_sec = second;
+    timeinfo.tm_isdst = 0;
+    
+    timeSyncEpoch = mktime(&timeinfo);
+    timeSyncMillis = millis();
+    timeValid = true;
+    timeSource = TimeSource::NTP;  // Source is NTP, not GPS
+    
+    struct timeval tv;
+    tv.tv_sec = timeSyncEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+    
+    saveTimeToCache();
 }
 
 // Save current time to NVS cache (called automatically on GPS/NTP sync)
