@@ -515,8 +515,28 @@ void DebugLogger::saveTimeToCache() {
 }
 
 // Restore time from NVS cache (call early in setup)
-// Returns true if valid cached time was restored
+// Returns true if valid time is available (either from running RTC or cache)
 bool DebugLogger::restoreTimeFromCache() {
+    // First, check if the ESP32 RTC already has valid time
+    // This happens when the device soft-resets or wakes from sleep
+    // with the 18650 battery still providing power
+    time_t currentTime = time(nullptr);
+    struct tm timeinfo;
+    gmtime_r(&currentTime, &timeinfo);
+    
+    // If RTC already has reasonable time (year >= 2024), just use it
+    if (timeinfo.tm_year >= 124) {  // tm_year is years since 1900
+        timeSyncEpoch = currentTime;
+        timeSyncMillis = millis();
+        timeValid = true;
+        timeSource = TimeSource::RTC;
+        Serial.printf("[RTC] Using running RTC time: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
+                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        return true;
+    }
+    
+    // RTC was reset (power loss) - try NVS cache
     Preferences prefs;
     if (!prefs.begin(RTC_CACHE_NS, true)) {
         Serial.println("[RTC] No time cache namespace found");
@@ -533,9 +553,7 @@ bool DebugLogger::restoreTimeFromCache() {
         return false;
     }
     
-    // Check age - don't use if too old (drift would be significant)
-    // We can't know real elapsed time without RTC hardware, so we just
-    // restore the cached time and let GPS/NTP correct it later
+    // Restore from cache - this is stale but better than epoch 0
     timeSyncEpoch = (time_t)cachedEpoch;
     timeSyncMillis = millis();
     timeValid = true;
@@ -548,9 +566,8 @@ bool DebugLogger::restoreTimeFromCache() {
     settimeofday(&tv, nullptr);
     
     // Log restored time
-    struct tm timeinfo;
     gmtime_r(&timeSyncEpoch, &timeinfo);
-    Serial.printf("[RTC] Restored cached time: %04d-%02d-%02d %02d:%02d:%02d UTC (source was %s)\n",
+    Serial.printf("[RTC] Restored cached time: %04d-%02d-%02d %02d:%02d:%02d UTC (was %s, stale)\n",
                   timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
                   cachedSource == 1 ? "GPS" : cachedSource == 2 ? "NTP" : "unknown");
