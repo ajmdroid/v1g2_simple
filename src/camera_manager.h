@@ -11,6 +11,38 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <esp_heap_caps.h>
+
+// PSRAM allocator for std::vector - keeps camera data off precious SRAM heap
+// ESP32-S3 has 8MB PSRAM vs ~320KB SRAM, so camera DB belongs in PSRAM
+template <typename T>
+struct PSRAMAllocator {
+  using value_type = T;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
+  
+  PSRAMAllocator() = default;
+  template <typename U> PSRAMAllocator(const PSRAMAllocator<U>&) noexcept {}
+  
+  T* allocate(std::size_t n) {
+    if (n > std::size_t(-1) / sizeof(T)) {
+      return nullptr;  // Overflow check
+    }
+    // Try PSRAM first, fall back to regular heap if PSRAM unavailable
+    void* ptr = heap_caps_malloc(n * sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!ptr) {
+      ptr = heap_caps_malloc(n * sizeof(T), MALLOC_CAP_DEFAULT);
+    }
+    return static_cast<T*>(ptr);
+  }
+  
+  void deallocate(T* ptr, std::size_t) noexcept {
+    heap_caps_free(ptr);
+  }
+  
+  template <typename U> bool operator==(const PSRAMAllocator<U>&) const noexcept { return true; }
+  template <typename U> bool operator!=(const PSRAMAllocator<U>&) const noexcept { return false; }
+};
 
 // Camera types (matches ExCam flg values)
 enum class CameraType : uint8_t {
@@ -79,6 +111,10 @@ struct GridCell {
   uint16_t startIndex;
   uint16_t count;
 };
+
+// Type aliases for PSRAM-backed vectors (keep camera data off SRAM heap)
+using CameraVector = std::vector<CameraRecord, PSRAMAllocator<CameraRecord>>;
+using GridVector = std::vector<GridCell, PSRAMAllocator<GridCell>>;
 
 class CameraManager {
 public:
@@ -173,8 +209,8 @@ public:
 
 private:
   fs::FS* fs = nullptr;
-  std::vector<CameraRecord> cameras;          // Full database from SD
-  std::vector<CameraRecord> regionalCache;    // Subset near GPS position
+  CameraVector cameras;          // Full database from SD (in PSRAM)
+  CameraVector regionalCache;    // Subset near GPS position (in PSRAM)
   
   // Thread safety for camera vector (modified by background task, read by queries)
   mutable SemaphoreHandle_t cameraMutex = nullptr;
@@ -190,8 +226,8 @@ private:
   size_t loadJsonDatabaseIncremental(const char* path);    // Slow JSON fallback
 
   // Returns the active camera list with a safe snapshot when background loading
-  const std::vector<CameraRecord>* getQueryCamerasSnapshot(
-    std::vector<CameraRecord>& snapshot
+  const CameraVector* getQueryCamerasSnapshot(
+    CameraVector& snapshot
   ) const;
   
   // Regional cache metadata
@@ -210,7 +246,7 @@ private:
     float radiusMi = 0.0f;  // Store original radius in miles
     float latDelta = 0.0f;
     float lonDelta = 0.0f;
-    std::vector<CameraRecord> pendingCache;
+    CameraVector pendingCache;  // In PSRAM
     uint32_t startTimeMs = 0;
     
     void reset() {
@@ -231,11 +267,11 @@ private:
   bool enableSpeed = true;
   bool enableALPR = true;
   
-  // Spatial index (grid-based for memory efficiency)
+  // Spatial index (grid-based for memory efficiency, stored in PSRAM)
   static constexpr float GRID_SIZE_DEG = 0.1f;  // ~11km cells
   static constexpr int GRID_LAT_CELLS = 180 * 10;  // 1800 cells
   static constexpr int GRID_LON_CELLS = 360 * 10;  // 3600 cells
-  std::vector<GridCell> spatialIndex;
+  GridVector spatialIndex;
   bool indexBuilt = false;
   
   // Build spatial index for fast queries
@@ -248,7 +284,7 @@ private:
   bool parseCameraLine(const char* line, CameraRecord& record);
   
   // Get cameras to query (regional cache if available, else full database)
-  const std::vector<CameraRecord>& getQueryCameras() const;
+  const CameraVector& getQueryCameras() const;
   
   // Check if heading is towards camera (within tolerance)
   static bool isHeadingTowards(float heading, float bearing, float tolerance = 45.0f);
