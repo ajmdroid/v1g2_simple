@@ -265,9 +265,22 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2);  // Get a few extra for filtering
 
     // Filter: only keep approaching cameras, exclude recently passed
+    // Apply tighter heading gate when we have reliable heading (speed > 2 m/s)
+    const float headingGateThreshold = 45.0f;  // CT recommendation: tighter than 60° default
     std::vector<NearbyCameraResult> approachingCameras;
     for (const auto& cam : nearbyCameras) {
         if (!cam.isApproaching) continue;
+        
+        // Tighter heading filter when moving (heading is reliable at speed)
+        if (speed_mps > 2.0f) {
+            float headingErr = fabs(heading - cam.bearing_deg);
+            if (headingErr > 180.0f) headingErr = 360.0f - headingErr;
+            if (headingErr > headingGateThreshold) {
+                CAMERA_LOG("[Camera] SKIP cam=%s dist=%.0f headingErr=%.0f > %.0f (heading gate)\n",
+                           cam.camera.getTypeName(), cam.distance_m, headingErr, headingGateThreshold);
+                continue;
+            }
+        }
 
         // Check if this camera was recently passed (don't re-alert)
         bool recentlyPassed = false;
@@ -473,6 +486,10 @@ void CameraAlertModule::updateCardStateForV1(bool v1HasAlerts) {
 
 void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
     if (!display || !settings) return;
+    
+    // Track why clear might not fire - helps diagnose "doesn't clear" issues
+    static bool hadCamerasWhenV1Active = false;
+    
     if (v1HasAlerts) {
         // V1 owns display when alerts are active - log this condition
         static bool lastV1HasAlerts = false;
@@ -480,6 +497,10 @@ void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
             CAMERA_LOG("[Camera] V1 has alerts - deferring camera display to cards\n");
         }
         lastV1HasAlerts = v1HasAlerts;
+        // Track if cameras existed while V1 owned display
+        if (!activeCameras.empty()) {
+            hadCamerasWhenV1Active = true;
+        }
         return;
     }
 
@@ -497,11 +518,17 @@ void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
         if (!hadCameras) {
             hadCameras = true;  // Cameras appeared
         }
+        hadCamerasWhenV1Active = false;  // Reset - we're now handling cameras
         handleRealDisplay(v1HasAlerts, dispSettings);
     } else {
+        // Log diagnostic when transitioning to zero cameras
         if (hadCameras) {
             CAMERA_LOG("[Camera] No active cameras - clearing display\n");
             hadCameras = false;
+        } else if (hadCamerasWhenV1Active) {
+            // Cameras appeared and disappeared while V1 owned display
+            CAMERA_LOG("[Camera] Clear after V1 release (cameras passed during V1 alert)\n");
+            hadCamerasWhenV1Active = false;
         }
         display->clearCameraAlerts();
     }
