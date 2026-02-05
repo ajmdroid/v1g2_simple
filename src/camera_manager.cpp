@@ -3,6 +3,7 @@
 
 #include "camera_manager.h"
 #include "debug_logger.h"
+#include "perf_metrics.h"
 #include <ArduinoJson.h>
 #include <algorithm>
 #include <cmath>
@@ -916,15 +917,20 @@ void CameraManager::findNearby(
 
   // Budget guard: track start time if budget specified
   uint32_t startUs = budgetUs > 0 ? micros() : 0;
+  uint32_t iterCount = 0;
+  bool budgetExceeded = false;
   
   // Quick bounding box
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
   
   for (const auto& cam : *queryList) {
-    // Budget check: bail early if over time (check every iteration)
-    if (budgetUs > 0 && (micros() - startUs) > budgetUs) {
-      break;  // Return what we have so far
+    // Budget check every 32 iterations (reduce micros() overhead)
+    if (budgetUs > 0 && (++iterCount & 0x1F) == 0) {
+      if ((uint32_t)(micros() - startUs) > budgetUs) {
+        budgetExceeded = true;
+        break;
+      }
     }
     
     // Quick box check
@@ -950,9 +956,14 @@ void CameraManager::findNearby(
     out.push_back(r);
     
     // Early exit if we have enough candidates (avoid scanning entire cache)
-    if (out.size() >= maxResults * 2) {
-      break;  // We have enough to sort and pick top N
+    if (out.size() >= maxResults) {
+      break;  // We have maxResults, no need to scan more
     }
+  }
+  
+  // Track budget exits for diagnostics
+  if (budgetExceeded) {
+    PERF_INC(cameraBudgetExits);
   }
   
   // Sort by distance (approaching cameras get priority)

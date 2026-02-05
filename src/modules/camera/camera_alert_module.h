@@ -96,6 +96,11 @@ private:
     unsigned long lastCameraCheckMs = 0;
     unsigned long lastCacheCheckMs = 0;
     
+    // Speed gating with hysteresis (prevents flapping at threshold)
+    bool inFastScanMode = false;           // true = 500ms, false = 2000ms
+    float lastValidSpeed_mps = 0.0f;       // Retain last valid speed for GPS dropout
+    unsigned long lastValidSpeedMs = 0;    // When we last had valid speed
+    
     // GPS ready cooldown - defer heavy operations after fix acquired
     bool wasGpsReady = false;
     unsigned long gpsReadyAtMs = 0;
@@ -121,7 +126,9 @@ private:
     static constexpr int MAX_ACTIVE_CAMERAS = 3;
     static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;       // 500ms at speed
     static constexpr unsigned long CAMERA_CHECK_INTERVAL_SLOW_MS = 2000; // 2s when slow
-    static constexpr float SLOW_SPEED_THRESHOLD_MPS = 17.9f;             // ~40 mph
+    static constexpr float FAST_MODE_ENTER_MPS = 18.8f;                  // Enter fast scan above 42 mph
+    static constexpr float SLOW_MODE_ENTER_MPS = 16.5f;                  // Enter slow scan below 37 mph
+    static constexpr unsigned long SPEED_VALID_HOLDOVER_MS = 3000;       // Trust last speed for 3s on dropout
     static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;             // 200m
     static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;      // 1 minute
     static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000; // 3s

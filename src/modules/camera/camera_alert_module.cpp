@@ -231,10 +231,29 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     GPSFix fix = gpsHandler->getFix();
     float speed_mps = fix.speed_mps;
     
-    // Speed gating: scan less frequently when slow/stopped (saves CPU, reduces false alerts)
-    unsigned long checkInterval = (speed_mps < SLOW_SPEED_THRESHOLD_MPS) 
-        ? CAMERA_CHECK_INTERVAL_SLOW_MS 
-        : CAMERA_CHECK_INTERVAL_MS;
+    // Speed validity: use last valid speed during GPS dropout (up to 3s)
+    if (speed_mps > 0.1f) {
+        lastValidSpeed_mps = speed_mps;
+        lastValidSpeedMs = now;
+    } else if ((now - lastValidSpeedMs) < SPEED_VALID_HOLDOVER_MS) {
+        speed_mps = lastValidSpeed_mps;  // Use cached speed during dropout
+    }
+    
+    // Speed gating with hysteresis (prevents flapping at threshold)
+    // Fast mode: enter above 42 mph, exit below 37 mph
+    if (inFastScanMode) {
+        if (speed_mps < SLOW_MODE_ENTER_MPS) {
+            inFastScanMode = false;
+        }
+    } else {
+        if (speed_mps > FAST_MODE_ENTER_MPS) {
+            inFastScanMode = true;
+        }
+    }
+    
+    unsigned long checkInterval = inFastScanMode 
+        ? CAMERA_CHECK_INTERVAL_MS 
+        : CAMERA_CHECK_INTERVAL_SLOW_MS;
     
     if (now - lastCameraCheckMs < checkInterval) return;
     lastCameraCheckMs = now;

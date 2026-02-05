@@ -82,6 +82,7 @@ struct PerfCounters {
     // Camera
     std::atomic<uint32_t> cameraBgLoads{0};     // Background camera DB load completions
     std::atomic<uint32_t> cameraCacheRefreshes{0}; // Regional cache builds/refeshes
+    std::atomic<uint32_t> cameraBudgetExits{0};   // findNearby() early exits due to time budget
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -104,6 +105,7 @@ struct PerfCounters {
         displaySkips.store(0, std::memory_order_relaxed);
         cameraBgLoads.store(0, std::memory_order_relaxed);
         cameraCacheRefreshes.store(0, std::memory_order_relaxed);
+        cameraBudgetExits.store(0, std::memory_order_relaxed);
     }
 };
 
