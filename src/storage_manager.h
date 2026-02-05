@@ -67,20 +67,54 @@ public:
     // DMA heap starvation counter (SD ops skipped due to low internal SRAM)
     static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
     
-    // Minimum DMA-capable heap required for safe SD access (WiFi uses ~50-80KB)
-    // SD_MMC needs ~4KB for DMA buffers per operation
-    static constexpr uint32_t MIN_DMA_HEAP_FOR_SD = 8192;  // 8KB safety margin
+    // =========================================================================
+    // DMA HEAP GATING - prevents SD ops when WiFi starves internal SRAM
+    // =========================================================================
+    // Conservative thresholds based on field evidence:
+    // - WiFi uses ~50-80KB of DMA-capable internal SRAM
+    // - SD_MMC needs contiguous DMA buffers for each operation
+    // - Fragmentation can cause failures even with "enough" total free
+    static constexpr uint32_t MIN_DMA_FREE_FOR_SD = 16384;    // 16KB total free
+    static constexpr uint32_t MIN_DMA_BLOCK_FOR_SD = 2048;    // 2KB largest block
+    static constexpr uint32_t DMA_CHECK_CACHE_MS = 100;       // Cache check for 100ms
+    
+    // Cached DMA heap state (avoid repeated API calls in hot paths)
+    struct DmaHeapCache {
+        uint32_t freeDma = 0;
+        uint32_t largestDma = 0;
+        uint32_t lastCheckMs = 0;
+        bool valid = false;
+    };
+    static inline DmaHeapCache dmaCache_{};
+    
+    // Update cached DMA heap state (call from main loop periodically)
+    static void updateDmaHeapCache() {
+        dmaCache_.freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        dmaCache_.largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        dmaCache_.lastCheckMs = millis();
+        dmaCache_.valid = true;
+    }
     
     // Check if there's enough DMA-capable heap for SD operations
-    // Returns false if WiFi has consumed too much internal SRAM
+    // Uses cached values if recent, otherwise updates cache
+    // Returns false if WiFi has starved internal SRAM (free OR fragmented)
     static bool hasDmaHeapForSD() {
-        uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-        if (freeDma < MIN_DMA_HEAP_FOR_SD) {
-            sdDmaStarvationCount.fetch_add(1, std::memory_order_relaxed);
-            return false;
+        uint32_t now = millis();
+        if (!dmaCache_.valid || (now - dmaCache_.lastCheckMs) > DMA_CHECK_CACHE_MS) {
+            updateDmaHeapCache();
         }
-        return true;
+        
+        bool ok = (dmaCache_.freeDma >= MIN_DMA_FREE_FOR_SD) &&
+                  (dmaCache_.largestDma >= MIN_DMA_BLOCK_FOR_SD);
+        if (!ok) {
+            sdDmaStarvationCount.fetch_add(1, std::memory_order_relaxed);
+        }
+        return ok;
     }
+    
+    // Get cached values for metrics (no API call)
+    static uint32_t getCachedFreeDma() { return dmaCache_.freeDma; }
+    static uint32_t getCachedLargestDma() { return dmaCache_.largestDma; }
     
     // =========================================================================
     // SD ACCESS POLICY - TWO LOCK TYPES ONLY:
@@ -100,9 +134,9 @@ public:
     // "Drops OK, blocking NOT OK"
     // =========================================================================
     
-    // Blocking lock - for Core 0 writer tasks and boot/shutdown ONLY
+    // Blocking lock - for Core 0 writer tasks and runtime ONLY
     // Always blocks forever (portMAX_DELAY) - no timed option
-    // Fails fast if DMA heap is too low (WiFi active)
+    // Fails fast if DMA heap is too low (WiFi active) - use SDLockBootRetry for boot
     class SDLockBlocking {
     public:
         explicit SDLockBlocking(SemaphoreHandle_t mutex, bool checkDmaHeap = true) 
@@ -139,6 +173,46 @@ public:
         SemaphoreHandle_t mutex_;
         bool acquired_;
         bool dmaStarved_;
+    };
+    
+    // Boot retry lock - for loading settings/lockouts at startup ONLY
+    // Retries with backoff if DMA heap is starved (e.g., WiFi starting in parallel)
+    // Use sparingly - this blocks the calling task
+    class SDLockBootRetry {
+    public:
+        static constexpr int MAX_RETRIES = 5;
+        static constexpr int BACKOFF_MS = 100;  // 100ms between retries
+        
+        explicit SDLockBootRetry(SemaphoreHandle_t mutex)
+            : mutex_(mutex), acquired_(false), retryCount_(0) {
+            for (int i = 0; i < MAX_RETRIES; ++i) {
+                if (hasDmaHeapForSD()) {
+                    if (mutex_ && xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE) {
+                        acquired_ = true;
+                        retryCount_ = i;
+                        return;
+                    }
+                }
+                // Backoff before retry
+                vTaskDelay(pdMS_TO_TICKS(BACKOFF_MS));
+            }
+            retryCount_ = MAX_RETRIES;
+        }
+        ~SDLockBootRetry() { release(); }
+        bool acquired() const { return acquired_; }
+        int retryCount() const { return retryCount_; }
+        operator bool() const { return acquired_; }
+        
+        void release() {
+            if (acquired_ && mutex_) {
+                xSemaphoreGive(mutex_);
+                acquired_ = false;
+            }
+        }
+    private:
+        SemaphoreHandle_t mutex_;
+        bool acquired_;
+        int retryCount_;
     };
     
     // NOTE: No SDLock alias exposed here - forces explicit choice between

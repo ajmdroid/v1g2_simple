@@ -2399,8 +2399,11 @@ void WiFiManager::handleDebugMetrics() {
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapMinFree"] = perfGetMinFreeHeap();
     doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // DMA stats use cached values from StorageManager (no extra API calls)
+    doc["heapDma"] = StorageManager::getCachedFreeDma();
     doc["heapDmaMin"] = perfGetMinFreeDma();
+    doc["heapDmaLargest"] = StorageManager::getCachedLargestDma();
+    doc["heapDmaLargestMin"] = perfGetMinLargestDma();
     
     // SD access contention stats
     doc["sdTryLockFails"] = StorageManager::sdTryLockFailCount.load();

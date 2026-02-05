@@ -856,8 +856,9 @@ void loop() {
         perfRecordTouchUs(PERF_TIMESTAMP_US() - touchStartUs);
         if (inSettings) {
             perfRecordLoopJitterUs(micros() - loopStartUs);
+            StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh
             perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
-                                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+                                StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
             return;  // Skip normal loop processing while in settings mode
         }
     }
@@ -931,8 +932,9 @@ void loop() {
     }
 
     perfRecordLoopJitterUs(micros() - loopStartUs);
+    StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
-                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+                        StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
     
     // OBD processing and delayed auto-connect
     {

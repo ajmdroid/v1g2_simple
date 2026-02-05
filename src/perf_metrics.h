@@ -136,6 +136,7 @@ struct PerfExtendedMetrics {
     uint32_t minFreeHeap = UINT32_MAX;
     uint32_t minLargestBlock = UINT32_MAX;
     uint32_t minFreeDma = UINT32_MAX;         // DMA-capable internal SRAM (WiFi/SD contention)
+    uint32_t minLargestDma = UINT32_MAX;      // Largest DMA block (fragmentation detection)
     uint32_t wifiMaxUs = 0;
     uint32_t fsMaxUs = 0;
     uint32_t sdMaxUs = 0;
@@ -163,6 +164,7 @@ struct PerfExtendedMetrics {
         minFreeHeap = UINT32_MAX;
         minLargestBlock = UINT32_MAX;
         minFreeDma = UINT32_MAX;
+        minLargestDma = UINT32_MAX;
         wifiMaxUs = 0;
         fsMaxUs = 0;
         sdMaxUs = 0;
@@ -187,7 +189,7 @@ extern PerfExtendedMetrics perfExtended;
 void perfRecordNotifyToDisplayMs(uint32_t ms);
 void perfRecordNotifyToProxyMs(uint32_t ms);
 void perfRecordLoopJitterUs(uint32_t us);
-void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma);
+void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma, uint32_t largestDma);
 void perfRecordWifiProcessUs(uint32_t us);
 void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
@@ -213,6 +215,7 @@ uint32_t perfGetLoopMaxUs();
 uint32_t perfGetMinFreeHeap();
 uint32_t perfGetMinLargestBlock();
 uint32_t perfGetMinFreeDma();
+uint32_t perfGetMinLargestDma();
 uint32_t perfGetWifiMaxUs();
 uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
