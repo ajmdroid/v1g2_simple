@@ -771,6 +771,23 @@ void loop() {
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
 
+    // RUN_START marker: fires once when boot phase is complete
+    // Helps analyzers distinguish flash/boot noise from runtime behavior
+    static bool runStartLogged = false;
+    if (!runStartLogged) {
+        // Fire when: BLE connected OR 30 seconds elapsed (whichever first)
+        bool bleReady = bleClient.isConnected();
+        bool timeReady = (now >= 30000);
+        if (bleReady || timeReady) {
+            runStartLogged = true;
+            const char* trigger = bleReady ? "ble_connected" : "timeout_30s";
+            SerialLog.printf("RUN_START trigger=%s millis=%lu\n", trigger, now);
+            if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
+                debugLogger.logf(DebugLogCategory::System, "RUN_START trigger=%s millis=%lu", trigger, now);
+            }
+        }
+    }
+
     // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
     // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
     unsigned long lastRx = bleQueueModule.getLastRxMillis();
