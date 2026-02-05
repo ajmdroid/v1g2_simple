@@ -99,12 +99,15 @@ void perfRecordLoopJitterUs(uint32_t us) {
     }
 }
 
-void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock) {
+void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma) {
     if (freeHeap < perfExtended.minFreeHeap) {
         perfExtended.minFreeHeap = freeHeap;
     }
     if (largestBlock < perfExtended.minLargestBlock) {
         perfExtended.minLargestBlock = largestBlock;
+    }
+    if (freeDma < perfExtended.minFreeDma) {
+        perfExtended.minFreeDma = freeDma;
     }
 }
 
@@ -211,6 +214,7 @@ uint32_t perfGetNotifyToProxyMaxMs() { return perfExtended.notifyToProxyMs.maxMs
 uint32_t perfGetLoopMaxUs() { return perfExtended.loopMaxUs; }
 uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 0 : perfExtended.minFreeHeap; }
 uint32_t perfGetMinLargestBlock() { return perfExtended.minLargestBlock == UINT32_MAX ? 0 : perfExtended.minLargestBlock; }
+uint32_t perfGetMinFreeDma() { return perfExtended.minFreeDma == UINT32_MAX ? 0 : perfExtended.minFreeDma; }
 uint32_t perfGetWifiMaxUs() { return perfExtended.wifiMaxUs; }
 uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }

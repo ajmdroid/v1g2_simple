@@ -2395,6 +2395,13 @@ void WiFiManager::handleDebugMetrics() {
     doc["flushMaxUs"] = perfGetFlushMaxUs();
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     
+    // Heap stats - both total and DMA-capable (for WiFi/SD contention diagnosis)
+    doc["heapFree"] = ESP.getFreeHeap();
+    doc["heapMinFree"] = perfGetMinFreeHeap();
+    doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    doc["heapDmaMin"] = perfGetMinFreeDma();
+    
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
 #if PERF_MONITORING
@@ -2482,6 +2489,8 @@ void WiFiManager::handleDebugPanic() {
     doc["heapFree"] = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
     doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
     doc["heapMinEver"] = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+    doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    doc["heapDmaMin"] = perfGetMinFreeDma();
     
     String json;
     serializeJson(doc, json);

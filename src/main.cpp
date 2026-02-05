@@ -856,7 +856,8 @@ void loop() {
         perfRecordTouchUs(PERF_TIMESTAMP_US() - touchStartUs);
         if (inSettings) {
             perfRecordLoopJitterUs(micros() - loopStartUs);
-            perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+            perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
+                                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
             return;  // Skip normal loop processing while in settings mode
         }
     }
@@ -930,7 +931,8 @@ void loop() {
     }
 
     perfRecordLoopJitterUs(micros() - loopStartUs);
-    perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
+                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     
     // OBD processing and delayed auto-connect
     {
