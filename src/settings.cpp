@@ -554,17 +554,11 @@ void SettingsManager::load() {
     
     preferences.end();
     
-    Serial.println("Settings loaded:");
-    Serial.printf("  WiFi enabled: %s\n", settings.enableWifi ? "yes" : "no");
-    Serial.printf("  AP SSID: %s\n", settings.apSSID.c_str());
-    // Note: Passwords not logged for security
-    Serial.printf("  BLE proxy: %s\n", settings.proxyBLE ? "yes" : "no");
-    Serial.printf("  Proxy name: %s\n", settings.proxyName.c_str());
-    Serial.printf("  Brightness: %d\n", settings.brightness);
-    Serial.printf("  Auto-push: %s (active slot: %d)\n", settings.autoPushEnabled ? "yes" : "no", settings.activeSlot);
-    Serial.printf("  Slot0: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot0_default.profileName.c_str(), settings.slot0_default.mode, settings.slot0DarkMode ? "yes" : "no", settings.slot0MuteToZero ? "yes" : "no", settings.slot0AlertPersist);
-    Serial.printf("  Slot1: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot1_highway.profileName.c_str(), settings.slot1_highway.mode, settings.slot1DarkMode ? "yes" : "no", settings.slot1MuteToZero ? "yes" : "no", settings.slot1AlertPersist);
-    Serial.printf("  Slot2: %s (mode %d) darkMode=%s MZ=%s persist=%ds\n", settings.slot2_comfort.profileName.c_str(), settings.slot2_comfort.mode, settings.slot2DarkMode ? "yes" : "no", settings.slot2MuteToZero ? "yes" : "no", settings.slot2AlertPersist);
+    Serial.printf("[Settings] OK wifi=%s proxy=%s bright=%d autoPush=%s\n",
+                  settings.enableWifi ? "on" : "off",
+                  settings.proxyBLE ? "on" : "off",
+                  settings.brightness,
+                  settings.autoPushEnabled ? "on" : "off");
 }
 
 void SettingsManager::save() {

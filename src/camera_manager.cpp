@@ -1226,16 +1226,11 @@ bool CameraManager::loadDatabaseIncremental() {
 
 // Load binary file incrementally (with task yielding)
 size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
-  Serial.printf("[Camera] loadBinaryDatabaseIncremental v4: %s\n", path);
-  
   File file = fs->open(path, "r");
   if (!file) {
-    Serial.printf("[Camera] Failed to open %s\n", path);
+    Serial.printf("[Camera] FAIL open %s\n", path);
     return 0;
   }
-  
-  Serial.printf("[Camera] File size: %llu bytes\n",
-                static_cast<unsigned long long>(file.size()));
   
   // Read header manually to avoid alignment issues on ESP32
   // Binary format: VCAM (4) + version (4, uint32 LE) + count (4, LE) + recordSize (4, LE) = 16 bytes
@@ -1243,7 +1238,7 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   size_t bytesRead = file.read(headerBuf, 16);
   
   if (bytesRead != 16) {
-    Serial.printf("[Camera] Failed to read header: got %zu bytes\n", bytesRead);
+    Serial.printf("[Camera] FAIL header %s\n", path);
     file.close();
     return 0;
   }
@@ -1254,26 +1249,14 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   uint32_t count = headerBuf[8] | (headerBuf[9] << 8) | (headerBuf[10] << 16) | (headerBuf[11] << 24);
   uint32_t recordSize = headerBuf[12] | (headerBuf[13] << 8) | (headerBuf[14] << 16) | (headerBuf[15] << 24);
   
-  Serial.printf("[Camera] Header: magic=%s ver=%lu count=%lu recSize=%lu\n",
-                magic,
-                static_cast<unsigned long>(version),
-                static_cast<unsigned long>(count),
-                static_cast<unsigned long>(recordSize));
-  Serial.printf("[Camera] Raw: %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X | %02X%02X%02X%02X\n",
-                headerBuf[0], headerBuf[1], headerBuf[2], headerBuf[3],
-                headerBuf[4], headerBuf[5], headerBuf[6], headerBuf[7],
-                headerBuf[8], headerBuf[9], headerBuf[10], headerBuf[11],
-                headerBuf[12], headerBuf[13], headerBuf[14], headerBuf[15]);
-  
   if (memcmp(magic, "VCAM", 4) != 0) {
-    Serial.printf("[Camera] Invalid magic: %s\n", magic);
+    Serial.printf("[Camera] Bad magic %s\n", path);
     file.close();
     return 0;
   }
   
   if (version != 1) {
-    Serial.printf("[Camera] Invalid version: %lu (expected 1)\n",
-                  static_cast<unsigned long>(version));
+    Serial.printf("[Camera] Bad version %s\n", path);
     file.close();
     return 0;
   }
@@ -1281,17 +1264,13 @@ size_t CameraManager::loadBinaryDatabaseIncremental(const char* path) {
   // Handle legacy files that wrote recordSize=0
   if (recordSize == 0) {
     recordSize = sizeof(BinaryRecord);  // Default to 24
-    Serial.println("[Camera] recordSize=0 in header, using default 24");
   }
   
   if (recordSize != sizeof(BinaryRecord)) {
-  Serial.printf("[Camera] Invalid record size: %lu (expected %zu)\n", 
-                static_cast<unsigned long>(recordSize), sizeof(BinaryRecord));
+    Serial.printf("[Camera] Bad recSize %s\n", path);
     file.close();
     return 0;
   }
-  
-  Serial.printf("[Camera] Binary: %lu records to load\n", static_cast<unsigned long>(count));
   
   // Read records in batches (128 records × 24 bytes = 3KB stack, safe for ESP32-S3)
   const size_t BATCH_SIZE = 128;

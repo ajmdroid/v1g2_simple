@@ -372,37 +372,22 @@ V1Display::~V1Display() {
 }
 
 bool V1Display::begin() {
-    Serial.println("Display init start...");
-    Serial.print("Board: ");
-    Serial.println(DISPLAY_NAME);
+    Serial.printf("[Display] Init %s...\n", DISPLAY_NAME);
     
 #if PIN_POWER_ON >= 0
     // Power was held low in setup(); bring it up now
     digitalWrite(PIN_POWER_ON, HIGH);
-    Serial.println("Power ON");
     delay(200);
 #endif
     
-    // Initialize display
-    Serial.println("Calling display init...");
-
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Arduino_GFX initialization for Waveshare 3.49"
-    Serial.println("Initializing Arduino_GFX for Waveshare 3.49...");
-    Serial.printf("Pins: CS=%d, SCK=%d, D0=%d, D1=%d, D2=%d, D3=%d, RST=%d, BL=%d\n",
-                  LCD_CS, LCD_SCLK, LCD_DATA0, LCD_DATA1, LCD_DATA2, LCD_DATA3, LCD_RST, LCD_BL);
-    
-    // Configure backlight pin
-    Serial.println("Configuring backlight...");
-    // Waveshare 3.49" has INVERTED backlight PWM:
-    // 0 = full brightness, 255 = off
+    // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off
     pinMode(LCD_BL, OUTPUT);
     analogWrite(LCD_BL, 255);  // Start with backlight off (inverted: 255=off)
-    Serial.println("Backlight configured, set to 255 (off, inverted)");
     
     // Manual RST toggle with Waveshare timing BEFORE creating bus
     // This is critical - Waveshare examples do: HIGH(30ms) -> LOW(250ms) -> HIGH(30ms)
-    Serial.println("Manual RST toggle (Waveshare timing)...");
     pinMode(LCD_RST, OUTPUT);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
@@ -410,10 +395,8 @@ bool V1Display::begin() {
     delay(250);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
-    Serial.println("RST toggle complete");
     
     // Create QSPI bus
-    Serial.println("Creating QSPI bus...");
     bus = new Arduino_ESP32QSPI(
         LCD_CS,    // CS
         LCD_SCLK,  // SCK
@@ -423,14 +406,12 @@ bool V1Display::begin() {
         LCD_DATA3  // D3
     );
     if (!bus) {
-        Serial.println("ERROR: Failed to create bus!");
+        Serial.println("[Display] ERROR: Failed to create bus!");
         return false;
     }
-    Serial.println("QSPI bus created");
     
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
-    Serial.println("Creating AXS15231B panel...");
 #ifdef WINDOWS_BUILD
     // GFX Library 1.4.9 - simpler constructor without init_operations
     gfxPanel = new Arduino_AXS15231B(
@@ -463,39 +444,29 @@ bool V1Display::begin() {
     );
 #endif
     if (!gfxPanel) {
-        Serial.println("ERROR: Failed to create panel!");
+        Serial.println("[Display] ERROR: Failed to create panel!");
         return false;
     }
-    Serial.println("AXS15231B panel created with init_operations");
     
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
-    Serial.println("Creating canvas 172x640 with rotation=1 (landscape)...");
     tft = new Arduino_Canvas(172, 640, gfxPanel, 0, 0, 1);
     
     if (!tft) {
-        Serial.println("ERROR: Failed to create canvas!");
+        Serial.println("[Display] ERROR: Failed to create canvas!");
         return false;
     }
-    Serial.println("Canvas created");
     
-    Serial.println("Calling tft->begin()...");
     if (!tft->begin()) {
-        Serial.println("ERROR: tft->begin() failed!");
+        Serial.println("[Display] ERROR: tft->begin() failed!");
         return false;
     }
-    Serial.println("tft->begin() succeeded");
-    Serial.printf("Canvas size: width=%d, height=%d\n", tft->width(), tft->height());
     
-    Serial.println("Filling screen with black...");
     tft->fillScreen(COLOR_BLACK);
     DISPLAY_FLUSH();
-    Serial.println("Screen filled and flushed");
     
     // Turn on backlight (inverted: 0 = full brightness)
-    Serial.println("Turning on backlight (inverted PWM)...");
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
     delay(100);
-    Serial.println("Backlight ON");
     
 #else
     // TFT_eSPI initialization
@@ -520,58 +491,30 @@ bool V1Display::begin() {
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
-    // Initialize OpenFontRender for antialiased Modern font
-    DISPLAY_LOG("[DISPLAY] Initializing OpenFontRender (font=%d bytes)\n", sizeof(MontserratBold));
-    ofr.setSerial(Serial);  // Enable debug output
-    ofr.showFreeTypeVersion();
-    ofr.setDrawer(*tft);  // Use Arduino_GFX canvas for drawing (dereference pointer)
+    // Initialize OpenFontRender fonts (errors only logged)
+    ofr.setDrawer(*tft);
     FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
-    if (ftErr) {
-        Serial.printf("ERROR: Failed to load Montserrat font! FT_Error: 0x%02X\n", ftErr);
-        ofrInitialized = false;
-    } else {
-        Serial.println("OpenFontRender initialized with Montserrat Bold");
-        ofrInitialized = true;
-    }
+    ofrInitialized = (ftErr == 0);
+    if (ftErr) Serial.printf("[Display] ERROR: Montserrat font failed (0x%02X)\n", ftErr);
     
-    // Initialize Segment7 font for Classic style (JBV1)
-    Serial.printf("Loading Segment7 font (%d bytes)...\n", sizeof(Segment7Font));
-    ofrSegment7.setSerial(Serial);
     ofrSegment7.setDrawer(*tft);
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
-    if (ftErr2) {
-        Serial.printf("ERROR: Failed to load Segment7 font! FT_Error: 0x%02X\n", ftErr2);
-        ofrSegment7Initialized = false;
-    } else {
-        Serial.println("Segment7 font initialized (JBV1 Classic style)");
-        ofrSegment7Initialized = true;
-    }
+    ofrSegment7Initialized = (ftErr2 == 0);
+    if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
     
-    // Initialize Hemi Head font for Hemi style (retro speedometer)
-    Serial.printf("Loading Hemi Head font (%d bytes)...\n", sizeof(HemiHead));
-    ofrHemi.setSerial(Serial);
     ofrHemi.setDrawer(*tft);
     FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
-    if (ftErr3) {
-        Serial.printf("ERROR: Failed to load Hemi Head font! FT_Error: 0x%02X\n", ftErr3);
-        ofrHemiInitialized = false;
-    } else {
-        Serial.println("Hemi Head font initialized (retro speedometer style)");
-        ofrHemiInitialized = true;
-    }
+    ofrHemiInitialized = (ftErr3 == 0);
+    if (ftErr3) Serial.printf("[Display] ERROR: HemiHead font failed (0x%02X)\n", ftErr3);
     
-    // Initialize Serpentine font (JB's favorite)
-    Serial.printf("Loading Serpentine font (%d bytes)...\n", sizeof(Serpentine));
-    ofrSerpentine.setSerial(Serial);
     ofrSerpentine.setDrawer(*tft);
     FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
-    if (ftErr4) {
-        Serial.printf("ERROR: Failed to load Serpentine font! FT_Error: 0x%02X\n", ftErr4);
-        ofrSerpentineInitialized = false;
-    } else {
-        Serial.println("Serpentine font initialized (JB's favorite)");
-        ofrSerpentineInitialized = true;
-    }
+    ofrSerpentineInitialized = (ftErr4 == 0);
+    if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
+    
+    Serial.printf("[Display] OK %dx%d, fonts=%d/%d/%d/%d\n", 
+                  SCREEN_WIDTH, SCREEN_HEIGHT,
+                  ofrInitialized, ofrSegment7Initialized, ofrHemiInitialized, ofrSerpentineInitialized);
     
     // Load color theme from settings
     updateColorTheme();

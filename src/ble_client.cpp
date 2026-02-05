@@ -275,7 +275,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         return true;  // Already initialized
     }
     
-    Serial.println("Initializing BLE stack...");
+    Serial.print("[BLE] Init...");
     
     proxyEnabled = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
@@ -292,7 +292,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     }
     
     if (!bleMutex || !bleNotifyMutex || !phoneCmdMutex) {
-        Serial.println("ERROR: Failed to create BLE mutexes");
+        Serial.println("FAIL");
         return false;
     }
     
@@ -303,9 +303,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         blePrefs.begin("ble_state", false);  // Read-write mode
         String storedVersion = blePrefs.getString("fwVersion", "");
         if (storedVersion != FIRMWARE_VERSION) {
-            Serial.printf("[BLE] Fresh flash detected (stored: '%s', current: '%s')\n", 
-                         storedVersion.c_str(), FIRMWARE_VERSION);
-            Serial.println("[BLE] Clearing all BLE bonds for clean start...");
+            Serial.printf(" fresh-flash, clearing bonds...");
             // NimBLE must be initialized before deleteAllBonds works
             // We'll do a minimal init, clear bonds, then deinit and reinit properly
             NimBLEDevice::init("");
@@ -313,7 +311,6 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
             NimBLEDevice::deinit(true);  // true = clear all BLE state
             vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
             blePrefs.putString("fwVersion", FIRMWARE_VERSION);
-            Serial.println("[BLE] Bonds cleared, version marker updated");
             freshFlashBoot = true;
         }
         blePrefs.end();
@@ -359,11 +356,10 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(12, 24, 0, 400);
         pClient->setConnectTimeout(15);
-        Serial.println("BLE client created");
     }
     
     initialized = true;
-    Serial.println("BLE stack initialized");
+    Serial.printf(" OK proxy=%s\n", proxyEnabled ? "on" : "off");
     return true;
 }
 
@@ -390,7 +386,6 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setMaxResults(0);  // Unlimited results
     // Filter duplicate advertisements to reduce scan load and radio time
     pScan->setDuplicateFilter(true);
-    Serial.println("Scan configured: interval=160 (100ms), window=120 (75ms), active=true, 75% duty, 10s duration");
     
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
     lastScanStart = millis();
