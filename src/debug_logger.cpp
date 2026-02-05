@@ -232,6 +232,9 @@ void DebugLogger::flushBufferAsync() {
 }
 
 void DebugLogger::update() {
+    // Periodic time cache save (even if logging disabled)
+    updateTimeCache();
+    
     if (!enabled || bufferPos == 0) return;
     
     // Time-based flush - but defer during WiFi transitions or display render
@@ -521,13 +524,27 @@ void DebugLogger::saveTimeToCache() {
         return;
     }
     
+    time_t currentTime = getUnixTime();  // Get actual current time (synced + elapsed)
+    
     Preferences prefs;
     if (prefs.begin(RTC_CACHE_NS, false)) {
-        prefs.putULong64("epoch", (uint64_t)timeSyncEpoch);
+        prefs.putULong64("epoch", (uint64_t)currentTime);
         prefs.putUChar("source", (uint8_t)timeSource);
+        prefs.putULong64("saved_at", (uint64_t)currentTime);  // Track when we saved
         prefs.end();
+        lastTimeCacheSaveMs = millis();
         Serial.printf("[RTC] Saved time cache: epoch=%lu source=%d\n", 
-                      (unsigned long)timeSyncEpoch, (int)timeSource);
+                      (unsigned long)currentTime, (int)timeSource);
+    }
+}
+
+// Periodic time cache update (call from main loop)
+void DebugLogger::updateTimeCache() {
+    if (!timeValid) return;
+    
+    unsigned long now = millis();
+    if (now - lastTimeCacheSaveMs >= RTC_CACHE_SAVE_INTERVAL_MS) {
+        saveTimeToCache();
     }
 }
 
@@ -553,7 +570,7 @@ bool DebugLogger::restoreTimeFromCache() {
         return true;
     }
     
-    // RTC was reset (power loss) - try NVS cache
+    // RTC was reset (power loss/hardware reset) - try NVS cache
     Preferences prefs;
     if (!prefs.begin(RTC_CACHE_NS, true)) {
         Serial.println("[RTC] No time cache namespace found");
@@ -570,11 +587,12 @@ bool DebugLogger::restoreTimeFromCache() {
         return false;
     }
     
-    // Restore from cache - this is stale but better than epoch 0
+    // Restore from cache - with periodic saves, this should be very recent
     timeSyncEpoch = (time_t)cachedEpoch;
     timeSyncMillis = millis();
     timeValid = true;
     timeSource = TimeSource::RTC;
+    lastTimeCacheSaveMs = millis();  // Reset save timer
     
     // Set ESP32 system time
     struct timeval tv;
@@ -582,9 +600,9 @@ bool DebugLogger::restoreTimeFromCache() {
     tv.tv_usec = 0;
     settimeofday(&tv, nullptr);
     
-    // Log restored time
+    // Log restored time (don't say "stale" - with 5min saves it's usually recent)
     gmtime_r(&timeSyncEpoch, &timeinfo);
-    Serial.printf("[RTC] Restored cached time: %04d-%02d-%02d %02d:%02d:%02d UTC (was %s, stale)\n",
+    Serial.printf("[RTC] Restored from cache: %04d-%02d-%02d %02d:%02d:%02d UTC (was %s)\n",
                   timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
                   cachedSource == 1 ? "GPS" : cachedSource == 2 ? "NTP" : "unknown");

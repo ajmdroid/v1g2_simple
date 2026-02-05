@@ -98,9 +98,11 @@ public:
     
     // RTC time cache persistence (survives power cycles via NVS)
     bool restoreTimeFromCache();  // Call early in setup(); returns true if valid time restored
-    void saveTimeToCache();       // Called automatically on GPS/NTP sync
+    void saveTimeToCache();       // Called automatically on GPS/NTP sync + periodically
+    void updateTimeCache();       // Call from main loop - saves every 5 min if time valid
     time_t getLastSyncEpoch() const { return timeSyncEpoch; }
     static constexpr uint32_t RTC_CACHE_MAX_AGE_HOURS = 24;  // Skip NTP if cache newer than this
+    static constexpr uint32_t RTC_CACHE_SAVE_INTERVAL_MS = 5 * 60 * 1000;  // Save every 5 minutes
 
     // Append formatted line (auto timestamp + newline).
     void logf(DebugLogCategory category, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -163,6 +165,7 @@ private:
     TimeSource timeSource = TimeSource::NONE;
     time_t timeSyncEpoch = 0;       // Unix timestamp when time was synced
     unsigned long timeSyncMillis = 0;  // millis() when time was synced
+    unsigned long lastTimeCacheSaveMs = 0;  // Last time we saved to NVS
     
     // Ring buffer for batched writes
     char buffer[DEBUG_LOG_BUFFER_SIZE];
