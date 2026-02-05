@@ -2402,6 +2402,10 @@ void WiFiManager::handleDebugMetrics() {
     doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     doc["heapDmaMin"] = perfGetMinFreeDma();
     
+    // SD access contention stats
+    doc["sdTryLockFails"] = StorageManager::sdTryLockFailCount.load();
+    doc["sdDmaStarvation"] = StorageManager::sdDmaStarvationCount.load();
+    
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
 #if PERF_MONITORING
