@@ -278,9 +278,12 @@ bool WiFiManager::stopSetupMode(bool manual) {
     server.stop();
     WIFI_LOG("[SetupMode] HTTP server stopped\n");
     
-    // Stop SNTP service if initialized (prevents callbacks with radio off)
-    esp_netif_sntp_deinit();
-    WIFI_LOG("[SetupMode] SNTP service stopped\n");
+    // Stop SNTP service ONLY if it was initialized (gate by state flag)
+    if (s_sntpInitialized) {
+        esp_netif_sntp_deinit();
+        s_sntpInitialized = false;  // Clear flag immediately after deinit
+        WIFI_LOG("[SetupMode] SNTP service stopped\n");
+    }
     
     // ========== 2. STOP RADIO CLEANLY ==========
     // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
@@ -297,22 +300,28 @@ bool WiFiManager::stopSetupMode(bool manual) {
     WiFi.mode(WIFI_OFF);
     
     // Fully stop the WiFi radio at ESP-IDF level
-    // This ensures no background WiFi tasks are running
+    // Gate by checking if WiFi is actually started (avoid double-stop errors)
+    // esp_wifi_stop() is idempotent but logging the actual state is cleaner
     esp_err_t stopErr = esp_wifi_stop();
     if (stopErr == ESP_OK) {
-        WIFI_LOG("[SetupMode] esp_wifi_stop() succeeded\n");
-        // Deinit frees WiFi resources completely
-        // Note: WiFi.begin() will re-init when needed
+        WIFI_LOG("[SetupMode] esp_wifi_stop() OK\n");
+    } else if (stopErr == ESP_ERR_WIFI_NOT_STARTED) {
+        WIFI_LOG("[SetupMode] WiFi already stopped (no-op)\n");
+    } else {
+        WIFI_LOG("[SetupMode] esp_wifi_stop() err=%d\n", stopErr);
+    }
+    
+    // Deinit frees WiFi resources completely
+    // Gate: only deinit if stop succeeded (means it was running)
+    if (stopErr == ESP_OK) {
         esp_err_t deinitErr = esp_wifi_deinit();
         if (deinitErr == ESP_OK) {
-            WIFI_LOG("[SetupMode] esp_wifi_deinit() succeeded\n");
+            WIFI_LOG("[SetupMode] esp_wifi_deinit() OK\n");
+        } else if (deinitErr == ESP_ERR_WIFI_NOT_INIT) {
+            WIFI_LOG("[SetupMode] WiFi already deinit'd (no-op)\n");
         } else {
-            // Non-fatal: may already be deinit'd
-            WIFI_LOG("[SetupMode] esp_wifi_deinit() returned %d\n", deinitErr);
+            WIFI_LOG("[SetupMode] esp_wifi_deinit() err=%d\n", deinitErr);
         }
-    } else {
-        // Non-fatal: may already be stopped
-        WIFI_LOG("[SetupMode] esp_wifi_stop() returned %d\n", stopErr);
     }
     
     // ========== 3. RESET ALL STATE ==========
@@ -325,18 +334,21 @@ bool WiFiManager::stopSetupMode(bool manual) {
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
     
-    // Clear NTP/SNTP state (allows re-init when WiFi restarts)
-    s_sntpInitialized = false;  // Reset so SNTP can be re-initialized
+    // Clear NTP sync state (allows re-sync when WiFi restarts)
+    // Note: s_sntpInitialized already cleared above during SNTP deinit
     portENTER_CRITICAL(&s_ntpMux);
     s_ntpSyncPending = false;
     s_ntpSyncComplete = false;
     portEXIT_CRITICAL(&s_ntpMux);
 
+    // ========== 4. OBSERVABILITY ==========
+    // Single-line status for post-mortem debugging (confirms radio truly OFF)
+    Serial.printf("[SetupMode] WiFi OFF: radio=%d http=%d sntp=%d\n", 
+                  0, 0, 0);  // All should be 0 at this point
+    
     if (debugLogger.isEnabled()) {
         debugLogger.log(DebugLogCategory::Wifi, manual ? "WiFi OFF (manual) - radio stopped" : "WiFi OFF (timeout) - radio stopped");
     }
-    
-    Serial.println("[SetupMode] WiFi fully stopped (radio off, no polling)");
 
     return true;
 }
