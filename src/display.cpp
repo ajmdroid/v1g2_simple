@@ -1865,8 +1865,8 @@ void V1Display::showResting(bool forceRedraw) {
 void V1Display::forceNextRedraw() {
     // Reset lastState to force next update() to detect all changes and redraw
     lastState = DisplayState();
-    // Also reset screen mode so next update knows we need full redraw
-    currentScreen = ScreenMode::Resting;
+    // Set screen mode to Unknown so any next update/showResting detects a screen change
+    currentScreen = ScreenMode::Unknown;
     // Reset all static change tracking variables (volume, mode, arrows, etc.)
     // This ensures the next update() does a full redraw with fresh data
     resetChangeTracking();
