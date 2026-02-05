@@ -120,8 +120,8 @@ private:
     // Constants
     static constexpr int MAX_ACTIVE_CAMERAS = 3;
     static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;       // 500ms at speed
-    static constexpr unsigned long CAMERA_CHECK_INTERVAL_SLOW_MS = 2000; // 2s when slow/stopped
-    static constexpr float SLOW_SPEED_THRESHOLD_MPS = 2.5f;              // ~5.5 mph
+    static constexpr unsigned long CAMERA_CHECK_INTERVAL_SLOW_MS = 2000; // 2s when slow
+    static constexpr float SLOW_SPEED_THRESHOLD_MPS = 17.9f;             // ~40 mph
     static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;             // 200m
     static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;      // 1 minute
     static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000; // 3s
