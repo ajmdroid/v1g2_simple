@@ -900,22 +900,19 @@ bool CameraManager::getClosestCamera(
   return found;
 }
 
-std::vector<NearbyCameraResult> CameraManager::findNearby(
+void CameraManager::findNearby(
   float lat, float lon,
   float heading_deg,
   float radius_m,
-  size_t maxResults
+  size_t maxResults,
+  std::vector<NearbyCameraResult>& out
 ) const {
-  std::vector<NearbyCameraResult> results;
+  out.clear();  // Clear but keep capacity for reuse
+  
   CameraVector snapshot;
   const auto* queryList = getQueryCamerasSnapshot(snapshot);
-  if (!queryList || queryList->empty()) return results;
+  if (!queryList || queryList->empty()) return;
 
-  // Reserve to minimize heap churn during per-loop scans
-  if (maxResults > 0) {
-    results.reserve(std::min(maxResults, queryList->size()));
-  }
-  
   // Quick bounding box
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
@@ -941,11 +938,11 @@ std::vector<NearbyCameraResult> CameraManager::findNearby(
     r.bearing_deg = calculateBearing(lat, lon, cam.latitude, cam.longitude);
     r.isApproaching = isHeadingTowards(heading_deg, r.bearing_deg, 60.0f);
     
-    results.push_back(r);
+    out.push_back(r);
   }
   
   // Sort by distance (approaching cameras get priority)
-  std::sort(results.begin(), results.end(), [](const NearbyCameraResult& a, const NearbyCameraResult& b) {
+  std::sort(out.begin(), out.end(), [](const NearbyCameraResult& a, const NearbyCameraResult& b) {
     // Approaching cameras are prioritized
     if (a.isApproaching != b.isApproaching) {
       return a.isApproaching;
@@ -954,11 +951,9 @@ std::vector<NearbyCameraResult> CameraManager::findNearby(
   });
   
   // Limit results
-  if (results.size() > maxResults) {
-    results.resize(maxResults);
+  if (out.size() > maxResults) {
+    out.resize(maxResults);
   }
-  
-  return results;
 }
 
 void CameraManager::setEnabledTypes(bool redLight, bool speed, bool alpr) {

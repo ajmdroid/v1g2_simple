@@ -269,10 +269,10 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         camSettings.cameraAlertALPR);
 
     // Find all nearby cameras (sorted by distance, approaching first)
-    // Use scratch vector and swap to avoid allocation (findNearby returns by value)
-    scratchNearbyCameras.clear();
-    scratchNearbyCameras = cameraManager->findNearby(
-        lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2);  // Get a few extra for filtering
+    // Uses output parameter to avoid heap allocation - scratch vector is reused
+    cameraManager->findNearby(
+        lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2,
+        scratchNearbyCameras);  // Get a few extra for filtering
 
     // Filter: only keep approaching cameras, exclude recently passed
     // Apply tighter heading gate when we have reliable heading (speed > 2 m/s)

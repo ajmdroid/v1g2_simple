@@ -163,12 +163,14 @@ public:
   bool finishIncrementalCacheBuild();  // Swap in completed cache
   
   // Find cameras within radius of current position
-  // Returns cameras sorted by distance (closest first)
-  std::vector<NearbyCameraResult> findNearby(
+  // Populates output vector (cleared first), sorted by distance (closest first)
+  // Uses output parameter to avoid allocation - caller provides reusable vector
+  void findNearby(
     float lat, float lon, 
     float heading_deg,
-    float radius_m = 1000.0f,
-    size_t maxResults = 5
+    float radius_m,
+    size_t maxResults,
+    std::vector<NearbyCameraResult>& out
   ) const;
   
   // Quick check if any camera is within alert range
