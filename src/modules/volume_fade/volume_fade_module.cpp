@@ -1,6 +1,7 @@
 #include "volume_fade_module.h"
 #include "settings.h"
 #include <cstring>
+#include <Arduino.h>
 
 VolumeFadeModule::VolumeFadeModule() 
     : settings(nullptr)
@@ -35,6 +36,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
+            Serial.printf("[VolumeFade] RESTORE: current=%d -> original=%d\n",
+                          ctx.currentVolume, originalVolume);
+        } else if (originalVolume != 0xFF) {
+            Serial.printf("[VolumeFade] No restore needed: current=%d == original=%d\n",
+                          ctx.currentVolume, originalVolume);
         }
         reset();
         return action;

@@ -111,6 +111,8 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
             action.volume = boostedVol;
             action.muteVolume = ctx.currentMuteVolume;
             boostActive = true;
+            Serial.printf("[SpeedVolume] BOOST: %d -> %d (fadeBlocked=%d)\n",
+                          ctx.currentVolume, boostedVol, ctx.fadeTakingControl);
         }
         return action;
     }
