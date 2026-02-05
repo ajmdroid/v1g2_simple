@@ -21,8 +21,8 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
         wifiToggleTriggered = false;
     }
 
-    // Long press for WiFi toggle (only when not in adjust mode)
-    if (bootPressed && !wifiToggleTriggered && !brightnessAdjustMode) {
+    // Long press for WiFi toggle (only when not in adjust mode or delete logs mode)
+    if (bootPressed && !wifiToggleTriggered && !brightnessAdjustMode && !deleteLogsMode) {
         unsigned long pressDuration = nowMs - bootPressStart;
         if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
             wifiToggleTriggered = true;
@@ -39,7 +39,10 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = nowMs - bootPressStart;
         if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered) {
-            if (brightnessAdjustMode) {
+            if (deleteLogsMode) {
+                // BOOT press exits delete logs mode without deleting
+                exitDeleteLogsMode(false);
+            } else if (brightnessAdjustMode) {
                 exitAdjustModeAndSave();
             } else {
                 enterAdjustMode();
@@ -48,6 +51,12 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     }
 
     bootWasPressed = bootPressed;
+
+    // Handle delete logs mode (highest priority after BOOT button)
+    if (deleteLogsMode) {
+        handleDeleteLogsTouch(nowMs);
+        return true;  // consume loop while in delete logs mode
+    }
 
     // If in settings adjustment mode, handle touch sliders and debounce test voice
     if (brightnessAdjustMode) {
@@ -60,6 +69,30 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
         }
         return true;  // consume loop while adjusting
     }
+
+    // Touch long-press detection for delete logs screen (only when idle)
+    int16_t touchX, touchY;
+    bool touchPressed = touchHandler->getTouchPoint(touchX, touchY);
+    
+    if (touchPressed && !touchWasPressed) {
+        touchPressStart = nowMs;
+        deleteLogsTriggered = false;
+    }
+    
+    if (touchPressed && !deleteLogsTriggered) {
+        unsigned long pressDuration = nowMs - touchPressStart;
+        if (pressDuration >= DELETE_LOGS_LONG_PRESS_MS) {
+            deleteLogsTriggered = true;
+            enterDeleteLogsMode();
+        }
+    }
+    
+    if (!touchPressed && touchWasPressed) {
+        // Touch released - reset tracking
+        deleteLogsTriggered = false;
+    }
+    
+    touchWasPressed = touchPressed;
 
     return false;
 }
@@ -124,5 +157,43 @@ bool TouchUiModule::handleSliderTouch(unsigned long nowMs) {
         }
     }
 
+    return true;
+}
+
+void TouchUiModule::enterDeleteLogsMode() {
+    deleteLogsMode = true;
+    display->showDeleteLogsScreen();
+    Serial.println("[Touch] Entering delete logs mode");
+}
+
+void TouchUiModule::exitDeleteLogsMode(bool performDelete) {
+    deleteLogsMode = false;
+    
+    if (performDelete && callbacks.deleteDebugLogs) {
+        bool success = callbacks.deleteDebugLogs();
+        Serial.printf("[Touch] Delete debug logs: %s\n", success ? "SUCCESS" : "FAILED");
+    } else {
+        Serial.println("[Touch] Delete logs cancelled");
+    }
+    
+    display->hideBrightnessSlider();  // Clears screen
+    if (callbacks.restoreDisplay) callbacks.restoreDisplay();
+}
+
+bool TouchUiModule::handleDeleteLogsTouch(unsigned long nowMs) {
+    int16_t touchX, touchY;
+    if (!touchHandler->getTouchPoint(touchX, touchY)) {
+        return false;
+    }
+    
+    int button = display->getDeleteLogsButtonFromTouch(touchX, touchY);
+    if (button == 0) {
+        // Cancel pressed
+        exitDeleteLogsMode(false);
+    } else if (button == 1) {
+        // Delete pressed
+        exitDeleteLogsMode(true);
+    }
+    
     return true;
 }

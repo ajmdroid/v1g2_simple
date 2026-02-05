@@ -580,6 +580,13 @@ void setup() {
                 display.forceNextRedraw();
                 display.showResting();
             }
+        },
+        .deleteDebugLogs = [] {
+            bool success = debugLogger.clear();
+            if (success) {
+                Serial.println("[Main] Debug logs deleted via touch UI");
+            }
+            return success;
         }
     };
 
