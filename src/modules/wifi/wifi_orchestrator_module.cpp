@@ -48,8 +48,9 @@ void WifiOrchestrator::startWifi() {
     wifiManager.begin();
 
     // Reduce WiFi TX power to minimize interference with BLE
-    WiFi.setTxPower(WIFI_POWER_11dBm);
-    Serial.println("[WiFi] TX power reduced to 11dBm for BLE coexistence");
+    // 5dBm gives ~2-3m range, sufficient for in-car phone config
+    WiFi.setTxPower(WIFI_POWER_5dBm);
+    Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
 
     Serial.println("[WiFi] Initialized");
 }
