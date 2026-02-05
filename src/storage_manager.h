@@ -15,6 +15,7 @@
 #include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <esp_heap_caps.h>
 
 // Waveshare 3.49 SD card pins (SDMMC interface)
 #if defined(DISPLAY_WAVESHARE_349)
@@ -63,6 +64,24 @@ public:
     // Atomic try-lock failure counter (cross-core safe for monitoring)
     static inline std::atomic<uint32_t> sdTryLockFailCount{0};
     
+    // DMA heap starvation counter (SD ops skipped due to low internal SRAM)
+    static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
+    
+    // Minimum DMA-capable heap required for safe SD access (WiFi uses ~50-80KB)
+    // SD_MMC needs ~4KB for DMA buffers per operation
+    static constexpr uint32_t MIN_DMA_HEAP_FOR_SD = 8192;  // 8KB safety margin
+    
+    // Check if there's enough DMA-capable heap for SD operations
+    // Returns false if WiFi has consumed too much internal SRAM
+    static bool hasDmaHeapForSD() {
+        uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (freeDma < MIN_DMA_HEAP_FOR_SD) {
+            sdDmaStarvationCount.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+        return true;
+    }
+    
     // =========================================================================
     // SD ACCESS POLICY - TWO LOCK TYPES ONLY:
     // =========================================================================
@@ -83,10 +102,16 @@ public:
     
     // Blocking lock - for Core 0 writer tasks and boot/shutdown ONLY
     // Always blocks forever (portMAX_DELAY) - no timed option
+    // Fails fast if DMA heap is too low (WiFi active)
     class SDLockBlocking {
     public:
-        explicit SDLockBlocking(SemaphoreHandle_t mutex) 
-            : mutex_(mutex), acquired_(false) {
+        explicit SDLockBlocking(SemaphoreHandle_t mutex, bool checkDmaHeap = true) 
+            : mutex_(mutex), acquired_(false), dmaStarved_(false) {
+            // Check DMA heap first - fail fast if WiFi has starved internal SRAM
+            if (checkDmaHeap && !hasDmaHeapForSD()) {
+                dmaStarved_ = true;
+                return;  // Don't even try to acquire mutex
+            }
             // DEBUG: Catch accidental blocking locks on Core 1 (real-time core)
             #ifdef DEBUG
             static bool warned = false;
@@ -101,6 +126,7 @@ public:
         }
         ~SDLockBlocking() { release(); }
         bool acquired() const { return acquired_; }
+        bool isDmaStarved() const { return dmaStarved_; }
         operator bool() const { return acquired_; }
         
         void release() {
@@ -112,6 +138,7 @@ public:
     private:
         SemaphoreHandle_t mutex_;
         bool acquired_;
+        bool dmaStarved_;
     };
     
     // NOTE: No SDLock alias exposed here - forces explicit choice between
@@ -120,10 +147,16 @@ public:
     
     // Non-blocking try-lock for Core 1 paths - NEVER blocks, returns immediately
     // Use this from main loop to enforce the "no blocking" invariant
+    // Fails fast if DMA heap is too low (WiFi active)
     class SDTryLock {
     public:
-        explicit SDTryLock(SemaphoreHandle_t mutex) 
-            : mutex_(mutex), acquired_(false) {
+        explicit SDTryLock(SemaphoreHandle_t mutex, bool checkDmaHeap = true) 
+            : mutex_(mutex), acquired_(false), dmaStarved_(false) {
+            // Check DMA heap first - fail fast if WiFi has starved internal SRAM
+            if (checkDmaHeap && !hasDmaHeapForSD()) {
+                dmaStarved_ = true;
+                return;  // Don't even try to acquire mutex
+            }
             if (mutex_) {
                 acquired_ = (xSemaphoreTake(mutex_, 0) == pdTRUE);
                 if (!acquired_) {
@@ -133,6 +166,7 @@ public:
         }
         ~SDTryLock() { release(); }
         bool acquired() const { return acquired_; }
+        bool isDmaStarved() const { return dmaStarved_; }
         operator bool() const { return acquired_; }
         
         void release() {
@@ -144,6 +178,7 @@ public:
     private:
         SemaphoreHandle_t mutex_;
         bool acquired_;
+        bool dmaStarved_;
     };
     
     // Camera database info
