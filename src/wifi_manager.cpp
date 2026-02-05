@@ -230,6 +230,25 @@ bool WiFiManager::startSetupMode() {
     }
 
     WIFI_LOG("[SetupMode] Starting AP (always-on mode)...\n");
+    
+    // Check internal SRAM before WiFi init - WiFi needs ~80-100KB for TLS/crypto
+    // If insufficient, refuse to start (prevents esp-sha crash)
+    uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    WIFI_LOG("[SetupMode] Internal SRAM before WiFi: free=%lu, largest=%lu\n", 
+             (unsigned long)freeDma, (unsigned long)largestDma);
+    
+    // WiFi needs at least 40KB free internal SRAM and 20KB contiguous block
+    // These are conservative estimates based on esp-sha crash evidence
+    constexpr uint32_t MIN_FREE_FOR_WIFI = 40960;   // 40KB
+    constexpr uint32_t MIN_BLOCK_FOR_WIFI = 20480;  // 20KB
+    if (freeDma < MIN_FREE_FOR_WIFI || largestDma < MIN_BLOCK_FOR_WIFI) {
+        WIFI_LOG("[SetupMode] ABORT: Insufficient internal SRAM for WiFi\n");
+        WIFI_LOG("[SetupMode] Need free>=%luKB, largest>=%luKB - have free=%luKB, largest=%luKB\n",
+                 MIN_FREE_FOR_WIFI/1024, MIN_BLOCK_FOR_WIFI/1024, freeDma/1024, largestDma/1024);
+        return false;  // Graceful fail instead of crash
+    }
+    
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
 

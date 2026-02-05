@@ -80,12 +80,12 @@ public:
     
     // Cached DMA heap state (avoid repeated API calls in hot paths)
     struct DmaHeapCache {
-        uint32_t freeDma = 0;
-        uint32_t largestDma = 0;
-        uint32_t lastCheckMs = 0;
-        bool valid = false;
+        uint32_t freeDma;
+        uint32_t largestDma;
+        uint32_t lastCheckMs;
+        bool valid;
     };
-    static inline DmaHeapCache dmaCache_{};
+    static inline DmaHeapCache dmaCache_ = {0, 0, 0, false};
     
     // Update cached DMA heap state (call from main loop periodically)
     static void updateDmaHeapCache() {
