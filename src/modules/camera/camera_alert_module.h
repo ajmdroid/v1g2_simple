@@ -83,6 +83,12 @@ private:
     std::vector<ActiveCameraState> activeCameras;
     std::vector<PassedCameraTracker> recentlyPassedCameras;
     
+    // Scratch vectors - reused each detection cycle to avoid heap fragmentation
+    // (pre-allocated in begin(), cleared but not deallocated each cycle)
+    std::vector<NearbyCameraResult> scratchNearbyCameras;
+    std::vector<NearbyCameraResult> scratchApproachingCameras;
+    std::vector<ActiveCameraState> scratchUpdatedActive;
+    
     // While-active logging throttle (1/sec max)
     unsigned long lastActiveLogMs = 0;
 

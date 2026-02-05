@@ -22,6 +22,14 @@ void CameraAlertModule::begin(V1Display* disp,
     settings = settingsMgr;
     cameraManager = cameraMgr;
     gpsHandler = gps;
+    
+    // Pre-allocate scratch vectors to avoid heap fragmentation during detection loops.
+    // These are cleared (but not deallocated) each cycle, so capacity stays reserved.
+    scratchNearbyCameras.reserve(MAX_ACTIVE_CAMERAS + 4);
+    scratchApproachingCameras.reserve(MAX_ACTIVE_CAMERAS + 2);
+    scratchUpdatedActive.reserve(MAX_ACTIVE_CAMERAS);
+    activeCameras.reserve(MAX_ACTIVE_CAMERAS);
+    recentlyPassedCameras.reserve(8);  // Track a few recently passed cameras
 }
 
 bool CameraAlertModule::consumeTestEnded() {
@@ -261,14 +269,16 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         camSettings.cameraAlertALPR);
 
     // Find all nearby cameras (sorted by distance, approaching first)
-    std::vector<NearbyCameraResult> nearbyCameras = cameraManager->findNearby(
+    // Use scratch vector and swap to avoid allocation (findNearby returns by value)
+    scratchNearbyCameras.clear();
+    scratchNearbyCameras = cameraManager->findNearby(
         lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2);  // Get a few extra for filtering
 
     // Filter: only keep approaching cameras, exclude recently passed
     // Apply tighter heading gate when we have reliable heading (speed > 2 m/s)
     const float headingGateThreshold = 45.0f;  // CT recommendation: tighter than 60° default
-    std::vector<NearbyCameraResult> approachingCameras;
-    for (const auto& cam : nearbyCameras) {
+    scratchApproachingCameras.clear();
+    for (const auto& cam : scratchNearbyCameras) {
         if (!cam.isApproaching) continue;
         
         // Tighter heading filter when moving (heading is reliable at speed)
@@ -295,13 +305,13 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         }
         if (recentlyPassed) continue;
 
-        approachingCameras.push_back(cam);
-        if ((int)approachingCameras.size() >= MAX_ACTIVE_CAMERAS) break;
+        scratchApproachingCameras.push_back(cam);
+        if ((int)scratchApproachingCameras.size() >= MAX_ACTIVE_CAMERAS) break;
     }
 
     // ========== TREND-BASED CLEARING ==========
     // Update existing active cameras and check for pass/clear conditions
-    std::vector<ActiveCameraState> updatedActiveCameras;
+    scratchUpdatedActive.clear();
     
     for (auto& state : activeCameras) {
         float currentDist = CameraManager::haversineDistance(
@@ -367,15 +377,15 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
             passed.passedTimeMs = now;
             recentlyPassedCameras.push_back(passed);
         } else {
-            updatedActiveCameras.push_back(state);
+            scratchUpdatedActive.push_back(state);
         }
     }
 
     // ========== ADD NEW CAMERAS ==========
-    for (const auto& newCam : approachingCameras) {
+    for (const auto& newCam : scratchApproachingCameras) {
         // Check if already in active list
         bool alreadyActive = false;
-        for (const auto& state : updatedActiveCameras) {
+        for (const auto& state : scratchUpdatedActive) {
             float dist = CameraManager::haversineDistance(
                 state.camera.camera.latitude, state.camera.camera.longitude,
                 newCam.camera.latitude, newCam.camera.longitude);
@@ -385,7 +395,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
             }
         }
         
-        if (!alreadyActive && (int)updatedActiveCameras.size() < MAX_ACTIVE_CAMERAS) {
+        if (!alreadyActive && (int)scratchUpdatedActive.size() < MAX_ACTIVE_CAMERAS) {
             // New camera entering alert range
             ActiveCameraState newState;
             newState.camera = newCam;
@@ -401,7 +411,7 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
             if (headingErr > 180.0f) headingErr = 360.0f - headingErr;
             newState.headingErr_deg = headingErr;
             
-            bool isPrimary = updatedActiveCameras.empty();
+            bool isPrimary = scratchUpdatedActive.empty();
             
             // Log transition: camera selected
             CAMERA_LOG("[Camera] SELECT cam=%s dist=%.0f headingErr=%.0f speed=%.1f %s\n",
@@ -432,13 +442,13 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
                 play_camera_voice(voiceType);
             }
             
-            updatedActiveCameras.push_back(newState);
+            scratchUpdatedActive.push_back(newState);
         }
     }
 
     // Update active camera list
     bool wasEmpty = activeCameras.empty();
-    activeCameras = updatedActiveCameras;
+    activeCameras = scratchUpdatedActive;
     
     // Track when alerts started (for safety timeout)
     if (wasEmpty && !activeCameras.empty()) {
