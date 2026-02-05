@@ -894,6 +894,9 @@ void loop() {
     // Flush debug log buffer periodically (batched writes for SD performance)
     debugLogger.update();
 
+    // Periodic perf metrics report (stability diagnostics)
+    perfMetricsCheckReport();
+
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
 }

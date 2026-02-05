@@ -426,7 +426,7 @@ void SettingsManager::load() {
     settings.logObd = preferences.getBool("logObd", false);
     settings.logSystem = preferences.getBool("logSystem", true);
     settings.logDisplay = preferences.getBool("logDisplay", false);
-    settings.logPerfMetrics = preferences.getBool("logPerfMet", false);
+    settings.logPerfMetrics = preferences.getBool("logPerfMet", true);  // ON by default for stability monitoring
     settings.logAudio = preferences.getBool("logAudio", false);
     settings.logCamera = preferences.getBool("logCamera", false);
     settings.logLockout = preferences.getBool("logLockout", false);

@@ -4,6 +4,7 @@
 
 #include "perf_metrics.h"
 #include "debug_logger.h"
+#include "settings.h"
 #include <ArduinoJson.h>
 
 // PerfMetrics logging macro - logs to Serial AND debugLogger when PerfMetrics category enabled
@@ -191,36 +192,36 @@ void perfExtendedResetWindow() {
 
 #if PERF_METRICS && PERF_MONITORING
 bool perfMetricsCheckReport() {
-    if (!perfDebugEnabled) {
+    // Check if perf logging is enabled via settings (not just perfDebugEnabled)
+    extern SettingsManager settingsManager;
+    bool logEnabled = settingsManager.get().logPerfMetrics || perfDebugEnabled;
+    if (!logEnabled) {
         return false;
     }
     
     uint32_t now = millis();
-    if (now - perfLastReportMs < PERF_REPORT_INTERVAL_MS) {
+    // Use 2s interval for stability diagnosis (configurable at compile time)
+    constexpr uint32_t STABILITY_REPORT_INTERVAL_MS = 2000;
+    if (now - perfLastReportMs < STABILITY_REPORT_INTERVAL_MS) {
         return false;
     }
     perfLastReportMs = now;
     
-    // Single-line compact report
-    uint32_t avgUs = perfLatency.avgUs();
-    uint32_t minUsVal = perfLatency.minUs.load();
-    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
-    
-    PERF_LOG("[METRICS] rx=%lu parse=%lu drop=%lu oversize=%lu hw=%lu lat=%lu/%lu/%luus updates=%lu camLoad=%lu camCache=%lu\n",
-        (unsigned long)perfCounters.rxPackets.load(),
-        (unsigned long)perfCounters.parseSuccesses.load(),
+    // Stability-focused compact report format per CT's recommendation:
+    // loopMax_us, bleDrainMax_us, dispMax_ms, heapMin, qDrop, parseFail, logDrop, sdTryLockFailCount
+    PERF_LOG("[PERF] loopMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+        (unsigned long)perfExtended.loopMaxUs,
+        (unsigned long)perfExtended.bleDrainMaxUs,
+        (unsigned long)perfExtended.wifiMaxUs,
+        (unsigned long)perfExtended.sdMaxUs,
+        (unsigned long)perfExtended.minFreeHeap,
+        (unsigned long)perfExtended.minLargestBlock,
         (unsigned long)perfCounters.queueDrops.load(),
-        (unsigned long)perfCounters.oversizeDrops.load(),
-        (unsigned long)perfCounters.queueHighWater.load(),
-        (unsigned long)minUs,
-        (unsigned long)avgUs,
-        (unsigned long)perfLatency.maxUs.load(),
-        (unsigned long)perfCounters.displayUpdates.load(),
-        (unsigned long)perfCounters.cameraBgLoads.load(),
-        (unsigned long)perfCounters.cameraCacheRefreshes.load());
+        (unsigned long)perfCounters.parseFailures.load(),
+        (unsigned long)perfCounters.queueHighWater.load());
     
-    // Reset latency stats for next window (counters are cumulative)
-    perfLatency.reset();
+    // Reset window metrics (counters are cumulative)
+    perfExtended.reset();
     return true;
 }
 #else
