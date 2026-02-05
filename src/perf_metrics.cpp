@@ -208,12 +208,29 @@ bool perfMetricsCheckReport() {
     perfLastReportMs = now;
     
     // Stability-focused compact report format per CT's recommendation:
-    // loopMax_us, bleDrainMax_us, dispMax_ms, heapMin, qDrop, parseFail, logDrop, sdTryLockFailCount
-    PERF_LOG("[PERF] loopMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
-        (unsigned long)perfExtended.loopMaxUs,
-        (unsigned long)perfExtended.bleDrainMaxUs,
-        (unsigned long)perfExtended.wifiMaxUs,
-        (unsigned long)perfExtended.sdMaxUs,
+    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, heapMin, qDrop, parseFail, qHW
+    // Plus otherMax_us = gap not explained by instrumented buckets (signals uninstrumented code)
+    uint32_t loopUs = perfExtended.loopMaxUs;
+    uint32_t bleConnUs = perfExtended.bleProcessMaxUs;
+    uint32_t bleDrainUs = perfExtended.bleDrainMaxUs;
+    uint32_t wifiUs = perfExtended.wifiMaxUs;
+    uint32_t sdUs = perfExtended.sdMaxUs;
+    
+    // Calculate "other" = unexplained loop time (not additive, but signals gaps)
+    // If loopMax is huge but all buckets are small, something else blocked
+    uint32_t explainedMax = bleConnUs;
+    if (bleDrainUs > explainedMax) explainedMax = bleDrainUs;
+    if (wifiUs > explainedMax) explainedMax = wifiUs;
+    if (sdUs > explainedMax) explainedMax = sdUs;
+    uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
+    
+    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+        (unsigned long)loopUs,
+        (unsigned long)bleConnUs,
+        (unsigned long)bleDrainUs,
+        (unsigned long)wifiUs,
+        (unsigned long)sdUs,
+        (unsigned long)otherUs,
         (unsigned long)perfExtended.minFreeHeap,
         (unsigned long)perfExtended.minLargestBlock,
         (unsigned long)perfCounters.queueDrops.load(),
