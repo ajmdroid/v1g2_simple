@@ -84,6 +84,7 @@ public:
         NONE,      // No time sync yet (1970 epoch)
         GPS,       // Synced from GPS
         NTP,       // Synced from NTP
+        RTC,       // Restored from NVS cache (persisted across boots)
         ESTIMATED  // Derived from previous sync + millis()
     };
     TimeSource getTimeSource() const { return timeSource; }
@@ -94,6 +95,12 @@ public:
     bool hasValidTime() const { return timeValid; }
     time_t getUnixTime() const;
     void getISO8601Timestamp(char* buf, size_t bufSize) const;
+    
+    // RTC time cache persistence (survives power cycles via NVS)
+    bool restoreTimeFromCache();  // Call early in setup(); returns true if valid time restored
+    void saveTimeToCache();       // Called automatically on GPS/NTP sync
+    time_t getLastSyncEpoch() const { return timeSyncEpoch; }
+    static constexpr uint32_t RTC_CACHE_MAX_AGE_HOURS = 24;  // Skip NTP if cache newer than this
 
     // Append formatted line (auto timestamp + newline).
     void logf(DebugLogCategory category, const char* fmt, ...) __attribute__((format(printf, 3, 4)));

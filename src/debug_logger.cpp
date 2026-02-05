@@ -10,7 +10,11 @@
 #include <stdarg.h>
 #include <sys/time.h>  // For settimeofday
 #include <esp_heap_caps.h>  // For heap_caps_get_largest_free_block
+#include <Preferences.h>    // For RTC time cache persistence
 #include <new>  // For std::nothrow
+
+// NVS namespace for RTC time cache
+static constexpr const char* RTC_CACHE_NS = "rtc_cache";
 
 DebugLogger debugLogger;
 
@@ -402,6 +406,7 @@ void DebugLogger::formatJsonLine(char* dest, size_t destSize, DebugLogCategory c
     switch (timeSource) {
         case TimeSource::GPS: sourceStr = "gps"; break;
         case TimeSource::NTP: sourceStr = "ntp"; break;
+        case TimeSource::RTC: sourceStr = "rtc"; break;
         case TimeSource::ESTIMATED: sourceStr = "estimated"; break;
         default: sourceStr = "none"; break;
     }
@@ -481,12 +486,76 @@ void DebugLogger::syncTimeFromGPS(int year, int month, int day, int hour, int mi
     tv.tv_sec = timeSyncEpoch;
     tv.tv_usec = 0;
     settimeofday(&tv, nullptr);
+    
+    // Persist to NVS for next boot
+    saveTimeToCache();
 }
 
 // Time synchronization from NTP (reuses GPS sync but marks source as NTP)
 void DebugLogger::syncTimeFromNTP(int year, int month, int day, int hour, int minute, int second) {
     syncTimeFromGPS(year, month, day, hour, minute, second);
     timeSource = TimeSource::NTP;  // Override source to NTP
+    saveTimeToCache();  // Persist to NVS for next boot
+}
+
+// Save current time to NVS cache (called automatically on GPS/NTP sync)
+void DebugLogger::saveTimeToCache() {
+    if (!timeValid || timeSyncEpoch < 1700000000) {  // Sanity: must be after ~Nov 2023
+        return;
+    }
+    
+    Preferences prefs;
+    if (prefs.begin(RTC_CACHE_NS, false)) {
+        prefs.putULong64("epoch", (uint64_t)timeSyncEpoch);
+        prefs.putUChar("source", (uint8_t)timeSource);
+        prefs.end();
+        Serial.printf("[RTC] Saved time cache: epoch=%lu source=%d\n", 
+                      (unsigned long)timeSyncEpoch, (int)timeSource);
+    }
+}
+
+// Restore time from NVS cache (call early in setup)
+// Returns true if valid cached time was restored
+bool DebugLogger::restoreTimeFromCache() {
+    Preferences prefs;
+    if (!prefs.begin(RTC_CACHE_NS, true)) {
+        Serial.println("[RTC] No time cache namespace found");
+        return false;
+    }
+    
+    uint64_t cachedEpoch = prefs.getULong64("epoch", 0);
+    uint8_t cachedSource = prefs.getUChar("source", 0);
+    prefs.end();
+    
+    // Sanity check: must be after Nov 2023 and not in far future
+    if (cachedEpoch < 1700000000 || cachedEpoch > 2000000000) {
+        Serial.printf("[RTC] Cached epoch invalid: %llu\n", cachedEpoch);
+        return false;
+    }
+    
+    // Check age - don't use if too old (drift would be significant)
+    // We can't know real elapsed time without RTC hardware, so we just
+    // restore the cached time and let GPS/NTP correct it later
+    timeSyncEpoch = (time_t)cachedEpoch;
+    timeSyncMillis = millis();
+    timeValid = true;
+    timeSource = TimeSource::RTC;
+    
+    // Set ESP32 system time
+    struct timeval tv;
+    tv.tv_sec = timeSyncEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+    
+    // Log restored time
+    struct tm timeinfo;
+    gmtime_r(&timeSyncEpoch, &timeinfo);
+    Serial.printf("[RTC] Restored cached time: %04d-%02d-%02d %02d:%02d:%02d UTC (source was %s)\n",
+                  timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                  timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                  cachedSource == 1 ? "GPS" : cachedSource == 2 ? "NTP" : "unknown");
+    
+    return true;
 }
 
 time_t DebugLogger::getUnixTime() const {

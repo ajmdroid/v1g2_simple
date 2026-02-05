@@ -597,6 +597,11 @@ void setup() {
 
     // Initialize debug logger after storage is mounted
     debugLogger.begin();
+    
+    // Restore cached time from NVS (if available and not too stale)
+    // This sets the RTC to a reasonable time before GPS/NTP sync completes
+    debugLogger.restoreTimeFromCache();
+    
     {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
         DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
