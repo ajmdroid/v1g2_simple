@@ -724,18 +724,21 @@ int V1Display::getDeleteLogsButtonFromTouch(int16_t touchX, int16_t touchY) {
     // Touch Y is inverted on this display (0 = bottom, 172 = top)
     int displayY = SCREEN_HEIGHT - touchY;
     
+    // Touch X is also inverted on this display (0 = right, 640 = left)
+    int displayX = SCREEN_WIDTH - touchX;
+    
     // Check Y range for buttons
     if (displayY < buttonY || displayY > buttonY + buttonHeight) {
         return -1;  // Not in button Y range
     }
     
     // Check Cancel button (left side)
-    if (touchX >= cancelX && touchX <= cancelX + buttonWidth) {
+    if (displayX >= cancelX && displayX <= cancelX + buttonWidth) {
         return 0;  // Cancel
     }
     
     // Check Delete button (right side)
-    if (touchX >= deleteX && touchX <= deleteX + buttonWidth) {
+    if (displayX >= deleteX && displayX <= deleteX + buttonWidth) {
         return 1;  // Delete
     }
     
