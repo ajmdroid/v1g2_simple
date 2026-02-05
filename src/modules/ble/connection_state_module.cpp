@@ -42,7 +42,6 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
         if (isConnected) {
             // Just connected
             display->showResting();
-            Serial.println("V1 connected!");
             CONN_LOG("[BLE] V1 connected");
         } else {
             // Just disconnected - reset stale state
@@ -51,8 +50,7 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             parser->resetAlertAssembly();
             V1Display::resetChangeTracking();
             display->showScanning();
-            Serial.println("V1 disconnected - Scanning...");
-            CONN_LOG("[BLE] V1 disconnected - scanning");
+            CONN_LOG("[BLE] V1 disconnected - scanning");;
         }
         wasConnected = isConnected;
     }

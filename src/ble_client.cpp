@@ -96,8 +96,8 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 }
 // Debug log controls
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
-constexpr bool CONNECT_ATTEMPT_VERBOSE = true;   // Individual connect attempt logs
-constexpr bool BLE_STATE_MACHINE_LOGS = true;    // BLE state machine transitions (high frequency during reconnect)
+constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
+constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
 constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF to avoid callback blocking)
 
 // BLE logging macros - log to Serial AND debugLogger when BLE category enabled
@@ -846,8 +846,6 @@ bool V1BLEClient::startAsyncConnect() {
 // Called from CONNECTING_WAIT state when async connect succeeds
 // Now handles just the post-connect setup before discovery
 bool V1BLEClient::finishConnection() {
-    Serial.println("[BLE] Connection established, preparing for discovery...");
-    
     // Success!
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = 0;
@@ -965,21 +963,18 @@ void V1BLEClient::processDiscovering() {
     // Perform full service discovery
     // NOTE: This is BLOCKING (~2s) - NimBLE doesn't support non-blocking discovery
     // The subscribe step machine breaks up the remaining work to reduce overall stall time
-    Serial.println("[BLE] Performing service discovery...");
     bool discovered = pClient->discoverAttributes();
     
     perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs);
     
     if (!discovered) {
-        Serial.println("[BLE] Service discovery failed");
+        Serial.println("[BLE] FAIL discovery");
         disconnect();
         connectInProgress = false;
         connectStartMs = 0;
         setBLEState(BLEState::DISCONNECTED, "discovery failed");
         return;
     }
-    
-    Serial.println("[BLE] Service discovery complete, subscribing to characteristics...");
     
     // Transition to subscribe phase (uses step machine to break up CCCD writes)
     connectPhaseStartUs = micros();  // Reset timer for subscribe phase
@@ -1025,7 +1020,7 @@ void V1BLEClient::processSubscribing() {
         connectInProgress = false;
         connectStartMs = 0;
         setBLEState(BLEState::CONNECTED, "subscribe complete");
-        Serial.println("[BLE] Fully connected and subscribed!");
+        Serial.println("[BLE] OK");
         return;
     }
     
@@ -1047,10 +1042,9 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::GET_SERVICE: {
             pRemoteService = pClient->getService(V1_SERVICE_UUID);
             if (!pRemoteService) {
-                Serial.println("[BLE] Failed to find V1 service");
+                Serial.println("[BLE] FAIL service");
                 return false;  // Will trigger failure handling
             }
-            Serial.printf("[BLE] Found V1 service\n");
             subscribeStep = SubscribeStep::GET_DISPLAY_CHAR;
             return false;  // More steps to do
         }
@@ -1058,10 +1052,9 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::GET_DISPLAY_CHAR: {
             pDisplayDataChar = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_UUID);
             if (!pDisplayDataChar) {
-                Serial.println("[BLE] Failed to find display data characteristic");
+                Serial.println("[BLE] FAIL display char");
                 return false;
             }
-            Serial.println("[BLE] Found display data characteristic (B2CE)");
             subscribeStep = SubscribeStep::GET_COMMAND_CHAR;
             return false;
         }
@@ -1073,25 +1066,19 @@ bool V1BLEClient::executeSubscribeStep() {
             // Prefer primary, fall back to alt if needed
             if (!pCommandChar || (!pCommandChar->canWrite() && !pCommandChar->canWriteNoResponse())) {
                 if (altCommandChar && (altCommandChar->canWrite() || altCommandChar->canWriteNoResponse())) {
-                    Serial.println("[BLE] Using alternate command characteristic (BAD4)");
                     pCommandChar = altCommandChar;
                 } else {
-                    Serial.println("[BLE] Command characteristic not available");
+                    Serial.println("[BLE] FAIL command char");
                     return false;
                 }
             }
-            Serial.println("[BLE] Found command characteristic");
             subscribeStep = SubscribeStep::GET_COMMAND_LONG;
             return false;
         }
         
         case SubscribeStep::GET_COMMAND_LONG: {
             pCommandCharLong = pRemoteService->getCharacteristic("92A0B8D2-9E05-11E2-AA59-F23C91AEC05E");
-            if (pCommandCharLong) {
-                Serial.println("[BLE] Found B8D2 (LONG write) characteristic");
-            } else {
-                Serial.println("[BLE] WARNING: B8D2 not found (non-critical)");
-            }
+            // B8D2 is optional - don't log either way
             subscribeStep = SubscribeStep::SUBSCRIBE_DISPLAY;
             return false;
         }
@@ -1100,14 +1087,12 @@ bool V1BLEClient::executeSubscribeStep() {
             bool subscribed = false;
             if (pDisplayDataChar->canNotify()) {
                 subscribed = pDisplayDataChar->subscribe(true, notifyCallback, true);
-                Serial.println(subscribed ? "[BLE] Subscribed to B2CE notifications" : "[BLE] Failed to subscribe B2CE");
             } else if (pDisplayDataChar->canIndicate()) {
                 subscribed = pDisplayDataChar->subscribe(false, notifyCallback);
-                Serial.println(subscribed ? "[BLE] Subscribed to B2CE indications" : "[BLE] Failed to subscribe B2CE (indicate)");
             }
             
             if (!subscribed) {
-                Serial.println("[BLE] Display characteristic cannot notify or indicate");
+                Serial.println("[BLE] FAIL subscribe B2CE");
                 return false;
             }
             subscribeStep = SubscribeStep::WRITE_DISPLAY_CCCD;
@@ -1118,14 +1103,10 @@ bool V1BLEClient::executeSubscribeStep() {
             NimBLERemoteDescriptor* cccd = pDisplayDataChar->getDescriptor(NimBLEUUID((uint16_t)0x2902));
             if (cccd) {
                 uint8_t notifOn[] = {0x01, 0x00};
-                if (cccd->writeValue(notifOn, sizeof(notifOn), true)) {
-                    Serial.println("[BLE] Wrote CCCD for B2CE");
-                } else {
-                    Serial.println("[BLE] Failed to write CCCD for B2CE");
+                if (!cccd->writeValue(notifOn, sizeof(notifOn), true)) {
+                    Serial.println("[BLE] FAIL CCCD B2CE");
                     return false;
                 }
-            } else {
-                Serial.println("[BLE] No CCCD descriptor on B2CE (continuing anyway)");
             }
             subscribeStep = SubscribeStep::GET_DISPLAY_LONG;
             return false;
@@ -1137,7 +1118,6 @@ bool V1BLEClient::executeSubscribeStep() {
             if (pDisplayLong && pDisplayLong->canNotify()) {
                 subscribeStep = SubscribeStep::SUBSCRIBE_LONG;
             } else {
-                Serial.println("[BLE] B4E0 not available or can't notify (non-critical)");
                 subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;  // Skip LONG subscribe
             }
             return false;
@@ -1146,10 +1126,8 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::SUBSCRIBE_LONG: {
             NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
             if (pDisplayLong && pDisplayLong->subscribe(true, notifyCallback, true)) {
-                Serial.println("[BLE] Subscribed to B4E0 notifications");
                 subscribeStep = SubscribeStep::WRITE_LONG_CCCD;
             } else {
-                Serial.println("[BLE] Failed to subscribe B4E0 (non-critical)");
                 subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
             }
             return false;
@@ -1161,11 +1139,7 @@ bool V1BLEClient::executeSubscribeStep() {
                 NimBLERemoteDescriptor* cccdLong = pDisplayLong->getDescriptor(NimBLEUUID((uint16_t)0x2902));
                 if (cccdLong) {
                     uint8_t notifOn[] = {0x01, 0x00};
-                    if (cccdLong->writeValue(notifOn, sizeof(notifOn), true)) {
-                        Serial.println("[BLE] Wrote CCCD for B4E0");
-                    } else {
-                        Serial.println("[BLE] Failed to write CCCD for B4E0 (non-critical)");
-                    }
+                    cccdLong->writeValue(notifOn, sizeof(notifOn), true);
                 }
             }
             subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
@@ -2030,7 +2004,7 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
 }
 
 void V1BLEClient::initProxyServer(const char* deviceName) {
-    Serial.printf("Creating BLE proxy server as '%s'\n", deviceName);
+    // Proxy server init (name logged in initBLE summary)
     
     // Kenny's exact order:
     // 1. Create server (no callbacks yet)

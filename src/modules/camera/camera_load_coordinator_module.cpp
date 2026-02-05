@@ -40,18 +40,11 @@ void CameraLoadCoordinator::process(bool bleConnected) {
 }
 
 void CameraLoadCoordinator::doLoad() {
-    Serial.println("[Camera] Initializing camera alerts...");
     fs::FS* sdFs = storageManager->getFilesystem();
 
-    // Debug: check what files exist on SD
-    if (sdFs) {
-        Serial.printf("[Camera] SD filesystem available, checking for files...\n");
-        Serial.printf("[Camera] /alpr.bin exists: %s\n", sdFs->exists("/alpr.bin") ? "YES" : "no");
-        Serial.printf("[Camera] /alpr.json exists: %s\n", sdFs->exists("/alpr.json") ? "YES" : "no");
-        Serial.printf("[Camera] /speed_cam.bin exists: %s\n", sdFs->exists("/speed_cam.bin") ? "YES" : "no");
-        Serial.printf("[Camera] /redlight_cam.bin exists: %s\n", sdFs->exists("/redlight_cam.bin") ? "YES" : "no");
-    } else {
+    if (!sdFs) {
         Serial.println("[Camera] SD filesystem is NULL!");
+        return;
     }
 
     bool hasCachedData = cameraManager->loadRegionalCache(&LittleFS, "/cameras_cache.json");
