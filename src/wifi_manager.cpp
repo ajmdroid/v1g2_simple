@@ -737,12 +737,20 @@ bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
         return false;
     }
     
-    // Make sure we're in AP+STA mode
-    if (WiFi.getMode() != WIFI_AP_STA) {
-        Serial.println("[WiFiClient] Switching to AP+STA mode");
-        WiFi.mode(WIFI_AP_STA);
-        delay(100);  // Brief delay for mode switch
+    // CRITICAL: Full cleanup before attempting connection to prevent memory leaks.
+    // The ESP-IDF WiFi driver leaks memory if WiFi.begin() is called repeatedly
+    // without proper cleanup. This was causing ~1.6KB leak per failed attempt.
+    if (WiFi.getMode() != WIFI_OFF) {
+        Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
+        WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
+        WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
+        delay(100);                   // Allow driver to clean up
     }
+    
+    // Now reinitialize in AP+STA mode
+    Serial.println("[WiFiClient] Initializing WiFi in AP+STA mode");
+    WiFi.mode(WIFI_AP_STA);
+    delay(100);  // Brief delay for mode switch
     
     Serial.printf("[WiFiClient] Connecting to: %s\n", ssid.c_str());
     
@@ -780,6 +788,9 @@ void WiFiManager::checkWifiClientStatus() {
             if (status == WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_CONNECTED;
                 Serial.printf("[WiFiClient] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+                
+                // Reset failure counter on successful connection
+                wifiReconnectFailures = 0;
                 
                 // WiFi stable - resume SD writes (NVS contention window closed)
                 debugLogger.notifyWifiTransition(true);
@@ -848,16 +859,32 @@ void WiFiManager::checkWifiClientStatus() {
             // Removed: WiFi.begin() is non-blocking on ESP32-S3, and users want
             // auto-connect for log download testing without V1 present.
             
-            // Auto-reconnect if we have saved credentials
+            // Auto-reconnect if we have saved credentials (with failure limit)
             const V1Settings& settings = settingsManager.get();
             if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+                // Check if we've exceeded max failures - prevents memory exhaustion
+                if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
+                    // Already gave up - don't log spam, just stay in failed state
+                    break;
+                }
+                
                 String savedPassword = settingsManager.getWifiClientPassword();
                 if (savedPassword.length() > 0 || status == WL_NO_SSID_AVAIL) {
                     // Only try auto-reconnect every 30 seconds
                     static unsigned long lastReconnectAttempt = 0;
-                    if (millis() - lastReconnectAttempt > 30000) {
+                    if (millis() - lastReconnectAttempt > WIFI_RECONNECT_INTERVAL_MS) {
                         lastReconnectAttempt = millis();
-                        Serial.println("[WiFiClient] Auto-reconnect attempt...");
+                        wifiReconnectFailures++;
+                        
+                        if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
+                            Serial.printf("[WiFiClient] Giving up after %d failed attempts. Use BOOT button to retry.\n",
+                                          wifiReconnectFailures);
+                            // Stay in FAILED state, user must toggle WiFi to retry
+                            break;
+                        }
+                        
+                        Serial.printf("[WiFiClient] Auto-reconnect attempt %d/%d...\n",
+                                      wifiReconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
                         connectToNetwork(settings.wifiClientSSID, savedPassword);
                     }
                 }

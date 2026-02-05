@@ -44,6 +44,9 @@ void WifiOrchestrator::startWifi() {
         debugLogger.log(DebugLogCategory::Wifi, "startWifi() requested");
     }
 
+    // Reset failure counter so user can retry after "gave up" state
+    wifiManager.resetReconnectFailures();
+    
     Serial.println("[WiFi] Starting WiFi (manual start)...");
     wifiManager.begin();
 

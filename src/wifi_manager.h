@@ -53,6 +53,9 @@ public:
     // Legacy compatibility (redirects to Setup Mode)
     bool begin() { return startSetupMode(); }
     
+    // Reset WiFi reconnect failure counter (call when user manually triggers WiFi)
+    void resetReconnectFailures() { wifiReconnectFailures = 0; }
+    
     // Status
     bool isConnected() const { return wifiClientState == WIFI_CLIENT_CONNECTED; }
     bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON; }
@@ -119,6 +122,11 @@ private:
     static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;  // 15s connection timeout
     String pendingConnectSSID;
     String pendingConnectPassword;
+    
+    // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
+    int wifiReconnectFailures = 0;
+    static constexpr int WIFI_MAX_RECONNECT_FAILURES = 5;  // Give up after 5 failures
+    static constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 30000;  // 30s between attempts
     
     // Web activity tracking for WiFi priority mode
     unsigned long lastUiActivityMs = 0;
