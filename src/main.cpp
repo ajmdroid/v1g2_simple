@@ -808,10 +808,15 @@ void loop() {
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
     powerModule.process(now);
-    if (touchUiModule.process(now, (digitalRead(BOOT_BUTTON_GPIO) == LOW))) {
-        perfRecordLoopJitterUs(micros() - loopStartUs);
-        perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-        return;  // Skip normal loop processing while in settings mode
+    {
+        uint32_t touchStartUs = PERF_TIMESTAMP_US();
+        bool inSettings = touchUiModule.process(now, (digitalRead(BOOT_BUTTON_GPIO) == LOW));
+        perfRecordTouchUs(PERF_TIMESTAMP_US() - touchStartUs);
+        if (inSettings) {
+            perfRecordLoopJitterUs(micros() - loopStartUs);
+            perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+            return;  // Skip normal loop processing while in settings mode
+        }
     }
 #endif
 
@@ -847,7 +852,9 @@ void loop() {
             if (parsedTs != 0 && nowMs >= parsedTs) {
                 perfRecordNotifyToDisplayMs(nowMs - parsedTs);
             }
+            uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
             displayPipelineModule.handleParsed(nowMs);
+            perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
         }
     }
 
@@ -874,7 +881,11 @@ void loop() {
     }
     
     // Camera alerts + cache maintenance (requires GPS with valid fix)
-    cameraAlertModule.process();
+    {
+        uint32_t camStartUs = PERF_TIMESTAMP_US();
+        cameraAlertModule.process();
+        perfRecordCameraUs(PERF_TIMESTAMP_US() - camStartUs);
+    }
 
     perfRecordLoopJitterUs(micros() - loopStartUs);
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
@@ -901,7 +912,11 @@ void loop() {
     speedVolumeModule.process(now);
     
     // Periodic auto-lockout maintenance (promotion/demotion + persistence)
-    autoLockoutMaintenance.process(now);
+    {
+        uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
+        autoLockoutMaintenance.process(now);
+        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
+    }
     
     // Update display periodically
     now = millis();

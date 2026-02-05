@@ -180,6 +180,30 @@ void perfRecordObdUs(uint32_t us) {
     }
 }
 
+void perfRecordCameraUs(uint32_t us) {
+    if (us > perfExtended.cameraMaxUs) {
+        perfExtended.cameraMaxUs = us;
+    }
+}
+
+void perfRecordLockoutUs(uint32_t us) {
+    if (us > perfExtended.lockoutMaxUs) {
+        perfExtended.lockoutMaxUs = us;
+    }
+}
+
+void perfRecordDispPipeUs(uint32_t us) {
+    if (us > perfExtended.dispPipeMaxUs) {
+        perfExtended.dispPipeMaxUs = us;
+    }
+}
+
+void perfRecordTouchUs(uint32_t us) {
+    if (us > perfExtended.touchMaxUs) {
+        perfExtended.touchMaxUs = us;
+    }
+}
+
 uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
 uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
 uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
@@ -199,6 +223,10 @@ uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
 uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
+uint32_t perfGetCameraMaxUs() { return perfExtended.cameraMaxUs; }
+uint32_t perfGetLockoutMaxUs() { return perfExtended.lockoutMaxUs; }
+uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
+uint32_t perfGetTouchMaxUs() { return perfExtended.touchMaxUs; }
 
 void perfExtendedResetWindow() {
     perfExtended.reset();
@@ -222,7 +250,7 @@ bool perfMetricsCheckReport() {
     perfLastReportMs = now;
     
     // Stability-focused compact report format per CT's recommendation:
-    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, heapMin, qDrop, parseFail, qHW
+    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, camMax_us, lockoutMax_us, dispMax_us, touchMax_us, heapMin, qDrop, parseFail, qHW
     // Plus otherMax_us = gap not explained by instrumented buckets (signals uninstrumented code)
     uint32_t loopUs = perfExtended.loopMaxUs;
     uint32_t bleConnUs = perfExtended.bleProcessMaxUs;
@@ -231,6 +259,10 @@ bool perfMetricsCheckReport() {
     uint32_t sdUs = perfExtended.sdMaxUs;
     uint32_t gpsUs = perfExtended.gpsMaxUs;
     uint32_t obdUs = perfExtended.obdMaxUs;
+    uint32_t camUs = perfExtended.cameraMaxUs;
+    uint32_t lockoutUs = perfExtended.lockoutMaxUs;
+    uint32_t dispUs = perfExtended.dispPipeMaxUs;
+    uint32_t touchUs = perfExtended.touchMaxUs;
     
     // Calculate "other" = unexplained loop time (not additive, but signals gaps)
     // If loopMax is huge but all buckets are small, something else blocked
@@ -240,9 +272,13 @@ bool perfMetricsCheckReport() {
     if (sdUs > explainedMax) explainedMax = sdUs;
     if (gpsUs > explainedMax) explainedMax = gpsUs;
     if (obdUs > explainedMax) explainedMax = obdUs;
+    if (camUs > explainedMax) explainedMax = camUs;
+    if (lockoutUs > explainedMax) explainedMax = lockoutUs;
+    if (dispUs > explainedMax) explainedMax = dispUs;
+    if (touchUs > explainedMax) explainedMax = touchUs;
     uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
     
-    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu camMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
         (unsigned long)loopUs,
         (unsigned long)bleConnUs,
         (unsigned long)bleDrainUs,
@@ -250,6 +286,10 @@ bool perfMetricsCheckReport() {
         (unsigned long)sdUs,
         (unsigned long)gpsUs,
         (unsigned long)obdUs,
+        (unsigned long)camUs,
+        (unsigned long)lockoutUs,
+        (unsigned long)dispUs,
+        (unsigned long)touchUs,
         (unsigned long)otherUs,
         (unsigned long)perfExtended.minFreeHeap,
         (unsigned long)perfExtended.minLargestBlock,

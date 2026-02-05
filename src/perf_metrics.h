@@ -147,6 +147,11 @@ struct PerfExtendedMetrics {
     // Field-only subsystems (GPS, OBD) - not bench-testable
     uint32_t gpsMaxUs = 0;            // gpsHandler.update() duration
     uint32_t obdMaxUs = 0;            // obdAutoConnector.process() duration
+    // Additional subsystem timing
+    uint32_t cameraMaxUs = 0;         // cameraAlertModule.process() duration
+    uint32_t lockoutMaxUs = 0;        // autoLockoutMaintenance.process() duration
+    uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
+    uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -166,6 +171,10 @@ struct PerfExtendedMetrics {
         bleProcessMaxUs = 0;
         gpsMaxUs = 0;
         obdMaxUs = 0;
+        cameraMaxUs = 0;
+        lockoutMaxUs = 0;
+        dispPipeMaxUs = 0;
+        touchMaxUs = 0;
     }
 };
 
@@ -187,6 +196,10 @@ void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
 void perfRecordObdUs(uint32_t us);
+void perfRecordCameraUs(uint32_t us);
+void perfRecordLockoutUs(uint32_t us);
+void perfRecordDispPipeUs(uint32_t us);
+void perfRecordTouchUs(uint32_t us);
 
 uint32_t perfGetNotifyToDisplayP95Ms();
 uint32_t perfGetNotifyToDisplayMaxMs();
@@ -207,6 +220,10 @@ uint32_t perfGetBleSubscribeMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetGpsMaxUs();
 uint32_t perfGetObdMaxUs();
+uint32_t perfGetCameraMaxUs();
+uint32_t perfGetLockoutMaxUs();
+uint32_t perfGetDispPipeMaxUs();
+uint32_t perfGetTouchMaxUs();
 void perfExtendedResetWindow();
 
 // ============================================================================
