@@ -59,7 +59,6 @@ private:
 
     unsigned long bootPressStart = 0;
     bool bootWasPressed = false;
-    bool wifiToggleTriggered = false;
     bool deleteLogsTriggered = false;  // Track if 10s BOOT hold triggered delete mode
 
     // Timing constants (mirrors previous inline logic)

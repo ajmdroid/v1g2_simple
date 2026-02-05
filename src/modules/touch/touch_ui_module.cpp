@@ -15,26 +15,39 @@ void TouchUiModule::begin(V1Display* disp,
 bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     if (!display || !touchHandler || !settings) return false;
 
-    // BOOT button handling: short press enters/exits adjust mode; long press toggles WiFi
-    // Very long press (10s) triggers delete logs mode
+    // BOOT button handling:
+    // - Short press: enter/exit adjust mode
+    // - 4s hold: toggle WiFi (on release)
+    // - 10s hold: delete logs mode (immediate, overrides WiFi)
     if (bootPressed && !bootWasPressed) {
         bootPressStart = nowMs;
-        wifiToggleTriggered = false;
         deleteLogsTriggered = false;
     }
 
-    // Long press for WiFi toggle (only when not in adjust mode or delete logs mode)
-    if (bootPressed && !wifiToggleTriggered && !deleteLogsTriggered && !brightnessAdjustMode && !deleteLogsMode) {
+    // While holding: check for 10s delete logs trigger (immediate action)
+    if (bootPressed && !deleteLogsTriggered && !brightnessAdjustMode && !deleteLogsMode) {
         unsigned long pressDuration = nowMs - bootPressStart;
         
-        // 10+ second hold triggers delete logs mode
+        // 10+ second hold triggers delete logs mode immediately
         if (pressDuration >= DELETE_LOGS_LONG_PRESS_MS) {
             deleteLogsTriggered = true;
             enterDeleteLogsMode();
         }
-        // 4+ second hold toggles WiFi (only if not already triggered delete logs)
-        else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
-            wifiToggleTriggered = true;
+    }
+
+    // On release: determine action based on hold duration
+    if (!bootPressed && bootWasPressed) {
+        unsigned long pressDuration = nowMs - bootPressStart;
+        
+        if (deleteLogsTriggered) {
+            // Already entered delete logs mode - do nothing on release
+        } else if (deleteLogsMode) {
+            // Short press exits delete logs mode without deleting
+            if (pressDuration >= BOOT_DEBOUNCE_MS) {
+                exitDeleteLogsMode(false);
+            }
+        } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+            // 4-10s hold: toggle WiFi on release
             if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive()) {
                 if (callbacks.stopWifiSetup) callbacks.stopWifiSetup();
             } else {
@@ -42,16 +55,9 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
             }
             if (callbacks.drawWifiIndicator) callbacks.drawWifiIndicator();
             display->flush();
-        }
-    }
-
-    if (!bootPressed && bootWasPressed) {
-        unsigned long pressDuration = nowMs - bootPressStart;
-        if (pressDuration >= BOOT_DEBOUNCE_MS && !wifiToggleTriggered && !deleteLogsTriggered) {
-            if (deleteLogsMode) {
-                // BOOT press exits delete logs mode without deleting
-                exitDeleteLogsMode(false);
-            } else if (brightnessAdjustMode) {
+        } else if (pressDuration >= BOOT_DEBOUNCE_MS) {
+            // Short press: adjust mode toggle
+            if (brightnessAdjustMode) {
                 exitAdjustModeAndSave();
             } else {
                 enterAdjustMode();
