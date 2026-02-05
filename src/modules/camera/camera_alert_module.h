@@ -44,6 +44,16 @@ public:
     bool consumeTestEnded();
 
 private:
+    // Tracked state for each active camera alert (for trend-based clearing)
+    struct ActiveCameraState {
+        NearbyCameraResult camera;      // Current camera data
+        float minDist_m = 9999.0f;      // Minimum distance achieved (for pass detection)
+        float lastDist_m = 9999.0f;     // Distance at last check (for trend)
+        uint8_t increasingCount = 0;    // Consecutive samples where distance increased
+        unsigned long firstSeenMs = 0;  // When this camera alert started
+        float headingErr_deg = 0.0f;    // Heading error to camera bearing
+    };
+    
     struct PassedCameraTracker {
         float lat = 0.0f;
         float lon = 0.0f;
@@ -69,9 +79,12 @@ private:
     CameraManager* cameraManager = nullptr;
     GPSHandler* gpsHandler = nullptr;
 
-    // Active approaching cameras (sorted by distance)
-    std::vector<NearbyCameraResult> activeCameraAlerts;
+    // Active approaching cameras with tracking state (for trend-based clearing)
+    std::vector<ActiveCameraState> activeCameras;
     std::vector<PassedCameraTracker> recentlyPassedCameras;
+    
+    // While-active logging throttle (1/sec max)
+    unsigned long lastActiveLogMs = 0;
 
     // Timing + cache tracking
     unsigned long lastCameraCheckMs = 0;
@@ -110,4 +123,9 @@ private:
     static constexpr float CACHE_RADIUS_MILES = 100.0f;
     static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f;
     static constexpr unsigned long ALERT_MAX_DURATION_MS = 120000;  // 2 min max alert
+    
+    // Trend-based clearing parameters
+    static constexpr uint8_t PASS_TREND_COUNT = 3;        // N consecutive increasing distance samples
+    static constexpr float PASS_MIN_THRESHOLD_M = 50.0f;  // Must get within this distance to be "passed"
+    static constexpr float PASS_HYSTERESIS_M = 5.0f;      // Distance must increase by this to count as increasing
 };

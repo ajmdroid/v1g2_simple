@@ -110,12 +110,12 @@ void CameraAlertModule::process() {
     const V1Settings& camSettings = settings->get();
     if (!camSettings.cameraAlertsEnabled || !cameraManager->isLoaded() || !gpsHandler || !gpsHandler->isEnabled()) {
         // Feature off or GPS unavailable: clear any stale camera UI/state
-        if (!activeCameraAlerts.empty()) {
+        if (!activeCameras.empty()) {
             CAMERA_LOG("[Camera] Feature disabled/GPS unavail - clearing %d active alerts (enabled=%d loaded=%d gps=%d)\n",
-                       (int)activeCameraAlerts.size(), camSettings.cameraAlertsEnabled, 
+                       (int)activeCameras.size(), camSettings.cameraAlertsEnabled, 
                        cameraManager->isLoaded(), gpsHandler && gpsHandler->isEnabled());
         }
-        activeCameraAlerts.clear();
+        activeCameras.clear();
         recentlyPassedCameras.clear();
         if (display) {
             display->clearCameraAlerts();
@@ -129,14 +129,14 @@ void CameraAlertModule::process() {
 
 void CameraAlertModule::clearActiveCamerasAndMarkPassed(unsigned long now) {
     // Mark all active cameras as passed so they don't re-alert if we return
-    for (const auto& cam : activeCameraAlerts) {
+    for (const auto& state : activeCameras) {
         PassedCameraTracker passed;
-        passed.lat = cam.camera.latitude;
-        passed.lon = cam.camera.longitude;
+        passed.lat = state.camera.camera.latitude;
+        passed.lon = state.camera.camera.longitude;
         passed.passedTimeMs = now;
         recentlyPassedCameras.push_back(passed);
     }
-    activeCameraAlerts.clear();
+    activeCameras.clear();
     alertStartedAtMs = 0;
     if (display) {
         display->clearCameraAlerts();
@@ -208,10 +208,10 @@ void CameraAlertModule::refreshRegionalCacheIfNeeded(unsigned long now, const V1
 void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Settings& camSettings) {
     if (!gpsHandler || !gpsHandler->isReadyForNavigation()) {
         // Safety: clear stale alerts if GPS lost for too long
-        if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
+        if (!activeCameras.empty() && alertStartedAtMs > 0 &&
             (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
-            CAMERA_LOG("[Camera] Safety timeout: clearing stale alerts (GPS lost)\n");
-            activeCameraAlerts.clear();
+            CAMERA_LOG("[Camera] CLEAR reason=gps_lost alerts=%d\n", (int)activeCameras.size());
+            activeCameras.clear();
             alertStartedAtMs = 0;
             if (display) {
                 display->clearCameraAlerts();
@@ -227,23 +227,24 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
     float lat = fix.latitude;
     float lon = fix.longitude;
     float heading = fix.heading_deg;
+    float speed_mps = fix.speed_mps;
     float alertRadius = static_cast<float>(camSettings.cameraAlertDistanceM);
 
     // Safety check: if we have active alerts but NO cameras nearby at all
     // (even with 2x search radius), clear immediately - we've left the area
-    if (!activeCameraAlerts.empty()) {
+    if (!activeCameras.empty()) {
         bool anyCamerasNearby = cameraManager->hasNearbyCamera(lat, lon, alertRadius * 2.0f);
         if (!anyCamerasNearby) {
-            CAMERA_LOG("[Camera] No cameras in area - clearing stale alerts\n");
+            CAMERA_LOG("[Camera] CLEAR reason=no_cameras_in_area alerts=%d\n", (int)activeCameras.size());
             clearActiveCamerasAndMarkPassed(now);
             return;
         }
     }
 
     // Also enforce max duration as final safety (shouldn't normally trigger)
-    if (!activeCameraAlerts.empty() && alertStartedAtMs > 0 &&
+    if (!activeCameras.empty() && alertStartedAtMs > 0 &&
         (now - alertStartedAtMs) > ALERT_MAX_DURATION_MS) {
-        CAMERA_LOG("[Camera] Safety timeout: clearing stale alerts (max duration)\n");
+        CAMERA_LOG("[Camera] CLEAR reason=max_duration alerts=%d\n", (int)activeCameras.size());
         clearActiveCamerasAndMarkPassed(now);
     }
 
@@ -285,56 +286,114 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         if ((int)approachingCameras.size() >= MAX_ACTIVE_CAMERAS) break;
     }
 
-    // Check for cameras that were active but are no longer approaching (passed)
-    for (const auto& oldCam : activeCameraAlerts) {
-        bool stillApproaching = false;
-        for (const auto& newCam : approachingCameras) {
-            // Match by position (within 50m)
-            float dist = CameraManager::haversineDistance(
-                oldCam.camera.latitude, oldCam.camera.longitude,
-                newCam.camera.latitude, newCam.camera.longitude);
-            if (dist < 50.0f) {
-                stillApproaching = true;
-                break;
-            }
+    // ========== TREND-BASED CLEARING ==========
+    // Update existing active cameras and check for pass/clear conditions
+    std::vector<ActiveCameraState> updatedActiveCameras;
+    
+    for (auto& state : activeCameras) {
+        float currentDist = CameraManager::haversineDistance(
+            lat, lon, state.camera.camera.latitude, state.camera.camera.longitude);
+        float dDist = currentDist - state.lastDist_m;
+        
+        // Calculate heading error to camera
+        float bearing = CameraManager::calculateBearing(lat, lon, 
+            state.camera.camera.latitude, state.camera.camera.longitude);
+        float headingErr = fabs(heading - bearing);
+        if (headingErr > 180.0f) headingErr = 360.0f - headingErr;
+        state.headingErr_deg = headingErr;
+        
+        // Update min distance
+        if (currentDist < state.minDist_m) {
+            state.minDist_m = currentDist;
         }
-
-        // Also check if we're moving away from the camera (distance increasing)
-        if (!stillApproaching) {
-            float currentDist = CameraManager::haversineDistance(
-                lat, lon, oldCam.camera.latitude, oldCam.camera.longitude);
-            if (currentDist > oldCam.distance_m + 100.0f) {
-                PassedCameraTracker passed;
-                passed.lat = oldCam.camera.latitude;
-                passed.lon = oldCam.camera.longitude;
-                passed.passedTimeMs = now;
-                recentlyPassedCameras.push_back(passed);
-                CAMERA_LOG("[Camera] PASSED: %s (distance increased from %.0fm to %.0fm)\n",
-                           oldCam.camera.getTypeName(), oldCam.distance_m, currentDist);
-            }
+        
+        // Check for increasing distance (with hysteresis)
+        if (dDist > PASS_HYSTERESIS_M) {
+            state.increasingCount++;
+        } else if (dDist < -PASS_HYSTERESIS_M) {
+            state.increasingCount = 0;  // Reset if distance decreasing
+        }
+        // Flat distance (within hysteresis) keeps count unchanged
+        
+        state.lastDist_m = currentDist;
+        state.camera.distance_m = currentDist;  // Update for display
+        
+        // ========== CHECK CLEAR CONDITIONS ==========
+        bool shouldClear = false;
+        const char* clearReason = nullptr;
+        
+        // Condition 1: PASSED - got close and now moving away
+        if (state.increasingCount >= PASS_TREND_COUNT && state.minDist_m < PASS_MIN_THRESHOLD_M) {
+            shouldClear = true;
+            clearReason = "passed";
+        }
+        
+        // Condition 2: DIVERGED - heading no longer towards camera (>90 degrees)
+        // Only apply when we have reliable heading (speed > 2 m/s ≈ 4.5 mph)
+        if (!shouldClear && speed_mps > 2.0f && headingErr > 90.0f) {
+            shouldClear = true;
+            clearReason = "heading_mismatch";
+        }
+        
+        // Condition 3: DISTANCE - too far away (with trend confirmation)
+        if (!shouldClear && currentDist > alertRadius && state.increasingCount >= 2) {
+            shouldClear = true;
+            clearReason = "out_of_range";
+        }
+        
+        if (shouldClear) {
+            // Log transition: camera cleared
+            CAMERA_LOG("[Camera] CLEAR cam=%s dist=%.0f minDist=%.0f headingErr=%.0f reason=%s\n",
+                       state.camera.camera.getTypeName(), currentDist, state.minDist_m, 
+                       headingErr, clearReason);
+            
+            // Mark as passed to prevent re-alert
+            PassedCameraTracker passed;
+            passed.lat = state.camera.camera.latitude;
+            passed.lon = state.camera.camera.longitude;
+            passed.passedTimeMs = now;
+            recentlyPassedCameras.push_back(passed);
+        } else {
+            updatedActiveCameras.push_back(state);
         }
     }
 
-    // Check for new cameras that weren't in the previous active list
+    // ========== ADD NEW CAMERAS ==========
     for (const auto& newCam : approachingCameras) {
-        bool wasAlreadyActive = false;
-        for (const auto& oldCam : activeCameraAlerts) {
+        // Check if already in active list
+        bool alreadyActive = false;
+        for (const auto& state : updatedActiveCameras) {
             float dist = CameraManager::haversineDistance(
-                oldCam.camera.latitude, oldCam.camera.longitude,
+                state.camera.camera.latitude, state.camera.camera.longitude,
                 newCam.camera.latitude, newCam.camera.longitude);
             if (dist < 50.0f) {
-                wasAlreadyActive = true;
+                alreadyActive = true;
                 break;
             }
         }
-
-        if (!wasAlreadyActive) {
+        
+        if (!alreadyActive && (int)updatedActiveCameras.size() < MAX_ACTIVE_CAMERAS) {
             // New camera entering alert range
-            bool isPrimary = activeCameraAlerts.empty();
-            CAMERA_LOG("[Camera] ALERT: %s at %.0fm AHEAD%s\n",
-                       newCam.camera.getTypeName(),
-                       newCam.distance_m,
-                       isPrimary ? " (PRIMARY)" : " (SECONDARY)");
+            ActiveCameraState newState;
+            newState.camera = newCam;
+            newState.minDist_m = newCam.distance_m;
+            newState.lastDist_m = newCam.distance_m;
+            newState.increasingCount = 0;
+            newState.firstSeenMs = now;
+            
+            // Calculate heading error
+            float bearing = CameraManager::calculateBearing(lat, lon, 
+                newCam.camera.latitude, newCam.camera.longitude);
+            float headingErr = fabs(heading - bearing);
+            if (headingErr > 180.0f) headingErr = 360.0f - headingErr;
+            newState.headingErr_deg = headingErr;
+            
+            bool isPrimary = updatedActiveCameras.empty();
+            
+            // Log transition: camera selected
+            CAMERA_LOG("[Camera] SELECT cam=%s dist=%.0f headingErr=%.0f speed=%.1f %s\n",
+                       newCam.camera.getTypeName(), newCam.distance_m, headingErr, speed_mps,
+                       isPrimary ? "PRIMARY" : "SECONDARY");
 
             // Play voice alert only for new primary camera
             if (isPrimary && camSettings.cameraAudioEnabled) {
@@ -359,25 +418,38 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
                 }
                 play_camera_voice(voiceType);
             }
+            
+            updatedActiveCameras.push_back(newState);
         }
     }
 
     // Update active camera list
-    bool wasEmpty = activeCameraAlerts.empty();
-    activeCameraAlerts = approachingCameras;
+    bool wasEmpty = activeCameras.empty();
+    activeCameras = updatedActiveCameras;
     
     // Track when alerts started (for safety timeout)
-    if (wasEmpty && !activeCameraAlerts.empty()) {
+    if (wasEmpty && !activeCameras.empty()) {
         alertStartedAtMs = now;  // Alerts just started
-    } else if (activeCameraAlerts.empty()) {
+    } else if (activeCameras.empty()) {
         alertStartedAtMs = 0;    // No alerts, reset timer
+    }
+    
+    // ========== WHILE-ACTIVE LOGGING (1/sec) ==========
+    if (!activeCameras.empty() && (now - lastActiveLogMs) >= 1000) {
+        lastActiveLogMs = now;
+        for (const auto& state : activeCameras) {
+            float dDist = state.camera.distance_m - state.lastDist_m;
+            CAMERA_LOG("[Camera] ACTIVE cam=%s dist=%.0f dDist=%.0f minDist=%.0f headingErr=%.0f incr=%d spd=%.1f\n",
+                       state.camera.camera.getTypeName(), state.camera.distance_m, dDist,
+                       state.minDist_m, state.headingErr_deg, state.increasingCount, speed_mps);
+        }
     }
 
     // Debug: log active camera count changes
     static int lastCameraCount = 0;
-    if ((int)activeCameraAlerts.size() != lastCameraCount) {
-        CAMERA_LOG("[Camera] Active cameras: %d\n", (int)activeCameraAlerts.size());
-        lastCameraCount = (int)activeCameraAlerts.size();
+    if ((int)activeCameras.size() != lastCameraCount) {
+        CAMERA_LOG("[Camera] Active cameras: %d\n", (int)activeCameras.size());
+        lastCameraCount = (int)activeCameras.size();
     }
 }
 
@@ -392,7 +464,7 @@ void CameraAlertModule::updateCardStateForV1(bool v1HasAlerts) {
         return;
     }
 
-    if (!activeCameraAlerts.empty()) {
+    if (!activeCameras.empty()) {
         handleRealCards(dispSettings);
     } else {
         display->clearAllCameraAlerts();
@@ -421,7 +493,7 @@ void CameraAlertModule::updateMainDisplay(bool v1HasAlerts) {
     // Track state transitions to avoid spammy logging
     static bool hadCameras = false;
     
-    if (!activeCameraAlerts.empty()) {
+    if (!activeCameras.empty()) {
         if (!hadCameras) {
             hadCameras = true;  // Cameras appeared
         }
@@ -498,10 +570,10 @@ void CameraAlertModule::handleTestDisplay(bool v1HasAlerts, const V1Settings& di
 void CameraAlertModule::handleRealCards(const V1Settings& dispSettings) {
     // V1 has alerts: cameras show as cards (max 2 slots)
     for (int i = 0; i < 2; i++) {
-        if (i < (int)activeCameraAlerts.size()) {
+        if (i < (int)activeCameras.size()) {
             display->setCameraAlertState(i, true,
-                                         activeCameraAlerts[i].camera.getShortTypeName(),
-                                         activeCameraAlerts[i].distance_m,
+                                         activeCameras[i].camera.camera.getShortTypeName(),
+                                         activeCameras[i].camera.distance_m,
                                          dispSettings.colorCameraAlert);
         } else {
             display->setCameraAlertState(i, false, "", 0, 0);
@@ -510,17 +582,17 @@ void CameraAlertModule::handleRealCards(const V1Settings& dispSettings) {
 }
 
 void CameraAlertModule::handleRealDisplay(bool v1HasAlerts, const V1Settings& dispSettings) {
-    int count = std::min((int)activeCameraAlerts.size(), MAX_ACTIVE_CAMERAS);
+    int count = std::min((int)activeCameras.size(), MAX_ACTIVE_CAMERAS);
     if (count == 0) {
-        // This shouldn't happen - caller checks activeCameraAlerts.empty()
+        // This shouldn't happen - caller checks activeCameras.empty()
         display->clearCameraAlerts();
         return;
     }
 
     V1Display::CameraAlertInfo camInfos[MAX_ACTIVE_CAMERAS];
     for (int i = 0; i < count; i++) {
-        camInfos[i].typeName = activeCameraAlerts[i].camera.getTypeName();
-        camInfos[i].distance_m = activeCameraAlerts[i].distance_m;
+        camInfos[i].typeName = activeCameras[i].camera.camera.getTypeName();
+        camInfos[i].distance_m = activeCameras[i].camera.distance_m;
         camInfos[i].color = dispSettings.colorCameraAlert;
     }
 
