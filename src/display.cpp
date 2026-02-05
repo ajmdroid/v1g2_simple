@@ -491,23 +491,31 @@ bool V1Display::begin() {
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
-    // Initialize OpenFontRender fonts (errors only logged)
+    // Initialize OpenFontRender fonts with glyph caching enabled (uses PSRAM)
+    // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont
+    // Caching avoids re-rasterizing glyphs on every frame (80-97ms → ~10ms for cached)
+    // Total: ~208KB in PSRAM (2.5% of 8MB available)
+    
     ofr.setDrawer(*tft);
+    ofr.setCacheSize(1, 4, 65536);  // 64KB for labels/text (alphabet+digits at 2 sizes)
     FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
     ofrInitialized = (ftErr == 0);
     if (ftErr) Serial.printf("[Display] ERROR: Montserrat font failed (0x%02X)\n", ftErr);
     
     ofrSegment7.setDrawer(*tft);
+    ofrSegment7.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
     
     ofrHemi.setDrawer(*tft);
+    ofrHemi.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
     FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
     ofrHemiInitialized = (ftErr3 == 0);
     if (ftErr3) Serial.printf("[Display] ERROR: HemiHead font failed (0x%02X)\n", ftErr3);
     
     ofrSerpentine.setDrawer(*tft);
+    ofrSerpentine.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
     FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
     ofrSerpentineInitialized = (ftErr4 == 0);
     if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
