@@ -168,6 +168,18 @@ void perfRecordBleProcessUs(uint32_t us) {
     }
 }
 
+void perfRecordGpsUs(uint32_t us) {
+    if (us > perfExtended.gpsMaxUs) {
+        perfExtended.gpsMaxUs = us;
+    }
+}
+
+void perfRecordObdUs(uint32_t us) {
+    if (us > perfExtended.obdMaxUs) {
+        perfExtended.obdMaxUs = us;
+    }
+}
+
 uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
 uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
 uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
@@ -185,6 +197,8 @@ uint32_t perfGetBleConnectMaxUs() { return perfExtended.bleConnectMaxUs; }
 uint32_t perfGetBleDiscoveryMaxUs() { return perfExtended.bleDiscoveryMaxUs; }
 uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
+uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
+uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
 
 void perfExtendedResetWindow() {
     perfExtended.reset();
@@ -208,13 +222,15 @@ bool perfMetricsCheckReport() {
     perfLastReportMs = now;
     
     // Stability-focused compact report format per CT's recommendation:
-    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, heapMin, qDrop, parseFail, qHW
+    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, heapMin, qDrop, parseFail, qHW
     // Plus otherMax_us = gap not explained by instrumented buckets (signals uninstrumented code)
     uint32_t loopUs = perfExtended.loopMaxUs;
     uint32_t bleConnUs = perfExtended.bleProcessMaxUs;
     uint32_t bleDrainUs = perfExtended.bleDrainMaxUs;
     uint32_t wifiUs = perfExtended.wifiMaxUs;
     uint32_t sdUs = perfExtended.sdMaxUs;
+    uint32_t gpsUs = perfExtended.gpsMaxUs;
+    uint32_t obdUs = perfExtended.obdMaxUs;
     
     // Calculate "other" = unexplained loop time (not additive, but signals gaps)
     // If loopMax is huge but all buckets are small, something else blocked
@@ -222,14 +238,18 @@ bool perfMetricsCheckReport() {
     if (bleDrainUs > explainedMax) explainedMax = bleDrainUs;
     if (wifiUs > explainedMax) explainedMax = wifiUs;
     if (sdUs > explainedMax) explainedMax = sdUs;
+    if (gpsUs > explainedMax) explainedMax = gpsUs;
+    if (obdUs > explainedMax) explainedMax = obdUs;
     uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
     
-    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
         (unsigned long)loopUs,
         (unsigned long)bleConnUs,
         (unsigned long)bleDrainUs,
         (unsigned long)wifiUs,
         (unsigned long)sdUs,
+        (unsigned long)gpsUs,
+        (unsigned long)obdUs,
         (unsigned long)otherUs,
         (unsigned long)perfExtended.minFreeHeap,
         (unsigned long)perfExtended.minLargestBlock,

@@ -861,7 +861,9 @@ void loop() {
     
     // Process GPS updates (if enabled - static allocation uses isEnabled())
     if (gpsHandler.isEnabled()) {
+        uint32_t gpsStartUs = PERF_TIMESTAMP_US();
         gpsHandler.update();
+        perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
         
         // Auto-disable GPS if module not detected after timeout
         if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
@@ -878,7 +880,11 @@ void loop() {
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     
     // OBD processing and delayed auto-connect
-    obdAutoConnector.process(now);
+    {
+        uint32_t obdStartUs = PERF_TIMESTAMP_US();
+        obdAutoConnector.process(now);
+        perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
+    }
 
     // Deferred camera database loading - runs once after V1 connects
     cameraLoadCoordinator.process(bleClient.isConnected());

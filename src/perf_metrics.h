@@ -144,6 +144,9 @@ struct PerfExtendedMetrics {
     uint32_t bleDiscoveryMaxUs = 0;   // discoverAttributes() duration
     uint32_t bleSubscribeMaxUs = 0;   // setupCharacteristics() duration
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
+    // Field-only subsystems (GPS, OBD) - not bench-testable
+    uint32_t gpsMaxUs = 0;            // gpsHandler.update() duration
+    uint32_t obdMaxUs = 0;            // obdAutoConnector.process() duration
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -161,6 +164,8 @@ struct PerfExtendedMetrics {
         bleDiscoveryMaxUs = 0;
         bleSubscribeMaxUs = 0;
         bleProcessMaxUs = 0;
+        gpsMaxUs = 0;
+        obdMaxUs = 0;
     }
 };
 
@@ -180,6 +185,8 @@ void perfRecordBleConnectUs(uint32_t us);
 void perfRecordBleDiscoveryUs(uint32_t us);
 void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
+void perfRecordGpsUs(uint32_t us);
+void perfRecordObdUs(uint32_t us);
 
 uint32_t perfGetNotifyToDisplayP95Ms();
 uint32_t perfGetNotifyToDisplayMaxMs();
@@ -198,6 +205,8 @@ uint32_t perfGetBleConnectMaxUs();
 uint32_t perfGetBleDiscoveryMaxUs();
 uint32_t perfGetBleSubscribeMaxUs();
 uint32_t perfGetBleProcessMaxUs();
+uint32_t perfGetGpsMaxUs();
+uint32_t perfGetObdMaxUs();
 void perfExtendedResetWindow();
 
 // ============================================================================
