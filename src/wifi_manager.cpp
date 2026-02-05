@@ -30,11 +30,13 @@
 #include <LittleFS.h>
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include "esp_wifi.h"
 #include <time.h>
 
 // Async NTP sync state (callback runs in SNTP task context)
 static volatile bool s_ntpSyncPending = false;   // Waiting for sync
 static volatile bool s_ntpSyncComplete = false;  // Sync succeeded
+static bool s_sntpInitialized = false;           // SNTP service initialized (reset on WiFi OFF)
 static struct tm s_ntpTimeInfo;                   // Cached time from callback
 static portMUX_TYPE s_ntpMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -269,15 +271,72 @@ bool WiFiManager::stopSetupMode(bool manual) {
         return false;
     }
 
-    WIFI_LOG("[SetupMode] Stopping AP...\n");
+    WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
+    
+    // ========== 1. STOP ALL SERVICES ==========
+    // Stop HTTP server first (no more requests)
     server.stop();
+    WIFI_LOG("[SetupMode] HTTP server stopped\n");
+    
+    // Stop SNTP service if initialized (prevents callbacks with radio off)
+    esp_netif_sntp_deinit();
+    WIFI_LOG("[SetupMode] SNTP service stopped\n");
+    
+    // ========== 2. STOP RADIO CLEANLY ==========
+    // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
+    if (wifiClientState == WIFI_CLIENT_CONNECTED || wifiClientState == WIFI_CLIENT_CONNECTING) {
+        WiFi.disconnect(true);  // true = also clear stored config in radio
+        WIFI_LOG("[SetupMode] STA disconnected\n");
+    }
+    
+    // Disconnect AP (with wifiOff=true to prepare for mode change)
     WiFi.softAPdisconnect(true);
+    WIFI_LOG("[SetupMode] AP disconnected\n");
+    
+    // Set mode to OFF (tells Arduino WiFi class we're done)
     WiFi.mode(WIFI_OFF);
+    
+    // Fully stop the WiFi radio at ESP-IDF level
+    // This ensures no background WiFi tasks are running
+    esp_err_t stopErr = esp_wifi_stop();
+    if (stopErr == ESP_OK) {
+        WIFI_LOG("[SetupMode] esp_wifi_stop() succeeded\n");
+        // Deinit frees WiFi resources completely
+        // Note: WiFi.begin() will re-init when needed
+        esp_err_t deinitErr = esp_wifi_deinit();
+        if (deinitErr == ESP_OK) {
+            WIFI_LOG("[SetupMode] esp_wifi_deinit() succeeded\n");
+        } else {
+            // Non-fatal: may already be deinit'd
+            WIFI_LOG("[SetupMode] esp_wifi_deinit() returned %d\n", deinitErr);
+        }
+    } else {
+        // Non-fatal: may already be stopped
+        WIFI_LOG("[SetupMode] esp_wifi_stop() returned %d\n", stopErr);
+    }
+    
+    // ========== 3. RESET ALL STATE ==========
     setupModeState = SETUP_MODE_OFF;
+    wifiClientState = WIFI_CLIENT_DISABLED;
+    wifiScanRunning = false;
+    wifiConnectStartMs = 0;
+    pendingConnectSSID = "";
+    pendingConnectPassword = "";
+    lastUiActivityMs = 0;
+    lastClientSeenMs = 0;
+    
+    // Clear NTP/SNTP state (allows re-init when WiFi restarts)
+    s_sntpInitialized = false;  // Reset so SNTP can be re-initialized
+    portENTER_CRITICAL(&s_ntpMux);
+    s_ntpSyncPending = false;
+    s_ntpSyncComplete = false;
+    portEXIT_CRITICAL(&s_ntpMux);
 
     if (debugLogger.isEnabled()) {
-        debugLogger.log(DebugLogCategory::Wifi, manual ? "Setup mode AP stopped (manual)" : "Setup mode AP stopped (timeout)");
+        debugLogger.log(DebugLogCategory::Wifi, manual ? "WiFi OFF (manual) - radio stopped" : "WiFi OFF (timeout) - radio stopped");
     }
+    
+    Serial.println("[SetupMode] WiFi fully stopped (radio off, no polling)");
 
     return true;
 }
@@ -800,9 +859,7 @@ void WiFiManager::checkWifiClientStatus() {
 
 // Start async NTP sync (non-blocking). Call checkNtpSyncStatus() to poll result.
 void WiFiManager::startAsyncNtpSync() {
-    static bool sntpInitialized = false;
-    
-    if (sntpInitialized) {
+    if (s_sntpInitialized) {
         // Already running - just mark pending
         portENTER_CRITICAL(&s_ntpMux);
         s_ntpSyncPending = true;
@@ -818,7 +875,7 @@ void WiFiManager::startAsyncNtpSync() {
     
     esp_err_t err = esp_netif_sntp_init(&config);
     if (err == ESP_OK) {
-        sntpInitialized = true;
+        s_sntpInitialized = true;
         portENTER_CRITICAL(&s_ntpMux);
         s_ntpSyncPending = true;
         s_ntpSyncComplete = false;
