@@ -178,6 +178,7 @@ private:
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
     void handleDebugMetrics();
+    void handleDebugPanic();
     void handleDebugEnable();
     void handleDebugLogsMeta();
     void handleDebugLogsDownload();

@@ -550,6 +550,7 @@ void WiFiManager::setupWebServer() {
     
     // Debug API routes (performance metrics)
     server.on("/api/debug/metrics", HTTP_GET, [this]() { handleDebugMetrics(); });
+    server.on("/api/debug/panic", HTTP_GET, [this]() { handleDebugPanic(); });
     server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
     server.on("/api/debug/logs", HTTP_GET, [this]() { handleDebugLogsMeta(); });
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
@@ -2400,6 +2401,52 @@ void WiFiManager::handleDebugEnable() {
     }
     perfMetricsSetDebug(enable);
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
+}
+
+void WiFiManager::handleDebugPanic() {
+    // Return last panic info from LittleFS (written by logPanicBreadcrumbs on crash recovery)
+    JsonDocument doc;
+    
+    // Get last reset reason
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char* reasonStr = "UNKNOWN";
+    switch (reason) {
+        case ESP_RST_POWERON: reasonStr = "POWERON"; break;
+        case ESP_RST_SW: reasonStr = "SW"; break;
+        case ESP_RST_PANIC: reasonStr = "PANIC"; break;
+        case ESP_RST_INT_WDT: reasonStr = "WDT_INT"; break;
+        case ESP_RST_TASK_WDT: reasonStr = "WDT_TASK"; break;
+        case ESP_RST_WDT: reasonStr = "WDT"; break;
+        case ESP_RST_DEEPSLEEP: reasonStr = "DEEPSLEEP"; break;
+        case ESP_RST_BROWNOUT: reasonStr = "BROWNOUT"; break;
+        default: break;
+    }
+    doc["lastResetReason"] = reasonStr;
+    doc["wasCrash"] = (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || 
+                       reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT);
+    
+    // Try to read panic.txt from LittleFS
+    String panicContent = "";
+    if (LittleFS.exists("/panic.txt")) {
+        File f = LittleFS.open("/panic.txt", "r");
+        if (f) {
+            panicContent = f.readString();
+            f.close();
+        }
+        doc["hasPanicFile"] = true;
+    } else {
+        doc["hasPanicFile"] = false;
+    }
+    doc["panicInfo"] = panicContent;
+    
+    // Current heap stats for comparison
+    doc["heapFree"] = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    doc["heapMinEver"] = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+    
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleDebugLogsMeta() {

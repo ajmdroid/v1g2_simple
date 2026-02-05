@@ -640,6 +640,36 @@ void setup() {
                          scenario,
                          bootSettings.enableWifi ? "on" : "off",
                          (unsigned long)logMask);
+        
+        // If this was a crash recovery, log the panic info from LittleFS to SD card debug log
+        bool wasCrash = (resetReason == ESP_RST_PANIC || resetReason == ESP_RST_INT_WDT || 
+                         resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_WDT);
+        if (wasCrash && LittleFS.exists("/panic.txt")) {
+            File f = LittleFS.open("/panic.txt", "r");
+            if (f) {
+                String panicInfo = f.readString();
+                f.close();
+                // Log each line as separate entries for readability
+                int start = 0;
+                int end;
+                while ((end = panicInfo.indexOf('\n', start)) != -1) {
+                    String line = panicInfo.substring(start, end);
+                    line.trim();
+                    if (line.length() > 0) {
+                        debugLogger.logf(DebugLogCategory::System, "PANIC_RECOVERY: %s", line.c_str());
+                    }
+                    start = end + 1;
+                }
+                // Handle last line without newline
+                if (start < (int)panicInfo.length()) {
+                    String line = panicInfo.substring(start);
+                    line.trim();
+                    if (line.length() > 0) {
+                        debugLogger.logf(DebugLogCategory::System, "PANIC_RECOVERY: %s", line.c_str());
+                    }
+                }
+            }
+        }
     }
 
     // Emit RUN header for benchmark tracking (debug log only, not serial)
