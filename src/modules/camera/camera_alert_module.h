@@ -119,16 +119,19 @@ private:
 
     // Constants
     static constexpr int MAX_ACTIVE_CAMERAS = 3;
-    static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;  // 500ms
-    static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;        // 200m
-    static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000; // 1 minute
+    static constexpr unsigned long CAMERA_CHECK_INTERVAL_MS = 500;       // 500ms at speed
+    static constexpr unsigned long CAMERA_CHECK_INTERVAL_SLOW_MS = 2000; // 2s when slow/stopped
+    static constexpr float SLOW_SPEED_THRESHOLD_MPS = 2.5f;              // ~5.5 mph
+    static constexpr float CAMERA_ALERT_COOLDOWN_M = 200.0f;             // 200m
+    static constexpr unsigned long PASSED_CAMERA_MEMORY_MS = 60000;      // 1 minute
     static constexpr unsigned long CAMERA_TEST_PHASE_DURATION_MS = 3000; // 3s
     static constexpr unsigned long CACHE_CHECK_INTERVAL_MS = 30000;      // 30s
     static constexpr unsigned long CACHE_REFRESH_INTERVAL_MS = 1800000;  // 30 min
     static constexpr unsigned long GPS_READY_COOLDOWN_MS = 10000;        // 10s after fix (prevents display stalls)
     static constexpr float CACHE_RADIUS_MILES = 100.0f;
     static constexpr float CACHE_REFRESH_DIST_MILES = 50.0f;
-    static constexpr unsigned long ALERT_MAX_DURATION_MS = 120000;  // 2 min max alert
+    static constexpr unsigned long ALERT_MAX_DURATION_MS = 120000;       // 2 min max alert
+    static constexpr uint32_t CAMERA_BUDGET_US = 5000;                   // 5ms max per scan
     
     // Trend-based clearing parameters
     static constexpr uint8_t PASS_TREND_COUNT = 3;        // N consecutive increasing distance samples

@@ -165,12 +165,14 @@ public:
   // Find cameras within radius of current position
   // Populates output vector (cleared first), sorted by distance (closest first)
   // Uses output parameter to avoid allocation - caller provides reusable vector
+  // budgetUs: time budget in microseconds (0 = no limit). Returns early if exceeded.
   void findNearby(
     float lat, float lon, 
     float heading_deg,
     float radius_m,
     size_t maxResults,
-    std::vector<NearbyCameraResult>& out
+    std::vector<NearbyCameraResult>& out,
+    uint32_t budgetUs = 0
   ) const;
   
   // Quick check if any camera is within alert range

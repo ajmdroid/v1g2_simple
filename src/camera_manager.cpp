@@ -905,7 +905,8 @@ void CameraManager::findNearby(
   float heading_deg,
   float radius_m,
   size_t maxResults,
-  std::vector<NearbyCameraResult>& out
+  std::vector<NearbyCameraResult>& out,
+  uint32_t budgetUs
 ) const {
   out.clear();  // Clear but keep capacity for reuse
   
@@ -913,11 +914,19 @@ void CameraManager::findNearby(
   const auto* queryList = getQueryCamerasSnapshot(snapshot);
   if (!queryList || queryList->empty()) return;
 
+  // Budget guard: track start time if budget specified
+  uint32_t startUs = budgetUs > 0 ? micros() : 0;
+  
   // Quick bounding box
   float latDelta = radius_m / 111000.0f;
   float lonDelta = radius_m / (111000.0f * cos(lat * PI / 180.0f));
   
   for (const auto& cam : *queryList) {
+    // Budget check: bail early if over time (check every iteration)
+    if (budgetUs > 0 && (micros() - startUs) > budgetUs) {
+      break;  // Return what we have so far
+    }
+    
     // Quick box check
     if (fabs(cam.latitude - lat) > latDelta) continue;
     if (fabs(cam.longitude - lon) > lonDelta) continue;
@@ -939,6 +948,11 @@ void CameraManager::findNearby(
     r.isApproaching = isHeadingTowards(heading_deg, r.bearing_deg, 60.0f);
     
     out.push_back(r);
+    
+    // Early exit if we have enough candidates (avoid scanning entire cache)
+    if (out.size() >= maxResults * 2) {
+      break;  // We have enough to sort and pick top N
+    }
   }
   
   // Sort by distance (approaching cameras get priority)

@@ -228,14 +228,20 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
         return;
     }
 
-    if (now - lastCameraCheckMs < CAMERA_CHECK_INTERVAL_MS) return;
+    GPSFix fix = gpsHandler->getFix();
+    float speed_mps = fix.speed_mps;
+    
+    // Speed gating: scan less frequently when slow/stopped (saves CPU, reduces false alerts)
+    unsigned long checkInterval = (speed_mps < SLOW_SPEED_THRESHOLD_MPS) 
+        ? CAMERA_CHECK_INTERVAL_SLOW_MS 
+        : CAMERA_CHECK_INTERVAL_MS;
+    
+    if (now - lastCameraCheckMs < checkInterval) return;
     lastCameraCheckMs = now;
 
-    GPSFix fix = gpsHandler->getFix();
     float lat = fix.latitude;
     float lon = fix.longitude;
     float heading = fix.heading_deg;
-    float speed_mps = fix.speed_mps;
     float alertRadius = static_cast<float>(camSettings.cameraAlertDistanceM);
 
     // Safety check: if we have active alerts but NO cameras nearby at all
@@ -270,9 +276,10 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
 
     // Find all nearby cameras (sorted by distance, approaching first)
     // Uses output parameter to avoid heap allocation - scratch vector is reused
+    // Budget guard: stop early if scan takes too long (protects Core 1 latency)
     cameraManager->findNearby(
         lat, lon, heading, alertRadius, MAX_ACTIVE_CAMERAS + 2,
-        scratchNearbyCameras);  // Get a few extra for filtering
+        scratchNearbyCameras, CAMERA_BUDGET_US);  // Get a few extra for filtering
 
     // Filter: only keep approaching cameras, exclude recently passed
     // Apply tighter heading gate when we have reliable heading (speed > 2 m/s)
