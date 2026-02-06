@@ -650,6 +650,22 @@ void WiFiManager::process() {
         return;  // No WiFi processing when Setup Mode is off
     }
     
+    // Runtime SRAM guard: kill WiFi before it crashes the system
+    // WiFi's TLS stack needs ~20-40KB of internal SRAM for crypto operations
+    // If we're too low, shut down gracefully rather than crash
+    constexpr uint32_t CRITICAL_DMA_FREE = 20480;   // 20KB - crash likely below this
+    constexpr uint32_t CRITICAL_DMA_BLOCK = 8192;   // 8KB - fragmentation limit
+    
+    uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    
+    if (freeDma < CRITICAL_DMA_FREE || largestDma < CRITICAL_DMA_BLOCK) {
+        WIFI_LOG("[WiFi] CRITICAL: Internal SRAM low (free=%lu, block=%lu) - emergency shutdown\n",
+                 (unsigned long)freeDma, (unsigned long)largestDma);
+        stopSetupMode(false);  // Graceful shutdown to free memory
+        return;
+    }
+    
     // Handle web requests
     if (setupModeState != SETUP_MODE_AP_ON) {
         return;

@@ -286,7 +286,7 @@ bool perfMetricsCheckReport() {
     if (touchUs > explainedMax) explainedMax = touchUs;
     uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
     
-    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu camMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu camMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu dmaMin=%lu dmaBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
         (unsigned long)loopUs,
         (unsigned long)bleConnUs,
         (unsigned long)bleDrainUs,
@@ -301,6 +301,8 @@ bool perfMetricsCheckReport() {
         (unsigned long)otherUs,
         (unsigned long)perfExtended.minFreeHeap,
         (unsigned long)perfExtended.minLargestBlock,
+        (unsigned long)perfExtended.minFreeDma,
+        (unsigned long)perfExtended.minLargestDma,
         (unsigned long)perfCounters.queueDrops.load(),
         (unsigned long)perfCounters.parseFailures.load(),
         (unsigned long)perfCounters.queueHighWater.load());
