@@ -59,15 +59,15 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
 
 namespace {
 // RED ZONE SAFE: All semaphore takes use bounded timeouts, never portMAX_DELAY
-// HOT paths use timeout 0 (try-lock), COLD paths use 20ms max
-// RULE: Never use default timeout in a loop or frequent path.
-//       If it runs more than once per second, pass 0 explicitly.
+// Default = 0 (try-lock) so HOT paths are safe-by-default
+// COLD paths must explicitly pass pdMS_TO_TICKS(20)
 class SemaphoreGuard {
 public:
-    // timeout: 0 = try-lock (non-blocking), >0 = bounded wait in ms
-    // Default 20ms for COLD paths - never use portMAX_DELAY
+    // timeout: 0 = try-lock (non-blocking, default), >0 = bounded wait
+    // HOT paths: use default (0) — safe-by-default, never blocks
+    // COLD paths: use SemaphoreGuard(sem, pdMS_TO_TICKS(20)) explicitly
     // Increments appropriate counter on failure for monitoring
-    explicit SemaphoreGuard(SemaphoreHandle_t sem, TickType_t timeout = pdMS_TO_TICKS(20)) 
+    explicit SemaphoreGuard(SemaphoreHandle_t sem, TickType_t timeout = 0) 
         : sem_(sem), locked_(false) {
         if (sem_) {
             locked_ = xSemaphoreTake(sem_, timeout) == pdTRUE;
@@ -234,7 +234,7 @@ void V1BLEClient::cleanupConnection() {
     
     // 4. Clear connection flags
     {
-        SemaphoreGuard lock(bleMutex);
+        SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
         if (lock.locked()) {
             connected = false;
             shouldConnect = false;
@@ -733,7 +733,7 @@ bool V1BLEClient::connectToServer() {
     unsigned long now = millis();
     if (consecutiveConnectFailures > 0 && now < nextConnectAllowedMs) {
         {
-            SemaphoreGuard lock(bleMutex);
+            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: backoff check
             shouldConnect = false;
         }
         setBLEState(BLEState::BACKOFF, "backoff active");
@@ -1013,7 +1013,7 @@ void V1BLEClient::processSubscribing() {
         perfRecordBleSubscribeUs(micros() - connectPhaseStartUs);
         disconnect();
         {
-            SemaphoreGuard lock(bleMutex);
+            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe timeout
             shouldConnect = false;
             hasTargetDevice = false;
         }
@@ -1168,7 +1168,7 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::REQUEST_ALERT_DATA: {
             // Mark as connected before sending requests
             {
-                SemaphoreGuard lock(bleMutex);
+                SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
                 connected = true;
             }
             
