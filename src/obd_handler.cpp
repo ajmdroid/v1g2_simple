@@ -42,12 +42,12 @@ static constexpr bool DEBUG_OBD = false;  // Set true for verbose Serial logging
 } while(0)
 
 // RAII lock for the OBD mutex — bounded timeout, never portMAX_DELAY
-// HOT paths (data accessors called from main loop): use 0 (try-lock)
-// COLD paths (connect/disconnect/init): use default 20ms
+// Default = 0 (try-lock) so HOT paths are safe-by-default
+// COLD paths must explicitly pass pdMS_TO_TICKS(20)
 // Increments perf counters on failure for monitoring
 class ObdLock {
 public:
-    explicit ObdLock(SemaphoreHandle_t m, TickType_t timeout = pdMS_TO_TICKS(20))
+    explicit ObdLock(SemaphoreHandle_t m, TickType_t timeout = 0)
         : mutex(m), locked(false) {
         if (mutex) {
             locked = xSemaphoreTake(mutex, timeout) == pdTRUE;
@@ -324,13 +324,13 @@ float OBDHandler::getSpeedMph() const {
 }
 
 std::vector<OBDDeviceInfo> OBDHandler::getFoundDevices() const {
-    ObdLock lock(obdMutex);  // COLD path: bounded 20ms (UI request only)
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: UI request
     if (!lock.ok()) return {};  // Return empty on timeout
     return foundDevices;  // Return copy
 }
 
 void OBDHandler::clearFoundDevices() {
-    ObdLock lock(obdMutex);  // COLD path: bounded 20ms
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: UI request
     if (!lock.ok()) return;
     foundDevices.clear();
 }
@@ -367,7 +367,7 @@ void OBDHandler::onObdAdapterFound(const NimBLEAdvertisedDevice* device) {
     // Check if already in list
     bool alreadyFound = false;
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: scan callback
         for (const auto& d : foundDevices) {
             if (d.address == addrStr) {
                 alreadyFound = true;
@@ -391,7 +391,7 @@ void OBDHandler::onObdAdapterFound(const NimBLEAdvertisedDevice* device) {
     }
     
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: scan callback (once per connect)
         // Save target device info
         targetAddress = device->getAddress();
         targetDeviceName = name.c_str();
@@ -418,7 +418,7 @@ void OBDHandler::onDeviceFound(const NimBLEAdvertisedDevice* device) {
         return;
     }
     
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: scan callback
     
     // Check if already in list
     for (const auto& d : foundDevices) {
@@ -454,7 +454,7 @@ void OBDHandler::onDeviceFoundDeferred(const char* name, const char* addr, int r
     bool added = false;
 
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: deferred scan callback
 
         // Check if already in list
         for (const auto& d : foundDevices) {
@@ -547,7 +547,7 @@ void OBDHandler::handlePolling() {
         Serial.println("[OBD] Connection lost");
         OBD_LOGF("[OBD] Connection lost to %s", targetDeviceName.c_str());
         {
-            ObdLock lock(obdMutex);
+            ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: disconnect event
             if (lock.ok()) {
                 lastData.valid = false;
             }
@@ -1093,7 +1093,7 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
     
     {
         // Clear response buffer under lock
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: AT command init
         if (!lock.ok()) return false;
         responseLength = 0;
         responseBuffer[0] = '\0';
@@ -1114,7 +1114,7 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
     uint32_t startMs = millis();
     while (true) {
         {
-            ObdLock lock(obdMutex);
+            ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: AT command poll
             if (lock.ok() && responseComplete) break;
         }
         if ((millis() - startMs) >= timeout_ms) break;
@@ -1122,7 +1122,7 @@ bool OBDHandler::sendATCommand(const char* cmd, String& response, uint32_t timeo
     }
     
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: AT command result
         response = responseBuffer;
         if (!responseComplete) {
             OBD_LOGF("[OBD] Command timeout: %s\n", cmd);
@@ -1160,7 +1160,7 @@ bool OBDHandler::requestSpeed() {
     // Send PID 0x0D (Vehicle Speed)
     // First query after init may take longer as adapter establishes vehicle communication
     if (!sendATCommand("010D", response, 1000)) {  // 1 second timeout for reliability
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: error path
         if (lock.ok()) {
             lastData.valid = false;
         }
@@ -1222,7 +1222,7 @@ bool OBDHandler::requestVoltage() {
     
     float voltage;
     if (parseVoltageResponse(response, voltage)) {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: supplemental metric
         if (lock.ok()) {
             lastData.voltage = voltage;
             lastData.timestamp_ms = millis();
@@ -1383,7 +1383,7 @@ bool OBDHandler::requestIntakeAirTemp() {
     
     int8_t tempC;
     if (parseIntakeAirTempResponse(response, tempC)) {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: supplemental metric
         if (lock.ok()) {
             lastData.intake_air_temp_c = tempC;
             lastData.timestamp_ms = millis();
@@ -1417,7 +1417,7 @@ bool OBDHandler::requestOilTemp() {
     
     int8_t tempC;
     if (parseVwMode22TempResponse(response, "F40C", tempC)) {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: VW-specific metric
         if (lock.ok()) {
             lastData.oil_temp_c = tempC;
             lastData.timestamp_ms = millis();
@@ -1456,7 +1456,7 @@ bool OBDHandler::requestDsgTemp() {
     
     int8_t tempC;
     if (parseVwMode22TempResponse(response, "F40D", tempC)) {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: VW-specific metric
         if (lock.ok()) {
             lastData.dsg_temp_c = tempC;
             lastData.timestamp_ms = millis();
@@ -1487,13 +1487,13 @@ void OBDHandler::disconnect() {
     }
     
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: disconnect
         pNUSService = nullptr;
         pRXChar = nullptr;
         pTXChar = nullptr;
     }
     {
-        ObdLock lock(obdMutex);
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: disconnect
         if (lock.ok()) lastData.valid = false;
     }
     
@@ -1575,7 +1575,7 @@ bool OBDHandler::connectToAddress(const String& address, const String& name) {
     disconnect();
     
     // Lock while modifying state variables
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(20));  // COLD: user-initiated connect
     
     // Set target device - NimBLEAddress needs std::string and address type
     targetAddress = NimBLEAddress(std::string(address.c_str()), BLE_ADDR_PUBLIC);

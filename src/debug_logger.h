@@ -157,6 +157,7 @@ public:
     uint32_t getDropCount() const { return logDropCount.load(std::memory_order_relaxed); }  // Messages dropped when queue full
     uint32_t getRateLimitDrops() const { return logRateLimitDrops.load(std::memory_order_relaxed); }  // Messages dropped due to rate limit
     uint32_t getBufferFullDrops() const { return logBufferFullDrops.load(std::memory_order_relaxed); }  // Messages dropped due to buffer full
+    uint32_t getCoreViolationDrops() const { return logCoreViolationDrops.load(std::memory_order_relaxed); }  // Messages dropped: wrong core
     uint32_t getQueueHighWater() const { return logQueueHW.load(std::memory_order_relaxed); }  // Max queue depth observed
     
     // WiFi transition deferral - defers SD writes during WiFi reconnection
@@ -217,6 +218,7 @@ private:
     std::atomic<uint32_t> logDropCount{0};    // Messages dropped (queue full or heap exhausted)
     std::atomic<uint32_t> logRateLimitDrops{0}; // Messages dropped due to rate limiting
     std::atomic<uint32_t> logBufferFullDrops{0}; // Messages dropped due to buffer full
+    std::atomic<uint32_t> logCoreViolationDrops{0}; // Messages dropped: called from wrong core
     std::atomic<uint32_t> logQueueHW{0};      // Queue high-water mark (max depth observed)
     
     // Rate limiting state

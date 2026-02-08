@@ -119,10 +119,12 @@ void DebugLogger::rotateIfNeededUnlocked(fs::FS* fs) {
 void DebugLogger::bufferLine(const char* line) {
     if (!enabled) return;
 
-    // Debug-only: enforce single-producer invariant (main task on Core 1)
-    #ifndef NDEBUG
-    configASSERT(xPortGetCoreID() == 1);
-    #endif
+    // Single-producer guard: only main-loop task (Core 1) may buffer
+    // WiFi handlers and BLE callbacks run on Core 0 — silently drop, don't crash
+    if (xPortGetCoreID() != 1) {
+        logCoreViolationDrops.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     
     // Rate limiting: prevent log storms, enforce safe zone semantics
     unsigned long now = millis();
