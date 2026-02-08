@@ -182,22 +182,22 @@ class FlipperIRTester:
         print("="*70 + "\n")
         
         # XMIT → wait 15s
-        if not self.transmit('XMIT'):
-            print("⚠️  CRITICAL: Failed to load XMIT signal, aborting test")
+        if not self.transmit('Stalker_XMIT'):
+            print("⚠️  CRITICAL: Failed to load Stalker_XMIT signal, aborting test")
             return False
         print("⏳ Waiting 15s (after XMIT)...")
         time.sleep(15)
         
         # REAR → wait 15s
-        if not self.transmit('REAR'):
-            print("⚠️  CRITICAL: Failed to load REAR signal, aborting test")
+        if not self.transmit('Stalker_rear'):
+            print("⚠️  CRITICAL: Failed to load Stalker_rear signal, aborting test")
             return False
         print("⏳ Waiting 15s (after REAR)...")
         time.sleep(15)
         
         # HOLD → wait 2min
-        if not self.transmit('HOLD'):
-            print("⚠️  CRITICAL: Failed to load HOLD signal, aborting test")
+        if not self.transmit('Stalker_Hold'):
+            print("⚠️  CRITICAL: Failed to load Stalker_Hold signal, aborting test")
             return False
         print("⏳ Waiting 2 minutes (after HOLD)...")
         time.sleep(120)
@@ -230,11 +230,11 @@ class FlipperIRTester:
     def cycle_sequence(self):
         """Execute one cycle of the main test pattern"""
         # XMIT → wait 10s
-        self.transmit('XMIT')
+        self.transmit('Stalker_XMIT')
         time.sleep(10)
         
         # REAR → wait 20s
-        self.transmit('REAR')
+        self.transmit('Stalker_rear')
         time.sleep(20)
         
         # GE front → wait 5s
@@ -246,7 +246,7 @@ class FlipperIRTester:
         time.sleep(5)
         
         # HOLD → wait 5s
-        self.transmit('HOLD')
+        self.transmit('Stalker_Hold')
         time.sleep(5)
         
         # GE rear → done
