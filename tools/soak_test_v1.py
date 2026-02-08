@@ -8,20 +8,32 @@ import serial
 import time
 import sys
 import argparse
+import glob
 from datetime import datetime, timedelta
 
-FLIPPER_PORT = '/dev/tty.usbmodemflip_Onapbeu1'
 FLIPPER_BAUD = 115200
 
+def find_flipper_port():
+    """Auto-detect Flipper Zero serial port"""
+    patterns = ['/dev/cu.usbmodemflip*', '/dev/tty.usbmodemflip*']
+    for pattern in patterns:
+        ports = glob.glob(pattern)
+        if ports:
+            return ports[0]
+    return None
+
 class FlipperIRTester:
-    def __init__(self, port=FLIPPER_PORT, baud=FLIPPER_BAUD):
-        self.port = port
+    def __init__(self, port=None, baud=FLIPPER_BAUD):
+        self.port = port or find_flipper_port()
         self.baud = baud
         self.ser = None
         self.signal_cache = {}
         
     def connect(self):
         """Connect to Flipper Zero via serial"""
+        if not self.port:
+            print("❌ No Flipper Zero found. Connect device and try again.")
+            return False
         print(f"🔌 Connecting to Flipper on {self.port}...")
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=2)
@@ -249,8 +261,14 @@ class FlipperIRTester:
         self.transmit('Stalker_Hold')
         time.sleep(5)
         
-        # GE rear → done
+        # GE rear → wait 5s
         self.transmit('GE_rear_hold')
+        time.sleep(5)
+        
+        # Bee toggle (on/off)
+        self.transmit('Bee_front')      # on
+        time.sleep(3)
+        self.transmit('Bee_Stadby')     # off
     
     def run(self, duration_hours=1.0):
         """Run the complete soak test"""
@@ -302,8 +320,8 @@ def main():
     parser = argparse.ArgumentParser(description='Flipper Zero IR Soak Test')
     parser.add_argument('--duration', type=float, default=1.0,
                         help='Test duration in hours (default: 1.0)')
-    parser.add_argument('--port', default=FLIPPER_PORT,
-                        help=f'Flipper serial port (default: {FLIPPER_PORT})')
+    parser.add_argument('--port', default=None,
+                        help='Flipper serial port (auto-detected if not specified)')
     
     args = parser.parse_args()
     
