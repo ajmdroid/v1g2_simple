@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <atomic>
 #include <FS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -207,7 +208,7 @@ public:
   fs::FS* getFilesystem() const { return fs; }
   bool startBackgroundLoad();
   void stopBackgroundLoad();
-  bool isBackgroundLoading() const { return backgroundLoading; }
+  bool isBackgroundLoading() const { return backgroundLoading.load(std::memory_order_acquire); }
   int getLoadProgress() const { return loadProgressPercent; }  // 0-100
   size_t getLoadedCount() const;  // Thread-safe camera count
 
@@ -221,7 +222,7 @@ private:
   
   // Background loading state
   TaskHandle_t loadTaskHandle = nullptr;
-  volatile bool backgroundLoading = false;
+  std::atomic<bool> backgroundLoading{false};
   volatile bool loadTaskShouldExit = false;
   volatile int loadProgressPercent = 0;
   static void loadTaskEntry(void* param);

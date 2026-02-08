@@ -458,7 +458,7 @@ const CameraVector& CameraManager::getQueryCameras() const {
   }
   // During background loading, cameras vector may be modified (push_back can reallocate)
   // Return empty vector to prevent iterator invalidation crash
-  if (backgroundLoading) {
+  if (backgroundLoading.load(std::memory_order_acquire)) {
     static const CameraVector emptyVector;
     return emptyVector;
   }
@@ -471,16 +471,21 @@ const CameraVector* CameraManager::getQueryCamerasSnapshot(
   if (!regionalCache.empty()) {
     return &regionalCache;
   }
-  if (!backgroundLoading) {
-    return &cameras;
-  }
-  if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  // Always take mutex before returning &cameras — background load task can start
+  // on either core at any time, creating a TOCTOU race with the backgroundLoading flag.
+  // Try-lock: skip this cycle on contention rather than blocking display/BLE.
+  if (cameraMutex && xSemaphoreTake(cameraMutex, 0) == pdTRUE) {
+    if (!backgroundLoading.load(std::memory_order_acquire)) {
+      // No background task running — safe to return direct pointer
+      xSemaphoreGive(cameraMutex);
+      return &cameras;
+    }
+    // Background load in progress — copy under lock
     snapshot = cameras;
     xSemaphoreGive(cameraMutex);
     return &snapshot;
   }
-  // Mutex contention during background load — return null, caller skips this cycle
-  // NEVER return &cameras without lock while background task may mutate it
+  // Mutex contention — return null, caller skips this cycle
   return nullptr;
 }
 
@@ -1071,7 +1076,7 @@ void CameraManager::loadTaskEntry(void* param) {
   bool success = self->loadDatabaseIncremental();
   
   // Mark loading complete
-  self->backgroundLoading = false;
+  self->backgroundLoading.store(false, std::memory_order_release);
   self->loadProgressPercent = success ? 100 : 0;
   
   Serial.printf("[Camera] Background load task complete: %s (%d cameras)\n",
@@ -1089,13 +1094,13 @@ bool CameraManager::startBackgroundLoad() {
     return false;
   }
   
-  if (backgroundLoading) {
+  if (backgroundLoading.load(std::memory_order_acquire)) {
     Serial.println("[Camera] Background load already in progress");
     return false;
   }
   
   // Mark loading as in progress
-  backgroundLoading = true;
+  backgroundLoading.store(true, std::memory_order_release);
   loadProgressPercent = 0;
   loadTaskShouldExit = false;
   
@@ -1113,7 +1118,7 @@ bool CameraManager::startBackgroundLoad() {
   
   if (result != pdPASS) {
     Serial.println("[Camera] Failed to create background load task");
-    backgroundLoading = false;
+    backgroundLoading.store(false, std::memory_order_release);
     return false;
   }
   
@@ -1123,7 +1128,7 @@ bool CameraManager::startBackgroundLoad() {
 
 // Stop background loading (if in progress)
 void CameraManager::stopBackgroundLoad() {
-  if (!backgroundLoading || !loadTaskHandle) {
+  if (!backgroundLoading.load(std::memory_order_acquire) || !loadTaskHandle) {
     return;
   }
   
@@ -1142,7 +1147,7 @@ void CameraManager::stopBackgroundLoad() {
     Serial.println("[Camera] Background load task forcefully terminated");
   }
   
-  backgroundLoading = false;
+  backgroundLoading.store(false, std::memory_order_release);
 }
 
 // Incremental database load with yielding - called from background task

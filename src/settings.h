@@ -325,6 +325,12 @@ struct V1Settings {
         colorBar4(0xFFE0),       // Yellow
         colorBar5(0xF800),       // Red
         colorBar6(0xF800),       // Red (strongest)
+        colorMuted(0x3186),      // Dark grey (muted alerts) — matches NVS default
+        colorPersisted(0x18C3),  // Darker grey (persisted alerts) — matches NVS default
+        colorVolumeMain(0xF800), // Red (volume bar) — matches NVS default
+        colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
+        colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
+        colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorStatusGps(0x07E0),  // Green (GPS good)
         colorStatusGpsWarn(0xFD20), // Orange (GPS weak)
         colorStatusCam(0x07FF),  // Cyan (camera DB)
@@ -333,8 +339,12 @@ struct V1Settings {
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
         hideBatteryIcon(false),  // Show battery icon by default
+        showBatteryPercent(false), // Hide battery % text by default — matches NVS default
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
+        hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
+        enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
+        enableDebugLogging(false),  // Debug logging off by default — matches NVS default
         logAlerts(true),                 // Alert logging on by default
         logWifi(false),                  // WiFi logging off by default (matches NVS)
         logBle(false),                   // BLE logging off by default

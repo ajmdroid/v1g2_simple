@@ -1841,12 +1841,10 @@ void V1BLEClient::startOBDScan() {
         // 30-second scan for OBD devices - duration is in MILLISECONDS
         pScan->start(30000, false, false);
     } else if (pScan && pScan->isScanning()) {
-        Serial.println("[BLE] Scan already in progress - extending for OBD");
-        // Stop and restart with longer duration for OBD scan
-        pScan->stop();
-        delay(100);  // Brief delay for BLE stack
-        pScan->clearResults();
-        pScan->start(30000, false, false);
+        // Scan already running — let it continue, OBD devices will still be found.
+        // Don't stop+restart: that requires a delay() which blocks the main loop
+        // while V1 is connected and streaming alerts.
+        Serial.println("[BLE] Scan already in progress - OBD devices will be found in current scan");
     }
 }
 
