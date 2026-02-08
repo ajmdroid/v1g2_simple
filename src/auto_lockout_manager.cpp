@@ -1409,14 +1409,17 @@ void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
   // Save lockouts if promote/demote dirtied them (deferred from hot path)
   if (lockoutsDirty) {
     lockoutsDirty = false;
-    lockoutSavePending.store(true, std::memory_order_release);
-    needsWake = true;
+    // Only notify on false→true transition (skip if already pending)
+    if (!lockoutSavePending.exchange(true, std::memory_order_acq_rel)) {
+      needsWake = true;
+    }
   }
 
   if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
-    snapshotPending.store(true, std::memory_order_release);
+    if (!snapshotPending.exchange(true, std::memory_order_acq_rel)) {
+      needsWake = true;
+    }
     lastSnapshotMs = nowMs;
-    needsWake = true;
   }
 
   if (needsWake) {
