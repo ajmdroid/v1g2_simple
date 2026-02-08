@@ -233,7 +233,7 @@ settingsManager.setProxyName(proxyName);
 
 **Symptom**: New setting reverts after reboot.
 
-**Root Cause**: Forgot to update one of the 4 required places.
+**Root Cause**: Forgot to update one of the 5 required places.
 
 **Checklist for new settings**:
 1. [ ] Add to `V1Settings` struct in `settings.h`
@@ -480,4 +480,4 @@ Quick reference:
 
 ---
 
-*Last updated: January 2025*
+*Last updated: February 2026*

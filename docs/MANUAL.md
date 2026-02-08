@@ -227,7 +227,7 @@ V1 Gen2 (BLE)
 │                      (BLE task)                         │
 └───────────┬─────────────────────────────┬───────────────┘
             │                             │
-            │ IMMEDIATE                   │ Queue (72 slots)
+            │ IMMEDIATE                   │ Queue (48 slots)
             │ (zero latency)              │ (SPI-safe path)
             ▼                             ▼
      ┌─────────────┐               ┌─────────────┐
@@ -256,7 +256,7 @@ V1 Gen2 (BLE)
 |---------|-------------|---------------------|
 | **Main loop** | Arduino `loop()` at ~200Hz | Display SPI, touch I2C, WiFi |
 | **BLE task** | NimBLE internal task | Notifications, connection events, **proxy forwarding** |
-| **FreeRTOS queue** | `bleDataQueue` (72 × 142 bytes) | Decouples BLE callbacks from SPI (display only) |
+| **FreeRTOS queue** | `bleDataQueue` (48 × ~268 bytes) | Decouples BLE callbacks from SPI (display only) |
 
 **Key constraints:**
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
@@ -269,12 +269,11 @@ V1 Gen2 (BLE)
 | Operation | Timing | Source |
 |-----------|--------|--------|
 | Display draw minimum interval | 30ms (~33fps max) | `DISPLAY_DRAW_MIN_MS` in display_pipeline_module.h |
-| Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h:64 |
-| Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h:65 |
+| Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h |
+| Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h |
 | Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
-| Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in main.cpp:167 |
-| Local mute timeout | 2000ms | `LOCAL_MUTE_TIMEOUT_MS` in main.cpp:155 |
+| Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in tap_gesture_module.h |
 
 ---
 
@@ -284,7 +283,7 @@ V1 Gen2 (BLE)
 
 ```
 1. delay(100)                          // USB stabilize
-2. Create bleDataQueue (72 slots)      // FreeRTOS queue
+2. Create bleDataQueue (48 slots)      // FreeRTOS queue (via BleQueueModule)
 3. Serial.begin(115200)
 4. batteryManager.begin()              // CRITICAL: Latch power early
 5. display.begin()                     // QSPI init, canvas allocation
@@ -348,24 +347,39 @@ The firmware version (e.g., "v3.0.7") is displayed on the boot splash screen and
 
 ```
 ┌─────────────┐
-│DISCONNECTED │◀────────────────────────────┐
-└──────┬──────┘                             │
-       │ startScanning()                    │ onDisconnect()
-       ▼                                    │
-┌─────────────┐                             │
-│  SCANNING   │                             │
-└──────┬──────┘                             │
-       │ V1 found (name starts "V1G"/"V1-") │
-       ▼                                    │
-┌─────────────┐                             │
-│SCAN_STOPPING│ (300ms settle)              │
-└──────┬──────┘                             │
-       │ scan stopped                       │
-       ▼                                    │
-┌─────────────┐   fail (3 attempts)   ┌─────┴─────┐
-│ CONNECTING  │──────────────────────▶│  BACKOFF  │
-└──────┬──────┘                       └───────────┘
-       │ success                       (exponential)
+│DISCONNECTED │◀────────────────────────────────────┐
+└──────┬──────┘                                     │
+       │ startScanning()                            │ onDisconnect()
+       ▼                                            │
+┌─────────────┐                                     │
+│  SCANNING   │                                     │
+└──────┬──────┘                                     │
+       │ V1 found (name starts "V1G"/"V1-")         │
+       ▼                                            │
+┌─────────────┐                                     │
+│SCAN_STOPPING│ (100ms settle, 750ms cold boot)     │
+└──────┬──────┘                                     │
+       │ scan stopped                               │
+       ▼                                            │
+┌─────────────┐   fail (5 attempts)   ┌─────────────┤
+│ CONNECTING  │─────────────────────▶│  BACKOFF    │
+└──────┬──────┘                       └─────────────┘
+       │ async connect OK              (exponential)
+       ▼
+┌────────────────┐
+│CONNECTING_WAIT │ (poll for async callback)
+└──────┬─────────┘
+       │ onConnect()
+       ▼
+┌─────────────┐
+│ DISCOVERING │ (GATT discovery in background task)
+└──────┬──────┘
+       │ discovery done
+       ▼
+┌─────────────┐      ┌────────────────┐
+│ SUBSCRIBING │◀────▶│SUBSCRIBE_YIELD │ (5ms yield between steps)
+└──────┬──────┘      └────────────────┘
+       │ all CCCDs written
        ▼
 ┌─────────────┐
 │  CONNECTED  │
@@ -429,7 +443,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 
 ### Queue / Buffering
 
-- **Queue:** 72-slot FreeRTOS queue, each slot 260 bytes (display path only)
+- **Queue:** 48-slot FreeRTOS queue, each slot ~268 bytes (display path only)
 - **Proxy path:** Bypasses queue entirely - `forwardToProxyImmediate()` sends directly from BLE callback
 - **Overflow handling:** Drop oldest packet if full (only affects display, not proxy)
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
@@ -455,7 +469,7 @@ When `proxyBLE=true`:
 // NimBLE connection params: min/max interval, latency, timeout
 // Optimized for low-latency proxy performance
 pClient->setConnectionParams(12, 24, 0, 400);  // 15-30ms interval, 0 latency, 4s timeout
-pClient->setConnectTimeout(15);  // 15 second connect timeout (20s for initial connect)
+pClient->setConnectTimeout(15);  // 15 second connect timeout (20s for first connect after boot)
 
 // MTU set to maximum for BLE 5.x
 NimBLEDevice::setMTU(517);  // 512 payload + 5 header
@@ -467,8 +481,8 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 
 ### Backoff on Failure
 
-- Base: 500ms
-- Max: 10000ms
+- Base: 200ms
+- Max: 1500ms
 - Formula: `BACKOFF_BASE_MS * (1 << min(failures-1, 4))`
 - Hard reset after 5 consecutive failures
 
@@ -574,8 +588,10 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 
 | Style | Bogey Counter | Frequency | Description |
 |-------|---------------|-----------|-------------|
-| Classic | 7-segment | 7-segment | Full retro LED-style with ghost segments |
-| Modern | 7-segment | Montserrat Bold | Hybrid: LED bogey counter, antialiased frequency |
+| Classic (0) | 7-segment | 7-segment | Full retro LED-style with ghost segments |
+| Modern (1) | 7-segment | Montserrat Bold | Hybrid: LED bogey counter, antialiased frequency |
+| Hemi (2) | 7-segment | Hemi Head | Retro speedometer style |
+| Serpentine (3) | 7-segment | Serpentine | JB's favorite |
 
 **Note:** Both styles use 7-segment for the bogey counter to ensure proper display of the laser '=' flag and all numeric symbols. The Modern style applies Montserrat Bold only to the frequency display.
 
@@ -1750,7 +1766,7 @@ Based on code analysis:
 **Fragile areas requiring care:**
 
 1. **BLE Queue Overflow:** If BLE data arrives faster than display processing, oldest packets dropped.
-   - Location: [src/main.cpp](src/main.cpp#L48-L55) - `bleDataQueue` 72 slots
+   - Location: [src/modules/ble/ble_queue_module.h](src/modules/ble/ble_queue_module.h) - `bleDataQueue` 48 slots
    - Impact: Only affects local display; proxy forwarding is unaffected (immediate path)
    - Mitigation: Throttle display updates, process queue quickly
 

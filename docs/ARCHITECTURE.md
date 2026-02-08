@@ -142,10 +142,10 @@ We're taking a more incremental approach than originally planned - extracting st
 
 ### Current Approach: Incremental Module Migration
 
-**Structure (January 28, 2026):**
+**Structure (February 2026):**
 ```
 src/
-├── main.cpp                         (~615 lines - orchestration only)
+├── main.cpp                         (~986 lines - orchestration only)
 ├── modules/
 │   ├── alert_persistence/           Alert on-screen persistence + state resets
 │   │   ├── alert_persistence_module.h
@@ -156,22 +156,22 @@ src/
 │   ├── ble/                         BLE data queue + connection state
 │   │   ├── ble_queue_module.h/cpp
 │   │   └── connection_state_module.h/cpp
-│   ├── camera/                      Background camera DB loading
-│   │   ├── camera_load_coordinator.h
-│   │   └── camera_load_coordinator.cpp
+│   ├── camera/                      Camera alert module + background DB loading
+│   │   ├── camera_alert_module.h/cpp
+│   │   ├── camera_load_coordinator_module.h
+│   │   └── camera_load_coordinator_module.cpp
 │   ├── display/                     Display pipeline + preview + restore
 │   │   ├── display_pipeline_module.h/cpp
 │   │   ├── display_preview_module.h/cpp
 │   │   └── display_restore_module.h/cpp
 │   ├── lockout/                     Auto-lockout maintenance
-│   │   ├── auto_lockout_maintenance.h
-│   │   └── auto_lockout_maintenance.cpp
+│   │   ├── auto_lockout_maintenance_module.h
+│   │   └── auto_lockout_maintenance_module.cpp
 │   ├── obd/                         OBD auto-connect state machine
-│   │   ├── obd_auto_connector.h
-│   │   └── obd_auto_connector.cpp
-│   ├── perf/                        Performance metrics reporter
-│   │   ├── perf_reporter_module.h
-│   │   └── perf_reporter_module.cpp
+│   │   ├── obd_auto_connector_module.h
+│   │   └── obd_auto_connector_module.cpp
+│   ├── perf/                        Debug macros
+│   │   └── debug_macros.h
 │   ├── power/                       Battery/power management
 │   │   ├── power_module.h
 │   │   └── power_module.cpp
@@ -188,9 +188,9 @@ src/
 │   │   ├── volume_fade_module.h
 │   │   └── volume_fade_module.cpp
 │   └── wifi/                        WiFi orchestration
-│       ├── wifi_orchestrator.h
-│       └── wifi_orchestrator.cpp
-└── [core services unchanged: ble_client, display, settings, etc.]
+│       ├── wifi_orchestrator_module.h
+│       └── wifi_orchestrator_module.cpp
+└── [core services: ble_client, display, settings, etc.]
 ```
 
 **Module Responsibilities:**
@@ -231,9 +231,9 @@ See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
 - Alert state scattered across 15+ static variables
 - Change risk: HIGH (adjacent code interactions)
 
-### After (January 28, 2026):
-- main.cpp: ~615 lines (orchestration only)
-- 14 focused modules in src/modules/
+### After (February 2026):
+- main.cpp: ~986 lines (orchestration only)
+- 15 module directories in src/modules/
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 

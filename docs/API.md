@@ -90,23 +90,23 @@ Get all device settings.
   "proxy_name": "",
   "displayStyle": 0,
   "autoPowerOffMinutes": 0,
-  "gpsEnabled": true,
-  "obdEnabled": true,
+  "gpsEnabled": false,
+  "obdEnabled": false,
   "lockoutEnabled": true,
   "lockoutKaProtection": true,
-  "lockoutDirectionalUnlearn": false,
-  "lockoutFreqToleranceMHz": 5,
-  "lockoutLearnCount": 2,
-  "lockoutUnlearnCount": 3,
-  "lockoutManualDeleteCount": 3,
-  "lockoutLearnIntervalHours": 24,
-  "lockoutUnlearnIntervalHours": 168,
-  "lockoutMaxSignalStrength": 6,
-  "lockoutMaxDistanceM": 50,
-  "cameraAlertsEnabled": false,
+  "lockoutDirectionalUnlearn": true,
+  "lockoutFreqToleranceMHz": 8,
+  "lockoutLearnCount": 3,
+  "lockoutUnlearnCount": 5,
+  "lockoutManualDeleteCount": 25,
+  "lockoutLearnIntervalHours": 4,
+  "lockoutUnlearnIntervalHours": 4,
+  "lockoutMaxSignalStrength": 0,
+  "lockoutMaxDistanceM": 600,
+  "cameraAlertsEnabled": true,
   "cameraAudioEnabled": true,
   "cameraAlertDistanceM": 500,
-  "enableWifiAtBoot": true,
+  "enableWifiAtBoot": false,
   "enableDebugLogging": false,
   "logAlerts": false,
   "logWifi": false,
@@ -122,7 +122,7 @@ Get all device settings.
 | `isDefaultPassword` | boolean | - | `true` if using factory default password |
 | `proxy_ble` | boolean | - | Enable BLE proxy mode |
 | `proxy_name` | string | 0-32 chars | Custom device name for proxy |
-| `displayStyle` | int | 0-4 | Display theme (0=Classic) |
+| `displayStyle` | int | 0-3 | Display theme (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine) |
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `lockoutEnabled` | boolean | - | Enable auto-lockout |

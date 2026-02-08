@@ -26,9 +26,8 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Power cycle the device** - Press and hold power button for 5 seconds
-2. **Check WiFi at Boot setting** - WiFi may be disabled:
-   - Connect via USB serial
-   - Or wait 30 seconds, device enables WiFi automatically after timeout
+2. **WiFi is off by default** - Long-press BOOT button (~4s) to toggle WiFi AP on/off
+   - Or enable `enableWifiAtBoot` in settings via USB serial
 3. **Move closer** - ESP32 WiFi range is limited to ~30 feet
 4. **Check for interference** - Other 2.4GHz devices may interfere
 
@@ -84,7 +83,7 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Reset colors**: Settings → Display Colors → Reset to Default
-2. **Check display style**: Try different display styles (0-4)
+2. **Check display style**: Try different display styles (0-3)
 3. **Clear preview**: If testing colors, send clear preview command
 
 ### Touch not responding
