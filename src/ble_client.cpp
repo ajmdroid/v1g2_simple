@@ -58,11 +58,25 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
 }
 
 namespace {
+// RED ZONE SAFE: All semaphore takes use bounded timeouts, never portMAX_DELAY
+// HOT paths use timeout 0 (try-lock), COLD paths use 20ms max
 class SemaphoreGuard {
 public:
-    explicit SemaphoreGuard(SemaphoreHandle_t sem) : sem_(sem), locked_(false) {
+    // timeout: 0 = try-lock (non-blocking), >0 = bounded wait in ms
+    // Default 20ms for COLD paths - never use portMAX_DELAY
+    // Increments appropriate counter on failure for monitoring
+    explicit SemaphoreGuard(SemaphoreHandle_t sem, TickType_t timeout = pdMS_TO_TICKS(20)) 
+        : sem_(sem), locked_(false) {
         if (sem_) {
-            locked_ = xSemaphoreTake(sem_, portMAX_DELAY) == pdTRUE;
+            locked_ = xSemaphoreTake(sem_, timeout) == pdTRUE;
+            if (!locked_) {
+                // Track contention: try-lock skip vs bounded timeout
+                if (timeout == 0) {
+                    PERF_INC(bleMutexSkip);
+                } else {
+                    PERF_INC(bleMutexTimeout);
+                }
+            }
         }
     }
     ~SemaphoreGuard() {
@@ -98,9 +112,12 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
 constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
 constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
-constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF to avoid callback blocking)
+constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF - RED ZONE VIOLATION if enabled!)
 
 // BLE logging macros - log to Serial AND debugLogger when BLE category enabled
+// WARNING: These macros call debugLogger which is NOT red-zone safe.
+// Only use from main loop context (process(), command handlers).
+// NEVER use directly in onConnect/onDisconnect/onNotify callbacks.
 #define BLE_LOGF(...) do { \
     if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
     if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
@@ -1240,56 +1257,44 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
 }
 
 bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
+    return sendCommandWithResult(data, length) == SendResult::SENT;
+}
+
+SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length) {
+    // Hard failures first - these should not be retried
     if (!isConnected() || !pCommandChar) {
-        //Serial.println("sendCommand: not connected or command characteristic missing");
-        return false;
+        return SendResult::FAILED;
+    }
+    if (!data || length == 0 || length > 64) {
+        return SendResult::FAILED;
     }
 
-    // Light pacing between command writes to avoid bursty air-time spikes (profile/settings push)
+    // Light pacing: non-blocking timestamp gate
+    // Return NOT_YET if too soon - caller retains packet for retry
     static unsigned long lastCommandMs = 0;
     unsigned long nowMs = millis();
     if (lastCommandMs != 0 && nowMs - lastCommandMs < 5) {
-        vTaskDelay(pdMS_TO_TICKS(5 - (nowMs - lastCommandMs)));
+        PERF_INC(cmdPaceNotYet);
+        return SendResult::NOT_YET;
     }
     lastCommandMs = millis();
     
-    // Validate inputs
-    if (!data) {
-        //Serial.println("sendCommand: ERROR - null data pointer");
-        return false;
-    }
-    if (length == 0) {
-        //Serial.println("sendCommand: ERROR - zero length");
-        return false;
-    }
-    if (length > 64) {  // Reasonable maximum for BLE packets
-        //Serial.printf("sendCommand: ERROR - length %u exceeds maximum (64)\n", (unsigned)length);
-        return false;
-    }
-    
-    // Don't print during command forwarding - causes crashes in callback context
-    // Serial.printf("sendCommand: sending %u bytes: ", (unsigned)length);
-    // for (size_t i = 0; i < length; i++) {
-    //     Serial.printf("%02X ", data[i]);
-    // }
-    // Serial.println();
-    
     bool ok = false;
     if (pCommandChar->canWrite()) {
-        // Use write-with-response when supported
         ok = pCommandChar->writeValue(data, length, true);
     } else if (pCommandChar->canWriteNoResponse()) {
-        // Use write-without-response when that's the only option
         ok = pCommandChar->writeValue(data, length, false);
     } else {
-        return false;
+        return SendResult::FAILED;  // Characteristic doesn't support write
     }
     
-    // Only log failure to keep output clean
     if (!ok) {
-        Serial.println("sendCommand: write failed");
+        // Write failed after isConnected() check - likely transient (BLE busy/queue full)
+        // Return NOT_YET to retry; if connection truly dead, next isConnected() will catch it
+        PERF_INC(cmdBleBusy);
+        return SendResult::NOT_YET;
     }
-    return ok;
+    return SendResult::SENT;
 }
 
 bool V1BLEClient::requestAlertData() {
@@ -1680,7 +1685,8 @@ void V1BLEClient::process() {
             // Check if scan found a device (shouldConnect flag set by callback)
             bool wantConnect = false;
             {
-                SemaphoreGuard lock(bleMutex);
+                // HOT PATH: try-lock only, skip if busy
+                SemaphoreGuard lock(bleMutex, 0);
                 if (lock.locked()) {
                     wantConnect = shouldConnect;
                 }
@@ -1733,7 +1739,8 @@ void V1BLEClient::process() {
                 // Ready to connect
                 bool wantConnect = false;
                 {
-                    SemaphoreGuard lock(bleMutex);
+                    // HOT PATH: try-lock only, skip if busy
+                    SemaphoreGuard lock(bleMutex, 0);
                     if (lock.locked()) {
                         wantConnect = shouldConnect;
                         shouldConnect = false;  // Clear flag
@@ -2232,8 +2239,11 @@ int V1BLEClient::processProxyQueue() {
         return 0;
     }
     
-    // Protect queue operations from concurrent access (BLE callback vs main loop)
-    SemaphoreGuard lock(bleNotifyMutex);
+    // HOT PATH: try-lock only, skip if busy (another iteration will process)
+    SemaphoreGuard lock(bleNotifyMutex, 0);
+    if (!lock.locked()) {
+        return 0;  // Skip this cycle, try again next loop (counter incremented in SemaphoreGuard)
+    }
     
     int sent = 0;
     
@@ -2302,13 +2312,24 @@ int V1BLEClient::processPhoneCommandQueue() {
         return 0;
     }
 
-    // Dequeue one packet under lock, then send outside lock to minimize mutex hold time
-    // This prevents blocking forwardToProxyImmediate() during BLE writes
+    // Static pending packet: holds command when pacing/lock says "not yet"
+    // Ensures no command loss from dequeue-before-send pattern
+    static ProxyPacket pendingPkt;
+    static uint16_t pendingCharUUID = 0;
+    static bool hasPending = false;
+
     ProxyPacket pktCopy;
     uint16_t charUUID = 0;
     bool hasPacket = false;
 
-    if (phoneCmdMutex && xSemaphoreTake(phoneCmdMutex, 0) == pdTRUE) {
+    // Try pending packet first (from previous pacing/lock deferral)
+    if (hasPending) {
+        memcpy(pktCopy.data, pendingPkt.data, pendingPkt.length);
+        pktCopy.length = pendingPkt.length;
+        charUUID = pendingCharUUID;
+        hasPacket = true;
+    } else if (phoneCmdMutex && xSemaphoreTake(phoneCmdMutex, 0) == pdTRUE) {
+        // Dequeue one packet under lock
         if (phone2v1QueueCount > 0) {
             ProxyPacket& pkt = phone2v1Queue[phone2v1QueueTail];
             memcpy(pktCopy.data, pkt.data, pkt.length);
@@ -2326,21 +2347,60 @@ int V1BLEClient::processPhoneCommandQueue() {
     }
 
     // Send outside queue lock - BLE write can take time
-    // Serialize writes with bleNotifyMutex to avoid concurrent notify/write
+    // HOT PATH: try-lock only, skip if busy
+    SendResult result = SendResult::FAILED;
     if (bleNotifyMutex) {
-        SemaphoreGuard lock(bleNotifyMutex);
+        SemaphoreGuard lock(bleNotifyMutex, 0);
+        if (!lock.locked()) {
+            // Mutex busy - store in pending for next iteration (NOT_YET semantics)
+            // (counter incremented in SemaphoreGuard)
+            memcpy(pendingPkt.data, pktCopy.data, pktCopy.length);
+            pendingPkt.length = pktCopy.length;
+            pendingCharUUID = charUUID;
+            hasPending = true;
+            return 0;
+        }
         if (charUUID == 0xB8D2 && pCommandCharLong) {
-            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
+            // Long characteristic write - same transient failure semantics as sendCommand
+            if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
+                result = SendResult::SENT;
+            } else {
+                PERF_INC(cmdBleBusy);
+                result = SendResult::NOT_YET;  // Transient - retry
+            }
         } else {
-            sendCommand(pktCopy.data, pktCopy.length);
+            result = sendCommandWithResult(pktCopy.data, pktCopy.length);
         }
     } else {
         if (charUUID == 0xB8D2 && pCommandCharLong) {
-            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
+            if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
+                result = SendResult::SENT;
+            } else {
+                PERF_INC(cmdBleBusy);
+                result = SendResult::NOT_YET;  // Transient - retry
+            }
         } else {
-            sendCommand(pktCopy.data, pktCopy.length);
+            result = sendCommandWithResult(pktCopy.data, pktCopy.length);
         }
     }
 
-    return 1;
+    switch (result) {
+        case SendResult::SENT:
+            // Successfully sent - clear pending state
+            hasPending = false;
+            return 1;
+        case SendResult::NOT_YET:
+            // Pacing: store in pending for next iteration
+            memcpy(pendingPkt.data, pktCopy.data, pktCopy.length);
+            pendingPkt.length = pktCopy.length;
+            pendingCharUUID = charUUID;
+            hasPending = true;
+            return 0;
+        case SendResult::FAILED:
+        default:
+            // Hard failure: drop packet, clear pending, count error
+            hasPending = false;
+            phoneCmdDropsBleFail++;  // Count as BLE failure (not connected, char null)
+            return 0;
+    }
 }

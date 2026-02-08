@@ -3,6 +3,7 @@
  */
 
 #include "perf_metrics.h"
+#include "debug_logger.h"  // For drop counter access (never log via debug logger)
 #include "debug_logger.h"
 #include "settings.h"
 #include <ArduinoJson.h>
@@ -347,6 +348,15 @@ void perfMetricsPrint() {
     Serial.printf("Connection: reconnects=%lu disconnects=%lu\n",
         (unsigned long)perfCounters.reconnects.load(),
         (unsigned long)perfCounters.disconnects.load());
+    Serial.printf("Mutex: skip=%lu timeout=%lu paceNotYet=%lu bleBusy=%lu\n",
+        (unsigned long)perfCounters.bleMutexSkip.load(),
+        (unsigned long)perfCounters.bleMutexTimeout.load(),
+        (unsigned long)perfCounters.cmdPaceNotYet.load(),
+        (unsigned long)perfCounters.cmdBleBusy.load());
+    Serial.printf("DebugLog: rateDrops=%lu bufDrops=%lu queueDrops=%lu\n",
+        (unsigned long)debugLogger.getRateLimitDrops(),
+        (unsigned long)debugLogger.getBufferFullDrops(),
+        (unsigned long)debugLogger.getDropCount());
     Serial.printf("Latency (BLE->flush): min=%luus avg=%luus max=%luus samples=%lu\n",
         (unsigned long)minUs,
         (unsigned long)avgUs,

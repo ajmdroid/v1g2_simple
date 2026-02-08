@@ -1,10 +1,31 @@
 /**
- * Debug Logger - optional SD log sink.
- * Writes timestamped JSON lines when enabled in settings.
- * Uses buffered writes (4KB buffer, 1s flush) to minimize SD latency impact.
+ * Debug Logger - optional SD log sink (Channel B: diagnostic logs)
  * 
- * Async mode (default when SD available): Uses FreeRTOS task on Core 0
- * to perform SD writes off the main loop, preventing display/alert latency.
+ * TWO-CHANNEL LOGGING ARCHITECTURE:
+ * - Channel A (perf_metrics.h): Always-on numeric counters. RED ZONE SAFE.
+ *   Use PERF_INC() / PERF_MAX() macros only. No strings, no heap, no locks.
+ * 
+ * - Channel B (this file): Human-readable diagnostic logs. SAFE ZONE ONLY.
+ *   Never call from BLE callbacks, display render, or frequent loops.
+ *   Rate-limited (100 lines/sec), can be dropped, disabled by default.
+ * 
+ * RED ZONE RULES:
+ * - In BLE notify callbacks, display flush, packet parsing: ONLY perf counters
+ * - debugLogger.log*() calls are NOT safe from red zones (even if no I/O)
+ * - Violations cause jitter, stalls, or WDT resets
+ * 
+ * SAFE ZONE for debugLogger:
+ * - Main loop (after display update)
+ * - WiFi handlers (non-time-critical)
+ * - Settings changes
+ * - Connection state transitions (once per event, not per packet)
+ * 
+ * Implementation:
+ * - Writes timestamped JSON lines when enabled in settings
+ * - Uses 4KB ring buffer, never does sync I/O from log() call
+ * - Flushes only from update() which runs in safe zone
+ * - Rate-limited to prevent log storms
+ * - Async mode available: FreeRTOS task on Core 0 for background writes
  * 
  * Log format: NDJSON (newline-delimited JSON) for ELK/Elasticsearch import
  */
@@ -25,9 +46,16 @@ inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
 inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
 
 // Buffer settings for efficient SD writes
+// Max formatted line: 512 bytes (formatJsonLine uses char[512])
+// Lines exceeding this are truncated before buffering
+inline constexpr size_t DEBUG_LOG_MAX_LINE_SIZE = 512;      // Max single log line (enforced by format buffers)
 inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
 inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
 inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
+
+// Rate limiting to prevent log storms (safe zone enforcement)
+inline constexpr size_t DEBUG_LOG_RATE_LIMIT = 100;         // Max lines per second
+inline constexpr unsigned long DEBUG_LOG_RATE_WINDOW_MS = 1000;  // Rate limit window
 
 // Async write task settings (Core 0, low priority)
 // Message size kept small - each queued message is ~512 bytes, not 4KB
@@ -127,6 +155,8 @@ public:
     void disableAsyncMode();  // Stop task, switch to sync writes
     bool isAsyncMode() const { return asyncMode; }
     uint32_t getDropCount() const { return logDropCount.load(std::memory_order_relaxed); }  // Messages dropped when queue full
+    uint32_t getRateLimitDrops() const { return logRateLimitDrops.load(std::memory_order_relaxed); }  // Messages dropped due to rate limit
+    uint32_t getBufferFullDrops() const { return logBufferFullDrops.load(std::memory_order_relaxed); }  // Messages dropped due to buffer full
     uint32_t getQueueHighWater() const { return logQueueHW.load(std::memory_order_relaxed); }  // Max queue depth observed
     
     // WiFi transition deferral - defers SD writes during WiFi reconnection
@@ -185,7 +215,13 @@ private:
     
     // Metrics - atomic for cross-core safety (Core 1 writes, Core 0 reader task)
     std::atomic<uint32_t> logDropCount{0};    // Messages dropped (queue full or heap exhausted)
+    std::atomic<uint32_t> logRateLimitDrops{0}; // Messages dropped due to rate limiting
+    std::atomic<uint32_t> logBufferFullDrops{0}; // Messages dropped due to buffer full
     std::atomic<uint32_t> logQueueHW{0};      // Queue high-water mark (max depth observed)
+    
+    // Rate limiting state
+    uint32_t rateWindowLineCount = 0;         // Lines logged in current window
+    unsigned long rateWindowStartMs = 0;      // Start of current rate window
     
     void flushBufferSync();                          // Synchronous write (direct or from task)
     void flushBufferAsync();                         // Queue buffer for async write

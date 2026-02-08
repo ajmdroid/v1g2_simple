@@ -57,6 +57,13 @@ inline const char* bleStateToString(BLEState state) {
     }
 }
 
+// sendCommand result codes for proper retry semantics
+enum class SendResult {
+    SENT,       // Command successfully sent
+    NOT_YET,    // Pacing: too soon, caller should retry
+    FAILED      // Hard failure: drop and count
+};
+
 // Proxy metrics for monitoring proxy health
 struct ProxyMetrics {
     uint32_t sendCount = 0;          // Successful notify sends
@@ -118,6 +125,9 @@ public:
     
     // Send command to V1 (e.g., request alert data)
     bool sendCommand(const uint8_t* data, size_t length);
+    
+    // Send command with detailed result for retry logic
+    SendResult sendCommandWithResult(const uint8_t* data, size_t length);
     
     // Request V1 to start sending alert data
     bool requestAlertData();
@@ -194,7 +204,8 @@ public:
 
     // Phone->V1 command drop counters (observability)
     uint32_t getPhoneCmdDropsOverflow() const { return phoneCmdDropsOverflow; }
-    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }
+    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }  // Malformed packets
+    uint32_t getPhoneCmdDropsBleFail() const { return phoneCmdDropsBleFail; }  // Hard BLE failures
     uint32_t getPhoneCmdDropsLockBusy() const { return phoneCmdDropsLockBusy; }
     
     // Get proxy metrics (for instrumentation)
@@ -295,7 +306,8 @@ private:
     volatile size_t phone2v1QueueTail = 0;
     volatile size_t phone2v1QueueCount = 0;
     volatile uint32_t phoneCmdDropsOverflow = 0;
-    volatile uint32_t phoneCmdDropsInvalid = 0;
+    volatile uint32_t phoneCmdDropsInvalid = 0;   // Malformed packet (bad length, null data)
+    volatile uint32_t phoneCmdDropsBleFail = 0;   // Hard BLE failure (not connected, char null)
     volatile uint32_t phoneCmdDropsLockBusy = 0;
     volatile size_t proxyQueueHead = 0;  // Next write position
     volatile size_t proxyQueueTail = 0;  // Next read position

@@ -1,14 +1,24 @@
 /**
- * Low-Overhead Performance Metrics
+ * Low-Overhead Performance Metrics (Channel A: flight recorder)
  * 
- * Embedded-friendly observability for BLE→display latency tracking.
+ * TWO-CHANNEL LOGGING ARCHITECTURE:
+ * - Channel A (this file): Always-on numeric counters. RED ZONE SAFE.
+ *   Counters only, no strings, no heap, no locks, no I/O.
+ *   Emitted periodically from safe zone (once per second max).
+ * 
+ * - Channel B (debug_logger.h): Human-readable diagnostic logs. SAFE ZONE ONLY.
+ *   Rate-limited, can be dropped, never called from red zones.
+ * 
+ * RED ZONE SAFE MACROS (use these everywhere):
+ *   PERF_INC(counter)        - Atomic increment, zero overhead
+ *   PERF_MAX(counter, value) - Atomic max update, zero overhead
  * 
  * Design principles:
  * - No heap allocations
  * - No logging in hot paths
- * - Counters/timestamps stored in RAM
+ * - Counters/timestamps stored in RAM (std::atomic)
  * - Sampled timing (1/N packets) to reduce overhead
- * - Compile-time gating via PERF_METRICS
+ * - Compile-time gating via PERF_METRICS for extended stats
  * 
  * Usage:
  * - PERF_METRICS=0: Release builds, only essential counters
@@ -84,6 +94,12 @@ struct PerfCounters {
     std::atomic<uint32_t> cameraCacheRefreshes{0}; // Regional cache builds/refeshes
     std::atomic<uint32_t> cameraBudgetExits{0};   // findNearby() early exits due to time budget
     
+    // Mutex contention monitoring (should stay low/zero in normal operation)
+    std::atomic<uint32_t> bleMutexSkip{0};        // HOT path try-lock skips
+    std::atomic<uint32_t> bleMutexTimeout{0};     // COLD path timeout failures
+    std::atomic<uint32_t> cmdPaceNotYet{0};       // sendCommand pacing deferrals
+    std::atomic<uint32_t> cmdBleBusy{0};          // sendCommand BLE write failed (transient)
+    
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
     std::atomic<uint32_t> lastFlushUs{0};      // Timestamp of last flush
@@ -106,6 +122,10 @@ struct PerfCounters {
         cameraBgLoads.store(0, std::memory_order_relaxed);
         cameraCacheRefreshes.store(0, std::memory_order_relaxed);
         cameraBudgetExits.store(0, std::memory_order_relaxed);
+        bleMutexSkip.store(0, std::memory_order_relaxed);
+        bleMutexTimeout.store(0, std::memory_order_relaxed);
+        cmdPaceNotYet.store(0, std::memory_order_relaxed);
+        cmdBleBusy.store(0, std::memory_order_relaxed);
     }
 };
 

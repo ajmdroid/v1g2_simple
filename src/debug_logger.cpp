@@ -33,6 +33,9 @@ void DebugLogger::setEnabled(bool enabledFlag) {
         lastFlushMs = millis();
         // NOTE: Async mode must be enabled explicitly via enableAsyncMode()
         // This allows caller to control when the background task starts
+        // WARNING: Sync mode can cause 10-50ms stalls during SD writes.
+        // For production use, always call enableAsyncMode() after setEnabled(true).
+        Serial.println("[Logger] Debug logging enabled (sync mode - call enableAsyncMode() for production)");
     } else if (!enabled && wasEnabled) {
         // Disable async mode first (drains queue)
         disableAsyncMode();
@@ -107,48 +110,54 @@ void DebugLogger::rotateIfNeededUnlocked(fs::FS* fs) {
     }
 }
 
+// RED ZONE SAFE: No heap, no locks, no I/O at call site.
+// - Rate limiting: bounded work (O(1) check)
+// - Truncation: bounded copy (O(lineLen) with 512-byte cap from formatJsonLine)
+// - Drop-on-full: no flush, just increment counter
+// - Single-producer: only call from main loop context (Core 1)
+// All I/O deferred to update() which runs in safe zone.
 void DebugLogger::bufferLine(const char* line) {
     if (!enabled) return;
+    
+    // Rate limiting: prevent log storms, enforce safe zone semantics
+    unsigned long now = millis();
+    if (now - rateWindowStartMs >= DEBUG_LOG_RATE_WINDOW_MS) {
+        // New window
+        rateWindowStartMs = now;
+        rateWindowLineCount = 0;
+    }
+    if (rateWindowLineCount >= DEBUG_LOG_RATE_LIMIT) {
+        logRateLimitDrops.fetch_add(1, std::memory_order_relaxed);
+        return;  // Rate limited - drop silently
+    }
+    rateWindowLineCount++;
     
     size_t lineLen = strlen(line);
     bool needsNewline = (lineLen == 0 || line[lineLen - 1] != '\n');
     size_t totalLen = lineLen + (needsNewline ? 1 : 0);
     
-    // If line is too big for buffer, flush first then write directly
-    if (totalLen > DEBUG_LOG_BUFFER_SIZE) {
-        flushBuffer();
-        // Write oversized line directly to file (with mutex protection)
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs) {
-            StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
-            if (lock) {
-                File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
-                if (f) {
-                    f.print(line);
-                    if (needsNewline) f.print('\n');
-                    f.close();
-                }
-            }
-        }
-        return;
+    // Truncate oversized lines to fit in buffer (never do sync I/O from call site)
+    if (totalLen > DEBUG_LOG_BUFFER_SIZE / 2) {
+        // Truncate to half buffer max - leave room for other logs
+        totalLen = DEBUG_LOG_BUFFER_SIZE / 2;
+        lineLen = totalLen - 1;  // Leave room for newline
+        needsNewline = true;
     }
     
-    // If line won't fit in remaining buffer, flush first
+    // If line won't fit in remaining buffer, drop it (never flush from call site)
+    // Flush happens only from update() which is called from safe zone
     if (bufferPos + totalLen > DEBUG_LOG_BUFFER_SIZE) {
-        flushBuffer();
+        logBufferFullDrops.fetch_add(1, std::memory_order_relaxed);
+        return;  // Buffer full - drop, will be flushed on next update()
     }
     
-    // Append to buffer
+    // Append to buffer (no I/O, no locks)
     memcpy(buffer + bufferPos, line, lineLen);
     bufferPos += lineLen;
     if (needsNewline) {
         buffer[bufferPos++] = '\n';
     }
-    
-    // Flush if buffer is getting full
-    if (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD) {
-        flushBuffer();
-    }
+    // NOTE: Never call flushBuffer() from here - only from update() in safe zone
 }
 
 void DebugLogger::flushBuffer() {
@@ -231,14 +240,21 @@ void DebugLogger::flushBufferAsync() {
     lastFlushMs = millis();
 }
 
+// SAFE ZONE ONLY: Called from main loop after display update.
+// With async mode: queues to FreeRTOS task, minimal latency.
+// With sync mode: writes up to 4KB to SD, may take 10-50ms.
+// Always prefer async mode (enableAsyncMode()) for production.
 void DebugLogger::update() {
     // Periodic time cache save (even if logging disabled)
     updateTimeCache();
     
     if (!enabled || bufferPos == 0) return;
     
-    // Time-based flush - but defer during WiFi transitions or display render
-    if (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) {
+    // Time-based flush OR threshold-based flush (moved from bufferLine for red zone safety)
+    bool needsFlush = (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) ||
+                      (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD);
+    
+    if (needsFlush) {
         // Defer flush during WiFi transitions unless deferral expired (max 5s)
         if (wifiTransitionActive && !deferralExpired()) {
             // Still defer - but check if buffer is critically full (>90%)

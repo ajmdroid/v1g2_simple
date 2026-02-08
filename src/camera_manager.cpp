@@ -484,10 +484,13 @@ const CameraVector* CameraManager::getQueryCamerasSnapshot(
 
 // Build regional cache containing only cameras within radius of GPS position
 // Thread-safe: uses mutex when accessing full camera database
+// NOTE: Dead path in current build - incremental cache build (startIncrementalCacheBuild/
+// continueIncrementalCacheBuild/finishIncrementalCacheBuild) is the only entrypoint.
+// Kept for potential future use; if reactivated, verify caller handles try-lock semantics.
 bool CameraManager::buildRegionalCache(float lat, float lon, float radiusMiles) {
-  // Take mutex to safely read cameras vector (may be modified by background task)
-  if (!cameraMutex || xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-    Serial.println("[Camera] Cannot build cache - mutex unavailable");
+  // HOT PATH: try-lock only - skip if database is being modified
+  if (!cameraMutex || xSemaphoreTake(cameraMutex, 0) != pdTRUE) {
+    // Mutex busy - skip this cache update, caller can retry later
     return false;
   }
   
