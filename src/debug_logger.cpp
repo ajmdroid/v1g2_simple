@@ -112,12 +112,17 @@ void DebugLogger::rotateIfNeededUnlocked(fs::FS* fs) {
 
 // RED ZONE SAFE: No heap, no locks, no I/O at call site.
 // - Rate limiting: bounded work (O(1) check)
-// - Truncation: bounded copy (O(lineLen) with 512-byte cap from formatJsonLine)
+// - Truncation: bounded copy (O(lineLen) with DEBUG_LOG_MAX_LINE_SIZE cap)
 // - Drop-on-full: no flush, just increment counter
 // - Single-producer: only call from main loop context (Core 1)
 // All I/O deferred to update() which runs in safe zone.
 void DebugLogger::bufferLine(const char* line) {
     if (!enabled) return;
+
+    // Debug-only: enforce single-producer invariant (main task on Core 1)
+    #ifndef NDEBUG
+    configASSERT(xPortGetCoreID() == 1);
+    #endif
     
     // Rate limiting: prevent log storms, enforce safe zone semantics
     unsigned long now = millis();
@@ -136,10 +141,9 @@ void DebugLogger::bufferLine(const char* line) {
     bool needsNewline = (lineLen == 0 || line[lineLen - 1] != '\n');
     size_t totalLen = lineLen + (needsNewline ? 1 : 0);
     
-    // Truncate oversized lines to fit in buffer (never do sync I/O from call site)
-    if (totalLen > DEBUG_LOG_BUFFER_SIZE / 2) {
-        // Truncate to half buffer max - leave room for other logs
-        totalLen = DEBUG_LOG_BUFFER_SIZE / 2;
+    // Clamp to documented max line size (never do sync I/O from call site)
+    if (totalLen > DEBUG_LOG_MAX_LINE_SIZE) {
+        totalLen = DEBUG_LOG_MAX_LINE_SIZE;
         lineLen = totalLen - 1;  // Leave room for newline
         needsNewline = true;
     }

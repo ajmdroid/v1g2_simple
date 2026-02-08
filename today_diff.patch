@@ -1,0 +1,609 @@
+diff --git a/src/ble_client.cpp b/src/ble_client.cpp
+index fa68960..9abebe2 100644
+--- a/src/ble_client.cpp
++++ b/src/ble_client.cpp
+@@ -58,11 +58,25 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
+ }
+ 
+ namespace {
++// RED ZONE SAFE: All semaphore takes use bounded timeouts, never portMAX_DELAY
++// HOT paths use timeout 0 (try-lock), COLD paths use 20ms max
+ class SemaphoreGuard {
+ public:
+-    explicit SemaphoreGuard(SemaphoreHandle_t sem) : sem_(sem), locked_(false) {
++    // timeout: 0 = try-lock (non-blocking), >0 = bounded wait in ms
++    // Default 20ms for COLD paths - never use portMAX_DELAY
++    // Increments appropriate counter on failure for monitoring
++    explicit SemaphoreGuard(SemaphoreHandle_t sem, TickType_t timeout = pdMS_TO_TICKS(20)) 
++        : sem_(sem), locked_(false) {
+         if (sem_) {
+-            locked_ = xSemaphoreTake(sem_, portMAX_DELAY) == pdTRUE;
++            locked_ = xSemaphoreTake(sem_, timeout) == pdTRUE;
++            if (!locked_) {
++                // Track contention: try-lock skip vs bounded timeout
++                if (timeout == 0) {
++                    PERF_INC(bleMutexSkip);
++                } else {
++                    PERF_INC(bleMutexTimeout);
++                }
++            }
+         }
+     }
+     ~SemaphoreGuard() {
+@@ -98,9 +112,12 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
+ constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
+ constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
+ constexpr bool BLE_STATE_MACHINE_LOGS = false;   // BLE state machine transitions (high frequency during reconnect)
+-constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF to avoid callback blocking)
++constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF - RED ZONE VIOLATION if enabled!)
+ 
+ // BLE logging macros - log to Serial AND debugLogger when BLE category enabled
++// WARNING: These macros call debugLogger which is NOT red-zone safe.
++// Only use from main loop context (process(), command handlers).
++// NEVER use directly in onConnect/onDisconnect/onNotify callbacks.
+ #define BLE_LOGF(...) do { \
+     if (BLE_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
+     if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
+@@ -1240,56 +1257,44 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
+ }
+ 
+ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
++    return sendCommandWithResult(data, length) == SendResult::SENT;
++}
++
++SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length) {
++    // Hard failures first - these should not be retried
+     if (!isConnected() || !pCommandChar) {
+-        //Serial.println("sendCommand: not connected or command characteristic missing");
+-        return false;
++        return SendResult::FAILED;
++    }
++    if (!data || length == 0 || length > 64) {
++        return SendResult::FAILED;
+     }
+ 
+-    // Light pacing between command writes to avoid bursty air-time spikes (profile/settings push)
++    // Light pacing: non-blocking timestamp gate
++    // Return NOT_YET if too soon - caller retains packet for retry
+     static unsigned long lastCommandMs = 0;
+     unsigned long nowMs = millis();
+     if (lastCommandMs != 0 && nowMs - lastCommandMs < 5) {
+-        vTaskDelay(pdMS_TO_TICKS(5 - (nowMs - lastCommandMs)));
++        PERF_INC(cmdPaceNotYet);
++        return SendResult::NOT_YET;
+     }
+     lastCommandMs = millis();
+     
+-    // Validate inputs
+-    if (!data) {
+-        //Serial.println("sendCommand: ERROR - null data pointer");
+-        return false;
+-    }
+-    if (length == 0) {
+-        //Serial.println("sendCommand: ERROR - zero length");
+-        return false;
+-    }
+-    if (length > 64) {  // Reasonable maximum for BLE packets
+-        //Serial.printf("sendCommand: ERROR - length %u exceeds maximum (64)\n", (unsigned)length);
+-        return false;
+-    }
+-    
+-    // Don't print during command forwarding - causes crashes in callback context
+-    // Serial.printf("sendCommand: sending %u bytes: ", (unsigned)length);
+-    // for (size_t i = 0; i < length; i++) {
+-    //     Serial.printf("%02X ", data[i]);
+-    // }
+-    // Serial.println();
+-    
+     bool ok = false;
+     if (pCommandChar->canWrite()) {
+-        // Use write-with-response when supported
+         ok = pCommandChar->writeValue(data, length, true);
+     } else if (pCommandChar->canWriteNoResponse()) {
+-        // Use write-without-response when that's the only option
+         ok = pCommandChar->writeValue(data, length, false);
+     } else {
+-        return false;
++        return SendResult::FAILED;  // Characteristic doesn't support write
+     }
+     
+-    // Only log failure to keep output clean
+     if (!ok) {
+-        Serial.println("sendCommand: write failed");
++        // Write failed after isConnected() check - likely transient (BLE busy/queue full)
++        // Return NOT_YET to retry; if connection truly dead, next isConnected() will catch it
++        PERF_INC(cmdBleBusy);
++        return SendResult::NOT_YET;
+     }
+-    return ok;
++    return SendResult::SENT;
+ }
+ 
+ bool V1BLEClient::requestAlertData() {
+@@ -1680,7 +1685,8 @@ void V1BLEClient::process() {
+             // Check if scan found a device (shouldConnect flag set by callback)
+             bool wantConnect = false;
+             {
+-                SemaphoreGuard lock(bleMutex);
++                // HOT PATH: try-lock only, skip if busy
++                SemaphoreGuard lock(bleMutex, 0);
+                 if (lock.locked()) {
+                     wantConnect = shouldConnect;
+                 }
+@@ -1733,7 +1739,8 @@ void V1BLEClient::process() {
+                 // Ready to connect
+                 bool wantConnect = false;
+                 {
+-                    SemaphoreGuard lock(bleMutex);
++                    // HOT PATH: try-lock only, skip if busy
++                    SemaphoreGuard lock(bleMutex, 0);
+                     if (lock.locked()) {
+                         wantConnect = shouldConnect;
+                         shouldConnect = false;  // Clear flag
+@@ -2232,8 +2239,11 @@ int V1BLEClient::processProxyQueue() {
+         return 0;
+     }
+     
+-    // Protect queue operations from concurrent access (BLE callback vs main loop)
+-    SemaphoreGuard lock(bleNotifyMutex);
++    // HOT PATH: try-lock only, skip if busy (another iteration will process)
++    SemaphoreGuard lock(bleNotifyMutex, 0);
++    if (!lock.locked()) {
++        return 0;  // Skip this cycle, try again next loop (counter incremented in SemaphoreGuard)
++    }
+     
+     int sent = 0;
+     
+@@ -2302,13 +2312,24 @@ int V1BLEClient::processPhoneCommandQueue() {
+         return 0;
+     }
+ 
+-    // Dequeue one packet under lock, then send outside lock to minimize mutex hold time
+-    // This prevents blocking forwardToProxyImmediate() during BLE writes
++    // Static pending packet: holds command when pacing/lock says "not yet"
++    // Ensures no command loss from dequeue-before-send pattern
++    static ProxyPacket pendingPkt;
++    static uint16_t pendingCharUUID = 0;
++    static bool hasPending = false;
++
+     ProxyPacket pktCopy;
+     uint16_t charUUID = 0;
+     bool hasPacket = false;
+ 
+-    if (phoneCmdMutex && xSemaphoreTake(phoneCmdMutex, 0) == pdTRUE) {
++    // Try pending packet first (from previous pacing/lock deferral)
++    if (hasPending) {
++        memcpy(pktCopy.data, pendingPkt.data, pendingPkt.length);
++        pktCopy.length = pendingPkt.length;
++        charUUID = pendingCharUUID;
++        hasPacket = true;
++    } else if (phoneCmdMutex && xSemaphoreTake(phoneCmdMutex, 0) == pdTRUE) {
++        // Dequeue one packet under lock
+         if (phone2v1QueueCount > 0) {
+             ProxyPacket& pkt = phone2v1Queue[phone2v1QueueTail];
+             memcpy(pktCopy.data, pkt.data, pkt.length);
+@@ -2326,21 +2347,60 @@ int V1BLEClient::processPhoneCommandQueue() {
+     }
+ 
+     // Send outside queue lock - BLE write can take time
+-    // Serialize writes with bleNotifyMutex to avoid concurrent notify/write
++    // HOT PATH: try-lock only, skip if busy
++    SendResult result = SendResult::FAILED;
+     if (bleNotifyMutex) {
+-        SemaphoreGuard lock(bleNotifyMutex);
++        SemaphoreGuard lock(bleNotifyMutex, 0);
++        if (!lock.locked()) {
++            // Mutex busy - store in pending for next iteration (NOT_YET semantics)
++            // (counter incremented in SemaphoreGuard)
++            memcpy(pendingPkt.data, pktCopy.data, pktCopy.length);
++            pendingPkt.length = pktCopy.length;
++            pendingCharUUID = charUUID;
++            hasPending = true;
++            return 0;
++        }
+         if (charUUID == 0xB8D2 && pCommandCharLong) {
+-            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
++            // Long characteristic write - same transient failure semantics as sendCommand
++            if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
++                result = SendResult::SENT;
++            } else {
++                PERF_INC(cmdBleBusy);
++                result = SendResult::NOT_YET;  // Transient - retry
++            }
+         } else {
+-            sendCommand(pktCopy.data, pktCopy.length);
++            result = sendCommandWithResult(pktCopy.data, pktCopy.length);
+         }
+     } else {
+         if (charUUID == 0xB8D2 && pCommandCharLong) {
+-            pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false);
++            if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
++                result = SendResult::SENT;
++            } else {
++                PERF_INC(cmdBleBusy);
++                result = SendResult::NOT_YET;  // Transient - retry
++            }
+         } else {
+-            sendCommand(pktCopy.data, pktCopy.length);
+-        }
++            result = sendCommandWithResult(pktCopy.data, pktCopy.length);
++        }
++    }
++
++    switch (result) {
++        case SendResult::SENT:
++            // Successfully sent - clear pending state
++            hasPending = false;
++            return 1;
++        case SendResult::NOT_YET:
++            // Pacing: store in pending for next iteration
++            memcpy(pendingPkt.data, pktCopy.data, pktCopy.length);
++            pendingPkt.length = pktCopy.length;
++            pendingCharUUID = charUUID;
++            hasPending = true;
++            return 0;
++        case SendResult::FAILED:
++        default:
++            // Hard failure: drop packet, clear pending, count error
++            hasPending = false;
++            phoneCmdDropsBleFail++;  // Count as BLE failure (not connected, char null)
++            return 0;
+     }
+-
+-    return 1;
+ }
+diff --git a/src/ble_client.h b/src/ble_client.h
+index 773ba58..265443a 100644
+--- a/src/ble_client.h
++++ b/src/ble_client.h
+@@ -57,6 +57,13 @@ inline const char* bleStateToString(BLEState state) {
+     }
+ }
+ 
++// sendCommand result codes for proper retry semantics
++enum class SendResult {
++    SENT,       // Command successfully sent
++    NOT_YET,    // Pacing: too soon, caller should retry
++    FAILED      // Hard failure: drop and count
++};
++
+ // Proxy metrics for monitoring proxy health
+ struct ProxyMetrics {
+     uint32_t sendCount = 0;          // Successful notify sends
+@@ -119,6 +126,9 @@ public:
+     // Send command to V1 (e.g., request alert data)
+     bool sendCommand(const uint8_t* data, size_t length);
+     
++    // Send command with detailed result for retry logic
++    SendResult sendCommandWithResult(const uint8_t* data, size_t length);
++    
+     // Request V1 to start sending alert data
+     bool requestAlertData();
+     
+@@ -194,7 +204,8 @@ public:
+ 
+     // Phone->V1 command drop counters (observability)
+     uint32_t getPhoneCmdDropsOverflow() const { return phoneCmdDropsOverflow; }
+-    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }
++    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }  // Malformed packets
++    uint32_t getPhoneCmdDropsBleFail() const { return phoneCmdDropsBleFail; }  // Hard BLE failures
+     uint32_t getPhoneCmdDropsLockBusy() const { return phoneCmdDropsLockBusy; }
+     
+     // Get proxy metrics (for instrumentation)
+@@ -295,7 +306,8 @@ private:
+     volatile size_t phone2v1QueueTail = 0;
+     volatile size_t phone2v1QueueCount = 0;
+     volatile uint32_t phoneCmdDropsOverflow = 0;
+-    volatile uint32_t phoneCmdDropsInvalid = 0;
++    volatile uint32_t phoneCmdDropsInvalid = 0;   // Malformed packet (bad length, null data)
++    volatile uint32_t phoneCmdDropsBleFail = 0;   // Hard BLE failure (not connected, char null)
+     volatile uint32_t phoneCmdDropsLockBusy = 0;
+     volatile size_t proxyQueueHead = 0;  // Next write position
+     volatile size_t proxyQueueTail = 0;  // Next read position
+diff --git a/src/camera_manager.cpp b/src/camera_manager.cpp
+index b5792fe..3a3dda9 100644
+--- a/src/camera_manager.cpp
++++ b/src/camera_manager.cpp
+@@ -484,10 +484,13 @@ const CameraVector* CameraManager::getQueryCamerasSnapshot(
+ 
+ // Build regional cache containing only cameras within radius of GPS position
+ // Thread-safe: uses mutex when accessing full camera database
++// NOTE: Dead path in current build - incremental cache build (startIncrementalCacheBuild/
++// continueIncrementalCacheBuild/finishIncrementalCacheBuild) is the only entrypoint.
++// Kept for potential future use; if reactivated, verify caller handles try-lock semantics.
+ bool CameraManager::buildRegionalCache(float lat, float lon, float radiusMiles) {
+-  // Take mutex to safely read cameras vector (may be modified by background task)
+-  if (!cameraMutex || xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+-    Serial.println("[Camera] Cannot build cache - mutex unavailable");
++  // HOT PATH: try-lock only - skip if database is being modified
++  if (!cameraMutex || xSemaphoreTake(cameraMutex, 0) != pdTRUE) {
++    // Mutex busy - skip this cache update, caller can retry later
+     return false;
+   }
+   
+diff --git a/src/debug_logger.cpp b/src/debug_logger.cpp
+index 28e649d..dd25ff6 100644
+--- a/src/debug_logger.cpp
++++ b/src/debug_logger.cpp
+@@ -33,6 +33,9 @@ void DebugLogger::setEnabled(bool enabledFlag) {
+         lastFlushMs = millis();
+         // NOTE: Async mode must be enabled explicitly via enableAsyncMode()
+         // This allows caller to control when the background task starts
++        // WARNING: Sync mode can cause 10-50ms stalls during SD writes.
++        // For production use, always call enableAsyncMode() after setEnabled(true).
++        Serial.println("[Logger] Debug logging enabled (sync mode - call enableAsyncMode() for production)");
+     } else if (!enabled && wasEnabled) {
+         // Disable async mode first (drains queue)
+         disableAsyncMode();
+@@ -107,48 +110,54 @@ void DebugLogger::rotateIfNeededUnlocked(fs::FS* fs) {
+     }
+ }
+ 
++// RED ZONE SAFE: No heap, no locks, no I/O at call site.
++// - Rate limiting: bounded work (O(1) check)
++// - Truncation: bounded copy (O(lineLen) with 512-byte cap from formatJsonLine)
++// - Drop-on-full: no flush, just increment counter
++// - Single-producer: only call from main loop context (Core 1)
++// All I/O deferred to update() which runs in safe zone.
+ void DebugLogger::bufferLine(const char* line) {
+     if (!enabled) return;
+     
++    // Rate limiting: prevent log storms, enforce safe zone semantics
++    unsigned long now = millis();
++    if (now - rateWindowStartMs >= DEBUG_LOG_RATE_WINDOW_MS) {
++        // New window
++        rateWindowStartMs = now;
++        rateWindowLineCount = 0;
++    }
++    if (rateWindowLineCount >= DEBUG_LOG_RATE_LIMIT) {
++        logRateLimitDrops.fetch_add(1, std::memory_order_relaxed);
++        return;  // Rate limited - drop silently
++    }
++    rateWindowLineCount++;
++    
+     size_t lineLen = strlen(line);
+     bool needsNewline = (lineLen == 0 || line[lineLen - 1] != '\n');
+     size_t totalLen = lineLen + (needsNewline ? 1 : 0);
+     
+-    // If line is too big for buffer, flush first then write directly
+-    if (totalLen > DEBUG_LOG_BUFFER_SIZE) {
+-        flushBuffer();
+-        // Write oversized line directly to file (with mutex protection)
+-        fs::FS* fs = storageManager.getFilesystem();
+-        if (fs) {
+-            StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+-            if (lock) {
+-                File f = fs->open(DEBUG_LOG_PATH, FILE_APPEND, true);
+-                if (f) {
+-                    f.print(line);
+-                    if (needsNewline) f.print('\n');
+-                    f.close();
+-                }
+-            }
+-        }
+-        return;
++    // Truncate oversized lines to fit in buffer (never do sync I/O from call site)
++    if (totalLen > DEBUG_LOG_BUFFER_SIZE / 2) {
++        // Truncate to half buffer max - leave room for other logs
++        totalLen = DEBUG_LOG_BUFFER_SIZE / 2;
++        lineLen = totalLen - 1;  // Leave room for newline
++        needsNewline = true;
+     }
+     
+-    // If line won't fit in remaining buffer, flush first
++    // If line won't fit in remaining buffer, drop it (never flush from call site)
++    // Flush happens only from update() which is called from safe zone
+     if (bufferPos + totalLen > DEBUG_LOG_BUFFER_SIZE) {
+-        flushBuffer();
++        logBufferFullDrops.fetch_add(1, std::memory_order_relaxed);
++        return;  // Buffer full - drop, will be flushed on next update()
+     }
+     
+-    // Append to buffer
++    // Append to buffer (no I/O, no locks)
+     memcpy(buffer + bufferPos, line, lineLen);
+     bufferPos += lineLen;
+     if (needsNewline) {
+         buffer[bufferPos++] = '\n';
+     }
+-    
+-    // Flush if buffer is getting full
+-    if (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD) {
+-        flushBuffer();
+-    }
++    // NOTE: Never call flushBuffer() from here - only from update() in safe zone
+ }
+ 
+ void DebugLogger::flushBuffer() {
+@@ -231,14 +240,21 @@ void DebugLogger::flushBufferAsync() {
+     lastFlushMs = millis();
+ }
+ 
++// SAFE ZONE ONLY: Called from main loop after display update.
++// With async mode: queues to FreeRTOS task, minimal latency.
++// With sync mode: writes up to 4KB to SD, may take 10-50ms.
++// Always prefer async mode (enableAsyncMode()) for production.
+ void DebugLogger::update() {
+     // Periodic time cache save (even if logging disabled)
+     updateTimeCache();
+     
+     if (!enabled || bufferPos == 0) return;
+     
+-    // Time-based flush - but defer during WiFi transitions or display render
+-    if (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) {
++    // Time-based flush OR threshold-based flush (moved from bufferLine for red zone safety)
++    bool needsFlush = (millis() - lastFlushMs >= DEBUG_LOG_FLUSH_INTERVAL_MS) ||
++                      (bufferPos >= DEBUG_LOG_FLUSH_THRESHOLD);
++    
++    if (needsFlush) {
+         // Defer flush during WiFi transitions unless deferral expired (max 5s)
+         if (wifiTransitionActive && !deferralExpired()) {
+             // Still defer - but check if buffer is critically full (>90%)
+diff --git a/src/debug_logger.h b/src/debug_logger.h
+index 731ddc2..9ef0f2e 100644
+--- a/src/debug_logger.h
++++ b/src/debug_logger.h
+@@ -1,10 +1,31 @@
+ /**
+- * Debug Logger - optional SD log sink.
+- * Writes timestamped JSON lines when enabled in settings.
+- * Uses buffered writes (4KB buffer, 1s flush) to minimize SD latency impact.
++ * Debug Logger - optional SD log sink (Channel B: diagnostic logs)
+  * 
+- * Async mode (default when SD available): Uses FreeRTOS task on Core 0
+- * to perform SD writes off the main loop, preventing display/alert latency.
++ * TWO-CHANNEL LOGGING ARCHITECTURE:
++ * - Channel A (perf_metrics.h): Always-on numeric counters. RED ZONE SAFE.
++ *   Use PERF_INC() / PERF_MAX() macros only. No strings, no heap, no locks.
++ * 
++ * - Channel B (this file): Human-readable diagnostic logs. SAFE ZONE ONLY.
++ *   Never call from BLE callbacks, display render, or frequent loops.
++ *   Rate-limited (100 lines/sec), can be dropped, disabled by default.
++ * 
++ * RED ZONE RULES:
++ * - In BLE notify callbacks, display flush, packet parsing: ONLY perf counters
++ * - debugLogger.log*() calls are NOT safe from red zones (even if no I/O)
++ * - Violations cause jitter, stalls, or WDT resets
++ * 
++ * SAFE ZONE for debugLogger:
++ * - Main loop (after display update)
++ * - WiFi handlers (non-time-critical)
++ * - Settings changes
++ * - Connection state transitions (once per event, not per packet)
++ * 
++ * Implementation:
++ * - Writes timestamped JSON lines when enabled in settings
++ * - Uses 4KB ring buffer, never does sync I/O from log() call
++ * - Flushes only from update() which runs in safe zone
++ * - Rate-limited to prevent log storms
++ * - Async mode available: FreeRTOS task on Core 0 for background writes
+  * 
+  * Log format: NDJSON (newline-delimited JSON) for ELK/Elasticsearch import
+  */
+@@ -25,10 +46,17 @@ inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
+ inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
+ 
+ // Buffer settings for efficient SD writes
++// Max formatted line: 512 bytes (formatJsonLine uses char[512])
++// Lines exceeding this are truncated before buffering
++inline constexpr size_t DEBUG_LOG_MAX_LINE_SIZE = 512;      // Max single log line (enforced by format buffers)
+ inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
+ inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
+ inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
+ 
++// Rate limiting to prevent log storms (safe zone enforcement)
++inline constexpr size_t DEBUG_LOG_RATE_LIMIT = 100;         // Max lines per second
++inline constexpr unsigned long DEBUG_LOG_RATE_WINDOW_MS = 1000;  // Rate limit window
++
+ // Async write task settings (Core 0, low priority)
+ // Message size kept small - each queued message is ~512 bytes, not 4KB
+ inline constexpr size_t DEBUG_LOG_MESSAGE_SIZE = 512;       // Max bytes per queued message
+@@ -127,6 +155,8 @@ public:
+     void disableAsyncMode();  // Stop task, switch to sync writes
+     bool isAsyncMode() const { return asyncMode; }
+     uint32_t getDropCount() const { return logDropCount.load(std::memory_order_relaxed); }  // Messages dropped when queue full
++    uint32_t getRateLimitDrops() const { return logRateLimitDrops.load(std::memory_order_relaxed); }  // Messages dropped due to rate limit
++    uint32_t getBufferFullDrops() const { return logBufferFullDrops.load(std::memory_order_relaxed); }  // Messages dropped due to buffer full
+     uint32_t getQueueHighWater() const { return logQueueHW.load(std::memory_order_relaxed); }  // Max queue depth observed
+     
+     // WiFi transition deferral - defers SD writes during WiFi reconnection
+@@ -185,8 +215,14 @@ private:
+     
+     // Metrics - atomic for cross-core safety (Core 1 writes, Core 0 reader task)
+     std::atomic<uint32_t> logDropCount{0};    // Messages dropped (queue full or heap exhausted)
++    std::atomic<uint32_t> logRateLimitDrops{0}; // Messages dropped due to rate limiting
++    std::atomic<uint32_t> logBufferFullDrops{0}; // Messages dropped due to buffer full
+     std::atomic<uint32_t> logQueueHW{0};      // Queue high-water mark (max depth observed)
+     
++    // Rate limiting state
++    uint32_t rateWindowLineCount = 0;         // Lines logged in current window
++    unsigned long rateWindowStartMs = 0;      // Start of current rate window
++    
+     void flushBufferSync();                          // Synchronous write (direct or from task)
+     void flushBufferAsync();                         // Queue buffer for async write
+     static void writerTaskEntry(void* param);        // FreeRTOS task entry point
+diff --git a/src/perf_metrics.cpp b/src/perf_metrics.cpp
+index 39a22ce..17fce0f 100644
+--- a/src/perf_metrics.cpp
++++ b/src/perf_metrics.cpp
+@@ -3,6 +3,7 @@
+  */
+ 
+ #include "perf_metrics.h"
++#include "debug_logger.h"  // For drop counter access (never log via debug logger)
+ #include "debug_logger.h"
+ #include "settings.h"
+ #include <ArduinoJson.h>
+@@ -347,6 +348,15 @@ void perfMetricsPrint() {
+     Serial.printf("Connection: reconnects=%lu disconnects=%lu\n",
+         (unsigned long)perfCounters.reconnects.load(),
+         (unsigned long)perfCounters.disconnects.load());
++    Serial.printf("Mutex: skip=%lu timeout=%lu paceNotYet=%lu bleBusy=%lu\n",
++        (unsigned long)perfCounters.bleMutexSkip.load(),
++        (unsigned long)perfCounters.bleMutexTimeout.load(),
++        (unsigned long)perfCounters.cmdPaceNotYet.load(),
++        (unsigned long)perfCounters.cmdBleBusy.load());
++    Serial.printf("DebugLog: rateDrops=%lu bufDrops=%lu queueDrops=%lu\n",
++        (unsigned long)debugLogger.getRateLimitDrops(),
++        (unsigned long)debugLogger.getBufferFullDrops(),
++        (unsigned long)debugLogger.getDropCount());
+     Serial.printf("Latency (BLE->flush): min=%luus avg=%luus max=%luus samples=%lu\n",
+         (unsigned long)minUs,
+         (unsigned long)avgUs,
+diff --git a/src/perf_metrics.h b/src/perf_metrics.h
+index 659953d..66fd00d 100644
+--- a/src/perf_metrics.h
++++ b/src/perf_metrics.h
+@@ -1,14 +1,24 @@
+ /**
+- * Low-Overhead Performance Metrics
++ * Low-Overhead Performance Metrics (Channel A: flight recorder)
+  * 
+- * Embedded-friendly observability for BLE→display latency tracking.
++ * TWO-CHANNEL LOGGING ARCHITECTURE:
++ * - Channel A (this file): Always-on numeric counters. RED ZONE SAFE.
++ *   Counters only, no strings, no heap, no locks, no I/O.
++ *   Emitted periodically from safe zone (once per second max).
++ * 
++ * - Channel B (debug_logger.h): Human-readable diagnostic logs. SAFE ZONE ONLY.
++ *   Rate-limited, can be dropped, never called from red zones.
++ * 
++ * RED ZONE SAFE MACROS (use these everywhere):
++ *   PERF_INC(counter)        - Atomic increment, zero overhead
++ *   PERF_MAX(counter, value) - Atomic max update, zero overhead
+  * 
+  * Design principles:
+  * - No heap allocations
+  * - No logging in hot paths
+- * - Counters/timestamps stored in RAM
++ * - Counters/timestamps stored in RAM (std::atomic)
+  * - Sampled timing (1/N packets) to reduce overhead
+- * - Compile-time gating via PERF_METRICS
++ * - Compile-time gating via PERF_METRICS for extended stats
+  * 
+  * Usage:
+  * - PERF_METRICS=0: Release builds, only essential counters
+@@ -84,6 +94,12 @@ struct PerfCounters {
+     std::atomic<uint32_t> cameraCacheRefreshes{0}; // Regional cache builds/refeshes
+     std::atomic<uint32_t> cameraBudgetExits{0};   // findNearby() early exits due to time budget
+     
++    // Mutex contention monitoring (should stay low/zero in normal operation)
++    std::atomic<uint32_t> bleMutexSkip{0};        // HOT path try-lock skips
++    std::atomic<uint32_t> bleMutexTimeout{0};     // COLD path timeout failures
++    std::atomic<uint32_t> cmdPaceNotYet{0};       // sendCommand pacing deferrals
++    std::atomic<uint32_t> cmdBleBusy{0};          // sendCommand BLE write failed (transient)
++    
+     // Timing (microseconds for precision)
+     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
+     std::atomic<uint32_t> lastFlushUs{0};      // Timestamp of last flush
+@@ -106,6 +122,10 @@ struct PerfCounters {
+         cameraBgLoads.store(0, std::memory_order_relaxed);
+         cameraCacheRefreshes.store(0, std::memory_order_relaxed);
+         cameraBudgetExits.store(0, std::memory_order_relaxed);
++        bleMutexSkip.store(0, std::memory_order_relaxed);
++        bleMutexTimeout.store(0, std::memory_order_relaxed);
++        cmdPaceNotYet.store(0, std::memory_order_relaxed);
++        cmdBleBusy.store(0, std::memory_order_relaxed);
+     }
+ };
+ 

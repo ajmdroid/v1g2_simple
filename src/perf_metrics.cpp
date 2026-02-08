@@ -4,7 +4,6 @@
 
 #include "perf_metrics.h"
 #include "debug_logger.h"  // For drop counter access (never log via debug logger)
-#include "debug_logger.h"
 #include "settings.h"
 #include <ArduinoJson.h>
 
@@ -324,6 +323,9 @@ void perfMetricsPrint() {
     uint32_t minUsVal = perfLatency.minUs.load();
     uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
     
+    // Guard: skip report if serial TX buffer has backpressure (prevents 10-30ms stall)
+    if (Serial.availableForWrite() < 128) return;
+
     Serial.println("=== Performance Metrics ===");
     Serial.printf("RX: packets=%lu bytes=%lu\n", 
         (unsigned long)perfCounters.rxPackets.load(), 
