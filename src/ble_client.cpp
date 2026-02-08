@@ -60,6 +60,8 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
 namespace {
 // RED ZONE SAFE: All semaphore takes use bounded timeouts, never portMAX_DELAY
 // HOT paths use timeout 0 (try-lock), COLD paths use 20ms max
+// RULE: Never use default timeout in a loop or frequent path.
+//       If it runs more than once per second, pass 0 explicitly.
 class SemaphoreGuard {
 public:
     // timeout: 0 = try-lock (non-blocking), >0 = bounded wait in ms
@@ -2324,6 +2326,7 @@ int V1BLEClient::processPhoneCommandQueue() {
 
     // Try pending packet first (from previous pacing/lock deferral)
     if (hasPending) {
+        configASSERT(pendingPkt.length <= sizeof(pendingPkt.data));  // Belt-and-suspenders: validated at enqueue
         memcpy(pktCopy.data, pendingPkt.data, pendingPkt.length);
         pktCopy.length = pendingPkt.length;
         charUUID = pendingCharUUID;
@@ -2332,6 +2335,7 @@ int V1BLEClient::processPhoneCommandQueue() {
         // Dequeue one packet under lock
         if (phone2v1QueueCount > 0) {
             ProxyPacket& pkt = phone2v1Queue[phone2v1QueueTail];
+            configASSERT(pkt.length <= sizeof(pkt.data));  // Belt-and-suspenders: validated at enqueue
             memcpy(pktCopy.data, pkt.data, pkt.length);
             pktCopy.length = pkt.length;
             charUUID = pkt.charUUID;

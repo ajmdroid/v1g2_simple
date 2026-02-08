@@ -326,45 +326,46 @@ void perfMetricsPrint() {
     // Guard: skip report if serial TX buffer has backpressure (prevents 10-30ms stall)
     if (Serial.availableForWrite() < 128) return;
 
-    Serial.println("=== Performance Metrics ===");
-    Serial.printf("RX: packets=%lu bytes=%lu\n", 
-        (unsigned long)perfCounters.rxPackets.load(), 
-        (unsigned long)perfCounters.rxBytes.load());
-    Serial.printf("Parse: ok=%lu fail=%lu\n",
+    // Single snprintf + print to minimize CDC transactions and avoid interleaved jitter
+    char buf[512];
+    int n = snprintf(buf, sizeof(buf),
+        "[PERF] rx=%lu rxB=%lu pOk=%lu pFail=%lu "
+        "qDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu obdHW=%lu "
+        "dUpd=%lu dSkip=%lu camBg=%lu camRef=%lu "
+        "reconn=%lu disc=%lu "
+        "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
+        "logRate=%lu logBuf=%lu logQ=%lu "
+        "latMin=%luus avg=%luus max=%luus n=%lu\n",
+        (unsigned long)perfCounters.rxPackets.load(),
+        (unsigned long)perfCounters.rxBytes.load(),
         (unsigned long)perfCounters.parseSuccesses.load(),
-        (unsigned long)perfCounters.parseFailures.load());
-    Serial.printf("Queue: drops=%lu oversize=%lu highWater=%lu\n",
+        (unsigned long)perfCounters.parseFailures.load(),
         (unsigned long)perfCounters.queueDrops.load(),
         (unsigned long)perfCounters.oversizeDrops.load(),
-        (unsigned long)perfCounters.queueHighWater.load());
-    Serial.printf("Queues: proxyHW=%lu phoneHW=%lu obdScanHW=%lu\n",
+        (unsigned long)perfCounters.queueHighWater.load(),
         (unsigned long)perfCounters.proxyQueueHighWater.load(),
         (unsigned long)perfCounters.phoneCmdQueueHighWater.load(),
-        (unsigned long)perfCounters.obdScanQueueHighWater.load());
-    Serial.printf("Display: updates=%lu skips=%lu\n",
+        (unsigned long)perfCounters.obdScanQueueHighWater.load(),
         (unsigned long)perfCounters.displayUpdates.load(),
-        (unsigned long)perfCounters.displaySkips.load());
-    Serial.printf("Camera: bgLoads=%lu cacheRefreshes=%lu\n",
+        (unsigned long)perfCounters.displaySkips.load(),
         (unsigned long)perfCounters.cameraBgLoads.load(),
-        (unsigned long)perfCounters.cameraCacheRefreshes.load());
-    Serial.printf("Connection: reconnects=%lu disconnects=%lu\n",
+        (unsigned long)perfCounters.cameraCacheRefreshes.load(),
         (unsigned long)perfCounters.reconnects.load(),
-        (unsigned long)perfCounters.disconnects.load());
-    Serial.printf("Mutex: skip=%lu timeout=%lu paceNotYet=%lu bleBusy=%lu\n",
+        (unsigned long)perfCounters.disconnects.load(),
         (unsigned long)perfCounters.bleMutexSkip.load(),
         (unsigned long)perfCounters.bleMutexTimeout.load(),
         (unsigned long)perfCounters.cmdPaceNotYet.load(),
-        (unsigned long)perfCounters.cmdBleBusy.load());
-    Serial.printf("DebugLog: rateDrops=%lu bufDrops=%lu queueDrops=%lu\n",
+        (unsigned long)perfCounters.cmdBleBusy.load(),
         (unsigned long)debugLogger.getRateLimitDrops(),
         (unsigned long)debugLogger.getBufferFullDrops(),
-        (unsigned long)debugLogger.getDropCount());
-    Serial.printf("Latency (BLE->flush): min=%luus avg=%luus max=%luus samples=%lu\n",
+        (unsigned long)debugLogger.getDropCount(),
         (unsigned long)minUs,
         (unsigned long)avgUs,
         (unsigned long)perfLatency.maxUs.load(),
         (unsigned long)perfLatency.sampleCount.load());
-    Serial.println("===========================");
+    if (n > 0 && n < (int)sizeof(buf)) {
+        Serial.print(buf);
+    }
 #elif PERF_METRICS
     Serial.println("Performance monitoring disabled (PERF_MONITORING=0)");
 #else
