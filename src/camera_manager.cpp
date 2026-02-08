@@ -834,7 +834,8 @@ bool CameraManager::isOnCameraRoad(
 bool CameraManager::hasNearbyCamera(float lat, float lon, float radius_m) const {
   CameraVector snapshot;
   const auto* queryList = getQueryCamerasSnapshot(snapshot);
-  if (!queryList || queryList->empty()) return false;
+  if (!queryList) return true;  // Mutex contention — assume cameras nearby (conservative)
+  if (queryList->empty()) return false;
   
   // Quick bounding box check first
   // At 45° latitude, 1° ≈ 111km lat, 78km lon

@@ -504,7 +504,11 @@ void CameraAlertModule::detectApproachingCameras(unsigned long now, const V1Sett
 
 void CameraAlertModule::updateCardStateForV1(bool v1HasAlerts) {
     if (!display || !settings) return;
-    if (!v1HasAlerts) return;  // Cards only when V1 owns main display
+    if (!v1HasAlerts) {
+        // V1 alerts ended — clear any lingering camera cards (prevents grace period sticking)
+        display->clearAllCameraAlerts();
+        return;
+    }
 
     const V1Settings& dispSettings = settings->get();
 

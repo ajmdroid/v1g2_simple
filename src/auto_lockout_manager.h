@@ -224,4 +224,6 @@ private:
   size_t logSinceSnapshot = 0;
   unsigned long lastSnapshotMs = 0;
   bool replayingLog = false;
+  bool lockoutsDirty = false;            // Deferred lockout save pending
+  bool pendingRelinkLockouts = false;    // External removal needs index fixup
 };

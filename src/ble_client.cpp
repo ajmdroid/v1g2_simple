@@ -243,6 +243,9 @@ void V1BLEClient::cleanupConnection() {
         }
     }
     
+    // 5. Clear stale phone command state (prevents sending commands from previous session)
+    phoneCmdPendingClear = true;
+    
     connectInProgress = false;
 }
 
@@ -670,10 +673,12 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
     
     // If the disconnect was unexpected (e.g., V1 powered off), clear bonding info
     // to ensure a clean reconnect next time.
-    if (reason != 0 && reason != BLE_HS_ETIMEOUT) { // 0 is normal disconnect
-        NimBLEAddress addr = pClient->getPeerAddress();
-        if (NimBLEDevice::isBonded(addr)) {
-            NimBLEDevice::deleteBond(addr);
+    // NOTE: deleteBond() does NVS flash write — defer to main loop to avoid
+    // blocking NimBLE host task.
+    if (reason != 0 && reason != BLE_HS_ETIMEOUT) {
+        if (instancePtr) {
+            instancePtr->pendingDeleteBond = true;
+            instancePtr->pendingDeleteBondAddr = pClient->getPeerAddress();
         }
     }
 
@@ -1568,6 +1573,13 @@ void V1BLEClient::process() {
             xSemaphoreGive(bleMutex);
         }
     }
+    // Deferred bond deletion (NVS write moved out of BLE callback)
+    if (pendingDeleteBond) {
+        pendingDeleteBond = false;
+        if (NimBLEDevice::isBonded(pendingDeleteBondAddr)) {
+            NimBLEDevice::deleteBond(pendingDeleteBondAddr);
+        }
+    }
     if (pendingScanEndUpdate) {
         if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
             pendingScanEndUpdate = false;
@@ -2318,6 +2330,12 @@ int V1BLEClient::processPhoneCommandQueue() {
     static ProxyPacket pendingPkt;
     static uint16_t pendingCharUUID = 0;
     static bool hasPending = false;
+
+    // Clear stale state from previous connection session
+    if (phoneCmdPendingClear) {
+        phoneCmdPendingClear = false;
+        hasPending = false;
+    }
 
     ProxyPacket pktCopy;
     uint16_t charUUID = 0;

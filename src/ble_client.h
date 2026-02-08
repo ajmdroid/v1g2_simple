@@ -320,11 +320,14 @@ private:
     std::atomic<bool> shouldConnect{false};  // Atomic for thread safety (set from BLE callbacks)
     std::atomic<bool> pendingConnectStateUpdate{false};   // Deferred update from BLE callbacks
     std::atomic<bool> pendingDisconnectCleanup{false};    // Deferred cleanup from BLE callbacks
+    std::atomic<bool> pendingDeleteBond{false};             // Deferred bond deletion from BLE callback
+    NimBLEAddress pendingDeleteBondAddr;                    // Address to delete bond for
     std::atomic<bool> pendingLastV1AddressValid{false};    // Deferred settings save from BLE scan callback
     char pendingLastV1Address[18] = {0};                  // "AA:BB:CC:DD:EE:FF" + null
     std::atomic<bool> pendingScanEndUpdate{false};         // Deferred scan-end state update from BLE callback
     std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
     std::atomic<bool> pendingObdScanComplete{false};       // Deferred OBD scan complete from BLE callback
+    std::atomic<bool> phoneCmdPendingClear{false};         // Clear stale phone cmd state on reconnect
     char pendingScanTargetAddress[18] = {0};               // "AA:BB:CC:DD:EE:FF" + null
     uint8_t pendingScanTargetAddressType = BLE_ADDR_PUBLIC;
     bool hasTargetDevice = false;

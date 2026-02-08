@@ -73,26 +73,11 @@ void AutoLockoutManager::setLockoutManager(LockoutManager* manager) {
 }
 
 void AutoLockoutManager::onLockoutRemoved(int removedIndex) {
-  ClusterLock lock(clusterMutex);
-  if (!lock.ok()) return;
-  
-  // Update indices for all promoted clusters that pointed at or after the removed index
-  for (auto& c : clusters) {
-    if (!c.isPromoted) continue;
-    
-    if (c.promotedLockoutIndex == removedIndex) {
-      // This cluster's promoted lockout was removed externally
-      // Mark it as no longer promoted
-      c.isPromoted = false;
-      c.promotedLockoutIndex = -1;
-      if (DEBUG_LOGS) {
-        Serial.printf("[AutoLockout] Cluster '%s' lockout removed externally\n", c.name.c_str());
-      }
-    } else if (c.promotedLockoutIndex > removedIndex) {
-      // Adjust index to account for removal
-      c.promotedLockoutIndex--;
-    }
-  }
+  // NOTE: This callback fires with lockoutMutex held by removeLockout().
+  // Do NOT take clusterMutex here — that creates ABBA deadlock with demoteCluster
+  // which holds clusterMutex and calls removeLockout (takes lockoutMutex).
+  // Instead, set a flag; relinkPromotedLockouts() will fix indices in update().
+  pendingRelinkLockouts = true;
 }
 
 AutoLockoutManager::~AutoLockoutManager() {
@@ -309,8 +294,16 @@ void AutoLockoutManager::promoteCluster(int clusterIdx) {
   lockout.muteLaser = (cluster.band == BAND_LASER);
   
   // Add to lockout manager
+  int countBefore = lockouts.getLockoutCount();
   lockouts.addLockout(lockout);
-  lockouts.saveToJSON("/v1profiles/lockouts.json");
+  if (lockouts.getLockoutCount() <= countBefore) {
+    // addLockout rejected (duplicate, capacity, invalid) - don't mark promoted
+    if (DEBUG_LOGS) {
+      Serial.printf("[AutoLockout] addLockout rejected for '%s'\n", cluster.name.c_str());
+    }
+    return;
+  }
+  lockoutsDirty = true;  // Deferred save in maintenanceTick
   
   // Mark cluster as promoted
   cluster.isPromoted = true;
@@ -333,7 +326,7 @@ void AutoLockoutManager::demoteCluster(int clusterIdx) {
   // Remove from lockout manager
   if (cluster.promotedLockoutIndex >= 0) {
     lockouts.removeLockout(cluster.promotedLockoutIndex);
-    lockouts.saveToJSON("/v1profiles/lockouts.json");
+    lockoutsDirty = true;  // Deferred save in maintenanceTick
     
     // Update indices for other promoted clusters
     for (auto& c : clusters) {
@@ -365,8 +358,17 @@ void AutoLockoutManager::pruneOldEvents() {
       cluster.events.end()
     );
     
-    // Recalculate hit count
+    // Recalculate all counts from remaining events
     cluster.hitCount = cluster.events.size();
+    cluster.stoppedHitCount = 0;
+    cluster.movingHitCount = 0;
+    for (const auto& e : cluster.events) {
+      if (e.isMoving) cluster.movingHitCount++;
+      else cluster.stoppedHitCount++;
+    }
+    if (!cluster.events.empty()) {
+      cluster.firstSeen = cluster.events.front().timestamp;
+    }
   }
 }
 
@@ -583,6 +585,12 @@ void AutoLockoutManager::update() {
   if (!lock.ok()) {
     LOCKOUT_LOGF("[AutoLockout] Failed to acquire mutex for update\n");
     return;
+  }
+  
+  // Fix indices if an external lockout removal happened (deferred from callback)
+  if (pendingRelinkLockouts) {
+    pendingRelinkLockouts = false;
+    relinkPromotedLockouts();
   }
   
   // Prune old data
@@ -1398,6 +1406,12 @@ void AutoLockoutManager::relinkPromotedLockouts() {
 }
 
 void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
+  // Save lockouts if promote/demote dirtied them (deferred from hot path)
+  if (lockoutsDirty) {
+    lockoutsDirty = false;
+    lockouts.saveToJSON("/v1profiles/lockouts.json");
+  }
+  
   if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
     // Flush any pending async log writes before snapshot
     // This ensures log file is complete before truncation
