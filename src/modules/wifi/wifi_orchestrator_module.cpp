@@ -48,7 +48,10 @@ void WifiOrchestrator::startWifi() {
     wifiManager.resetReconnectFailures();
     
     Serial.println("[WiFi] Starting WiFi (manual start)...");
-    wifiManager.begin();
+    if (!wifiManager.begin()) {
+        Serial.println("[WiFi] begin() failed (memory or radio)");
+        return;
+    }
 
     // Reduce WiFi TX power to minimize interference with BLE
     // 5dBm gives ~2-3m range, sufficient for in-car phone config

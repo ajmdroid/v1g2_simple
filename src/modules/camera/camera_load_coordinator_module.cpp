@@ -27,6 +27,17 @@ void CameraLoadCoordinator::startImmediateLoad() {
 
 void CameraLoadCoordinator::process(bool bleConnected) {
     if (!cameraManager || !storageManager) return;
+
+    // Poll background load completion
+    if (loadStarted && !complete) {
+        if (!cameraManager->isBackgroundLoading() && cameraManager->isLoaded()) {
+            complete = true;
+            Serial.printf("[Camera] Background load complete: %d cameras\n",
+                          cameraManager->getCameraCount());
+        }
+        return;
+    }
+
     if (!pending || complete) return;
     
     // Legacy path: if pending and BLE connected, start loading
