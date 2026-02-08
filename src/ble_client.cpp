@@ -988,6 +988,8 @@ void V1BLEClient::processDiscovering() {
     unsigned long elapsed = millis() - connectStartMs;
     
     // Check for timeout
+    // Safe even if discovery task is blocked: disconnect() sends HCI terminate,
+    // NimBLE host task wakes the blocked task with BLE_HS_ENOTCONN, task exits cleanly
     if (elapsed > CONNECT_TIMEOUT_MS + DISCOVERY_TIMEOUT_MS) {
         Serial.println("[BLE] Discovery timeout");
         perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs);
@@ -999,7 +1001,11 @@ void V1BLEClient::processDiscovering() {
     }
     
     // Spawn discovery task on first entry
-    if (!discoveryTaskRunning.load() && !discoveryTaskDone.load()) {
+    // Guard: wait for any prior discovery task to finish (e.g. after timeout/disconnect)
+    if (discoveryTaskRunning.load()) {
+        return;  // Previous task still winding down — yield
+    }
+    if (!discoveryTaskDone.load()) {
         discoveryTaskRunning.store(true);
         BaseType_t rc = xTaskCreatePinnedToCore(
             discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY);
