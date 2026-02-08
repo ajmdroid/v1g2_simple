@@ -419,12 +419,12 @@ void SettingsManager::load() {
     // Development/Debug settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
     settings.enableDebugLogging = preferences.getBool("debugLog", false);  // Off by default for stability
-    settings.logAlerts = preferences.getBool("logAlerts", true);
+    settings.logAlerts = preferences.getBool("logAlerts", false);
     settings.logWifi = preferences.getBool("logWifi", false);
     settings.logBle = preferences.getBool("logBle", false);
     settings.logGps = preferences.getBool("logGps", false);
     settings.logObd = preferences.getBool("logObd", false);
-    settings.logSystem = preferences.getBool("logSystem", true);
+    settings.logSystem = preferences.getBool("logSystem", false);
     settings.logDisplay = preferences.getBool("logDisplay", false);
     settings.logPerfMetrics = preferences.getBool("logPerfMet", true);  // ON by default for stability monitoring
     settings.logAudio = preferences.getBool("logAudio", false);

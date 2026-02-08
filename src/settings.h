@@ -345,14 +345,14 @@ struct V1Settings {
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
         enableDebugLogging(false),  // Debug logging off by default — matches NVS default
-        logAlerts(true),                 // Alert logging on by default
+        logAlerts(false),                // Alert logging off by default
         logWifi(false),                  // WiFi logging off by default (matches NVS)
         logBle(false),                   // BLE logging off by default
         logGps(false),                   // GPS logging off by default
         logObd(false),                   // OBD logging off by default
-        logSystem(true),                 // System/storage logging on by default
+        logSystem(false),                // System logging off by default
         logDisplay(false),               // Display latency logging off by default
-        logPerfMetrics(true),            // Perf metrics logging on (stability monitoring, matches NVS)
+        logPerfMetrics(true),            // Perf metrics on by default (disableable via settings)
         logAudio(false),                 // Audio logging off by default
         logCamera(false),                // Camera logging off by default
         logLockout(false),               // Lockout logging off by default
