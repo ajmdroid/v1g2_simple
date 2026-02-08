@@ -328,6 +328,13 @@ private:
     std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
     std::atomic<bool> pendingObdScanComplete{false};       // Deferred OBD scan complete from BLE callback
     std::atomic<bool> phoneCmdPendingClear{false};         // Clear stale phone cmd state on reconnect
+
+    // Async discovery task (avoids ~2s block on main loop)
+    std::atomic<bool> discoveryTaskRunning{false};
+    std::atomic<bool> discoveryTaskDone{false};
+    std::atomic<bool> discoveryTaskResult{false};
+    static void discoveryTaskFunc(void* param);
+
     char pendingScanTargetAddress[18] = {0};               // "AA:BB:CC:DD:EE:FF" + null
     uint8_t pendingScanTargetAddressType = BLE_ADDR_PUBLIC;
     bool hasTargetDevice = false;

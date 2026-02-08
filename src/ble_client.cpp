@@ -883,6 +883,9 @@ bool V1BLEClient::finishConnection() {
     
     // Transition to discovery phase
     connectPhaseStartUs = micros();  // Reset timer for discovery phase
+    discoveryTaskRunning.store(false);
+    discoveryTaskDone.store(false);
+    discoveryTaskResult.store(false);
     setBLEState(BLEState::DISCOVERING, "ready for discovery");
     return true;
 }
@@ -969,8 +972,18 @@ void V1BLEClient::processConnectingWait() {
     setBLEState(BLEState::BACKOFF, "all connect attempts failed");
 }
 
-// Process DISCOVERING state - performs service discovery
-// Uses cached GATT handles when available to skip full discovery
+// Static trampoline for async discovery task
+void V1BLEClient::discoveryTaskFunc(void* param) {
+    V1BLEClient* self = static_cast<V1BLEClient*>(param);
+    bool result = self->pClient->discoverAttributes();
+    self->discoveryTaskResult.store(result);
+    self->discoveryTaskDone.store(true);
+    self->discoveryTaskRunning.store(false);
+    vTaskDelete(nullptr);
+}
+
+// Process DISCOVERING state - spawns discovery in a short-lived task
+// so the main loop stays responsive during the ~2s GATT discovery
 void V1BLEClient::processDiscovering() {
     unsigned long elapsed = millis() - connectStartMs;
     
@@ -985,14 +998,30 @@ void V1BLEClient::processDiscovering() {
         return;
     }
     
-    // Perform full service discovery
-    // NOTE: This is BLOCKING (~2s) - NimBLE doesn't support non-blocking discovery
-    // The subscribe step machine breaks up the remaining work to reduce overall stall time
-    bool discovered = pClient->discoverAttributes();
+    // Spawn discovery task on first entry
+    if (!discoveryTaskRunning.load() && !discoveryTaskDone.load()) {
+        discoveryTaskRunning.store(true);
+        BaseType_t rc = xTaskCreatePinnedToCore(
+            discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY);
+        if (rc != pdPASS) {
+            // Fallback: run blocking if task creation fails
+            Serial.println("[BLE] disc task fail, blocking");
+            bool result = pClient->discoverAttributes();
+            discoveryTaskResult.store(result);
+            discoveryTaskDone.store(true);
+            discoveryTaskRunning.store(false);
+        }
+        return;  // Yield to loop while task runs
+    }
+    
+    // Poll for completion — yield until task finishes
+    if (!discoveryTaskDone.load()) {
+        return;
+    }
     
     perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs);
     
-    if (!discovered) {
+    if (!discoveryTaskResult.load()) {
         Serial.println("[BLE] FAIL discovery");
         disconnect();
         connectInProgress = false;
