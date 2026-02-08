@@ -1063,7 +1063,7 @@ size_t CameraManager::getLoadedCount() const {
     xSemaphoreGive(cameraMutex);
     return count;
   }
-  return cameras.size();  // Fall back to unsynchronized if mutex fails
+  return 0;  // Mutex contention — report 0 rather than unsynchronized read
 }
 
 // Static task entry point - calls instance method
@@ -1211,10 +1211,13 @@ bool CameraManager::loadDatabaseIncremental() {
     
     // Clear cameras only for first file
     if (firstFile) {
-      if (cameraMutex && xSemaphoreTake(cameraMutex, portMAX_DELAY) == pdTRUE) {
+      if (cameraMutex && xSemaphoreTake(cameraMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
         cameras.clear();
         cameras.reserve(totalRecords + 1000);
         xSemaphoreGive(cameraMutex);
+      } else {
+        Serial.println("[Camera] Failed to acquire mutex for clear - aborting load");
+        return false;
       }
       firstFile = false;
     }

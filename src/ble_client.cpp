@@ -933,9 +933,10 @@ void V1BLEClient::processConnectingWait() {
     
     // Check if we should retry
     if (connectAttemptNumber < MAX_CONNECT_ATTEMPTS) {
-        // Brief delay before retry (non-blocking via state machine)
-        if (err == 13) {  // EBUSY - need longer wait
-            vTaskDelay(pdMS_TO_TICKS(100));  // Short yield, not 2s block
+        if (err == 13) {  // EBUSY - defer via backoff instead of blocking main loop
+            nextConnectAllowedMs = millis() + 150;  // 150ms non-blocking deferral
+            setBLEState(BLEState::BACKOFF, "EBUSY retry");
+            return;
         }
         
         // Initiate next attempt
