@@ -99,6 +99,8 @@ struct PerfCounters {
     std::atomic<uint32_t> bleMutexTimeout{0};     // COLD path timeout failures
     std::atomic<uint32_t> cmdPaceNotYet{0};       // sendCommand pacing deferrals
     std::atomic<uint32_t> cmdBleBusy{0};          // sendCommand BLE write failed (transient)
+    std::atomic<uint32_t> obdMutexSkip{0};        // OBD HOT path try-lock skips
+    std::atomic<uint32_t> obdMutexTimeout{0};     // OBD COLD path timeout failures
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -126,6 +128,8 @@ struct PerfCounters {
         bleMutexTimeout.store(0, std::memory_order_relaxed);
         cmdPaceNotYet.store(0, std::memory_order_relaxed);
         cmdBleBusy.store(0, std::memory_order_relaxed);
+        obdMutexSkip.store(0, std::memory_order_relaxed);
+        obdMutexTimeout.store(0, std::memory_order_relaxed);
     }
 };
 

@@ -301,7 +301,7 @@ struct V1Settings {
         wifiClientEnabled(false),  // WiFi client disabled by default
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
-        proxyName("V1C-LE-S3"),
+        proxyName("V1-Proxy"),  // Must match NVS load() default
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -336,13 +336,13 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         logAlerts(true),                 // Alert logging on by default
-        logWifi(true),                   // WiFi logging on by default
+        logWifi(false),                  // WiFi logging off by default (matches NVS)
         logBle(false),                   // BLE logging off by default
         logGps(false),                   // GPS logging off by default
         logObd(false),                   // OBD logging off by default
         logSystem(true),                 // System/storage logging on by default
         logDisplay(false),               // Display latency logging off by default
-        logPerfMetrics(false),           // Perf metrics logging off by default
+        logPerfMetrics(true),            // Perf metrics logging on (stability monitoring, matches NVS)
         logAudio(false),                 // Audio logging off by default
         logCamera(false),                // Camera logging off by default
         logLockout(false),               // Lockout logging off by default
@@ -414,7 +414,7 @@ struct V1Settings {
         lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
         lockoutDirectionalUnlearn(true),// Directional unlearn on (JBV1 default)
         lockoutFreqToleranceMHz(8),     // 8 MHz tolerance (JBV1 default)
-        lockoutLearnCount(2),           // 2 hits to learn (faster clustering)
+        lockoutLearnCount(3),           // 3 hits to learn (matches NVS default)
         lockoutUnlearnCount(5),         // 5 misses to unlearn auto (JBV1 default)
         lockoutManualDeleteCount(25),   // 25 misses to unlearn manual (JBV1 default)
         lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)

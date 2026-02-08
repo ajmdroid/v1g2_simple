@@ -334,6 +334,7 @@ void perfMetricsPrint() {
         "dUpd=%lu dSkip=%lu camBg=%lu camRef=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
+        "obdSkip=%lu obdTout=%lu "
         "logRate=%lu logBuf=%lu logQ=%lu "
         "latMin=%luus avg=%luus max=%luus n=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
@@ -356,6 +357,8 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.bleMutexTimeout.load(),
         (unsigned long)perfCounters.cmdPaceNotYet.load(),
         (unsigned long)perfCounters.cmdBleBusy.load(),
+        (unsigned long)perfCounters.obdMutexSkip.load(),
+        (unsigned long)perfCounters.obdMutexTimeout.load(),
         (unsigned long)debugLogger.getRateLimitDrops(),
         (unsigned long)debugLogger.getBufferFullDrops(),
         (unsigned long)debugLogger.getDropCount(),

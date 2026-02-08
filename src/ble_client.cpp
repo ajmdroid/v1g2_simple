@@ -1512,14 +1512,14 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         if (writeUserBytes(bytes)) {
             Serial.printf("[VerifyPush] Write command sent successfully (attempt %d/%d)\n", attempt, maxRetries);
-            // Request a read-back - result will come async and update currentSettings
-            // This helps confirm the write worked, but we can't wait for it here
-            delay(50);  // Brief delay to let V1 process
-            requestUserBytes();  // Fire-and-forget read-back request
+            // Request a read-back — result comes async via main loop queue
+            // No delay: V1 processes writes immediately, read-back is fire-and-forget
+            requestUserBytes();
             return VERIFY_OK;
         }
         Serial.printf("[VerifyPush] Write attempt %d/%d failed, retrying...\n", attempt, maxRetries);
-        delay(100);
+        // No delay between retries — BLE write failure is immediate (not connected/char null),
+        // so retrying instantly is correct. If the link is up, next attempt succeeds immediately.
     }
     
     Serial.println("[VerifyPush] All write attempts failed");

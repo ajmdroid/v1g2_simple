@@ -479,7 +479,9 @@ const CameraVector* CameraManager::getQueryCamerasSnapshot(
     xSemaphoreGive(cameraMutex);
     return &snapshot;
   }
-  return &cameras;
+  // Mutex contention during background load — return null, caller skips this cycle
+  // NEVER return &cameras without lock while background task may mutate it
+  return nullptr;
 }
 
 // Build regional cache containing only cameras within radius of GPS position

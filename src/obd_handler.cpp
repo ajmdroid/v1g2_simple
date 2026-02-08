@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "ble_client.h"
 #include "debug_logger.h"
+#include "perf_metrics.h"
 #include <NimBLEDevice.h>
 
 // External references
@@ -40,11 +41,24 @@ static constexpr bool DEBUG_OBD = false;  // Set true for verbose Serial logging
     if (debugLogger.isEnabledFor(DebugLogCategory::Obd)) debugLogger.log(DebugLogCategory::Obd, msg); \
 } while(0)
 
-// Simple RAII lock for the OBD mutex
+// RAII lock for the OBD mutex — bounded timeout, never portMAX_DELAY
+// HOT paths (data accessors called from main loop): use 0 (try-lock)
+// COLD paths (connect/disconnect/init): use default 20ms
+// Increments perf counters on failure for monitoring
 class ObdLock {
 public:
-    explicit ObdLock(SemaphoreHandle_t m) : mutex(m), locked(false) {
-        if (mutex) locked = xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE;
+    explicit ObdLock(SemaphoreHandle_t m, TickType_t timeout = pdMS_TO_TICKS(20))
+        : mutex(m), locked(false) {
+        if (mutex) {
+            locked = xSemaphoreTake(mutex, timeout) == pdTRUE;
+            if (!locked) {
+                if (timeout == 0) {
+                    PERF_INC(obdMutexSkip);
+                } else {
+                    PERF_INC(obdMutexTimeout);
+                }
+            }
+        }
     }
     ~ObdLock() {
         if (locked) xSemaphoreGive(mutex);
@@ -274,14 +288,16 @@ const char* OBDHandler::getStateString() const {
     }
 }
 
-// Thread-safe data accessors
+// Thread-safe data accessors — HOT PATH: try-lock only (called from main loop/display)
 OBDData OBDHandler::getData() const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) return lastData;  // Return stale copy on contention (safe: POD struct)
     return lastData;
 }
 
 bool OBDHandler::hasValidData() const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) return false;  // Contention → report no data (safe: skip-on-fail)
     // Allow up to 3x poll interval for data freshness (BLE can have delays)
     // Poll interval is 1s, so 3s allows for occasional slow responses
     uint32_t age = millis() - lastData.timestamp_ms;
@@ -290,27 +306,32 @@ bool OBDHandler::hasValidData() const {
 }
 
 bool OBDHandler::isDataStale(uint32_t maxAge_ms) const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) return true;  // Contention → report stale (safe: conservative)
     return (millis() - lastData.timestamp_ms) > maxAge_ms;
 }
 
 float OBDHandler::getSpeedKph() const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) return lastData.speed_kph;  // Stale but non-blocking
     return lastData.speed_kph;
 }
 
 float OBDHandler::getSpeedMph() const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) return lastData.speed_mph;  // Stale but non-blocking
     return lastData.speed_mph;
 }
 
 std::vector<OBDDeviceInfo> OBDHandler::getFoundDevices() const {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex);  // COLD path: bounded 20ms (UI request only)
+    if (!lock.ok()) return {};  // Return empty on timeout
     return foundDevices;  // Return copy
 }
 
 void OBDHandler::clearFoundDevices() {
-    ObdLock lock(obdMutex);
+    ObdLock lock(obdMutex);  // COLD path: bounded 20ms
+    if (!lock.ok()) return;
     foundDevices.clear();
 }
 
@@ -979,8 +1000,11 @@ void OBDHandler::notificationCallback(NimBLERemoteCharacteristic* pChar,
                                        uint8_t* pData, size_t length, bool isNotify) {
     if (!s_obdInstance || length == 0) return;
 
-    ObdLock lock(s_obdInstance->obdMutex);
-    if (!lock.ok()) return;
+    ObdLock lock(s_obdInstance->obdMutex, 0);  // BLE callback context: try-lock only
+    if (!lock.ok()) {
+        s_obdInstance->notifyDropCount.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     
     // Append data to response buffer
     for (size_t i = 0; i < length; i++) {
