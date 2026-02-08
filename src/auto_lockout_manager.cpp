@@ -1235,17 +1235,15 @@ void AutoLockoutManager::appendLogRecord(const JsonDocument& doc) {
   // If async mode enabled and queue exists, queue for background write
   if (asyncLogMode && logWriteQueue) {
     // Non-blocking send - if queue full, drop this entry (rare, only during burst)
-    if (xQueueSend(logWriteQueue, buf, 0) != pdTRUE) {
-      // Queue full - this is acceptable, we'll catch it next time
-      // Log dropped entries would only happen during extreme alert bursts
-      if (DEBUG_LOGS) {
-        Serial.println("[AutoLockout] Log queue full, entry dropped");
-      }
+    if (xQueueSend(logWriteQueue, buf, 0) == pdTRUE) {
+      notifyWriterTask();  // Wake writer to drain
+    } else if (DEBUG_LOGS) {
+      Serial.println("[AutoLockout] Log queue full, entry dropped");
     }
     return;
   }
   
-  // Fall back to synchronous write
+  // Fall back to synchronous write (only if async mode never enabled)
   appendLogRecordSync(buf);
 }
 
@@ -1406,19 +1404,32 @@ void AutoLockoutManager::relinkPromotedLockouts() {
 }
 
 void AutoLockoutManager::maintenanceTick(unsigned long nowMs) {
+  bool needsWake = false;
+
   // Save lockouts if promote/demote dirtied them (deferred from hot path)
   if (lockoutsDirty) {
     lockoutsDirty = false;
-    lockouts.saveToJSON("/v1profiles/lockouts.json");
+    lockoutSavePending.store(true, std::memory_order_release);
+    needsWake = true;
   }
-  
+
   if (logSinceSnapshot >= 50 || (nowMs - lastSnapshotMs) >= (10UL * 60UL * 1000UL)) {
-    // Flush any pending async log writes before snapshot
-    // This ensures log file is complete before truncation
-    flushLogQueue();
-    saveToJSON("/v1simple/auto_lockouts.json");
-    truncateLog();
+    snapshotPending.store(true, std::memory_order_release);
     lastSnapshotMs = nowMs;
+    needsWake = true;
+  }
+
+  if (needsWake) {
+    notifyWriterTask();
+  }
+}
+
+void AutoLockoutManager::notifyWriterTask() {
+  if (logWriterTaskHandle) {
+    xTaskNotifyGive(logWriterTaskHandle);
+  } else if (!writerTaskMissWarned) {
+    writerTaskMissWarned = true;
+    Serial.println("[AutoLockout] WARN: writer task not running, persistence skipped");
   }
 }
 
@@ -1574,15 +1585,32 @@ void AutoLockoutManager::logWriterTaskEntry(void* param) {
 }
 
 // Writer task main loop - runs on Core 0, drains queue to SD
+// Wakes on xTaskNotifyGive from Core 1 (queue send or flag set)
 void AutoLockoutManager::logWriterTaskLoop() {
   char buf[LOCKOUT_LOG_LINE_SIZE];
-  
+
   for (;;) {
-    // Block waiting for items (portMAX_DELAY = wait forever)
-    // This is fine because we're on a dedicated low-priority task
-    if (xQueueReceive(logWriteQueue, buf, portMAX_DELAY) == pdTRUE) {
-      // Write to SD (this is the slow part - isolated from main loop!)
+    // Block until notified — zero CPU when idle
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    // Drain all queued log records (non-blocking)
+    while (logWriteQueue && xQueueReceive(logWriteQueue, buf, 0) == pdTRUE) {
       appendLogRecordSync(buf);
+    }
+
+    // Handle deferred lockout save
+    if (lockoutSavePending.exchange(false, std::memory_order_acq_rel)) {
+      lockouts.saveToJSON("/v1profiles/lockouts.json");
+    }
+
+    // Handle deferred snapshot (flush queue → save clusters → truncate log)
+    if (snapshotPending.exchange(false, std::memory_order_acq_rel)) {
+      // Drain any remaining queue items first
+      while (logWriteQueue && xQueueReceive(logWriteQueue, buf, 0) == pdTRUE) {
+        appendLogRecordSync(buf);
+      }
+      saveToJSON("/v1simple/auto_lockouts.json");
+      truncateLog();
     }
   }
 }

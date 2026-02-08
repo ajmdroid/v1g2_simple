@@ -4,6 +4,7 @@
 
 #pragma once
 #include <Arduino.h>
+#include <atomic>
 #include <vector>
 #include <ctime>
 #include <ArduinoJson.h>
@@ -169,6 +170,11 @@ private:
   static void logWriterTaskEntry(void* param);  // FreeRTOS task entry
   void logWriterTaskLoop();                      // Task main loop
 
+  // Deferred SD work flags — set on Core 1, consumed on Core 0 writer task
+  std::atomic<bool> lockoutSavePending{false};   // lockouts.saveToJSON deferred
+  std::atomic<bool> snapshotPending{false};       // cluster snapshot + log truncate deferred
+  void notifyWriterTask();                        // Wake writer via xTaskNotifyGive
+
 public:
   AutoLockoutManager();
   
@@ -224,6 +230,7 @@ private:
   size_t logSinceSnapshot = 0;
   unsigned long lastSnapshotMs = 0;
   bool replayingLog = false;
-  bool lockoutsDirty = false;            // Deferred lockout save pending
+  bool lockoutsDirty = false;            // Deferred lockout save pending (Core 1 only)
   bool pendingRelinkLockouts = false;    // External removal needs index fixup
+  bool writerTaskMissWarned = false;     // One-shot warning if writer task not running
 };
