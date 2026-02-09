@@ -835,8 +835,10 @@ void loop() {
     static constexpr unsigned long OVERLOAD_LOOP_US = 25000;
     static constexpr unsigned long FREQ_UI_MAX_MS = 100;
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
+    static constexpr unsigned long CARD_UI_MAX_MS = 150;
     static unsigned long lastAudioTickUs = 0;
     static unsigned long lastFreqUiMs = 0;
+    static unsigned long lastCardUiMs = 0;
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
     unsigned long audioTickUs = micros();
@@ -951,6 +953,15 @@ void loop() {
             display.refreshFrequencyOnly(0, BAND_NONE, false, false);
         }
         lastFreqUiMs = now;
+    }
+
+    if (!displayPreviewModule.isRunning() && overloadThisLoop && (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
+        const auto& allAlerts = parser.getAllAlerts();
+        int alertCount = static_cast<int>(parser.getAlertCount());
+        const AlertData priority = parser.getPriorityAlert();
+        const DisplayState& state = parser.getDisplayState();
+        display.refreshSecondaryAlertCards(allAlerts.data(), alertCount, priority, state.muted);
+        lastCardUiMs = now;
     }
 
     // Drive auto-push state machine (non-blocking)

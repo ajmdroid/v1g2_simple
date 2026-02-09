@@ -2458,6 +2458,22 @@ void V1Display::update(const DisplayState& state) {
     lastState = state;
 }
 
+void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
+    drawFrequency(freqMHz, band, muted, isPhotoRadar);
+    flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                DisplayLayout::PRIMARY_ZONE_Y,
+                DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                DisplayLayout::PRIMARY_ZONE_HEIGHT);
+}
+
+void V1Display::refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
+    drawSecondaryAlertCards(alerts, alertCount, priority, muted);
+    flushRegion(0,
+                SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                SCREEN_WIDTH,
+                SECONDARY_ROW_HEIGHT);
+}
+
 // Persisted alert display - shows last alert in dark grey after V1 clears it
 // Only draws frequency, band, and arrows - no signal bars, no mute badge
 // Bogey counter shows V1 mode (from state), not "1"

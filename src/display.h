@@ -38,6 +38,11 @@ public:
     void update(const DisplayState& state);
     // Multi-alert display: shows priority alert + secondary alert cards
     void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
+
+    // Lightweight frequency-only refresh (minimal redraw)
+    void refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);
+    // Lightweight secondary cards-only refresh (minimal redraw)
+    void refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
     
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
