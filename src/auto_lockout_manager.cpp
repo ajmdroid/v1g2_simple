@@ -1590,7 +1590,7 @@ void AutoLockoutManager::logWriterTaskEntry(void* param) {
 // Writer task main loop - runs on Core 0, drains queue to SD
 // Wakes on xTaskNotifyGive from Core 1 (queue send or flag set)
 void AutoLockoutManager::logWriterTaskLoop() {
-  char buf[LOCKOUT_LOG_LINE_SIZE];
+  static char buf[LOCKOUT_LOG_LINE_SIZE];
 
   for (;;) {
     // Block until notified — zero CPU when idle

@@ -18,7 +18,7 @@
 // Async log write queue settings (background SD writes)
 inline constexpr size_t LOCKOUT_LOG_QUEUE_DEPTH = 16;       // Queue depth (16 items = ~4KB)
 inline constexpr size_t LOCKOUT_LOG_LINE_SIZE = 256;        // Max serialized JSON line size
-inline constexpr size_t LOCKOUT_LOG_WRITER_STACK_SIZE = 3072; // Writer task stack (3KB)
+inline constexpr size_t LOCKOUT_LOG_WRITER_STACK_SIZE = 12288; // Writer task stack (12KB)
 
 // Single alert event with location and metadata
 struct AlertEvent {
