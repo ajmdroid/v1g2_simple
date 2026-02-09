@@ -482,7 +482,7 @@ void SettingsManager::load() {
     settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
     settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);  // No upper bound needed for speed;
     
-    settings.autoPushEnabled = preferences.getBool("autoPush", false);
+    settings.autoPushEnabled = preferences.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
         settings.activeSlot = 0;
