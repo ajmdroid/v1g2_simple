@@ -11,7 +11,7 @@
 
 // Debug log switches (set to true to enable verbose output)
 static constexpr bool DEBUG_LOGS = false;
-static constexpr bool AUTOPUSH_DEBUG_LOGS = false;
+static constexpr bool AUTOPUSH_DEBUG_LOGS = true;
 
 // Debug logging macros - compile to nothing when flags are false
 #define DEBUG_LOGF(...) do { if (DEBUG_LOGS) SerialLog.printf(__VA_ARGS__); } while (0)

@@ -344,6 +344,12 @@ static WifiOrchestrator& getWifiOrchestrator() {
 void onV1Connected() {
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
+    const AutoPushSlot& slot = settingsManager.getSlot(activeSlotIndex);
+    SerialLog.printf("[AutoPush] onV1Connected autoPush=%s slot=%d profile='%s' mode=%d\n",
+                     s.autoPushEnabled ? "on" : "off",
+                     activeSlotIndex,
+                     slot.profileName.c_str(),
+                     static_cast<int>(slot.mode));
     if (activeSlotIndex != s.activeSlot) {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                         s.activeSlot, activeSlotIndex);
