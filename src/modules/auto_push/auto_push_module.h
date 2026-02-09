@@ -33,7 +33,9 @@ public:
 
 private:
     // Local debug gate; keep noisy logs off by default.
-    static constexpr bool kDebugLogs = false;
+    static constexpr bool kDebugLogs = true;
+
+    static constexpr uint8_t kMaxProfileWriteRetries = 5;
 
     enum class Step : uint8_t {
         Idle = 0,
@@ -52,6 +54,7 @@ private:
         AutoPushSlot slot;
         V1Profile profile;
         bool profileLoaded = false;
+        uint8_t profileWriteRetries = 0;
     };
 
     void applySlotMuteToZero(V1UserSettings& settings, bool slotMuteToZero);

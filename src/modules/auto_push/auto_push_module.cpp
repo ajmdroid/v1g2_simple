@@ -26,6 +26,7 @@ void AutoPushModule::start(int slotIndex) {
     state.profile = V1Profile();
     state.step = Step::WaitReady;
     state.nextStepAtMs = millis() + 500;
+    state.profileWriteRetries = 0;
     AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
                    slotNames[clampedIndex], clampedIndex);
 
@@ -92,6 +93,14 @@ void AutoPushModule::process() {
                         state.nextStepAtMs = now + 100;
                         return;
                     } else {
+                        if (state.profileWriteRetries < kMaxProfileWriteRetries) {
+                            state.profileWriteRetries++;
+                            AUTO_PUSH_LOGF("[AutoPush] Write busy, retrying (%u/%u)\n",
+                                           state.profileWriteRetries, kMaxProfileWriteRetries);
+                            state.step = Step::Profile;
+                            state.nextStepAtMs = now + 100;
+                            return;
+                        }
                         AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
                 } else {
