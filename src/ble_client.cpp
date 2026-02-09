@@ -1565,6 +1565,16 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
     return VERIFY_WRITE_FAILED;
 }
 
+void V1BLEClient::startUserBytesVerification(const uint8_t* expected) {
+    if (!expected) {
+        return;
+    }
+    memcpy(verifyExpected, expected, 6);
+    verifyPending = true;
+    verifyComplete = false;
+    verifyMatch = false;
+}
+
 void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {
     if (verifyPending && bytes) {
         memcpy(verifyReceived, bytes, 6);
@@ -1574,6 +1584,7 @@ void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {
             verifyReceived[0], verifyReceived[1], verifyReceived[2],
             verifyReceived[3], verifyReceived[4], verifyReceived[5],
             verifyMatch ? "YES" : "NO");
+        verifyPending = false;
     }
 }
 

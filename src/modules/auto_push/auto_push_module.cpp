@@ -89,6 +89,7 @@ void AutoPushModule::process() {
                     if (bleClient->writeUserBytes(modifiedSettings.bytes)) {
                         AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n",
                                        slotMuteToZero ? "ON" : "OFF");
+                        bleClient->startUserBytesVerification(modifiedSettings.bytes);
                         state.step = Step::ProfileReadback;
                         state.nextStepAtMs = now + 100;
                         return;

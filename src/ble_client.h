@@ -156,6 +156,9 @@ public:
     // Write user settings with optional verification (verification disabled - see implementation)
     enum WriteVerifyResult { VERIFY_OK = 0, VERIFY_WRITE_FAILED = 1, VERIFY_TIMEOUT = 2, VERIFY_MISMATCH = 3 };
     WriteVerifyResult writeUserBytesVerified(const uint8_t* bytes, int maxRetries = 2);
+
+    // Prepare verification of user bytes on next read-back
+    void startUserBytesVerification(const uint8_t* expected);
     
     // Called by main loop when RESP_USER_BYTES received to complete verification
     void onUserBytesReceived(const uint8_t* bytes);
