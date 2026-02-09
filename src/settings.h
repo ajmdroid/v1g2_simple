@@ -561,6 +561,7 @@ public:
     void resetToDefaults();
     
     // GPS/OBD settings
+    bool isFeaturesRuntimeEnabled() const { return settings.gpsEnabled || settings.obdEnabled || settings.cameraAlertsEnabled; }
     bool isGpsEnabled() const { return settings.gpsEnabled; }
     bool isObdEnabled() const { return settings.obdEnabled; }
     void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
