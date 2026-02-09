@@ -8,7 +8,6 @@
 // - State machine manages connection, initialization, and polling
 
 #include "obd_handler.h"
-#include "settings.h"
 #include "ble_client.h"
 #include "debug_logger.h"
 #include "settings.h"
