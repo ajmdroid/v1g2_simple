@@ -355,10 +355,12 @@ void onV1Connected() {
                         s.activeSlot, activeSlotIndex);
     }
     
-    // Schedule delayed OBD auto-connect if OBD is enabled
-    if (s.obdEnabled) {
-        obdAutoConnector.scheduleAfterConnect(OBD_CONNECT_DELAY_MS);
-        SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
+    if (settingsManager.isFeaturesRuntimeEnabled()) {
+        // Schedule delayed OBD auto-connect if OBD is enabled
+        if (s.obdEnabled) {
+            obdAutoConnector.scheduleAfterConnect(OBD_CONNECT_DELAY_MS);
+            SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
+        }
     }
     
     if (!s.autoPushEnabled) {
@@ -458,6 +460,7 @@ void setup() {
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();
+    const bool featuresRuntimeEnabled = settingsManager.isFeaturesRuntimeEnabled();
 
 #if defined(DISPLAY_WAVESHARE_349)
     powerModule.begin(&batteryManager, &display, &settingsManager, &debugLogger);
@@ -481,10 +484,14 @@ void setup() {
 
     // Initialize auxiliary coordinators
     cameraLoadCoordinator.begin(&cameraManager, &storageManager, &debugLogger);
-    obdAutoConnector.begin(&obdHandler);
+    if (featuresRuntimeEnabled) {
+        obdAutoConnector.begin(&obdHandler);
+    }
 
-    // Initialize camera alert module (display + detection helpers)
-    cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
+    if (featuresRuntimeEnabled) {
+        // Initialize camera alert module (display + detection helpers)
+        cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
+    }
     
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
 
@@ -520,41 +527,43 @@ void setup() {
             display.setBrightness(settingsManager.get().brightness);
         }
         
-        // Initialize lockout managers (requires storage to be ready)
-        autoLockouts.setLockoutManager(&lockouts);
-        lockouts.loadFromJSON("/v1profiles/lockouts.json");
-        autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
-        SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
-                        lockouts.getLockoutCount(), autoLockouts.getClusterCount());
-        
-        // Enable async log mode for auto-lockout (background SD writes)
-        // This prevents alert hot path from blocking on SD I/O
-        autoLockouts.setAsyncLogMode(true);
-
-        autoLockoutMaintenance.begin(&autoLockouts);
-        
-        // Initialize GPS if enabled in settings (static allocation - just call begin())
-        if (settingsManager.isGpsEnabled()) {
-            SerialLog.println("[Setup] GPS enabled - initializing...");
-            gpsHandler.begin();
+        if (featuresRuntimeEnabled) {
+            // Initialize lockout managers (requires storage to be ready)
+            autoLockouts.setLockoutManager(&lockouts);
+            lockouts.loadFromJSON("/v1profiles/lockouts.json");
+            autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
+            SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
+                            lockouts.getLockoutCount(), autoLockouts.getClusterCount());
             
-            // Start camera database loading immediately in background task
-            // With binary format this only takes ~1.6s for 71k cameras
-            // Loading runs in parallel with BLE/WiFi init
-            if (storageManager.isSDCard()) {
-                SerialLog.println("[Setup] Starting camera database load (background)...");
-                cameraLoadCoordinator.startImmediateLoad();
+            // Enable async log mode for auto-lockout (background SD writes)
+            // This prevents alert hot path from blocking on SD I/O
+            autoLockouts.setAsyncLogMode(true);
+
+            autoLockoutMaintenance.begin(&autoLockouts);
+            
+            // Initialize GPS if enabled in settings (static allocation - just call begin())
+            if (settingsManager.isGpsEnabled()) {
+                SerialLog.println("[Setup] GPS enabled - initializing...");
+                gpsHandler.begin();
+                
+                // Start camera database loading immediately in background task
+                // With binary format this only takes ~1.6s for 71k cameras
+                // Loading runs in parallel with BLE/WiFi init
+                if (storageManager.isSDCard()) {
+                    SerialLog.println("[Setup] Starting camera database load (background)...");
+                    cameraLoadCoordinator.startImmediateLoad();
+                }
+            } else {
+                SerialLog.println("[Setup] GPS disabled in settings");
             }
-        } else {
-            SerialLog.println("[Setup] GPS disabled in settings");
-        }
-        
-        // Initialize OBD if enabled in settings
-        if (settingsManager.isObdEnabled()) {
-            SerialLog.println("[Setup] OBD enabled - initializing...");
-            obdHandler.begin();
-        } else {
-            SerialLog.println("[Setup] OBD disabled in settings");
+            
+            // Initialize OBD if enabled in settings
+            if (settingsManager.isObdEnabled()) {
+                SerialLog.println("[Setup] OBD enabled - initializing...");
+                obdHandler.begin();
+            } else {
+                SerialLog.println("[Setup] OBD disabled in settings");
+            }
         }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
@@ -749,13 +758,15 @@ void setup() {
     voiceModule.begin(&settingsManager, &bleClient, &obdHandler, &gpsHandler);
     speedVolumeModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
     volumeFadeModule.begin(&settingsManager);
+    LockoutManager* lockoutPtr = featuresRuntimeEnabled ? &lockouts : nullptr;
+    AutoLockoutManager* autoLockoutPtr = featuresRuntimeEnabled ? &autoLockouts : nullptr;
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
                                 &settingsManager,
                                 &gpsHandler,
-                                &lockouts,
-                                &autoLockouts,
+                                lockoutPtr,
+                                autoLockoutPtr,
                                 &bleClient,
                                 &cameraAlertModule,
                                 &alertPersistenceModule,
@@ -816,8 +827,17 @@ void setup() {
 }
 
 void loop() {
+    const bool featuresRuntimeEnabled = settingsManager.isFeaturesRuntimeEnabled();
     unsigned long loopStartUs = micros();
     unsigned long now = millis();
+    static constexpr unsigned long AUDIO_TICK_MAX_MS = 25;
+    static constexpr unsigned long OVERLOAD_LOOP_US = 25000;
+    static constexpr unsigned long FREQ_UI_MAX_MS = 100;
+    static unsigned long lastAudioTickMs = 0;
+    static unsigned long lastFreqUiMs = 0;
+    static unsigned long lastLoopUs = 0;
+    bool skipNonCoreThisLoop = (now - lastAudioTickMs) >= AUDIO_TICK_MAX_MS;
+    bool overloadThisLoop = (lastLoopUs >= OVERLOAD_LOOP_US) || skipNonCoreThisLoop;
 
     // RUN_START marker: fires once when boot phase is complete
     // Helps analyzers distinguish flash/boot noise from runtime behavior
@@ -836,21 +856,26 @@ void loop() {
         }
     }
 
-    // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
-    // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
-    unsigned long lastRx = bleQueueModule.getLastRxMillis();
-    bool bleReceiving = (now - lastRx) < 2000;
-    display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
+    if (!overloadThisLoop) {
+        // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
+        // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
+        unsigned long lastRx = bleQueueModule.getLastRxMillis();
+        bool bleReceiving = (now - lastRx) < 2000;
+        display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
+    }
     
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();
+    lastAudioTickMs = now;
 
     // Drive color preview (band cycle) first; skip other updates if active
-    if (displayPreviewModule.isRunning()) {
-        displayPreviewModule.update();
-    } else {
-        // Check if preview/test ended and restore display if needed
-        displayRestoreModule.process();
+    if (!overloadThisLoop) {
+        if (displayPreviewModule.isRunning()) {
+            displayPreviewModule.update();
+        } else {
+            // Check if preview/test ended and restore display if needed
+            displayRestoreModule.process();
+        }
     }
 
     // Process battery/power and touch UI
@@ -902,39 +927,61 @@ void loop() {
             if (parsedTs != 0 && nowMs >= parsedTs) {
                 perfRecordNotifyToDisplayMs(nowMs - parsedTs);
             }
-            uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
-            displayPipelineModule.handleParsed(nowMs);
-            perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
+            if (!overloadThisLoop) {
+                uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
+                displayPipelineModule.handleParsed(nowMs);
+                perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
+                lastFreqUiMs = nowMs;
+            }
         }
+    }
+
+    if (!displayPreviewModule.isRunning() && (now - lastFreqUiMs) >= FREQ_UI_MAX_MS) {
+        const DisplayState& state = parser.getDisplayState();
+        const AlertData priority = parser.getPriorityAlert();
+        bool hasPriority = parser.hasAlerts() && priority.isValid && priority.band != BAND_NONE;
+        bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+        if (hasPriority) {
+            display.refreshFrequencyOnly(priority.frequency, priority.band, state.muted, isPhotoRadar);
+        } else {
+            display.refreshFrequencyOnly(0, BAND_NONE, false, false);
+        }
+        lastFreqUiMs = now;
     }
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();
 
-    // Process WiFi/web server
-    uint32_t wifiStartUs = PERF_TIMESTAMP_US();
-    wifiManager.process();
-    perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+    if (!skipNonCoreThisLoop) {
+        // Process WiFi/web server
+        uint32_t wifiStartUs = PERF_TIMESTAMP_US();
+        wifiManager.process();
+        perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+    }
     
-    // Process GPS updates (if enabled - static allocation uses isEnabled())
-    if (gpsHandler.isEnabled()) {
-        uint32_t gpsStartUs = PERF_TIMESTAMP_US();
-        gpsHandler.update();
-        perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
-        
-        // Auto-disable GPS if module not detected after timeout
-        if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
-            Serial.println("[GPS] Module not detected - disabling GPS");
-            gpsHandler.end();  // Static allocation - use end() instead of delete
-            settingsManager.setGpsEnabled(false);
+    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
+        // Process GPS updates (if enabled - static allocation uses isEnabled())
+        if (gpsHandler.isEnabled()) {
+            uint32_t gpsStartUs = PERF_TIMESTAMP_US();
+            gpsHandler.update();
+            perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
+            
+            // Auto-disable GPS if module not detected after timeout
+            if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
+                Serial.println("[GPS] Module not detected - disabling GPS");
+                gpsHandler.end();  // Static allocation - use end() instead of delete
+                settingsManager.setGpsEnabled(false);
+            }
         }
     }
     
-    // Camera alerts + cache maintenance (requires GPS with valid fix)
-    {
-        uint32_t camStartUs = PERF_TIMESTAMP_US();
-        cameraAlertModule.process();
-        perfRecordCameraUs(PERF_TIMESTAMP_US() - camStartUs);
+    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
+        // Camera alerts + cache maintenance (requires GPS with valid fix)
+        {
+            uint32_t camStartUs = PERF_TIMESTAMP_US();
+            cameraAlertModule.process();
+            perfRecordCameraUs(PERF_TIMESTAMP_US() - camStartUs);
+        }
     }
 
     perfRecordLoopJitterUs(micros() - loopStartUs);
@@ -942,16 +989,20 @@ void loop() {
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
                         StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
     
-    // OBD processing and delayed auto-connect
-    {
-        uint32_t obdStartUs = PERF_TIMESTAMP_US();
-        obdAutoConnector.process(now);
-        perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
+    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
+        // OBD processing and delayed auto-connect
+        {
+            uint32_t obdStartUs = PERF_TIMESTAMP_US();
+            obdAutoConnector.process(now);
+            perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
+        }
     }
 
     // Deferred camera database loading - runs once after V1 connects
-    cameraLoadCoordinator.process(bleClient.isConnected());
-    
+    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
+        cameraLoadCoordinator.process(bleClient.isConnected());
+    }
+
     // Check if V1 has active alerts - determines if camera shows as main display or card
     // Also treat persisted alerts as "V1 owns display" to avoid camera overwriting them
     bool previewActive = displayPreviewModule.isRunning();
@@ -963,11 +1014,13 @@ void loop() {
     // Speed-based volume: delegate to module (rate-limited internally)
     speedVolumeModule.process(now);
     
-    // Periodic auto-lockout maintenance (promotion/demotion + persistence)
-    {
-        uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-        autoLockoutMaintenance.process(now);
-        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
+    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
+        // Periodic auto-lockout maintenance (promotion/demotion + persistence)
+        {
+            uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
+            autoLockoutMaintenance.process(now);
+            perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
+        }
     }
     
     // Update display periodically
@@ -989,4 +1042,5 @@ void loop() {
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
+    lastLoopUs = micros() - loopStartUs;
 }
