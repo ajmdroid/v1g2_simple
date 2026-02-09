@@ -11,7 +11,6 @@
 #include "lockout_manager.h"
 #include "auto_lockout_manager.h"
 #include "ble_client.h"
-#include "modules/camera/camera_alert_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
@@ -28,7 +27,6 @@ public:
                LockoutManager* lockouts,
                AutoLockoutManager* autoLockouts,
                V1BLEClient* bleClient,
-               CameraAlertModule* cameraAlertModule,
                AlertPersistenceModule* alertPersistenceModule,
                VolumeFadeModule* volumeFadeModule,
                VoiceModule* voiceModule,
@@ -47,7 +45,6 @@ private:
     LockoutManager* lockoutMgr = nullptr;
     AutoLockoutManager* autoLockoutMgr = nullptr;
     V1BLEClient* ble = nullptr;
-    CameraAlertModule* cameraAlert = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     VoiceModule* voice = nullptr;

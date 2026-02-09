@@ -7,9 +7,7 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    SettingsManager& settingsManager,
                                    StorageManager& storageManager,
                                    GPSHandler& gpsHandler,
-                                   CameraManager& cameraManager,
-                                                                     CameraAlertModule& cameraAlertModule,
-                                                                     AutoPushModule& autoPushModule,
+                                   AutoPushModule& autoPushModule,
                                    std::function<void(int)> profilePushFn)
     : wifiManager(wifiManager),
       debugLogger(debugLogger),
@@ -18,9 +16,7 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
       settingsManager(settingsManager),
       storageManager(storageManager),
       gpsHandler(gpsHandler),
-      cameraManager(cameraManager),
-      cameraAlertModule(cameraAlertModule),
-            autoPushModule(autoPushModule),
+      autoPushModule(autoPushModule),
       profilePushFn(std::move(profilePushFn)) {}
 
 void WifiOrchestrator::startWifi() {
@@ -161,51 +157,6 @@ void WifiOrchestrator::configureCallbacks() {
     // GPS reset
     wifiManager.setGpsResetCallback([this]() {
         gpsHandler.reset();
-    });
-
-    // Camera status
-    wifiManager.setCameraStatusCallback([this]() {
-        JsonDocument doc;
-
-        doc["loaded"] = cameraManager.isLoaded();
-        doc["count"] = cameraManager.getCameraCount();
-
-        if (cameraManager.isLoaded()) {
-            doc["name"] = cameraManager.getDatabaseName();
-            doc["date"] = cameraManager.getDatabaseDate();
-            doc["redLightCount"] = cameraManager.getRedLightCount();
-            doc["speedCount"] = cameraManager.getSpeedCameraCount();
-            doc["alprCount"] = cameraManager.getALPRCount();
-
-            if (cameraManager.hasRegionalCache()) {
-                JsonObject cache = doc["cache"].to<JsonObject>();
-                float cacheLat, cacheLon;
-                cameraManager.getCacheCenter(cacheLat, cacheLon);
-                cache["count"] = cameraManager.getRegionalCacheCount();
-                cache["centerLat"] = cacheLat;
-                cache["centerLon"] = cacheLon;
-                cache["radiusMiles"] = cameraManager.getCacheRadius();
-            }
-        }
-
-        String json;
-        serializeJson(doc, json);
-        return json;
-    });
-
-    // Camera reload
-    wifiManager.setCameraReloadCallback([this]() {
-        if (!storageManager.isReady() || !storageManager.isSDCard()) {
-            return false;
-        }
-        fs::FS* fs = storageManager.getFilesystem();
-        if (!fs) return false;
-        return cameraManager.begin(fs);
-    });
-
-    // Camera test
-    wifiManager.setCameraTestCallback([this](int type) {
-        cameraAlertModule.startTest(type);
     });
 
     // V1 connection state (used to defer WiFi client operations until V1 is connected)

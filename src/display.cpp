@@ -2838,7 +2838,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     
     // Track what was drawn at each POSITION (0 or 1) for incremental updates
     static struct {
-        bool isCamera = false;      // Was this a camera or V1 card?
         // V1 card state
         Band band = BAND_NONE;
         uint32_t frequency = 0;
@@ -2846,11 +2845,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         bool isGraced = false;
         bool wasMuted = false;
         uint8_t bars = 0;           // Signal strength bars (0-6)
-        // Camera card state
-        int cameraIndex = -1;
-        char typeName[16] = {0};
-        int distanceFt = -1;        // Distance in feet for comparison
-        uint16_t color = 0;
     } lastDrawnPositions[2];
     [[maybe_unused]] static int lastDrawnCount = 0;
     
@@ -2865,26 +2859,12 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             lastDrawnPositions[c].band = BAND_NONE;
             lastDrawnPositions[c].frequency = 0;
             lastDrawnPositions[c].bars = 0;
-            lastDrawnPositions[c].isCamera = false;
-            lastDrawnPositions[c].cameraIndex = -1;
-            lastDrawnPositions[c].distanceFt = -1;
-            lastDrawnPositions[c].typeName[0] = '\0';
         }
         lastDrawnCount = 0;
         lastPriorityForCards = AlertData();
     }
     
-    // Check if any camera cards are active
-    bool hasActiveCameras = false;
-    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
-        if (cameraCards[i].active && cameraCards[i].typeName[0] != '\0') {
-            hasActiveCameras = true;
-            break;
-        }
-    }
-    
     // If called with nullptr alerts and count 0, clear V1 card state
-    // BUT: if camera cards are active, we need to continue and draw them
     if (alerts == nullptr && alertCount == 0) {
         for (int c = 0; c < 2; c++) {
             cards[c].alert = AlertData();
@@ -2892,19 +2872,15 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
         lastPriorityForCards = AlertData();
         
-        // Only fully return if no camera cards to draw
-        if (!hasActiveCameras) {
-            // Clear the card area
-            [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
-            const int clearWidth = signalBarsX - startX;
-            if (clearWidth > 0) {
-                FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
-            }
-            // Reset last drawn count so next time cards appear, change is detected
-            lastDrawnCount = 0;
-            return;
+        // Clear the card area
+        [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+        const int clearWidth = signalBarsX - startX;
+        if (clearWidth > 0) {
+            FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
         }
-        // Otherwise, fall through to draw camera cards
+        // Reset last drawn count so next time cards appear, change is detected
+        lastDrawnCount = 0;
+        return;
     }
     
     // Helper: check if two alerts match (same band + frequency within tolerance)
@@ -3032,24 +3008,20 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
     };
     
-    // Build list of cards to draw this frame (V1 alerts first, then camera if room)
+    // Build list of cards to draw this frame (V1 alerts only)
     struct CardToDraw {
-        int slot;           // V1 card slot index (-1 for camera)
+        int slot;           // V1 card slot index
         bool isGraced;
         uint8_t bars;       // Signal strength for V1 cards
-        bool isCamera;      // True if this is a camera alert card
-        int cameraIndex;    // Which camera in cameraCards[] array
     } cardsToDraw[2];
     int cardsToDrawCount = 0;
     
-    // First: add V1 secondary alerts (they get priority over camera)
+    // Add V1 secondary alerts
     for (int c = 0; c < 2 && cardsToDrawCount < 2; c++) {
         if (cards[c].lastSeen == 0) continue;
         if (isSameAsPriority(cards[c].alert)) continue;
         cardsToDraw[cardsToDrawCount].slot = c;
         cardsToDraw[cardsToDrawCount].bars = getAlertBars(cards[c].alert);
-        cardsToDraw[cardsToDrawCount].isCamera = false;
-        cardsToDraw[cardsToDrawCount].cameraIndex = -1;
         // Check if live or graced
         bool isLive = false;
         if (alerts != nullptr) {
@@ -3064,21 +3036,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDrawCount++;
     }
     
-    // Second: add active camera alerts to fill remaining card slots
-    for (int cam = 0; cam < MAX_CAMERA_CARDS && cardsToDrawCount < 2; cam++) {
-        if (cameraCards[cam].active && cameraCards[cam].typeName[0] != '\0') {
-            cardsToDraw[cardsToDrawCount].slot = -1;  // -1 indicates camera card
-            cardsToDraw[cardsToDrawCount].bars = 0;
-            cardsToDraw[cardsToDrawCount].isCamera = true;
-            cardsToDraw[cardsToDrawCount].cameraIndex = cam;
-            cardsToDraw[cardsToDrawCount].isGraced = cameraCards[cam].isGraced;  // Use persistence state
-            cardsToDrawCount++;
-        }
-    }
-    
-    // Track camera state for change detection (now tracks multiple cameras)
-    [[maybe_unused]] static int lastActiveCameraCount = 0;
-    
     // === INCREMENTAL UPDATE LOGIC ===
     // Instead of clearing all cards and redrawing, check each position independently
     
@@ -3090,60 +3047,36 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     auto positionNeedsFullRedraw = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) {
             // Position now empty but had content - needs clear
-            return lastDrawnPositions[pos].band != BAND_NONE || 
-                   lastDrawnPositions[pos].isCamera;
+            return lastDrawnPositions[pos].band != BAND_NONE;
         }
         
         auto& last = lastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
         
-        // Type changed (camera <-> V1) - full redraw
-        if (curr.isCamera != last.isCamera) return true;
-        
-        if (curr.isCamera) {
-            // Camera card - check if camera index, type, or graced state changed
-            int camIdx = curr.cameraIndex;
-            if (camIdx != last.cameraIndex) return true;
-            if (curr.isGraced != last.isGraced) return true;  // Graced state changed
-            if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
-                if (strcmp(cameraCards[camIdx].typeName, last.typeName) != 0) return true;
-                if (cameraCards[camIdx].color != last.color) return true;
-            }
-        } else {
-            // V1 card - check if band/freq/direction changed (needs full card redraw)
-            // Use frequency tolerance (±5 MHz) to handle V1 jitter
-            const uint32_t FREQ_TOLERANCE_MHZ = 5;
-            int slot = curr.slot;
-            if (cards[slot].alert.band != last.band) return true;
-            uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency) 
-                ? (cards[slot].alert.frequency - last.frequency) 
-                : (last.frequency - cards[slot].alert.frequency);
-            if (freqDiff > FREQ_TOLERANCE_MHZ) return true;
-            if (cards[slot].alert.direction != last.direction) return true;
-            if (curr.isGraced != last.isGraced) return true;
-            if (muted != last.wasMuted) return true;
-        }
+        // V1 card - check if band/freq/direction changed (needs full card redraw)
+        // Use frequency tolerance (±5 MHz) to handle V1 jitter
+        const uint32_t FREQ_TOLERANCE_MHZ = 5;
+        int slot = curr.slot;
+        if (cards[slot].alert.band != last.band) return true;
+        uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency) 
+            ? (cards[slot].alert.frequency - last.frequency) 
+            : (last.frequency - cards[slot].alert.frequency);
+        if (freqDiff > FREQ_TOLERANCE_MHZ) return true;
+        if (cards[slot].alert.direction != last.direction) return true;
+        if (curr.isGraced != last.isGraced) return true;
+        if (muted != last.wasMuted) return true;
         return false;
     };
     
-    // Helper to check if position needs dynamic update (distance or bars only)
+    // Helper to check if position needs dynamic update (bars only)
     auto positionNeedsDynamicUpdate = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) return false;
         
         auto& last = lastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
         
-        if (curr.isCamera) {
-            int camIdx = curr.cameraIndex;
-            if (camIdx >= 0 && camIdx < MAX_CAMERA_CARDS) {
-                int currDistFt = static_cast<int>(cameraCards[camIdx].distance_m * 3.28084f);
-                // Update if distance changed by more than 10ft
-                if (abs(currDistFt - last.distanceFt) >= 10) return true;
-            }
-        } else {
-            // V1 card - check signal bars
-            if (curr.bars != last.bars) return true;
-        }
+        // V1 card - check signal bars
+        if (curr.bars != last.bars) return true;
         return false;
     };
     
@@ -3158,111 +3091,15 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         
         // Clear position if it's now empty
         if (i >= cardsToDrawCount) {
-            if (lastDrawnPositions[i].band != BAND_NONE || lastDrawnPositions[i].isCamera) {
+            if (lastDrawnPositions[i].band != BAND_NONE) {
                 FILL_RECT(cardX, cardY, cardW, cardH, PALETTE_BG);
                 lastDrawnPositions[i].band = BAND_NONE;
-                lastDrawnPositions[i].isCamera = false;
-                lastDrawnPositions[i].cameraIndex = -1;
-                lastDrawnPositions[i].distanceFt = -1;
             }
             continue;
         }
         
         if (!needsFullRedraw && !needsDynamicUpdate) {
             continue;  // Skip this position - nothing changed
-        }
-        
-        // Handle camera card
-        if (cardsToDraw[i].isCamera) {
-            int camIdx = cardsToDraw[i].cameraIndex;
-            if (camIdx < 0 || camIdx >= MAX_CAMERA_CARDS) continue;
-            
-            uint16_t camColor = cameraCards[camIdx].color;
-            const char* camTypeName = cameraCards[camIdx].typeName;
-            float camDistance = cameraCards[camIdx].distance_m;
-            int currDistFt = static_cast<int>(camDistance * 3.28084f);
-            bool isGraced = cardsToDraw[i].isGraced;
-            
-            // If graced, use muted grey colors instead of camera color
-            uint16_t borderCol = isGraced ? PALETTE_MUTED : camColor;
-            uint16_t contentCol = isGraced ? PALETTE_MUTED : TFT_WHITE;
-            uint16_t labelCol = isGraced ? PALETTE_MUTED : camColor;
-            uint16_t bgCol;
-            
-            if (isGraced) {
-                bgCol = 0x2104;  // Dark grey background for graced state
-            } else {
-                uint8_t r = ((camColor >> 11) & 0x1F) * 3 / 10;
-                uint8_t g = ((camColor >> 5) & 0x3F) * 3 / 10;
-                uint8_t b = (camColor & 0x1F) * 3 / 10;
-                bgCol = (r << 11) | (g << 5) | b;
-            }
-            
-            if (needsFullRedraw) {
-                // === FULL CAMERA CARD REDRAW ===
-                FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-                DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
-                
-                const int contentCenterY = cardY + 18;
-                [[maybe_unused]] int topRowY = cardY + 11;
-                
-                // Direction arrow
-                int arrowX = cardX + 18;
-                int arrowCY = contentCenterY;
-                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
-                
-                // Bottom row: Camera type name
-                const int bottomRowY = cardY + 38;
-                tft->setTextSize(1);
-                tft->setTextColor(labelCol);
-                int typeLen = strlen(camTypeName);
-                int typePixelWidth = typeLen * 6;
-                int typeX = cardX + (cardW - typePixelWidth) / 2;
-                tft->setCursor(typeX, bottomRowY);
-                tft->print(camTypeName);
-            }
-            
-            // Draw distance (always when full redraw, or just update if dynamic)
-            if (needsFullRedraw || needsDynamicUpdate) {
-                [[maybe_unused]] int topRowY = cardY + 11;
-                int labelX = cardX + 36;
-                
-                // Clear just the distance text area
-                FILL_RECT(labelX, topRowY - 2, cardW - 40, 18, bgCol);
-                
-                // Format and draw distance
-                char distStr[16];
-                if (camDistance < 1609.34f) {
-                    snprintf(distStr, sizeof(distStr), "%dft", currDistFt);
-                } else {
-                    snprintf(distStr, sizeof(distStr), "%.1fmi", camDistance / 1609.34f);
-                }
-                
-                tft->setTextColor(contentCol);  // Use graced-aware color
-                tft->setTextSize(2);
-                int distLen = strlen(distStr);
-                int distPixelWidth = distLen * 12;
-                int maxDistX = cardX + cardW - distPixelWidth - 5;
-                int distX = labelX;
-                if (distX + distPixelWidth > cardX + cardW - 5) {
-                    distX = maxDistX;
-                }
-                tft->setCursor(distX, topRowY);
-                tft->print(distStr);
-                
-                // Update tracking
-                lastDrawnPositions[i].distanceFt = currDistFt;
-            }
-            
-            // Update position tracking
-            lastDrawnPositions[i].isCamera = true;
-            lastDrawnPositions[i].cameraIndex = camIdx;
-            lastDrawnPositions[i].isGraced = isGraced;  // Track graced state
-            strncpy(lastDrawnPositions[i].typeName, camTypeName, sizeof(lastDrawnPositions[i].typeName) - 1);
-            lastDrawnPositions[i].color = camColor;
-            lastDrawnPositions[i].band = BAND_NONE;
-            
-            continue;
         }
         
         // === V1 ALERT CARD ===
@@ -3379,19 +3216,16 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
         
         // Update position tracking for V1 card
-        lastDrawnPositions[i].isCamera = false;
         lastDrawnPositions[i].band = alert.band;
         lastDrawnPositions[i].frequency = alert.frequency;
         lastDrawnPositions[i].direction = alert.direction;
         lastDrawnPositions[i].isGraced = isGraced;
         lastDrawnPositions[i].wasMuted = muted;
         lastDrawnPositions[i].bars = bars;
-        lastDrawnPositions[i].cameraIndex = -1;
     }
     
     // Update global tracking
     lastDrawnCount = cardsToDrawCount;
-    lastActiveCameraCount = activeCameraCount;
 #endif
 }
 
@@ -5083,8 +4917,6 @@ void V1Display::drawStatusBar() {
     // Change detection: track last state to avoid redundant redraws
     static bool lastGpsHasFix = false;
     static int lastGpsSats = -1;
-    static bool lastShowCam = false;
-    static bool lastCamReady = false;
     static bool lastObdConnected = false;
     static bool lastGpsEnabled = false;
     
@@ -5093,42 +4925,31 @@ void V1Display::drawStatusBar() {
     // Current state
     bool gpsHasFix = gpsHandler.hasValidFix();
     int gpsSats = gpsHandler.getFix().satellites;  // Get satellites from fix struct
-    bool hasCameraDb = storageManager.hasCameraDatabase();
     bool obdConnected = obdHandler.isConnected();
     bool gpsEnabled = gpsHandler.isEnabled();
-    
-    // For CAM: show if camera DB exists (yellow=loading/no GPS, blue=ready with GPS)
-    bool showCam = hasCameraDb;
-    bool camReady = hasCameraDb && gpsHasFix;  // Ready = DB + GPS fix
     
     // Skip redraw if nothing changed (unless forced after screen clear)
     if (!s_forceStatusBarRedraw &&
         gpsHasFix == lastGpsHasFix && gpsSats == lastGpsSats &&
-        showCam == lastShowCam && camReady == lastCamReady &&
         obdConnected == lastObdConnected && gpsEnabled == lastGpsEnabled) {
         return;
     }
     s_forceStatusBarRedraw = false;
     lastGpsHasFix = gpsHasFix;
     lastGpsSats = gpsSats;
-    lastShowCam = showCam;
-    lastCamReady = camReady;
     lastObdConnected = obdConnected;
     lastGpsEnabled = gpsEnabled;
     
     // Status bar positioning - using size 2 font (12x16 pixels per char)
-    // Layout: GPS on left edge, MUTED badge in center, CAM/OBD on right
-    // GPS is positioned to not overlap with MUTED badge (X=120-350)
-    // CAM/OBD are positioned to the right of where MUTED badge would appear
+    // Layout: GPS on left edge, MUTED badge in center, OBD on right
     const int statusY = 2;           // Near top of screen
     const int statusHeight = 18;     // Height for font size 2
     const int leftMargin = 140;      // After band indicators
     
-    // Layout: GPS on left (doesn't overlap MUTED), CAM/OBD on right (after MUTED area)
-    // MUTED badge is centered ~X=225-335, so put CAM/OBD starting at X=355
+    // Layout: GPS on left (doesn't overlap MUTED), OBD on right (after MUTED area)
+    // MUTED badge is centered ~X=225-335
     const int gpsX = leftMargin + 5;            // GPS on left: x=145
-    const int camX = 355;                       // CAM after MUTED area
-    const int obdX = 400;                       // OBD after CAM
+    const int obdX = 355;                       // OBD after MUTED area
     
     // Use built-in font size 2 (larger, more readable)
     tft->setTextSize(2);
@@ -5161,18 +4982,6 @@ void V1Display::drawStatusBar() {
         tft->print("GPS");
     }
     
-    // ---- CAM indicator ----
-    // Clear CAM area
-    FILL_RECT(camX, statusY, 42, statusHeight, PALETTE_BG);
-    
-    if (showCam) {
-        // Yellow when DB loaded but no GPS, blue when ready with GPS
-        uint16_t camColor = camReady ? s.colorStatusCam : 0xFFE0;  // 0xFFE0 = yellow
-        tft->setTextColor(camColor);
-        tft->setCursor(camX, statusY + 1);
-        tft->print("CAM");
-    }
-    
     // ---- OBD indicator ----
     // Clear OBD area
     FILL_RECT(obdX, statusY, 42, statusHeight, PALETTE_BG);
@@ -5183,351 +4992,6 @@ void V1Display::drawStatusBar() {
         tft->print("OBD");
     }
 #endif
-}
-
-// Camera alert indicator - shows camera type and distance countdown
-// Legacy single-camera interface - calls updateCameraAlerts internally
-void V1Display::updateCameraAlert(bool active, const char* typeName, float distance_m, bool approaching, uint16_t color, bool v1HasAlerts) {
-#if defined(DISPLAY_WAVESHARE_349)
-    if (active) {
-        CameraAlertInfo cameras[1];
-        cameras[0].typeName = typeName;
-        cameras[0].distance_m = distance_m;
-        cameras[0].color = color;
-        updateCameraAlerts(cameras, 1, v1HasAlerts);
-    } else {
-        updateCameraAlerts(nullptr, 0, v1HasAlerts);
-    }
-#endif
-}
-
-// Multi-camera alert system
-void V1Display::updateCameraAlerts(const CameraAlertInfo* cameras, int count, bool v1HasAlerts) {
-#if defined(DISPLAY_WAVESHARE_349)
-    static bool lastCameraState = false;
-    static bool lastWasCard = false;  // Track if primary was showing as card
-    static float lastDistance = -1.0f;
-    static char lastTypeName[16] = {0};
-    static int lastCameraCount = 0;
-    static bool lastV1HasAlerts = false;
-    static unsigned long lastLogMs = 0;
-    
-    // Log state transitions (throttled to 1/sec for distance-only changes)
-    unsigned long now = millis();
-    bool stateTransition = (count > 0) != lastCameraState || count != lastCameraCount || v1HasAlerts != lastV1HasAlerts;
-    if (stateTransition || (count > 0 && (now - lastLogMs) >= 1000)) {
-        DISPLAY_LOG("[DISP] updateCameraAlerts: count=%d v1Has=%d lastCount=%d lastV1Has=%d wasCard=%d\n",
-                    count, v1HasAlerts, lastCameraCount, lastV1HasAlerts, lastWasCard);
-        lastLogMs = now;
-    }
-    
-    // Max supported: 1 primary + MAX_CAMERA_CARDS (2) = 3 cameras total
-    // When V1 has alerts, max is MAX_CAMERA_CARDS since all become cards
-    const int MAX_TOTAL_CAMERAS = MAX_CAMERA_CARDS + 1;
-    if (count > MAX_TOTAL_CAMERAS) count = MAX_TOTAL_CAMERAS;
-    
-    bool active = (count > 0);
-    const char* typeName = active ? cameras[0].typeName : "";
-    float distance_m = active ? cameras[0].distance_m : 0.0f;
-    uint16_t color = active ? cameras[0].color : 0;
-    
-    // === EARLY EXIT: Check if anything actually changed ===
-    // Skip all processing if state is identical to last call
-    bool stateChanged = (active != lastCameraState) || 
-                        (count != lastCameraCount) ||
-                        (v1HasAlerts != lastV1HasAlerts);
-    if (!stateChanged && !active) {
-        // No cameras now, no cameras before - nothing to do
-        return;
-    }
-    
-    // Log critical state transitions: camera alert being cleared
-    if (!active && lastCameraState) {
-        DISPLAY_LOG("[DISP] Camera alert CLEAR: lastCount=%d wasCard=%d\n", lastCameraCount, lastWasCard);
-    }
-    
-    // Major state changes trigger expensive full card redraw
-    // Minor changes (count within active) use incremental updates
-    bool majorStateChanged = (active != lastCameraState) ||
-                             (active && v1HasAlerts != lastV1HasAlerts);
-    
-    // Determine how to display cameras:
-    // - If V1 has alerts: All cameras show as cards (V1 gets primary)
-    // - If no V1 alerts and 1 camera: Primary camera in main area
-    // - If no V1 alerts and 2 cameras: Primary in main area, secondary as card
-    bool showPrimaryAsCard = v1HasAlerts;
-    
-    // === HANDLE CARD STATES ===
-    // Set up camera cards for secondary display
-    // MAX_CAMERA_CARDS = 2 card slots available
-    if (active) {
-        if (showPrimaryAsCard) {
-            // V1 has alerts - all cameras become cards (max 2)
-            int cardCount = (count > MAX_CAMERA_CARDS) ? MAX_CAMERA_CARDS : count;
-            for (int i = 0; i < cardCount; i++) {
-                setCameraAlertState(i, true, cameras[i].typeName, cameras[i].distance_m, cameras[i].color);
-            }
-            // Clear any unused slots
-            for (int i = cardCount; i < MAX_CAMERA_CARDS; i++) {
-                setCameraAlertState(i, false, "", 0, 0);
-            }
-        } else {
-            // No V1 alerts - primary (cameras[0]) in main area
-            // Secondary cameras (cameras[1], cameras[2]) get card slots 0, 1
-            for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
-                int cameraIndex = i + 1;  // Skip cameras[0] which is primary
-                if (cameraIndex < count) {
-                    setCameraAlertState(i, true, cameras[cameraIndex].typeName, 
-                                       cameras[cameraIndex].distance_m, cameras[cameraIndex].color);
-                } else {
-                    setCameraAlertState(i, false, "", 0, 0);
-                }
-            }
-        }
-    } else {
-        // No cameras - clear all card states
-        clearAllCameraAlerts();
-    }
-    
-    // === DRAW/CLEAR CAMERA CARDS IN SECONDARY AREA ===
-    // Major state changes: force full redraw (camera on/off, v1HasAlerts change)
-    // Minor changes (count): incremental update without forcing all cards to redraw
-    if (stateChanged) {
-        if (majorStateChanged) {
-            forceCardRedraw = true;
-        }
-        // Call drawSecondaryAlertCards with empty V1 data to render/clear camera cards
-        AlertData emptyPriority;  // Default constructor = invalid
-        drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
-        
-        // Flush to ensure card changes are visible
-        flush();
-    }
-    
-    // Update tracking for next call
-    lastCameraState = active;
-    lastCameraCount = count;
-    lastV1HasAlerts = v1HasAlerts;;
-    
-    // === HANDLE MAIN AREA DISPLAY ===
-    // If V1 has active alerts, clear main camera area (camera shows as card instead)
-    if (active && showPrimaryAsCard) {
-        // Clear main frequency area if we were showing there
-        if (lastCameraState && !lastWasCard) {
-            const int leftMargin = 135;
-            const int rightMargin = 200;
-            const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-            const int muteIconBottom = 33;
-            int effectiveHeight = getEffectiveScreenHeight();
-            const int fontSize = 75;
-            int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-            const int clearX = leftMargin + 10;
-            const int clearY = freqY - 25;
-            const int clearW = maxWidth - 10;
-            const int clearH = fontSize + 40;
-            FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
-            // Also clear the type label (below status bar at Y=22)
-            const int typeLabelY = 22;
-            FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
-        }
-        lastCameraState = true;
-        lastWasCard = true;
-        lastDistance = distance_m;
-        lastCameraCount = count;
-        strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
-        lastTypeName[sizeof(lastTypeName) - 1] = '\0';
-        return;
-    }
-    
-    // If we were showing as card but V1 no longer has alerts, force main area redraw
-    if (active && lastWasCard) {
-        lastWasCard = false;
-        lastCameraState = false;  // Force redraw
-    }
-    
-    // Camera alert uses same area as frequency display (V1 frequency style)
-    const int leftMargin = 135;   // After band indicators (same as V1 frequency)
-    const int rightMargin = 200;  // Before signal bars (same as V1 frequency)
-    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    
-    // Vertical positioning - same as V1 frequency display
-    const int muteIconBottom = 33;
-    int effectiveHeight = getEffectiveScreenHeight();
-    const int fontSize = 67;  // ~10% smaller than V1 frequency (75 -> 67)
-    int freqY = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-    
-    // Clear area dimensions - sized for 67pt font (don't overlap with cards at Y=118)
-    // Cards start at Y = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT = 172 - 54 = 118
-    const int clearX = leftMargin + 10;
-    const int clearY = freqY - 5;
-    const int clearW = maxWidth - 10;
-    const int clearH = fontSize + 10;  // 67 + 10 = 77px (scaled down from 85)
-    
-    // Type label position (below status bar which ends at Y~20)
-    const int typeLabelY = 22;
-    
-    if (!active) {
-        // Clear camera alert area if was previously shown
-        if (lastCameraState) {
-            DISPLAY_LOG("[DISP] Clearing camera alert area: wasCard=%d\n", lastWasCard);
-            if (!lastWasCard) {
-                // Clear main distance area
-                FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
-                // Also clear the type label (below status bar)
-                FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
-            }
-            lastCameraState = false;
-            lastWasCard = false;
-            lastDistance = -1.0f;
-            lastCameraCount = 0;
-            lastTypeName[0] = '\0';
-        }
-        return;
-    }
-    
-    // Check if we need to redraw
-    bool needsRedraw = !lastCameraState || 
-                       (fabs(distance_m - lastDistance) >= 10.0f) ||
-                       (strcmp(typeName, lastTypeName) != 0) ||
-                       (count != lastCameraCount);
-    
-    if (!needsRedraw) return;
-    
-    lastCameraState = true;
-    lastWasCard = false;
-    lastDistance = distance_m;
-    lastCameraCount = count;
-    strncpy(lastTypeName, typeName, sizeof(lastTypeName) - 1);
-    lastTypeName[sizeof(lastTypeName) - 1] = '\0';
-    
-    // Clear the display area (frequency area only)
-    FILL_RECT(clearX, clearY, clearW, clearH, PALETTE_BG);
-    
-    // === CAMERA TYPE LABEL (below status bar, above distance) ===
-    // Position below status bar (which ends at Y~20)
-    // (typeLabelY already declared above at Y=22)
-    tft->setTextSize(2);
-    tft->setTextColor(color);
-    int typeLen = strlen(typeName);
-    int typePixelWidth = typeLen * 12;  // size 2 = 12 pixels per char
-    int typeX = leftMargin + (maxWidth - typePixelWidth) / 2;
-    // Clear just the type label area first (in case type name changed length)
-    FILL_RECT(leftMargin + 10, typeLabelY - 2, maxWidth - 10, 18, PALETTE_BG);
-    tft->setCursor(typeX, typeLabelY);
-    tft->print(typeName);
-    
-    // === DISTANCE IN 67pt SEGMENT7 FONT (~10% smaller than V1 frequency) ===
-    char distStr[16];
-    if (distance_m < 1609.34f) {  // Less than 1 mile
-        int distFt = static_cast<int>(distance_m * 3.28084f);
-        snprintf(distStr, sizeof(distStr), "%d ft", distFt);
-    } else {
-        snprintf(distStr, sizeof(distStr), "%.1f mi", distance_m / 1609.34f);
-    }
-    
-    // Use OpenFontRender Segment7 at 67pt
-    if (ofrSegment7Initialized) {
-        ofrSegment7.setFontSize(fontSize);  // 67pt
-        uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        
-        FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, distStr);
-        int distTextWidth = bbox.xMax - bbox.xMin;
-        int distX = leftMargin + (maxWidth - distTextWidth) / 2;
-        ofrSegment7.setCursor(distX, freqY);  // Same Y position as V1 frequency
-        ofrSegment7.printf("%s", distStr);
-    } else {
-        // Fallback to larger tft font
-        tft->setTextSize(4);
-        int distLen = strlen(distStr);
-        int distX = leftMargin + (maxWidth - distLen * 24) / 2;
-        tft->setCursor(distX, freqY);
-        tft->print(distStr);
-    }
-    
-    flush();
-#endif
-}
-
-void V1Display::clearCameraAlert() {
-#if defined(DISPLAY_WAVESHARE_349)
-    updateCameraAlert(false, "", 0, false, 0, false);
-#endif
-}
-
-void V1Display::clearCameraAlerts() {
-#if defined(DISPLAY_WAVESHARE_349)
-    // Log is handled by updateCameraAlerts on actual state transition
-    updateCameraAlerts(nullptr, 0, false);
-#endif
-}
-
-void V1Display::setCameraAlertState(int index, bool active, const char* typeName, float distance_m, uint16_t color) {
-    if (index < 0 || index >= MAX_CAMERA_CARDS) return;
-    
-    unsigned long now = millis();
-    
-    if (active && typeName) {
-        // Camera is actively being reported
-        cameraCards[index].active = true;
-        cameraCards[index].distance_m = distance_m;
-        cameraCards[index].color = color;
-        cameraCards[index].lastSeen = now;
-        cameraCards[index].isGraced = false;
-        strncpy(cameraCards[index].typeName, typeName, sizeof(cameraCards[index].typeName) - 1);
-        cameraCards[index].typeName[sizeof(cameraCards[index].typeName) - 1] = '\0';
-    } else {
-        // Camera no longer being reported
-        // If it was active, enter grace period instead of immediate clear
-        if (cameraCards[index].active && cameraCards[index].lastSeen > 0) {
-            // Get grace period from settings (same as V1 alert persistence)
-            const V1Settings& settings = settingsManager.get();
-            uint8_t persistSec = settingsManager.getSlotAlertPersistSec(settings.activeSlot);
-            unsigned long gracePeriodMs = persistSec * 1000UL;
-            
-            unsigned long age = now - cameraCards[index].lastSeen;
-            if (age <= gracePeriodMs) {
-                // Still in grace period - mark as graced but keep visible
-                cameraCards[index].isGraced = true;
-                // Keep distance frozen at last known value
-            } else {
-                // Grace period expired - actually clear
-                cameraCards[index].active = false;
-                cameraCards[index].typeName[0] = '\0';
-                cameraCards[index].distance_m = 0.0f;
-                cameraCards[index].color = 0;
-                cameraCards[index].lastSeen = 0;
-                cameraCards[index].isGraced = false;
-            }
-        } else {
-            // Was never active or already cleared
-            cameraCards[index].active = false;
-            cameraCards[index].typeName[0] = '\0';
-        }
-    }
-    
-    // Update active count
-    activeCameraCount = 0;
-    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
-        if (cameraCards[i].active) activeCameraCount++;
-    }
-}
-
-void V1Display::clearAllCameraAlerts() {
-    for (int i = 0; i < MAX_CAMERA_CARDS; i++) {
-        cameraCards[i].active = false;
-        cameraCards[i].typeName[0] = '\0';
-        cameraCards[i].distance_m = 0.0f;
-        cameraCards[i].color = 0;
-        cameraCards[i].lat = 0.0f;
-        cameraCards[i].lon = 0.0f;
-        cameraCards[i].lastSeen = 0;
-        cameraCards[i].isGraced = false;
-    }
-    activeCameraCount = 0;
 }
 
 const char* V1Display::bandToString(Band band) {

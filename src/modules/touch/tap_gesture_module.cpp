@@ -5,7 +5,6 @@ void TapGestureModule::begin(TouchHandler* touchHandler,
                              V1Display* displayPtr,
                              V1BLEClient* bleClient,
                              PacketParser* parserPtr,
-                             CameraAlertModule* cameraAlertModule,
                              AutoPushModule* autoPushModule,
                              AlertPersistenceModule* alertPersistenceModule,
                              DisplayMode* displayModePtr) {
@@ -14,14 +13,13 @@ void TapGestureModule::begin(TouchHandler* touchHandler,
     display = displayPtr;
     ble = bleClient;
     parser = parserPtr;
-    cameraAlert = cameraAlertModule;
     autoPush = autoPushModule;
     alertPersistence = alertPersistenceModule;
     displayMode = displayModePtr;
 }
 
 void TapGestureModule::process(unsigned long nowMs) {
-    if (!touch || !settings || !display || !ble || !parser || !cameraAlert || !autoPush || !alertPersistence || !displayMode) {
+    if (!touch || !settings || !display || !ble || !parser || !autoPush || !alertPersistence || !displayMode) {
         return;
     }
 

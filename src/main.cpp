@@ -39,12 +39,10 @@
 #include "lockout_manager.h"
 #include "auto_lockout_manager.h"
 #include "obd_handler.h"
-#include "camera_manager.h"
 #include "perf_metrics.h"
 #include "../include/config.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/display/display_preview_module.h"
-#include "modules/camera/camera_alert_module.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/touch/touch_ui_module.h"
 #include "modules/touch/tap_gesture_module.h"
@@ -53,7 +51,6 @@
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
-#include "modules/camera/camera_load_coordinator_module.h"
 #include "modules/obd/obd_auto_connector_module.h"
 #include "modules/lockout/auto_lockout_maintenance_module.h"
 #include "esp_heap_caps.h"
@@ -300,9 +297,6 @@ VolumeFadeModule volumeFadeModule;
 // Speed volume module - boost volume at highway speeds
 SpeedVolumeModule speedVolumeModule;
 
-// Camera alerts + test/demo handler
-CameraAlertModule cameraAlertModule;
-
 // Auto-push profile state machine
 AutoPushModule autoPushModule;
 TouchUiModule touchUiModule;
@@ -311,7 +305,6 @@ PowerModule powerModule;
 BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
 DisplayPipelineModule displayPipelineModule;
-CameraLoadCoordinator cameraLoadCoordinator;
 ObdAutoConnector obdAutoConnector;
 AutoLockoutMaintenance autoLockoutMaintenance;
 DisplayRestoreModule displayRestoreModule;
@@ -332,8 +325,6 @@ static WifiOrchestrator& getWifiOrchestrator() {
         settingsManager,
         storageManager,
         gpsHandler,
-        cameraManager,
-        cameraAlertModule,
         autoPushModule,
         [](int slotIndex) { autoPushModule.start(slotIndex); });
     return orchestrator;
@@ -425,6 +416,7 @@ void setup() {
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
     SerialLog.println("Firmware: " FIRMWARE_VERSION);
+    SerialLog.println("[Build] core-only (camera removed)");
     SerialLog.print("Board: ");
     SerialLog.println(DISPLAY_NAME);
     
@@ -483,14 +475,8 @@ void setup() {
     displayPreviewModule.begin(&display);
 
     // Initialize auxiliary coordinators
-    cameraLoadCoordinator.begin(&cameraManager, &storageManager, &debugLogger);
     if (featuresRuntimeEnabled) {
         obdAutoConnector.begin(&obdHandler);
-    }
-
-    if (featuresRuntimeEnabled && settingsManager.get().cameraAlertsEnabled) {
-        // Initialize camera alert module (display + detection helpers)
-        cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
     }
     
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
@@ -548,14 +534,6 @@ void setup() {
             if (settingsManager.isGpsEnabled()) {
                 SerialLog.println("[Setup] GPS enabled - initializing...");
                 gpsHandler.begin();
-                
-                // Start camera database loading immediately in background task
-                // With binary format this only takes ~1.6s for 71k cameras
-                // Loading runs in parallel with BLE/WiFi init
-                if (settingsManager.get().cameraAlertsEnabled && storageManager.isSDCard()) {
-                    SerialLog.println("[Setup] Starting camera database load (background)...");
-                    cameraLoadCoordinator.startImmediateLoad();
-                }
             } else {
                 SerialLog.println("[Setup] GPS disabled in settings");
             }
@@ -588,10 +566,8 @@ void setup() {
                 if (parser.hasAlerts()) {
                     AlertData priority = parser.getPriorityAlert();
                     const auto& alerts = parser.getAllAlerts();
-                    cameraAlertModule.updateCardStateForV1(true);
                     display.update(priority, alerts.data(), parser.getAlertCount(), state);
                 } else {
-                    cameraAlertModule.updateCardStateForV1(false);
                     display.update(state);
                 }
             } else {
@@ -615,7 +591,6 @@ void setup() {
                            &display,
                            &bleClient,
                            &parser,
-                           &cameraAlertModule,
                            &autoPushModule,
                            &alertPersistenceModule,
                            &displayMode);
@@ -771,7 +746,6 @@ void setup() {
                                 lockoutPtr,
                                 autoLockoutPtr,
                                 &bleClient,
-                                &cameraAlertModule,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
                                 &voiceModule,
@@ -779,7 +753,7 @@ void setup() {
                                 &debugLogger);
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
-    displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule, &cameraAlertModule);
+    displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
 
 #ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
@@ -993,15 +967,6 @@ void loop() {
         }
     }
     
-    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
-        // Camera alerts + cache maintenance (requires GPS with valid fix)
-        {
-            uint32_t camStartUs = PERF_TIMESTAMP_US();
-            cameraAlertModule.process();
-            perfRecordCameraUs(PERF_TIMESTAMP_US() - camStartUs);
-        }
-    }
-
     perfRecordLoopJitterUs(micros() - loopStartUs);
     StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
@@ -1014,19 +979,6 @@ void loop() {
             obdAutoConnector.process(now);
             perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
         }
-    }
-
-    // Deferred camera database loading - runs once after V1 connects
-    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
-        cameraLoadCoordinator.process(bleClient.isConnected());
-    }
-
-    // Check if V1 has active alerts - determines if camera shows as main display or card
-    // Also treat persisted alerts as "V1 owns display" to avoid camera overwriting them
-    bool previewActive = displayPreviewModule.isRunning();
-    if (!previewActive) {
-        bool v1HasActiveAlerts = parser.hasAlerts() || alertPersistenceModule.isPersistenceActive();
-        cameraAlertModule.updateMainDisplay(v1HasActiveAlerts);
     }
     
     // Speed-based volume: delegate to module (rate-limited internally)

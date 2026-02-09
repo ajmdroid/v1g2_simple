@@ -10,7 +10,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   LockoutManager* lockouts,
                                   AutoLockoutManager* autoLockouts,
                                   V1BLEClient* bleClient,
-                                  CameraAlertModule* cameraAlertModule,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
                                   VoiceModule* voiceModule,
@@ -24,7 +23,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     lockoutMgr = lockouts;
     autoLockoutMgr = autoLockouts;
     ble = bleClient;
-    cameraAlert = cameraAlertModule;
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
     voice = voiceModule;
@@ -33,7 +31,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
 }
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
-    if (!display || !parser || !settings || !cameraAlert || !alertPersistence ||
+    if (!display || !parser || !settings || !alertPersistence ||
         !volumeFade || !voice || !speedVolume || !displayMode) {
         return;
     }
@@ -175,7 +173,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         // Draw display FIRST (before audio) to eliminate perceived lag
         // User sees the alert card immediately, then hears the announcement
-        cameraAlert->updateCardStateForV1(true);
         if (debug) debug->notifyRenderState(true);  // Defer SD flush during render
         unsigned long startUs = micros();
         display->update(priority, currentAlerts.data(), alertCount, state);
@@ -271,7 +268,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
             } else {
                 // Persistence window expired - clear flag so isPersistenceActive() returns false
                 alertPersistence->clearPersistence();
-                cameraAlert->updateCardStateForV1(false);
                 if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
                 display->update(state);
@@ -282,7 +278,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
             }
         } else {
             alertPersistence->clearPersistence();
-            cameraAlert->updateCardStateForV1(false);
             if (debug) debug->notifyRenderState(true);
             unsigned long startUs = micros();
             display->update(state);

@@ -103,29 +103,8 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // Status bar at top of screen (GPS/CAM/OBD indicators)
+    // Status bar at top of screen (GPS/OBD indicators)
     void drawStatusBar();
-
-    // Camera alert system - supports up to 2 simultaneous camera alerts
-    // When no V1 alerts: Primary (closest) camera shows in main frequency area, secondary in card
-    // When V1 has alerts: Both cameras show as secondary cards
-    // cameras array should be sorted by distance (closest first)
-    struct CameraAlertInfo {
-        const char* typeName;
-        float distance_m;
-        uint16_t color;
-    };
-    void updateCameraAlerts(const CameraAlertInfo* cameras, int count, bool v1HasAlerts);
-    void clearCameraAlerts();
-    
-    // Legacy single-camera interface (calls updateCameraAlerts internally)
-    void updateCameraAlert(bool active, const char* typeName, float distance_m, bool approaching, uint16_t color, bool v1HasAlerts = false);
-    void clearCameraAlert();
-    
-    // Set camera alert state for secondary card system (called before drawSecondaryAlertCards)
-    // Supports up to 2 cameras - call with index 0 for primary, 1 for secondary
-    void setCameraAlertState(int index, bool active, const char* typeName, float distance_m, uint16_t color);
-    void clearAllCameraAlerts();  // Clear all camera card states
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
@@ -213,21 +192,6 @@ private:
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
     bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
-    
-    // Camera alert state for secondary card integration (supports up to 2 cameras)
-    static constexpr int MAX_CAMERA_CARDS = 2;
-    struct CameraCardState {
-        bool active = false;
-        char typeName[16] = {0};
-        float distance_m = 0.0f;
-        uint16_t color = 0;
-        float lat = 0.0f;              // For persistence matching
-        float lon = 0.0f;              // For persistence matching
-        unsigned long lastSeen = 0;    // For grace period persistence (like V1 cards)
-        bool isGraced = false;         // True when in grace period (greyed out)
-    };
-    CameraCardState cameraCards[MAX_CAMERA_CARDS];
-    int activeCameraCount = 0;  // Number of active camera alerts (0-2)
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

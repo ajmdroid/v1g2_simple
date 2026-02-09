@@ -8,7 +8,6 @@
 #include "settings.h"
 #include "ble_client.h"
 #include "packet_parser.h"
-#include "modules/camera/camera_alert_module.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 
@@ -19,7 +18,6 @@ public:
                V1Display* display,
                V1BLEClient* bleClient,
                PacketParser* parser,
-               CameraAlertModule* cameraAlertModule,
                AutoPushModule* autoPushModule,
                AlertPersistenceModule* alertPersistenceModule,
                DisplayMode* displayModePtr);
@@ -32,7 +30,6 @@ private:
     V1Display* display = nullptr;
     V1BLEClient* ble = nullptr;
     PacketParser* parser = nullptr;
-    CameraAlertModule* cameraAlert = nullptr;
     AutoPushModule* autoPush = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
     DisplayMode* displayMode = nullptr;

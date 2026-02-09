@@ -97,11 +97,6 @@ public:
     void setGpsStatusCallback(std::function<String()> callback) { getGpsStatusJson = callback; }
     void setGpsResetCallback(std::function<void()> callback) { gpsResetCallback = callback; }
     
-    // Callback for camera alerts
-    void setCameraStatusCallback(std::function<String()> callback) { getCameraStatusJson = callback; }
-    void setCameraReloadCallback(std::function<bool()> callback) { cameraReloadCallback = callback; }
-    void setCameraTestCallback(std::function<void(int)> callback) { cameraTestCallback = callback; }
-    
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
     
@@ -151,9 +146,6 @@ private:
     std::function<String()> getPushStatusJson;
     std::function<String()> getGpsStatusJson;
     std::function<void()> gpsResetCallback;
-    std::function<String()> getCameraStatusJson;
-    std::function<bool()> cameraReloadCallback;
-    std::function<void(int)> cameraTestCallback;
     std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
     
     // Setup functions
@@ -204,9 +196,6 @@ private:
     void handleGpsStatus();
     void handleGpsReset();
     void handleAutoLockouts();
-    void handleCameraStatus();
-    void handleCameraReload();
-    void handleCameraTest();
     void handleWifiClientStatus();
     void handleWifiClientScan();
     void handleWifiClientConnect();

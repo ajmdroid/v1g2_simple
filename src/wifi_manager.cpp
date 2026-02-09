@@ -15,8 +15,6 @@
 #include "obd_handler.h"
 #include "gps_handler.h"
 #include "auto_lockout_manager.h"
-#include "camera_manager.h"
-#include "modules/camera/camera_load_coordinator_module.h"
 #include "perf_metrics.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
@@ -55,8 +53,6 @@ static void onNtpTimeSynced(struct timeval *tv) {
 extern V1BLEClient bleClient;
 // External GPS handler for runtime enable/disable
 extern GPSHandler gpsHandler;
-// Camera load coordinator (set when GPS enabled at runtime)
-extern CameraLoadCoordinator cameraLoadCoordinator;
 // Auto lockouts manager for API export
 extern AutoLockoutManager autoLockouts;
 // Preview hold helper to keep color demo visible briefly
@@ -601,11 +597,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/reset", HTTP_POST, [this]() { handleGpsReset(); });
     server.on("/api/gps/auto-lockouts", HTTP_GET, [this]() { handleAutoLockouts(); });
-    
-    // Camera alerts API routes
-    server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
-    server.on("/api/cameras/reload", HTTP_POST, [this]() { handleCameraReload(); });
-    server.on("/api/cameras/test", HTTP_POST, [this]() { handleCameraTest(); });
     
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
@@ -1227,11 +1218,6 @@ void WiFiManager::handleSettingsSave() {
         if (enabled && !wasEnabled) {
             Serial.println("[WiFi] GPS enabled - starting GPS handler");
             gpsHandler.begin();
-            // Start camera database loading immediately if SD card available
-            if (storageManager.isSDCard() && !cameraLoadCoordinator.isComplete()) {
-                Serial.println("[WiFi] Starting camera database load (background)...");
-                cameraLoadCoordinator.startImmediateLoad();
-            }
         } else if (!enabled && wasEnabled) {
             Serial.println("[WiFi] GPS disabled - stopping GPS handler");
             gpsHandler.end();
@@ -3280,58 +3266,6 @@ void WiFiManager::handleAutoLockouts() {
     markUiActivity();
     String body = autoLockouts.exportStatusJson();
     server.send(200, "application/json", body);
-}
-
-void WiFiManager::handleCameraStatus() {
-    markUiActivity();
-    
-    if (!getCameraStatusJson) {
-        // Return empty status if camera manager not available
-        server.send(200, "application/json", "{\"loaded\":false,\"count\":0}");
-        return;
-    }
-    
-    server.send(200, "application/json", getCameraStatusJson());
-}
-
-void WiFiManager::handleCameraReload() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    if (!cameraReloadCallback) {
-        server.send(503, "application/json", "{\"error\":\"Camera manager not available\"}");
-        return;
-    }
-    
-    Serial.println("[HTTP] POST /api/cameras/reload - reloading camera database");
-    bool success = cameraReloadCallback();
-    
-    if (success) {
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Camera database reloaded\"}");
-    } else {
-        server.send(200, "application/json", "{\"success\":false,\"message\":\"No camera database found on SD card\"}");
-    }
-}
-
-void WiFiManager::handleCameraTest() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    // Get camera type from query param (default to 0 = red light)
-    int cameraType = 0;
-    if (server.hasArg("type")) {
-        cameraType = server.arg("type").toInt();
-    }
-    
-    Serial.printf("[HTTP] POST /api/cameras/test - type=%d\n", cameraType);
-    
-    // Call the test callback to trigger display + voice
-    if (cameraTestCallback) {
-        cameraTestCallback(cameraType);
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Camera test triggered\"}");
-    } else {
-        server.send(503, "application/json", "{\"success\":false,\"message\":\"Test callback not configured\"}");
-    }
 }
 
 // ==================== WiFi Client (STA) API Handlers ====================
