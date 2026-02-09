@@ -250,7 +250,7 @@ void V1BLEClient::cleanupConnection() {
 }
 
 // Hard reset of BLE client stack - use after repeated failures
-// Clears stuck state without recreating client (which causes callback corruption)
+// Reuses existing client to avoid NimBLE slot leak (max 3 slots)
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
     
@@ -264,13 +264,11 @@ void V1BLEClient::hardResetBLEClient() {
         vTaskDelay(pdMS_TO_TICKS(200));
     }
     
-    // Delete and recreate client
-    if (pClient) {
-        pClient = nullptr;
+    // Reuse existing client (don't destroy - NimBLE has fixed 3-slot array,
+    // nulling without deleteClient leaks a slot permanently)
+    if (!pClient) {
+        pClient = NimBLEDevice::createClient();
     }
-    
-    // Create fresh client
-    pClient = NimBLEDevice::createClient();
     if (pClient) {
         if (!pClientCallbacks) {
             pClientCallbacks = new ClientCallbacks();

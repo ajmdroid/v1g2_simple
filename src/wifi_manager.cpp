@@ -652,9 +652,10 @@ void WiFiManager::process() {
     
     // Runtime SRAM guard: kill WiFi before it crashes the system
     // WiFi's TLS stack needs ~20-40KB of internal SRAM for crypto operations
-    // If we're too low, shut down gracefully rather than crash
-    constexpr uint32_t CRITICAL_DMA_FREE = 20480;   // 20KB - crash likely below this
-    constexpr uint32_t CRITICAL_DMA_BLOCK = 8192;   // 8KB - fragmentation limit
+    // Evidence: SD log shows WiFi consuming 63KB transiently (93KB→19KB),
+    // blocking main loop for 2.9s. Match startup thresholds (40KB/20KB).
+    constexpr uint32_t CRITICAL_DMA_FREE = 40960;   // 40KB - match startup requirement
+    constexpr uint32_t CRITICAL_DMA_BLOCK = 20480;  // 20KB - match startup requirement
     
     uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
