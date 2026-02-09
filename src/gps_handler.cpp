@@ -4,6 +4,7 @@
 #include "gps_handler.h"
 #include "config.h"
 #include "debug_logger.h"
+#include "settings.h"
 #include <cmath>
 
 // GPS logging macro - logs to Serial AND debugLogger when GPS category enabled
@@ -47,7 +48,12 @@ GPSHandler::GPSHandler()
   smoothedHeadingValid = false;
 }
 
+extern SettingsManager settingsManager;
+
 void GPSHandler::begin() {
+  if (!settingsManager.isFeaturesRuntimeEnabled() || !settingsManager.isGpsEnabled()) {
+    return;
+  }
   // Enable GPS module via EN pin (LOW = enabled)
   pinMode(GPS_EN_PIN, OUTPUT);
   digitalWrite(GPS_EN_PIN, LOW);

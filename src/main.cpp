@@ -488,7 +488,7 @@ void setup() {
         obdAutoConnector.begin(&obdHandler);
     }
 
-    if (featuresRuntimeEnabled) {
+    if (featuresRuntimeEnabled && settingsManager.get().cameraAlertsEnabled) {
         // Initialize camera alert module (display + detection helpers)
         cameraAlertModule.begin(&display, &settingsManager, &cameraManager, &gpsHandler);
     }
@@ -503,7 +503,7 @@ void setup() {
         audio_init_sd();  // Initialize SD-based frequency voice audio
 
         // Ensure auto-lockout log exists on SD for crash-safe learning replay
-        if (storageManager.isSDCard()) {
+        if (featuresRuntimeEnabled && settingsManager.get().lockoutEnabled && storageManager.isSDCard()) {
             fs::FS* fs = storageManager.getFilesystem();
             if (fs && !fs->exists("/v1simple_auto_lockouts.log")) {
                 File logFile = fs->open("/v1simple_auto_lockouts.log", "w");
@@ -552,7 +552,7 @@ void setup() {
                 // Start camera database loading immediately in background task
                 // With binary format this only takes ~1.6s for 71k cameras
                 // Loading runs in parallel with BLE/WiFi init
-                if (storageManager.isSDCard()) {
+                if (settingsManager.get().cameraAlertsEnabled && storageManager.isSDCard()) {
                     SerialLog.println("[Setup] Starting camera database load (background)...");
                     cameraLoadCoordinator.startImmediateLoad();
                 }

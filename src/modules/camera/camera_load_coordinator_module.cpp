@@ -1,4 +1,7 @@
 #include "camera_load_coordinator_module.h"
+#include "settings.h"
+
+extern SettingsManager settingsManager;
 
 void CameraLoadCoordinator::begin(CameraManager* cameraMgr, StorageManager* storageMgr, DebugLogger* dbgLogger) {
     cameraManager = cameraMgr;
@@ -14,6 +17,7 @@ void CameraLoadCoordinator::markPending(bool isPending) {
 }
 
 void CameraLoadCoordinator::startImmediateLoad() {
+    if (!settingsManager.isFeaturesRuntimeEnabled() || !settingsManager.get().cameraAlertsEnabled) return;
     // Start loading cameras now (don't wait for BLE connection)
     // With binary format, loading is fast (~1.6s for 71k cameras)
     if (!cameraManager || !storageManager) return;
@@ -26,6 +30,7 @@ void CameraLoadCoordinator::startImmediateLoad() {
 }
 
 void CameraLoadCoordinator::process(bool bleConnected) {
+    if (!settingsManager.isFeaturesRuntimeEnabled() || !settingsManager.get().cameraAlertsEnabled) return;
     if (!cameraManager || !storageManager) return;
 
     // Poll background load completion
@@ -51,6 +56,7 @@ void CameraLoadCoordinator::process(bool bleConnected) {
 }
 
 void CameraLoadCoordinator::doLoad() {
+    if (!settingsManager.isFeaturesRuntimeEnabled() || !settingsManager.get().cameraAlertsEnabled) return;
     fs::FS* sdFs = storageManager->getFilesystem();
 
     if (!sdFs) {

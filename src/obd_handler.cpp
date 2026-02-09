@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "ble_client.h"
 #include "debug_logger.h"
+#include "settings.h"
 #include "perf_metrics.h"
 #include <NimBLEDevice.h>
 
@@ -199,7 +200,12 @@ OBDHandler::~OBDHandler() {
     }
 }
 
+extern SettingsManager settingsManager;
+
 void OBDHandler::begin() {
+    if (!settingsManager.isFeaturesRuntimeEnabled() || !settingsManager.isObdEnabled()) {
+        return;
+    }
     // Create mutex if not already created
     if (!obdMutex) {
         obdMutex = xSemaphoreCreateMutex();
