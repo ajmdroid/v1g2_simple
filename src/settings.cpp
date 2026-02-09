@@ -1446,6 +1446,7 @@ bool SettingsManager::restoreFromSD() {
         }
     }
     
+    Serial.printf("[Settings] Using backup file: %s\n", backupPath);
     File file = fs->open(backupPath, FILE_READ);
     if (!file) {
         Serial.println("[Settings] Failed to open SD backup");
@@ -1463,6 +1464,15 @@ bool SettingsManager::restoreFromSD() {
     
     int backupVersion = doc["_version"] | doc["version"] | 1;
     Serial.printf("[Settings] Restoring from SD backup (version %d)\n", backupVersion);
+    const bool hasAutoPush = doc["autoPushEnabled"].is<bool>();
+    const bool backupAutoPush = hasAutoPush ? doc["autoPushEnabled"].as<bool>() : false;
+    const char* backupSlot0 = doc["slot0ProfileName"].is<const char*>()
+        ? doc["slot0ProfileName"].as<const char*>() : "";
+    const int backupSlot0Mode = doc["slot0Mode"].is<int>() ? doc["slot0Mode"].as<int>() : -1;
+    Serial.printf("[Settings] Backup fields: autoPush=%s slot0Profile='%s' slot0Mode=%d\n",
+                  hasAutoPush ? (backupAutoPush ? "true" : "false") : "missing",
+                  backupSlot0,
+                  backupSlot0Mode);
     
     // === WiFi/Network Settings (v2+) ===
     // Note: AP password NOT restored from SD for security - user must re-enter after restore
