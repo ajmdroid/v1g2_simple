@@ -3040,7 +3040,8 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["secondaryX"].is<bool>()) s.secondaryX = doc["secondaryX"];
     
     // Auto-push slot settings
-    if (doc["autoPushEnabled"].is<bool>()) s.autoPushEnabled = doc["autoPushEnabled"];
+    // NOTE: autoPushEnabled skipped - keep default=true from code for profiles to always work
+    // if (doc["autoPushEnabled"].is<bool>()) s.autoPushEnabled = doc["autoPushEnabled"];
     if (doc["activeSlot"].is<int>()) s.activeSlot = doc["activeSlot"];
     if (doc["slot0Name"].is<const char*>()) s.slot0Name = doc["slot0Name"].as<String>();
     if (doc["slot1Name"].is<const char*>()) s.slot1Name = doc["slot1Name"].as<String>();

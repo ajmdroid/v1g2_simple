@@ -1579,7 +1579,8 @@ bool SettingsManager::restoreFromSD() {
     if (doc["lowSpeedMuteThresholdMph"].is<int>()) settings.lowSpeedMuteThresholdMph = doc["lowSpeedMuteThresholdMph"];
     
     // === Auto-Push Settings (v2+) ===
-    if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
+    // NOTE: autoPushEnabled skipped - keep default=true from code for profiles to always work
+    // if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
     if (doc["activeSlot"].is<int>()) settings.activeSlot = doc["activeSlot"];
     
     // === Slot 0 Full Settings ===
