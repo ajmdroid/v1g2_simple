@@ -528,18 +528,21 @@ void setup() {
         }
         
         if (featuresRuntimeEnabled) {
+            const bool lockoutsEnabled = settingsManager.get().lockoutEnabled;
             // Initialize lockout managers (requires storage to be ready)
-            autoLockouts.setLockoutManager(&lockouts);
             lockouts.loadFromJSON("/v1profiles/lockouts.json");
-            autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
-            SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
-                            lockouts.getLockoutCount(), autoLockouts.getClusterCount());
-            
-            // Enable async log mode for auto-lockout (background SD writes)
-            // This prevents alert hot path from blocking on SD I/O
-            autoLockouts.setAsyncLogMode(true);
+            if (lockoutsEnabled) {
+                autoLockouts.setLockoutManager(&lockouts);
+                autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
+                SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
+                                lockouts.getLockoutCount(), autoLockouts.getClusterCount());
+                
+                // Enable async log mode for auto-lockout (background SD writes)
+                // This prevents alert hot path from blocking on SD I/O
+                autoLockouts.setAsyncLogMode(true);
 
-            autoLockoutMaintenance.begin(&autoLockouts);
+                autoLockoutMaintenance.begin(&autoLockouts);
+            }
             
             // Initialize GPS if enabled in settings (static allocation - just call begin())
             if (settingsManager.isGpsEnabled()) {
