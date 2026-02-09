@@ -829,14 +829,20 @@ void setup() {
 void loop() {
     const bool featuresRuntimeEnabled = settingsManager.isFeaturesRuntimeEnabled();
     unsigned long loopStartUs = micros();
-    unsigned long now = millis();
-    static constexpr unsigned long AUDIO_TICK_MAX_MS = 25;
+    // Process audio amp timeout (disables amp after 3s of inactivity)
+    audio_process_amp_timeout();
+    static constexpr unsigned long AUDIO_TICK_MAX_US = 25000;
     static constexpr unsigned long OVERLOAD_LOOP_US = 25000;
     static constexpr unsigned long FREQ_UI_MAX_MS = 100;
-    static unsigned long lastAudioTickMs = 0;
+    static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
+    static unsigned long lastAudioTickUs = 0;
     static unsigned long lastFreqUiMs = 0;
     static unsigned long lastLoopUs = 0;
-    bool skipNonCoreThisLoop = (now - lastAudioTickMs) >= AUDIO_TICK_MAX_MS;
+    unsigned long now = millis();
+    unsigned long audioTickUs = micros();
+    unsigned long sinceAudioUs = audioTickUs - lastAudioTickUs;
+    lastAudioTickUs = audioTickUs;
+    bool skipNonCoreThisLoop = sinceAudioUs > AUDIO_TICK_MAX_US;
     bool overloadThisLoop = (lastLoopUs >= OVERLOAD_LOOP_US) || skipNonCoreThisLoop;
 
     // RUN_START marker: fires once when boot phase is complete
@@ -864,10 +870,6 @@ void loop() {
         display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
     }
     
-    // Process audio amp timeout (disables amp after 3s of inactivity)
-    audio_process_amp_timeout();
-    lastAudioTickMs = now;
-
     // Drive color preview (band cycle) first; skip other updates if active
     if (!overloadThisLoop) {
         if (displayPreviewModule.isRunning()) {
@@ -936,7 +938,9 @@ void loop() {
         }
     }
 
-    if (!displayPreviewModule.isRunning() && (now - lastFreqUiMs) >= FREQ_UI_MAX_MS) {
+    bool previewRunning = displayPreviewModule.isRunning();
+    unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
+    if ((now - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser.getDisplayState();
         const AlertData priority = parser.getPriorityAlert();
         bool hasPriority = parser.hasAlerts() && priority.isValid && priority.band != BAND_NONE;
