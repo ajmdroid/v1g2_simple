@@ -444,6 +444,12 @@ private:
     bool verifyComplete = false;
     bool verifyMatch = false;
 
+    // Proxy command telemetry (logs in main loop, not in BLE callback)
+    bool proxyCmdPending = false;
+    uint8_t proxyCmdId = 0;
+    uint8_t proxyCmdLen = 0;
+    uint8_t proxyCmdBuf[8] = {0};
+
     // Pointers to our callback handler instances
     ScanCallbacks* pScanCallbacks;
     ClientCallbacks* pClientCallbacks;

@@ -138,6 +138,8 @@ constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default O
 static portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
 // Spinlock for deferring OBD scan results from BLE scan callbacks
 static portMUX_TYPE obdScanMux = portMUX_INITIALIZER_UNLOCKED;
+// Spinlock for proxy command telemetry (avoid Serial in BLE callback)
+static portMUX_TYPE proxyCmdMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Static instance for callbacks
 static V1BLEClient* instancePtr = nullptr;
@@ -1633,6 +1635,35 @@ void V1BLEClient::process() {
             xSemaphoreGive(bleMutex);
         }
     }
+
+    if (proxyCmdPending) {
+        uint8_t packetId = 0;
+        uint8_t packetLen = 0;
+        uint8_t packetBuf[8] = {0};
+        portENTER_CRITICAL(&proxyCmdMux);
+        if (proxyCmdPending) {
+            proxyCmdPending = false;
+            packetId = proxyCmdId;
+            packetLen = proxyCmdLen;
+            memcpy(packetBuf, proxyCmdBuf, sizeof(packetBuf));
+        }
+        portEXIT_CRITICAL(&proxyCmdMux);
+
+        if (packetId == PACKET_ID_WRITE_USER_BYTES ||
+            packetId == PACKET_ID_REQ_WRITE_VOLUME ||
+            packetId == PACKET_ID_TURN_OFF_DISPLAY ||
+            packetId == PACKET_ID_TURN_ON_DISPLAY ||
+            packetId == PACKET_ID_MUTE_ON ||
+            packetId == PACKET_ID_MUTE_OFF ||
+            packetId == 0x36) {
+            Serial.printf("[ProxyCmd] id=0x%02X len=%u bytes=%02X %02X %02X %02X %02X %02X %02X %02X\n",
+                           packetId,
+                           packetLen,
+                           packetBuf[0], packetBuf[1], packetBuf[2], packetBuf[3],
+                           packetBuf[4], packetBuf[5], packetBuf[6], packetBuf[7]);
+        }
+    }
+
     if (pendingScanTargetUpdate) {
         if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
             char addrCopy[sizeof(pendingScanTargetAddress)] = {0};
@@ -2059,7 +2090,19 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     uint16_t sourceChar = shortUuid(pCharacteristic->getUUID());
     uint8_t cmdBuf[32];
     memcpy(cmdBuf, rawData, rawLen);
-    
+
+    // Defer proxy command logging to main loop (avoid Serial in BLE callback)
+    uint8_t packetId = (rawLen >= 4 && cmdBuf[0] == ESP_PACKET_START) ? cmdBuf[3] : 0;
+    if (packetId != 0) {
+        portENTER_CRITICAL(&proxyCmdMux);
+        if (!bleClient->proxyCmdPending) {
+            bleClient->proxyCmdPending = true;
+            bleClient->proxyCmdId = packetId;
+            bleClient->proxyCmdLen = static_cast<uint8_t>(std::min<size_t>(rawLen, sizeof(bleClient->proxyCmdBuf)));
+            memcpy(bleClient->proxyCmdBuf, cmdBuf, bleClient->proxyCmdLen);
+        }
+        portEXIT_CRITICAL(&proxyCmdMux);
+    }
     // Proxy command logging disabled - we confirmed JBV1 uses standard mute (0x34/0x35)
     // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
     
