@@ -318,7 +318,22 @@ void SettingsManager::begin() {
 bool SettingsManager::checkAndRestoreFromSD() {
     // Check if NVS was erased (appears default) and backup exists on SD
     // This can be called after storage is mounted to retry the restore
-    if (checkNeedsRestore()) {
+    bool needsRestore = checkNeedsRestore();
+    if (!needsRestore) {
+        bool slotsEmpty = settings.slot0_default.profileName.length() == 0
+            && settings.slot1_highway.profileName.length() == 0
+            && settings.slot2_comfort.profileName.length() == 0;
+        if (slotsEmpty && storageManager.isReady() && storageManager.isSDCard()) {
+            fs::FS* fs = storageManager.getFilesystem();
+            if (fs && (fs->exists(SETTINGS_BACKUP_PATH)
+                || fs->exists("/v1simple_settings.json")
+                || fs->exists("/v1settings_backup.json"))) {
+                Serial.println("[Settings] Slots empty, checking for SD backup...");
+                needsRestore = true;
+            }
+        }
+    }
+    if (needsRestore) {
         Serial.println("[Settings] NVS appears default, checking for SD backup...");
         if (restoreFromSD()) {
             Serial.println("[Settings] Restored settings from SD backup!");
@@ -1420,8 +1435,10 @@ bool SettingsManager::restoreFromSD() {
     // Check both old and new backup paths for compatibility
     const char* backupPath = SETTINGS_BACKUP_PATH;
     if (!fs->exists(backupPath)) {
-        // Try legacy path
-        if (fs->exists("/v1settings_backup.json")) {
+        // Try legacy paths
+        if (fs->exists("/v1simple_settings.json")) {
+            backupPath = "/v1simple_settings.json";
+        } else if (fs->exists("/v1settings_backup.json")) {
             backupPath = "/v1settings_backup.json";
         } else {
             Serial.println("[Settings] No SD backup found");
@@ -1579,8 +1596,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["lowSpeedMuteThresholdMph"].is<int>()) settings.lowSpeedMuteThresholdMph = doc["lowSpeedMuteThresholdMph"];
     
     // === Auto-Push Settings (v2+) ===
-    // NOTE: autoPushEnabled skipped - keep default=true from code for profiles to always work
-    // if (doc["autoPushEnabled"].is<bool>()) settings.autoPushEnabled = doc["autoPushEnabled"];
+    // Only allow backup to enable auto-push (avoid stale backups disabling it)
+    if (doc["autoPushEnabled"].is<bool>() && doc["autoPushEnabled"].as<bool>()) {
+        settings.autoPushEnabled = true;
+    }
     if (doc["activeSlot"].is<int>()) settings.activeSlot = doc["activeSlot"];
     
     // === Slot 0 Full Settings ===
