@@ -12,8 +12,7 @@
 StorageManager storageManager;
 
 StorageManager::StorageManager()
-    : fs(nullptr), ready(false), usingSDMMC(false), littlefsReady(false),
-      cameraDbFound(false), alprCount(0), redlightCount(0), speedCount(0), sdMutex(nullptr) {
+    : fs(nullptr), ready(false), usingSDMMC(false), littlefsReady(false), sdMutex(nullptr) {
     // Create SD access mutex - critical for thread safety across cores
     sdMutex = xSemaphoreCreateMutex();
     if (!sdMutex) {
@@ -48,9 +47,6 @@ bool StorageManager::begin() {
             Serial.println("[Storage] (Run 'Format LittleFS' from maintenance if needed)");
         }
 
-        // Check for camera database files
-        checkCameraDatabase();
-        
         return true;
     } else {
         Serial.println("[Storage] SD_MMC.begin() failed");
@@ -97,28 +93,6 @@ uint32_t StorageManager::countJsonLines(const char* path) {
     }
     file.close();
     return count;
-}
-
-void StorageManager::checkCameraDatabase() {
-    cameraDbFound = false;
-    alprCount = 0;
-    redlightCount = 0;
-    speedCount = 0;
-    
-    if (!fs) return;
-    
-    // Quick existence check only - don't count lines during boot
-    // This makes boot ~3 seconds faster by not reading 70K+ lines
-    // Check for both binary (.bin) and JSON (.json) formats
-    bool hasAlpr = fs->exists("/alpr.bin") || fs->exists("/alpr.json");
-    bool hasRedlight = fs->exists("/redlight_cam.bin") || fs->exists("/redlight_cam.json");
-    bool hasSpeed = fs->exists("/speed_cam.bin") || fs->exists("/speed_cam.json");
-    
-    cameraDbFound = hasAlpr || hasRedlight || hasSpeed;
-    
-    if (cameraDbFound) {
-        Serial.println("[Storage] ✓ Camera database found");
-    }
 }
 
 bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {

@@ -32,9 +32,7 @@
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
 		statusGps: 0x07E0,     // Green (GPS indicator)
 		statusGpsWarn: 0xFD20, // Orange (GPS low sats)
-		statusCam: 0x07FF,     // Cyan (Camera database)
 		statusObd: 0x07E0,     // Green (OBD connected)
-		cameraAlert: 0xFD20,   // Orange (Camera alert)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -258,9 +256,7 @@
 			params.append('rssiProxy', colors.rssiProxy);
 			params.append('statusGps', colors.statusGps);
 			params.append('statusGpsWarn', colors.statusGpsWarn);
-			params.append('statusCam', colors.statusCam);
 			params.append('statusObd', colors.statusObd);
-			params.append('cameraAlert', colors.cameraAlert);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -338,9 +334,7 @@
 					rssiProxy: 0x001F,
 					statusGps: 0x07E0,
 					statusGpsWarn: 0xFD20,
-					statusCam: 0x07FF,
 					statusObd: 0x07E0,
-					cameraAlert: 0xFD20,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -646,7 +640,7 @@
 				</div>
 				<div class="divider my-2"></div>
 				<h3 class="font-semibold text-sm mt-2">Status Bar</h3>
-				<p class="text-sm text-base-content/50 mb-2">GPS, Camera, and OBD status indicators at top of display</p>
+				<p class="text-sm text-base-content/50 mb-2">GPS and OBD status indicators at top of display</p>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="form-control">
 						<label class="label" for="statusGps-color">
@@ -701,32 +695,6 @@
 						</div>
 					</div>
 					<div class="form-control">
-						<label class="label" for="statusCam-color">
-							<span class="label-text">Camera DB</span>
-						</label>
-						<div class="flex items-center gap-2">
-							<button 
-								id="statusCam-color"
-								type="button"
-								aria-label="Camera database color"
-								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
-								style="background-color: {rgb565ToHex(colors.statusCam)}"
-								onclick={() => openPicker('statusCam', 'Camera Database')}
-							></button>
-							<input 
-								type="text"
-								class="input input-bordered input-xs w-16 font-mono text-xs"
-								value={rgb565ToHexStr(colors.statusCam)}
-								onchange={(e) => handleHexInput('statusCam', e.target.value)}
-								title="RGB565 hex (or RGB888)"
-							/>
-							<span 
-								class="text-sm font-bold font-mono"
-								style="color: {rgb565ToHex(colors.statusCam)}"
-							>CAM</span>
-						</div>
-					</div>
-					<div class="form-control">
 						<label class="label" for="statusObd-color">
 							<span class="label-text">OBD</span>
 						</label>
@@ -751,42 +719,6 @@
 								style="color: {rgb565ToHex(colors.statusObd)}"
 							>OBD</span>
 						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-		
-		<!-- Camera Alerts -->
-		<div class="card bg-base-200">
-			<div class="card-body p-4">
-				<h2 class="card-title text-lg">📷 Camera Alerts</h2>
-				<p class="text-sm text-base-content/60 mb-2">Colors for camera alert displays (both main area and cards)</p>
-				<div class="form-control">
-					<label class="label" for="cameraAlert-color">
-						<span class="label-text">Camera Alert Color</span>
-					</label>
-					<div class="flex items-center gap-2">
-						<button 
-							id="cameraAlert-color"
-							type="button"
-							aria-label="Camera alert color"
-							class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
-							style="background-color: {rgb565ToHex(colors.cameraAlert)}"
-							onclick={() => openPicker('cameraAlert', 'Camera Alert')}
-						></button>
-						<input 
-							type="text"
-							class="input input-bordered input-sm w-20 font-mono text-xs"
-							value={rgb565ToHexStr(colors.cameraAlert)}
-							onchange={(e) => handleHexInput('cameraAlert', e.target.value)}
-							title="RGB565 hex (or RGB888)"
-							placeholder="FD20"
-						/>
-						<span 
-							class="text-2xl font-bold font-mono"
-							style="color: {rgb565ToHex(colors.cameraAlert)}"
-						>📷</span>
-						<span class="text-sm text-base-content/60">(main & cards)</span>
 					</div>
 				</div>
 			</div>

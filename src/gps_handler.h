@@ -93,7 +93,7 @@ public:
   bool hasValidFix() const { return enabled && lastFix.valid && !isFixStale(); }
   bool isFixStale(uint32_t maxAge_ms = 30000) const;
   
-  // Ready for navigation: sustained good fix (use for camera/lockout alerts)
+  // Ready for navigation: sustained good fix (use for lockout/runtime alerts)
   bool isReadyForNavigation() const { return enabled && gpsReady && hasValidFix(); }
   
   // Time from GPS (more accurate than ESP32 RTC)

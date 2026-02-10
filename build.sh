@@ -185,13 +185,6 @@ if [ "$SKIP_WEB" = false ]; then
         echo -e "${GREEN}✅ Copied $AUDIO_COUNT audio clips${NC}"
     fi
     
-    # Copy camera audio files (TTS generated separately)
-    if [ -d "tools/camera_audio" ]; then
-        echo -e "${YELLOW}🔊 Copying camera audio files to data/audio/...${NC}"
-        cp tools/camera_audio/*.mul data/audio/ 2>/dev/null || true
-        CAM_AUDIO_COUNT=$(ls -1 tools/camera_audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
-        echo -e "${GREEN}✅ Copied $CAM_AUDIO_COUNT camera audio clips${NC}"
-    fi
     echo ""
 else
     echo -e "${YELLOW}⏭️  Skipping web interface build${NC}"

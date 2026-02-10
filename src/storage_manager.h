@@ -255,28 +255,17 @@ public:
         bool dmaStarved_;
     };
     
-    // Camera database info
-    bool hasCameraDatabase() const { return cameraDbFound; }
-    uint32_t getAlprCount() const { return alprCount; }
-    uint32_t getRedlightCount() const { return redlightCount; }
-    uint32_t getSpeedCount() const { return speedCount; }
-    
     // Atomic JSON file write utility (write to .tmp, then rename)
     // Returns true on success. Used by lockout and auto-lockout managers.
     static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
 
 private:
-    void checkCameraDatabase();
     uint32_t countJsonLines(const char* path);
     
     fs::FS* fs;
     bool ready;
     bool usingSDMMC;
     bool littlefsReady;
-    bool cameraDbFound;
-    uint32_t alprCount;
-    uint32_t redlightCount;
-    uint32_t speedCount;
     SemaphoreHandle_t sdMutex;
 };
 

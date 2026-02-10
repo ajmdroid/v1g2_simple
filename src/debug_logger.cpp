@@ -65,7 +65,6 @@ bool DebugLogger::categoryAllowed(DebugLogCategory category) const {
         case DebugLogCategory::Display:     return filter.display;
         case DebugLogCategory::PerfMetrics: return filter.perfMetrics;
         case DebugLogCategory::Audio:       return filter.audio;
-        case DebugLogCategory::Camera:      return filter.camera;
         case DebugLogCategory::Lockout:     return filter.lockout;
         case DebugLogCategory::Touch:       return filter.touch;
         default: return false;
@@ -407,7 +406,6 @@ const char* DebugLogger::categoryName(DebugLogCategory category) const {
         case DebugLogCategory::Display:     return "display";
         case DebugLogCategory::PerfMetrics: return "perf";
         case DebugLogCategory::Audio:       return "audio";
-        case DebugLogCategory::Camera:      return "camera";
         case DebugLogCategory::Lockout:     return "lockout";
         case DebugLogCategory::Touch:       return "touch";
         default: return "unknown";

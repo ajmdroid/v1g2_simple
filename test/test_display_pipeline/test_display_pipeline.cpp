@@ -25,7 +25,6 @@
 #include "../mocks/gps_handler.h"
 #include "../mocks/lockout_manager.h"
 #include "../mocks/debug_logger.h"
-#include "../mocks/modules/camera/camera_alert_module.h"
 #include "../mocks/modules/alert_persistence/alert_persistence_module.h"
 #include "../mocks/modules/voice/voice_module.h"
 #include "../mocks/modules/volume_fade/volume_fade_module.h"
@@ -52,7 +51,6 @@ static GPSHandler gpsHandler;
 static LockoutManager lockoutManager;
 static AutoLockoutManager autoLockoutManager;
 static DebugLogger debugLogger;
-static CameraAlertModule cameraAlertModule;
 static AlertPersistenceModule alertPersistenceModule;
 static VoiceModule voiceModule;
 static VolumeFadeModule volumeFadeModule;
@@ -388,30 +386,6 @@ void test_alert_persistence_shows_during_window() {
 }
 
 // ============================================================================
-// Test: Camera Alert Card State
-// ============================================================================
-
-void test_camera_alert_card_state_true_when_v1_alerts() {
-    cameraAlertModule.reset();
-    
-    // When V1 has alerts, camera shows as card
-    cameraAlertModule.updateCardStateForV1(true);
-    
-    TEST_ASSERT_EQUAL(1, cameraAlertModule.updateCardStateForV1Calls);
-    TEST_ASSERT_TRUE(cameraAlertModule.lastCardStateForV1);
-}
-
-void test_camera_alert_card_state_false_when_no_v1_alerts() {
-    cameraAlertModule.reset();
-    
-    // When V1 has no alerts, camera can be main display
-    cameraAlertModule.updateCardStateForV1(false);
-    
-    TEST_ASSERT_EQUAL(1, cameraAlertModule.updateCardStateForV1Calls);
-    TEST_ASSERT_FALSE(cameraAlertModule.lastCardStateForV1);
-}
-
-// ============================================================================
 // Test: Voice Module Clears State on Alert Clear
 // ============================================================================
 
@@ -438,7 +412,6 @@ void setUp() {
     gpsHandler.reset();
     lockoutManager.reset();
     autoLockoutManager.reset();
-    cameraAlertModule.reset();
     alertPersistenceModule.reset();
     voiceModule.resetMock();
     volumeFadeModule.reset();
@@ -472,10 +445,6 @@ void runAllTests() {
     RUN_TEST(test_alert_persistence_clears_state_when_alerts_clear);
     RUN_TEST(test_alert_persistence_starts_timer_when_configured);
     RUN_TEST(test_alert_persistence_shows_during_window);
-    
-    // Camera alert integration
-    RUN_TEST(test_camera_alert_card_state_true_when_v1_alerts);
-    RUN_TEST(test_camera_alert_card_state_false_when_no_v1_alerts);
     
     // Voice state management
     RUN_TEST(test_voice_clears_state_when_alerts_clear);

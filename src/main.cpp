@@ -133,9 +133,8 @@ static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
     if (cfg.display) mask |= (1u << 6);
     if (cfg.perfMetrics) mask |= (1u << 7);
     if (cfg.audio) mask |= (1u << 8);
-    if (cfg.camera) mask |= (1u << 9);
-    if (cfg.lockout) mask |= (1u << 10);
-    if (cfg.touch) mask |= (1u << 11);
+    if (cfg.lockout) mask |= (1u << 9);
+    if (cfg.touch) mask |= (1u << 10);
     return mask;
 }
 
@@ -416,7 +415,7 @@ void setup() {
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
     SerialLog.println("Firmware: " FIRMWARE_VERSION);
-    SerialLog.println("[Build] core-only (camera removed)");
+    SerialLog.println("[Build] core-only");
     SerialLog.print("Board: ");
     SerialLog.println(DISPLAY_NAME);
     
@@ -604,7 +603,7 @@ void setup() {
     
     {
         DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
+        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.lockout, cfg.touch};
         debugLogger.setFilter(filter);
     }
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);

@@ -77,7 +77,6 @@ enum class DebugLogCategory {
     Display,
     PerfMetrics,
     Audio,
-    Camera,
     Lockout,
     Touch
 };
@@ -92,7 +91,6 @@ struct DebugLogFilter {
     bool display = false;
     bool perfMetrics = false;
     bool audio = false;
-    bool camera = false;
     bool lockout = false;
     bool touch = false;
 };

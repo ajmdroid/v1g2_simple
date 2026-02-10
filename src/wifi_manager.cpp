@@ -76,7 +76,7 @@ static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Requi
 
 static void applyDebugLogFilterFromSettings() {
     DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.camera, cfg.lockout, cfg.touch};
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.lockout, cfg.touch};
     debugLogger.setFilter(filter);
 }
 
@@ -1120,11 +1120,6 @@ void WiFiManager::handleSettingsApi() {
     doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
     doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
     
-    // Camera alert settings
-    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
-    doc["cameraAudioEnabled"] = settings.cameraAudioEnabled;
-    doc["cameraAlertDistanceM"] = settings.cameraAlertDistanceM;
-    
     // Development/Debug settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
@@ -1137,7 +1132,6 @@ void WiFiManager::handleSettingsApi() {
     doc["logDisplay"] = settings.logDisplay;
     doc["logPerfMetrics"] = settings.logPerfMetrics;
     doc["logAudio"] = settings.logAudio;
-    doc["logCamera"] = settings.logCamera;
     doc["logLockout"] = settings.logLockout;
     doc["logTouch"] = settings.logTouch;
     
@@ -1329,21 +1323,6 @@ void WiFiManager::handleSettingsSave() {
         int meters = server.arg("lockoutMaxDistanceM").toInt();
         meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
         settingsManager.updateLockoutMaxDistanceM(meters);
-    }
-    
-    // Camera alert settings
-    if (server.hasArg("cameraAlertsEnabled")) {
-        bool enabled = server.arg("cameraAlertsEnabled") == "true" || server.arg("cameraAlertsEnabled") == "1";
-        settingsManager.updateCameraAlertsEnabled(enabled);
-    }
-    if (server.hasArg("cameraAudioEnabled")) {
-        bool enabled = server.arg("cameraAudioEnabled") == "true" || server.arg("cameraAudioEnabled") == "1";
-        settingsManager.updateCameraAudioEnabled(enabled);
-    }
-    if (server.hasArg("cameraAlertDistanceM")) {
-        int meters = server.arg("cameraAlertDistanceM").toInt();
-        meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
-        settingsManager.updateCameraAlertDistanceM(meters);
     }
     
     // All changes are queued in the settingsManager instance. Now, save them all at once.
@@ -2070,10 +2049,6 @@ void WiFiManager::handleDisplayColorsSave() {
         uint16_t statusGpsWarnColor = server.arg("statusGpsWarn").toInt();
         settingsManager.setStatusGpsWarnColor(statusGpsWarnColor);
     }
-    if (server.hasArg("statusCam")) {
-        uint16_t statusCamColor = server.arg("statusCam").toInt();
-        settingsManager.setStatusCamColor(statusCamColor);
-    }
     if (server.hasArg("statusObd")) {
         uint16_t statusObdColor = server.arg("statusObd").toInt();
         settingsManager.setStatusObdColor(statusObdColor);
@@ -2091,12 +2066,6 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("obdCard2")) {
         uint16_t obdCard2Color = server.arg("obdCard2").toInt();
         settingsManager.setObdCard2Color(obdCard2Color);
-    }
-    
-    // Handle camera alert color
-    if (server.hasArg("cameraAlert")) {
-        uint16_t cameraAlertColor = server.arg("cameraAlert").toInt();
-        settingsManager.setCameraAlertColor(cameraAlertColor);
     }
     
     // Handle frequency uses band color setting
@@ -2158,9 +2127,6 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("logAudio")) {
         settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1", true);
-    }
-    if (server.hasArg("logCamera")) {
-        settingsManager.setLogCamera(server.arg("logCamera") == "true" || server.arg("logCamera") == "1", true);
     }
     if (server.hasArg("logLockout")) {
         settingsManager.setLogLockout(server.arg("logLockout") == "true" || server.arg("logLockout") == "1", true);
@@ -2344,12 +2310,10 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["rssiProxy"] = s.colorRssiProxy;
     doc["statusGps"] = s.colorStatusGps;
     doc["statusGpsWarn"] = s.colorStatusGpsWarn;
-    doc["statusCam"] = s.colorStatusCam;
     doc["statusObd"] = s.colorStatusObd;
     doc["obdPrimary"] = s.colorObdPrimary;
     doc["obdCard1"] = s.colorObdCard1;
     doc["obdCard2"] = s.colorObdCard2;
-    doc["cameraAlert"] = s.colorCameraAlert;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
@@ -2548,7 +2512,6 @@ void WiFiManager::handleDebugLogsMeta() {
     doc["logDisplay"] = cfg.display;
     doc["logPerfMetrics"] = cfg.perfMetrics;
     doc["logAudio"] = cfg.audio;
-    doc["logCamera"] = cfg.camera;
     doc["logLockout"] = cfg.lockout;
     doc["logTouch"] = cfg.touch;
 
@@ -2713,7 +2676,6 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorVolumeMute"] = s.colorVolumeMute;
     doc["colorStatusGps"] = s.colorStatusGps;
     doc["colorStatusGpsWarn"] = s.colorStatusGpsWarn;
-    doc["colorStatusCam"] = s.colorStatusCam;
     doc["colorStatusObd"] = s.colorStatusObd;
     doc["colorObdPrimary"] = s.colorObdPrimary;
     doc["colorObdCard1"] = s.colorObdCard1;
@@ -2744,7 +2706,6 @@ void WiFiManager::handleSettingsBackup() {
     doc["logDisplay"] = s.logDisplay;
     doc["logPerfMetrics"] = s.logPerfMetrics;
     doc["logAudio"] = s.logAudio;
-    doc["logCamera"] = s.logCamera;
     doc["logLockout"] = s.logLockout;
     doc["logTouch"] = s.logTouch;
     
@@ -2774,15 +2735,6 @@ void WiFiManager::handleSettingsBackup() {
     doc["lockoutUnlearnIntervalHours"] = s.lockoutUnlearnIntervalHours;
     doc["lockoutMaxSignalStrength"] = s.lockoutMaxSignalStrength;
     doc["lockoutMaxDistanceM"] = s.lockoutMaxDistanceM;
-    
-    // Camera alert settings
-    doc["cameraAlertsEnabled"] = s.cameraAlertsEnabled;
-    doc["cameraAlertDistanceM"] = s.cameraAlertDistanceM;
-    doc["cameraAlertRedLight"] = s.cameraAlertRedLight;
-    doc["cameraAlertSpeed"] = s.cameraAlertSpeed;
-    doc["cameraAlertALPR"] = s.cameraAlertALPR;
-    doc["cameraAudioEnabled"] = s.cameraAudioEnabled;
-    doc["colorCameraAlert"] = s.colorCameraAlert;
     
     // Auto power-off
     doc["autoPowerOffMinutes"] = s.autoPowerOffMinutes;
@@ -2942,12 +2894,10 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["colorStatusGps"].is<int>()) s.colorStatusGps = doc["colorStatusGps"];
     if (doc["colorStatusGpsWarn"].is<int>()) s.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
-    if (doc["colorStatusCam"].is<int>()) s.colorStatusCam = doc["colorStatusCam"];
     if (doc["colorStatusObd"].is<int>()) s.colorStatusObd = doc["colorStatusObd"];
     if (doc["colorObdPrimary"].is<int>()) s.colorObdPrimary = doc["colorObdPrimary"];
     if (doc["colorObdCard1"].is<int>()) s.colorObdCard1 = doc["colorObdCard1"];
     if (doc["colorObdCard2"].is<int>()) s.colorObdCard2 = doc["colorObdCard2"];
-    if (doc["colorCameraAlert"].is<int>()) s.colorCameraAlert = doc["colorCameraAlert"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     
     // Display visibility
@@ -2971,7 +2921,6 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
     if (doc["logPerfMetrics"].is<bool>()) s.logPerfMetrics = doc["logPerfMetrics"];
     if (doc["logAudio"].is<bool>()) s.logAudio = doc["logAudio"];
-    if (doc["logCamera"].is<bool>()) s.logCamera = doc["logCamera"];
     if (doc["logLockout"].is<bool>()) s.logLockout = doc["logLockout"];
     if (doc["logTouch"].is<bool>()) s.logTouch = doc["logTouch"];
     
@@ -3001,14 +2950,6 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["lockoutUnlearnIntervalHours"].is<int>()) s.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
     if (doc["lockoutMaxSignalStrength"].is<int>()) s.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
     if (doc["lockoutMaxDistanceM"].is<int>()) s.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
-    
-    // Camera alert settings
-    if (doc["cameraAlertsEnabled"].is<bool>()) s.cameraAlertsEnabled = doc["cameraAlertsEnabled"];
-    if (doc["cameraAlertDistanceM"].is<int>()) s.cameraAlertDistanceM = doc["cameraAlertDistanceM"];
-    if (doc["cameraAlertRedLight"].is<bool>()) s.cameraAlertRedLight = doc["cameraAlertRedLight"];
-    if (doc["cameraAlertSpeed"].is<bool>()) s.cameraAlertSpeed = doc["cameraAlertSpeed"];
-    if (doc["cameraAlertALPR"].is<bool>()) s.cameraAlertALPR = doc["cameraAlertALPR"];
-    if (doc["cameraAudioEnabled"].is<bool>()) s.cameraAudioEnabled = doc["cameraAudioEnabled"];
     
     // Auto power-off
     if (doc["autoPowerOffMinutes"].is<int>()) s.autoPowerOffMinutes = doc["autoPowerOffMinutes"];

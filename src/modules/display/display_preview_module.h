@@ -13,7 +13,7 @@
  *
  * Does NOT:
  * - Own display connection (expects V1Display pointer)
- * - Manage camera tests or other display flows
+ * - Manage other display ownership flows
  */
 class DisplayPreviewModule {
 public:

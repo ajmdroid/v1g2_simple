@@ -7,7 +7,7 @@
  * 
  * Layout Overview (640x172 landscape):
  * ┌────────────────────────────────────────────────────────────────────────────┐
- * │ [Status Bar: GPS/CAM/OBD indicators]                              [WiFi]   │ Y=0-20
+ * │ [Status Bar: GPS/OBD indicators]                                  [WiFi]   │ Y=0-20
  * ├──────────┬───────────────────────────────────────────┬────────────────────┤
  * │          │                                           │  Signal Bars       │
  * │  Band    │   Frequency / Alert Content               │  Direction Arrow   │ Y=20-95
@@ -15,7 +15,7 @@
  * │          │                                           │                    │
  * ├──────────┴───────────────────────────────────────────┴────────────────────┤
  * │  [Secondary Card 1]     [Secondary Card 2]            [Battery]           │ Y=118-172
- * │  (145x54px each)        (or camera cards)                                 │
+ * │  (145x54px each)                                                        │
  * └────────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -44,7 +44,7 @@ namespace DisplayLayout {
 constexpr int PRIMARY_ZONE_HEIGHT = 95;   // Fixed height for primary alert display
 constexpr int PRIMARY_ZONE_Y = 20;        // Below status bar
 
-// Secondary row (alert cards, camera cards)
+// Secondary row (alert cards)
 constexpr int SECONDARY_ROW_HEIGHT = 54;  // Height for secondary alert cards
 constexpr int SECONDARY_ROW_Y = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=118 on 172px display
 

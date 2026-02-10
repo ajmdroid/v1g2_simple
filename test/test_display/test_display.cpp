@@ -6,7 +6,6 @@
  * - Caching correctness (no unnecessary redraws, no missed redraws)
  * - Boundary conditions (min/max values)
  * - Multi-alert scenarios
- * - Camera alert integration
  * - Frequency tolerance (V1 jitter)
  * - Mode transitions
  * - Stress tests (rapid state changes)
@@ -753,55 +752,6 @@ void test_multi_alert_no_cards_for_single() {
 }
 
 // ============================================================================
-// Test Cases: Camera Alert Integration
-// ============================================================================
-
-void test_camera_alert_displays_in_main_area_no_v1() {
-    // When no V1 alerts, camera shows in main frequency area
-    bool v1HasAlerts = false;
-    bool shouldShowInMain = !v1HasAlerts;
-    
-    TEST_ASSERT_TRUE(shouldShowInMain);
-}
-
-void test_camera_alert_shows_as_card_with_v1() {
-    // When V1 has alerts, camera shows as secondary card
-    bool v1HasAlerts = true;
-    bool shouldShowInMain = !v1HasAlerts;
-    
-    TEST_ASSERT_FALSE(shouldShowInMain);
-}
-
-void test_camera_distance_sorting() {
-    // Cameras should be sorted by distance (closest first)
-    struct Camera {
-        const char* type;
-        float distance;
-    };
-    
-    Camera cameras[3] = {
-        {"Red Light", 500.0f},
-        {"Speed", 200.0f},
-        {"Mobile", 800.0f}
-    };
-    
-    // Sort by distance
-    for (int i = 0; i < 2; i++) {
-        for (int j = i + 1; j < 3; j++) {
-            if (cameras[j].distance < cameras[i].distance) {
-                Camera tmp = cameras[i];
-                cameras[i] = cameras[j];
-                cameras[j] = tmp;
-            }
-        }
-    }
-    
-    TEST_ASSERT_EQUAL_FLOAT(200.0f, cameras[0].distance);
-    TEST_ASSERT_EQUAL_FLOAT(500.0f, cameras[1].distance);
-    TEST_ASSERT_EQUAL_FLOAT(800.0f, cameras[2].distance);
-}
-
-// ============================================================================
 // Test Cases: Display State Validation
 // ============================================================================
 
@@ -1181,7 +1131,7 @@ void test_layout_primary_zone() {
 }
 
 // ============================================================================
-// Test Cases: Test Mode State Machine (Color Preview, Camera Test, Audio Test)
+// Test Cases: Test Mode State Machine (Color Preview)
 // 
 // CRITICAL: These tests catch the bug where display doesn't properly restore
 // after web UI tests end. The key invariant is:
@@ -1194,8 +1144,7 @@ enum class DisplayScreen {
     SCANNING,       // V1 not connected - looking for V1
     RESTING,        // V1 connected, no alerts
     ALERT,          // V1 connected, has alerts
-    DEMO,           // Color preview active
-    CAMERA_TEST     // Camera test active
+    DEMO            // Color preview active
 };
 
 // Simulates the display state machine that determines which screen to show
@@ -1205,8 +1154,6 @@ public:
     bool hasAlerts = false;
     bool colorPreviewActive = false;
     bool colorPreviewEnded = false;
-    bool cameraTestActive = false;
-    bool cameraTestEnded = false;
     
     DisplayScreen lastScreen = DisplayScreen::SCANNING;
     int showScanningCount = 0;
@@ -1218,8 +1165,6 @@ public:
         hasAlerts = false;
         colorPreviewActive = false;
         colorPreviewEnded = false;
-        cameraTestActive = false;
-        cameraTestEnded = false;
         lastScreen = DisplayScreen::SCANNING;
         showScanningCount = 0;
         showRestingCount = 0;
@@ -1238,18 +1183,6 @@ public:
         colorPreviewEnded = true;
     }
     
-    // Start camera test
-    void startCameraTest() {
-        cameraTestActive = true;
-        cameraTestEnded = false;
-    }
-    
-    // End camera test
-    void endCameraTest() {
-        cameraTestActive = false;
-        cameraTestEnded = true;
-    }
-    
     // Main loop tick - processes state and determines screen to show
     // Returns the screen that should be displayed
     // THIS IS THE LOGIC THAT HAD THE BUG - we test it in isolation
@@ -1260,15 +1193,9 @@ public:
             return lastScreen;
         }
         
-        if (cameraTestActive) {
-            lastScreen = DisplayScreen::CAMERA_TEST;
-            return lastScreen;
-        }
-        
         // Handle test mode ending - restore proper screen
-        if (colorPreviewEnded || cameraTestEnded) {
+        if (colorPreviewEnded) {
             colorPreviewEnded = false;
-            cameraTestEnded = false;
             
             // KEY INVARIANT: Check connection state to determine correct screen
             if (v1Connected) {
@@ -1355,46 +1282,6 @@ void test_color_preview_ends_v1_connected_with_alerts_shows_alert() {
     TEST_ASSERT_EQUAL(1, g_stateMachine.showAlertCount);
 }
 
-// Test: Camera test ends when V1 disconnected → must show SCANNING
-void test_camera_test_ends_v1_disconnected_shows_scanning() {
-    g_stateMachine.reset();
-    g_stateMachine.v1Connected = false;
-    
-    g_stateMachine.startCameraTest();
-    TEST_ASSERT_EQUAL(DisplayScreen::CAMERA_TEST, g_stateMachine.processLoop());
-    
-    g_stateMachine.endCameraTest();
-    
-    DisplayScreen result = g_stateMachine.processLoop();
-    TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, result);
-    TEST_ASSERT_EQUAL(1, g_stateMachine.showScanningCount);
-    TEST_ASSERT_EQUAL(0, g_stateMachine.showRestingCount);  // Must NOT call showResting!
-}
-
-// Test: Camera test ends when V1 connected → show RESTING or ALERT
-void test_camera_test_ends_v1_connected_shows_correct_screen() {
-    g_stateMachine.reset();
-    g_stateMachine.v1Connected = true;
-    g_stateMachine.hasAlerts = false;
-    
-    g_stateMachine.startCameraTest();
-    g_stateMachine.processLoop();
-    g_stateMachine.endCameraTest();
-    
-    TEST_ASSERT_EQUAL(DisplayScreen::RESTING, g_stateMachine.processLoop());
-    
-    // Now with alerts
-    g_stateMachine.reset();
-    g_stateMachine.v1Connected = true;
-    g_stateMachine.hasAlerts = true;
-    
-    g_stateMachine.startCameraTest();
-    g_stateMachine.processLoop();
-    g_stateMachine.endCameraTest();
-    
-    TEST_ASSERT_EQUAL(DisplayScreen::ALERT, g_stateMachine.processLoop());
-}
-
 // Test: Ended flags are cleared after processing (prevent infinite loop)
 void test_ended_flags_clear_after_processing() {
     g_stateMachine.reset();
@@ -1451,21 +1338,21 @@ void test_v1_connects_during_test_mode() {
     TEST_ASSERT_EQUAL(DisplayScreen::ALERT, g_stateMachine.processLoop());
 }
 
-// Test: Multiple test modes don't interfere
-void test_sequential_test_modes() {
+// Test: Multiple color previews work correctly
+void test_sequential_color_previews() {
     g_stateMachine.reset();
     g_stateMachine.v1Connected = false;
     
-    // Color preview
+    // Color preview 1
     g_stateMachine.startColorPreview();
     g_stateMachine.processLoop();
     g_stateMachine.endColorPreview();
     TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, g_stateMachine.processLoop());
     
-    // Camera test
-    g_stateMachine.startCameraTest();
+    // Color preview 2
+    g_stateMachine.startColorPreview();
     g_stateMachine.processLoop();
-    g_stateMachine.endCameraTest();
+    g_stateMachine.endColorPreview();
     TEST_ASSERT_EQUAL(DisplayScreen::SCANNING, g_stateMachine.processLoop());
     
     // Total calls
@@ -1534,11 +1421,6 @@ void runAllTests() {
     RUN_TEST(test_multi_alert_card_count);
     RUN_TEST(test_multi_alert_no_cards_for_single);
     
-    // Camera alert tests
-    RUN_TEST(test_camera_alert_displays_in_main_area_no_v1);
-    RUN_TEST(test_camera_alert_shows_as_card_with_v1);
-    RUN_TEST(test_camera_distance_sorting);
-    
     // Display state tests
     RUN_TEST(test_display_state_default_values);
     RUN_TEST(test_display_state_volume_support_check);
@@ -1583,12 +1465,10 @@ void runAllTests() {
     RUN_TEST(test_color_preview_ends_v1_disconnected_shows_scanning);
     RUN_TEST(test_color_preview_ends_v1_connected_no_alerts_shows_resting);
     RUN_TEST(test_color_preview_ends_v1_connected_with_alerts_shows_alert);
-    RUN_TEST(test_camera_test_ends_v1_disconnected_shows_scanning);
-    RUN_TEST(test_camera_test_ends_v1_connected_shows_correct_screen);
     RUN_TEST(test_ended_flags_clear_after_processing);
     RUN_TEST(test_v1_disconnects_during_test_mode);
     RUN_TEST(test_v1_connects_during_test_mode);
-    RUN_TEST(test_sequential_test_modes);
+    RUN_TEST(test_sequential_color_previews);
 }
 
 #ifdef ARDUINO

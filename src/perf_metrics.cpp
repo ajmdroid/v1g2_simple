@@ -186,12 +186,6 @@ void perfRecordObdUs(uint32_t us) {
     }
 }
 
-void perfRecordCameraUs(uint32_t us) {
-    if (us > perfExtended.cameraMaxUs) {
-        perfExtended.cameraMaxUs = us;
-    }
-}
-
 void perfRecordLockoutUs(uint32_t us) {
     if (us > perfExtended.lockoutMaxUs) {
         perfExtended.lockoutMaxUs = us;
@@ -231,7 +225,6 @@ uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
 uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
-uint32_t perfGetCameraMaxUs() { return perfExtended.cameraMaxUs; }
 uint32_t perfGetLockoutMaxUs() { return perfExtended.lockoutMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
 uint32_t perfGetTouchMaxUs() { return perfExtended.touchMaxUs; }
@@ -258,7 +251,7 @@ bool perfMetricsCheckReport() {
     perfLastReportMs = now;
     
     // Stability-focused compact report format per CT's recommendation:
-    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, camMax_us, lockoutMax_us, dispMax_us, touchMax_us, heapMin, qDrop, parseFail, qHW
+    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, lockoutMax_us, dispMax_us, touchMax_us, heapMin, qDrop, parseFail, qHW
     // Plus otherMax_us = gap not explained by instrumented buckets (signals uninstrumented code)
     uint32_t loopUs = perfExtended.loopMaxUs;
     uint32_t bleConnUs = perfExtended.bleProcessMaxUs;
@@ -267,7 +260,6 @@ bool perfMetricsCheckReport() {
     uint32_t sdUs = perfExtended.sdMaxUs;
     uint32_t gpsUs = perfExtended.gpsMaxUs;
     uint32_t obdUs = perfExtended.obdMaxUs;
-    uint32_t camUs = perfExtended.cameraMaxUs;
     uint32_t lockoutUs = perfExtended.lockoutMaxUs;
     uint32_t dispUs = perfExtended.dispPipeMaxUs;
     uint32_t touchUs = perfExtended.touchMaxUs;
@@ -280,13 +272,12 @@ bool perfMetricsCheckReport() {
     if (sdUs > explainedMax) explainedMax = sdUs;
     if (gpsUs > explainedMax) explainedMax = gpsUs;
     if (obdUs > explainedMax) explainedMax = obdUs;
-    if (camUs > explainedMax) explainedMax = camUs;
     if (lockoutUs > explainedMax) explainedMax = lockoutUs;
     if (dispUs > explainedMax) explainedMax = dispUs;
     if (touchUs > explainedMax) explainedMax = touchUs;
     uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
     
-    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu camMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu dmaMin=%lu dmaBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
+    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu dmaMin=%lu dmaBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
         (unsigned long)loopUs,
         (unsigned long)bleConnUs,
         (unsigned long)bleDrainUs,
@@ -294,7 +285,6 @@ bool perfMetricsCheckReport() {
         (unsigned long)sdUs,
         (unsigned long)gpsUs,
         (unsigned long)obdUs,
-        (unsigned long)camUs,
         (unsigned long)lockoutUs,
         (unsigned long)dispUs,
         (unsigned long)touchUs,
@@ -331,7 +321,7 @@ void perfMetricsPrint() {
     int n = snprintf(buf, sizeof(buf),
         "[PERF] rx=%lu rxB=%lu pOk=%lu pFail=%lu "
         "qDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu obdHW=%lu "
-        "dUpd=%lu dSkip=%lu camBg=%lu camRef=%lu "
+        "dUpd=%lu dSkip=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
         "obdSkip=%lu obdTout=%lu "
@@ -349,8 +339,6 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.obdScanQueueHighWater.load(),
         (unsigned long)perfCounters.displayUpdates.load(),
         (unsigned long)perfCounters.displaySkips.load(),
-        (unsigned long)perfCounters.cameraBgLoads.load(),
-        (unsigned long)perfCounters.cameraCacheRefreshes.load(),
         (unsigned long)perfCounters.reconnects.load(),
         (unsigned long)perfCounters.disconnects.load(),
         (unsigned long)perfCounters.bleMutexSkip.load(),
@@ -391,8 +379,6 @@ String perfMetricsToJson() {
     doc["obdScanQueueHighWater"] = perfCounters.obdScanQueueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
-    doc["cameraBgLoads"] = perfCounters.cameraBgLoads.load();
-    doc["cameraCacheRefreshes"] = perfCounters.cameraCacheRefreshes.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     

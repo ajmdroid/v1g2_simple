@@ -25,14 +25,7 @@
 		lockoutLearnIntervalHours: 4,
 		lockoutUnlearnIntervalHours: 4,
 		lockoutMaxSignalStrength: 0,
-		lockoutMaxDistanceM: 600,
-		// Camera alert settings
-		cameraAlertsEnabled: true,
-		cameraAlertDistanceM: 500,
-		cameraAlertRedLight: true,
-		cameraAlertSpeed: true,
-		cameraAlertALPR: true,
-		cameraAudioEnabled: true
+		lockoutMaxDistanceM: 600
 	});
 	
 	// V1 connection state
@@ -67,10 +60,7 @@
 	function handleColorChange(key, hex) {
 		settings[key] = hexToRgb565(hex);
 	}
-	
-	// Camera database status
-	let cameraStatus = $state(null);
-	
+
 	// OBD state
 	let obdStatus = $state({
 		state: 'DISABLED',
@@ -95,7 +85,6 @@
 		await fetchObdStatus();
 		await fetchV1Status();
 		await fetchGpsStatus();
-		await fetchCameraStatus();
 		// Poll statuses every 2 seconds
 		pollInterval = setInterval(async () => {
 			await fetchObdStatus();
@@ -107,55 +96,7 @@
 	onDestroy(() => {
 		if (pollInterval) clearInterval(pollInterval);
 	});
-	
-	async function fetchCameraStatus() {
-		try {
-			const res = await fetch('/api/cameras/status');
-			if (res.ok) {
-				cameraStatus = await res.json();
-			}
-		} catch (e) {
-			// Silently fail - cameras might not be loaded
-		}
-	}
-	
-	async function reloadCameraDatabase() {
-		try {
-			const res = await fetch('/api/cameras/reload', { method: 'POST' });
-			if (res.ok) {
-				await fetchCameraStatus();
-				message = { type: 'success', text: 'Camera database reloaded' };
-			} else {
-				message = { type: 'error', text: 'Failed to reload camera database' };
-			}
-		} catch (e) {
-			message = { type: 'error', text: 'Connection error' };
-		}
-	}
-	
-	// Test camera alert - triggers display and voice
-	let cameraTestRunning = $state(false);
-	async function testCameraAlert(type) {
-		if (cameraTestRunning) return;
-		cameraTestRunning = true;
-		
-		try {
-			const res = await fetch(`/api/cameras/test?type=${type}`, { method: 'POST' });
-			if (!res.ok) {
-				const err = await res.json();
-				message = { type: 'error', text: err.message || 'Test failed' };
-			} else {
-				// Success - the device will show the alert
-				const typeNames = ['Red Light', 'Speed', 'ALPR', 'Red Light+Speed'];
-				message = { type: 'success', text: `Testing ${typeNames[type]} camera alert` };
-			}
-		} catch (e) {
-			message = { type: 'error', text: `Test failed: ${e.message}` };
-		} finally {
-			setTimeout(() => { cameraTestRunning = false; }, 2000);  // 2s debounce
-		}
-	}
-	
+
 	async function fetchGpsStatus() {
 		try {
 			const res = await fetch('/api/gps/status');
@@ -401,9 +342,6 @@
 			params.append('lockoutUnlearnIntervalHours', settings.lockoutUnlearnIntervalHours);
 			params.append('lockoutMaxSignalStrength', settings.lockoutMaxSignalStrength);
 			params.append('lockoutMaxDistanceM', settings.lockoutMaxDistanceM);
-			params.append('cameraAlertsEnabled', settings.cameraAlertsEnabled);
-			params.append('cameraAudioEnabled', settings.cameraAudioEnabled);
-			params.append('cameraAlertDistanceM', settings.cameraAlertDistanceM);
 			
 			const res = await fetch('/settings', {
 				method: 'POST',
@@ -1211,215 +1149,6 @@
 				</div>
 			</div>
 		{/if}
-		
-		<!-- Camera Alerts Section -->
-		<div class="card bg-base-200 mt-6" class:opacity-50={!acknowledged}>
-			<div class="card-body space-y-4">
-				<h2 class="card-title">📸 Camera Alerts</h2>
-				<p class="text-sm text-base-content/60">
-					Red light cameras, speed cameras, and ALPR databases. Requires GPS and camera database on SD card.
-				</p>
-				
-				<label class="label cursor-pointer">
-					<div class="flex flex-col">
-						<span class="label-text">Enable Camera Alerts</span>
-						<span class="label-text-alt text-base-content/50">Alert when approaching known camera locations</span>
-					</div>
-					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.cameraAlertsEnabled} disabled={!acknowledged || !settings.gpsEnabled} />
-				</label>
-				
-				{#if !settings.gpsEnabled}
-					<div class="alert alert-warning">
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
-						</svg>
-						<span class="text-sm">GPS must be enabled for camera alerts to work.</span>
-					</div>
-				{/if}
-				
-				<!-- Camera Database Status -->
-				{#if cameraStatus}
-					<div class="divider my-2"></div>
-					<div class="flex items-center gap-2 mb-2">
-						<span class="font-semibold text-sm">Database:</span>
-						{#if cameraStatus.loaded}
-							<span class="badge badge-success">{cameraStatus.count?.toLocaleString()} cameras</span>
-						{:else}
-							<span class="badge badge-warning">Not Loaded</span>
-						{/if}
-					</div>
-					
-					{#if cameraStatus.loaded}
-						<div class="text-sm space-y-1">
-							{#if cameraStatus.name}
-								<p><span class="text-base-content/60">Name:</span> {cameraStatus.name}</p>
-							{/if}
-							{#if cameraStatus.date}
-								<p><span class="text-base-content/60">Date:</span> {cameraStatus.date}</p>
-							{/if}
-							<div class="flex gap-4 text-xs text-base-content/60 mt-2">
-								<span>🚦 Red Light: {cameraStatus.redLightCount?.toLocaleString() ?? 0}</span>
-								<span>📷 Speed: {cameraStatus.speedCount?.toLocaleString() ?? 0}</span>
-								<span>🔍 ALPR: {cameraStatus.alprCount?.toLocaleString() ?? 0}</span>
-							</div>
-							
-							<!-- Regional Cache Info -->
-							{#if cameraStatus.cache}
-								<div class="mt-3 p-2 bg-base-300 rounded-lg">
-									<p class="text-xs font-semibold text-success">
-										📍 Regional Cache Active
-									</p>
-									<p class="text-xs text-base-content/60 mt-1">
-										{cameraStatus.cache.count?.toLocaleString()} cameras within {cameraStatus.cache.radiusMiles} mi
-									</p>
-									<p class="text-xs text-base-content/40">
-										Center: {cameraStatus.cache.centerLat?.toFixed(2)}°, {cameraStatus.cache.centerLon?.toFixed(2)}°
-									</p>
-								</div>
-							{:else}
-								<p class="text-xs text-base-content/40 mt-2">
-									💡 Regional cache will build when GPS gets a fix
-								</p>
-							{/if}
-						</div>
-					{:else}
-					<div class="text-sm text-base-content/60">
-							<p class="font-semibold">📂 Copy camera database files to SD card:</p>
-							<ul class="list-disc list-inside mt-1 text-xs">
-								<li><code>/alpr.bin</code> - ALPR cameras (~70k)</li>
-								<li><code>/redlight_cam.bin</code> - Red light cameras</li>
-								<li><code>/speed_cam.bin</code> - Speed cameras</li>
-							</ul>
-							<div class="mt-3 p-2 bg-base-300 rounded-lg">
-								<p class="text-xs font-semibold">How to get camera files:</p>
-								<ol class="list-decimal list-inside text-xs mt-1 space-y-1">
-									<li>Download pre-built <code>.bin</code> files from releases</li>
-									<li>Or run <code>tools/download_cameras.py</code> on your computer</li>
-									<li>Copy the <code>.bin</code> files to SD card root</li>
-									<li>Reboot device or tap "Reload Database"</li>
-								</ol>
-							</div>
-						</div>
-					{/if}
-					
-					<button class="btn btn-sm btn-ghost" onclick={reloadCameraDatabase}>
-						🔄 Reload Database
-					</button>
-					
-					<!-- Test Camera Alerts -->
-					<div class="divider my-2 text-xs text-base-content/50">Test Camera Alerts</div>
-					
-					<div class="bg-base-300 rounded-lg p-3 space-y-2">
-						<p class="text-xs text-base-content/60">
-							Test camera alert display and voice announcements. This simulates detecting each camera type.
-						</p>
-						
-						<div class="flex flex-wrap gap-2">
-							<button 
-								class="btn btn-sm btn-outline btn-error"
-								onclick={() => testCameraAlert(0)}
-								disabled={cameraTestRunning}
-							>
-								🚦 Red Light
-							</button>
-							<button 
-								class="btn btn-sm btn-outline btn-warning"
-								onclick={() => testCameraAlert(1)}
-								disabled={cameraTestRunning}
-							>
-								📷 Speed
-							</button>
-							<button 
-								class="btn btn-sm btn-outline btn-info"
-								onclick={() => testCameraAlert(2)}
-								disabled={cameraTestRunning}
-							>
-								🔍 ALPR
-							</button>
-							<button 
-								class="btn btn-sm btn-outline btn-secondary"
-								onclick={() => testCameraAlert(3)}
-								disabled={cameraTestRunning}
-							>
-								🚦📷 Both
-							</button>
-						</div>
-					</div>
-				{/if}
-				
-				{#if settings.cameraAlertsEnabled}
-					<div class="divider my-2"></div>
-					
-					<!-- Camera Types -->
-					<div class="space-y-2">
-						<span class="label-text font-semibold">Alert Types</span>
-						<div class="flex flex-wrap gap-4">
-							<label class="label cursor-pointer gap-2">
-								<input type="checkbox" class="checkbox checkbox-sm checkbox-error" bind:checked={settings.cameraAlertRedLight} disabled={!acknowledged} />
-								<span class="label-text">🚦 Red Light</span>
-							</label>
-							<label class="label cursor-pointer gap-2">
-								<input type="checkbox" class="checkbox checkbox-sm checkbox-warning" bind:checked={settings.cameraAlertSpeed} disabled={!acknowledged} />
-								<span class="label-text">📷 Speed Camera</span>
-							</label>
-							<label class="label cursor-pointer gap-2">
-								<input type="checkbox" class="checkbox checkbox-sm checkbox-info" bind:checked={settings.cameraAlertALPR} disabled={!acknowledged} />
-								<span class="label-text">🔍 ALPR</span>
-							</label>
-						</div>
-					</div>
-					
-					<!-- Alert Distance -->
-					<div class="form-control">
-						<label class="label" for="camera-distance">
-							<span class="label-text">Alert Distance</span>
-							<span class="label-text-alt">{settings.cameraAlertDistanceM}m ({Math.round(settings.cameraAlertDistanceM * 3.28084)}ft)</span>
-						</label>
-						<input 
-							id="camera-distance"
-							type="range" 
-							class="range range-sm range-warning"
-							bind:value={settings.cameraAlertDistanceM}
-							min="100"
-							max="2000"
-							step="100"
-							disabled={!acknowledged}
-						/>
-						<div class="w-full flex justify-between text-xs px-2">
-							<span>100m</span>
-							<span>500m</span>
-							<span>1000m</span>
-							<span>1500m</span>
-							<span>2000m</span>
-						</div>
-					</div>
-					
-					<!-- Audio Toggle -->
-					<label class="label cursor-pointer">
-						<div class="flex flex-col">
-							<span class="label-text">Audio Alerts</span>
-							<span class="label-text-alt text-base-content/50">Play audio when approaching camera</span>
-						</div>
-						<input type="checkbox" class="toggle toggle-sm" bind:checked={settings.cameraAudioEnabled} disabled={!acknowledged} />
-					</label>
-				{/if}
-			</div>
-		</div>
-		
-		<!-- Camera Help Section -->
-		<div class="collapse collapse-arrow bg-base-200">
-			<input type="checkbox" />
-			<div class="collapse-title font-medium">
-				❓ About Camera Databases
-			</div>
-			<div class="collapse-content text-sm space-y-2">
-				<p><strong>Red Light Cameras:</strong> Traffic enforcement cameras that photograph vehicles running red lights.</p>
-				<p><strong>Speed Cameras:</strong> Fixed or mobile cameras that detect vehicles exceeding speed limits.</p>
-				<p><strong>ALPR (Automatic License Plate Readers):</strong> Cameras that automatically scan and record license plates for various purposes including toll collection, parking enforcement, and law enforcement.</p>
-				<p><strong>Database Updates:</strong> Download updated camera databases from <a href="https://www.rdforum.org/threads/88426/" target="_blank" class="link link-primary">RDForum</a> and place on SD card.</p>
-				<p><strong>Coverage:</strong> Most databases cover USA and Canada. Coverage varies by region.</p>
-			</div>
-		</div>
 	{/if}
 </div>
 

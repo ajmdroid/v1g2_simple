@@ -1,7 +1,7 @@
 /**
  * Audio Beep Unit Tests
  * 
- * Tests alert band/direction enums, camera types, and frequency mapping.
+ * Tests alert band/direction enums and frequency mapping.
  * These tests catch bugs where:
  * - Band/direction enums have wrong values
  * - getGHz() returns wrong band for frequency
@@ -36,16 +36,6 @@ enum class AlertDirection : uint8_t {
     AHEAD = 0,
     BEHIND = 1,
     SIDE = 2
-};
-
-/**
- * Camera types for voice alerts
- */
-enum class CameraAlertType : uint8_t {
-    RED_LIGHT = 0,
-    SPEED = 1,
-    ALPR = 2,
-    RED_LIGHT_SPEED = 3  // Combined
 };
 
 /**
@@ -104,19 +94,6 @@ const char* directionToString(AlertDirection dir) {
         case AlertDirection::AHEAD: return "ahead";
         case AlertDirection::BEHIND: return "behind";
         case AlertDirection::SIDE: return "side";
-        default: return "unknown";
-    }
-}
-
-/**
- * Get camera type string for audio
- */
-const char* cameraTypeToString(CameraAlertType type) {
-    switch (type) {
-        case CameraAlertType::RED_LIGHT: return "red_light";
-        case CameraAlertType::SPEED: return "speed";
-        case CameraAlertType::ALPR: return "alpr";
-        case CameraAlertType::RED_LIGHT_SPEED: return "red_light_speed";
         default: return "unknown";
     }
 }
@@ -181,28 +158,6 @@ void test_direction_strings() {
 
 void test_direction_unknown_string() {
     TEST_ASSERT_EQUAL_STRING("unknown", directionToString(static_cast<AlertDirection>(99)));
-}
-
-// ============================================================================
-// CAMERA TYPE ENUM TESTS
-// ============================================================================
-
-void test_camera_type_enum_values() {
-    TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(CameraAlertType::RED_LIGHT));
-    TEST_ASSERT_EQUAL_UINT8(1, static_cast<uint8_t>(CameraAlertType::SPEED));
-    TEST_ASSERT_EQUAL_UINT8(2, static_cast<uint8_t>(CameraAlertType::ALPR));
-    TEST_ASSERT_EQUAL_UINT8(3, static_cast<uint8_t>(CameraAlertType::RED_LIGHT_SPEED));
-}
-
-void test_camera_type_strings() {
-    TEST_ASSERT_EQUAL_STRING("red_light", cameraTypeToString(CameraAlertType::RED_LIGHT));
-    TEST_ASSERT_EQUAL_STRING("speed", cameraTypeToString(CameraAlertType::SPEED));
-    TEST_ASSERT_EQUAL_STRING("alpr", cameraTypeToString(CameraAlertType::ALPR));
-    TEST_ASSERT_EQUAL_STRING("red_light_speed", cameraTypeToString(CameraAlertType::RED_LIGHT_SPEED));
-}
-
-void test_camera_type_unknown_string() {
-    TEST_ASSERT_EQUAL_STRING("unknown", cameraTypeToString(static_cast<CameraAlertType>(99)));
 }
 
 // ============================================================================
@@ -382,11 +337,6 @@ void runAllTests() {
     RUN_TEST(test_direction_enum_values);
     RUN_TEST(test_direction_strings);
     RUN_TEST(test_direction_unknown_string);
-    
-    // Camera type enum tests
-    RUN_TEST(test_camera_type_enum_values);
-    RUN_TEST(test_camera_type_strings);
-    RUN_TEST(test_camera_type_unknown_string);
     
     // Voice mode enum tests
     RUN_TEST(test_voice_mode_enum_values);

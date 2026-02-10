@@ -149,7 +149,7 @@ private:
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawIdleObdData();        // Draw OBD data (speed/temps) on idle screen in frequency area
-    void drawObdIdleWithCards();   // Draw OBD with primary metric + two cards (like camera alerts)
+    void drawObdIdleWithCards();   // Draw OBD with primary metric + two cards
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);

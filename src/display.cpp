@@ -4173,10 +4173,10 @@ void V1Display::drawIdleObdDataPreview() {
     uint16_t card2Color = s.colorObdCard2;      // Card 2 color
     
     // === PRIMARY METRIC (frequency area) ===
-    // Mock data: 72 mph - use same style/size as camera alerts
+    // Mock data: 72 mph - use the primary metric style/size
     const char* primaryValue = "72";
     const char* primaryLabel = "MPH";
-    const int fontSize = 67;  // Same as camera alerts
+    const int fontSize = 67;  // Match primary metric styling
     
     const int leftMargin = 135;   // Same as V1 frequency display
     const int rightMargin = 200;  // Same as V1 frequency display
@@ -4191,7 +4191,7 @@ void V1Display::drawIdleObdDataPreview() {
     const int clearLeft = leftMargin + 10;
     FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
     
-    // === LABEL ABOVE PRIMARY (like camera alerts show type above distance) ===
+    // === LABEL ABOVE PRIMARY ===
     // Position below status bar (which ends at Y~20)
     // Clear from after the status bar indicators
     const int typeLabelY = 22;
@@ -4369,7 +4369,7 @@ static bool getObdMetricText(ObdMetric metric, const OBDData& obd, char* valueOu
     }
 }
 
-// Draw OBD idle display with primary metric + two cards (like camera alerts)
+// Draw OBD idle display with primary metric + two cards
 // Layout: Primary value in frequency area (large), two cards below
 void V1Display::drawObdIdleWithCards() {
 #if defined(DISPLAY_WAVESHARE_349)
@@ -4400,7 +4400,7 @@ void V1Display::drawObdIdleWithCards() {
                                         &primaryLabel, &primaryShowDegrees);
     
     if (hasPrimary || s.obdPrimaryMetric != OBD_METRIC_NONE) {
-        // Use same area and sizing as camera alerts (fontSize=67)
+        // Use the same area and sizing as the primary alert value (fontSize=67)
         const int fontSize = 67;
         
 #if defined(DISPLAY_WAVESHARE_349)
@@ -4422,7 +4422,7 @@ void V1Display::drawObdIdleWithCards() {
         const int clearLeft = leftMargin + 10;
         FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
         
-        // === LABEL ABOVE PRIMARY (like camera alerts show type above distance) ===
+        // === LABEL ABOVE PRIMARY ===
         // Position below status bar (which ends at Y~20)
         // Clear from after the status bar indicators
         const int typeLabelY = 22;

@@ -47,7 +47,6 @@ struct DebugLogConfig {
     bool display;
     bool perfMetrics;
     bool audio;
-    bool camera;
     bool lockout;
     bool touch;
 };
@@ -84,7 +83,7 @@ enum IdleDisplayMode {
     IDLE_DISPLAY_DSG_TEMP = 3,   // Show DSG/transmission temperature
     IDLE_DISPLAY_IAT = 4,        // Show intake air temperature
     IDLE_DISPLAY_COMBO = 5,      // Cycle through available OBD data
-    IDLE_DISPLAY_OBD_CARDS = 6   // Primary metric + 2 cards (like camera alerts)
+    IDLE_DISPLAY_OBD_CARDS = 6   // Primary metric + 2 cards
 };
 
 // OBD metric selection (for card-based idle display)
@@ -156,7 +155,6 @@ struct V1Settings {
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorStatusGps;     // Status bar GPS color (good fix, >=4 sats)
     uint16_t colorStatusGpsWarn; // Status bar GPS color (weak fix, <4 sats)
-    uint16_t colorStatusCam;     // Status bar CAM indicator color
     uint16_t colorStatusObd;     // Status bar OBD indicator color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
@@ -181,7 +179,6 @@ struct V1Settings {
         bool logDisplay;             // Include display latency events in debug log
         bool logPerfMetrics;         // Log BLE performance metrics periodically
         bool logAudio;               // Include audio/TTS playback events in debug log
-        bool logCamera;              // Include camera alert events in debug log
         bool logLockout;             // Include auto-lockout events in debug log
         bool logTouch;               // Include touch input events in debug log
     
@@ -281,15 +278,6 @@ struct V1Settings {
     uint8_t lockoutMaxSignalStrength;    // Don't learn signals >= this (0=disabled, default: 0)
     uint16_t lockoutMaxDistanceM;   // Max alert distance to learn (default: 600m)
     
-    // Camera alerts settings (red light cameras, speed cameras, ALPR)
-    bool cameraAlertsEnabled;          // Master enable for camera alerts
-    uint16_t cameraAlertDistanceM;     // Alert distance in meters (default: 500m)
-    bool cameraAlertRedLight;          // Alert on red light cameras
-    bool cameraAlertSpeed;             // Alert on speed cameras
-    bool cameraAlertALPR;              // Alert on ALPR cameras
-    bool cameraAudioEnabled;           // Play audio for camera alerts
-    uint16_t colorCameraAlert;         // Camera alert display color (default: orange)
-    
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wreorder"
     // Default constructor with sensible defaults
@@ -333,7 +321,6 @@ struct V1Settings {
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorStatusGps(0x07E0),  // Green (GPS good)
         colorStatusGpsWarn(0xFD20), // Orange (GPS weak)
-        colorStatusCam(0x07FF),  // Cyan (camera DB)
         colorStatusObd(0x07E0),  // Green (OBD connected)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
@@ -354,7 +341,6 @@ struct V1Settings {
         logDisplay(false),               // Display latency logging off by default
         logPerfMetrics(true),            // Perf metrics on by default (disableable via settings)
         logAudio(false),                 // Audio logging off by default
-        logCamera(false),                // Camera logging off by default
         logLockout(false),               // Lockout logging off by default
         logTouch(false),                 // Touch logging off by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
@@ -430,15 +416,7 @@ struct V1Settings {
         lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)
         lockoutUnlearnIntervalHours(4), // 4 hours between misses (JBV1 default)
         lockoutMaxSignalStrength(0),    // No max (JBV1 "None" default)
-        lockoutMaxDistanceM(600),       // 600m max distance (JBV1 default)
-        // Camera alert defaults
-        cameraAlertsEnabled(true),      // Camera alerts on by default
-        cameraAlertDistanceM(500),      // Alert 500m before camera
-        cameraAlertRedLight(true),      // Red light cameras on
-        cameraAlertSpeed(true),         // Speed cameras on
-        cameraAlertALPR(true),          // ALPR cameras on
-        cameraAudioEnabled(true),       // Audio alerts on
-        colorCameraAlert(0xFD20) {}     // Orange (camera alert color)
+        lockoutMaxDistanceM(600) {}     // 600m max distance (JBV1 default)
 #pragma GCC diagnostic pop
 };
 
@@ -482,9 +460,7 @@ public:
     void setRssiProxyColor(uint16_t color);
     void setStatusGpsColor(uint16_t color);
     void setStatusGpsWarnColor(uint16_t color);
-    void setStatusCamColor(uint16_t color);
     void setStatusObdColor(uint16_t color);
-    void setCameraAlertColor(uint16_t color);
     void setObdPrimaryColor(uint16_t color);
     void setObdCard1Color(uint16_t color);
     void setObdCard2Color(uint16_t color);
@@ -507,11 +483,10 @@ public:
     void setLogDisplay(bool enable, bool deferSave = false);
     void setLogPerfMetrics(bool enable, bool deferSave = false);
     void setLogAudio(bool enable, bool deferSave = false);
-    void setLogCamera(bool enable, bool deferSave = false);
     void setLogLockout(bool enable, bool deferSave = false);
     void setLogTouch(bool enable, bool deferSave = false);
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logCamera, settings.logLockout, settings.logTouch };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logLockout, settings.logTouch };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
@@ -561,7 +536,7 @@ public:
     void resetToDefaults();
     
     // GPS/OBD settings
-    bool isFeaturesRuntimeEnabled() const { return settings.gpsEnabled || settings.obdEnabled || settings.cameraAlertsEnabled; }
+    bool isFeaturesRuntimeEnabled() const { return settings.gpsEnabled || settings.obdEnabled; }
     bool isGpsEnabled() const { return settings.gpsEnabled; }
     bool isObdEnabled() const { return settings.obdEnabled; }
     void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
@@ -598,13 +573,6 @@ public:
     void updateLockoutUnlearnIntervalHours(uint8_t hours) { settings.lockoutUnlearnIntervalHours = hours; }
     void updateLockoutMaxSignalStrength(uint8_t strength) { settings.lockoutMaxSignalStrength = strength; }
     void updateLockoutMaxDistanceM(uint16_t meters) { settings.lockoutMaxDistanceM = meters; }
-    
-    // Camera alert settings (batch update - call save() after)
-    bool isCameraAlertsEnabled() const { return settings.cameraAlertsEnabled; }
-    bool isCameraAudioEnabled() const { return settings.cameraAudioEnabled; }
-    void updateCameraAlertsEnabled(bool enabled) { settings.cameraAlertsEnabled = enabled; }
-    void updateCameraAudioEnabled(bool enabled) { settings.cameraAudioEnabled = enabled; }
-    void updateCameraAlertDistanceM(uint16_t meters) { settings.cameraAlertDistanceM = meters; }
     
     // OBD idle display settings (batch update - call save() after)
     void updateIdleDisplayMode(IdleDisplayMode mode) { settings.idleDisplayMode = mode; }

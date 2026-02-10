@@ -14,7 +14,6 @@
 			logDisplay: false,
 			logPerfMetrics: false,
 			logAudio: false,
-			logCamera: false,
 			logLockout: false,
 			logTouch: false
 	});
@@ -77,7 +76,6 @@
 			settings.logDisplay = data.logDisplay ?? false;
 			settings.logPerfMetrics = data.logPerfMetrics ?? false;
 			settings.logAudio = data.logAudio ?? false;
-			settings.logCamera = data.logCamera ?? false;
 			settings.logLockout = data.logLockout ?? false;
 			settings.logTouch = data.logTouch ?? false;
 			
@@ -134,7 +132,6 @@
 			params.append('logDisplay', settings.logDisplay.toString());
 			params.append('logPerfMetrics', settings.logPerfMetrics.toString());
 			params.append('logAudio', settings.logAudio.toString());
-			params.append('logCamera', settings.logCamera.toString());
 			params.append('logLockout', settings.logLockout.toString());
 			params.append('logTouch', settings.logTouch.toString());
 			params.append('skipPreview', 'true');
@@ -225,7 +222,6 @@
 		settings.logDisplay = false;
 		settings.logPerfMetrics = false;
 		settings.logAudio = false;
-		settings.logCamera = false;
 		settings.logLockout = false;
 		settings.logTouch = false;
 		
@@ -476,10 +472,6 @@
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logAudio} disabled={!acknowledged}>
 								<span class="label-text text-sm">Audio</span>
-							</label>
-							<label class="label cursor-pointer justify-start gap-3 px-0">
-								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logCamera} disabled={!acknowledged}>
-								<span class="label-text text-sm">Camera</span>
 							</label>
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logLockout} disabled={!acknowledged}>
