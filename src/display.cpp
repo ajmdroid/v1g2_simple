@@ -2742,9 +2742,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
     // (arrowsToShow already computed above for change detection)
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
+    drawStatusBar();  // Top status indicators (must be before mute icon)
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // Top status indicators
     DISP_PERF_LOG("arrows+icons");
     
     // Force card redraw since drawBaseFrame cleared the screen
@@ -2769,8 +2769,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 // With persistence: cards stay visible (greyed) for a grace period after alert disappears
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    const int cardH = SECONDARY_ROW_HEIGHT;  // 57px (compact with uniform signal bars)
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=116
+    const int cardH = SECONDARY_ROW_HEIGHT;  // 54px (compact with uniform signal bars)
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=118
     const int cardW = 145;     // Card width (wider to fit freq + band)
     const int cardSpacing = 10;  // Increased spacing between cards
     const int leftMargin = 120;   // After band indicators
