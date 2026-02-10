@@ -5,6 +5,7 @@
 #include "perf_metrics.h"
 #include "debug_logger.h"  // For drop counter access (never log via debug logger)
 #include "perf_sd_logger.h"
+#include "storage_manager.h"
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 
@@ -84,6 +85,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     // while holding the lock so the snapshot is internally consistent.
     uint32_t nowMs = millis();
     uint32_t freeHeap = ESP.getFreeHeap();
+    uint32_t freeDma = StorageManager::getCachedFreeDma();
+    uint32_t largestDma = StorageManager::getCachedLargestDma();
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     snapshot.millisTs = nowMs;
@@ -97,6 +100,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
     snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
     snapshot.freeHeap = freeHeap;
+    snapshot.freeDma = freeDma;
+    snapshot.largestDma = largestDma;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;

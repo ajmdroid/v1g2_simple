@@ -26,6 +26,8 @@ struct PerfSdSnapshot {
     uint32_t bleDrainMaxUs;
     uint32_t dispMaxUs;
     uint32_t freeHeap;
+    uint32_t freeDma;
+    uint32_t largestDma;
 };
 
 class PerfSdLogger {
