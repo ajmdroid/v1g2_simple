@@ -2136,6 +2136,13 @@ void WiFiManager::handleDebugMetrics() {
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["perfDrop"] = perfCounters.perfDrop.load();
+    doc["perfSdLockFail"] = perfCounters.perfSdLockFail.load();
+    doc["perfSdDirFail"] = perfCounters.perfSdDirFail.load();
+    doc["perfSdOpenFail"] = perfCounters.perfSdOpenFail.load();
+    doc["perfSdHeaderFail"] = perfCounters.perfSdHeaderFail.load();
+    doc["perfSdMarkerFail"] = perfCounters.perfSdMarkerFail.load();
+    doc["perfSdWriteFail"] = perfCounters.perfSdWriteFail.load();
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();

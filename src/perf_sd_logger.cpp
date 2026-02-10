@@ -8,6 +8,7 @@
 #include "perf_metrics.h"
 #include <FS.h>
 #include <cstring>
+#include <esp_system.h>
 
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
@@ -27,6 +28,14 @@ void PerfSdLogger::begin(bool sdAvailable) {
     if (!sdAvailable) {
         return;
     }
+
+    // Reset cached file state for each runtime session and emit a marker on first write.
+    perfDirReady = false;
+    csvHeaderReady = false;
+    sessionMarkerPending = true;
+    sessionStartMs = millis();
+    sessionToken = static_cast<uint32_t>(esp_random());
+    sessionSeq++;
 
     if (!queue) {
         queue = xQueueCreate(PERF_SD_QUEUE_DEPTH, sizeof(PerfSdSnapshot));
@@ -81,7 +90,65 @@ void PerfSdLogger::writerTaskLoop() {
     }
 }
 
+bool PerfSdLogger::ensurePerfDir(fs::FS& fs) {
+    if (perfDirReady) {
+        return true;
+    }
+    if (fs.mkdir(PERF_DIR_PATH) || fs.exists(PERF_DIR_PATH)) {
+        perfDirReady = true;
+        return true;
+    }
+    PERF_INC(perfSdDirFail);
+    return false;
+}
+
+bool PerfSdLogger::writeSessionMarker(File& f) {
+    char marker[96];
+    int n = snprintf(
+        marker,
+        sizeof(marker),
+        "#session_start,seq=%lu,uptime_ms=%lu,token=%08lX\n",
+        static_cast<unsigned long>(sessionSeq),
+        static_cast<unsigned long>(sessionStartMs),
+        static_cast<unsigned long>(sessionToken));
+    if (n <= 0 || n >= static_cast<int>(sizeof(marker))) {
+        return false;
+    }
+    size_t markerLen = static_cast<size_t>(n);
+    size_t markerWritten = f.write(reinterpret_cast<const uint8_t*>(marker), markerLen);
+    return markerWritten == markerLen;
+}
+
+bool PerfSdLogger::ensureCsvHeaderAndSessionMarker(File& f) {
+    // If the file was rotated/deleted while running, size 0 means header must be rewritten.
+    if (f.size() == 0) {
+        csvHeaderReady = false;
+    }
+
+    if (!csvHeaderReady) {
+        size_t headerLen = strlen(PERF_CSV_HEADER);
+        size_t headerWritten = f.write(reinterpret_cast<const uint8_t*>(PERF_CSV_HEADER), headerLen);
+        if (headerWritten != headerLen) {
+            PERF_INC(perfSdHeaderFail);
+            return false;
+        }
+        csvHeaderReady = true;
+    }
+
+    if (sessionMarkerPending) {
+        if (!writeSessionMarker(f)) {
+            PERF_INC(perfSdMarkerFail);
+            return false;
+        }
+        sessionMarkerPending = false;
+    }
+
+    return true;
+}
+
 bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
+    uint32_t startUs = PERF_TIMESTAMP_US();
+
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return false;
     }
@@ -93,26 +160,30 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
 
     StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
     if (!lock) {
+        PERF_INC(perfSdLockFail);
         return false;
     }
 
-    if (!fs->exists(PERF_DIR_PATH)) {
-        fs->mkdir(PERF_DIR_PATH);
+    if (!ensurePerfDir(*fs)) {
+        return false;
     }
 
-    bool fileExists = fs->exists(PERF_CSV_PATH);
     File f = fs->open(PERF_CSV_PATH, FILE_APPEND, true);
+    if (!f && perfDirReady) {
+        // Directory can be removed while running; invalidate cache and retry once.
+        perfDirReady = false;
+        if (ensurePerfDir(*fs)) {
+            f = fs->open(PERF_CSV_PATH, FILE_APPEND, true);
+        }
+    }
     if (!f) {
+        PERF_INC(perfSdOpenFail);
         return false;
     }
 
-    if (!fileExists || f.size() == 0) {
-        size_t headerLen = strlen(PERF_CSV_HEADER);
-        size_t headerWritten = f.write(reinterpret_cast<const uint8_t*>(PERF_CSV_HEADER), headerLen);
-        if (headerWritten != headerLen) {
-            f.close();
-            return false;
-        }
+    if (!ensureCsvHeaderAndSessionMarker(f)) {
+        f.close();
+        return false;
     }
 
     char line[192];
@@ -139,10 +210,12 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
     size_t lineLen = static_cast<size_t>(n);
     size_t lineWritten = f.write(reinterpret_cast<const uint8_t*>(line), lineLen);
     if (lineWritten != lineLen) {
+        PERF_INC(perfSdWriteFail);
         f.close();
         return false;
     }
 
     f.close();
+    perfRecordSdFlushUs(PERF_TIMESTAMP_US() - startUs);
     return true;
 }

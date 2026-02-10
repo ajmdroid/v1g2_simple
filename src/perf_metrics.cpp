@@ -284,6 +284,7 @@ void perfMetricsPrint() {
         "dUpd=%lu dSkip=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
+        "sdFail=%lu/%lu/%lu/%lu/%lu/%lu "
         "logRate=%lu logBuf=%lu logQ=%lu "
         "latMin=%luus avg=%luus max=%luus n=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
@@ -304,6 +305,12 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.bleMutexTimeout.load(),
         (unsigned long)perfCounters.cmdPaceNotYet.load(),
         (unsigned long)perfCounters.cmdBleBusy.load(),
+        (unsigned long)perfCounters.perfSdLockFail.load(),
+        (unsigned long)perfCounters.perfSdDirFail.load(),
+        (unsigned long)perfCounters.perfSdOpenFail.load(),
+        (unsigned long)perfCounters.perfSdHeaderFail.load(),
+        (unsigned long)perfCounters.perfSdMarkerFail.load(),
+        (unsigned long)perfCounters.perfSdWriteFail.load(),
         (unsigned long)debugLogger.getRateLimitDrops(),
         (unsigned long)debugLogger.getBufferFullDrops(),
         (unsigned long)debugLogger.getDropCount(),
@@ -330,6 +337,12 @@ String perfMetricsToJson() {
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
     doc["perfDrop"] = perfCounters.perfDrop.load();
+    doc["perfSdLockFail"] = perfCounters.perfSdLockFail.load();
+    doc["perfSdDirFail"] = perfCounters.perfSdDirFail.load();
+    doc["perfSdOpenFail"] = perfCounters.perfSdOpenFail.load();
+    doc["perfSdHeaderFail"] = perfCounters.perfSdHeaderFail.load();
+    doc["perfSdMarkerFail"] = perfCounters.perfSdMarkerFail.load();
+    doc["perfSdWriteFail"] = perfCounters.perfSdWriteFail.load();
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();

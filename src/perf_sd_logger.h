@@ -9,6 +9,7 @@
 #define PERF_SD_LOGGER_H
 
 #include <Arduino.h>
+#include <FS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -36,11 +37,20 @@ public:
 private:
     static void writerTaskEntry(void* param);
     void writerTaskLoop();
+    bool ensurePerfDir(fs::FS& fs);
+    bool ensureCsvHeaderAndSessionMarker(File& f);
+    bool writeSessionMarker(File& f);
     bool appendSnapshotLine(const PerfSdSnapshot& snapshot);
 
     bool enabled = false;
     QueueHandle_t queue = nullptr;
     TaskHandle_t writerTask = nullptr;
+    bool perfDirReady = false;
+    bool csvHeaderReady = false;
+    bool sessionMarkerPending = false;
+    uint32_t sessionSeq = 0;
+    uint32_t sessionToken = 0;
+    uint32_t sessionStartMs = 0;
 };
 
 extern PerfSdLogger perfSdLogger;

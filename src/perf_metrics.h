@@ -80,6 +80,12 @@ struct PerfCounters {
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
     std::atomic<uint32_t> perfDrop{0};         // Perf SD snapshot drops (queue full)
+    std::atomic<uint32_t> perfSdLockFail{0};   // Perf SD writer lock failures
+    std::atomic<uint32_t> perfSdDirFail{0};    // Perf SD dir ensure failures
+    std::atomic<uint32_t> perfSdOpenFail{0};   // Perf SD file open failures
+    std::atomic<uint32_t> perfSdHeaderFail{0}; // Perf SD CSV header write failures
+    std::atomic<uint32_t> perfSdMarkerFail{0}; // Perf SD session marker write failures
+    std::atomic<uint32_t> perfSdWriteFail{0};  // Perf SD data line write failures
     
     // Connection
     std::atomic<uint32_t> reconnects{0};       // BLE reconnection count
@@ -110,6 +116,12 @@ struct PerfCounters {
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);
         perfDrop.store(0, std::memory_order_relaxed);
+        perfSdLockFail.store(0, std::memory_order_relaxed);
+        perfSdDirFail.store(0, std::memory_order_relaxed);
+        perfSdOpenFail.store(0, std::memory_order_relaxed);
+        perfSdHeaderFail.store(0, std::memory_order_relaxed);
+        perfSdMarkerFail.store(0, std::memory_order_relaxed);
+        perfSdWriteFail.store(0, std::memory_order_relaxed);
         reconnects.store(0, std::memory_order_relaxed);
         disconnects.store(0, std::memory_order_relaxed);
         displayUpdates.store(0, std::memory_order_relaxed);
