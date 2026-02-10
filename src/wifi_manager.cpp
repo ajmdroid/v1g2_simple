@@ -19,6 +19,7 @@
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
 #include <algorithm>
+#include <cstring>
 #include <map>
 #include <vector>
 #include <ArduinoJson.h>
@@ -287,6 +288,8 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     if (!stopReason || stopReason[0] == '\0') {
         stopReason = manual ? "manual" : "unknown";
     }
+    const bool emergencyLowDma = (strcmp(stopReason, "low_dma") == 0);
+    const uint32_t stopStartMs = millis();
     uint32_t freeDmaBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t largestDmaBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     Serial.printf("[SetupMode] Stopping WiFi: reason=%s manual=%d freeDma=%lu largestDma=%lu\n",
@@ -295,42 +298,54 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
                   (unsigned long)freeDmaBefore,
                   (unsigned long)largestDmaBefore);
 
-    WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
-    
-    // ========== 1. STOP ALL SERVICES ==========
-    // Stop HTTP server first (no more requests)
-    server.stop();
-    WIFI_LOG("[SetupMode] HTTP server stopped\n");
-    vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
-    
-    // Stop SNTP service ONLY if it was initialized (gate by state flag)
-    if (s_sntpInitialized) {
-        esp_netif_sntp_deinit();
-        s_sntpInitialized = false;  // Clear flag immediately after deinit
-        WIFI_LOG("[SetupMode] SNTP service stopped\n");
-    }
-    
-    // ========== 2. STOP RADIO CLEANLY ==========
-    // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
-    if (wifiClientState == WIFI_CLIENT_CONNECTED || wifiClientState == WIFI_CLIENT_CONNECTING) {
-        WiFi.disconnect(true);  // true = also clear stored config in radio
-        WIFI_LOG("[SetupMode] STA disconnected\n");
+    if (emergencyLowDma) {
+        // Emergency path: prioritize low-latency return to BLE/display loop.
+        // Skip per-step delays and expensive disconnect/erase operations.
+        WIFI_LOG("[SetupMode] Emergency low_dma shutdown (fast path)\n");
+        server.stop();
+        if (s_sntpInitialized) {
+            esp_netif_sntp_deinit();
+            s_sntpInitialized = false;
+        }
+        WiFi.mode(WIFI_OFF);
+    } else {
+        WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
+
+        // ========== 1. STOP ALL SERVICES ==========
+        // Stop HTTP server first (no more requests)
+        server.stop();
+        WIFI_LOG("[SetupMode] HTTP server stopped\n");
         vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
+
+        // Stop SNTP service ONLY if it was initialized (gate by state flag)
+        if (s_sntpInitialized) {
+            esp_netif_sntp_deinit();
+            s_sntpInitialized = false;  // Clear flag immediately after deinit
+            WIFI_LOG("[SetupMode] SNTP service stopped\n");
+        }
+
+        // ========== 2. STOP RADIO CLEANLY ==========
+        // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
+        if (wifiClientState == WIFI_CLIENT_CONNECTED || wifiClientState == WIFI_CLIENT_CONNECTING) {
+            WiFi.disconnect(true);  // true = also clear stored config in radio
+            WIFI_LOG("[SetupMode] STA disconnected\n");
+            vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
+        }
+
+        // Disconnect AP (with wifiOff=true to prepare for mode change)
+        WiFi.softAPdisconnect(true);
+        WIFI_LOG("[SetupMode] AP disconnected\n");
+        vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
+
+        // Set mode to OFF (tells Arduino WiFi class we're done)
+        WiFi.mode(WIFI_OFF);
+
+        // WiFi.mode(WIFI_OFF) handles radio shutdown via Arduino layer.
+        // Note: Do NOT call esp_wifi_stop() or esp_wifi_deinit() - they conflict
+        // with Arduino's WiFi class causing "netstack cb reg failed" errors and
+        // blocking delays. Arduino layer manages init/deinit automatically.
+        WIFI_LOG("[SetupMode] Radio stopped via WiFi.mode(WIFI_OFF)\n");
     }
-    
-    // Disconnect AP (with wifiOff=true to prepare for mode change)
-    WiFi.softAPdisconnect(true);
-    WIFI_LOG("[SetupMode] AP disconnected\n");
-    vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
-    
-    // Set mode to OFF (tells Arduino WiFi class we're done)
-    WiFi.mode(WIFI_OFF);
-    
-    // WiFi.mode(WIFI_OFF) handles radio shutdown via Arduino layer.
-    // Note: Do NOT call esp_wifi_stop() or esp_wifi_deinit() - they conflict
-    // with Arduino's WiFi class causing "netstack cb reg failed" errors and
-    // blocking delays. Arduino layer manages init/deinit automatically.
-    WIFI_LOG("[SetupMode] Radio stopped via WiFi.mode(WIFI_OFF)\n");
     
     // ========== 3. RESET ALL STATE ==========
     setupModeState = SETUP_MODE_OFF;
@@ -353,14 +368,16 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
     uint32_t freeDmaAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t largestDmaAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d sntp=%d freeDma=%lu largestDma=%lu\n",
+    uint32_t stopDurMs = millis() - stopStartMs;
+    Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d sntp=%d freeDma=%lu largestDma=%lu durMs=%lu\n",
                   stopReason,
                   manual ? 1 : 0,
                   0,
                   0,
                   0,
                   (unsigned long)freeDmaAfter,
-                  (unsigned long)largestDmaAfter);
+                  (unsigned long)largestDmaAfter,
+                  (unsigned long)stopDurMs);
     
     return true;
 }
