@@ -34,8 +34,6 @@ static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Seria
 
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
-#include "../include/MontserratBold.h"       // Montserrat Bold TTF (subset: 0-9, -, ., LASER, SCAN)
-#include "../include/HemiHead.h"             // Hemi Head TTF (subset: 0-9, -, ., LASER, SCAN)
 #include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
 #include "../include/Serpentine.h"           // Serpentine TTF (JB's favorite)
 
@@ -589,20 +587,11 @@ bool V1Display::begin() {
     // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont.
     // Prefer larger caches when PSRAM is available; keep safe fallbacks otherwise.
     const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
-    const uint32_t modernCacheBytes = psramOk ? 65536u : 12288u;
     const uint32_t numericCacheBytes = psramOk ? 49152u : 8192u;
-    Serial.printf("[Display] Font cache budget: psram=%s modern=%lu seg7=%lu hemi=%lu serp=%lu\n",
+    Serial.printf("[Display] Font cache budget: psram=%s seg7=%lu serp=%lu\n",
                   psramOk ? "yes" : "no",
-                  static_cast<unsigned long>(modernCacheBytes),
-                  static_cast<unsigned long>(numericCacheBytes),
                   static_cast<unsigned long>(numericCacheBytes),
                   static_cast<unsigned long>(numericCacheBytes));
-    
-    ofr.setDrawer(*tft);
-    ofr.setCacheSize(1, 4, modernCacheBytes);  // Labels/text cache
-    FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
-    ofrInitialized = (ftErr == 0);
-    if (ftErr) Serial.printf("[Display] ERROR: Montserrat font failed (0x%02X)\n", ftErr);
     
     ofrSegment7.setDrawer(*tft);
     ofrSegment7.setCacheSize(1, 4, numericCacheBytes);  // Classic digits cache
@@ -610,12 +599,6 @@ bool V1Display::begin() {
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
     primeTopCounterWidthCache();  // Boot-time width cache for stable right-aligned counter layout
-    
-    ofrHemi.setDrawer(*tft);
-    ofrHemi.setCacheSize(1, 4, numericCacheBytes);  // Hemi digits cache
-    FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
-    ofrHemiInitialized = (ftErr3 == 0);
-    if (ftErr3) Serial.printf("[Display] ERROR: HemiHead font failed (0x%02X)\n", ftErr3);
     
     ofrSerpentine.setDrawer(*tft);
     ofrSerpentine.setCacheSize(1, 4, numericCacheBytes);  // Serpentine digits cache
@@ -632,9 +615,9 @@ bool V1Display::begin() {
     // Note: glyph warm-up is intentionally disabled at boot.
     // Warm-up can increase memory pressure before WiFi init on some boards.
     
-    Serial.printf("[Display] OK %dx%d, fonts=%d/%d/%d/%d\n", 
+    Serial.printf("[Display] OK %dx%d, fonts(seg7/serp)=%d/%d\n",
                   SCREEN_WIDTH, SCREEN_HEIGHT,
-                  ofrInitialized, ofrSegment7Initialized, ofrHemiInitialized, ofrSerpentineInitialized);
+                  ofrSegment7Initialized, ofrSerpentineInitialized);
     
     // Load color theme from settings
     updateColorTheme();
@@ -4050,16 +4033,12 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
     // Debug: log which style is being used
     static int lastStyleLogged = -1;
     if (s.displayStyle != lastStyleLogged) {
-        Serial.printf("[Display] Style changed: %d (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine), ofrHemiInit=%d, ofrSerpentineInit=%d\n", 
-                      s.displayStyle, ofrHemiInitialized, ofrSerpentineInitialized);
+        Serial.printf("[Display] Style changed: %d (0=Classic, 3=Serpentine), serpInit=%d\n",
+                      s.displayStyle, ofrSerpentineInitialized);
         lastStyleLogged = s.displayStyle;
     }
     
-    if (s.displayStyle == DISPLAY_STYLE_MODERN) {
-        drawFrequencyModern(freqMHz, band, muted, isPhotoRadar);
-    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
-        drawFrequencyHemi(freqMHz, band, muted, isPhotoRadar);
-    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
         drawFrequencySerpentine(freqMHz, band, muted, isPhotoRadar);
     } else {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);

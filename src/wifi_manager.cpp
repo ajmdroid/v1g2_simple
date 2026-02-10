@@ -1291,9 +1291,8 @@ void WiFiManager::handleSettingsSave() {
 
     // Display style setting
     if (server.hasArg("displayStyle")) {
-        int style = server.arg("displayStyle").toInt();
-        style = std::max(0, std::min(style, 3));  // Clamp to valid range (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine)
-        settingsManager.updateDisplayStyle(static_cast<DisplayStyle>(style));
+        DisplayStyle style = normalizeDisplayStyle(server.arg("displayStyle").toInt());
+        settingsManager.updateDisplayStyle(style);
         display.forceNextRedraw();  // Force display update to show new font style
     }
 
@@ -2760,7 +2759,7 @@ void WiFiManager::handleSettingsRestore() {
     
     // Display settings
     if (doc["brightness"].is<int>()) s.brightness = doc["brightness"];
-    if (doc["displayStyle"].is<int>()) s.displayStyle = (DisplayStyle)doc["displayStyle"].as<int>();
+    if (doc["displayStyle"].is<int>()) s.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
     if (doc["turnOffDisplay"].is<bool>()) s.turnOffDisplay = doc["turnOffDisplay"];
     
     // All colors

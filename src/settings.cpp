@@ -348,7 +348,7 @@ void SettingsManager::load() {
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
-    settings.displayStyle = static_cast<DisplayStyle>(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
+    settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
     settings.colorBogey = preferences.getUShort("colorBogey", 0xF800);
     settings.colorFrequency = preferences.getUShort("colorFreq", 0xF800);
     settings.colorArrowFront = preferences.getUShort("colorArrF", 0xF800);
@@ -1309,7 +1309,7 @@ bool SettingsManager::restoreFromSD() {
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
-    if (doc["displayStyle"].is<int>()) settings.displayStyle = static_cast<DisplayStyle>(doc["displayStyle"].as<int>());
+    if (doc["displayStyle"].is<int>()) settings.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
     
     // === All Colors ===
     if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];

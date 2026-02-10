@@ -64,6 +64,13 @@ enum DisplayStyle {
     DISPLAY_STYLE_SERPENTINE = 3 // Serpentine font (JB's favorite)
 };
 
+// Project currently supports only Classic and Serpentine in active UI/boot paths.
+inline DisplayStyle normalizeDisplayStyle(int rawStyle) {
+    return (rawStyle == static_cast<int>(DISPLAY_STYLE_SERPENTINE))
+        ? DISPLAY_STYLE_SERPENTINE
+        : DISPLAY_STYLE_CLASSIC;
+}
+
 // Voice alert content mode
 enum VoiceAlertMode {
     VOICE_MODE_DISABLED = 0,     // Voice alerts disabled
@@ -101,7 +108,7 @@ struct V1Settings {
     // Display settings
     bool turnOffDisplay;
     uint8_t brightness;
-    DisplayStyle displayStyle;  // Font style: classic 7-segment or modern Montserrat
+    DisplayStyle displayStyle;  // Active styles: classic 7-segment or serpentine
     
     // Custom display colors (RGB565 format)
     uint16_t colorBogey;         // Bogey counter color
@@ -425,7 +432,7 @@ public:
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
-    void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = style; }
+    void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = normalizeDisplayStyle(static_cast<int>(style)); }
     
     // Save all settings to flash
     void save();

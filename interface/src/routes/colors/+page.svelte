@@ -40,7 +40,7 @@
 		brightness: 200  // Display brightness (0-255)
 	});
 	
-	let displayStyle = $state(0);  // 0 = Classic, 1 = Modern, 2 = Hemi
+	let displayStyle = $state(0);  // 0 = Classic, 3 = Serpentine
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
@@ -368,17 +368,15 @@
 				<h2 class="card-title text-lg">🖥️ Display Style</h2>
 				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
 				<div class="form-control">
-					<select 
-						id="display-style"
-						class="select select-bordered"
-						value={displayStyle}
-						onchange={saveDisplayStyle}
-					>
-						<option value={0}>Classic (V1 tech)</option>
-						<option value={1}>Modern</option>
-						<option value={2}>Hemi</option>
-						<option value={3}>Serpentine</option>
-					</select>
+						<select 
+							id="display-style"
+							class="select select-bordered"
+							value={displayStyle}
+							onchange={saveDisplayStyle}
+						>
+							<option value={0}>Classic (V1 tech)</option>
+							<option value={3}>Serpentine</option>
+						</select>
 				</div>
 			</div>
 		</div>
