@@ -302,6 +302,71 @@ SegMetrics segMetrics(float scale) {
     };
 }
 
+constexpr int TOP_COUNTER_FONT_SIZE = 60;
+constexpr int TOP_COUNTER_FIELD_X = 16;
+constexpr int TOP_COUNTER_FIELD_Y = 6;
+constexpr int TOP_COUNTER_FIELD_W = 55;
+constexpr int TOP_COUNTER_FIELD_H = TOP_COUNTER_FONT_SIZE + 8;
+constexpr int TOP_COUNTER_TEXT_Y = 8;
+constexpr int TOP_COUNTER_PAD_RIGHT = 2;
+constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
+
+static int16_t s_topCounterWidthCache[128][2];
+static bool s_topCounterWidthCacheReady = false;
+
+static void resetTopCounterWidthCache() {
+    memset(s_topCounterWidthCache, 0xFF, sizeof(s_topCounterWidthCache));
+    s_topCounterWidthCacheReady = false;
+}
+
+static void cacheTopCounterWidth(char symbol, bool showDot) {
+    const uint8_t idx = static_cast<uint8_t>(symbol);
+    if (idx >= 128) {
+        return;
+    }
+
+    char text[3] = {symbol, 0, 0};
+    if (showDot) {
+        text[1] = '.';
+    }
+
+    FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+        0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
+    int width = bbox.xMax - bbox.xMin;
+    if (width < 0) {
+        width = 0;
+    }
+    if (width > 32767) {
+        width = 32767;
+    }
+    s_topCounterWidthCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(width);
+}
+
+static void primeTopCounterWidthCache() {
+    resetTopCounterWidthCache();
+    if (!ofrSegment7Initialized) {
+        return;
+    }
+
+    ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+    for (uint8_t c = 32; c < 127; ++c) {
+        cacheTopCounterWidth(static_cast<char>(c), false);
+        cacheTopCounterWidth(static_cast<char>(c), true);
+    }
+    s_topCounterWidthCacheReady = true;
+}
+
+static int getTopCounterWidthCached(char symbol, bool showDot) {
+    const uint8_t idx = static_cast<uint8_t>(symbol);
+    if (idx < 128) {
+        int16_t cached = s_topCounterWidthCache[idx][showDot ? 1 : 0];
+        if (cached >= 0) {
+            return cached;
+        }
+    }
+    return TOP_COUNTER_FALLBACK_WIDTH + (showDot ? 4 : 0);
+}
+
 constexpr bool DIGIT_SEGMENTS[10][7] = {
     // a, b, c, d, e, f, g
     {true,  true,  true,  true,  true,  true,  false}, // 0
@@ -544,6 +609,7 @@ bool V1Display::begin() {
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
+    primeTopCounterWidthCache();  // Boot-time width cache for stable right-aligned counter layout
     
     ofrHemi.setDrawer(*tft);
     ofrHemi.setCacheSize(1, 4, numericCacheBytes);  // Hemi digits cache
@@ -1019,22 +1085,27 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     if (showDot) {
         buf[1] = '.';
     }
+
+    // Fixed field clear every update prevents stale pixels from variable-width glyphs.
+    FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
     
     if (ofrSegment7Initialized) {
-        // Use Segment7 TTF font (JBV1 style)
-        const int fontSize = 60;
-        const int x = 18;
-        const int y = 8;
-        
-        // Clear area
-        FILL_RECT(x - 2, y - 2, 55, fontSize + 8, PALETTE_BG);
+        // Use Segment7 TTF font (JBV1 style), right-aligned in fixed field.
+        const int textWidth = s_topCounterWidthCacheReady
+                                  ? getTopCounterWidthCached(symbol, showDot)
+                                  : (TOP_COUNTER_FALLBACK_WIDTH + (showDot ? 4 : 0));
+        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
+        if (x < TOP_COUNTER_FIELD_X + 1) {
+            x = TOP_COUNTER_FIELD_X + 1;
+        }
+        const int y = TOP_COUNTER_TEXT_Y;
         
         // Convert RGB565 to RGB888 for OpenFontRender
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
         ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(fontSize);
+        ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
         ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
         ofrSegment7.setCursor(x, y);
         ofrSegment7.printf("%s", buf);
@@ -1045,10 +1116,12 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 #else
         const float scale = 2.0f;
 #endif
-        SegMetrics m = segMetrics(scale);
-        int x = 12;
+        int textWidth = measureSevenSegmentText(buf, scale);
+        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
+        if (x < TOP_COUNTER_FIELD_X + 1) {
+            x = TOP_COUNTER_FIELD_X + 1;
+        }
         int y = 10;
-        FILL_RECT(x - 2, y - 2, m.digitW + m.dot + 12, m.digitH + 8, PALETTE_BG);
         drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
     }
 }

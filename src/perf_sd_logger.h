@@ -32,6 +32,8 @@ struct PerfSdSnapshot {
     uint32_t largestDma;      // Cached largest internal 8-bit block (legacy column)
     uint32_t freeDmaCap;      // True MALLOC_CAP_DMA free bytes
     uint32_t largestDmaCap;   // True MALLOC_CAP_DMA largest free block
+    uint32_t dmaFreeMin;      // Min MALLOC_CAP_DMA free bytes since session start
+    uint32_t dmaLargestMin;   // Min MALLOC_CAP_DMA largest block since session start
 };
 
 class PerfSdLogger {

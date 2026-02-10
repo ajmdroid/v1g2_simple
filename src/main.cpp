@@ -696,12 +696,16 @@ void loop() {
     tapGestureModule.process(now);
     
 #ifndef REPLAY_MODE
-    // WiFi priority mode: suppress BLE scans when UI is actively being used
-    // This improves web responsiveness by reducing radio contention
-    // Timeout: 2 seconds after last HTTP request
-    bool uiActive = wifiManager.isUiActive(2000);
-    if (uiActive != bleClient.isWifiPriority()) {
-        bleClient.setWifiPriority(uiActive);
+    // WiFi priority mode: web UI can deprioritize BLE background work, but never
+    // at the expense of establishing/maintaining V1 connectivity.
+    // Use a timeout longer than the UI's 2s status poll interval to prevent
+    // ENABLED/DISABLED flapping from timer jitter.
+    constexpr unsigned long WIFI_PRIORITY_UI_TIMEOUT_MS = 3500;
+    bool uiActive = wifiManager.isUiActive(WIFI_PRIORITY_UI_TIMEOUT_MS);
+    bool wifiPriorityAllowed = bleClient.isConnected();
+    bool wifiPriority = uiActive && wifiPriorityAllowed;
+    if (wifiPriority != bleClient.isWifiPriority()) {
+        bleClient.setWifiPriority(wifiPriority);
     }
     
     // Process BLE events (includes blocking connect/discovery during reconnect)

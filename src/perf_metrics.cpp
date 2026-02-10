@@ -24,9 +24,15 @@ bool perfDebugEnabled = false;
 uint32_t perfLastReportMs = 0;
 #endif
 
+// Session minima for true MALLOC_CAP_DMA heap (updated only in sampled snapshot path).
+static uint32_t sDmaFreeCapMin = UINT32_MAX;
+static uint32_t sDmaLargestCapMin = UINT32_MAX;
+
 void perfMetricsInit() {
     perfCounters.reset();
     perfExtended.reset();
+    sDmaFreeCapMin = UINT32_MAX;
+    sDmaLargestCapMin = UINT32_MAX;
 #if PERF_METRICS
     perfLatency.reset();
 #if PERF_MONITORING
@@ -39,6 +45,8 @@ void perfMetricsInit() {
 void perfMetricsReset() {
     perfCounters.reset();
     perfExtended.reset();
+    sDmaFreeCapMin = UINT32_MAX;
+    sDmaLargestCapMin = UINT32_MAX;
 #if PERF_METRICS
     perfLatency.reset();
 #endif
@@ -93,6 +101,13 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
+    if (freeDmaCap < sDmaFreeCapMin) {
+        sDmaFreeCapMin = freeDmaCap;
+    }
+    if (largestDmaCap < sDmaLargestCapMin) {
+        sDmaLargestCapMin = largestDmaCap;
+    }
+
     snapshot.millisTs = nowMs;
     snapshot.timeValid = timeService.timeValid() ? 1 : 0;
     snapshot.timeSource = timeService.timeSource();
@@ -110,6 +125,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.largestDma = largestDma;
     snapshot.freeDmaCap = freeDmaCap;
     snapshot.largestDmaCap = largestDmaCap;
+    snapshot.dmaFreeMin = (sDmaFreeCapMin == UINT32_MAX) ? freeDmaCap : sDmaFreeCapMin;
+    snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
