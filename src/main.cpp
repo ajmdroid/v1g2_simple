@@ -698,13 +698,16 @@ void loop() {
 #ifndef REPLAY_MODE
     // WiFi priority mode: web UI can deprioritize BLE background work, but never
     // at the expense of establishing/maintaining V1 connectivity.
-    // Use a timeout longer than the UI's 2s status poll interval to prevent
-    // ENABLED/DISABLED flapping from timer jitter.
-    constexpr unsigned long WIFI_PRIORITY_UI_TIMEOUT_MS = 3500;
-    bool uiActive = wifiManager.isUiActive(WIFI_PRIORITY_UI_TIMEOUT_MS);
-    bool wifiPriorityAllowed = bleClient.isConnected();
-    bool wifiPriority = uiActive && wifiPriorityAllowed;
-    if (wifiPriority != bleClient.isWifiPriority()) {
+    // Use hysteresis so a delayed poll does not immediately flap ENABLED/DISABLED.
+    constexpr unsigned long WIFI_PRIORITY_ENABLE_TIMEOUT_MS = 3500;
+    constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 8000;
+    const bool wifiPriorityAllowed = bleClient.isConnected();
+    const bool wifiPriorityCurrent = bleClient.isWifiPriority();
+    const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
+                                                          : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
+    const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
+    const bool wifiPriority = wifiPriorityAllowed && uiActive;
+    if (wifiPriority != wifiPriorityCurrent) {
         bleClient.setWifiPriority(wifiPriority);
     }
     

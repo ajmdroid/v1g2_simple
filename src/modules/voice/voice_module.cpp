@@ -121,6 +121,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     // Query current state
     bool alertChanged = hasAlertChanged(priority.band, currentFreq);
     bool directionChanged = hasDirectionChanged(priority.direction);
+    bool directionKnown = (priority.direction != DIR_NONE);
     bool cooldownPassed = hasCooldownPassed(ctx.now);
     bool bogeyCountChanged = hasBogeyCountChanged((uint8_t)ctx.alertCount);
     bool bogeyCountCooldownPassed = hasBogeyCountCooldownPassed(ctx.now);
@@ -154,7 +155,8 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     }
     
     // Case 2: Direction Changed (same alert)
-    if (!alertChanged && directionChanged && cooldownPassed && s.voiceDirectionEnabled) {
+    // Ignore transient DIR_NONE direction drops to avoid noisy "side" chatter.
+    if (!alertChanged && directionChanged && cooldownPassed && s.voiceDirectionEnabled && directionKnown) {
         bool throttled = shouldThrottleDirectionChange(ctx.now);
         updateLastAnnouncedDirection(priority.direction, (uint8_t)ctx.alertCount);
         
@@ -179,6 +181,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     // Case 3: Bogey Count Changed (same alert, same direction)
     if (!alertChanged && !directionChanged && bogeyCountChanged && 
         bogeyCountCooldownPassed && s.announceBogeyCount) {
+        uint8_t previousBogeyCount = getLastBogeyCount();
         
         action.type = VoiceAction::Type::ANNOUNCE_DIRECTION;
         action.dir = audioDir;
@@ -189,7 +192,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         markPriorityAnnounced(ctx.now);
         
         Serial.printf("[Voice] Bogey count: freq=%u dir=%d bogeys=%d (was %d)\n",
-                      currentFreq, (int)action.dir, action.bogeyCount, getLastBogeyCount());
+                      currentFreq, (int)action.dir, action.bogeyCount, previousBogeyCount);
         return action;
     }
     
