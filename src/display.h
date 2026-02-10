@@ -178,6 +178,7 @@ private:
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
+    bool frequencyRenderDirty = false;      // Set when drawFrequency changed pixels this call
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

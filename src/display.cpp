@@ -2344,10 +2344,12 @@ void V1Display::update(const DisplayState& state) {
 
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     drawFrequency(freqMHz, band, muted, isPhotoRadar);
-    flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                DisplayLayout::PRIMARY_ZONE_Y,
-                DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                DisplayLayout::PRIMARY_ZONE_HEIGHT);
+    if (frequencyRenderDirty) {
+        flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                    DisplayLayout::PRIMARY_ZONE_Y,
+                    DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                    DisplayLayout::PRIMARY_ZONE_HEIGHT);
+    }
 }
 
 void V1Display::refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
@@ -3296,86 +3298,36 @@ void V1Display::drawSignalBars(uint8_t bars) {
 // Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
-    
-    if (ofrSegment7Initialized) {
-        // Use Segment7 TTF font (JBV1 style)
-        const int fontSize = 75;
-        
-#if defined(DISPLAY_WAVESHARE_349)
-        const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
-        const int rightMargin = 200;  // Before signal bars (at X=440)
-#else
-        const int leftMargin = 0;
-        const int rightMargin = 120;
-#endif
-        
-        // Position frequency centered between mute icon and cards
-        const int muteIconBottom = 33;
-        int effectiveHeight = getEffectiveScreenHeight();
-        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-        
+
+    // Cache classic output to avoid redraw/flush when nothing changed.
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool lastUsedOfr = false;
+    static bool cacheValid = false;
+
+    if (s_forceFrequencyRedraw) {
+        cacheValid = false;
+        s_forceFrequencyRedraw = false;
+    }
+
+    const bool usingOfr = ofrSegment7Initialized;
+    const bool hasFreq = freqMHz > 0;
+
+    char textBuf[16];
+    if (band == BAND_LASER) {
+        strcpy(textBuf, "LASER");
+    } else if (hasFreq) {
+        float freqGhz = freqMHz / 1000.0f;
+        snprintf(textBuf, sizeof(textBuf), "%05.3f", freqGhz);
+    } else {
+        snprintf(textBuf, sizeof(textBuf), "--.---");
+    }
+
+    uint16_t freqColor;
+    if (usingOfr) {
         if (band == BAND_LASER) {
-            // Draw "LASER" using Segment7 font
-            const char* text = "LASER";
-            
-            // Get actual text dimensions
-            FT_BBox bbox = ofrSegment7.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
-            int textWidth = bbox.xMax - bbox.xMin;
-            
-            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-            int lx = leftMargin + (maxWidth - textWidth) / 2;
-            
-            // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
-            // Clamp height to primary zone to avoid clipping cards at Y=118
-            const int clearLeft = leftMargin + 10;
-            int clearY = y - 5;
-            int clearH = fontSize + 10;
-            const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
-            if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
-            if (clearH > 0) FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
-            
-            uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
-            
-            // Convert RGB565 to RGB888 for OpenFontRender
-            uint8_t bgR = (PALETTE_BG >> 11) << 3;
-            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-            ofrSegment7.setFontSize(fontSize);
-            ofrSegment7.setFontColor((laserColor >> 11) << 3, ((laserColor >> 5) & 0x3F) << 2, (laserColor & 0x1F) << 3);
-            
-            ofrSegment7.setCursor(lx, y);
-            ofrSegment7.printf("%s", text);
-            return;
-        }
-
-        bool hasFreq = freqMHz > 0;
-        char freqStr[16];
-        if (hasFreq) {
-            float freqGhz = freqMHz / 1000.0f;
-            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
-        } else {
-            snprintf(freqStr, sizeof(freqStr), "--.---");
-        }
-
-        int charCount = strlen(freqStr);
-        int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
-        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-        int x = leftMargin + (maxWidth - approxWidth) / 2;
-        if (x < leftMargin) x = leftMargin;
-        
-        // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
-        // Clamp height to primary zone to avoid clipping cards at Y=118
-        const int clearLeft = leftMargin + 10;
-        int clearY = y - 5;
-        int clearH = fontSize + 10;
-        const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
-        if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
-        if (clearH > 0) FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
-        
-        // Determine frequency color
-        uint16_t freqColor;
-        if (muted) {
+            freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        } else if (muted) {
             freqColor = PALETTE_MUTED_OR_PERSISTED;
         } else if (!hasFreq) {
             freqColor = PALETTE_GRAY;
@@ -3386,7 +3338,72 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         } else {
             freqColor = s.colorFrequency;
         }
-        
+    } else {
+        // Keep fallback color behavior unchanged.
+        if (band == BAND_LASER) {
+            freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
+        } else if (muted) {
+            freqColor = PALETTE_MUTED_OR_PERSISTED;
+        } else if (!hasFreq) {
+            freqColor = PALETTE_GRAY;
+        } else if (s.freqUseBandColor && band != BAND_NONE) {
+            freqColor = getBandColor(band);
+        } else {
+            freqColor = s.colorFrequency;
+        }
+    }
+
+    bool textChanged = (strcmp(lastText, textBuf) != 0);
+    bool changed = !cacheValid ||
+                   (lastUsedOfr != usingOfr) ||
+                   textChanged ||
+                   (lastColor != freqColor);
+    if (!changed) {
+        return;
+    }
+
+    frequencyRenderDirty = true;
+
+    if (usingOfr) {
+        // Use Segment7 TTF font (JBV1 style)
+        const int fontSize = 75;
+
+#if defined(DISPLAY_WAVESHARE_349)
+        const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
+        const int rightMargin = 200;  // Before signal bars (at X=440)
+#else
+        const int leftMargin = 0;
+        const int rightMargin = 120;
+#endif
+
+        // Position frequency centered between mute icon and cards
+        const int muteIconBottom = 33;
+        int effectiveHeight = getEffectiveScreenHeight();
+        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
+
+        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+        int x = leftMargin;
+        if (band == BAND_LASER) {
+            FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+                0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
+            int textWidth = bbox.xMax - bbox.xMin;
+            x = leftMargin + (maxWidth - textWidth) / 2;
+        } else {
+            int charCount = strlen(textBuf);
+            int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
+            x = leftMargin + (maxWidth - approxWidth) / 2;
+        }
+        if (x < leftMargin) x = leftMargin;
+
+        // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+        // Clamp height to primary zone to avoid clipping cards at Y=118
+        const int clearLeft = leftMargin + 10;
+        int clearY = y - 5;
+        int clearH = fontSize + 10;
+        const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+        if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
+        if (clearH > 0) FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
+
         // Convert RGB565 to RGB888 for OpenFontRender
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
@@ -3395,7 +3412,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         ofrSegment7.setFontSize(fontSize);
         ofrSegment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
         ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", freqStr);
+        ofrSegment7.printf("%s", textBuf);
     } else {
         // Fallback to software 7-segment renderer
 #if defined(DISPLAY_WAVESHARE_349)
@@ -3404,39 +3421,18 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         const float scale = 1.7f;
 #endif
         SegMetrics m = segMetrics(scale);
-        
+
         const int muteIconBottom = 33;
         int effectiveHeight = getEffectiveScreenHeight();
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-        
+
+        int width = 0;
         if (band == BAND_LASER) {
-            const char* laserStr = "LASER";
-            int width = measureSevenSegmentText(laserStr, scale);
-#if defined(DISPLAY_WAVESHARE_349)
-            const int leftMargin = 120;
-            const int rightMargin = 200;
-#else
-            const int leftMargin = 0;
-            const int rightMargin = 120;
-#endif
-            int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-            int x = leftMargin + (maxWidth - width) / 2;
-            if (x < leftMargin) x = leftMargin;
-            FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-            draw14SegmentText(laserStr, x, y, scale, muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL, PALETTE_BG);
-            return;
-        }
-
-        bool hasFreq = freqMHz > 0;
-        char freqStr[16];
-        if (hasFreq) {
-            float freqGhz = freqMHz / 1000.0f;
-            snprintf(freqStr, sizeof(freqStr), "%05.3f", freqGhz);
+            width = measureSevenSegmentText(textBuf, scale);
         } else {
-            snprintf(freqStr, sizeof(freqStr), "--.---");
+            width = measureSevenSegmentText(textBuf, scale);
         }
 
-        int width = measureSevenSegmentText(freqStr, scale);
 #if defined(DISPLAY_WAVESHARE_349)
         const int leftMargin = 120;
         const int rightMargin = 200;
@@ -3447,21 +3443,21 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
-        
-        FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
-        
-        uint16_t freqColor;
-        if (muted) {
-            freqColor = PALETTE_MUTED_OR_PERSISTED;
-        } else if (!hasFreq) {
-            freqColor = PALETTE_GRAY;
-        } else if (s.freqUseBandColor && band != BAND_NONE) {
-            freqColor = getBandColor(band);
+
+        if (band == BAND_LASER) {
+            FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
+            draw14SegmentText(textBuf, x, y, scale, freqColor, PALETTE_BG);
         } else {
-            freqColor = s.colorFrequency;
+            FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
+            drawSevenSegmentText(textBuf, x, y, scale, freqColor, PALETTE_BG);
         }
-        drawSevenSegmentText(freqStr, x, y, scale, freqColor, PALETTE_BG);
     }
+
+    strncpy(lastText, textBuf, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = freqColor;
+    lastUsedOfr = usingOfr;
+    cacheValid = true;
 }
 
 // Modern frequency display - Antialiased with OpenFontRender
@@ -3507,6 +3503,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
             FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
             lastText[0] = '\0';
             cacheValid = false;
+            frequencyRenderDirty = true;
         }
         return;
     }
@@ -3573,6 +3570,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
 
     ofr.setCursor(x, freqY);
     ofr.printf("%s", textBuf);
+    frequencyRenderDirty = true;
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -3627,6 +3625,7 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
             FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
             lastText[0] = '\0';
             cacheValid = false;
+            frequencyRenderDirty = true;
         }
         return;
     }
@@ -3692,6 +3691,7 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
 
     ofrHemi.setCursor(x, freqY);
     ofrHemi.printf("%s", textBuf);
+    frequencyRenderDirty = true;
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -3748,6 +3748,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
             FILL_RECT(lastDrawX - 5, clearTop, lastDrawWidth + 10, clearHeight, PALETTE_BG);
             lastText[0] = '\0';
             cacheValid = false;
+            frequencyRenderDirty = true;
         }
         return;
     }
@@ -3813,6 +3814,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     ofrSerpentine.setCursor(x, freqY);
     ofrSerpentine.printf("%s", textBuf);
+    frequencyRenderDirty = true;
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -3873,6 +3875,7 @@ void V1Display::drawVolumeZeroWarning() {
 // Router: calls appropriate frequency draw method based on display style setting
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
+    frequencyRenderDirty = false;
     
     // Debug: log which style is being used
     static int lastStyleLogged = -1;
