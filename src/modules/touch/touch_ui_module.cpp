@@ -18,36 +18,16 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     // BOOT button handling:
     // - Short press: enter/exit adjust mode
     // - 4s hold: toggle WiFi (on release)
-    // - 10s hold: delete logs mode (immediate, overrides WiFi)
     if (bootPressed && !bootWasPressed) {
         bootPressStart = nowMs;
-        deleteLogsTriggered = false;
-    }
-
-    // While holding: check for 10s delete logs trigger (immediate action)
-    if (bootPressed && !deleteLogsTriggered && !brightnessAdjustMode && !deleteLogsMode) {
-        unsigned long pressDuration = nowMs - bootPressStart;
-        
-        // 10+ second hold triggers delete logs mode immediately
-        if (pressDuration >= DELETE_LOGS_LONG_PRESS_MS) {
-            deleteLogsTriggered = true;
-            enterDeleteLogsMode();
-        }
     }
 
     // On release: determine action based on hold duration
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = nowMs - bootPressStart;
-        
-        if (deleteLogsTriggered) {
-            // Already entered delete logs mode - do nothing on release
-        } else if (deleteLogsMode) {
-            // Short press exits delete logs mode without deleting
-            if (pressDuration >= BOOT_DEBOUNCE_MS) {
-                exitDeleteLogsMode(false);
-            }
-        } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
-            // 4-10s hold: toggle WiFi on release
+
+        if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+            // 4s+ hold: toggle WiFi on release
             if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive()) {
                 if (callbacks.stopWifiSetup) callbacks.stopWifiSetup();
             } else {
@@ -66,12 +46,6 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     }
 
     bootWasPressed = bootPressed;
-
-    // Handle delete logs mode (highest priority after BOOT button)
-    if (deleteLogsMode) {
-        handleDeleteLogsTouch(nowMs);
-        return true;  // consume loop while in delete logs mode
-    }
 
     // If in settings adjustment mode, handle touch sliders and debounce test voice
     if (brightnessAdjustMode) {
@@ -148,43 +122,5 @@ bool TouchUiModule::handleSliderTouch(unsigned long nowMs) {
         }
     }
 
-    return true;
-}
-
-void TouchUiModule::enterDeleteLogsMode() {
-    deleteLogsMode = true;
-    display->showDeleteLogsScreen();
-    Serial.println("[Touch] Entering delete logs mode");
-}
-
-void TouchUiModule::exitDeleteLogsMode(bool performDelete) {
-    deleteLogsMode = false;
-    
-    if (performDelete && callbacks.deleteDebugLogs) {
-        bool success = callbacks.deleteDebugLogs();
-        Serial.printf("[Touch] Delete debug logs: %s\n", success ? "SUCCESS" : "FAILED");
-    } else {
-        Serial.println("[Touch] Delete logs cancelled");
-    }
-    
-    display->hideBrightnessSlider();  // Clears screen
-    if (callbacks.restoreDisplay) callbacks.restoreDisplay();
-}
-
-bool TouchUiModule::handleDeleteLogsTouch(unsigned long nowMs) {
-    int16_t touchX, touchY;
-    if (!touchHandler->getTouchPoint(touchX, touchY)) {
-        return false;
-    }
-    
-    int button = display->getDeleteLogsButtonFromTouch(touchX, touchY);
-    if (button == 0) {
-        // Cancel pressed
-        exitDeleteLogsMode(false);
-    } else if (button == 1) {
-        // Delete pressed
-        exitDeleteLogsMode(true);
-    }
-    
     return true;
 }

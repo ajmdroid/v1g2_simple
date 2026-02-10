@@ -496,9 +496,6 @@ void setup() {
                 display.forceNextRedraw();
                 display.showResting();
             }
-        },
-        .deleteDebugLogs = [] {
-            return false;
         }
     };
 

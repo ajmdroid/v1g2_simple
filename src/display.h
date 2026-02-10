@@ -78,10 +78,6 @@ public:
     void hideBrightnessSlider();                                           // Hide slider and restore display
     int getActiveSliderFromTouch(int16_t touchY);                          // Returns 0=brightness, 1=volume, -1=none
     
-    // Delete logs confirmation screen
-    void showDeleteLogsScreen();                                           // Show delete logs confirmation
-    int getDeleteLogsButtonFromTouch(int16_t touchX, int16_t touchY);      // Returns 0=cancel, 1=delete, -1=none
-    
     // Get canvas for direct access (testing)
     Arduino_Canvas* getCanvas() { return tft; }
     
