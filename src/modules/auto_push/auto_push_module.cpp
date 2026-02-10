@@ -1,7 +1,12 @@
 #include "auto_push_module.h"
 
+#if defined(DISABLE_DEBUG_LOGGER)
+#define AUTO_PUSH_LOGF(...) do { } while (0)
+#define AUTO_PUSH_LOGLN(msg) do { } while (0)
+#else
 #define AUTO_PUSH_LOGF(...) do { if (kDebugLogs) Serial.printf(__VA_ARGS__); } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { if (kDebugLogs) Serial.println(msg); } while (0)
+#endif
 
 void AutoPushModule::begin(SettingsManager* settingsMgr,
                V1ProfileManager* profileMgr,

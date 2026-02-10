@@ -9,10 +9,14 @@
 
 // GPS logging macro - logs to Serial AND debugLogger when GPS category enabled
 static constexpr bool GPS_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#if defined(DISABLE_DEBUG_LOGGER)
+#define GPS_LOG(...) do { } while(0)
+#else
 #define GPS_LOG(...) do { \
     if (GPS_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Gps)) debugLogger.logf(DebugLogCategory::Gps, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Gps, __VA_ARGS__); \
 } while(0)
+#endif
 
 GPSHandler::GPSHandler()
   : GPS(&Serial2), gpsSerial(Serial2), enabled(false) {
@@ -140,7 +144,6 @@ void GPSHandler::reset() {
   GPS.sendCommand(PGCMD_ANTENNA);
 
   GPS_LOG("[GPS] Reset complete - cold start issued, searching for satellites\n");
-  debugLogger.log(DebugLogCategory::Gps, "Cold start reset - searching for satellites");
 }
 
 bool GPSHandler::update() {
@@ -160,7 +163,7 @@ bool GPSHandler::update() {
       moduleDetected = true;
       detectionComplete = true;
       GPS_LOG("[GPS] Module detected\n");
-      debugLogger.log(DebugLogCategory::Gps, "Module detected - waiting for satellite fix");
+      GPS_LOG("[GPS] Module detected - waiting for satellite fix\n");
     }
 
     if (!GPS.parse(GPS.lastNMEA())) {
@@ -226,10 +229,8 @@ bool GPSHandler::update() {
               lastFix.latitude, lastFix.longitude,
               lastFix.hdop, lastFix.satellites, lastFix.speed_mps);
 
-      if (debugLogger.isEnabledFor(DebugLogCategory::Gps)) {
-        debugLogger.logf(DebugLogCategory::Gps, "FIX: %.6f, %.6f | HDOP: %.1f | Sats: %d",
-                         lastFix.latitude, lastFix.longitude, lastFix.hdop, lastFix.satellites);
-      }
+      GPS_LOG("[GPS] FIX: %.6f, %.6f | HDOP: %.1f | Sats: %d\n",
+              lastFix.latitude, lastFix.longitude, lastFix.hdop, lastFix.satellites);
 
       updateReadyState();
       return true;
@@ -238,11 +239,11 @@ bool GPSHandler::update() {
       updateReadyState();
 
       static uint32_t lastSearchLogSD = 0;
-      if (debugLogger.isEnabledFor(DebugLogCategory::Gps) && (millis() - lastSearchLogSD > 30000)) {
+      if (millis() - lastSearchLogSD > 30000) {
         lastSearchLogSD = millis();
-        debugLogger.logf(DebugLogCategory::Gps, "Searching... Sats: %d, FixQual: %d, Fix: %d, Lat: %.6f, Lon: %.6f",
-                         (int)GPS.satellites, (int)GPS.fixquality, (int)GPS.fix,
-                         GPS.latitudeDegrees, GPS.longitudeDegrees);
+        GPS_LOG("[GPS] Searching... Sats: %d, FixQual: %d, Fix: %d, Lat: %.6f, Lon: %.6f\n",
+                (int)GPS.satellites, (int)GPS.fixquality, (int)GPS.fix,
+                GPS.latitudeDegrees, GPS.longitudeDegrees);
       }
     }
   }
@@ -251,7 +252,6 @@ bool GPSHandler::update() {
     detectionComplete = true;
     moduleDetected = false;
     GPS_LOG("[GPS] Module NOT detected (timeout) - GPS disabled\n");
-    debugLogger.log(DebugLogCategory::Gps, "Module NOT detected (60s timeout) - GPS disabled");
   }
 
   return false;

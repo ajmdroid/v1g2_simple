@@ -6,9 +6,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1Display* displayPtr,
                                   PacketParser* parserPtr,
                                   SettingsManager* settingsMgr,
-                                  GPSHandler* gpsHandler,
-                                  LockoutManager* lockouts,
-                                  AutoLockoutManager* autoLockouts,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
@@ -19,9 +16,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     display = displayPtr;
     parser = parserPtr;
     settings = settingsMgr;
-    gps = gpsHandler;
-    lockoutMgr = lockouts;
-    autoLockoutMgr = autoLockouts;
     ble = bleClient;
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
@@ -29,6 +23,9 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     speedVolume = speedVolumeModule;
     debug = debugLogger;
 }
+
+// Track lastAlertGapRecoverMs locally since it was removed from header
+static unsigned long lastAlertGapRecoverMs = 0;
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
     if (!display || !parser || !settings || !alertPersistence ||
@@ -73,71 +70,8 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         *displayMode = DisplayMode::LIVE;
 
+        // Lockout system disabled - priorityInLockout is always false
         bool priorityInLockout = false;
-
-        // Log alert visibility for lockout debugging
-        bool gpsReady = gps && gps->isReadyForNavigation();
-        bool lockoutSystemReady = gpsReady && lockoutMgr && autoLockoutMgr;
-
-        // Rate-limited lockout skip logging with GPS state summary
-        static unsigned long lastLockoutSkipLogMs = 0;
-        static uint32_t lockoutSkipsGpsNotReady = 0;  // Counter for diagnostics
-        
-        if (priority.isValid && priority.band != BAND_NONE && !lockoutSystemReady) {
-            lockoutSkipsGpsNotReady++;
-            
-            if (debug && debug->isEnabledFor(DebugLogCategory::Lockout)) {
-                unsigned long nowMs = millis();
-                if (nowMs - lastLockoutSkipLogMs >= 5000) {  // Log at most every 5 seconds
-                    const char* bandStr = (priority.band == BAND_X) ? "X" : (priority.band == BAND_K) ? "K" : 
-                                          (priority.band == BAND_KA) ? "Ka" : "Laser";
-                    uint8_t strength = VoiceModule::getAlertBars(priority);
-                    const char* reason = !gps ? "no GPS" : !gps->isReadyForNavigation() ? "GPS not ready" : 
-                                         !lockoutMgr ? "no lockoutMgr" : "no autoLockoutMgr";
-                    debug->logf(DebugLogCategory::Lockout, "[Lockout] Alerts skipped: %lu (%s) | last: %s %.3fMHz str=%d",
-                               lockoutSkipsGpsNotReady, reason, bandStr, priority.frequency/1000.0f, strength);
-                    lastLockoutSkipLogMs = nowMs;
-                }
-            }
-        }
-
-        if (lockoutSystemReady) {
-            GPSFix fix = gps->getFix();
-
-            if (priority.isValid && priority.band != BAND_NONE) {
-                priorityInLockout = lockoutMgr->shouldMuteAlert(fix.latitude, fix.longitude, priority.band);
-                uint32_t currentAlertId = VoiceModule::makeAlertId(priority.band, (uint16_t)priority.frequency);
-
-                if (priorityInLockout && !state.muted) {
-                    if (!lockoutMuteSent || currentAlertId != lastLockoutAlertId) {
-                        ble->setMute(true);
-                        lockoutMuteSent = true;
-                        lastLockoutAlertId = currentAlertId;
-                        display->setLockoutMuted(true);
-                    }
-                } else if (!priorityInLockout) {
-                    lockoutMuteSent = false;
-                    display->setLockoutMuted(false);
-                }
-
-                bool isMoving = gps->isMoving();
-                uint8_t strength = VoiceModule::getAlertBars(priority);
-                float heading = gps->getSmoothedHeading();
-                autoLockoutMgr->recordAlert(fix.latitude, fix.longitude, priority.band,
-                                            (uint32_t)priority.frequency, strength, 0, isMoving, heading);
-            }
-
-            for (int i = 0; i < alertCount; i++) {
-                const AlertData& alert = currentAlerts[i];
-                if (!alert.isValid || alert.band == BAND_NONE) continue;
-                if (alert.band == priority.band && alert.frequency == priority.frequency) continue;
-
-                uint8_t strength = VoiceModule::getAlertBars(alert);
-                float heading = gps->getSmoothedHeading();
-                autoLockoutMgr->recordAlert(fix.latitude, fix.longitude, alert.band,
-                                            (uint32_t)alert.frequency, strength, 0, gps->isMoving(), heading);
-            }
-        }
 
         VolumeFadeContext fadeCtx;
         fadeCtx.hasAlert = true;
@@ -211,15 +145,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
     } else {
         *displayMode = DisplayMode::IDLE;
-
-        if (gps && gps->hasValidFix() && gps->isMoving() && autoLockoutMgr) {
-            static unsigned long lastPassthroughRecordMs = 0;
-            if (nowMs - lastPassthroughRecordMs > 5000) {
-                GPSFix fix = gps->getFix();
-                autoLockoutMgr->recordPassthrough(fix.latitude, fix.longitude);
-                lastPassthroughRecordMs = nowMs;
-            }
-        }
 
         voice->clearAllState();
         // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display

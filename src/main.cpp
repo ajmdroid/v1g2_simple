@@ -35,10 +35,6 @@
 #include "storage_manager.h"
 #include "debug_logger.h"
 #include "audio_beep.h"
-#include "gps_handler.h"
-#include "lockout_manager.h"
-#include "auto_lockout_manager.h"
-#include "obd_handler.h"
 #include "perf_metrics.h"
 #include "perf_sd_logger.h"
 #include "../include/config.h"
@@ -52,8 +48,6 @@
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
-#include "modules/obd/obd_auto_connector_module.h"
-#include "modules/lockout/auto_lockout_maintenance_module.h"
 #include "esp_heap_caps.h"
 #include "esp_core_dump.h"
 #include "modules/voice/voice_module.h"
@@ -75,12 +69,6 @@ V1BLEClient bleClient;
 PacketParser parser;
 V1Display display;
 TouchHandler touchHandler;
-
-// GPS and Lockout managers (optional modules)
-// GPS is static allocation to avoid heap fragmentation - use begin()/end() to enable/disable
-GPSHandler gpsHandler;
-LockoutManager lockouts;
-AutoLockoutManager autoLockouts;
 
 // Alert persistence module
 AlertPersistenceModule alertPersistenceModule;
@@ -289,8 +277,6 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 
 // Voice alert tracking handled by VoiceModule
 
-static constexpr unsigned long OBD_CONNECT_DELAY_MS = 5000;  // 5 second delay after V1 connects
-
 // Volume fade module - reduce V1 volume after X seconds of continuous alert
 VolumeFadeModule volumeFadeModule;
 
@@ -305,8 +291,6 @@ PowerModule powerModule;
 BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
 DisplayPipelineModule displayPipelineModule;
-ObdAutoConnector obdAutoConnector;
-AutoLockoutMaintenance autoLockoutMaintenance;
 DisplayRestoreModule displayRestoreModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
@@ -319,12 +303,10 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
 static WifiOrchestrator& getWifiOrchestrator() {
     static WifiOrchestrator orchestrator(
         wifiManager,
-        debugLogger,
         bleClient,
         parser,
         settingsManager,
         storageManager,
-        gpsHandler,
         autoPushModule,
         [](int slotIndex) { autoPushModule.start(slotIndex); });
     return orchestrator;
@@ -344,14 +326,6 @@ void onV1Connected() {
     if (activeSlotIndex != s.activeSlot) {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                         s.activeSlot, activeSlotIndex);
-    }
-    
-    if (settingsManager.isFeaturesRuntimeEnabled()) {
-        // Schedule delayed OBD auto-connect if OBD is enabled
-        if (s.obdEnabled) {
-            obdAutoConnector.scheduleAfterConnect(OBD_CONNECT_DELAY_MS);
-            SerialLog.printf("[OBD] V1 connected - will attempt OBD connect in %lums\n", OBD_CONNECT_DELAY_MS);
-        }
     }
     
     if (!s.autoPushEnabled) {
@@ -473,11 +447,6 @@ void setup() {
 
     // Initialize display preview driver
     displayPreviewModule.begin(&display);
-
-    // Initialize auxiliary coordinators
-    if (featuresRuntimeEnabled) {
-        obdAutoConnector.begin(&obdHandler);
-    }
     
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
 
@@ -487,20 +456,6 @@ void setup() {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem());
         audio_init_sd();  // Initialize SD-based frequency voice audio
-
-        // Ensure auto-lockout log exists on SD for crash-safe learning replay
-        if (featuresRuntimeEnabled && settingsManager.get().lockoutEnabled && storageManager.isSDCard()) {
-            fs::FS* fs = storageManager.getFilesystem();
-            if (fs && !fs->exists("/v1simple_auto_lockouts.log")) {
-                File logFile = fs->open("/v1simple_auto_lockouts.log", "w");
-                if (logFile) {
-                    logFile.close();
-                    SerialLog.println("[Setup] Created auto-lockout log on SD");
-                } else {
-                    SerialLog.println("[Setup] WARNING: Unable to create auto-lockout log on SD");
-                }
-            }
-        }
         
         // Validate profile references in auto-push slots
         // Clear references to profiles that don't exist
@@ -511,40 +466,6 @@ void setup() {
         if (settingsManager.checkAndRestoreFromSD()) {
             // Settings were restored from SD - update display with restored brightness
             display.setBrightness(settingsManager.get().brightness);
-        }
-        
-        if (featuresRuntimeEnabled) {
-            const bool lockoutsEnabled = settingsManager.get().lockoutEnabled;
-            // Initialize lockout managers (requires storage to be ready)
-            lockouts.loadFromJSON("/v1profiles/lockouts.json");
-            if (lockoutsEnabled) {
-                autoLockouts.setLockoutManager(&lockouts);
-                autoLockouts.loadFromJSON("/v1simple/auto_lockouts.json");
-                SerialLog.printf("[Setup] Loaded %d lockout zones, %d learning clusters\n",
-                                lockouts.getLockoutCount(), autoLockouts.getClusterCount());
-                
-                // Enable async log mode for auto-lockout (background SD writes)
-                // This prevents alert hot path from blocking on SD I/O
-                autoLockouts.setAsyncLogMode(true);
-
-                autoLockoutMaintenance.begin(&autoLockouts);
-            }
-            
-            // Initialize GPS if enabled in settings (static allocation - just call begin())
-            if (settingsManager.isGpsEnabled()) {
-                SerialLog.println("[Setup] GPS enabled - initializing...");
-                gpsHandler.begin();
-            } else {
-                SerialLog.println("[Setup] GPS disabled in settings");
-            }
-            
-            // Initialize OBD if enabled in settings
-            if (settingsManager.isObdEnabled()) {
-                SerialLog.println("[Setup] OBD enabled - initializing...");
-                obdHandler.begin();
-            } else {
-                SerialLog.println("[Setup] OBD disabled in settings");
-            }
         }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
@@ -584,11 +505,7 @@ void setup() {
             }
         },
         .deleteDebugLogs = [] {
-            bool success = debugLogger.clear();
-            if (success) {
-                Serial.println("[Main] Debug logs deleted via touch UI");
-            }
-            return success;
+            return false;
         }
     };
 
@@ -602,24 +519,6 @@ void setup() {
                            &autoPushModule,
                            &alertPersistenceModule,
                            &displayMode);
-
-    // Initialize debug logger after storage is mounted
-    debugLogger.begin();
-    
-    // Restore cached time from NVS (if available and not too stale)
-    // This sets the RTC to a reasonable time before GPS/NTP sync completes
-    debugLogger.restoreTimeFromCache();
-    
-    {
-        DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-        DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.lockout, cfg.touch};
-        debugLogger.setFilter(filter);
-    }
-    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
-    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled (storage=%s, format=JSON)", 
-                         storageManager.statusText().c_str());
-    }
 
     uint32_t bootId = nextBootId();
     DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
@@ -639,86 +538,12 @@ void setup() {
                     scenario,
                     bootSettings.enableWifi ? "on" : "off",
                     (unsigned long)logMask);
-    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-        debugLogger.logf(DebugLogCategory::System,
-                         "BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logCats=0x%08lX",
-                         (unsigned long)bootId,
-                         resetStr,
-                         gitSha,
-                         scenario,
-                         bootSettings.enableWifi ? "on" : "off",
-                         (unsigned long)logMask);
-        
-        // If this was a crash recovery, log the panic info from LittleFS to SD card debug log
-        bool wasCrash = (resetReason == ESP_RST_PANIC || resetReason == ESP_RST_INT_WDT || 
-                         resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_WDT);
-        if (wasCrash && LittleFS.exists("/panic.txt")) {
-            File f = LittleFS.open("/panic.txt", "r");
-            if (f) {
-                String panicInfo = f.readString();
-                f.close();
-                // Log each line as separate entries for readability
-                int start = 0;
-                int end;
-                while ((end = panicInfo.indexOf('\n', start)) != -1) {
-                    String line = panicInfo.substring(start, end);
-                    line.trim();
-                    if (line.length() > 0) {
-                        debugLogger.logf(DebugLogCategory::System, "PANIC_RECOVERY: %s", line.c_str());
-                    }
-                    start = end + 1;
-                }
-                // Handle last line without newline
-                if (start < (int)panicInfo.length()) {
-                    String line = panicInfo.substring(start);
-                    line.trim();
-                    if (line.length() > 0) {
-                        debugLogger.logf(DebugLogCategory::System, "PANIC_RECOVERY: %s", line.c_str());
-                    }
-                }
-            }
-        }
-    }
-
-    // Emit RUN header for benchmark tracking (debug log only, not serial)
-    if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-        JsonDocument runDoc;
-        runDoc["fw"] = FIRMWARE_VERSION;
-        #ifdef GIT_SHA
-        runDoc["git"] = GIT_SHA;
-        #else
-        runDoc["git"] = "unknown";
-        #endif
-        #ifdef BUILD_TIMESTAMP
-        runDoc["build"] = BUILD_TIMESTAMP;
-        #else
-        runDoc["build"] = "unknown";
-        #endif
-        runDoc["board"] = "waveshare-349";
-        runDoc["queueDepth"] = 48;
-        runDoc["drawMinMs"] = 30;
-        const V1Settings& runSettings = settingsManager.get();
-        runDoc["wifi"] = runSettings.enableWifi;
-        runDoc["proxy"] = runSettings.proxyBLE;
-        runDoc["logPerf"] = runSettings.logPerfMetrics;
-        runDoc["scenario"] = "default";
-        
-        String runJson;
-        serializeJson(runDoc, runJson);
-        debugLogger.logf(DebugLogCategory::System, "RUN %s", runJson.c_str());
-    }
 
     // WiFi startup behavior - either auto-start or wait for BOOT button
     if (settingsManager.get().enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start enabled (dev setting)");
-        }
     } else {
         SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start disabled (manual BOOT press required)");
-        }
     }
     
     // Initialize touch handler early - before BLE to avoid interleaved logs
@@ -740,19 +565,14 @@ void setup() {
 #endif
 
     // Initialize alert/audio/display pipeline dependencies before BLE starts
-    alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager, &obdHandler, &gpsHandler);
-    voiceModule.begin(&settingsManager, &bleClient, &obdHandler, &gpsHandler);
+    alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
+    voiceModule.begin(&settingsManager, &bleClient);
     speedVolumeModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
     volumeFadeModule.begin(&settingsManager);
-    LockoutManager* lockoutPtr = featuresRuntimeEnabled ? &lockouts : nullptr;
-    AutoLockoutManager* autoLockoutPtr = featuresRuntimeEnabled ? &autoLockouts : nullptr;
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
                                 &settingsManager,
-                                &gpsHandler,
-                                lockoutPtr,
-                                autoLockoutPtr,
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
@@ -795,19 +615,10 @@ void setup() {
     // Auto-start WiFi if enabled in dev settings
     if (settingsManager.get().enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled - starting AP now...");
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "WiFi auto-start: starting AP");
-        }
         getWifiOrchestrator().startWifi();
         SerialLog.println("Setup complete - BLE scanning, WiFi auto-started");
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi auto-started)");
-        }
     } else {
         SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "Setup complete (WiFi idle until BOOT long-press)");
-        }
     }
 }
 
@@ -843,9 +654,6 @@ void loop() {
             runStartLogged = true;
             const char* trigger = bleReady ? "ble_connected" : "timeout_30s";
             SerialLog.printf("RUN_START trigger=%s millis=%lu\n", trigger, now);
-            if (debugLogger.isEnabledFor(DebugLogCategory::System)) {
-                debugLogger.logf(DebugLogCategory::System, "RUN_START trigger=%s millis=%lu", trigger, now);
-            }
         }
     }
 
@@ -959,47 +767,13 @@ void loop() {
         perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
     }
     
-    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
-        // Process GPS updates (if enabled - static allocation uses isEnabled())
-        if (gpsHandler.isEnabled()) {
-            uint32_t gpsStartUs = PERF_TIMESTAMP_US();
-            gpsHandler.update();
-            perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
-            
-            // Auto-disable GPS if module not detected after timeout
-            if (gpsHandler.isDetectionComplete() && !gpsHandler.isModuleDetected()) {
-                Serial.println("[GPS] Module not detected - disabling GPS");
-                gpsHandler.end();  // Static allocation - use end() instead of delete
-                settingsManager.setGpsEnabled(false);
-            }
-        }
-    }
-    
     perfRecordLoopJitterUs(micros() - loopStartUs);
     StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating
     perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
                         StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
     
-    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
-        // OBD processing and delayed auto-connect
-        {
-            uint32_t obdStartUs = PERF_TIMESTAMP_US();
-            obdAutoConnector.process(now);
-            perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
-        }
-    }
-    
     // Speed-based volume: delegate to module (rate-limited internally)
     speedVolumeModule.process(now);
-    
-    if (!skipNonCoreThisLoop && featuresRuntimeEnabled) {
-        // Periodic auto-lockout maintenance (promotion/demotion + persistence)
-        {
-            uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-            autoLockoutMaintenance.process(now);
-            perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
-        }
-    }
     
     // Update display periodically
     now = millis();
@@ -1012,9 +786,6 @@ void loop() {
         }
     }
     
-    // Flush debug log buffer periodically (batched writes for SD performance)
-    debugLogger.update();
-
     // Periodic perf metrics report (stability diagnostics)
     perfMetricsCheckReport();
 

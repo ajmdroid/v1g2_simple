@@ -1,21 +1,17 @@
 #include "wifi_orchestrator_module.h"
 
 WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
-                                   DebugLogger& debugLogger,
                                    V1BLEClient& bleClient,
                                    PacketParser& parser,
                                    SettingsManager& settingsManager,
                                    StorageManager& storageManager,
-                                   GPSHandler& gpsHandler,
                                    AutoPushModule& autoPushModule,
                                    std::function<void(int)> profilePushFn)
     : wifiManager(wifiManager),
-      debugLogger(debugLogger),
       bleClient(bleClient),
       parser(parser),
       settingsManager(settingsManager),
       storageManager(storageManager),
-      gpsHandler(gpsHandler),
       autoPushModule(autoPushModule),
       profilePushFn(std::move(profilePushFn)) {}
 
@@ -30,14 +26,7 @@ void WifiOrchestrator::startWifi() {
 
     // Skip if WiFi already up to keep begin()/TX power idempotent
     if (WiFi.getMode() != WIFI_OFF || WiFi.isConnected()) {
-        if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-            debugLogger.log(DebugLogCategory::Wifi, "startWifi() skipped (already running)");
-        }
         return;
-    }
-
-    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) {
-        debugLogger.log(DebugLogCategory::Wifi, "startWifi() requested");
     }
 
     // Reset failure counter so user can retry after "gave up" state
@@ -120,43 +109,21 @@ void WifiOrchestrator::configureCallbacks() {
         return autoPushModule.getStatusJson();
     });
 
-    // GPS status
+    // GPS status - disabled
     wifiManager.setGpsStatusCallback([this]() {
         JsonDocument doc;
-
-        doc["enabled"] = gpsHandler.isEnabled();
-        doc["moduleDetected"] = gpsHandler.isModuleDetected();
-        doc["detectionComplete"] = gpsHandler.isDetectionComplete();
-        doc["hasValidFix"] = gpsHandler.hasValidFix();
-
-        if (gpsHandler.isEnabled() && gpsHandler.isModuleDetected()) {
-            GPSFix fix = gpsHandler.getFix();
-            doc["latitude"] = fix.latitude;
-            doc["longitude"] = fix.longitude;
-            doc["satellites"] = fix.satellites;
-            doc["hdop"] = fix.hdop;
-            doc["speed_mph"] = fix.speed_mps * 2.237f;
-            doc["heading"] = fix.heading_deg;
-            doc["fixValid"] = fix.valid;
-            doc["fixStale"] = gpsHandler.isFixStale();
-            doc["moving"] = gpsHandler.isMoving();
-
-            if (fix.unixTime > 0) {
-                doc["gpsTime"] = fix.unixTime;
-                char timeStr[32];
-                snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d UTC", fix.hour, fix.minute, fix.seconds);
-                doc["gpsTimeStr"] = timeStr;
-            }
-        }
-
+        doc["enabled"] = false;
+        doc["moduleDetected"] = false;
+        doc["detectionComplete"] = true;
+        doc["hasValidFix"] = false;
         String json;
         serializeJson(doc, json);
         return json;
     });
 
-    // GPS reset
+    // GPS reset - disabled (no-op)
     wifiManager.setGpsResetCallback([this]() {
-        gpsHandler.reset();
+        // GPS disabled - nothing to reset
     });
 
     // V1 connection state (used to defer WiFi client operations until V1 is connected)

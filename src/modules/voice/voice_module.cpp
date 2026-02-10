@@ -5,12 +5,8 @@
 
 #ifdef UNIT_TEST
 #include "../../test/mocks/ble_client.h"
-#include "../../test/mocks/obd_handler.h"
-#include "../../test/mocks/gps_handler.h"
 #else
 #include "ble_client.h"
-#include "obd_handler.h"
-#include "gps_handler.h"
 #endif
 
 // ============================================================================
@@ -21,11 +17,9 @@ VoiceModule::VoiceModule() {
     // Dependencies set in begin()
 }
 
-void VoiceModule::begin(SettingsManager* sett, V1BLEClient* ble, OBDHandler* obd, GPSHandler* gps) {
+void VoiceModule::begin(SettingsManager* sett, V1BLEClient* ble) {
     settings = sett;
     bleClient = ble;
-    obdHandler = obd;
-    gpsHandler = gps;
     
     Serial.println("[VoiceModule] Initialized");
 }
@@ -553,18 +547,8 @@ void VoiceModule::resetLastAnnounced() {
 // ============================================================================
 
 float VoiceModule::getCurrentSpeedMph(unsigned long now) {
-    if (obdHandler && obdHandler->isModuleDetected() && obdHandler->hasValidData()) {
-        cachedSpeedMph = obdHandler->getSpeedMph();
-        cachedSpeedTimestamp = now;
-        return cachedSpeedMph;
-    }
-    
-    if (gpsHandler && gpsHandler->hasValidFix()) {
-        cachedSpeedMph = gpsHandler->getSpeed() * 2.237f;
-        cachedSpeedTimestamp = now;
-        return cachedSpeedMph;
-    }
-    
+    // GPS and OBD disabled - no speed source available
+    // Return cached speed if still valid, otherwise 0
     if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
         return cachedSpeedMph;
     }
@@ -573,9 +557,8 @@ float VoiceModule::getCurrentSpeedMph(unsigned long now) {
 }
 
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
-    return (obdHandler && obdHandler->isModuleDetected() && obdHandler->hasValidData()) ||
-           (gpsHandler && gpsHandler->hasValidFix()) ||
-           (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
+    // GPS and OBD disabled - only cached speed is available
+    return (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
 }
 
 bool VoiceModule::isLowSpeedMuted(unsigned long now) const {

@@ -12,9 +12,6 @@
 #include "debug_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
-#include "obd_handler.h"
-#include "gps_handler.h"
-#include "auto_lockout_manager.h"
 #include "perf_metrics.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
@@ -51,10 +48,6 @@ static void onNtpTimeSynced(struct timeval *tv) {
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
-// External GPS handler for runtime enable/disable
-extern GPSHandler gpsHandler;
-// Auto lockouts manager for API export
-extern AutoLockoutManager autoLockouts;
 // Preview hold helper to keep color demo visible briefly
 extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
@@ -65,10 +58,14 @@ static constexpr bool WIFI_DEBUG_FS_DUMP = false;
 static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial logging
 
 // WiFi logging macro - logs to Serial AND debugLogger when WiFi category enabled
+#if defined(DISABLE_DEBUG_LOGGER)
+#define WIFI_LOG(...) do { } while(0)
+#else
 #define WIFI_LOG(...) do { \
     if (WIFI_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Wifi)) debugLogger.logf(DebugLogCategory::Wifi, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Wifi, __VA_ARGS__); \
 } while(0)
+#endif
 
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
@@ -361,10 +358,6 @@ bool WiFiManager::stopSetupMode(bool manual) {
     Serial.printf("[SetupMode] WiFi OFF: radio=%d http=%d sntp=%d\n", 
                   0, 0, 0);  // All should be 0 at this point
     
-    if (debugLogger.isEnabled()) {
-        debugLogger.log(DebugLogCategory::Wifi, manual ? "WiFi OFF (manual) - radio stopped" : "WiFi OFF (timeout) - radio stopped");
-    }
-
     return true;
 }
 
@@ -1205,31 +1198,13 @@ void WiFiManager::handleSettingsSave() {
     // GPS/OBD module settings
     if (server.hasArg("gpsEnabled")) {
         bool enabled = server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1";
-        bool wasEnabled = settingsManager.isGpsEnabled();
         settingsManager.setGpsEnabled(enabled);
-        
-        // Actually start/stop GPS hardware at runtime
-        if (enabled && !wasEnabled) {
-            Serial.println("[WiFi] GPS enabled - starting GPS handler");
-            gpsHandler.begin();
-        } else if (!enabled && wasEnabled) {
-            Serial.println("[WiFi] GPS disabled - stopping GPS handler");
-            gpsHandler.end();
-        }
+        // GPS module not available - setting stored only
     }
     if (server.hasArg("obdEnabled")) {
         bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
-        bool wasEnabled = settingsManager.isObdEnabled();
         settingsManager.setObdEnabled(enabled);
-        
-        // Actually start/stop OBD hardware at runtime
-        if (enabled && !wasEnabled) {
-            Serial.println("[WiFi] OBD enabled - starting OBD handler");
-            obdHandler.begin();
-        } else if (!enabled && wasEnabled) {
-            Serial.println("[WiFi] OBD disabled - disconnecting OBD");
-            obdHandler.disconnect();
-        }
+        // OBD module not available - setting stored only
     }
     if (server.hasArg("obdPin")) {
         settingsManager.setObdPin(server.arg("obdPin"));
@@ -2237,9 +2212,6 @@ void WiFiManager::handleDisplayColorsSave() {
     // Apply debug logging runtime state immediately
     applyDebugLogFilterFromSettings();
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
-    if (debugLogger.isEnabled()) {
-        debugLogger.logf(DebugLogCategory::System, "Debug logging enabled via /api/displaycolors (size=%u bytes)", (unsigned int)debugLogger.size());
-    }
     
     // Trigger immediate display preview to show new colors (skip if requested)
     if (!server.hasArg("skipPreview") || (server.arg("skipPreview") != "true" && server.arg("skipPreview") != "1")) {
@@ -3043,9 +3015,6 @@ void WiFiManager::handleSettingsRestore() {
     // Re-apply debug logging runtime state based on restored settings
     applyDebugLogFilterFromSettings();
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
-    if (debugLogger.isEnabled()) {
-        debugLogger.log(DebugLogCategory::System, "Debug logging enabled via settings restore");
-    }
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     
@@ -3061,152 +3030,43 @@ void WiFiManager::handleSettingsRestore() {
 // ============== OBD-II API Handlers ==============
 
 void WiFiManager::handleObdStatus() {
-    JsonDocument doc;
-    
-    doc["enabled"] = settingsManager.isObdEnabled();
-    doc["state"] = obdHandler.getStateString();
-    doc["connected"] = obdHandler.isConnected();
-    doc["scanning"] = obdHandler.isScanActive();
-    doc["moduleDetected"] = obdHandler.isModuleDetected();
-    doc["deviceName"] = obdHandler.getConnectedDeviceName();
-    doc["savedDeviceAddress"] = settingsManager.getObdDeviceAddress();
-    doc["savedDeviceName"] = settingsManager.getObdDeviceName();
-    doc["pin"] = settingsManager.getObdPin();
-    
-    if (obdHandler.hasValidData()) {
-        OBDData data = obdHandler.getData();
-        doc["speedMph"] = data.speed_mph;
-        doc["speedKph"] = data.speed_kph;
-        doc["rpm"] = data.rpm;
-        doc["voltage"] = data.voltage;
-    }
-    
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\",\"connected\":false}");
 }
 
 void WiFiManager::handleObdScan() {
-    if (!checkRateLimit()) return;
-    
-    if (!settingsManager.isObdEnabled()) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
-        return;
-    }
-    
-    obdHandler.startScan();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan started\"}");
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
 }
 
 void WiFiManager::handleObdScanStop() {
-    if (!checkRateLimit()) return;
-    
-    if (!settingsManager.isObdEnabled()) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"OBD not enabled\"}");
-        return;
-    }
-    
-    obdHandler.stopScan();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan stopped\"}");
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
 }
 
 void WiFiManager::handleObdDevices() {
-    JsonDocument doc;
-    JsonArray devices = doc["devices"].to<JsonArray>();
-    
-    for (const auto& device : obdHandler.getFoundDevices()) {
-        JsonObject d = devices.add<JsonObject>();
-        d["address"] = device.address;
-        d["name"] = device.name;
-        d["rssi"] = device.rssi;
-    }
-    
-    doc["scanning"] = obdHandler.isScanActive();
-    doc["count"] = obdHandler.getFoundDevices().size();
-    
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\",\"devices\":[]}");
 }
 
 void WiFiManager::handleObdConnect() {
-    if (!checkRateLimit()) return;
-    
-    if (!server.hasArg("address")) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing address\"}");
-        return;
-    }
-    
-    String address = server.arg("address");
-    String name = server.hasArg("name") ? server.arg("name") : "";
-    
-    // Save PIN if provided
-    if (server.hasArg("pin")) {
-        settingsManager.setObdPin(server.arg("pin"));
-    }
-    
-    // Save device selection
-    settingsManager.setObdDevice(address, name);
-    
-    // Initiate connection
-    bool started = obdHandler.connectToAddress(address, name);
-    
-    if (started) {
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting to device\"}");
-    } else {
-        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to start connection\"}");
-    }
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
 }
 
 void WiFiManager::handleObdDevicesClear() {
-    if (!checkRateLimit()) return;
-    
-    obdHandler.clearFoundDevices();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Scan results cleared\"}");
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
 }
 
 void WiFiManager::handleObdForget() {
-    if (!checkRateLimit()) return;
-    
-    // Clear the saved device from settings
-    settingsManager.setObdDevice("", "");
-    
-    // Disconnect if currently connected
-    obdHandler.disconnect();
-    
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Saved device forgotten\"}");
+    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
 }
 
 void WiFiManager::handleGpsStatus() {
-    markUiActivity();
-    
-    if (!getGpsStatusJson) {
-        server.send(503, "application/json", "{\"error\":\"GPS handler not available\"}");
-        return;
-    }
-    
-    server.send(200, "application/json", getGpsStatusJson());
+    server.send(200, "application/json", "{\"error\":\"GPS module not available\",\"enabled\":false}");
 }
 
 void WiFiManager::handleGpsReset() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    if (!gpsResetCallback) {
-        server.send(503, "application/json", "{\"error\":\"GPS handler not available\"}");
-        return;
-    }
-    
-    Serial.println("[HTTP] POST /api/gps/reset - power cycling GPS module");
-    gpsResetCallback();
-    
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"GPS module reset initiated\"}");
+    server.send(200, "application/json", "{\"error\":\"GPS module not available\"}");
 }
 
 void WiFiManager::handleAutoLockouts() {
-    markUiActivity();
-    String body = autoLockouts.exportStatusJson();
-    server.send(200, "application/json", body);
+    server.send(200, "application/json", "{\"error\":\"Lockout module not available\",\"clusters\":[]}");
 }
 
 // ==================== WiFi Client (STA) API Handlers ====================

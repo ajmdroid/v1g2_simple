@@ -41,9 +41,13 @@ static bool isValidCluster(const LearningCluster& cluster) {
 }
 
 // Lockout logging macro - logs to SD when category enabled
+#if defined(DISABLE_DEBUG_LOGGER)
+#define LOCKOUT_LOGF(...) do { } while(0)
+#else
 #define LOCKOUT_LOGF(...) do { \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Lockout)) debugLogger.logf(DebugLogCategory::Lockout, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Lockout, __VA_ARGS__); \
 } while(0)
+#endif
 
 // Use global instances from main.cpp
 extern LockoutManager lockouts;

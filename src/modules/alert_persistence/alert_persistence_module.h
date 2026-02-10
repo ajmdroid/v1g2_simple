@@ -10,8 +10,6 @@
 class V1BLEClient;
 class V1Display;
 class SettingsManager;
-class OBDHandler;
-class GPSHandler;
 class PacketParser;
 
 /**
@@ -26,8 +24,7 @@ public:
     AlertPersistenceModule();
 
     // Initialize with dependencies (call from setup())
-    void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings,
-               OBDHandler* obd = nullptr, GPSHandler* gps = nullptr);
+    void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings);
 
     // Main update - call from loop()
     void update();
@@ -52,8 +49,6 @@ private:
     PacketParser* parser = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
-    OBDHandler* obdHandler = nullptr;
-    GPSHandler* gpsHandler = nullptr;
 
     bool initialized = false;
 

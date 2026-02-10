@@ -21,14 +21,19 @@
 
 // Debug logging control - set to false for production to reduce serial overhead
 static constexpr bool AUDIO_DEBUG_LOGS = false;
+#if defined(DISABLE_DEBUG_LOGGER)
+#define AUDIO_LOGF(...) do { } while(0)
+#define AUDIO_LOGLN(msg) do { } while(0)
+#else
 #define AUDIO_LOGF(...) do { \
     if (AUDIO_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Audio)) debugLogger.logf(DebugLogCategory::Audio, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Audio, __VA_ARGS__); \
 } while(0)
 #define AUDIO_LOGLN(msg) do { \
     if (AUDIO_DEBUG_LOGS) Serial.println(msg); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Audio)) debugLogger.log(DebugLogCategory::Audio, msg); \
+    DBG_LOGLN(DebugLogCategory::Audio, msg); \
 } while(0)
+#endif
 
 // ES8311 I2C address
 #define ES8311_ADDR 0x18

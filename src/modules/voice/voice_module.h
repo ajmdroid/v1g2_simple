@@ -20,8 +20,6 @@
 // Forward declarations
 class SettingsManager;
 struct V1Settings;
-class OBDHandler;
-class GPSHandler;
 class V1BLEClient;
 
 // ============================================================================
@@ -100,8 +98,7 @@ public:
     VoiceModule();
     
     // Initialize with dependencies
-    void begin(SettingsManager* settings, V1BLEClient* ble = nullptr,
-               OBDHandler* obd = nullptr, GPSHandler* gps = nullptr);
+    void begin(SettingsManager* settings, V1BLEClient* ble = nullptr);
     
     // Main decision method - returns what to announce (if anything)
     VoiceAction process(const VoiceContext& ctx);
@@ -133,8 +130,6 @@ private:
     // Dependencies
     SettingsManager* settings = nullptr;
     V1BLEClient* bleClient = nullptr;
-    OBDHandler* obdHandler = nullptr;
-    GPSHandler* gpsHandler = nullptr;
     
     // =========================================================================
     // Tracking State

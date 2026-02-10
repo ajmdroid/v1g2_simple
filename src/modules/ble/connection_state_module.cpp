@@ -8,9 +8,13 @@
 
 extern DebugLogger debugLogger;
 
+#if defined(DISABLE_DEBUG_LOGGER)
+#define CONN_LOG(...) do { } while(0)
+#else
 #define CONN_LOG(...) do { \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Ble)) debugLogger.logf(DebugLogCategory::Ble, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Ble, __VA_ARGS__); \
 } while(0)
+#endif
 
 void ConnectionStateModule::begin(V1BLEClient* bleClient,
                                   PacketParser* parserPtr,

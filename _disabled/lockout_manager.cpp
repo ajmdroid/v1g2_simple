@@ -13,10 +13,14 @@
 
 // Lockout logging macro - logs to Serial AND debugLogger when Lockout category enabled
 static constexpr bool LOCKOUT_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#if defined(DISABLE_DEBUG_LOGGER)
+#define LOCKOUT_LOG(...) do { } while(0)
+#else
 #define LOCKOUT_LOG(...) do { \
     if (LOCKOUT_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Lockout)) debugLogger.logf(DebugLogCategory::Lockout, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Lockout, __VA_ARGS__); \
 } while(0)
+#endif
 
 // Ensure the profiles directory exists on the active filesystem
 static bool ensureProfilesDir(fs::FS* fs) {

@@ -32,14 +32,19 @@ static OBDHandler* s_obdInstance = nullptr;
 
 // OBD logging macros - log to Serial (if DEBUG_OBD) AND debugLogger when OBD category enabled
 static constexpr bool DEBUG_OBD = false;  // Set true for verbose Serial logging
+#if defined(DISABLE_DEBUG_LOGGER)
+#define OBD_LOGF(...) do { } while(0)
+#define OBD_LOGLN(msg) do { } while(0)
+#else
 #define OBD_LOGF(...) do { \
     if (DEBUG_OBD) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Obd)) debugLogger.logf(DebugLogCategory::Obd, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Obd, __VA_ARGS__); \
 } while(0)
 #define OBD_LOGLN(msg) do { \
     if (DEBUG_OBD) Serial.println(msg); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Obd)) debugLogger.log(DebugLogCategory::Obd, msg); \
+    DBG_LOGLN(DebugLogCategory::Obd, msg); \
 } while(0)
+#endif
 
 // RAII lock for the OBD mutex — bounded timeout, never portMAX_DELAY
 // Default = 0 (try-lock) so HOT paths are safe-by-default

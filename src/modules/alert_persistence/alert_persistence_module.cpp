@@ -11,14 +11,11 @@ AlertPersistenceModule::AlertPersistenceModule() {
     // Dependencies set in begin()
 }
 
-void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Display* disp, SettingsManager* sett,
-                          OBDHandler* obd, GPSHandler* gps) {
+void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Display* disp, SettingsManager* sett) {
     bleClient = ble;
     parser = pParser;
     display = disp;
     settings = sett;
-    obdHandler = obd;
-    gpsHandler = gps;
     initialized = true;
 
     Serial.println("[AlertPersistenceModule] Initialized");

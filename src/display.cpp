@@ -13,8 +13,6 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include "ble_client.h"
-#include "obd_handler.h"
-#include "gps_handler.h"
 #include "storage_manager.h"
 #include "audio_beep.h"
 #include "perf_metrics.h"
@@ -25,10 +23,14 @@
 
 // Display logging macro - logs to Serial AND debugLogger when Display category enabled
 static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Serial logging
+#if defined(DISABLE_DEBUG_LOGGER)
+#define DISPLAY_LOG(...) do { } while(0)
+#else
 #define DISPLAY_LOG(...) do { \
     if (DISPLAY_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::Display)) debugLogger.logf(DebugLogCategory::Display, __VA_ARGS__); \
+    DBG_LOGF(DebugLogCategory::Display, __VA_ARGS__); \
 } while(0)
+#endif
 
 // OpenFontRender for antialiased TrueType rendering
 #include "OpenFontRender.h"
@@ -81,9 +83,6 @@ static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show
 
 // External reference to BLE client for checking proxy connection
 extern V1BLEClient bleClient;
-
-// External reference to GPS handler for GPS indicator
-extern GPSHandler gpsHandler;
 
 // Helper to get effective screen height (fixed primary zone, cards below)
 static inline int getEffectiveScreenHeight() {
@@ -2286,8 +2285,8 @@ void V1Display::update(const DisplayState& state) {
     
     // Check if OBD idle display is enabled and needs continuous animation
     const V1Settings& sIdle = settingsManager.get();
-    bool obdIdleActive = (sIdle.idleDisplayMode != IDLE_DISPLAY_NONE) && obdHandler.hasValidData() && !volumeWarningActive;
-    bool obdCardsActive = (sIdle.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS) && obdHandler.hasValidData() && !volumeWarningActive;
+    bool obdIdleActive = false;  // OBD disabled
+    bool obdCardsActive = false;  // OBD disabled
     
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed - but OBD idle display may need periodic updates
@@ -2429,10 +2428,6 @@ void V1Display::update(const DisplayState& state) {
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
-    } else if (s.idleDisplayMode == IDLE_DISPLAY_OBD_CARDS && obdHandler.hasValidData()) {
-        drawObdIdleWithCards();  // OBD card-based display (primary + 2 cards)
-    } else if (s.idleDisplayMode != IDLE_DISPLAY_NONE && obdHandler.hasValidData()) {
-        drawIdleObdData();  // OBD data display (speed/temps)
     } else {
         drawFrequency(0, primaryBand, effectiveMuted);
     }
@@ -3979,189 +3974,9 @@ void V1Display::drawVolumeZeroWarning() {
 // Draw OBD data in the frequency area when idle (no alerts)
 // Shows speed, oil temp, DSG temp, or intake air temp based on idleDisplayMode setting
 void V1Display::drawIdleObdData() {
-    const V1Settings& s = settingsManager.get();
-    
-    // Only draw if idle display mode is set
-    if (s.idleDisplayMode == IDLE_DISPLAY_NONE) {
-        return;
-    }
-    
-    // Check if OBD has valid data
-    if (!obdHandler.hasValidData()) {
-        return;
-    }
-    
-    OBDData obd = obdHandler.getData();
-    
-    // Frequency area dimensions
-#if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 160;   // After band indicators  
-    const int rightMargin = 220;  // Before signal bars
-#else
-    const int leftMargin = 10;
-    const int rightMargin = 130;
-#endif
-    
-    const int areaWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int barHeight = 60;
-    const int barY = (SCREEN_HEIGHT - barHeight) / 2;
-    
-    // Clear the area first
-    FILL_RECT(leftMargin, barY - 10, areaWidth, barHeight + 20, PALETTE_BG);
-    
-    // Choose what to display based on setting
-    char displayText[32];
-    const char* label = "";
-    int value = 0;
-    bool showDegrees = false;
-    
-    // For combo mode, cycle through available data every 3 seconds
-    static uint8_t comboIndex = 0;
-    static uint32_t lastComboSwitch = 0;
-    
-    if (s.idleDisplayMode == IDLE_DISPLAY_COMBO) {
-        uint32_t now = millis();
-        if (now - lastComboSwitch > 3000) {
-            lastComboSwitch = now;
-            comboIndex = (comboIndex + 1) % 4;  // Cycle through 4 options
-        }
-        
-        // Map combo index to actual display based on available data
-        switch (comboIndex) {
-            case 0:  // Speed
-                snprintf(displayText, sizeof(displayText), "%.0f", obd.speed_mph);
-                label = "MPH";
-                break;
-            case 1:  // Oil temp
-                if (obd.oil_temp_c != -128) {
-                    int tempF = (obd.oil_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "OIL";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "OIL";
-                }
-                break;
-            case 2:  // DSG temp
-                if (obd.dsg_temp_c != -128) {
-                    int tempF = (obd.dsg_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "DSG";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "DSG";
-                }
-                break;
-            case 3:  // Intake air temp
-                if (obd.intake_air_temp_c != -128) {
-                    int tempF = (obd.intake_air_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "IAT";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "IAT";
-                }
-                break;
-        }
-    } else {
-        // Single value display
-        switch (s.idleDisplayMode) {
-            case IDLE_DISPLAY_SPEED:
-                snprintf(displayText, sizeof(displayText), "%.0f", obd.speed_mph);
-                label = "MPH";
-                break;
-            case IDLE_DISPLAY_OIL_TEMP:
-                if (obd.oil_temp_c != -128) {
-                    int tempF = (obd.oil_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "OIL";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "OIL";
-                }
-                break;
-            case IDLE_DISPLAY_DSG_TEMP:
-                if (obd.dsg_temp_c != -128) {
-                    int tempF = (obd.dsg_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "DSG";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "DSG";
-                }
-                break;
-            case IDLE_DISPLAY_IAT:
-                if (obd.intake_air_temp_c != -128) {
-                    int tempF = (obd.intake_air_temp_c * 9 / 5) + 32;
-                    snprintf(displayText, sizeof(displayText), "%d", tempF);
-                    label = "IAT";
-                    showDegrees = true;
-                } else {
-                    snprintf(displayText, sizeof(displayText), "--");
-                    label = "IAT";
-                }
-                break;
-            default:
-                return;
-        }
-    }
-    
-    // Draw using the current display style font
-    uint16_t color = s.colorStatusObd;  // Use OBD status color (green)
-    
-    if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
-        // Modern style: use Montserrat Bold via OFR
-        const int fontSize = 60;
-        ofr.setFontColor(color, PALETTE_BG);
-        ofr.setFontSize(fontSize);
-        
-        // Measure and center the value text
-        int textWidth = ofr.getTextWidth(displayText);
-        int totalWidth = textWidth + (showDegrees ? 40 : 0);  // Extra space for °F
-        int x = leftMargin + (areaWidth - totalWidth) / 2;
-        
-        ofr.setCursor(x, barY + fontSize - 10);
-        ofr.printf("%s", displayText);
-        
-        // Draw °F if showing temperature
-        if (showDegrees) {
-            ofr.setFontSize(30);
-            ofr.setCursor(x + textWidth + 2, barY + 30);
-            ofr.printf("F");
-        }
-        
-        // Draw label below
-        ofr.setFontSize(20);
-        int labelWidth = ofr.getTextWidth(label);
-        ofr.setCursor(leftMargin + (areaWidth - labelWidth) / 2, barY + fontSize + 12);
-        ofr.printf("%s", label);
-    } else {
-        // Classic/other styles: use 7-segment font
-        float scale = 0.8f;
-        int textWidth = measureSevenSegmentText(displayText, scale);
-        int totalWidth = textWidth;
-        int x = leftMargin + (areaWidth - totalWidth) / 2;
-        
-        drawSevenSegmentText(displayText, x, barY, scale, color, PALETTE_BG);
-        
-        // Draw label below using small font
-        tft->setTextColor(color, PALETTE_BG);
-        tft->setTextSize(2);
-        int labelLen = strlen(label);
-        int labelX = leftMargin + (areaWidth - labelLen * 12) / 2;
-        tft->setCursor(labelX, barY + 50);
-        tft->print(label);
-        if (showDegrees) {
-            tft->print(" F");
-        }
-    }
+    // OBD disabled - return without drawing
+    return;
 }
-
 // Preview OBD idle display with mock data (for color testing)
 void V1Display::drawIdleObdDataPreview() {
     const V1Settings& s = settingsManager.get();
@@ -4315,275 +4130,10 @@ void V1Display::drawIdleObdDataPreview() {
     tft->print(label);
 #endif
 }
-
-// Helper function: Get OBD metric value and label text
-// Returns true if metric has valid data, false if unavailable
-static bool getObdMetricText(ObdMetric metric, const OBDData& obd, char* valueOut, size_t valueSize, 
-                              const char** labelOut, bool* showDegreesOut) {
-    *showDegreesOut = false;
-    
-    switch (metric) {
-        case OBD_METRIC_SPEED:
-            snprintf(valueOut, valueSize, "%.0f", obd.speed_mph);
-            *labelOut = "MPH";
-            return true;
-            
-        case OBD_METRIC_OIL_TEMP:
-            if (obd.oil_temp_c != -128) {
-                int tempF = (obd.oil_temp_c * 9 / 5) + 32;
-                snprintf(valueOut, valueSize, "%d", tempF);
-                *labelOut = "OIL";
-                *showDegreesOut = true;
-                return true;
-            }
-            snprintf(valueOut, valueSize, "--");
-            *labelOut = "OIL";
-            return false;
-            
-        case OBD_METRIC_DSG_TEMP:
-            if (obd.dsg_temp_c != -128) {
-                int tempF = (obd.dsg_temp_c * 9 / 5) + 32;
-                snprintf(valueOut, valueSize, "%d", tempF);
-                *labelOut = "DSG";
-                *showDegreesOut = true;
-                return true;
-            }
-            snprintf(valueOut, valueSize, "--");
-            *labelOut = "DSG";
-            return false;
-            
-        case OBD_METRIC_IAT:
-            if (obd.intake_air_temp_c != -128) {
-                int tempF = (obd.intake_air_temp_c * 9 / 5) + 32;
-                snprintf(valueOut, valueSize, "%d", tempF);
-                *labelOut = "IAT";
-                *showDegreesOut = true;
-                return true;
-            }
-            snprintf(valueOut, valueSize, "--");
-            *labelOut = "IAT";
-            return false;
-            
-        default:
-            return false;
-    }
-}
-
-// Draw OBD idle display with primary metric + two cards
 // Layout: Primary value in frequency area (large), two cards below
 void V1Display::drawObdIdleWithCards() {
-#if defined(DISPLAY_WAVESHARE_349)
-    const V1Settings& s = settingsManager.get();
-    
-    // Only draw if in OBD cards mode
-    if (s.idleDisplayMode != IDLE_DISPLAY_OBD_CARDS) {
-        return;
-    }
-    
-    // Check if OBD has valid data
-    if (!obdHandler.hasValidData()) {
-        return;
-    }
-    
-    OBDData obd = obdHandler.getData();
-    // Use individual colors for each element
-    uint16_t primaryColor = s.colorObdPrimary;  // Primary metric color (blue by default)
-    uint16_t card1Color = s.colorObdCard1;      // Card 1 color (yellow by default)
-    uint16_t card2Color = s.colorObdCard2;      // Card 2 color (red by default)
-    
-    // === PRIMARY METRIC (frequency area) ===
-    char primaryValue[32];
-    const char* primaryLabel = "";
-    bool primaryShowDegrees = false;
-    
-    bool hasPrimary = getObdMetricText(s.obdPrimaryMetric, obd, primaryValue, sizeof(primaryValue),
-                                        &primaryLabel, &primaryShowDegrees);
-    
-    if (hasPrimary || s.obdPrimaryMetric != OBD_METRIC_NONE) {
-        // Use the same area and sizing as the primary alert value (fontSize=67)
-        const int fontSize = 67;
-        
-#if defined(DISPLAY_WAVESHARE_349)
-        const int leftMargin = 135;   // Same as V1 frequency display
-        const int rightMargin = 200;  // Same as V1 frequency display
-#else
-        const int leftMargin = 0;
-        const int rightMargin = 120;
-#endif
-        
-        // Position centered in primary zone (same as V1 alert frequency)
-        const int muteIconBottom = 33;
-        int effectiveHeight = getEffectiveScreenHeight();
-        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-        
-        const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-        
-        // Clear frequency area (same as V1 alert clearing)
-        const int clearLeft = leftMargin + 10;
-        FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
-        
-        // === LABEL ABOVE PRIMARY ===
-        // Position below status bar (which ends at Y~20)
-        // Clear from after the status bar indicators
-        const int typeLabelY = 22;
-        const int labelClearStartX = 135;  // Start of display area (after band indicators)
-        tft->setTextSize(2);
-        tft->setTextColor(primaryColor);
-        int labelLen = strlen(primaryLabel);
-        int labelPixelWidth = labelLen * 12;  // size 2 = 12 pixels per char
-        int labelX = leftMargin + (maxWidth - labelPixelWidth) / 2;
-        // Clear just the label area first (avoid GPS indicator on left)
-        FILL_RECT(labelClearStartX, typeLabelY - 2, SCREEN_WIDTH - rightMargin - labelClearStartX, 18, PALETTE_BG);
-        tft->setCursor(labelX, typeLabelY);
-        tft->print(primaryLabel);
-        
-        // Use Segment7 TTF font (same as V1 alert frequency) if available
-        if (ofrSegment7Initialized) {
-            // Convert RGB565 to RGB888 for OpenFontRender
-            uint8_t bgR = (PALETTE_BG >> 11) << 3;
-            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-            ofrSegment7.setFontSize(fontSize);
-            ofrSegment7.setFontColor((primaryColor >> 11) << 3, ((primaryColor >> 5) & 0x3F) << 2, (primaryColor & 0x1F) << 3);
-            
-            // Build display string with unit if showing degrees
-            char displayStr[48];
-            if (primaryShowDegrees) {
-                snprintf(displayStr, sizeof(displayStr), "%s F", primaryValue);
-            } else {
-                snprintf(displayStr, sizeof(displayStr), "%s", primaryValue);
-            }
-            
-            // Calculate text width for centering
-            int charCount = strlen(displayStr);
-            int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
-            int x = leftMargin + (maxWidth - approxWidth) / 2;
-            if (x < leftMargin) x = leftMargin;
-            
-            ofrSegment7.setCursor(x, y);
-            ofrSegment7.printf("%s", displayStr);
-        } else {
-            // Fallback to software 7-segment renderer (same scale as V1 alert fallback)
-            const float scale = 2.3f;
-            
-            char displayStr[48];
-            if (primaryShowDegrees) {
-                snprintf(displayStr, sizeof(displayStr), "%s F", primaryValue);
-            } else {
-                snprintf(displayStr, sizeof(displayStr), "%s", primaryValue);
-            }
-            
-            int textWidth = measureSevenSegmentText(displayStr, scale);
-            int x = leftMargin + (maxWidth - textWidth) / 2;
-            if (x < leftMargin) x = leftMargin;
-            
-            SegMetrics m = segMetrics(scale);
-            int segY = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-            
-            FILL_RECT(x - 4, segY - 4, textWidth + 8, m.digitH + 8, PALETTE_BG);
-            drawSevenSegmentText(displayStr, x, segY, scale, primaryColor, PALETTE_BG);
-        }
-    }
-    
-    // === CARD METRICS (below primary, same as secondary alert cards area) ===
-    const int cardH = SECONDARY_ROW_HEIGHT;  // 57px
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=116 on 172px display
-    const int cardW = 145;
-    const int cardSpacing = 10;
-    const int leftMargin = 120;
-    const int rightMargin = 200;
-    const int availableWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int totalCardsWidth = cardW * 2 + cardSpacing;
-    const int startX = leftMargin + (availableWidth - totalCardsWidth) / 2;
-    
-    // Card tracking for incremental updates
-    static struct {
-        ObdMetric metric = OBD_METRIC_NONE;
-        int lastValue = -9999;
-        bool wasDrawn = false;
-    } cardCache[2];
-    
-    // Get colors for each card
-    uint16_t cardColors[2] = { card1Color, card2Color };
-    
-    // Prepare card data
-    ObdMetric cardMetrics[2] = { s.obdCard1Metric, s.obdCard2Metric };
-    
-    for (int i = 0; i < 2; i++) {
-        int cardX = startX + i * (cardW + cardSpacing);
-        ObdMetric metric = cardMetrics[i];
-        
-        // Skip if metric is disabled
-        if (metric == OBD_METRIC_NONE) {
-            if (cardCache[i].wasDrawn) {
-                // Clear card area
-                FILL_RECT(cardX, cardY, cardW, cardH, PALETTE_BG);
-                cardCache[i].wasDrawn = false;
-            }
-            continue;
-        }
-        
-        char cardValue[32];
-        const char* cardLabel = "";
-        bool showDegrees = false;
-        bool hasData = getObdMetricText(metric, obd, cardValue, sizeof(cardValue), &cardLabel, &showDegrees);
-        
-        // Parse value for comparison
-        int currentValue = atoi(cardValue);
-        
-        // Check if we need to redraw
-        bool needsRedraw = !cardCache[i].wasDrawn || 
-                           cardCache[i].metric != metric ||
-                           abs(currentValue - cardCache[i].lastValue) >= 1;
-        
-        if (!needsRedraw) continue;
-        
-        // Get the color for this card
-        uint16_t cardColor = cardColors[i];
-        
-        // Draw card background with rounded corners
-        // Use a darker tinted background based on card color
-        uint8_t r = ((cardColor >> 11) & 0x1F) * 3 / 10;
-        uint8_t g = ((cardColor >> 5) & 0x3F) * 3 / 10;
-        uint8_t b = (cardColor & 0x1F) * 3 / 10;
-        uint16_t bgCol = (r << 11) | (g << 5) | b;
-        
-        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, cardColor);
-        
-        // Card layout: Label (left) + Value (right), vertically centered
-        const int rowY = cardY + (cardH - 16) / 2;  // Center size-2 text (16px) in card
-        
-        // Label on left
-        tft->setTextSize(2);
-        tft->setTextColor(cardColor);
-        tft->setCursor(cardX + 8, rowY);
-        tft->print(cardLabel);
-        
-        // Value on right side
-        tft->setTextColor(TFT_WHITE);
-        int valueLen = strlen(cardValue);
-        int valueX = cardX + cardW - (valueLen * 12) - 8;
-        if (showDegrees) {
-            valueX -= 18;  // Make room for F
-        }
-        tft->setCursor(valueX, rowY);
-        tft->print(cardValue);
-        if (showDegrees) {
-            tft->setTextSize(1);
-            tft->setCursor(valueX + valueLen * 12 + 2, rowY + 4);
-            tft->print("F");
-        }
-        
-        // Update cache
-        cardCache[i].metric = metric;
-        cardCache[i].lastValue = currentValue;
-        cardCache[i].wasDrawn = true;
-    }
-    
-    flush();
-#endif
+    // OBD disabled - return without drawing
+    return;
 }
 
 // Router: calls appropriate frequency draw method based on display style setting
@@ -4923,10 +4473,11 @@ void V1Display::drawStatusBar() {
     const V1Settings& s = settingsManager.get();
     
     // Current state
-    bool gpsHasFix = gpsHandler.hasValidFix();
-    int gpsSats = gpsHandler.getFix().satellites;  // Get satellites from fix struct
-    bool obdConnected = obdHandler.isConnected();
-    bool gpsEnabled = gpsHandler.isEnabled();
+    // GPS and OBD disabled - use false/0 values
+    bool gpsHasFix = false;
+    int gpsSats = 0;
+    bool obdConnected = false;
+    bool gpsEnabled = false;
     
     // Skip redraw if nothing changed (unless forced after screen clear)
     if (!s_forceStatusBarRedraw &&
@@ -4958,39 +4509,15 @@ void V1Display::drawStatusBar() {
     // Clear GPS area (wide enough for "GPS XX")
     FILL_RECT(gpsX, statusY, 80, statusHeight, PALETTE_BG);
     
-    if (gpsHasFix && gpsSats > 0) {
-        // Check if GPS is ready for navigation (sustained good fix)
-        bool gpsReady = gpsHandler.isReadyForNavigation();
-        
-        // GPS color: dim if acquiring (not ready), normal colors if ready
-        uint16_t gpsColor;
-        if (!gpsReady) {
-            // Acquiring: dim color regardless of sat count
-            gpsColor = dimColor(s.colorStatusGps, 40);  // 40% brightness
-        } else {
-            // Ready: normal colors based on satellite count
-            gpsColor = (gpsSats >= 4) ? s.colorStatusGps : s.colorStatusGpsWarn;
-        }
-        
-        tft->setTextColor(gpsColor);
-        tft->setCursor(gpsX, statusY + 1);
-        tft->printf("GPS %d", gpsSats);
-    } else if (gpsHandler.isEnabled()) {
-        // Show dimmed "GPS" when enabled but no fix
-        tft->setTextColor(PALETTE_MUTED_OR_PERSISTED);
-        tft->setCursor(gpsX, statusY + 1);
-        tft->print("GPS");
-    }
+    // GPS disabled - skip GPS indicator drawing
+    (void)gpsX;  // Suppress unused variable warning
     
     // ---- OBD indicator ----
     // Clear OBD area
     FILL_RECT(obdX, statusY, 42, statusHeight, PALETTE_BG);
     
-    if (obdConnected) {
-        tft->setTextColor(s.colorStatusObd);
-        tft->setCursor(obdX, statusY + 1);
-        tft->print("OBD");
-    }
+    // OBD disabled - skip OBD indicator drawing
+    (void)obdX;  // Suppress unused variable warning
 #endif
 }
 
