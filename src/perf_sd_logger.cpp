@@ -16,7 +16,7 @@ static constexpr const char* PERF_CSV_HEADER =
     "millis,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
-static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 3072;
+static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
 static constexpr UBaseType_t PERF_SD_WRITER_PRIORITY = 1;
 }  // namespace
 
