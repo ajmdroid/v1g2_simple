@@ -72,11 +72,6 @@ public:
     void checkWifiClientStatus();  // Call in loop() to manage STA connection
     String getConnectedSSID() const;  // Returns empty if not connected
     
-    // Async NTP time sync (non-blocking, when WiFi connected)
-    void startAsyncNtpSync();         // Start async NTP sync (returns immediately)
-    bool checkNtpSyncStatus();        // Check if sync completed (call in loop)
-    bool isNtpSyncPending() const;    // True if sync in progress
-    
     // Callbacks for alert data (to display on web page)
     void setAlertCallback(std::function<String()> callback) { getAlertJson = callback; }
     void setStatusCallback(std::function<String()> callback) { getStatusJson = callback; }
@@ -163,6 +158,7 @@ private:
     
     // API endpoints
     void handleApiProfilePush();      // POST /api/profile/push - queue profile push
+    void handleTimeSet();             // POST /api/time/set - set trusted epoch base
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();

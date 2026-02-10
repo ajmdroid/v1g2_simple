@@ -522,6 +522,7 @@ void setup() {
                            &displayMode);
 
     uint32_t bootId = nextBootId();
+    perfSdLogger.setBootId(bootId);
     DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
     uint32_t logMask = buildLogCategoryBitmap(bootCfg);
     const V1Settings& bootSettings = settingsManager.get();

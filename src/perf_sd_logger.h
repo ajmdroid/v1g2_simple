@@ -16,6 +16,8 @@
 
 struct PerfSdSnapshot {
     uint32_t millisTs;
+    uint8_t timeValid;
+    uint8_t timeSource;
     uint32_t rx;
     uint32_t qDrop;
     uint32_t parseOk;
@@ -35,6 +37,7 @@ struct PerfSdSnapshot {
 class PerfSdLogger {
 public:
     void begin(bool sdAvailable);
+    void setBootId(uint32_t id) { bootId = id; }
     bool enqueue(const PerfSdSnapshot& snapshot);
     bool isEnabled() const { return enabled; }
 
@@ -55,6 +58,7 @@ private:
     uint32_t sessionSeq = 0;
     uint32_t sessionToken = 0;
     uint32_t sessionStartMs = 0;
+    uint32_t bootId = 0;
 };
 
 extern PerfSdLogger perfSdLogger;

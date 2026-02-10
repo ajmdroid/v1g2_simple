@@ -15,37 +15,18 @@
 #include "perf_metrics.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
+#include "time_service.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <map>
 #include <vector>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
-#include "esp_sntp.h"
-#include "esp_netif_sntp.h"
 #include "esp_wifi.h"
-#include <time.h>
-
-// Async NTP sync state (callback runs in SNTP task context)
-static volatile bool s_ntpSyncPending = false;   // Waiting for sync
-static volatile bool s_ntpSyncComplete = false;  // Sync succeeded
-static bool s_sntpInitialized = false;           // SNTP service initialized (reset on WiFi OFF)
-static struct tm s_ntpTimeInfo;                   // Cached time from callback
-static portMUX_TYPE s_ntpMux = portMUX_INITIALIZER_UNLOCKED;
-
-// NTP sync callback - called from lwIP SNTP task when time syncs
-static void onNtpTimeSynced(struct timeval *tv) {
-    portENTER_CRITICAL(&s_ntpMux);
-    // Cache the synced time for main loop to consume
-    time_t nowSecs = tv->tv_sec;
-    gmtime_r(&nowSecs, &s_ntpTimeInfo);
-    s_ntpSyncComplete = true;
-    s_ntpSyncPending = false;
-    portEXIT_CRITICAL(&s_ntpMux);
-}
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
@@ -108,6 +89,20 @@ static void dumpLittleFSRoot() {
     }
     
     root.close();
+}
+
+static bool parseUint64Strict(const String& input, uint64_t& out) {
+    if (input.length() == 0) {
+        return false;
+    }
+    char* end = nullptr;
+    const char* raw = input.c_str();
+    unsigned long long v = strtoull(raw, &end, 10);
+    if (end == raw || *end != '\0') {
+        return false;
+    }
+    out = static_cast<uint64_t>(v);
+    return true;
 }
 
 // Helper to serve files from LittleFS (with gzip support)
@@ -303,10 +298,6 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
         // Skip per-step delays and expensive disconnect/erase operations.
         WIFI_LOG("[SetupMode] Emergency low_dma shutdown (fast path)\n");
         server.stop();
-        if (s_sntpInitialized) {
-            esp_netif_sntp_deinit();
-            s_sntpInitialized = false;
-        }
         WiFi.mode(WIFI_OFF);
     } else {
         WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
@@ -316,13 +307,6 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
         server.stop();
         WIFI_LOG("[SetupMode] HTTP server stopped\n");
         vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
-
-        // Stop SNTP service ONLY if it was initialized (gate by state flag)
-        if (s_sntpInitialized) {
-            esp_netif_sntp_deinit();
-            s_sntpInitialized = false;  // Clear flag immediately after deinit
-            WIFI_LOG("[SetupMode] SNTP service stopped\n");
-        }
 
         // ========== 2. STOP RADIO CLEANLY ==========
         // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
@@ -356,23 +340,15 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPassword = "";
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
-    
-    // Clear NTP sync state (allows re-sync when WiFi restarts)
-    // Note: s_sntpInitialized already cleared above during SNTP deinit
-    portENTER_CRITICAL(&s_ntpMux);
-    s_ntpSyncPending = false;
-    s_ntpSyncComplete = false;
-    portEXIT_CRITICAL(&s_ntpMux);
 
     // ========== 4. OBSERVABILITY ==========
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
     uint32_t freeDmaAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t largestDmaAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t stopDurMs = millis() - stopStartMs;
-    Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d sntp=%d freeDma=%lu largestDma=%lu durMs=%lu\n",
+    Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d freeDma=%lu largestDma=%lu durMs=%lu\n",
                   stopReason,
                   manual ? 1 : 0,
-                  0,
                   0,
                   0,
                   (unsigned long)freeDmaAfter,
@@ -480,6 +456,10 @@ void WiFiManager::setupWebServer() {
     server.on("/api/profile/push", HTTP_POST, [this]() { 
         if (!checkRateLimit()) return;
         handleApiProfilePush(); 
+    });
+    server.on("/api/time/set", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        handleTimeSet();
     });
     
     // Legacy status endpoint
@@ -852,26 +832,8 @@ void WiFiManager::checkWifiClientStatus() {
         }
         
         case WIFI_CLIENT_CONNECTED: {
-            // Async NTP sync - non-blocking
-            static bool ntpSyncedThisConnection = false;
-            static bool ntpStartedThisConnection = false;
-            
-            if (!ntpSyncedThisConnection) {
-                if (!ntpStartedThisConnection) {
-                    // Start async NTP (returns immediately)
-                    startAsyncNtpSync();
-                    ntpStartedThisConnection = true;
-                }
-                // Poll for completion (non-blocking)
-                if (checkNtpSyncStatus()) {
-                    ntpSyncedThisConnection = true;
-                }
-            }
-            
             if (status != WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_DISCONNECTED;
-                ntpSyncedThisConnection = false;  // Reset for next connection
-                ntpStartedThisConnection = false;
                 Serial.println("[WiFiClient] Lost connection");
                 
                 // WiFi transitioning - defer SD writes to avoid NVS flash contention
@@ -924,72 +886,6 @@ void WiFiManager::checkWifiClientStatus() {
     }
 }
 
-// Start async NTP sync (non-blocking). Call checkNtpSyncStatus() to poll result.
-void WiFiManager::startAsyncNtpSync() {
-    if (s_sntpInitialized) {
-        // Already running - just mark pending
-        portENTER_CRITICAL(&s_ntpMux);
-        s_ntpSyncPending = true;
-        portEXIT_CRITICAL(&s_ntpMux);
-        return;
-    }
-    
-    // Initialize SNTP with async callback (ESP-IDF modern API)
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
-        ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov", "time.google.com"));
-    config.sync_cb = onNtpTimeSynced;  // Async callback when time syncs
-    config.start = true;                // Auto-start SNTP service
-    
-    esp_err_t err = esp_netif_sntp_init(&config);
-    if (err == ESP_OK) {
-        s_sntpInitialized = true;
-        portENTER_CRITICAL(&s_ntpMux);
-        s_ntpSyncPending = true;
-        s_ntpSyncComplete = false;
-        portEXIT_CRITICAL(&s_ntpMux);
-        Serial.println("[WiFiClient] Async NTP sync started");
-    } else {
-        Serial.printf("[WiFiClient] SNTP init failed: %s\n", esp_err_to_name(err));
-    }
-}
-
-// Check if async NTP sync completed (non-blocking). Returns true once on success.
-bool WiFiManager::checkNtpSyncStatus() {
-    portENTER_CRITICAL(&s_ntpMux);
-    bool complete = s_ntpSyncComplete;
-    struct tm timeinfo = s_ntpTimeInfo;  // Copy under lock
-    if (complete) {
-        s_ntpSyncComplete = false;  // Clear so we only return true once
-    }
-    portEXIT_CRITICAL(&s_ntpMux);
-    
-    if (complete) {
-        // Sync succeeded - update debug logger with cached time
-        debugLogger.syncTimeFromNTP(
-            timeinfo.tm_year + 1900,
-            timeinfo.tm_mon + 1,
-            timeinfo.tm_mday,
-            timeinfo.tm_hour,
-            timeinfo.tm_min,
-            timeinfo.tm_sec
-        );
-        
-        Serial.printf("[WiFiClient] NTP time synced: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        return true;
-    }
-    return false;
-}
-
-// Check if NTP sync is in progress
-bool WiFiManager::isNtpSyncPending() const {
-    portENTER_CRITICAL(&s_ntpMux);
-    bool pending = s_ntpSyncPending;
-    portEXIT_CRITICAL(&s_ntpMux);
-    return pending;
-}
-
 void WiFiManager::handleStatus() {
     // Option 2 optimization: Cache status JSON for 500ms to avoid repeated serialization
     unsigned long now = millis();
@@ -1019,7 +915,19 @@ void WiFiManager::handleStatus() {
         device["heap_free"] = ESP.getFreeHeap();
         device["hostname"] = "v1g2";
         device["firmware_version"] = FIRMWARE_VERSION;
-        
+
+        // Safe clock status (explicitly set from trusted source, no background sync).
+        JsonObject time = doc["time"].to<JsonObject>();
+        const bool timeValid = timeService.timeValid();
+        time["valid"] = timeValid;
+        time["source"] = timeService.timeSource();
+        time["tzOffsetMin"] = timeService.tzOffsetMinutes();
+        time["tzOffsetMinutes"] = timeService.tzOffsetMinutes();
+        if (timeValid) {
+            time["epochMs"] = timeService.nowEpochMsOr0();
+            time["ageMs"] = timeService.epochAgeMsOr0();
+        }
+
         // Battery info
         JsonObject battery = doc["battery"].to<JsonObject>();
         battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
@@ -1083,6 +991,117 @@ void WiFiManager::handleApiProfilePush() {
     String json;
     serializeJson(doc, json);
     server.send(queued ? 200 : 500, "application/json", json);
+}
+
+void WiFiManager::handleTimeSet() {
+    uint64_t unixMs = 0;
+    int32_t tzOffsetMin = 0;
+    bool haveUnixMs = false;
+    bool sourceIsClient = true;
+
+    // Preferred JSON: {"unixMs": <ms>, "tzOffsetMin": <minutes>, "source":"client"}
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, server.arg("plain"));
+        if (!err) {
+            if (doc["source"].is<const char*>()) {
+                String source = doc["source"].as<String>();
+                source.toLowerCase();
+                sourceIsClient = (source.length() == 0 || source == "client");
+            }
+
+            if (doc["unixMs"].is<const char*>()) {
+                haveUnixMs = parseUint64Strict(doc["unixMs"].as<String>(), unixMs);
+            } else if (doc["unixMs"].is<uint64_t>()) {
+                unixMs = doc["unixMs"].as<uint64_t>();
+                haveUnixMs = true;
+            } else if (doc["epochMs"].is<const char*>()) {
+                // Compatibility key
+                haveUnixMs = parseUint64Strict(doc["epochMs"].as<String>(), unixMs);
+            } else if (doc["epochMs"].is<uint64_t>()) {
+                unixMs = doc["epochMs"].as<uint64_t>();
+                haveUnixMs = true;
+            } else if (doc["clientEpochMs"].is<const char*>()) {
+                // Compatibility key
+                haveUnixMs = parseUint64Strict(doc["clientEpochMs"].as<String>(), unixMs);
+            } else if (doc["clientEpochMs"].is<uint64_t>()) {
+                unixMs = doc["clientEpochMs"].as<uint64_t>();
+                haveUnixMs = true;
+            }
+
+            if (doc["tzOffsetMin"].is<int32_t>()) {
+                tzOffsetMin = doc["tzOffsetMin"].as<int32_t>();
+            } else if (doc["tzOffsetMinutes"].is<int32_t>()) {
+                // Compatibility key
+                tzOffsetMin = doc["tzOffsetMinutes"].as<int32_t>();
+            }
+        }
+    }
+
+    // Compatibility fallback: form/query args
+    if (!haveUnixMs) {
+        if (server.hasArg("unixMs")) {
+            haveUnixMs = parseUint64Strict(server.arg("unixMs"), unixMs);
+        } else if (server.hasArg("epochMs")) {
+            haveUnixMs = parseUint64Strict(server.arg("epochMs"), unixMs);
+        } else if (server.hasArg("clientEpochMs")) {
+            haveUnixMs = parseUint64Strict(server.arg("clientEpochMs"), unixMs);
+        }
+    }
+    if (server.hasArg("tzOffsetMin")) {
+        tzOffsetMin = server.arg("tzOffsetMin").toInt();
+    } else if (server.hasArg("tzOffsetMinutes")) {
+        tzOffsetMin = server.arg("tzOffsetMinutes").toInt();
+    }
+    if (server.hasArg("source")) {
+        String source = server.arg("source");
+        source.toLowerCase();
+        sourceIsClient = (source.length() == 0 || source == "client");
+    }
+
+    if (!sourceIsClient) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Unsupported source\"}");
+        return;
+    }
+
+    if (!haveUnixMs) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing or invalid unixMs\"}");
+        return;
+    }
+
+    // Sanity range: >= ~2023-11 and <= 2100
+    static constexpr uint64_t MIN_VALID_UNIX_MS = 1700000000000ULL;
+    static constexpr uint64_t MAX_VALID_UNIX_MS = 4102444800000ULL;
+    if (unixMs < MIN_VALID_UNIX_MS || unixMs > MAX_VALID_UNIX_MS) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"unixMs out of range\"}");
+        return;
+    }
+
+    if (tzOffsetMin < -840) tzOffsetMin = -840;
+    if (tzOffsetMin > 840) tzOffsetMin = 840;
+
+    timeService.setEpochBaseMs(
+        static_cast<int64_t>(unixMs),
+        tzOffsetMin,
+        TimeService::SOURCE_CLIENT_AP);
+    lastStatusJsonTime = 0;  // Invalidate cached /api/status response.
+
+    JsonDocument response;
+    response["ok"] = true;
+    response["timeValid"] = timeService.timeValid();
+    response["timeSource"] = timeService.timeSource();
+    response["epochMs"] = timeService.nowEpochMsOr0();
+    response["tzOffsetMin"] = timeService.tzOffsetMinutes();
+
+    // Backward-compatible fields
+    response["success"] = true;
+    response["monoMs"] = timeService.nowMonoMs();
+    response["epochAgeMs"] = timeService.epochAgeMsOr0();
+    response["tzOffsetMinutes"] = timeService.tzOffsetMinutes();
+
+    String json;
+    serializeJson(response, json);
+    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleSettingsApi() {

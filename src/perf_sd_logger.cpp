@@ -14,7 +14,7 @@ namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH = "/perf/perf.csv";
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap\n";
+    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
@@ -103,12 +103,13 @@ bool PerfSdLogger::ensurePerfDir(fs::FS& fs) {
 }
 
 bool PerfSdLogger::writeSessionMarker(File& f) {
-    char marker[96];
+    char marker[128];
     int n = snprintf(
         marker,
         sizeof(marker),
-        "#session_start,seq=%lu,uptime_ms=%lu,token=%08lX\n",
+        "#session_start,seq=%lu,bootId=%lu,uptime_ms=%lu,token=%08lX\n",
         static_cast<unsigned long>(sessionSeq),
+        static_cast<unsigned long>(bootId),
         static_cast<unsigned long>(sessionStartMs),
         static_cast<unsigned long>(sessionToken));
     if (n <= 0 || n >= static_cast<int>(sizeof(marker))) {
@@ -186,12 +187,14 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    char line[256];
+    char line[300];
     int n = snprintf(
         line,
         sizeof(line),
-        "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
+        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
         static_cast<unsigned long>(snapshot.millisTs),
+        static_cast<unsigned int>(snapshot.timeValid),
+        static_cast<unsigned int>(snapshot.timeSource),
         static_cast<unsigned long>(snapshot.rx),
         static_cast<unsigned long>(snapshot.qDrop),
         static_cast<unsigned long>(snapshot.parseOk),

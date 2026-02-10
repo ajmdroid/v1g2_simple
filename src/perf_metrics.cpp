@@ -6,6 +6,7 @@
 #include "debug_logger.h"  // For drop counter access (never log via debug logger)
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
+#include "time_service.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -93,6 +94,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     snapshot.millisTs = nowMs;
+    snapshot.timeValid = timeService.timeValid() ? 1 : 0;
+    snapshot.timeSource = timeService.timeSource();
     snapshot.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
     snapshot.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
     snapshot.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);

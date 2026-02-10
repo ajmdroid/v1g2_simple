@@ -33,10 +33,19 @@
 	let wifiPassword = $state('');
 	let wifiConnecting = $state(false);
 	let wifiPollInterval = $state(null);
+
+	let timeStatus = $state({
+		valid: false,
+		source: 0,
+		epochMs: 0,
+		tzOffsetMin: 0,
+		syncing: false
+	});
 	
 	onMount(async () => {
 		await fetchSettings();
 		await fetchWifiStatus();
+		await fetchTimeStatus();
 		
 		// Poll WiFi status every 3 seconds when modal is open
 		return () => {
@@ -67,6 +76,62 @@
 			}
 		} catch (e) {
 			console.error('Failed to fetch WiFi status:', e);
+		}
+	}
+
+	function getTimeSourceLabel(source) {
+		switch (source) {
+			case 1: return 'CLIENT_AP';
+			case 2: return 'GPS';
+			case 3: return 'SNTP';
+			case 4: return 'RTC';
+			default: return 'NONE';
+		}
+	}
+
+	async function fetchTimeStatus() {
+		try {
+			const res = await fetch('/api/status');
+			if (res.ok) {
+				const data = await res.json();
+				const t = data?.time || {};
+				timeStatus.valid = !!t.valid;
+				timeStatus.source = Number(t.source || 0);
+				timeStatus.epochMs = Number(t.epochMs || 0);
+				timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
+			}
+		} catch (e) {
+			console.error('Failed to fetch time status:', e);
+		}
+	}
+
+	async function syncTimeFromPhone() {
+		timeStatus.syncing = true;
+		try {
+			const res = await fetch('/api/time/set', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					unixMs: Date.now(),
+					tzOffsetMin: new Date().getTimezoneOffset() * -1,
+					source: 'client'
+				})
+			});
+			const data = await res.json().catch(() => ({}));
+			if (res.ok && (data.ok || data.success)) {
+				timeStatus.valid = !!data.timeValid;
+				timeStatus.source = Number(data.timeSource || 0);
+				timeStatus.epochMs = Number(data.epochMs || 0);
+				timeStatus.tzOffsetMin = Number(data.tzOffsetMin ?? data.tzOffsetMinutes ?? 0);
+				message = { type: 'success', text: 'Time synced from phone.' };
+			} else {
+				message = { type: 'error', text: data.error || 'Failed to sync time' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Failed to sync time' };
+		} finally {
+			timeStatus.syncing = false;
+			await fetchTimeStatus();
 		}
 	}
 	
@@ -382,6 +447,28 @@
 					</div>
 					{/if}
 				</div>
+			</div>
+		</div>
+
+		<!-- Device Time -->
+		<div class="card bg-base-200">
+			<div class="card-body space-y-3">
+				<h2 class="card-title">🕒 Device Time</h2>
+				<p class="text-sm text-base-content/60">Manual phone sync only. No background NTP.</p>
+				<div class="text-sm space-y-1">
+					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
+					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
+					{#if timeStatus.valid}
+						<div><strong>epochMs:</strong> {timeStatus.epochMs}</div>
+						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
+					{/if}
+				</div>
+				<button class="btn btn-primary btn-sm w-fit" onclick={syncTimeFromPhone} disabled={timeStatus.syncing}>
+					{#if timeStatus.syncing}
+						<span class="loading loading-spinner loading-sm"></span>
+					{/if}
+					Sync Time from Phone
+				</button>
 			</div>
 		</div>
 		
