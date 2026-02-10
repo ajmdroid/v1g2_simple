@@ -40,7 +40,20 @@ struct ScannedNetwork {
 class WiFiManager {
 public:
     WiFiManager();
-    
+
+    // Internal SRAM guardrails for WiFi lifecycle.
+    // AP+STA needs more headroom than AP-only.
+    static constexpr uint32_t WIFI_START_MIN_FREE_AP_ONLY = 28672;      // 28KB
+    static constexpr uint32_t WIFI_START_MIN_BLOCK_AP_ONLY = 10240;     // 10KB
+    static constexpr uint32_t WIFI_START_MIN_FREE_AP_STA = 40960;       // 40KB
+    static constexpr uint32_t WIFI_START_MIN_BLOCK_AP_STA = 20480;      // 20KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_AP_ONLY = 16384;    // 16KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_AP_ONLY = 8192;    // 8KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_AP_STA = 20480;     // 20KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_AP_STA = 10240;    // 10KB
+    static constexpr unsigned long WIFI_LOW_DMA_PERSIST_MS = 1500;      // Require sustained low heap before shutdown
+    static constexpr unsigned long WIFI_LOW_DMA_RETRY_COOLDOWN_MS = 30000; // Avoid rapid start/stop thrash
+
     // AP control (AP-only for configuration)
     bool startSetupMode();      // Start AP for configuration (idempotent)
     bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
@@ -52,6 +65,10 @@ public:
     
     // Legacy compatibility (redirects to Setup Mode)
     bool begin() { return startSetupMode(); }
+
+    // Preflight check for setup-mode start admission.
+    bool canStartSetupMode(uint32_t* freeInternal = nullptr, uint32_t* largestInternal = nullptr) const;
+    unsigned long lowDmaCooldownRemainingMs() const;
     
     // Reset WiFi reconnect failure counter (call when user manually triggers WiFi)
     void resetReconnectFailures() { wifiReconnectFailures = 0; }
@@ -116,6 +133,10 @@ private:
     
     // Web activity tracking for WiFi priority mode
     unsigned long lastUiActivityMs = 0;
+
+    // Low-DMA protection state (prevents rapid restart loops under heap pressure)
+    unsigned long lowDmaCooldownUntilMs = 0;
+    unsigned long lowDmaSinceMs = 0;
     
     // Rate limiting
     static constexpr int RATE_LIMIT_WINDOW_MS = 60000;  // 60 second window (1 minute)

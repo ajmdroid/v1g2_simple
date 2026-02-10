@@ -1,4 +1,5 @@
 #include "wifi_orchestrator_module.h"
+#include <esp_heap_caps.h>
 
 WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    V1BLEClient& bleClient,
@@ -31,10 +32,29 @@ void WifiOrchestrator::startWifi() {
 
     // Reset failure counter so user can retry after "gave up" state
     wifiManager.resetReconnectFailures();
-    
+
+    uint32_t freeInternal = 0;
+    uint32_t largestInternal = 0;
+    const unsigned long cooldownMs = wifiManager.lowDmaCooldownRemainingMs();
+    if (!wifiManager.canStartSetupMode(&freeInternal, &largestInternal)) {
+        if (cooldownMs > 0) {
+            Serial.printf("[WiFi] Start deferred: low_dma cooldown (%lu ms remaining, freeInternal=%lu largestInternal=%lu)\n",
+                          (unsigned long)cooldownMs,
+                          (unsigned long)freeInternal,
+                          (unsigned long)largestInternal);
+        } else {
+            Serial.printf("[WiFi] Start blocked: insufficient internal SRAM (freeInternal=%lu largestInternal=%lu)\n",
+                          (unsigned long)freeInternal,
+                          (unsigned long)largestInternal);
+        }
+        return;
+    }
+
     Serial.println("[WiFi] Starting WiFi (manual start)...");
     if (!wifiManager.begin()) {
-        Serial.println("[WiFi] begin() failed (memory or radio)");
+        Serial.printf("[WiFi] begin() failed (freeInternal=%lu largestInternal=%lu)\n",
+                      (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                      (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
         return;
     }
 

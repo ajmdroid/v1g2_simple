@@ -105,6 +105,24 @@ static bool parseUint64Strict(const String& input, uint64_t& out) {
     return true;
 }
 
+static bool shouldUseApSta(const V1Settings& settings) {
+    return settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0;
+}
+
+static void getWifiStartThresholds(bool apStaMode, uint32_t& minFree, uint32_t& minBlock) {
+    minFree = apStaMode ? WiFiManager::WIFI_START_MIN_FREE_AP_STA
+                        : WiFiManager::WIFI_START_MIN_FREE_AP_ONLY;
+    minBlock = apStaMode ? WiFiManager::WIFI_START_MIN_BLOCK_AP_STA
+                         : WiFiManager::WIFI_START_MIN_BLOCK_AP_ONLY;
+}
+
+static void getWifiRuntimeThresholds(bool apStaMode, uint32_t& minFree, uint32_t& minBlock) {
+    minFree = apStaMode ? WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_STA
+                        : WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_ONLY;
+    minBlock = apStaMode ? WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_STA
+                         : WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
+}
+
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
     uint32_t startUs = PERF_TIMESTAMP_US();
@@ -208,6 +226,37 @@ bool WiFiManager::isUiActive(unsigned long timeoutMs) const {
     return (millis() - lastUiActivityMs) < timeoutMs;
 }
 
+unsigned long WiFiManager::lowDmaCooldownRemainingMs() const {
+    if (lowDmaCooldownUntilMs == 0) {
+        return 0;
+    }
+
+    unsigned long now = millis();
+    long remaining = static_cast<long>(lowDmaCooldownUntilMs - now);
+    return (remaining > 0) ? static_cast<unsigned long>(remaining) : 0;
+}
+
+bool WiFiManager::canStartSetupMode(uint32_t* freeInternal, uint32_t* largestInternal) const {
+    const uint32_t freeNow = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const uint32_t largestNow = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (freeInternal) {
+        *freeInternal = freeNow;
+    }
+    if (largestInternal) {
+        *largestInternal = largestNow;
+    }
+
+    if (lowDmaCooldownRemainingMs() > 0) {
+        return false;
+    }
+
+    const V1Settings& settings = settingsManager.get();
+    uint32_t minFree = 0;
+    uint32_t minBlock = 0;
+    getWifiStartThresholds(shouldUseApSta(settings), minFree, minBlock);
+    return freeNow >= minFree && largestNow >= minBlock;
+}
+
 // Ensure last client seen timestamp advances when UI is accessed
 // (called on every HTTP request via checkRateLimit/markUiActivity)
 
@@ -219,31 +268,54 @@ bool WiFiManager::startSetupMode() {
     }
 
     WIFI_LOG("[SetupMode] Starting AP (always-on mode)...\n");
-    
-    // Check internal SRAM before WiFi init - WiFi needs ~80-100KB for TLS/crypto
-    // If insufficient, refuse to start (prevents esp-sha crash)
-    uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint32_t largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    WIFI_LOG("[SetupMode] Internal SRAM before WiFi: free=%lu, largest=%lu\n", 
-             (unsigned long)freeDma, (unsigned long)largestDma);
-    
-    // WiFi needs at least 40KB free internal SRAM and 20KB contiguous block
-    // These are conservative estimates based on esp-sha crash evidence
-    constexpr uint32_t MIN_FREE_FOR_WIFI = 40960;   // 40KB
-    constexpr uint32_t MIN_BLOCK_FOR_WIFI = 20480;  // 20KB
-    if (freeDma < MIN_FREE_FOR_WIFI || largestDma < MIN_BLOCK_FOR_WIFI) {
-        WIFI_LOG("[SetupMode] ABORT: Insufficient internal SRAM for WiFi\n");
-        WIFI_LOG("[SetupMode] Need free>=%luKB, largest>=%luKB - have free=%luKB, largest=%luKB\n",
-                 MIN_FREE_FOR_WIFI/1024, MIN_BLOCK_FOR_WIFI/1024, freeDma/1024, largestDma/1024);
+    const V1Settings& settings = settingsManager.get();
+    const bool apStaMode = shouldUseApSta(settings);
+
+    // Check internal SRAM before WiFi init. AP+STA requires more headroom than AP-only.
+    const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t minFree = 0;
+    uint32_t minBlock = 0;
+    getWifiStartThresholds(apStaMode, minFree, minBlock);
+    const unsigned long cooldownMs = lowDmaCooldownRemainingMs();
+
+    Serial.printf("[SetupMode] Start preflight: mode=%s freeInternal=%lu largestInternal=%lu needFree>=%lu needLargest>=%lu cooldownMs=%lu\n",
+                  apStaMode ? "AP+STA" : "AP",
+                  (unsigned long)freeInternal,
+                  (unsigned long)largestInternal,
+                  (unsigned long)minFree,
+                  (unsigned long)minBlock,
+                  (unsigned long)cooldownMs);
+
+    if (cooldownMs > 0) {
+        Serial.printf("[SetupMode] ABORT: low_dma cooldown active (%lu ms remaining)\n",
+                      (unsigned long)cooldownMs);
+        WIFI_LOG("[SetupMode] ABORT: low_dma cooldown active (%lu ms remaining)\n",
+                 (unsigned long)cooldownMs);
+        return false;
+    }
+
+    if (freeInternal < minFree || largestInternal < minBlock) {
+        Serial.printf("[SetupMode] ABORT: Insufficient internal SRAM (need free>=%lu largest>=%lu, have free=%lu largest=%lu)\n",
+                      (unsigned long)minFree,
+                      (unsigned long)minBlock,
+                      (unsigned long)freeInternal,
+                      (unsigned long)largestInternal);
+        WIFI_LOG("[SetupMode] ABORT: Insufficient internal SRAM (need free>=%lu largest>=%lu, have free=%lu largest=%lu)\n",
+                 (unsigned long)minFree,
+                 (unsigned long)minBlock,
+                 (unsigned long)freeInternal,
+                 (unsigned long)largestInternal);
         return false;  // Graceful fail instead of crash
     }
-    
+
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
+    lowDmaSinceMs = 0;
+    lowDmaCooldownUntilMs = 0;
 
     // Check if WiFi client is enabled - use AP+STA mode
-    const V1Settings& settings = settingsManager.get();
-    if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+    if (apStaMode) {
         WIFI_LOG("[SetupMode] WiFi client enabled, using AP+STA mode\n");
         WiFi.mode(WIFI_AP_STA);
         wifiClientState = WIFI_CLIENT_DISCONNECTED;
@@ -285,22 +357,25 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     }
     const bool emergencyLowDma = (strcmp(stopReason, "low_dma") == 0);
     const uint32_t stopStartMs = millis();
-    uint32_t freeDmaBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint32_t largestDmaBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t freeInternalBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestInternalBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     Serial.printf("[SetupMode] Stopping WiFi: reason=%s manual=%d freeDma=%lu largestDma=%lu\n",
                   stopReason,
                   manual ? 1 : 0,
-                  (unsigned long)freeDmaBefore,
-                  (unsigned long)largestDmaBefore);
+                  (unsigned long)freeInternalBefore,
+                  (unsigned long)largestInternalBefore);
 
     if (emergencyLowDma) {
         // Emergency path: prioritize low-latency return to BLE/display loop.
         // Skip per-step delays and expensive disconnect/erase operations.
         WIFI_LOG("[SetupMode] Emergency low_dma shutdown (fast path)\n");
+        lowDmaSinceMs = 0;
+        lowDmaCooldownUntilMs = millis() + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
         server.stop();
         WiFi.mode(WIFI_OFF);
     } else {
         WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
+        lowDmaSinceMs = 0;
 
         // ========== 1. STOP ALL SERVICES ==========
         // Stop HTTP server first (no more requests)
@@ -343,16 +418,16 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
 
     // ========== 4. OBSERVABILITY ==========
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
-    uint32_t freeDmaAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint32_t largestDmaAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t freeInternalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestInternalAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t stopDurMs = millis() - stopStartMs;
     Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d freeDma=%lu largestDma=%lu durMs=%lu\n",
                   stopReason,
                   manual ? 1 : 0,
                   0,
                   0,
-                  (unsigned long)freeDmaAfter,
-                  (unsigned long)largestDmaAfter,
+                  (unsigned long)freeInternalAfter,
+                  (unsigned long)largestInternalAfter,
                   (unsigned long)stopDurMs);
     
     return true;
@@ -618,24 +693,50 @@ void WiFiManager::checkAutoTimeout() {
 
 void WiFiManager::process() {
     if (setupModeState != SETUP_MODE_AP_ON) {
+        lowDmaSinceMs = 0;
         return;  // No WiFi processing when Setup Mode is off
     }
-    
-    // Runtime SRAM guard: kill WiFi before it crashes the system
-    // WiFi's TLS stack needs ~20-40KB of internal SRAM for crypto operations
-    // Evidence: SD log shows WiFi consuming 63KB transiently (93KB→19KB),
-    // blocking main loop for 2.9s. Match startup thresholds (40KB/20KB).
-    constexpr uint32_t CRITICAL_DMA_FREE = 40960;   // 40KB - match startup requirement
-    constexpr uint32_t CRITICAL_DMA_BLOCK = 20480;  // 20KB - match startup requirement
-    
-    uint32_t freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    uint32_t largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    
-    if (freeDma < CRITICAL_DMA_FREE || largestDma < CRITICAL_DMA_BLOCK) {
-        WIFI_LOG("[WiFi] CRITICAL: Internal SRAM low (free=%lu, block=%lu) - emergency shutdown\n",
-                 (unsigned long)freeDma, (unsigned long)largestDma);
-        stopSetupMode(false, "low_dma");  // Graceful shutdown to free memory
-        return;
+
+    // Runtime SRAM guard with persistence + mode-aware thresholds:
+    // AP+STA needs more memory than AP-only, and short dips should not force shutdown.
+    const wifi_mode_t mode = WiFi.getMode();
+    const bool apStaMode = (mode == WIFI_AP_STA || mode == WIFI_STA);
+    uint32_t criticalFree = 0;
+    uint32_t criticalBlock = 0;
+    getWifiRuntimeThresholds(apStaMode, criticalFree, criticalBlock);
+
+    const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const bool lowHeap = (freeInternal < criticalFree) || (largestInternal < criticalBlock);
+
+    if (lowHeap) {
+        const unsigned long now = millis();
+        if (lowDmaSinceMs == 0) {
+            lowDmaSinceMs = now;
+            Serial.printf("[WiFi] WARN: Internal SRAM low (mode=%s free=%lu block=%lu need>=%lu/%lu) - grace %lu ms\n",
+                          apStaMode ? "AP+STA" : "AP",
+                          (unsigned long)freeInternal,
+                          (unsigned long)largestInternal,
+                          (unsigned long)criticalFree,
+                          (unsigned long)criticalBlock,
+                          (unsigned long)WIFI_LOW_DMA_PERSIST_MS);
+        } else if ((now - lowDmaSinceMs) >= WIFI_LOW_DMA_PERSIST_MS) {
+            WIFI_LOG("[WiFi] CRITICAL: Internal SRAM low for %lu ms (free=%lu, block=%lu) - emergency shutdown\n",
+                     (unsigned long)(now - lowDmaSinceMs),
+                     (unsigned long)freeInternal,
+                     (unsigned long)largestInternal);
+            Serial.printf("[WiFi] CRITICAL: Internal SRAM low for %lu ms (free=%lu block=%lu) - stopping WiFi\n",
+                          (unsigned long)(now - lowDmaSinceMs),
+                          (unsigned long)freeInternal,
+                          (unsigned long)largestInternal);
+            stopSetupMode(false, "low_dma");  // Graceful shutdown to free memory
+            return;
+        }
+    } else if (lowDmaSinceMs != 0) {
+        const unsigned long lowDuration = millis() - lowDmaSinceMs;
+        Serial.printf("[WiFi] RECOVERED: Internal SRAM back above threshold after %lu ms\n",
+                      (unsigned long)lowDuration);
+        lowDmaSinceMs = 0;
     }
     
     // Handle web requests
