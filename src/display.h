@@ -136,6 +136,7 @@ private:
     void drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);    // Montserrat Bold font
     void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);      // Hemi Head font (retro speedometer)
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
+    void markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h);
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
@@ -179,6 +180,11 @@ private:
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     bool frequencyRenderDirty = false;      // Set when drawFrequency changed pixels this call
+    bool frequencyDirtyValid = false;       // True when a minimal dirty region is available
+    int16_t frequencyDirtyX = 0;
+    int16_t frequencyDirtyY = 0;
+    int16_t frequencyDirtyW = 0;
+    int16_t frequencyDirtyH = 0;
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
