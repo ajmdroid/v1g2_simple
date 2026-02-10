@@ -623,6 +623,12 @@ bool V1Display::begin() {
     ofrSerpentineInitialized = (ftErr4 == 0);
     if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
 
+#ifdef CONFIG_SPIRAM_SUPPORT
+    Serial.println("[Display] OFR using PSRAM-preferring allocator (ps_malloc)");
+#else
+    Serial.println("[Display] OFR using internal heap allocator (malloc)");
+#endif
+
     // Note: glyph warm-up is intentionally disabled at boot.
     // Warm-up can increase memory pressure before WiFi init on some boards.
     
