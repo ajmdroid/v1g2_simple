@@ -7,6 +7,7 @@
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 
 // Global instances
@@ -87,6 +88,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t freeHeap = ESP.getFreeHeap();
     uint32_t freeDma = StorageManager::getCachedFreeDma();
     uint32_t largestDma = StorageManager::getCachedLargestDma();
+    uint32_t freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     snapshot.millisTs = nowMs;
@@ -102,6 +105,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.freeHeap = freeHeap;
     snapshot.freeDma = freeDma;
     snapshot.largestDma = largestDma;
+    snapshot.freeDmaCap = freeDmaCap;
+    snapshot.largestDmaCap = largestDmaCap;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
