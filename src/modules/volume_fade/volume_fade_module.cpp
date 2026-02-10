@@ -46,8 +46,8 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         return action;
     }
     
-    // Alert muted or in lockout -> restore if we had faded, then reset
-    if (ctx.alertMuted || ctx.alertInLockout) {
+    // Alert muted or suppressed -> restore if we had faded, then reset
+    if (ctx.alertMuted || ctx.alertSuppressed) {
         if (fadeActive && originalVolume != 0xFF && ctx.currentVolume != originalVolume) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;

@@ -175,7 +175,7 @@ public:
         bool dmaStarved_;
     };
     
-    // Boot retry lock - for loading settings/lockouts at startup ONLY
+    // Boot retry lock - for startup settings load only
     // Retries with backoff if DMA heap is starved (e.g., WiFi starting in parallel)
     // Use sparingly - this blocks the calling task
     class SDLockBootRetry {
@@ -255,8 +255,8 @@ public:
         bool dmaStarved_;
     };
     
-    // Atomic JSON file write utility (write to .tmp, then rename)
-    // Returns true on success. Used by lockout and auto-lockout managers.
+    // Atomic JSON file write utility (write to .tmp, then rename).
+    // Returns true on success.
     static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
 
 private:

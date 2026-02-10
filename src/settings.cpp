@@ -151,12 +151,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
-    written += prefs.putUShort("colorStGps", settings.colorStatusGps);
-    written += prefs.putUShort("colorStGpsW", settings.colorStatusGpsWarn);
-    written += prefs.putUShort("colorStObd", settings.colorStatusObd);
-    written += prefs.putUShort("colorObdPri", settings.colorObdPrimary);
-    written += prefs.putUShort("colorObdC1", settings.colorObdCard1);
-    written += prefs.putUShort("colorObdC2", settings.colorObdCard2);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -170,13 +164,10 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("logAlerts", settings.logAlerts);
     written += prefs.putBool("logWifi", settings.logWifi);
     written += prefs.putBool("logBle", settings.logBle);
-    written += prefs.putBool("logGps", settings.logGps);
-    written += prefs.putBool("logObd", settings.logObd);
     written += prefs.putBool("logSystem", settings.logSystem);
     written += prefs.putBool("logDisplay", settings.logDisplay);
     written += prefs.putBool("logPerfMet", settings.logPerfMetrics);
     written += prefs.putBool("logAudio", settings.logAudio);
-    written += prefs.putBool("logLockout", settings.logLockout);
     written += prefs.putBool("logTouch", settings.logTouch);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
@@ -231,26 +222,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("lastV1Addr", settings.lastV1Address);
     written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += prefs.putUChar("apTimeout", settings.apTimeoutMinutes);
-    written += prefs.putBool("gpsEnabled", settings.gpsEnabled);
-    written += prefs.putBool("obdEnabled", settings.obdEnabled);
-    written += prefs.putString("obdAddr", settings.obdDeviceAddress);
-    written += prefs.putString("obdName", settings.obdDeviceName);
-    written += prefs.putString("obdPin", settings.obdPin);
-    written += prefs.putUChar("idleDispMode", static_cast<uint8_t>(settings.idleDisplayMode));
-    written += prefs.putUChar("obdPrimary", static_cast<uint8_t>(settings.obdPrimaryMetric));
-    written += prefs.putUChar("obdCard1", static_cast<uint8_t>(settings.obdCard1Metric));
-    written += prefs.putUChar("obdCard2", static_cast<uint8_t>(settings.obdCard2Metric));
-    written += prefs.putBool("lkoutEn", settings.lockoutEnabled);
-    written += prefs.putBool("lkoutKaProt", settings.lockoutKaProtection);
-    written += prefs.putBool("lkoutDirUnl", settings.lockoutDirectionalUnlearn);
-    written += prefs.putUShort("lkoutFreqTol", settings.lockoutFreqToleranceMHz);
-    written += prefs.putUChar("lkoutLearnCt", settings.lockoutLearnCount);
-    written += prefs.putUChar("lkoutUnlCt", settings.lockoutUnlearnCount);
-    written += prefs.putUChar("lkoutManDel", settings.lockoutManualDeleteCount);
-    written += prefs.putUChar("lkoutLearnHr", settings.lockoutLearnIntervalHours);
-    written += prefs.putUChar("lkoutUnlHr", settings.lockoutUnlearnIntervalHours);
-    written += prefs.putUChar("lkoutMaxSig", settings.lockoutMaxSignalStrength);
-    written += prefs.putUShort("lkoutMaxDist", settings.lockoutMaxDistanceM);
     
     // NVS validity marker - used to detect if NVS was wiped
     written += prefs.putInt("nvsValid", SETTINGS_VERSION);
@@ -404,12 +375,6 @@ void SettingsManager::load() {
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
     settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
-    settings.colorStatusGps = preferences.getUShort("colorStGps", 0x07E0);     // Green for GPS good
-    settings.colorStatusGpsWarn = preferences.getUShort("colorStGpsW", 0xFD20); // Orange for GPS weak
-    settings.colorStatusObd = preferences.getUShort("colorStObd", 0x07E0);     // Green for OBD
-    settings.colorObdPrimary = preferences.getUShort("colorObdPri", 0x001F);   // Blue for OBD primary
-    settings.colorObdCard1 = preferences.getUShort("colorObdC1", 0xFFE0);      // Yellow for OBD card 1
-    settings.colorObdCard2 = preferences.getUShort("colorObdC2", 0xF800);      // Red for OBD card 2
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -425,13 +390,10 @@ void SettingsManager::load() {
     settings.logAlerts = preferences.getBool("logAlerts", false);
     settings.logWifi = preferences.getBool("logWifi", false);
     settings.logBle = preferences.getBool("logBle", false);
-    settings.logGps = preferences.getBool("logGps", false);
-    settings.logObd = preferences.getBool("logObd", false);
     settings.logSystem = preferences.getBool("logSystem", false);
     settings.logDisplay = preferences.getBool("logDisplay", false);
     settings.logPerfMetrics = preferences.getBool("logPerfMet", true);  // ON by default for stability monitoring
     settings.logAudio = preferences.getBool("logAudio", false);
-    settings.logLockout = preferences.getBool("logLockout", false);
     settings.logTouch = preferences.getBool("logTouch", false);
     
     // Voice alert settings - migrate from old boolean to new mode
@@ -522,28 +484,6 @@ void SettingsManager::load() {
     settings.lastV1Address = preferences.getString("lastV1Addr", "");
     settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
     settings.apTimeoutMinutes = preferences.getUChar("apTimeout", 0);  // Default: always on
-    settings.gpsEnabled = preferences.getBool("gpsEnabled", false);  // Default: off (opt-in)
-    settings.obdEnabled = preferences.getBool("obdEnabled", false);  // Default: off (opt-in)
-    settings.obdDeviceAddress = preferences.getString("obdAddr", "");
-    settings.obdDeviceName = preferences.getString("obdName", "");
-    settings.obdPin = preferences.getString("obdPin", "1234");
-    settings.idleDisplayMode = static_cast<IdleDisplayMode>(preferences.getUChar("idleDispMode", 0));
-    settings.obdPrimaryMetric = static_cast<ObdMetric>(preferences.getUChar("obdPrimary", OBD_METRIC_SPEED));
-    settings.obdCard1Metric = static_cast<ObdMetric>(preferences.getUChar("obdCard1", OBD_METRIC_OIL_TEMP));
-    settings.obdCard2Metric = static_cast<ObdMetric>(preferences.getUChar("obdCard2", OBD_METRIC_IAT));
-
-    // Auto-lockout settings (JBV1-style)
-    settings.lockoutEnabled = preferences.getBool("lkoutEn", true);
-    settings.lockoutKaProtection = preferences.getBool("lkoutKaProt", true);
-    settings.lockoutDirectionalUnlearn = preferences.getBool("lkoutDirUnl", true);
-    settings.lockoutFreqToleranceMHz = preferences.getUShort("lkoutFreqTol", 8);
-    settings.lockoutLearnCount = preferences.getUChar("lkoutLearnCt", 3);
-    settings.lockoutUnlearnCount = preferences.getUChar("lkoutUnlCt", 5);
-    settings.lockoutManualDeleteCount = preferences.getUChar("lkoutManDel", 25);
-    settings.lockoutLearnIntervalHours = preferences.getUChar("lkoutLearnHr", 4);
-    settings.lockoutUnlearnIntervalHours = preferences.getUChar("lkoutUnlHr", 4);
-    settings.lockoutMaxSignalStrength = preferences.getUChar("lkoutMaxSig", 0);
-    settings.lockoutMaxDistanceM = preferences.getUShort("lkoutMaxDist", 600);
     
     preferences.end();
     
@@ -816,36 +756,6 @@ void SettingsManager::setRssiProxyColor(uint16_t color) {
     save();
 }
 
-void SettingsManager::setStatusGpsColor(uint16_t color) {
-    settings.colorStatusGps = color;
-    save();
-}
-
-void SettingsManager::setStatusGpsWarnColor(uint16_t color) {
-    settings.colorStatusGpsWarn = color;
-    save();
-}
-
-void SettingsManager::setStatusObdColor(uint16_t color) {
-    settings.colorStatusObd = color;
-    save();
-}
-
-void SettingsManager::setObdPrimaryColor(uint16_t color) {
-    settings.colorObdPrimary = color;
-    save();
-}
-
-void SettingsManager::setObdCard1Color(uint16_t color) {
-    settings.colorObdCard1 = color;
-    save();
-}
-
-void SettingsManager::setObdCard2Color(uint16_t color) {
-    settings.colorObdCard2 = color;
-    save();
-}
-
 void SettingsManager::setFreqUseBandColor(bool use) {
     settings.freqUseBandColor = use;
     save();
@@ -911,16 +821,6 @@ void SettingsManager::setLogBle(bool enable, bool deferSave) {
     if (!deferSave) save();
 }
 
-void SettingsManager::setLogGps(bool enable, bool deferSave) {
-    settings.logGps = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogObd(bool enable, bool deferSave) {
-    settings.logObd = enable;
-    if (!deferSave) save();
-}
-
 void SettingsManager::setLogSystem(bool enable, bool deferSave) {
     settings.logSystem = enable;
     if (!deferSave) save();
@@ -938,11 +838,6 @@ void SettingsManager::setLogPerfMetrics(bool enable, bool deferSave) {
 
 void SettingsManager::setLogAudio(bool enable, bool deferSave) {
     settings.logAudio = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogLockout(bool enable, bool deferSave) {
-    settings.logLockout = enable;
     if (!deferSave) save();
 }
 
@@ -1209,29 +1104,6 @@ void SettingsManager::backupToSD() {
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     
-    // === GPS/OBD Settings ===
-    doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["obdDeviceAddress"] = settings.obdDeviceAddress;
-    doc["obdDeviceName"] = settings.obdDeviceName;
-    doc["obdPin"] = settings.obdPin;
-    doc["idleDisplayMode"] = static_cast<int>(settings.idleDisplayMode);
-    doc["obdPrimaryMetric"] = static_cast<int>(settings.obdPrimaryMetric);
-    doc["obdCard1Metric"] = static_cast<int>(settings.obdCard1Metric);
-    doc["obdCard2Metric"] = static_cast<int>(settings.obdCard2Metric);
-    
-    // === Auto-Lockout Settings (JBV1-style) ===
-    doc["lockoutEnabled"] = settings.lockoutEnabled;
-    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
-    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
-    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
-    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
-    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
-    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
-    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
-    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
-    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
-    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
     
     // === Display Settings ===
     doc["brightness"] = settings.brightness;
@@ -1265,9 +1137,6 @@ void SettingsManager::backupToSD() {
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
-    doc["colorStatusGps"] = settings.colorStatusGps;
-    doc["colorStatusGpsWarn"] = settings.colorStatusGpsWarn;
-    doc["colorStatusObd"] = settings.colorStatusObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -1283,13 +1152,10 @@ void SettingsManager::backupToSD() {
     doc["logAlerts"] = settings.logAlerts;
     doc["logWifi"] = settings.logWifi;
     doc["logBle"] = settings.logBle;
-    doc["logGps"] = settings.logGps;
-    doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
     doc["logDisplay"] = settings.logDisplay;
     doc["logPerfMetrics"] = settings.logPerfMetrics;
     doc["logAudio"] = settings.logAudio;
-    doc["logLockout"] = settings.logLockout;
     doc["logTouch"] = settings.logTouch;
     
     // === Voice Alert Settings ===
@@ -1439,29 +1305,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
     if (doc["apTimeoutMinutes"].is<int>()) settings.apTimeoutMinutes = doc["apTimeoutMinutes"];
     
-    // === GPS/OBD Settings ===
-    if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
-    if (doc["obdEnabled"].is<bool>()) settings.obdEnabled = doc["obdEnabled"];
-    if (doc["obdDeviceAddress"].is<const char*>()) settings.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
-    if (doc["obdDeviceName"].is<const char*>()) settings.obdDeviceName = doc["obdDeviceName"].as<String>();
-    if (doc["obdPin"].is<const char*>()) settings.obdPin = doc["obdPin"].as<String>();
-    if (doc["idleDisplayMode"].is<int>()) settings.idleDisplayMode = static_cast<IdleDisplayMode>(doc["idleDisplayMode"].as<int>());
-    if (doc["obdPrimaryMetric"].is<int>()) settings.obdPrimaryMetric = static_cast<ObdMetric>(doc["obdPrimaryMetric"].as<int>());
-    if (doc["obdCard1Metric"].is<int>()) settings.obdCard1Metric = static_cast<ObdMetric>(doc["obdCard1Metric"].as<int>());
-    if (doc["obdCard2Metric"].is<int>()) settings.obdCard2Metric = static_cast<ObdMetric>(doc["obdCard2Metric"].as<int>());
-    
-    // === Auto-Lockout Settings (JBV1-style) ===
-    if (doc["lockoutEnabled"].is<bool>()) settings.lockoutEnabled = doc["lockoutEnabled"];
-    if (doc["lockoutKaProtection"].is<bool>()) settings.lockoutKaProtection = doc["lockoutKaProtection"];
-    if (doc["lockoutDirectionalUnlearn"].is<bool>()) settings.lockoutDirectionalUnlearn = doc["lockoutDirectionalUnlearn"];
-    if (doc["lockoutFreqToleranceMHz"].is<int>()) settings.lockoutFreqToleranceMHz = doc["lockoutFreqToleranceMHz"];
-    if (doc["lockoutLearnCount"].is<int>()) settings.lockoutLearnCount = doc["lockoutLearnCount"];
-    if (doc["lockoutUnlearnCount"].is<int>()) settings.lockoutUnlearnCount = doc["lockoutUnlearnCount"];
-    if (doc["lockoutManualDeleteCount"].is<int>()) settings.lockoutManualDeleteCount = doc["lockoutManualDeleteCount"];
-    if (doc["lockoutLearnIntervalHours"].is<int>()) settings.lockoutLearnIntervalHours = doc["lockoutLearnIntervalHours"];
-    if (doc["lockoutUnlearnIntervalHours"].is<int>()) settings.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
-    if (doc["lockoutMaxSignalStrength"].is<int>()) settings.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
-    if (doc["lockoutMaxDistanceM"].is<int>()) settings.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
     
     // === Display Settings ===
     if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
@@ -1495,9 +1338,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorStatusGps"].is<int>()) settings.colorStatusGps = doc["colorStatusGps"];
-    if (doc["colorStatusGpsWarn"].is<int>()) settings.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
-    if (doc["colorStatusObd"].is<int>()) settings.colorStatusObd = doc["colorStatusObd"];
     if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
     // === UI Toggles ===
@@ -1513,13 +1353,10 @@ bool SettingsManager::restoreFromSD() {
     if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];
     if (doc["logWifi"].is<bool>()) settings.logWifi = doc["logWifi"];
     if (doc["logBle"].is<bool>()) settings.logBle = doc["logBle"];
-    if (doc["logGps"].is<bool>()) settings.logGps = doc["logGps"];
-    if (doc["logObd"].is<bool>()) settings.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
     if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
     if (doc["logPerfMetrics"].is<bool>()) settings.logPerfMetrics = doc["logPerfMetrics"];
     if (doc["logAudio"].is<bool>()) settings.logAudio = doc["logAudio"];
-    if (doc["logLockout"].is<bool>()) settings.logLockout = doc["logLockout"];
     if (doc["logTouch"].is<bool>()) settings.logTouch = doc["logTouch"];
     
     // === Voice Settings ===
@@ -1634,6 +1471,5 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         Serial.println("[Settings] Cleared invalid profile references and saved");
     }
 
-    // If any profiles are missing and auto-push was pointing to them, ensure OBD/GPS tasks remain unaffected
-    // (no action needed here beyond clearing references; safety comment for maintainers)
+    // No additional side effects needed beyond clearing invalid references.
 }

@@ -109,23 +109,6 @@ void WifiOrchestrator::configureCallbacks() {
         return autoPushModule.getStatusJson();
     });
 
-    // GPS status - disabled
-    wifiManager.setGpsStatusCallback([this]() {
-        JsonDocument doc;
-        doc["enabled"] = false;
-        doc["moduleDetected"] = false;
-        doc["detectionComplete"] = true;
-        doc["hasValidFix"] = false;
-        String json;
-        serializeJson(doc, json);
-        return json;
-    });
-
-    // GPS reset - disabled (no-op)
-    wifiManager.setGpsResetCallback([this]() {
-        // GPS disabled - nothing to reset
-    });
-
     // V1 connection state (used to defer WiFi client operations until V1 is connected)
     wifiManager.setV1ConnectedCallback([this]() {
         return bleClient.isConnected();

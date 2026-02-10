@@ -3,20 +3,17 @@
 
 	let acknowledged = $state(false);
 	let settings = $state({
-		enableWifiAtBoot: false,
-			enableDebugLogging: false,
-			logAlerts: true,
-			logWifi: true,
-			logBle: false,
-			logGps: false,
-			logObd: false,
-			logSystem: true,
-			logDisplay: false,
-			logPerfMetrics: false,
-			logAudio: false,
-			logLockout: false,
-			logTouch: false
-	});
+			enableWifiAtBoot: false,
+				enableDebugLogging: false,
+				logAlerts: true,
+				logWifi: true,
+				logBle: false,
+				logSystem: true,
+				logDisplay: false,
+				logPerfMetrics: false,
+				logAudio: false,
+				logTouch: false
+		});
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state('');
@@ -70,13 +67,10 @@
 			settings.logAlerts = data.logAlerts ?? true;
 			settings.logWifi = data.logWifi ?? true;
 			settings.logBle = data.logBle ?? false;
-			settings.logGps = data.logGps ?? false;
-			settings.logObd = data.logObd ?? false;
 			settings.logSystem = data.logSystem ?? true;
 			settings.logDisplay = data.logDisplay ?? false;
 			settings.logPerfMetrics = data.logPerfMetrics ?? false;
 			settings.logAudio = data.logAudio ?? false;
-			settings.logLockout = data.logLockout ?? false;
 			settings.logTouch = data.logTouch ?? false;
 			
 			loading = false;
@@ -126,13 +120,10 @@
 			params.append('logAlerts', settings.logAlerts.toString());
 			params.append('logWifi', settings.logWifi.toString());
 			params.append('logBle', settings.logBle.toString());
-			params.append('logGps', settings.logGps.toString());
-			params.append('logObd', settings.logObd.toString());
 			params.append('logSystem', settings.logSystem.toString());
 			params.append('logDisplay', settings.logDisplay.toString());
 			params.append('logPerfMetrics', settings.logPerfMetrics.toString());
 			params.append('logAudio', settings.logAudio.toString());
-			params.append('logLockout', settings.logLockout.toString());
 			params.append('logTouch', settings.logTouch.toString());
 			params.append('skipPreview', 'true');
 
@@ -216,13 +207,10 @@
 		settings.logAlerts = true;
 		settings.logWifi = true;
 		settings.logBle = false;
-		settings.logGps = false;
-		settings.logObd = false;
 		settings.logSystem = true;
 		settings.logDisplay = false;
 		settings.logPerfMetrics = false;
 		settings.logAudio = false;
-		settings.logLockout = false;
 		settings.logTouch = false;
 		
 		await saveSettings();
@@ -450,14 +438,6 @@
 								<span class="label-text text-sm">BLE</span>
 							</label>
 							<label class="label cursor-pointer justify-start gap-3 px-0">
-								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logGps} disabled={!acknowledged}>
-								<span class="label-text text-sm">GPS</span>
-							</label>
-							<label class="label cursor-pointer justify-start gap-3 px-0">
-								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logObd} disabled={!acknowledged}>
-								<span class="label-text text-sm">OBD</span>
-							</label>
-							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logSystem} disabled={!acknowledged}>
 								<span class="label-text text-sm">System</span>
 							</label>
@@ -472,10 +452,6 @@
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logAudio} disabled={!acknowledged}>
 								<span class="label-text text-sm">Audio</span>
-							</label>
-							<label class="label cursor-pointer justify-start gap-3 px-0">
-								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logLockout} disabled={!acknowledged}>
-								<span class="label-text text-sm">Lockout</span>
 							</label>
 							<label class="label cursor-pointer justify-start gap-3 px-0">
 								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={settings.logTouch} disabled={!acknowledged}>

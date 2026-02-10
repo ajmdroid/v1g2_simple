@@ -76,9 +76,6 @@ AlertPersistenceModule alertPersistenceModule;
 // Voice Module - handles voice announcement decisions
 VoiceModule voiceModule;
 
-// OBD-II handler uses global obdHandler from obd_handler.cpp
-// (included via obd_handler.h extern declaration)
-
 unsigned long lastDisplayUpdate = 0;
 
 // Color preview driver (demo band cycle)
@@ -116,14 +113,11 @@ static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
     if (cfg.alerts) mask |= (1u << 0);
     if (cfg.wifi) mask |= (1u << 1);
     if (cfg.ble) mask |= (1u << 2);
-    if (cfg.gps) mask |= (1u << 3);
-    if (cfg.obd) mask |= (1u << 4);
-    if (cfg.system) mask |= (1u << 5);
-    if (cfg.display) mask |= (1u << 6);
-    if (cfg.perfMetrics) mask |= (1u << 7);
-    if (cfg.audio) mask |= (1u << 8);
-    if (cfg.lockout) mask |= (1u << 9);
-    if (cfg.touch) mask |= (1u << 10);
+    if (cfg.system) mask |= (1u << 3);
+    if (cfg.display) mask |= (1u << 4);
+    if (cfg.perfMetrics) mask |= (1u << 5);
+    if (cfg.audio) mask |= (1u << 6);
+    if (cfg.touch) mask |= (1u << 7);
     return mask;
 }
 
@@ -426,7 +420,6 @@ void setup() {
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();
-    const bool featuresRuntimeEnabled = settingsManager.isFeaturesRuntimeEnabled();
 
 #if defined(DISPLAY_WAVESHARE_349)
     powerModule.begin(&batteryManager, &display, &settingsManager, &debugLogger);
@@ -623,7 +616,6 @@ void setup() {
 }
 
 void loop() {
-    const bool featuresRuntimeEnabled = settingsManager.isFeaturesRuntimeEnabled();
     unsigned long loopStartUs = micros();
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();

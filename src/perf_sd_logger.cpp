@@ -107,7 +107,12 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
     }
 
     if (!fileExists || f.size() == 0) {
-        f.write(reinterpret_cast<const uint8_t*>(PERF_CSV_HEADER), strlen(PERF_CSV_HEADER));
+        size_t headerLen = strlen(PERF_CSV_HEADER);
+        size_t headerWritten = f.write(reinterpret_cast<const uint8_t*>(PERF_CSV_HEADER), headerLen);
+        if (headerWritten != headerLen) {
+            f.close();
+            return false;
+        }
     }
 
     char line[192];
@@ -127,10 +132,17 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         static_cast<unsigned long>(snapshot.dispMaxUs),
         static_cast<unsigned long>(snapshot.freeHeap));
 
-    if (n > 0) {
-        f.write(reinterpret_cast<const uint8_t*>(line), static_cast<size_t>(n));
+    if (n <= 0 || n >= static_cast<int>(sizeof(line))) {
+        f.close();
+        return false;
+    }
+    size_t lineLen = static_cast<size_t>(n);
+    size_t lineWritten = f.write(reinterpret_cast<const uint8_t*>(line), lineLen);
+    if (lineWritten != lineLen) {
+        f.close();
+        return false;
     }
 
     f.close();
-    return n > 0;
+    return true;
 }

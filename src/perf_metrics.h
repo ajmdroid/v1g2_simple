@@ -77,7 +77,6 @@ struct PerfCounters {
     std::atomic<uint32_t> queueHighWater{0};   // Max queue depth seen
     std::atomic<uint32_t> proxyQueueHighWater{0}; // Max proxy queue depth
     std::atomic<uint32_t> phoneCmdQueueHighWater{0}; // Max phone→V1 cmd queue depth
-    std::atomic<uint32_t> obdScanQueueHighWater{0}; // Max OBD scan queue depth
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
     std::atomic<uint32_t> perfDrop{0};         // Perf SD snapshot drops (queue full)
@@ -95,8 +94,6 @@ struct PerfCounters {
     std::atomic<uint32_t> bleMutexTimeout{0};     // COLD path timeout failures
     std::atomic<uint32_t> cmdPaceNotYet{0};       // sendCommand pacing deferrals
     std::atomic<uint32_t> cmdBleBusy{0};          // sendCommand BLE write failed (transient)
-    std::atomic<uint32_t> obdMutexSkip{0};        // OBD HOT path try-lock skips
-    std::atomic<uint32_t> obdMutexTimeout{0};     // OBD COLD path timeout failures
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -110,7 +107,6 @@ struct PerfCounters {
         queueHighWater.store(0, std::memory_order_relaxed);
         proxyQueueHighWater.store(0, std::memory_order_relaxed);
         phoneCmdQueueHighWater.store(0, std::memory_order_relaxed);
-        obdScanQueueHighWater.store(0, std::memory_order_relaxed);
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);
         perfDrop.store(0, std::memory_order_relaxed);
@@ -122,8 +118,6 @@ struct PerfCounters {
         bleMutexTimeout.store(0, std::memory_order_relaxed);
         cmdPaceNotYet.store(0, std::memory_order_relaxed);
         cmdBleBusy.store(0, std::memory_order_relaxed);
-        obdMutexSkip.store(0, std::memory_order_relaxed);
-        obdMutexTimeout.store(0, std::memory_order_relaxed);
     }
 };
 
@@ -166,11 +160,6 @@ struct PerfExtendedMetrics {
     uint32_t bleDiscoveryMaxUs = 0;   // discoverAttributes() duration
     uint32_t bleSubscribeMaxUs = 0;   // setupCharacteristics() duration
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
-    // Field-only subsystems (GPS, OBD) - not bench-testable
-    uint32_t gpsMaxUs = 0;            // gpsHandler.update() duration
-    uint32_t obdMaxUs = 0;            // obdAutoConnector.process() duration
-    // Additional subsystem timing
-    uint32_t lockoutMaxUs = 0;        // autoLockoutMaintenance.process() duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
 
@@ -192,9 +181,6 @@ struct PerfExtendedMetrics {
         bleDiscoveryMaxUs = 0;
         bleSubscribeMaxUs = 0;
         bleProcessMaxUs = 0;
-        gpsMaxUs = 0;
-        obdMaxUs = 0;
-        lockoutMaxUs = 0;
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
     }
@@ -216,9 +202,6 @@ void perfRecordBleConnectUs(uint32_t us);
 void perfRecordBleDiscoveryUs(uint32_t us);
 void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
-void perfRecordGpsUs(uint32_t us);
-void perfRecordObdUs(uint32_t us);
-void perfRecordLockoutUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
 
@@ -241,9 +224,6 @@ uint32_t perfGetBleConnectMaxUs();
 uint32_t perfGetBleDiscoveryMaxUs();
 uint32_t perfGetBleSubscribeMaxUs();
 uint32_t perfGetBleProcessMaxUs();
-uint32_t perfGetGpsMaxUs();
-uint32_t perfGetObdMaxUs();
-uint32_t perfGetLockoutMaxUs();
 uint32_t perfGetDispPipeMaxUs();
 uint32_t perfGetTouchMaxUs();
 void perfExtendedResetWindow();

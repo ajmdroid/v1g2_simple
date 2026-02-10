@@ -7,7 +7,7 @@
  * 
  * Layout Overview (640x172 landscape):
  * ┌────────────────────────────────────────────────────────────────────────────┐
- * │ [Status Bar: GPS/OBD indicators]                                  [WiFi]   │ Y=0-20
+ * │ [Status Bar: indicators]                                      [WiFi]      │ Y=0-20
  * ├──────────┬───────────────────────────────────────────┬────────────────────┤
  * │          │                                           │  Signal Bars       │
  * │  Band    │   Frequency / Alert Content               │  Direction Arrow   │ Y=20-95
@@ -102,7 +102,7 @@ constexpr int CARD_SIGNAL_METER_MARGIN = 10;  // Left/right margin for signal me
 constexpr int STATUS_BAR_HEIGHT = 20;     // Height of top status bar
 constexpr int STATUS_BAR_Y = 0;
 
-constexpr int STATUS_ICON_SIZE = 14;      // Size of status icons (WiFi, GPS, etc.)
+constexpr int STATUS_ICON_SIZE = 14;      // Size of status icons.
 constexpr int STATUS_ICON_GAP = 6;        // Gap between status icons
 constexpr int STATUS_LEFT_MARGIN = 8;     // Left margin for status icons
 

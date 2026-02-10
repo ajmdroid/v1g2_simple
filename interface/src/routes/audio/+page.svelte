@@ -399,7 +399,7 @@
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">🚗 Speed-Based Volume</h2>
-				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires OBD or GPS)</p>
+				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires an external speed source)</p>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -518,7 +518,7 @@
 							</div>
 							
 							<div class="text-xs text-base-content/40">
-								💡 Requires OBD or GPS for speed detection. If no speed source, voice remains active.
+								💡 Requires a speed source. If unavailable, voice remains active.
 							</div>
 						</div>
 					{/if}

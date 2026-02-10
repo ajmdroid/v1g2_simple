@@ -103,7 +103,7 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // Status bar at top of screen (GPS/OBD indicators)
+    // Status bar at top of screen.
     void drawStatusBar();
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
@@ -112,13 +112,6 @@ public:
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
-    
-    // Lockout mute indicator - shows "LOCKOUT" instead of "MUTED" when V1 was auto-muted by GPS lockout
-    void setLockoutMuted(bool lockout) { lockoutMuted = lockout; }
-    bool isLockoutMuted() const { return lockoutMuted; }
-    
-    // Preview OBD idle display with mock data (for color test routine)
-    void drawIdleObdDataPreview();
     
     // Flush canvas to physical display
     void flush();
@@ -148,8 +141,6 @@ private:
     void drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);      // Hemi Head font (retro speedometer)
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
-    void drawIdleObdData();        // Draw OBD data (speed/temps) on idle screen in frequency area
-    void drawObdIdleWithCards();   // Draw OBD with primary metric + two cards
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0);
@@ -190,7 +181,6 @@ private:
     bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
     bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
-    bool lockoutMuted = false;               // True when V1 was muted by GPS lockout system
     bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

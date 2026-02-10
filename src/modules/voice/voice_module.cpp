@@ -102,8 +102,8 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     // V1 is muted - user has acknowledged/dismissed the alert
     if (ctx.isMuted) return action;
     
-    // Alert is in GPS lockout zone
-    if (ctx.isInLockout) return action;
+    // Alert is in a suppression zone
+    if (ctx.isSuppressed) return action;
     
     // Phone app is connected - let app handle voice
     if (ctx.isProxyConnected) return action;
@@ -547,7 +547,7 @@ void VoiceModule::resetLastAnnounced() {
 // ============================================================================
 
 float VoiceModule::getCurrentSpeedMph(unsigned long now) {
-    // GPS and OBD disabled - no speed source available
+    // No live speed source available.
     // Return cached speed if still valid, otherwise 0
     if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
         return cachedSpeedMph;
@@ -557,7 +557,7 @@ float VoiceModule::getCurrentSpeedMph(unsigned long now) {
 }
 
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
-    // GPS and OBD disabled - only cached speed is available
+    // Only cached speed is available.
     return (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
 }
 

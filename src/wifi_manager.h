@@ -93,10 +93,6 @@ public:
     // Callback for push executor status (auto-push)
     void setPushStatusCallback(std::function<String()> callback) { getPushStatusJson = callback; }
     
-    // Callback for GPS status
-    void setGpsStatusCallback(std::function<String()> callback) { getGpsStatusJson = callback; }
-    void setGpsResetCallback(std::function<void()> callback) { gpsResetCallback = callback; }
-    
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
     
@@ -144,8 +140,6 @@ private:
     std::function<bool()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
-    std::function<String()> getGpsStatusJson;
-    std::function<void()> gpsResetCallback;
     std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
     
     // Setup functions
@@ -186,16 +180,6 @@ private:
     void handleDebugLogsClear();
     void handleSettingsBackup();
     void handleSettingsRestore();
-    void handleObdStatus();
-    void handleObdScan();
-    void handleObdScanStop();
-    void handleObdDevices();
-    void handleObdDevicesClear();
-    void handleObdConnect();
-    void handleObdForget();
-    void handleGpsStatus();
-    void handleGpsReset();
-    void handleAutoLockouts();
     void handleWifiClientStatus();
     void handleWifiClientScan();
     void handleWifiClientConnect();

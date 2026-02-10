@@ -1204,15 +1204,13 @@ void V1Display::drawRssiIndicator(int rssi) {
 void V1Display::drawMuteIcon(bool muted) {
     // Change detection: skip redraw if nothing changed
     static bool lastMutedState = false;
-    static bool lastLockoutMuted = false;
     
     // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!s_forceMuteIconRedraw && muted == lastMutedState && lockoutMuted == lastLockoutMuted) {
+    if (!s_forceMuteIconRedraw && muted == lastMutedState) {
         return;
     }
     s_forceMuteIconRedraw = false;
     lastMutedState = muted;
-    lastLockoutMuted = lockoutMuted;
     
     // Draw badge at fixed top position (top ~10% of screen)
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1224,8 +1222,7 @@ void V1Display::drawMuteIcon(bool muted) {
 #endif
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
-    // Badge dimensions - wider for "LOCKOUT" text
-    int w = lockoutMuted ? 130 : 110;
+    int w = 110;
     int h = 26;
     int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
     int y = 5;  // Fixed near top of screen
@@ -1244,16 +1241,13 @@ void V1Display::drawMuteIcon(bool muted) {
         int cx = x + w / 2;
         int cy = y + h / 2;
         
-        // Show different text for lockout mute vs user mute
-        const char* muteText = lockoutMuted ? "LOCKOUT" : "MUTED";
+        const char* muteText = "MUTED";
         // Pseudo-bold: draw twice with slight offset
         GFX_drawString(tft, muteText, cx, cy);
         GFX_drawString(tft, muteText, cx + 1, cy);
     } else {
-        // Clear the badge area when not muted (use wider area to cover both sizes)
-        FILL_RECT(leftMargin + (maxWidth - 130) / 2, y, 130, h, PALETTE_BG);
-        // Reset lockout flag when unmuted
-        lockoutMuted = false;
+        // Clear the badge area when not muted.
+        FILL_RECT(leftMargin + (maxWidth - w) / 2, y, w, h, PALETTE_BG);
     }
 }
 
@@ -1824,7 +1818,7 @@ void V1Display::showResting(bool forceRedraw) {
         // Profile indicator
         drawProfileIndicator(profileSlot);
         
-        // Status bar (GPS/CAM/OBD indicators)
+        // Status bar indicators
         drawStatusBar();
 
         lastRestingPaletteRevision = paletteRevision;
@@ -1882,7 +1876,7 @@ void V1Display::showScanning() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
     
-    // Force status bar redraw (GPS state may have changed since last scan screen)
+    // Force status bar redraw for the next frame.
     s_forceStatusBarRedraw = true;
     
     // Draw idle state elements
@@ -1893,7 +1887,7 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // GPS/CAM/OBD status indicators
+    drawStatusBar();  // Top status indicators
     
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
@@ -2283,31 +2277,7 @@ void V1Display::update(const DisplayState& state) {
         needsFullRedraw = true;
     }
     
-    // Check if OBD idle display is enabled and needs continuous animation
-    const V1Settings& sIdle = settingsManager.get();
-    bool obdIdleActive = false;  // OBD disabled
-    bool obdCardsActive = false;  // OBD disabled
-    
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
-        // Nothing changed - but OBD idle display may need periodic updates
-        if (obdCardsActive) {
-            // OBD cards mode - use card-based display
-            static uint32_t lastObdCardsUpdate = 0;
-            if (millis() - lastObdCardsUpdate > 1000) {
-                lastObdCardsUpdate = millis();
-                drawObdIdleWithCards();
-            }
-        } else if (obdIdleActive) {
-            // Redraw OBD data periodically (values may have changed)
-            static uint32_t lastObdIdleUpdate = 0;
-            if (millis() - lastObdIdleUpdate > 1000) {  // Update every second
-                lastObdIdleUpdate = millis();
-                drawIdleObdData();
-#if defined(DISPLAY_WAVESHARE_349)
-                DISPLAY_FLUSH();
-#endif
-            }
-        }
         return;
     }
     
@@ -2439,7 +2409,7 @@ void V1Display::update(const DisplayState& state) {
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // GPS/CAM/OBD status indicators at top
+    drawStatusBar();  // Top status indicators
     
     // Clear any persisted card slots when entering resting state
     AlertData emptyPriority;
@@ -2774,7 +2744,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // GPS/CAM/OBD status indicators at top
+    drawStatusBar();  // Top status indicators
     DISP_PERF_LOG("arrows+icons");
     
     // Force card redraw since drawBaseFrame cleared the screen
@@ -3971,171 +3941,6 @@ void V1Display::drawVolumeZeroWarning() {
     }
 }
 
-// Draw OBD data in the frequency area when idle (no alerts)
-// Shows speed, oil temp, DSG temp, or intake air temp based on idleDisplayMode setting
-void V1Display::drawIdleObdData() {
-    // OBD disabled - return without drawing
-    return;
-}
-// Preview OBD idle display with mock data (for color testing)
-void V1Display::drawIdleObdDataPreview() {
-    const V1Settings& s = settingsManager.get();
-    
-#if defined(DISPLAY_WAVESHARE_349)
-    // Use individual colors for each element
-    uint16_t primaryColor = s.colorObdPrimary;  // Primary metric color
-    uint16_t card1Color = s.colorObdCard1;      // Card 1 color
-    uint16_t card2Color = s.colorObdCard2;      // Card 2 color
-    
-    // === PRIMARY METRIC (frequency area) ===
-    // Mock data: 72 mph - use the primary metric style/size
-    const char* primaryValue = "72";
-    const char* primaryLabel = "MPH";
-    const int fontSize = 67;  // Match primary metric styling
-    
-    const int leftMargin = 135;   // Same as V1 frequency display
-    const int rightMargin = 200;  // Same as V1 frequency display
-    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    
-    // Position centered (same as V1 alert frequency)
-    const int muteIconBottom = 33;
-    int effectiveHeight = getEffectiveScreenHeight();
-    int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-    
-    // Clear frequency area (same as V1 alert clearing)
-    const int clearLeft = leftMargin + 10;
-    FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
-    
-    // === LABEL ABOVE PRIMARY ===
-    // Position below status bar (which ends at Y~20)
-    // Clear from after the status bar indicators
-    const int typeLabelY = 22;
-    const int labelClearStartX = 135;  // Start of display area (after band indicators)
-    tft->setTextSize(2);
-    tft->setTextColor(primaryColor);
-    int labelLen = strlen(primaryLabel);
-    int labelPixelWidth = labelLen * 12;  // size 2 = 12 pixels per char
-    int labelX = leftMargin + (maxWidth - labelPixelWidth) / 2;
-    // Clear just the label area first (avoid GPS indicator on left)
-    FILL_RECT(labelClearStartX, typeLabelY - 2, SCREEN_WIDTH - rightMargin - labelClearStartX, 18, PALETTE_BG);
-    tft->setCursor(labelX, typeLabelY);
-    tft->print(primaryLabel);
-    
-    // Use Segment7 TTF font (same as V1 alert frequency) if available
-    if (ofrSegment7Initialized) {
-        // Convert RGB565 to RGB888 for OpenFontRender
-        uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(fontSize);
-        ofrSegment7.setFontColor((primaryColor >> 11) << 3, ((primaryColor >> 5) & 0x3F) << 2, (primaryColor & 0x1F) << 3);
-        
-        // Calculate text width for centering
-        int charCount = strlen(primaryValue);
-        int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
-        int x = leftMargin + (maxWidth - approxWidth) / 2;
-        if (x < leftMargin) x = leftMargin;
-        
-        ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", primaryValue);
-    } else {
-        // Fallback to software 7-segment renderer (same scale as V1 alert fallback)
-        const float scale = 2.3f;
-        int textWidth = measureSevenSegmentText(primaryValue, scale);
-        int x = leftMargin + (maxWidth - textWidth) / 2;
-        if (x < leftMargin) x = leftMargin;
-        
-        SegMetrics m = segMetrics(scale);
-        int segY = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-        
-        FILL_RECT(x - 4, segY - 4, textWidth + 8, m.digitH + 8, PALETTE_BG);
-        drawSevenSegmentText(primaryValue, x, segY, scale, primaryColor, PALETTE_BG);
-    }
-    
-    // === CARD METRICS (below primary, same as secondary alert cards area) ===
-    const int cardH = SECONDARY_ROW_HEIGHT;  // 57px
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=115 on 172px display
-    const int cardW = 145;
-    const int cardSpacing = 10;
-    const int cardLeftMargin = 120;
-    const int cardRightMargin = 200;
-    const int availableWidth = SCREEN_WIDTH - cardLeftMargin - cardRightMargin;
-    const int totalCardsWidth = cardW * 2 + cardSpacing;
-    const int startX = cardLeftMargin + (availableWidth - totalCardsWidth) / 2;
-    
-    // Mock card data with colors
-    struct CardMock {
-        const char* label;
-        const char* value;
-        uint16_t color;
-    };
-    CardMock cards[2] = {
-        { "OIL", "215 F", card1Color },
-        { "IAT", "88 F", card2Color }
-    };
-    
-    for (int i = 0; i < 2; i++) {
-        int cardX = startX + i * (cardW + cardSpacing);
-        uint16_t cardColor = cards[i].color;
-        
-        // Card background with rounded corners (darker tinted card color)
-        uint8_t r = ((cardColor >> 11) & 0x1F) * 3 / 10;
-        uint8_t g = ((cardColor >> 5) & 0x3F) * 3 / 10;
-        uint8_t b = (cardColor & 0x1F) * 3 / 10;
-        uint16_t bgCol = (r << 11) | (g << 5) | b;
-        
-        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, cardColor);
-        
-        // Card layout: Label (left) + Value (right), vertically centered
-        const int padding = 8;
-        const int rowY = cardY + (cardH - 16) / 2;  // Center size-2 text (16px) in card
-        
-        tft->setTextSize(2);
-        tft->setTextColor(cardColor, bgCol);
-        tft->setCursor(cardX + padding, rowY);
-        tft->print(cards[i].label);
-        
-        // Value on right
-        int valLen = strlen(cards[i].value);
-        tft->setCursor(cardX + cardW - padding - valLen * 12, rowY);
-        tft->print(cards[i].value);
-    }
-#else
-    // Non-Waveshare displays: simple OBD preview
-    const int leftMargin = 10;
-    const int rightMargin = 130;
-    const int areaWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int barHeight = 60;
-    const int barY = (SCREEN_HEIGHT - barHeight) / 2;
-    
-    FILL_RECT(leftMargin, barY - 10, areaWidth, barHeight + 20, PALETTE_BG);
-    
-    uint16_t color = s.colorStatusObd;
-    const char* displayText = "72";
-    const char* label = "MPH";
-    
-    float scale = 0.8f;
-    int textWidth = measureSevenSegmentText(displayText, scale);
-    int x = leftMargin + (areaWidth - textWidth) / 2;
-    
-    drawSevenSegmentText(displayText, x, barY, scale, color, PALETTE_BG);
-    
-    tft->setTextColor(color, PALETTE_BG);
-    tft->setTextSize(2);
-    int labelLen = strlen(label);
-    int labelX = leftMargin + (areaWidth - labelLen * 12) / 2;
-    tft->setCursor(labelX, barY + 50);
-    tft->print(label);
-#endif
-}
-// Layout: Primary value in frequency area (large), two cards below
-void V1Display::drawObdIdleWithCards() {
-    // OBD disabled - return without drawing
-    return;
-}
-
 // Router: calls appropriate frequency draw method based on display style setting
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
@@ -4461,63 +4266,18 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     cacheValid = true;
 }
 
-// Status bar at very top of screen showing GPS/CAM/OBD status
 void V1Display::drawStatusBar() {
 #if defined(DISPLAY_WAVESHARE_349)
-    // Change detection: track last state to avoid redundant redraws
-    static bool lastGpsHasFix = false;
-    static int lastGpsSats = -1;
-    static bool lastObdConnected = false;
-    static bool lastGpsEnabled = false;
-    
-    const V1Settings& s = settingsManager.get();
-    
-    // Current state
-    // GPS and OBD disabled - use false/0 values
-    bool gpsHasFix = false;
-    int gpsSats = 0;
-    bool obdConnected = false;
-    bool gpsEnabled = false;
-    
-    // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!s_forceStatusBarRedraw &&
-        gpsHasFix == lastGpsHasFix && gpsSats == lastGpsSats &&
-        obdConnected == lastObdConnected && gpsEnabled == lastGpsEnabled) {
+    if (!s_forceStatusBarRedraw) {
         return;
     }
     s_forceStatusBarRedraw = false;
-    lastGpsHasFix = gpsHasFix;
-    lastGpsSats = gpsSats;
-    lastObdConnected = obdConnected;
-    lastGpsEnabled = gpsEnabled;
     
-    // Status bar positioning - using size 2 font (12x16 pixels per char)
-    // Layout: GPS on left edge, MUTED badge in center, OBD on right
     const int statusY = 2;           // Near top of screen
     const int statusHeight = 18;     // Height for font size 2
-    const int leftMargin = 140;      // After band indicators
-    
-    // Layout: GPS on left (doesn't overlap MUTED), OBD on right (after MUTED area)
-    // MUTED badge is centered ~X=225-335
-    const int gpsX = leftMargin + 5;            // GPS on left: x=145
-    const int obdX = 355;                       // OBD after MUTED area
-    
-    // Use built-in font size 2 (larger, more readable)
-    tft->setTextSize(2);
-    
-    // ---- GPS indicator ----
-    // Clear GPS area (wide enough for "GPS XX")
-    FILL_RECT(gpsX, statusY, 80, statusHeight, PALETTE_BG);
-    
-    // GPS disabled - skip GPS indicator drawing
-    (void)gpsX;  // Suppress unused variable warning
-    
-    // ---- OBD indicator ----
-    // Clear OBD area
-    FILL_RECT(obdX, statusY, 42, statusHeight, PALETTE_BG);
-    
-    // OBD disabled - skip OBD indicator drawing
-    (void)obdX;  // Suppress unused variable warning
+    const int statusX = 140;
+    const int statusWidth = SCREEN_WIDTH - statusX - 200;
+    FILL_RECT(statusX, statusY, statusWidth, statusHeight, PALETTE_BG);
 #endif
 }
 

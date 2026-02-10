@@ -73,7 +73,7 @@ static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Requi
 
 static void applyDebugLogFilterFromSettings() {
     DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.gps, cfg.obd, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.lockout, cfg.touch};
+    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.touch};
     debugLogger.setFilter(filter);
 }
 
@@ -577,20 +577,6 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
     server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
     
-    // OBD-II API routes
-    server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
-    server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
-    server.on("/api/obd/scan/stop", HTTP_POST, [this]() { handleObdScanStop(); });
-    server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
-    server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
-    server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
-    server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
-    
-    // GPS API routes
-    server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
-    server.on("/api/gps/reset", HTTP_POST, [this]() { handleGpsReset(); });
-    server.on("/api/gps/auto-lockouts", HTTP_GET, [this]() { handleAutoLockouts(); });
-    
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
     server.on("/api/wifi/scan", HTTP_POST, [this]() { handleWifiClientScan(); });
@@ -1090,28 +1076,6 @@ void WiFiManager::handleSettingsApi() {
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
-    doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["idleDisplayMode"] = static_cast<int>(settings.idleDisplayMode);
-    doc["obdPrimaryMetric"] = static_cast<int>(settings.obdPrimaryMetric);
-    doc["obdCard1Metric"] = static_cast<int>(settings.obdCard1Metric);
-    doc["obdCard2Metric"] = static_cast<int>(settings.obdCard2Metric);
-    doc["colorObdPrimary"] = settings.colorObdPrimary;
-    doc["colorObdCard1"] = settings.colorObdCard1;
-    doc["colorObdCard2"] = settings.colorObdCard2;
-    
-    // Auto-lockout settings (JBV1-style)
-    doc["lockoutEnabled"] = settings.lockoutEnabled;
-    doc["lockoutKaProtection"] = settings.lockoutKaProtection;
-    doc["lockoutDirectionalUnlearn"] = settings.lockoutDirectionalUnlearn;
-    doc["lockoutFreqToleranceMHz"] = settings.lockoutFreqToleranceMHz;
-    doc["lockoutLearnCount"] = settings.lockoutLearnCount;
-    doc["lockoutUnlearnCount"] = settings.lockoutUnlearnCount;
-    doc["lockoutManualDeleteCount"] = settings.lockoutManualDeleteCount;
-    doc["lockoutLearnIntervalHours"] = settings.lockoutLearnIntervalHours;
-    doc["lockoutUnlearnIntervalHours"] = settings.lockoutUnlearnIntervalHours;
-    doc["lockoutMaxSignalStrength"] = settings.lockoutMaxSignalStrength;
-    doc["lockoutMaxDistanceM"] = settings.lockoutMaxDistanceM;
     
     // Development/Debug settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
@@ -1119,13 +1083,10 @@ void WiFiManager::handleSettingsApi() {
     doc["logAlerts"] = settings.logAlerts;
     doc["logWifi"] = settings.logWifi;
     doc["logBle"] = settings.logBle;
-    doc["logGps"] = settings.logGps;
-    doc["logObd"] = settings.logObd;
     doc["logSystem"] = settings.logSystem;
     doc["logDisplay"] = settings.logDisplay;
     doc["logPerfMetrics"] = settings.logPerfMetrics;
     doc["logAudio"] = settings.logAudio;
-    doc["logLockout"] = settings.logLockout;
     doc["logTouch"] = settings.logTouch;
     
     String json;
@@ -1195,111 +1156,6 @@ void WiFiManager::handleSettingsSave() {
         display.forceNextRedraw();  // Force display update to show new font style
     }
 
-    // GPS/OBD module settings
-    if (server.hasArg("gpsEnabled")) {
-        bool enabled = server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1";
-        settingsManager.setGpsEnabled(enabled);
-        // GPS module not available - setting stored only
-    }
-    if (server.hasArg("obdEnabled")) {
-        bool enabled = server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1";
-        settingsManager.setObdEnabled(enabled);
-        // OBD module not available - setting stored only
-    }
-    if (server.hasArg("obdPin")) {
-        settingsManager.setObdPin(server.arg("obdPin"));
-    }
-    
-    // OBD idle display settings
-    if (server.hasArg("idleDisplayMode")) {
-        int mode = server.arg("idleDisplayMode").toInt();
-        mode = std::max(0, std::min(mode, 6));  // Clamp to valid range (0-6)
-        settingsManager.updateIdleDisplayMode(static_cast<IdleDisplayMode>(mode));
-    }
-    if (server.hasArg("obdPrimaryMetric")) {
-        int metric = server.arg("obdPrimaryMetric").toInt();
-        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
-        settingsManager.updateObdPrimaryMetric(static_cast<ObdMetric>(metric));
-    }
-    if (server.hasArg("obdCard1Metric")) {
-        int metric = server.arg("obdCard1Metric").toInt();
-        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
-        settingsManager.updateObdCard1Metric(static_cast<ObdMetric>(metric));
-    }
-    if (server.hasArg("obdCard2Metric")) {
-        int metric = server.arg("obdCard2Metric").toInt();
-        metric = std::max(0, std::min(metric, 4));  // Clamp to valid range (0-4)
-        settingsManager.updateObdCard2Metric(static_cast<ObdMetric>(metric));
-    }
-    
-    // OBD card colors
-    if (server.hasArg("colorObdPrimary")) {
-        uint16_t color = server.arg("colorObdPrimary").toInt();
-        settingsManager.setObdPrimaryColor(color);
-    }
-    if (server.hasArg("colorObdCard1")) {
-        uint16_t color = server.arg("colorObdCard1").toInt();
-        settingsManager.setObdCard1Color(color);
-    }
-    if (server.hasArg("colorObdCard2")) {
-        uint16_t color = server.arg("colorObdCard2").toInt();
-        settingsManager.setObdCard2Color(color);
-    }
-    
-    // Auto-lockout settings (JBV1-style)
-    if (server.hasArg("lockoutEnabled")) {
-        bool enabled = server.arg("lockoutEnabled") == "true" || server.arg("lockoutEnabled") == "1";
-        settingsManager.updateLockoutEnabled(enabled);
-    }
-    if (server.hasArg("lockoutKaProtection")) {
-        bool enabled = server.arg("lockoutKaProtection") == "true" || server.arg("lockoutKaProtection") == "1";
-        settingsManager.updateLockoutKaProtection(enabled);
-    }
-    if (server.hasArg("lockoutDirectionalUnlearn")) {
-        bool enabled = server.arg("lockoutDirectionalUnlearn") == "true" || server.arg("lockoutDirectionalUnlearn") == "1";
-        settingsManager.updateLockoutDirectionalUnlearn(enabled);
-    }
-    if (server.hasArg("lockoutFreqToleranceMHz")) {
-        int mhz = server.arg("lockoutFreqToleranceMHz").toInt();
-        mhz = std::max(1, std::min(mhz, 50));  // Clamp 1-50 MHz
-        settingsManager.updateLockoutFreqToleranceMHz(mhz);
-    }
-    if (server.hasArg("lockoutLearnCount")) {
-        int count = server.arg("lockoutLearnCount").toInt();
-        count = std::max(1, std::min(count, 10));
-        settingsManager.updateLockoutLearnCount(count);
-    }
-    if (server.hasArg("lockoutUnlearnCount")) {
-        int count = server.arg("lockoutUnlearnCount").toInt();
-        count = std::max(1, std::min(count, 50));
-        settingsManager.updateLockoutUnlearnCount(count);
-    }
-    if (server.hasArg("lockoutManualDeleteCount")) {
-        int count = server.arg("lockoutManualDeleteCount").toInt();
-        count = std::max(1, std::min(count, 100));
-        settingsManager.updateLockoutManualDeleteCount(count);
-    }
-    if (server.hasArg("lockoutLearnIntervalHours")) {
-        int hours = server.arg("lockoutLearnIntervalHours").toInt();
-        hours = std::max(0, std::min(hours, 24));
-        settingsManager.updateLockoutLearnIntervalHours(hours);
-    }
-    if (server.hasArg("lockoutUnlearnIntervalHours")) {
-        int hours = server.arg("lockoutUnlearnIntervalHours").toInt();
-        hours = std::max(0, std::min(hours, 24));
-        settingsManager.updateLockoutUnlearnIntervalHours(hours);
-    }
-    if (server.hasArg("lockoutMaxSignalStrength")) {
-        int strength = server.arg("lockoutMaxSignalStrength").toInt();
-        strength = std::max(0, std::min(strength, 9));  // 0=disabled, 1-9=threshold
-        settingsManager.updateLockoutMaxSignalStrength(strength);
-    }
-    if (server.hasArg("lockoutMaxDistanceM")) {
-        int meters = server.arg("lockoutMaxDistanceM").toInt();
-        meters = std::max(100, std::min(meters, 2000));  // Clamp 100-2000m
-        settingsManager.updateLockoutMaxDistanceM(meters);
-    }
-    
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
     settingsManager.save();
@@ -2016,33 +1872,6 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     
     // Handle status bar colors
-    if (server.hasArg("statusGps")) {
-        uint16_t statusGpsColor = server.arg("statusGps").toInt();
-        settingsManager.setStatusGpsColor(statusGpsColor);
-    }
-    if (server.hasArg("statusGpsWarn")) {
-        uint16_t statusGpsWarnColor = server.arg("statusGpsWarn").toInt();
-        settingsManager.setStatusGpsWarnColor(statusGpsWarnColor);
-    }
-    if (server.hasArg("statusObd")) {
-        uint16_t statusObdColor = server.arg("statusObd").toInt();
-        settingsManager.setStatusObdColor(statusObdColor);
-    }
-    
-    // Handle OBD card colors
-    if (server.hasArg("obdPrimary")) {
-        uint16_t obdPrimaryColor = server.arg("obdPrimary").toInt();
-        settingsManager.setObdPrimaryColor(obdPrimaryColor);
-    }
-    if (server.hasArg("obdCard1")) {
-        uint16_t obdCard1Color = server.arg("obdCard1").toInt();
-        settingsManager.setObdCard1Color(obdCard1Color);
-    }
-    if (server.hasArg("obdCard2")) {
-        uint16_t obdCard2Color = server.arg("obdCard2").toInt();
-        settingsManager.setObdCard2Color(obdCard2Color);
-    }
-    
     // Handle frequency uses band color setting
     if (server.hasArg("freqUseBandColor")) {
         settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
@@ -2085,12 +1914,6 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("logBle")) {
         settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1", true);
     }
-    if (server.hasArg("logGps")) {
-        settingsManager.setLogGps(server.arg("logGps") == "true" || server.arg("logGps") == "1", true);
-    }
-    if (server.hasArg("logObd")) {
-        settingsManager.setLogObd(server.arg("logObd") == "true" || server.arg("logObd") == "1", true);
-    }
     if (server.hasArg("logSystem")) {
         settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1", true);
     }
@@ -2102,9 +1925,6 @@ void WiFiManager::handleDisplayColorsSave() {
     }
     if (server.hasArg("logAudio")) {
         settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1", true);
-    }
-    if (server.hasArg("logLockout")) {
-        settingsManager.setLogLockout(server.arg("logLockout") == "true" || server.arg("logLockout") == "1", true);
     }
     if (server.hasArg("logTouch")) {
         settingsManager.setLogTouch(server.arg("logTouch") == "true" || server.arg("logTouch") == "1", true);
@@ -2280,12 +2100,6 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["volumeMute"] = s.colorVolumeMute;
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
-    doc["statusGps"] = s.colorStatusGps;
-    doc["statusGpsWarn"] = s.colorStatusGpsWarn;
-    doc["statusObd"] = s.colorStatusObd;
-    doc["obdPrimary"] = s.colorObdPrimary;
-    doc["obdCard1"] = s.colorObdCard1;
-    doc["obdCard2"] = s.colorObdCard2;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
@@ -2299,8 +2113,6 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["logAlerts"] = s.logAlerts;
     doc["logWifi"] = s.logWifi;
     doc["logBle"] = s.logBle;
-    doc["logGps"] = s.logGps;
-    doc["logObd"] = s.logObd;
     doc["logSystem"] = s.logSystem;
     doc["logDisplay"] = s.logDisplay;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -2478,13 +2290,10 @@ void WiFiManager::handleDebugLogsMeta() {
     doc["logAlerts"] = cfg.alerts;
     doc["logWifi"] = cfg.wifi;
     doc["logBle"] = cfg.ble;
-    doc["logGps"] = cfg.gps;
-    doc["logObd"] = cfg.obd;
     doc["logSystem"] = cfg.system;
     doc["logDisplay"] = cfg.display;
     doc["logPerfMetrics"] = cfg.perfMetrics;
     doc["logAudio"] = cfg.audio;
-    doc["logLockout"] = cfg.lockout;
     doc["logTouch"] = cfg.touch;
 
     String json;
@@ -2646,12 +2455,6 @@ void WiFiManager::handleSettingsBackup() {
     doc["colorPersisted"] = s.colorPersisted;
     doc["colorVolumeMain"] = s.colorVolumeMain;
     doc["colorVolumeMute"] = s.colorVolumeMute;
-    doc["colorStatusGps"] = s.colorStatusGps;
-    doc["colorStatusGpsWarn"] = s.colorStatusGpsWarn;
-    doc["colorStatusObd"] = s.colorStatusObd;
-    doc["colorObdPrimary"] = s.colorObdPrimary;
-    doc["colorObdCard1"] = s.colorObdCard1;
-    doc["colorObdCard2"] = s.colorObdCard2;
     doc["colorWiFiConnected"] = s.colorWiFiConnected;
     doc["colorRssiV1"] = s.colorRssiV1;
     doc["colorRssiProxy"] = s.colorRssiProxy;
@@ -2672,41 +2475,16 @@ void WiFiManager::handleSettingsBackup() {
     doc["logAlerts"] = s.logAlerts;
     doc["logWifi"] = s.logWifi;
     doc["logBle"] = s.logBle;
-    doc["logGps"] = s.logGps;
-    doc["logObd"] = s.logObd;
     doc["logSystem"] = s.logSystem;
     doc["logDisplay"] = s.logDisplay;
     doc["logPerfMetrics"] = s.logPerfMetrics;
     doc["logAudio"] = s.logAudio;
-    doc["logLockout"] = s.logLockout;
     doc["logTouch"] = s.logTouch;
     
     // WiFi client settings
     doc["wifiMode"] = (int)s.wifiMode;
     doc["wifiClientEnabled"] = s.wifiClientEnabled;
     doc["wifiClientSSID"] = s.wifiClientSSID;
-    
-    // GPS settings
-    doc["gpsEnabled"] = s.gpsEnabled;
-    
-    // OBD settings
-    doc["obdEnabled"] = s.obdEnabled;
-    doc["obdDeviceAddress"] = s.obdDeviceAddress;
-    doc["obdDeviceName"] = s.obdDeviceName;
-    doc["obdPin"] = s.obdPin;
-    
-    // Auto-lockout settings
-    doc["lockoutEnabled"] = s.lockoutEnabled;
-    doc["lockoutKaProtection"] = s.lockoutKaProtection;
-    doc["lockoutDirectionalUnlearn"] = s.lockoutDirectionalUnlearn;
-    doc["lockoutFreqToleranceMHz"] = s.lockoutFreqToleranceMHz;
-    doc["lockoutLearnCount"] = s.lockoutLearnCount;
-    doc["lockoutUnlearnCount"] = s.lockoutUnlearnCount;
-    doc["lockoutManualDeleteCount"] = s.lockoutManualDeleteCount;
-    doc["lockoutLearnIntervalHours"] = s.lockoutLearnIntervalHours;
-    doc["lockoutUnlearnIntervalHours"] = s.lockoutUnlearnIntervalHours;
-    doc["lockoutMaxSignalStrength"] = s.lockoutMaxSignalStrength;
-    doc["lockoutMaxDistanceM"] = s.lockoutMaxDistanceM;
     
     // Auto power-off
     doc["autoPowerOffMinutes"] = s.autoPowerOffMinutes;
@@ -2864,12 +2642,6 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["colorWiFiConnected"].is<int>()) s.colorWiFiConnected = doc["colorWiFiConnected"];
     if (doc["colorRssiV1"].is<int>()) s.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorStatusGps"].is<int>()) s.colorStatusGps = doc["colorStatusGps"];
-    if (doc["colorStatusGpsWarn"].is<int>()) s.colorStatusGpsWarn = doc["colorStatusGpsWarn"];
-    if (doc["colorStatusObd"].is<int>()) s.colorStatusObd = doc["colorStatusObd"];
-    if (doc["colorObdPrimary"].is<int>()) s.colorObdPrimary = doc["colorObdPrimary"];
-    if (doc["colorObdCard1"].is<int>()) s.colorObdCard1 = doc["colorObdCard1"];
-    if (doc["colorObdCard2"].is<int>()) s.colorObdCard2 = doc["colorObdCard2"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     
     // Display visibility
@@ -2887,41 +2659,16 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["logAlerts"].is<bool>()) s.logAlerts = doc["logAlerts"];
     if (doc["logWifi"].is<bool>()) s.logWifi = doc["logWifi"];
     if (doc["logBle"].is<bool>()) s.logBle = doc["logBle"];
-    if (doc["logGps"].is<bool>()) s.logGps = doc["logGps"];
-    if (doc["logObd"].is<bool>()) s.logObd = doc["logObd"];
     if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
     if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
     if (doc["logPerfMetrics"].is<bool>()) s.logPerfMetrics = doc["logPerfMetrics"];
     if (doc["logAudio"].is<bool>()) s.logAudio = doc["logAudio"];
-    if (doc["logLockout"].is<bool>()) s.logLockout = doc["logLockout"];
     if (doc["logTouch"].is<bool>()) s.logTouch = doc["logTouch"];
     
     // WiFi client settings
     if (doc["wifiMode"].is<int>()) s.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
     if (doc["wifiClientEnabled"].is<bool>()) s.wifiClientEnabled = doc["wifiClientEnabled"];
     if (doc["wifiClientSSID"].is<const char*>()) s.wifiClientSSID = doc["wifiClientSSID"].as<String>();
-    
-    // GPS settings
-    if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
-    
-    // OBD settings
-    if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
-    if (doc["obdDeviceAddress"].is<const char*>()) s.obdDeviceAddress = doc["obdDeviceAddress"].as<String>();
-    if (doc["obdDeviceName"].is<const char*>()) s.obdDeviceName = doc["obdDeviceName"].as<String>();
-    if (doc["obdPin"].is<const char*>()) s.obdPin = doc["obdPin"].as<String>();
-    
-    // Auto-lockout settings
-    if (doc["lockoutEnabled"].is<bool>()) s.lockoutEnabled = doc["lockoutEnabled"];
-    if (doc["lockoutKaProtection"].is<bool>()) s.lockoutKaProtection = doc["lockoutKaProtection"];
-    if (doc["lockoutDirectionalUnlearn"].is<bool>()) s.lockoutDirectionalUnlearn = doc["lockoutDirectionalUnlearn"];
-    if (doc["lockoutFreqToleranceMHz"].is<int>()) s.lockoutFreqToleranceMHz = doc["lockoutFreqToleranceMHz"];
-    if (doc["lockoutLearnCount"].is<int>()) s.lockoutLearnCount = doc["lockoutLearnCount"];
-    if (doc["lockoutUnlearnCount"].is<int>()) s.lockoutUnlearnCount = doc["lockoutUnlearnCount"];
-    if (doc["lockoutManualDeleteCount"].is<int>()) s.lockoutManualDeleteCount = doc["lockoutManualDeleteCount"];
-    if (doc["lockoutLearnIntervalHours"].is<int>()) s.lockoutLearnIntervalHours = doc["lockoutLearnIntervalHours"];
-    if (doc["lockoutUnlearnIntervalHours"].is<int>()) s.lockoutUnlearnIntervalHours = doc["lockoutUnlearnIntervalHours"];
-    if (doc["lockoutMaxSignalStrength"].is<int>()) s.lockoutMaxSignalStrength = doc["lockoutMaxSignalStrength"];
-    if (doc["lockoutMaxDistanceM"].is<int>()) s.lockoutMaxDistanceM = doc["lockoutMaxDistanceM"];
     
     // Auto power-off
     if (doc["autoPowerOffMinutes"].is<int>()) s.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
@@ -3025,48 +2772,6 @@ void WiFiManager::handleSettingsRestore() {
     }
     response += "\"}";
     server.send(200, "application/json", response);
-}
-
-// ============== OBD-II API Handlers ==============
-
-void WiFiManager::handleObdStatus() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\",\"connected\":false}");
-}
-
-void WiFiManager::handleObdScan() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
-}
-
-void WiFiManager::handleObdScanStop() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
-}
-
-void WiFiManager::handleObdDevices() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\",\"devices\":[]}");
-}
-
-void WiFiManager::handleObdConnect() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
-}
-
-void WiFiManager::handleObdDevicesClear() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
-}
-
-void WiFiManager::handleObdForget() {
-    server.send(200, "application/json", "{\"error\":\"OBD module not available\"}");
-}
-
-void WiFiManager::handleGpsStatus() {
-    server.send(200, "application/json", "{\"error\":\"GPS module not available\",\"enabled\":false}");
-}
-
-void WiFiManager::handleGpsReset() {
-    server.send(200, "application/json", "{\"error\":\"GPS module not available\"}");
-}
-
-void WiFiManager::handleAutoLockouts() {
-    server.send(200, "application/json", "{\"error\":\"Lockout module not available\",\"clusters\":[]}");
 }
 
 // ==================== WiFi Client (STA) API Handlers ====================

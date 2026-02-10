@@ -1,6 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	
+
 	let status = $state({
 		wifi: {
 			sta_connected: false,
@@ -18,32 +18,25 @@
 		v1_connected: false,
 		alert: null
 	});
-	
-	let gpsStatus = $state(null);
+
 	let loading = $state(true);
 	let error = $state(null);
 	let statusInterval = null;
-	let gpsInterval = null;
-	
+
 	onMount(async () => {
 		await fetchStatus();
-		await fetchGpsStatus();
-		// Poll status every 2 seconds for responsive alerts
 		statusInterval = setInterval(fetchStatus, 2000);
-		gpsInterval = setInterval(fetchGpsStatus, 3000);
 	});
-	
+
 	onDestroy(() => {
 		if (statusInterval) clearInterval(statusInterval);
-		if (gpsInterval) clearInterval(gpsInterval);
 	});
-	
+
 	async function fetchStatus() {
 		try {
 			const res = await fetch('/api/status');
 			if (res.ok) {
-				const data = await res.json();
-				status = data;
+				status = await res.json();
 				error = null;
 			} else {
 				error = 'API error';
@@ -54,18 +47,7 @@
 			loading = false;
 		}
 	}
-	
-	async function fetchGpsStatus() {
-		try {
-			const res = await fetch('/api/gps/status');
-			if (res.ok) {
-				gpsStatus = await res.json();
-			}
-		} catch (e) {
-			// Silently fail - GPS might not be enabled
-		}
-	}
-	
+
 	function formatUptime(seconds) {
 		const d = Math.floor(seconds / 86400);
 		const h = Math.floor((seconds % 86400) / 3600);
@@ -74,7 +56,7 @@
 		if (h > 0) return `${h}h ${m}m`;
 		return `${m}m`;
 	}
-	
+
 	function getRssiClass(rssi) {
 		if (rssi >= -50) return 'text-success';
 		if (rssi >= -70) return 'text-warning';
@@ -83,21 +65,14 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Alert Banner (shown when active) -->
 	{#if status.alert?.active}
 		<div class="alert alert-warning shadow-lg animate-pulse" role="alert" aria-live="assertive">
-			<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-			</svg>
-			<div>
-				<span class="font-bold text-2xl">{status.alert.band}</span>
-				<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
-				<span class="ml-4">Strength: {status.alert.strength}/8</span>
-			</div>
+			<span class="font-bold text-2xl">{status.alert.band}</span>
+			<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
+			<span class="ml-4">Strength: {status.alert.strength}/8</span>
 		</div>
 	{/if}
 
-	<!-- Header -->
 	<div class="hero bg-base-200 rounded-box p-4">
 		<div class="hero-content text-center">
 			<div>
@@ -109,23 +84,15 @@
 					{:else}
 						AP Mode • {status.wifi.ap_ip}
 					{/if}
-					{#if status.wifi.sta_connected && status.wifi.ap_active}
-						<span class="text-xs opacity-60">(AP: {status.wifi.ap_ip})</span>
-					{/if}
 				</p>
 			</div>
 		</div>
 	</div>
 
-	<!-- Status Cards -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-		<!-- V1 Connection -->
 		<div class="card bg-base-200 shadow-xl">
 			<div class="card-body p-4">
-				<h2 class="card-title text-sm">
-					<span class="text-xl">📡</span>
-					Valentine One
-				</h2>
+				<h2 class="card-title text-sm">Valentine One</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -137,13 +104,9 @@
 			</div>
 		</div>
 
-		<!-- WiFi Status -->
 		<div class="card bg-base-200 shadow-xl">
 			<div class="card-body p-4">
-				<h2 class="card-title text-sm">
-					<span class="text-xl">📶</span>
-					WiFi
-				</h2>
+				<h2 class="card-title text-sm">WiFi</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -154,22 +117,14 @@
 						<div class="text-xs {getRssiClass(status.wifi.rssi)}">
 							{status.wifi.ssid} • {status.wifi.rssi} dBm
 						</div>
-					{:else if status.wifi.sta_enabled && status.wifi.sta_ssid}
-						<div class="text-xs text-warning">
-							Connecting to {status.wifi.sta_ssid}...
-						</div>
 					{/if}
 				{/if}
 			</div>
 		</div>
 
-		<!-- Uptime -->
 		<div class="card bg-base-200 shadow-xl">
 			<div class="card-body p-4">
-				<h2 class="card-title text-sm">
-					<span class="text-xl">⏱️</span>
-					Uptime
-				</h2>
+				<h2 class="card-title text-sm">Uptime</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -183,13 +138,9 @@
 			</div>
 		</div>
 
-		<!-- Alert Status -->
 		<div class="card bg-base-200 shadow-xl">
 			<div class="card-body p-4">
-				<h2 class="card-title text-sm">
-					<span class="text-xl">🚨</span>
-					Alerts
-				</h2>
+				<h2 class="card-title text-sm">Alerts</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if status.alert?.active}
@@ -203,62 +154,9 @@
 				{/if}
 			</div>
 		</div>
-
-		<!-- GPS Status (shown when enabled and has fix) -->
-		{#if gpsStatus?.enabled && gpsStatus?.hasValidFix}
-			<div class="card bg-base-200 shadow-xl">
-				<div class="card-body p-4">
-					<h2 class="card-title text-sm">
-						<span class="text-xl">📍</span>
-						GPS
-					</h2>
-					<div class="text-xl font-bold text-success">
-						{Math.round(gpsStatus.speed_mph)} mph
-					</div>
-					<div class="text-xs text-base-content/60">
-						{gpsStatus.satellites} sats • HDOP {gpsStatus.hdop?.toFixed(1) || '—'}
-					</div>
-				</div>
-			</div>
-		{:else if gpsStatus?.enabled && gpsStatus?.moduleDetected && !gpsStatus?.hasValidFix}
-			<div class="card bg-base-200 shadow-xl">
-				<div class="card-body p-4">
-					<h2 class="card-title text-sm">
-						<span class="text-xl">📍</span>
-						GPS
-					</h2>
-					<div class="text-xl font-bold text-warning">
-						Searching
-					</div>
-					<div class="text-xs text-base-content/60">
-						{gpsStatus.satellites || 0} sats visible
-					</div>
-				</div>
-			</div>
-		{/if}
 	</div>
 
-	<!-- Quick Actions -->
-	<div class="card bg-base-200 shadow-xl">
-		<div class="card-body p-4">
-			<h2 class="card-title text-sm mb-2">Quick Actions</h2>
-			<div class="flex flex-wrap gap-2">
-				<a href="/autopush" class="btn btn-accent btn-sm">🚗 Auto-Push</a>
-				<a href="/profiles" class="btn btn-primary btn-sm">📊 Profiles</a>
-				<a href="/colors" class="btn btn-info btn-sm">🎨 Colors</a>
-				<a href="/audio" class="btn btn-secondary btn-sm">🔊 Audio</a>
-				<a href="/integrations" class="btn btn-warning btn-sm">🔌 Integrations</a>
-				<a href="/settings" class="btn btn-ghost btn-sm">⚙️ Settings</a>
-			</div>
-		</div>
-	</div>
-
-	<!-- Error Toast -->
 	{#if error}
-		<div class="toast toast-end">
-			<div class="alert alert-error">
-				<span>{error}</span>
-			</div>
-		</div>
+		<div class="alert alert-error" role="alert">{error}</div>
 	{/if}
 </div>

@@ -41,13 +41,10 @@ struct DebugLogConfig {
     bool alerts;
     bool wifi;
     bool ble;
-    bool gps;
-    bool obd;
     bool system;
     bool display;
     bool perfMetrics;
     bool audio;
-    bool lockout;
     bool touch;
 };
 
@@ -73,26 +70,6 @@ enum VoiceAlertMode {
     VOICE_MODE_BAND_ONLY = 1,    // Just band name ("Ka")
     VOICE_MODE_FREQ_ONLY = 2,    // Just frequency ("34.7")
     VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
-};
-
-// Idle display mode (what to show in frequency area when no alerts)
-enum IdleDisplayMode {
-    IDLE_DISPLAY_NONE = 0,       // Normal resting display (blank)
-    IDLE_DISPLAY_SPEED = 1,      // Show current speed (mph)
-    IDLE_DISPLAY_OIL_TEMP = 2,   // Show engine oil temperature
-    IDLE_DISPLAY_DSG_TEMP = 3,   // Show DSG/transmission temperature
-    IDLE_DISPLAY_IAT = 4,        // Show intake air temperature
-    IDLE_DISPLAY_COMBO = 5,      // Cycle through available OBD data
-    IDLE_DISPLAY_OBD_CARDS = 6   // Primary metric + 2 cards
-};
-
-// OBD metric selection (for card-based idle display)
-enum ObdMetric {
-    OBD_METRIC_NONE = 0,         // No metric (empty/disabled)
-    OBD_METRIC_SPEED = 1,        // Vehicle speed (mph)
-    OBD_METRIC_OIL_TEMP = 2,     // Engine oil temperature (VW Mode 22)
-    OBD_METRIC_DSG_TEMP = 3,     // DSG transmission temperature (VW Mode 22)
-    OBD_METRIC_IAT = 4           // Intake air temperature (standard OBD)
 };
 
 // Auto-push profile slot
@@ -153,9 +130,6 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
-    uint16_t colorStatusGps;     // Status bar GPS color (good fix, >=4 sats)
-    uint16_t colorStatusGpsWarn; // Status bar GPS color (weak fix, <4 sats)
-    uint16_t colorStatusObd;     // Status bar OBD indicator color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -173,13 +147,10 @@ struct V1Settings {
         bool logAlerts;              // Include alert events in debug log
         bool logWifi;                // Include WiFi/AP events in debug log
         bool logBle;                 // Include BLE/proxy events in debug log
-        bool logGps;                 // Include GPS events in debug log
-        bool logObd;                 // Include OBD events in debug log
         bool logSystem;              // Include system/storage/events in debug log
         bool logDisplay;             // Include display latency events in debug log
         bool logPerfMetrics;         // Log BLE performance metrics periodically
         bool logAudio;               // Include audio/TTS playback events in debug log
-        bool logLockout;             // Include auto-lockout events in debug log
         bool logTouch;               // Include touch input events in debug log
     
     // Voice alerts (when no app connected)
@@ -247,37 +218,6 @@ struct V1Settings {
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     uint8_t apTimeoutMinutes;       // Minutes before AP auto-stops (0=always on, 5-60)
     
-    // GPS settings
-    bool gpsEnabled;          // Enable GPS module (default: off, auto-disabled if not found)
-    
-    // OBD settings  
-    bool obdEnabled;          // Enable OBD-II module (default: off, auto-disabled if not found)
-    String obdDeviceAddress;  // Saved OBD device BLE address (e.g., "AA:BB:CC:DD:EE:FF")
-    String obdDeviceName;     // Saved OBD device name (for display)
-    String obdPin;            // PIN code for OBD adapter (typically "1234")
-    IdleDisplayMode idleDisplayMode; // What OBD data to show when no alerts (none/speed/oil/dsg/iat/combo/cards)
-    
-    // OBD card-based display settings (when idleDisplayMode == IDLE_DISPLAY_OBD_CARDS)
-    ObdMetric obdPrimaryMetric;  // Primary metric shown in frequency area (e.g., speed)
-    ObdMetric obdCard1Metric;    // First card metric (e.g., oil temp)
-    ObdMetric obdCard2Metric;    // Second card metric (e.g., IAT)
-    uint16_t colorObdPrimary;    // OBD cards primary metric color
-    uint16_t colorObdCard1;      // OBD cards card 1 color
-    uint16_t colorObdCard2;      // OBD cards card 2 color
-    
-    // Auto-Lockout settings (JBV1-style)
-    bool lockoutEnabled;            // Master enable for auto-lockout system
-    bool lockoutKaProtection;       // Never auto-learn Ka band (real threats)
-    bool lockoutDirectionalUnlearn; // Only unlearn when traveling same direction
-    uint16_t lockoutFreqToleranceMHz;  // Frequency tolerance in MHz (default: 8)
-    uint8_t lockoutLearnCount;      // Hits needed to promote (default: 2)
-    uint8_t lockoutUnlearnCount;    // Misses to demote auto-lockouts (default: 5)
-    uint8_t lockoutManualDeleteCount; // Misses to demote manual lockouts (default: 25)
-    uint8_t lockoutLearnIntervalHours;   // Hours between counted hits (default: 4)
-    uint8_t lockoutUnlearnIntervalHours; // Hours between counted misses (default: 4)
-    uint8_t lockoutMaxSignalStrength;    // Don't learn signals >= this (0=disabled, default: 0)
-    uint16_t lockoutMaxDistanceM;   // Max alert distance to learn (default: 600m)
-    
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wreorder"
     // Default constructor with sensible defaults
@@ -319,9 +259,6 @@ struct V1Settings {
         colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
-        colorStatusGps(0x07E0),  // Green (GPS good)
-        colorStatusGpsWarn(0xFD20), // Orange (GPS weak)
-        colorStatusObd(0x07E0),  // Green (OBD connected)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -335,13 +272,10 @@ struct V1Settings {
         logAlerts(false),                // Alert logging off by default
         logWifi(false),                  // WiFi logging off by default (matches NVS)
         logBle(false),                   // BLE logging off by default
-        logGps(false),                   // GPS logging off by default
-        logObd(false),                   // OBD logging off by default
         logSystem(false),                // System logging off by default
         logDisplay(false),               // Display latency logging off by default
         logPerfMetrics(true),            // Perf metrics on by default (disableable via settings)
         logAudio(false),                 // Audio logging off by default
-        logLockout(false),               // Lockout logging off by default
         logTouch(false),                 // Touch logging off by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
@@ -392,31 +326,7 @@ struct V1Settings {
         slot2_comfort(),
         lastV1Address(""),
         autoPowerOffMinutes(0),  // Default: disabled
-        apTimeoutMinutes(0),     // Default: always on (0=unlimited)
-        gpsEnabled(false),       // GPS off by default (opt-in)
-        obdEnabled(false),       // OBD off by default (opt-in)
-        obdDeviceAddress(""),    // No saved OBD device
-        obdDeviceName(""),       // No saved OBD device name
-        obdPin("1234"),          // Default OBD adapter PIN
-        idleDisplayMode(IDLE_DISPLAY_NONE), // No OBD data on idle screen by default
-        obdPrimaryMetric(OBD_METRIC_SPEED), // Default primary: speed
-        obdCard1Metric(OBD_METRIC_OIL_TEMP), // Default card 1: oil temp
-        obdCard2Metric(OBD_METRIC_IAT),     // Default card 2: intake air temp
-        colorObdPrimary(0x001F),            // Blue for primary metric
-        colorObdCard1(0xFFE0),              // Yellow for card 1
-        colorObdCard2(0xF800),              // Red for card 2
-        // Auto-lockout defaults (JBV1 defaults)
-        lockoutEnabled(true),           // Auto-lockout enabled by default
-        lockoutKaProtection(true),      // Never learn Ka (JBV1 default)
-        lockoutDirectionalUnlearn(true),// Directional unlearn on (JBV1 default)
-        lockoutFreqToleranceMHz(8),     // 8 MHz tolerance (JBV1 default)
-        lockoutLearnCount(3),           // 3 hits to learn (matches NVS default)
-        lockoutUnlearnCount(5),         // 5 misses to unlearn auto (JBV1 default)
-        lockoutManualDeleteCount(25),   // 25 misses to unlearn manual (JBV1 default)
-        lockoutLearnIntervalHours(4),   // 4 hours between hits (JBV1 default)
-        lockoutUnlearnIntervalHours(4), // 4 hours between misses (JBV1 default)
-        lockoutMaxSignalStrength(0),    // No max (JBV1 "None" default)
-        lockoutMaxDistanceM(600) {}     // 600m max distance (JBV1 default)
+        apTimeoutMinutes(0) {}     // Default: always on (0=unlimited)
 #pragma GCC diagnostic pop
 };
 
@@ -458,12 +368,6 @@ public:
     void setVolumeMuteColor(uint16_t color);
     void setRssiV1Color(uint16_t color);
     void setRssiProxyColor(uint16_t color);
-    void setStatusGpsColor(uint16_t color);
-    void setStatusGpsWarnColor(uint16_t color);
-    void setStatusObdColor(uint16_t color);
-    void setObdPrimaryColor(uint16_t color);
-    void setObdCard1Color(uint16_t color);
-    void setObdCard2Color(uint16_t color);
     void setFreqUseBandColor(bool use);
     void setHideWifiIcon(bool hide);
     void setHideProfileIndicator(bool hide);
@@ -477,16 +381,13 @@ public:
     void setLogAlerts(bool enable, bool deferSave = false);
     void setLogWifi(bool enable, bool deferSave = false);
     void setLogBle(bool enable, bool deferSave = false);
-    void setLogGps(bool enable, bool deferSave = false);
-    void setLogObd(bool enable, bool deferSave = false);
     void setLogSystem(bool enable, bool deferSave = false);
     void setLogDisplay(bool enable, bool deferSave = false);
     void setLogPerfMetrics(bool enable, bool deferSave = false);
     void setLogAudio(bool enable, bool deferSave = false);
-    void setLogLockout(bool enable, bool deferSave = false);
     void setLogTouch(bool enable, bool deferSave = false);
     DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logGps, settings.logObd, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logLockout, settings.logTouch };
+        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logTouch };
     }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
@@ -535,24 +436,6 @@ public:
     // Reset to defaults
     void resetToDefaults();
     
-    // GPS/OBD settings
-    bool isFeaturesRuntimeEnabled() const { return settings.gpsEnabled || settings.obdEnabled; }
-    bool isGpsEnabled() const { return settings.gpsEnabled; }
-    bool isObdEnabled() const { return settings.obdEnabled; }
-    void setGpsEnabled(bool enabled) { settings.gpsEnabled = enabled; save(); }
-    void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; save(); }
-    
-    // OBD device settings
-    const String& getObdDeviceAddress() const { return settings.obdDeviceAddress; }
-    const String& getObdDeviceName() const { return settings.obdDeviceName; }
-    const String& getObdPin() const { return settings.obdPin; }
-    void setObdDevice(const String& address, const String& name) { 
-        settings.obdDeviceAddress = address; 
-        settings.obdDeviceName = name;
-        save(); 
-    }
-    void setObdPin(const String& pin) { settings.obdPin = pin; save(); }
-    
     // WiFi client (STA) settings - connect to external network
     bool isWifiClientEnabled() const { return settings.wifiClientEnabled; }
     const String& getWifiClientSSID() const { return settings.wifiClientSSID; }
@@ -560,25 +443,6 @@ public:
     void setWifiClientEnabled(bool enabled);
     void setWifiClientCredentials(const String& ssid, const String& password);
     void clearWifiClientCredentials();  // Forget saved network
-    
-    // Auto-lockout settings (batch update - call save() after)
-    void updateLockoutEnabled(bool enabled) { settings.lockoutEnabled = enabled; }
-    void updateLockoutKaProtection(bool enabled) { settings.lockoutKaProtection = enabled; }
-    void updateLockoutDirectionalUnlearn(bool enabled) { settings.lockoutDirectionalUnlearn = enabled; }
-    void updateLockoutFreqToleranceMHz(uint16_t mhz) { settings.lockoutFreqToleranceMHz = mhz; }
-    void updateLockoutLearnCount(uint8_t count) { settings.lockoutLearnCount = count; }
-    void updateLockoutUnlearnCount(uint8_t count) { settings.lockoutUnlearnCount = count; }
-    void updateLockoutManualDeleteCount(uint8_t count) { settings.lockoutManualDeleteCount = count; }
-    void updateLockoutLearnIntervalHours(uint8_t hours) { settings.lockoutLearnIntervalHours = hours; }
-    void updateLockoutUnlearnIntervalHours(uint8_t hours) { settings.lockoutUnlearnIntervalHours = hours; }
-    void updateLockoutMaxSignalStrength(uint8_t strength) { settings.lockoutMaxSignalStrength = strength; }
-    void updateLockoutMaxDistanceM(uint16_t meters) { settings.lockoutMaxDistanceM = meters; }
-    
-    // OBD idle display settings (batch update - call save() after)
-    void updateIdleDisplayMode(IdleDisplayMode mode) { settings.idleDisplayMode = mode; }
-    void updateObdPrimaryMetric(ObdMetric metric) { settings.obdPrimaryMetric = metric; }
-    void updateObdCard1Metric(ObdMetric metric) { settings.obdCard1Metric = metric; }
-    void updateObdCard2Metric(ObdMetric metric) { settings.obdCard2Metric = metric; }
     
     // SD card backup/restore for display settings
     void backupToSD();

@@ -41,7 +41,7 @@ struct VoiceContext {
     uint8_t mainVolume;               // Current V1 main volume (0-9)
     
     // Environment  
-    bool isInLockout;                 // Priority alert is in GPS lockout zone
+    bool isSuppressed;                // Priority alert is software-suppressed
     
     // Time
     unsigned long now;                // Current millis() timestamp
@@ -50,7 +50,7 @@ struct VoiceContext {
     VoiceContext() : 
         alerts(nullptr), alertCount(0), priority(nullptr),
         isMuted(false), isProxyConnected(false), mainVolume(0),
-        isInLockout(false), now(0) {}
+        isSuppressed(false), now(0) {}
 };
 
 /**

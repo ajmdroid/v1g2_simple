@@ -18,12 +18,9 @@ enum class DebugLogCategory {
     Wifi,
     Alerts,
     Ble,
-    Gps,
-    Obd,
     Display,
     PerfMetrics,
     Audio,
-    Lockout,
     Touch
 };
 
@@ -31,13 +28,10 @@ struct DebugLogFilter {
     bool alerts = true;
     bool wifi = false;
     bool ble = false;
-    bool gps = false;
-    bool obd = false;
     bool system = true;
     bool display = false;
     bool perfMetrics = false;
     bool audio = false;
-    bool lockout = false;
     bool touch = false;
 };
 
@@ -49,7 +43,7 @@ class DebugLogger {
 public:
     enum class TimeSource {
         NONE,
-        GPS,
+        EXTERNAL_SOURCE,
         NTP,
         RTC,
         ESTIMATED
@@ -65,7 +59,7 @@ public:
 
     TimeSource getTimeSource() const { return TimeSource::NONE; }
 
-    void syncTimeFromGPS(int, int, int, int, int, int) {}
+    void syncTimeFromExternal(int, int, int, int, int, int) {}
     void syncTimeFromNTP(int, int, int, int, int, int) {}
     bool hasValidTime() const { return false; }
     time_t getUnixTime() const { return 0; }

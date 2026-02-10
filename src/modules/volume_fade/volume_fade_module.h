@@ -24,7 +24,7 @@ class SettingsManager;
 struct VolumeFadeContext {
     bool hasAlert;              // Currently have active alert
     bool alertMuted;            // Alert is muted by user
-    bool alertInLockout;        // Alert is in GPS lockout
+    bool alertSuppressed;       // Alert is software-suppressed
     uint8_t currentVolume;      // Current V1 volume
     uint8_t currentMuteVolume;  // Current V1 mute volume
     uint16_t currentFrequency;  // Current priority frequency (MHz*10) for dedup
@@ -33,7 +33,7 @@ struct VolumeFadeContext {
     unsigned long now;          // Current timestamp
     
     VolumeFadeContext() : 
-        hasAlert(false), alertMuted(false), alertInLockout(false),
+        hasAlert(false), alertMuted(false), alertSuppressed(false),
         currentVolume(0), currentMuteVolume(0), currentFrequency(0),
         speedBoostActive(false), speedBoostOriginalVolume(0xFF), now(0) {}
 };

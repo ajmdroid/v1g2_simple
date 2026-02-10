@@ -70,13 +70,13 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
 
         *displayMode = DisplayMode::LIVE;
 
-        // Lockout system disabled - priorityInLockout is always false
-        bool priorityInLockout = false;
+        // Suppression subsystem is disabled in this build.
+        bool prioritySuppressed = false;
 
         VolumeFadeContext fadeCtx;
         fadeCtx.hasAlert = true;
         fadeCtx.alertMuted = state.muted;
-        fadeCtx.alertInLockout = priorityInLockout;
+        fadeCtx.alertSuppressed = prioritySuppressed;
         fadeCtx.currentVolume = state.mainVolume;
         fadeCtx.currentMuteVolume = state.muteVolume;
         fadeCtx.currentFrequency = (uint16_t)priority.frequency;
@@ -100,7 +100,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         voiceCtx.isMuted = state.muted;
         voiceCtx.isProxyConnected = ble->isProxyClientConnected();
         voiceCtx.mainVolume = state.mainVolume;
-        voiceCtx.isInLockout = priorityInLockout;
+        voiceCtx.isSuppressed = prioritySuppressed;
         voiceCtx.now = nowMs;
 
         VoiceAction voiceAction = voice->process(voiceCtx);
@@ -154,7 +154,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         VolumeFadeContext fadeCtx;
         fadeCtx.hasAlert = false;
         fadeCtx.alertMuted = false;
-        fadeCtx.alertInLockout = false;
+        fadeCtx.alertSuppressed = false;
         fadeCtx.currentVolume = restoreState.mainVolume;
         fadeCtx.currentMuteVolume = restoreState.muteVolume;
         fadeCtx.currentFrequency = 0;

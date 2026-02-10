@@ -199,24 +199,6 @@ void perfRecordBleProcessUs(uint32_t us) {
     }
 }
 
-void perfRecordGpsUs(uint32_t us) {
-    if (us > perfExtended.gpsMaxUs) {
-        perfExtended.gpsMaxUs = us;
-    }
-}
-
-void perfRecordObdUs(uint32_t us) {
-    if (us > perfExtended.obdMaxUs) {
-        perfExtended.obdMaxUs = us;
-    }
-}
-
-void perfRecordLockoutUs(uint32_t us) {
-    if (us > perfExtended.lockoutMaxUs) {
-        perfExtended.lockoutMaxUs = us;
-    }
-}
-
 void perfRecordDispPipeUs(uint32_t us) {
     portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.dispPipeMaxUs) {
@@ -250,9 +232,6 @@ uint32_t perfGetBleConnectMaxUs() { return perfExtended.bleConnectMaxUs; }
 uint32_t perfGetBleDiscoveryMaxUs() { return perfExtended.bleDiscoveryMaxUs; }
 uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
-uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
-uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
-uint32_t perfGetLockoutMaxUs() { return perfExtended.lockoutMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
 uint32_t perfGetTouchMaxUs() { return perfExtended.touchMaxUs; }
 
@@ -301,11 +280,10 @@ void perfMetricsPrint() {
     char buf[512];
     int n = snprintf(buf, sizeof(buf),
         "[PERF] rx=%lu rxB=%lu pOk=%lu pFail=%lu "
-        "qDrop=%lu perfDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu obdHW=%lu "
+        "qDrop=%lu perfDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu "
         "dUpd=%lu dSkip=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
-        "obdSkip=%lu obdTout=%lu "
         "logRate=%lu logBuf=%lu logQ=%lu "
         "latMin=%luus avg=%luus max=%luus n=%lu\n",
         (unsigned long)perfCounters.rxPackets.load(),
@@ -318,7 +296,6 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.queueHighWater.load(),
         (unsigned long)perfCounters.proxyQueueHighWater.load(),
         (unsigned long)perfCounters.phoneCmdQueueHighWater.load(),
-        (unsigned long)perfCounters.obdScanQueueHighWater.load(),
         (unsigned long)perfCounters.displayUpdates.load(),
         (unsigned long)perfCounters.displaySkips.load(),
         (unsigned long)perfCounters.reconnects.load(),
@@ -327,8 +304,6 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.bleMutexTimeout.load(),
         (unsigned long)perfCounters.cmdPaceNotYet.load(),
         (unsigned long)perfCounters.cmdBleBusy.load(),
-        (unsigned long)perfCounters.obdMutexSkip.load(),
-        (unsigned long)perfCounters.obdMutexTimeout.load(),
         (unsigned long)debugLogger.getRateLimitDrops(),
         (unsigned long)debugLogger.getBufferFullDrops(),
         (unsigned long)debugLogger.getDropCount(),
@@ -359,7 +334,6 @@ String perfMetricsToJson() {
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();
     doc["phoneCmdQueueHighWater"] = perfCounters.phoneCmdQueueHighWater.load();
-    doc["obdScanQueueHighWater"] = perfCounters.obdScanQueueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
