@@ -80,6 +80,7 @@ struct PerfCounters {
     std::atomic<uint32_t> obdScanQueueHighWater{0}; // Max OBD scan queue depth
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
+    std::atomic<uint32_t> perfDrop{0};         // Perf SD snapshot drops (queue full)
     
     // Connection
     std::atomic<uint32_t> reconnects{0};       // BLE reconnection count
@@ -112,6 +113,7 @@ struct PerfCounters {
         obdScanQueueHighWater.store(0, std::memory_order_relaxed);
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);
+        perfDrop.store(0, std::memory_order_relaxed);
         reconnects.store(0, std::memory_order_relaxed);
         disconnects.store(0, std::memory_order_relaxed);
         displayUpdates.store(0, std::memory_order_relaxed);

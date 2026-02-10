@@ -4,15 +4,9 @@
 
 #include "perf_metrics.h"
 #include "debug_logger.h"  // For drop counter access (never log via debug logger)
-#include "settings.h"
+#include "perf_sd_logger.h"
 #include <ArduinoJson.h>
-
-// PerfMetrics logging macro - logs to Serial AND debugLogger when PerfMetrics category enabled
-static constexpr bool PERF_DEBUG_LOGS = false;  // Set true for verbose Serial logging
-#define PERF_LOG(...) do { \
-    if (PERF_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    if (debugLogger.isEnabledFor(DebugLogCategory::PerfMetrics)) debugLogger.logf(DebugLogCategory::PerfMetrics, __VA_ARGS__); \
-} while(0)
+#include <freertos/FreeRTOS.h>
 
 // Global instances
 PerfCounters perfCounters;
@@ -51,6 +45,7 @@ namespace {
 static constexpr uint32_t kLatencyBucketsMs[PerfHistogramMs::kBucketCount] = {
     1, 2, 5, 10, 20, 50, 100, 200, 500, 1000
 };
+static portMUX_TYPE sPerfSnapshotMux = portMUX_INITIALIZER_UNLOCKED;
 
 static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
     if (ms > hist.maxMs) {
@@ -83,6 +78,32 @@ static uint32_t calcP95(const PerfHistogramMs& hist) {
     }
     return hist.maxMs;
 }
+
+static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
+    // Keep expensive calls outside the critical section; only copy shared state
+    // while holding the lock so the snapshot is internally consistent.
+    uint32_t nowMs = millis();
+    uint32_t freeHeap = ESP.getFreeHeap();
+
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    snapshot.millisTs = nowMs;
+    snapshot.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
+    snapshot.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
+    snapshot.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);
+    snapshot.parseFail = perfCounters.parseFailures.load(std::memory_order_relaxed);
+    snapshot.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
+    snapshot.reconn = perfCounters.reconnects.load(std::memory_order_relaxed);
+    snapshot.loopMaxUs = perfExtended.loopMaxUs;
+    snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
+    snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
+    snapshot.freeHeap = freeHeap;
+
+    // Windowed maxima for the CSV logger.
+    perfExtended.loopMaxUs = 0;
+    perfExtended.bleDrainMaxUs = 0;
+    perfExtended.dispPipeMaxUs = 0;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
 } // namespace
 
 void perfRecordNotifyToDisplayMs(uint32_t ms) {
@@ -94,9 +115,11 @@ void perfRecordNotifyToProxyMs(uint32_t ms) {
 }
 
 void perfRecordLoopJitterUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.loopMaxUs) {
         perfExtended.loopMaxUs = us;
     }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma, uint32_t largestDma) {
@@ -145,9 +168,11 @@ void perfRecordDisplayRenderUs(uint32_t us) {
 }
 
 void perfRecordBleDrainUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.bleDrainMaxUs) {
         perfExtended.bleDrainMaxUs = us;
     }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordBleConnectUs(uint32_t us) {
@@ -193,9 +218,11 @@ void perfRecordLockoutUs(uint32_t us) {
 }
 
 void perfRecordDispPipeUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.dispPipeMaxUs) {
         perfExtended.dispPipeMaxUs = us;
     }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordTouchUs(uint32_t us) {
@@ -235,70 +262,24 @@ void perfExtendedResetWindow() {
 
 #if PERF_METRICS && PERF_MONITORING
 bool perfMetricsCheckReport() {
-    // Check if perf logging is enabled via settings (not just perfDebugEnabled)
-    extern SettingsManager settingsManager;
-    bool logEnabled = settingsManager.get().logPerfMetrics || perfDebugEnabled;
-    if (!logEnabled) {
+    if (!perfSdLogger.isEnabled()) {
         return false;
     }
     
     uint32_t now = millis();
-    // Use 2s interval for stability diagnosis (configurable at compile time)
-    constexpr uint32_t STABILITY_REPORT_INTERVAL_MS = 2000;
+    constexpr uint32_t STABILITY_REPORT_INTERVAL_MS = 5000;
+    if (perfLastReportMs == 0) {
+        perfLastReportMs = now;
+        return false;
+    }
     if (now - perfLastReportMs < STABILITY_REPORT_INTERVAL_MS) {
         return false;
     }
     perfLastReportMs = now;
-    
-    // Stability-focused compact report format per CT's recommendation:
-    // loopMax_us, bleDrainMax_us, bleConnMax_us, wifiMax_us, sdMax_us, gpsMax_us, obdMax_us, lockoutMax_us, dispMax_us, touchMax_us, heapMin, qDrop, parseFail, qHW
-    // Plus otherMax_us = gap not explained by instrumented buckets (signals uninstrumented code)
-    uint32_t loopUs = perfExtended.loopMaxUs;
-    uint32_t bleConnUs = perfExtended.bleProcessMaxUs;
-    uint32_t bleDrainUs = perfExtended.bleDrainMaxUs;
-    uint32_t wifiUs = perfExtended.wifiMaxUs;
-    uint32_t sdUs = perfExtended.sdMaxUs;
-    uint32_t gpsUs = perfExtended.gpsMaxUs;
-    uint32_t obdUs = perfExtended.obdMaxUs;
-    uint32_t lockoutUs = perfExtended.lockoutMaxUs;
-    uint32_t dispUs = perfExtended.dispPipeMaxUs;
-    uint32_t touchUs = perfExtended.touchMaxUs;
-    
-    // Calculate "other" = unexplained loop time (not additive, but signals gaps)
-    // If loopMax is huge but all buckets are small, something else blocked
-    uint32_t explainedMax = bleConnUs;
-    if (bleDrainUs > explainedMax) explainedMax = bleDrainUs;
-    if (wifiUs > explainedMax) explainedMax = wifiUs;
-    if (sdUs > explainedMax) explainedMax = sdUs;
-    if (gpsUs > explainedMax) explainedMax = gpsUs;
-    if (obdUs > explainedMax) explainedMax = obdUs;
-    if (lockoutUs > explainedMax) explainedMax = lockoutUs;
-    if (dispUs > explainedMax) explainedMax = dispUs;
-    if (touchUs > explainedMax) explainedMax = touchUs;
-    uint32_t otherUs = (loopUs > explainedMax) ? (loopUs - explainedMax) : 0;
-    
-    PERF_LOG("[PERF] loopMax_us=%lu bleConnMax_us=%lu bleDrainMax_us=%lu wifiMax_us=%lu sdMax_us=%lu gpsMax_us=%lu obdMax_us=%lu lockoutMax_us=%lu dispMax_us=%lu touchMax_us=%lu otherMax_us=%lu heapMin=%lu heapBlock=%lu dmaMin=%lu dmaBlock=%lu qDrop=%lu parseFail=%lu qHW=%lu",
-        (unsigned long)loopUs,
-        (unsigned long)bleConnUs,
-        (unsigned long)bleDrainUs,
-        (unsigned long)wifiUs,
-        (unsigned long)sdUs,
-        (unsigned long)gpsUs,
-        (unsigned long)obdUs,
-        (unsigned long)lockoutUs,
-        (unsigned long)dispUs,
-        (unsigned long)touchUs,
-        (unsigned long)otherUs,
-        (unsigned long)perfExtended.minFreeHeap,
-        (unsigned long)perfExtended.minLargestBlock,
-        (unsigned long)perfExtended.minFreeDma,
-        (unsigned long)perfExtended.minLargestDma,
-        (unsigned long)perfCounters.queueDrops.load(),
-        (unsigned long)perfCounters.parseFailures.load(),
-        (unsigned long)perfCounters.queueHighWater.load());
-    
-    // Reset window metrics (counters are cumulative)
-    perfExtended.reset();
+
+    PerfSdSnapshot snapshot{};
+    captureSdSnapshot(snapshot);
+    perfSdLogger.enqueue(snapshot);
     return true;
 }
 #else
@@ -320,7 +301,7 @@ void perfMetricsPrint() {
     char buf[512];
     int n = snprintf(buf, sizeof(buf),
         "[PERF] rx=%lu rxB=%lu pOk=%lu pFail=%lu "
-        "qDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu obdHW=%lu "
+        "qDrop=%lu perfDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu obdHW=%lu "
         "dUpd=%lu dSkip=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
@@ -332,6 +313,7 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.parseSuccesses.load(),
         (unsigned long)perfCounters.parseFailures.load(),
         (unsigned long)perfCounters.queueDrops.load(),
+        (unsigned long)perfCounters.perfDrop.load(),
         (unsigned long)perfCounters.oversizeDrops.load(),
         (unsigned long)perfCounters.queueHighWater.load(),
         (unsigned long)perfCounters.proxyQueueHighWater.load(),
@@ -372,6 +354,7 @@ String perfMetricsToJson() {
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["perfDrop"] = perfCounters.perfDrop.load();
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();

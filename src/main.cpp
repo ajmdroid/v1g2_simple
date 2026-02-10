@@ -40,6 +40,7 @@
 #include "auto_lockout_manager.h"
 #include "obd_handler.h"
 #include "perf_metrics.h"
+#include "perf_sd_logger.h"
 #include "../include/config.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/display/display_preview_module.h"
@@ -547,6 +548,14 @@ void setup() {
         }
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
+    }
+
+    // Standalone perf CSV logger (SD only).
+    perfSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
+    if (perfSdLogger.isEnabled()) {
+        SerialLog.println("[Perf] SD logger enabled");
+    } else {
+        SerialLog.println("[Perf] SD logger disabled (no SD)");
     }
 
     // Initialize auto-push module after settings/profiles are ready

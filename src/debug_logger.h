@@ -1,6 +1,10 @@
 /**
  * Debug Logger - optional SD log sink (Channel B: diagnostic logs)
  * 
+ * COMPILE-TIME CONTROL:
+ * - DISABLED by default (saves ~15KB flash + RAM)
+ * - Define ENABLE_DEBUG_LOGGER=1 to include full implementation
+ * 
  * TWO-CHANNEL LOGGING ARCHITECTURE:
  * - Channel A (perf_metrics.h): Always-on numeric counters. RED ZONE SAFE.
  *   Use PERF_INC() / PERF_MAX() macros only. No strings, no heap, no locks.
@@ -34,39 +38,9 @@
 #define DEBUG_LOGGER_H
 
 #include <Arduino.h>
-#include <FS.h>
 #include <time.h>
-#include <atomic>
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/task.h>
 
-// Log file location and size cap (shared with UI/API)
-inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
-inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
-
-// Buffer settings for efficient SD writes
-// Max formatted line: 512 bytes (formatJsonLine uses char[512])
-// Lines exceeding this are truncated before buffering
-inline constexpr size_t DEBUG_LOG_MAX_LINE_SIZE = 512;      // Max single log line (enforced by format buffers)
-inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
-inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
-inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds (reduces SD/display collision)
-
-// Rate limiting to prevent log storms (safe zone enforcement)
-inline constexpr size_t DEBUG_LOG_RATE_LIMIT = 100;         // Max lines per second
-inline constexpr unsigned long DEBUG_LOG_RATE_WINDOW_MS = 1000;  // Rate limit window
-
-// Async write task settings (Core 0, low priority)
-// Message size kept small - each queued message is ~512 bytes, not 4KB
-inline constexpr size_t DEBUG_LOG_MESSAGE_SIZE = 512;       // Max bytes per queued message
-inline constexpr size_t DEBUG_LOG_QUEUE_DEPTH = 16;         // Queue up to 16 messages (~8KB total)
-inline constexpr size_t DEBUG_LOG_WRITER_STACK_SIZE = 3072; // Stack for writer task
-
-// WiFi transition deferral - avoid SD writes during WiFi reconnection (NVS flash contention)
-inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
-
-// Log categories for selective filtering
+// Log categories for selective filtering (always defined for API compatibility)
 enum class DebugLogCategory {
     System,
     Wifi,
@@ -94,6 +68,98 @@ struct DebugLogFilter {
     bool lockout = false;
     bool touch = false;
 };
+
+// Log file location and size cap (shared with UI/API even when disabled)
+inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
+inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;  // 1GB cap (SD card)
+
+// ============================================================================
+// STUB IMPLEMENTATION - Zero overhead when ENABLE_DEBUG_LOGGER is not defined
+// ============================================================================
+#ifndef ENABLE_DEBUG_LOGGER
+
+class DebugLogger {
+public:
+    void begin() {}
+    void setEnabled(bool) {}
+    void setFilter(const DebugLogFilter&) {}
+    bool isEnabled() const { return false; }
+    bool isEnabledFor(DebugLogCategory) const { return false; }
+
+    enum class TimeSource { NONE, GPS, NTP, RTC, ESTIMATED };
+    TimeSource getTimeSource() const { return TimeSource::NONE; }
+
+    void syncTimeFromGPS(int, int, int, int, int, int) {}
+    void syncTimeFromNTP(int, int, int, int, int, int) {}
+    bool hasValidTime() const { return false; }
+    time_t getUnixTime() const { return 0; }
+    void getISO8601Timestamp(char* buf, size_t bufSize) const { if (bufSize > 0) buf[0] = '\0'; }
+
+    bool restoreTimeFromCache() { return false; }
+    void saveTimeToCache() {}
+    void updateTimeCache() {}
+    time_t getLastSyncEpoch() const { return 0; }
+
+    void logf(DebugLogCategory, const char*, ...) __attribute__((format(printf, 3, 4))) {}
+    void logf(const char*, ...) __attribute__((format(printf, 2, 3))) {}
+    void log(DebugLogCategory, const char*) {}
+    void log(const char*) {}
+    void logEvent(DebugLogCategory, const char*, const char* = nullptr) {}
+    void logPerfMetrics(const char*) {}
+
+    void update() {}
+    void flush() {}
+
+    void enableAsyncMode() {}
+    void disableAsyncMode() {}
+    bool isAsyncMode() const { return false; }
+    uint32_t getDropCount() const { return 0; }
+    uint32_t getRateLimitDrops() const { return 0; }
+    uint32_t getBufferFullDrops() const { return 0; }
+    uint32_t getCoreViolationDrops() const { return 0; }
+    uint32_t getQueueHighWater() const { return 0; }
+
+    void notifyWifiTransition(bool) {}
+    bool isFlushDeferred() const { return false; }
+    void notifyRenderState(bool) {}
+    bool isRenderActive() const { return false; }
+
+    bool exists() const { return false; }
+    size_t size() const { return 0; }
+    bool clear() { return false; }
+    bool storageReady() const { return false; }
+    bool onSdCard() const { return false; }
+    bool canEnable() const { return false; }
+    String tail(size_t = 32768) const { return String(); }
+};
+
+extern DebugLogger debugLogger;
+
+#else  // ENABLE_DEBUG_LOGGER defined - full implementation
+
+#include <FS.h>
+#include <atomic>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
+
+// Buffer settings for efficient SD writes (only needed for full implementation)
+inline constexpr size_t DEBUG_LOG_MAX_LINE_SIZE = 512;      // Max single log line (enforced by format buffers)
+inline constexpr size_t DEBUG_LOG_BUFFER_SIZE = 4096;       // 4KB write buffer
+inline constexpr size_t DEBUG_LOG_FLUSH_THRESHOLD = 3072;   // Flush when 75% full
+inline constexpr unsigned long DEBUG_LOG_FLUSH_INTERVAL_MS = 2000;  // Flush every 2 seconds
+
+// Rate limiting to prevent log storms (safe zone enforcement)
+inline constexpr size_t DEBUG_LOG_RATE_LIMIT = 100;         // Max lines per second
+inline constexpr unsigned long DEBUG_LOG_RATE_WINDOW_MS = 1000;  // Rate limit window
+
+// Async write task settings (Core 0, low priority)
+inline constexpr size_t DEBUG_LOG_MESSAGE_SIZE = 512;       // Max bytes per queued message
+inline constexpr size_t DEBUG_LOG_QUEUE_DEPTH = 16;         // Queue up to 16 messages (~8KB total)
+inline constexpr size_t DEBUG_LOG_WRITER_STACK_SIZE = 3072; // Stack for writer task
+
+// WiFi transition deferral - avoid SD writes during WiFi reconnection
+inline constexpr unsigned long WIFI_TRANSITION_DEFER_MAX_MS = 5000;  // Max deferral before forced flush
 
 class DebugLogger {
 public:
@@ -238,5 +304,7 @@ private:
 };
 
 extern DebugLogger debugLogger;
+
+#endif  // ENABLE_DEBUG_LOGGER
 
 #endif  // DEBUG_LOGGER_H

@@ -1,9 +1,19 @@
 /**
  * Debug Logger implementation.
  * Writes timestamped lines to SD (preferred) or LittleFS when enabled.
+ * 
+ * COMPILE-TIME CONTROL:
+ * - DISABLED by default (stub class only)
+ * - Define ENABLE_DEBUG_LOGGER=1 to include full implementation
  */
 
 #include "debug_logger.h"
+
+// Stub instantiation when debug logging is disabled
+#ifndef ENABLE_DEBUG_LOGGER
+DebugLogger debugLogger;
+#else  // ENABLE_DEBUG_LOGGER - full implementation
+
 #include "storage_manager.h"
 #include "perf_metrics.h"
 
@@ -864,3 +874,5 @@ void DebugLogger::writerTaskLoop() {
         taskYIELD();
     }
 }
+
+#endif  // ENABLE_DEBUG_LOGGER
