@@ -30,7 +30,7 @@ void AutoPushModule::start(int slotIndex) {
     state.profileLoaded = false;
     state.profile = V1Profile();
     state.step = Step::WaitReady;
-    state.nextStepAtMs = millis() + 500;
+    state.nextStepAtMs = millis() + 100;  // Brief settle time (was 500ms - too slow)
     state.profileWriteRetries = 0;
     AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
                    slotNames[clampedIndex], clampedIndex);
@@ -96,7 +96,7 @@ void AutoPushModule::process() {
                                        slotMuteToZero ? "ON" : "OFF");
                         bleClient->startUserBytesVerification(modifiedSettings.bytes);
                         state.step = Step::ProfileReadback;
-                        state.nextStepAtMs = now + 100;
+                        state.nextStepAtMs = now + 30;  // Fast step (V1 processes writes quickly)
                         return;
                     } else {
                         if (state.profileWriteRetries < kMaxProfileWriteRetries) {
@@ -104,7 +104,7 @@ void AutoPushModule::process() {
                             AUTO_PUSH_LOGF("[AutoPush] Write busy, retrying (%u/%u)\n",
                                            state.profileWriteRetries, kMaxProfileWriteRetries);
                             state.step = Step::Profile;
-                            state.nextStepAtMs = now + 100;
+                            state.nextStepAtMs = now + 30;  // Fast retry
                             return;
                         }
                         AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
@@ -119,7 +119,7 @@ void AutoPushModule::process() {
             }
 
             state.step = Step::Display;
-            state.nextStepAtMs = now + 100;
+            state.nextStepAtMs = now + 30;  // Fast step
             return;
         }
 
@@ -127,7 +127,7 @@ void AutoPushModule::process() {
             bleClient->requestUserBytes();
             AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
             state.step = Step::Display;
-            state.nextStepAtMs = now + 100;
+            state.nextStepAtMs = now + 30;  // Fast step
             return;
 
         case Step::Display: {
@@ -137,7 +137,7 @@ void AutoPushModule::process() {
             AUTO_PUSH_LOGF("[AutoPush] Display set to: %s (darkMode=%s)\n",
                            displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
             state.step = Step::Mode;
-            state.nextStepAtMs = now + (state.slot.mode != V1_MODE_UNKNOWN ? 100 : 0);
+            state.nextStepAtMs = now + (state.slot.mode != V1_MODE_UNKNOWN ? 30 : 0);
             return;
         }
 
@@ -159,7 +159,7 @@ void AutoPushModule::process() {
                 (settings->getSlotVolume(state.slotIndex) != 0xFF ||
                  settings->getSlotMuteVolume(state.slotIndex) != 0xFF);
             state.step = Step::Volume;
-            state.nextStepAtMs = now + (volumeChangeNeeded ? 100 : 0);
+            state.nextStepAtMs = now + (volumeChangeNeeded ? 30 : 0);
             return;
         }
 
