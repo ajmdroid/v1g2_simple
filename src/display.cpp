@@ -3253,8 +3253,8 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
 #if defined(DISPLAY_WAVESHARE_349)
     const int x = 82;
     const int textSize = 1;   // No scaling - native 24pt for crisp rendering
-    const int spacing = 43;   // Increased spacing to spread labels vertically
-    const int startY = 55;    // Start position for L (moved down for 24pt)
+    const int spacing = 27;   // Tighter spacing to keep all bands above cards (Y<118)
+    const int startY = 25;    // Start position for L (raised to fit all 4 bands)
 #else
     const int x = 82;
     const int textSize = 1;   // No scaling
@@ -3320,6 +3320,12 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
             unionH = static_cast<uint16_t>(maxY - unionY);
         }
     }
+    // Clip clear rectangle to primary zone - don't extend into card area (Y >= 118)
+    const int16_t maxClearY = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;  // Y=115
+    if (unionY + unionH > maxClearY) {
+        unionH = static_cast<uint16_t>(maxClearY - unionY);
+    }
+    if (unionY < 0) unionY = 0;
     FILL_RECT(unionX, unionY, unionW, unionH, PALETTE_BG);
 
     for (int i = 0; i < 4; ++i) {
