@@ -399,6 +399,17 @@ void setup() {
         SerialLog.printf("(Other: %d)\n", resetReason);
     }
     SerialLog.println("===================================\n");
+
+    // Runtime PSRAM visibility: board metadata can differ from actual hardware.
+    bool psramOk = psramFound();
+    uint32_t psramTotal = static_cast<uint32_t>(ESP.getPsramSize());
+    uint32_t psramFree = static_cast<uint32_t>(ESP.getFreePsram());
+    uint32_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    SerialLog.printf("[Memory] PSRAM: found=%s total=%lu free=%lu largest=%lu\n",
+                     psramOk ? "yes" : "no",
+                     static_cast<unsigned long>(psramTotal),
+                     static_cast<unsigned long>(psramFree),
+                     static_cast<unsigned long>(psramLargest));
     
     // Initialize battery manager EARLY - needs to latch power on if running on battery
     // This must happen before any long-running init to prevent shutdown

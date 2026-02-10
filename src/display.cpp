@@ -490,34 +490,70 @@ bool V1Display::begin() {
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     
-    // Initialize OpenFontRender fonts with glyph caching enabled (uses PSRAM)
-    // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont
-    // Caching avoids re-rasterizing glyphs on every frame (80-97ms → ~10ms for cached)
-    // Total: ~208KB in PSRAM (2.5% of 8MB available)
+    // Initialize OpenFontRender fonts with glyph caching enabled.
+    // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont.
+    // Prefer larger caches when PSRAM is available; keep safe fallbacks otherwise.
+    const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
+    const uint32_t modernCacheBytes = psramOk ? 65536u : 12288u;
+    const uint32_t numericCacheBytes = psramOk ? 49152u : 8192u;
+    Serial.printf("[Display] Font cache budget: psram=%s modern=%lu seg7=%lu hemi=%lu serp=%lu\n",
+                  psramOk ? "yes" : "no",
+                  static_cast<unsigned long>(modernCacheBytes),
+                  static_cast<unsigned long>(numericCacheBytes),
+                  static_cast<unsigned long>(numericCacheBytes),
+                  static_cast<unsigned long>(numericCacheBytes));
     
     ofr.setDrawer(*tft);
-    ofr.setCacheSize(1, 4, 65536);  // 64KB for labels/text (alphabet+digits at 2 sizes)
+    ofr.setCacheSize(1, 4, modernCacheBytes);  // Labels/text cache
     FT_Error ftErr = ofr.loadFont(MontserratBold, sizeof(MontserratBold));
     ofrInitialized = (ftErr == 0);
     if (ftErr) Serial.printf("[Display] ERROR: Montserrat font failed (0x%02X)\n", ftErr);
     
     ofrSegment7.setDrawer(*tft);
-    ofrSegment7.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
+    ofrSegment7.setCacheSize(1, 4, numericCacheBytes);  // Classic digits cache
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
     
     ofrHemi.setDrawer(*tft);
-    ofrHemi.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
+    ofrHemi.setCacheSize(1, 4, numericCacheBytes);  // Hemi digits cache
     FT_Error ftErr3 = ofrHemi.loadFont(HemiHead, sizeof(HemiHead));
     ofrHemiInitialized = (ftErr3 == 0);
     if (ftErr3) Serial.printf("[Display] ERROR: HemiHead font failed (0x%02X)\n", ftErr3);
     
     ofrSerpentine.setDrawer(*tft);
-    ofrSerpentine.setCacheSize(1, 4, 49152);  // 48KB for digits at 2-3 sizes
+    ofrSerpentine.setCacheSize(1, 4, numericCacheBytes);  // Serpentine digits cache
     FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
     ofrSerpentineInitialized = (ftErr4 == 0);
     if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
+
+    // Warm common glyphs once at boot so first alerts don't pay rasterization cost.
+    auto warmFontSample = [&](OpenFontRender& font, int fontSize, const char* sample) {
+        font.setBackgroundColor(0, 0, 0);
+        font.setFontColor(255, 255, 255);
+        font.setFontSize(fontSize);
+        font.setCursor(4, fontSize + 2);
+        font.printf("%s", sample);
+    };
+    if (ofrInitialized) {
+        warmFontSample(ofr, 20, "0123456789");
+        warmFontSample(ofr, 66, "SCAN");
+        warmFontSample(ofr, 69, "35.500");
+    }
+    if (ofrSegment7Initialized) {
+        warmFontSample(ofrSegment7, 60, "0123456789.-");
+        warmFontSample(ofrSegment7, 65, "SCAN");
+        warmFontSample(ofrSegment7, 75, "35.500");
+    }
+    if (ofrHemiInitialized) {
+        warmFontSample(ofrHemi, 76, "SCAN");
+        warmFontSample(ofrHemi, 80, "35.500");
+    }
+    if (ofrSerpentineInitialized) {
+        warmFontSample(ofrSerpentine, 65, "SCAN");
+    }
+    // Clear warm-up draws from the framebuffer (no flush needed here).
+    tft->fillScreen(COLOR_BLACK);
     
     Serial.printf("[Display] OK %dx%d, fonts=%d/%d/%d/%d\n", 
                   SCREEN_WIDTH, SCREEN_HEIGHT,
