@@ -3413,8 +3413,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
             int lx = leftMargin + (maxWidth - textWidth) / 2;
             
             // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+            // Clamp height to primary zone to avoid clipping cards at Y=118
             const int clearLeft = leftMargin + 10;
-            FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
+            int clearY = y - 5;
+            int clearH = fontSize + 10;
+            const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+            if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
+            if (clearH > 0) FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
             
             uint16_t laserColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
             
@@ -3447,8 +3452,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         if (x < leftMargin) x = leftMargin;
         
         // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
+        // Clamp height to primary zone to avoid clipping cards at Y=118
         const int clearLeft = leftMargin + 10;
-        FILL_RECT(clearLeft, y - 5, maxWidth - 10, fontSize + 10, PALETTE_BG);
+        int clearY = y - 5;
+        int clearH = fontSize + 10;
+        const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+        if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
+        if (clearH > 0) FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
         
         // Determine frequency color
         uint16_t freqColor;
