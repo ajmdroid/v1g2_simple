@@ -278,10 +278,22 @@ bool WiFiManager::startSetupMode() {
     return true;
 }
 
-bool WiFiManager::stopSetupMode(bool manual) {
+bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     if (setupModeState != SETUP_MODE_AP_ON) {
         return false;
     }
+
+    const char* stopReason = reason;
+    if (!stopReason || stopReason[0] == '\0') {
+        stopReason = manual ? "manual" : "unknown";
+    }
+    uint32_t freeDmaBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestDmaBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    Serial.printf("[SetupMode] Stopping WiFi: reason=%s manual=%d freeDma=%lu largestDma=%lu\n",
+                  stopReason,
+                  manual ? 1 : 0,
+                  (unsigned long)freeDmaBefore,
+                  (unsigned long)largestDmaBefore);
 
     WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
     
@@ -339,15 +351,23 @@ bool WiFiManager::stopSetupMode(bool manual) {
 
     // ========== 4. OBSERVABILITY ==========
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
-    Serial.printf("[SetupMode] WiFi OFF: radio=%d http=%d sntp=%d\n", 
-                  0, 0, 0);  // All should be 0 at this point
+    uint32_t freeDmaAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint32_t largestDmaAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d sntp=%d freeDma=%lu largestDma=%lu\n",
+                  stopReason,
+                  manual ? 1 : 0,
+                  0,
+                  0,
+                  0,
+                  (unsigned long)freeDmaAfter,
+                  (unsigned long)largestDmaAfter);
     
     return true;
 }
 
 bool WiFiManager::toggleSetupMode(bool manual) {
     if (setupModeState == SETUP_MODE_AP_ON) {
-        return stopSetupMode(manual);
+        return stopSetupMode(manual, manual ? "manual" : "toggle");
     }
     return startSetupMode();
 }
@@ -595,7 +615,7 @@ void WiFiManager::checkAutoTimeout() {
 
     if (timeoutElapsed && inactiveEnough && staCount == 0) {
         Serial.println("[SetupMode] Auto-timeout reached - stopping AP");
-        stopSetupMode(false);
+        stopSetupMode(false, "timeout");
     }
 }
 
@@ -617,7 +637,7 @@ void WiFiManager::process() {
     if (freeDma < CRITICAL_DMA_FREE || largestDma < CRITICAL_DMA_BLOCK) {
         WIFI_LOG("[WiFi] CRITICAL: Internal SRAM low (free=%lu, block=%lu) - emergency shutdown\n",
                  (unsigned long)freeDma, (unsigned long)largestDma);
-        stopSetupMode(false);  // Graceful shutdown to free memory
+        stopSetupMode(false, "low_dma");  // Graceful shutdown to free memory
         return;
     }
     

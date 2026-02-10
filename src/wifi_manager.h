@@ -43,7 +43,7 @@ public:
     
     // AP control (AP-only for configuration)
     bool startSetupMode();      // Start AP for configuration (idempotent)
-    bool stopSetupMode(bool manual = false); // Stop AP (timeout/manual)
+    bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
     bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
     bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON; }
     
