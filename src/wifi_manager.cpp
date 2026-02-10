@@ -289,6 +289,7 @@ bool WiFiManager::stopSetupMode(bool manual) {
     // Stop HTTP server first (no more requests)
     server.stop();
     WIFI_LOG("[SetupMode] HTTP server stopped\n");
+    vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
     
     // Stop SNTP service ONLY if it was initialized (gate by state flag)
     if (s_sntpInitialized) {
@@ -302,39 +303,22 @@ bool WiFiManager::stopSetupMode(bool manual) {
     if (wifiClientState == WIFI_CLIENT_CONNECTED || wifiClientState == WIFI_CLIENT_CONNECTING) {
         WiFi.disconnect(true);  // true = also clear stored config in radio
         WIFI_LOG("[SetupMode] STA disconnected\n");
+        vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
     }
     
     // Disconnect AP (with wifiOff=true to prepare for mode change)
     WiFi.softAPdisconnect(true);
     WIFI_LOG("[SetupMode] AP disconnected\n");
+    vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
     
     // Set mode to OFF (tells Arduino WiFi class we're done)
     WiFi.mode(WIFI_OFF);
     
-    // Fully stop the WiFi radio at ESP-IDF level
-    // Gate by checking if WiFi is actually started (avoid double-stop errors)
-    // esp_wifi_stop() is idempotent but logging the actual state is cleaner
-    esp_err_t stopErr = esp_wifi_stop();
-    if (stopErr == ESP_OK) {
-        WIFI_LOG("[SetupMode] esp_wifi_stop() OK\n");
-    } else if (stopErr == ESP_ERR_WIFI_NOT_STARTED) {
-        WIFI_LOG("[SetupMode] WiFi already stopped (no-op)\n");
-    } else {
-        WIFI_LOG("[SetupMode] esp_wifi_stop() err=%d\n", stopErr);
-    }
-    
-    // Deinit frees WiFi resources completely
-    // Gate: only deinit if stop succeeded (means it was running)
-    if (stopErr == ESP_OK) {
-        esp_err_t deinitErr = esp_wifi_deinit();
-        if (deinitErr == ESP_OK) {
-            WIFI_LOG("[SetupMode] esp_wifi_deinit() OK\n");
-        } else if (deinitErr == ESP_ERR_WIFI_NOT_INIT) {
-            WIFI_LOG("[SetupMode] WiFi already deinit'd (no-op)\n");
-        } else {
-            WIFI_LOG("[SetupMode] esp_wifi_deinit() err=%d\n", deinitErr);
-        }
-    }
+    // WiFi.mode(WIFI_OFF) handles radio shutdown via Arduino layer.
+    // Note: Do NOT call esp_wifi_stop() or esp_wifi_deinit() - they conflict
+    // with Arduino's WiFi class causing "netstack cb reg failed" errors and
+    // blocking delays. Arduino layer manages init/deinit automatically.
+    WIFI_LOG("[SetupMode] Radio stopped via WiFi.mode(WIFI_OFF)\n");
     
     // ========== 3. RESET ALL STATE ==========
     setupModeState = SETUP_MODE_OFF;
