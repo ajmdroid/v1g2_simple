@@ -527,33 +527,8 @@ bool V1Display::begin() {
     ofrSerpentineInitialized = (ftErr4 == 0);
     if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
 
-    // Warm common glyphs once at boot so first alerts don't pay rasterization cost.
-    auto warmFontSample = [&](OpenFontRender& font, int fontSize, const char* sample) {
-        font.setBackgroundColor(0, 0, 0);
-        font.setFontColor(255, 255, 255);
-        font.setFontSize(fontSize);
-        font.setCursor(4, fontSize + 2);
-        font.printf("%s", sample);
-    };
-    if (ofrInitialized) {
-        warmFontSample(ofr, 20, "0123456789");
-        warmFontSample(ofr, 66, "SCAN");
-        warmFontSample(ofr, 69, "35.500");
-    }
-    if (ofrSegment7Initialized) {
-        warmFontSample(ofrSegment7, 60, "0123456789.-");
-        warmFontSample(ofrSegment7, 65, "SCAN");
-        warmFontSample(ofrSegment7, 75, "35.500");
-    }
-    if (ofrHemiInitialized) {
-        warmFontSample(ofrHemi, 76, "SCAN");
-        warmFontSample(ofrHemi, 80, "35.500");
-    }
-    if (ofrSerpentineInitialized) {
-        warmFontSample(ofrSerpentine, 65, "SCAN");
-    }
-    // Clear warm-up draws from the framebuffer (no flush needed here).
-    tft->fillScreen(COLOR_BLACK);
+    // Note: glyph warm-up is intentionally disabled at boot.
+    // Warm-up can increase memory pressure before WiFi init on some boards.
     
     Serial.printf("[Display] OK %dx%d, fonts=%d/%d/%d/%d\n", 
                   SCREEN_WIDTH, SCREEN_HEIGHT,
