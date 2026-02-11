@@ -725,15 +725,27 @@ void loop() {
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
     
-    // Drain system events and coalesce parsed-frame notifications.
-    // Fallback flag preserves behavior if event bus drops/coalesces packets under load.
+    // Drain system events as FIFO every loop so low-rate events (connect/disconnect,
+    // future OBD/GPS updates) never accumulate behind high-rate parsed-frame traffic.
+    // Fallback parsed flag preserves behavior if the bus drops under load.
     bool parsedReady = bleQueueModule.consumeParsedFlag();
     uint32_t parsedTsMs = bleQueueModule.getLastParsedTimestamp();
     SystemEvent event;
-    while (systemEventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event)) {
-        parsedReady = true;
-        if (event.tsMs != 0) {
-            parsedTsMs = event.tsMs;
+    while (systemEventBus.consume(event)) {
+        switch (event.type) {
+            case SystemEventType::BLE_FRAME_PARSED:
+                parsedReady = true;
+                if (event.tsMs != 0) {
+                    parsedTsMs = event.tsMs;
+                }
+                break;
+            case SystemEventType::BLE_CONNECTED:
+            case SystemEventType::BLE_DISCONNECTED:
+            case SystemEventType::GPS_UPDATED:
+            case SystemEventType::OBD_UPDATED:
+            case SystemEventType::NONE:
+            default:
+                break;
         }
     }
 

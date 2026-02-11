@@ -63,49 +63,6 @@ public:
         return true;
     }
 
-    // Consume first event of the requested type while preserving all other events.
-    bool consumeByType(SystemEventType type, SystemEvent& out) {
-        if (count == 0) {
-            return false;
-        }
-
-        uint8_t foundIndex = 0;
-        bool found = false;
-        for (uint8_t offset = 0; offset < count; ++offset) {
-            uint8_t idx = static_cast<uint8_t>((tail + offset) % kCapacity);
-            if (ring[idx].type == type) {
-                foundIndex = idx;
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            return false;
-        }
-
-        out = ring[foundIndex];
-
-        if (foundIndex == tail) {
-            tail = nextIndex(tail);
-            count--;
-            return true;
-        }
-
-        // Shift subsequent elements left one slot to close the gap.
-        uint8_t cursor = foundIndex;
-        const uint8_t lastElement = prevIndex(head);
-        while (cursor != lastElement) {
-            uint8_t next = nextIndex(cursor);
-            ring[cursor] = ring[next];
-            cursor = next;
-        }
-
-        head = lastElement;
-        count--;
-        return true;
-    }
-
     uint32_t getPublishCount() const { return publishCount; }
     uint32_t getDropCount() const { return dropCount; }
     size_t size() const { return count; }
@@ -113,10 +70,6 @@ public:
 private:
     static uint8_t nextIndex(uint8_t i) {
         return static_cast<uint8_t>((i + 1u) % kCapacity);
-    }
-
-    static uint8_t prevIndex(uint8_t i) {
-        return static_cast<uint8_t>((i + kCapacity - 1u) % kCapacity);
     }
 
     SystemEvent ring[kCapacity] = {};
