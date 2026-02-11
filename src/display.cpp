@@ -97,6 +97,26 @@ static unsigned long _dispPerfStart = 0;
     _dispPerfStart = micros(); \
 } } while(0)
 
+// Temporary focused trace for bogey-counter first-frame drift investigation.
+// Bounded to avoid log spam and timing impact during stress tests.
+static constexpr bool TOP_COUNTER_TRACE = true;
+static int s_topCounterTraceRemaining = 240;
+static uint32_t s_topCounterTraceSeq = 0;
+
+static inline bool topCounterTraceEnabled() {
+    return TOP_COUNTER_TRACE && s_topCounterTraceRemaining > 0;
+}
+
+static inline void topCounterTraceConsume() {
+    if (s_topCounterTraceRemaining > 0) {
+        --s_topCounterTraceRemaining;
+    }
+}
+
+static inline char topCounterTraceChar(char c) {
+    return (c >= 32 && c <= 126) ? c : '?';
+}
+
 #if defined(DISPLAY_USE_ARDUINO_GFX)
 #define DISPLAY_FLUSH() do { \
     if (tft) { \
@@ -1081,15 +1101,30 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     static bool lastMuted = false;
     static bool lastShowDot = false;
     static uint16_t lastBogeyColor = 0;
-    
+
     const V1Settings& s = settingsManager.get();
-    
+
     // Check if color setting changed
     bool colorChanged = (s.colorBogey != lastBogeyColor);
-    
+
+    const bool traceInteresting =
+        topCounterTraceEnabled() &&
+        ((symbol == '1') || (symbol == 'A') || (lastSymbol == '1') || (lastSymbol == 'A'));
+
     // Skip redraw if nothing changed (unless forced after screen clear)
     if (!s_forceTopCounterRedraw && !colorChanged &&
         symbol == lastSymbol && muted == lastMuted && showDot == lastShowDot) {
+        if (traceInteresting) {
+            const uint32_t seq = ++s_topCounterTraceSeq;
+            Serial.printf("[TC_TRACE] draw skip seq=%lu sym='%c'(0x%02X) dot=%d muted=%d "
+                          "last='%c' force=%d colorChanged=%d\n",
+                          static_cast<unsigned long>(seq),
+                          topCounterTraceChar(symbol), static_cast<unsigned>(static_cast<uint8_t>(symbol)),
+                          showDot ? 1 : 0, muted ? 1 : 0,
+                          topCounterTraceChar(lastSymbol), s_forceTopCounterRedraw ? 1 : 0,
+                          colorChanged ? 1 : 0);
+            topCounterTraceConsume();
+        }
         return;
     }
     s_forceTopCounterRedraw = false;
@@ -1097,7 +1132,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     lastMuted = muted;
     lastShowDot = showDot;
     lastBogeyColor = s.colorBogey;
-    
+
     // Use bogey color for digits, muted color if muted, otherwise bogey color
     bool isDigit = (symbol >= '0' && symbol <= '9');
     uint16_t color;
@@ -1118,6 +1153,16 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 
     // Fixed field clear every update prevents stale pixels from variable-width glyphs.
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
+
+    int ofrGlyphXMin = 0;
+    int ofrGlyphXMax = 0;
+    int ofrGlyphW = 0;
+    int ofrCursorX = -1;
+    int ofrMinCursorX = 0;
+    int ofrMaxCursorX = 0;
+    bool ofrUsedClamp = false;
+    int fallbackTextWidth = 0;
+    int fallbackX = -1;
 
     bool drewWithOfr = false;
     if (ofrSegment7Initialized) {
@@ -1146,11 +1191,14 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, buf);
         int glyphXMin = static_cast<int>(bbox.xMin);
         int glyphXMax = static_cast<int>(bbox.xMax);
+        ofrGlyphXMin = glyphXMin;
+        ofrGlyphXMax = glyphXMax;
 
         int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH) / 2);
         const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
         const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
         const int glyphW = glyphXMax - glyphXMin;
+        ofrGlyphW = glyphW;
         if (glyphW > 0 && glyphW <= (TOP_COUNTER_FIELD_W * 4)) {
             const int centerBiasPx = 2;
             const int fieldCenterX = fieldLeft + ((fieldRight - fieldLeft) / 2) + centerBiasPx;
@@ -1158,13 +1206,19 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             x = fieldCenterX - glyphCenterX;
             const int minCursorX = fieldLeft - glyphXMin;
             const int maxCursorX = fieldRight - glyphXMax;
+            ofrMinCursorX = minCursorX;
+            ofrMaxCursorX = maxCursorX;
             if (minCursorX <= maxCursorX) {
+                const int unclampedX = x;
                 x = std::max(minCursorX, std::min(x, maxCursorX));
+                ofrUsedClamp = (x != unclampedX);
             } else {
                 // Glyph wider than field; keep left edge inside the field.
                 x = minCursorX;
+                ofrUsedClamp = true;
             }
         }
+        ofrCursorX = x;
         if (x >= TOP_COUNTER_FIELD_X + 1) {
             const int y = TOP_COUNTER_TEXT_Y;
 
@@ -1189,11 +1243,13 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         const float scale = 2.0f;
 #endif
         int textWidth = measureSevenSegmentText(buf, scale);
+        fallbackTextWidth = textWidth;
         const int centerBiasPx = 2;
         int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - textWidth) / 2) + centerBiasPx;
         if (x < TOP_COUNTER_FIELD_X + 1) {
             x = TOP_COUNTER_FIELD_X + 1;
         }
+        fallbackX = x;
         int y = 10;
         drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
     }
@@ -1204,6 +1260,21 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         const int dotX = fieldRight - 2;
         const int dotY = TOP_COUNTER_TEXT_Y + TOP_COUNTER_FONT_SIZE - 5;
         FILL_CIRCLE(dotX, dotY, dotR, color);
+    }
+
+    if (traceInteresting && topCounterTraceEnabled()) {
+        const uint32_t seq = ++s_topCounterTraceSeq;
+        Serial.printf("[TC_TRACE] draw seq=%lu sym='%c'(0x%02X) dot=%d muted=%d digit=%d "
+                      "path=%s bbox=%d..%d w=%d ofrX=%d clamp=%d minX=%d maxX=%d "
+                      "fbW=%d fbX=%d fixedDot=%d\n",
+                      static_cast<unsigned long>(seq),
+                      topCounterTraceChar(symbol), static_cast<unsigned>(static_cast<uint8_t>(symbol)),
+                      showDot ? 1 : 0, muted ? 1 : 0, isDigit ? 1 : 0,
+                      drewWithOfr ? "ofr" : "fallback",
+                      ofrGlyphXMin, ofrGlyphXMax, ofrGlyphW, ofrCursorX,
+                      ofrUsedClamp ? 1 : 0, ofrMinCursorX, ofrMaxCursorX,
+                      fallbackTextWidth, fallbackX, drawFixedDigitDot ? 1 : 0);
+        topCounterTraceConsume();
     }
 }
 
@@ -2694,8 +2765,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // bogeyCounterChar briefly stale (often mode letters like 'A') on the first frame.
     // Normalize to alert-count digits for live alerts unless the symbol is a known
     // special alert marker that should be preserved.
-    char liveTopCounterChar = state.bogeyCounterChar;
-    bool liveTopCounterDot = state.bogeyCounterDot;
+    const char rawTopCounterChar = state.bogeyCounterChar;
+    const bool rawTopCounterDot = state.bogeyCounterDot;
+    char liveTopCounterChar = rawTopCounterChar;
+    bool liveTopCounterDot = rawTopCounterDot;
+    bool topCounterNormalized = false;
     if (alertCount > 0 && alertCount <= 9) {
         const bool rawIsDigit = (liveTopCounterChar >= '0' && liveTopCounterChar <= '9');
         const bool preserveSpecialSymbol =
@@ -2706,6 +2780,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                         liveTopCounterChar, normalized, alertCount);
             liveTopCounterChar = normalized;
             liveTopCounterDot = false;
+            topCounterNormalized = true;
         }
     }
 
@@ -2803,6 +2878,27 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     bool signalBarsChanged = (state.signalBars != lastSignalBars);
     bool bandsChanged = (state.activeBands != lastActiveBands);
     bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
+
+    const bool traceCounterInteresting =
+        topCounterTraceEnabled() &&
+        (topCounterNormalized ||
+         rawTopCounterChar == '1' || rawTopCounterChar == 'A' ||
+         liveTopCounterChar == '1' || liveTopCounterChar == 'A');
+    if (traceCounterInteresting) {
+        const uint32_t seq = ++s_topCounterTraceSeq;
+        Serial.printf("[TC_TRACE] upd seq=%lu enterLive=%d alerts=%d raw='%c'(0x%02X) rawDot=%d "
+                      "live='%c'(0x%02X) liveDot=%d norm=%d bByte=0x%02X lastB=0x%02X bChanged=%d "
+                      "needsFull=%d arrows=%d sig=%d bands=%d\n",
+                      static_cast<unsigned long>(seq), enteringLiveMode ? 1 : 0, alertCount,
+                      topCounterTraceChar(rawTopCounterChar), static_cast<unsigned>(static_cast<uint8_t>(rawTopCounterChar)),
+                      rawTopCounterDot ? 1 : 0,
+                      topCounterTraceChar(liveTopCounterChar), static_cast<unsigned>(static_cast<uint8_t>(liveTopCounterChar)),
+                      liveTopCounterDot ? 1 : 0, topCounterNormalized ? 1 : 0,
+                      static_cast<unsigned>(state.bogeyCounterByte),
+                      static_cast<unsigned>(lastBogeyByte), bogeyCounterChanged ? 1 : 0,
+                      needsRedraw ? 1 : 0, arrowsChanged ? 1 : 0, signalBarsChanged ? 1 : 0, bandsChanged ? 1 : 0);
+        topCounterTraceConsume();
+    }
     
     // Volume tracking
     static uint8_t lastMainVol = 255;
@@ -2864,6 +2960,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
             lastBogeyByte = state.bogeyCounterByte;
+            if (traceCounterInteresting && topCounterTraceEnabled()) {
+                const uint32_t seq = ++s_topCounterTraceSeq;
+                Serial.printf("[TC_TRACE] upd draw seq=%lu reason=incremental char='%c'(0x%02X) dot=%d\n",
+                              static_cast<unsigned long>(seq),
+                              topCounterTraceChar(liveTopCounterChar), static_cast<unsigned>(static_cast<uint8_t>(liveTopCounterChar)),
+                              liveTopCounterDot ? 1 : 0);
+                topCounterTraceConsume();
+            }
             drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
         }
         // Still process cards so they can expire and be cleared
@@ -2899,6 +3003,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     uint8_t bandMask = state.activeBands;
     
     // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
+    if (traceCounterInteresting && topCounterTraceEnabled()) {
+        const uint32_t seq = ++s_topCounterTraceSeq;
+        Serial.printf("[TC_TRACE] upd draw seq=%lu reason=full char='%c'(0x%02X) dot=%d\n",
+                      static_cast<unsigned long>(seq),
+                      topCounterTraceChar(liveTopCounterChar), static_cast<unsigned>(static_cast<uint8_t>(liveTopCounterChar)),
+                      liveTopCounterDot ? 1 : 0);
+        topCounterTraceConsume();
+    }
     drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
     
     const V1Settings& settings = settingsManager.get();
