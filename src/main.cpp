@@ -585,7 +585,7 @@ void setup() {
                                 &debugLogger);
     systemEventBus.reset();
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
-    connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
+    connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
 
 #ifndef REPLAY_MODE
@@ -730,12 +730,10 @@ void loop() {
     bool parsedReady = bleQueueModule.consumeParsedFlag();
     uint32_t parsedTsMs = bleQueueModule.getLastParsedTimestamp();
     SystemEvent event;
-    while (systemEventBus.consume(event)) {
-        if (event.type == SystemEventType::BLE_FRAME_PARSED) {
-            parsedReady = true;
-            if (event.tsMs != 0) {
-                parsedTsMs = event.tsMs;
-            }
+    while (systemEventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event)) {
+        parsedReady = true;
+        if (event.tsMs != 0) {
+            parsedTsMs = event.tsMs;
         }
     }
 

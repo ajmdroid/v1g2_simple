@@ -4,6 +4,7 @@
 #include "display.h"
 #include "modules/power/power_module.h"
 #include "modules/ble/ble_queue_module.h"
+#include "modules/system/system_event_bus.h"
 #include "debug_logger.h"
 
 extern DebugLogger debugLogger;
@@ -20,12 +21,14 @@ void ConnectionStateModule::begin(V1BLEClient* bleClient,
                                   PacketParser* parserPtr,
                                   V1Display* displayPtr,
                                   PowerModule* powerModule,
-                                  BleQueueModule* bleQueueModule) {
+                                  BleQueueModule* bleQueueModule,
+                                  SystemEventBus* eventBus) {
     ble = bleClient;
     parser = parserPtr;
     display = displayPtr;
     power = powerModule;
     bleQueue = bleQueueModule;
+    bus = eventBus;
     wasConnected = false;
     lastDataRequestMs = 0;
 }
@@ -47,6 +50,12 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             // Just connected
             display->showResting();
             CONN_LOG("[BLE] V1 connected");
+            if (bus) {
+                SystemEvent event;
+                event.type = SystemEventType::BLE_CONNECTED;
+                event.tsMs = static_cast<uint32_t>(nowMs);
+                bus->publish(event);
+            }
         } else {
             // Just disconnected - reset stale state
             PacketParser::resetPriorityState();
@@ -54,7 +63,13 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             parser->resetAlertAssembly();
             V1Display::resetChangeTracking();
             display->showScanning();
-            CONN_LOG("[BLE] V1 disconnected - scanning");;
+            CONN_LOG("[BLE] V1 disconnected - scanning");
+            if (bus) {
+                SystemEvent event;
+                event.type = SystemEventType::BLE_DISCONNECTED;
+                event.tsMs = static_cast<uint32_t>(nowMs);
+                bus->publish(event);
+            }
         }
         wasConnected = isConnected;
     }

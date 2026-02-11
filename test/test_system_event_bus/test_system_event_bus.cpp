@@ -87,10 +87,41 @@ void test_reset_clears_queue_and_counters() {
     TEST_ASSERT_FALSE(bus.consume(out));
 }
 
+void test_consume_by_type_preserves_other_events() {
+    SystemEvent a;
+    a.type = SystemEventType::BLE_CONNECTED;
+    a.seq = 1;
+    TEST_ASSERT_TRUE(bus.publish(a));
+
+    SystemEvent b;
+    b.type = SystemEventType::BLE_FRAME_PARSED;
+    b.seq = 2;
+    TEST_ASSERT_TRUE(bus.publish(b));
+
+    SystemEvent c;
+    c.type = SystemEventType::BLE_DISCONNECTED;
+    c.seq = 3;
+    TEST_ASSERT_TRUE(bus.publish(c));
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_FRAME_PARSED, out));
+    TEST_ASSERT_EQUAL_UINT32(2, out.seq);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(bus.size()));
+
+    // FIFO order of remaining events is preserved.
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::BLE_CONNECTED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT32(1, out.seq);
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::BLE_DISCONNECTED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT32(3, out.seq);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_publish_consume_fifo_order);
     RUN_TEST(test_publish_overflow_drops_oldest);
     RUN_TEST(test_reset_clears_queue_and_counters);
+    RUN_TEST(test_consume_by_type_preserves_other_events);
     return UNITY_END();
 }

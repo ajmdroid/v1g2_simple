@@ -8,6 +8,7 @@ class PacketParser;
 class V1Display;
 class PowerModule;
 class BleQueueModule;
+class SystemEventBus;
 
 /**
  * ConnectionStateModule - Tracks V1 BLE connection state transitions
@@ -25,7 +26,8 @@ public:
                PacketParser* parser,
                V1Display* display,
                PowerModule* powerModule,
-               BleQueueModule* bleQueueModule);
+               BleQueueModule* bleQueueModule,
+               SystemEventBus* eventBus = nullptr);
 
     // Call once per loop iteration; returns true if connected
     bool process(unsigned long nowMs);
@@ -39,6 +41,7 @@ private:
     V1Display* display = nullptr;
     PowerModule* power = nullptr;
     BleQueueModule* bleQueue = nullptr;
+    SystemEventBus* bus = nullptr;
 
     bool wasConnected = false;
     unsigned long lastDataRequestMs = 0;
