@@ -63,6 +63,39 @@ public:
         return true;
     }
 
+    // Consume the oldest event matching the requested type while preserving
+    // FIFO order for all remaining events.
+    bool consumeByType(SystemEventType type, SystemEvent& out) {
+        if (count == 0) {
+            return false;
+        }
+
+        uint8_t idx = tail;
+        uint8_t matchOffset = 0xFF;
+        for (uint8_t offset = 0; offset < count; ++offset) {
+            if (ring[idx].type == type) {
+                out = ring[idx];
+                matchOffset = offset;
+                break;
+            }
+            idx = nextIndex(idx);
+        }
+
+        if (matchOffset == 0xFF) {
+            return false;
+        }
+
+        for (uint8_t offset = matchOffset; offset + 1u < count; ++offset) {
+            uint8_t dst = static_cast<uint8_t>((tail + offset) % kCapacity);
+            uint8_t src = static_cast<uint8_t>((tail + offset + 1u) % kCapacity);
+            ring[dst] = ring[src];
+        }
+
+        head = static_cast<uint8_t>((head + kCapacity - 1u) % kCapacity);
+        count--;
+        return true;
+    }
+
     uint32_t getPublishCount() const { return publishCount; }
     uint32_t getDropCount() const { return dropCount; }
     size_t size() const { return count; }

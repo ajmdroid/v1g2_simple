@@ -148,6 +148,65 @@ void test_mixed_event_types_drain_to_empty() {
     TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(bus.size()));
 }
 
+void test_consume_by_type_preserves_other_events() {
+    SystemEvent e1;
+    e1.type = SystemEventType::BLE_CONNECTED;
+    e1.seq = 1;
+    TEST_ASSERT_TRUE(bus.publish(e1));
+
+    SystemEvent e2;
+    e2.type = SystemEventType::BLE_FRAME_PARSED;
+    e2.seq = 2;
+    TEST_ASSERT_TRUE(bus.publish(e2));
+
+    SystemEvent e3;
+    e3.type = SystemEventType::OBD_UPDATED;
+    e3.seq = 3;
+    TEST_ASSERT_TRUE(bus.publish(e3));
+
+    SystemEvent e4;
+    e4.type = SystemEventType::BLE_FRAME_PARSED;
+    e4.seq = 4;
+    TEST_ASSERT_TRUE(bus.publish(e4));
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_FRAME_PARSED, out));
+    TEST_ASSERT_EQUAL_UINT32(2, out.seq);
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_FRAME_PARSED, out));
+    TEST_ASSERT_EQUAL_UINT32(4, out.seq);
+
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::BLE_CONNECTED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT32(1, out.seq);
+
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::OBD_UPDATED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT32(3, out.seq);
+    TEST_ASSERT_FALSE(bus.consume(out));
+}
+
+void test_consume_by_type_not_found_keeps_queue_intact() {
+    SystemEvent e1;
+    e1.type = SystemEventType::BLE_CONNECTED;
+    e1.seq = 11;
+    TEST_ASSERT_TRUE(bus.publish(e1));
+
+    SystemEvent e2;
+    e2.type = SystemEventType::OBD_UPDATED;
+    e2.seq = 12;
+    TEST_ASSERT_TRUE(bus.publish(e2));
+
+    SystemEvent out;
+    TEST_ASSERT_FALSE(bus.consumeByType(SystemEventType::BLE_FRAME_PARSED, out));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(bus.size()));
+
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(11, out.seq);
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(12, out.seq);
+    TEST_ASSERT_FALSE(bus.consume(out));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_publish_consume_fifo_order);
@@ -155,5 +214,7 @@ int main() {
     RUN_TEST(test_reset_clears_queue_and_counters);
     RUN_TEST(test_fifo_wraparound_preserves_order);
     RUN_TEST(test_mixed_event_types_drain_to_empty);
+    RUN_TEST(test_consume_by_type_preserves_other_events);
+    RUN_TEST(test_consume_by_type_not_found_keeps_queue_intact);
     return UNITY_END();
 }
