@@ -2679,6 +2679,25 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // V1 is source of truth - use activeBands directly, no debouncing
     // This allows V1's native blinking to come through
 
+    // Alert packets can arrive before the matching display packet, which leaves
+    // bogeyCounterChar briefly stale (often mode letters like 'A') on the first frame.
+    // Normalize to alert-count digits for live alerts unless the symbol is a known
+    // special alert marker that should be preserved.
+    char liveTopCounterChar = state.bogeyCounterChar;
+    bool liveTopCounterDot = state.bogeyCounterDot;
+    if (alertCount > 0 && alertCount <= 9) {
+        const bool rawIsDigit = (liveTopCounterChar >= '0' && liveTopCounterChar <= '9');
+        const bool preserveSpecialSymbol =
+            (liveTopCounterChar == '#') || (liveTopCounterChar == 'P') || (liveTopCounterChar == 'J');
+        if (!rawIsDigit && !preserveSpecialSymbol) {
+            const char normalized = static_cast<char>('0' + alertCount);
+            DISPLAY_LOG("[DISP] Normalize top counter '%c' -> '%c' (alerts=%d)\n",
+                        liveTopCounterChar, normalized, alertCount);
+            liveTopCounterChar = normalized;
+            liveTopCounterDot = false;
+        }
+    }
+
     // Change detection: check if we need to redraw
     static AlertData lastPriority;
     static uint8_t lastBogeyByte = 0;  // Track V1's bogey counter byte for change detection
@@ -2834,7 +2853,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
             lastBogeyByte = state.bogeyCounterByte;
-            drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
+            drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
@@ -2869,7 +2888,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     uint8_t bandMask = state.activeBands;
     
     // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
-    drawTopCounter(state.bogeyCounterChar, state.muted, state.bogeyCounterDot);
+    drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
     
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
@@ -2880,7 +2899,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
-    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    bool isPhotoRadar = (liveTopCounterChar == 'P');
     drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
     DISP_PERF_LOG("drawFrequency");
     drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
