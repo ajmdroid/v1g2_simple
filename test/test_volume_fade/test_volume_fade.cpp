@@ -26,7 +26,7 @@ static VolumeFadeContext makeCtx(bool hasAlert, unsigned long nowMs, uint8_t vol
     VolumeFadeContext ctx;
     ctx.hasAlert = hasAlert;
     ctx.alertMuted = muted;
-    ctx.alertInLockout = inLockout;
+    ctx.alertSuppressed = inLockout;
     ctx.currentVolume = volume;
     ctx.currentMuteVolume = 0;
     ctx.currentFrequency = freq;
@@ -111,12 +111,44 @@ void test_alert_clear_restores_if_needed() {
     TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
 }
 
+void test_restore_baseline_survives_immediate_realert_with_stale_volume() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    auto ctx = makeCtx(true, 1000, 4, 35498);
+    fade.process(ctx);  // start tracking
+
+    ctx.now = 2200;
+    auto fadeAction = fade.process(ctx);  // fade down to 1
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+    TEST_ASSERT_EQUAL_UINT8(1, fadeAction.targetVolume);
+
+    // Alerts clear while V1 is still reporting faded volume.
+    auto clearCtx = makeCtx(false, 2300, 1, 0);
+    auto restore1 = fade.process(clearCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore1.type);
+    TEST_ASSERT_EQUAL_UINT8(4, restore1.restoreVolume);
+
+    // New alert arrives before restore state is reflected in display packets.
+    auto relertCtx = makeCtx(true, 2350, 1, 35498);
+    auto noAction = fade.process(relertCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, noAction.type);
+
+    // Clear again; baseline must remain 4 (not recaptured as 1).
+    auto clearCtx2 = makeCtx(false, 2400, 1, 0);
+    auto restore2 = fade.process(clearCtx2);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore2.type);
+    TEST_ASSERT_EQUAL_UINT8(4, restore2.restoreVolume);
+}
+
 void runAllTests() {
     RUN_TEST(test_disabled_feature_returns_none);
     RUN_TEST(test_fade_triggers_after_delay);
     RUN_TEST(test_new_frequency_restores_when_faded);
     RUN_TEST(test_muted_alert_restores_and_resets);
     RUN_TEST(test_alert_clear_restores_if_needed);
+    RUN_TEST(test_restore_baseline_survives_immediate_realert_with_stale_volume);
 }
 
 #ifdef ARDUINO

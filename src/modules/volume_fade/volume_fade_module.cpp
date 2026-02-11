@@ -10,7 +10,10 @@ VolumeFadeModule::VolumeFadeModule()
     , originalMuteVolume(0)
     , fadeActive(false)
     , commandSent(false)
-    , seenCount(0) {
+    , seenCount(0)
+    , pendingRestoreVolume(0xFF)
+    , pendingRestoreMuteVolume(0)
+    , pendingRestoreSetMs(0) {
     memset(seenFreqs, 0, sizeof(seenFreqs));
 }
 
@@ -23,6 +26,17 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     if (!settings) return action;
     const V1Settings& s = settings->get();
+
+    // Pending-restore window: keep a short baseline carry-over if a new alert starts
+    // before V1 applies the previous restore command.
+    if (pendingRestoreVolume != 0xFF) {
+        if (ctx.currentVolume == pendingRestoreVolume ||
+            (ctx.now - pendingRestoreSetMs) > PENDING_RESTORE_WINDOW_MS) {
+            pendingRestoreVolume = 0xFF;
+            pendingRestoreMuteVolume = 0;
+            pendingRestoreSetMs = 0;
+        }
+    }
     
     // If feature disabled, clear any tracking so we don't block speed boost
     if (!s.alertVolumeFadeEnabled) {
@@ -36,13 +50,16 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
+            pendingRestoreVolume = originalVolume;
+            pendingRestoreMuteVolume = originalMuteVolume;
+            pendingRestoreSetMs = ctx.now;
             Serial.printf("[VolumeFade] RESTORE: current=%d -> original=%d\n",
                           ctx.currentVolume, originalVolume);
         } else if (originalVolume != 0xFF) {
             Serial.printf("[VolumeFade] No restore needed: current=%d == original=%d\n",
                           ctx.currentVolume, originalVolume);
         }
-        reset();
+        resetSessionState();
         return action;
     }
     
@@ -52,8 +69,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
+            pendingRestoreVolume = originalVolume;
+            pendingRestoreMuteVolume = originalMuteVolume;
+            pendingRestoreSetMs = ctx.now;
         }
-        reset();
+        resetSessionState();
         return action;
     }
     
@@ -77,6 +97,9 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
+            pendingRestoreVolume = originalVolume;
+            pendingRestoreMuteVolume = originalMuteVolume;
+            pendingRestoreSetMs = ctx.now;
         }
         alertStartMs = now;
         fadeActive = false;
@@ -90,10 +113,18 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     // First alert in session - capture baseline volumes and start timer
     if (alertStartMs == 0) {
         alertStartMs = now;
-        originalVolume = (ctx.speedBoostActive && ctx.speedBoostOriginalVolume != 0xFF)
-                           ? ctx.speedBoostOriginalVolume
-                           : ctx.currentVolume;
-        originalMuteVolume = ctx.currentMuteVolume;
+        if (pendingRestoreVolume != 0xFF && ctx.currentVolume < pendingRestoreVolume) {
+            originalVolume = pendingRestoreVolume;
+            originalMuteVolume = pendingRestoreMuteVolume;
+            pendingRestoreVolume = 0xFF;
+            pendingRestoreMuteVolume = 0;
+            pendingRestoreSetMs = 0;
+        } else {
+            originalVolume = (ctx.speedBoostActive && ctx.speedBoostOriginalVolume != 0xFF)
+                               ? ctx.speedBoostOriginalVolume
+                               : ctx.currentVolume;
+            originalMuteVolume = ctx.currentMuteVolume;
+        }
         fadeActive = false;
         commandSent = false;
         seenCount = 0;
@@ -119,7 +150,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     return action;
 }
 
-void VolumeFadeModule::reset() {
+void VolumeFadeModule::resetSessionState() {
     alertStartMs = 0;
     originalVolume = 0xFF;
     originalMuteVolume = 0;
@@ -127,4 +158,11 @@ void VolumeFadeModule::reset() {
     commandSent = false;
     seenCount = 0;
     memset(seenFreqs, 0, sizeof(seenFreqs));
+}
+
+void VolumeFadeModule::reset() {
+    resetSessionState();
+    pendingRestoreVolume = 0xFF;
+    pendingRestoreMuteVolume = 0;
+    pendingRestoreSetMs = 0;
 }

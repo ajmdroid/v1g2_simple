@@ -91,4 +91,13 @@ private:
     int seenCount;
     static constexpr int MAX_FADE_SEEN_FREQS = 12;
     uint16_t seenFreqs[MAX_FADE_SEEN_FREQS];
+
+    // Short-lived carry-over after issuing RESTORE: if a new alert arrives before
+    // V1 applies the restore command, don't recapture the faded volume as baseline.
+    uint8_t pendingRestoreVolume;
+    uint8_t pendingRestoreMuteVolume;
+    unsigned long pendingRestoreSetMs;
+    static constexpr unsigned long PENDING_RESTORE_WINDOW_MS = 1500;
+
+    void resetSessionState();
 };
