@@ -16,6 +16,7 @@
 #include "perf_sd_logger.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
+#include "obd_handler.h"
 #include "time_service.h"
 #include "modules/system/system_event_bus.h"
 #include "../include/config.h"
@@ -709,6 +710,18 @@ void WiFiManager::setupWebServer() {
     server.on("/api/wifi/disconnect", HTTP_POST, [this]() { handleWifiClientDisconnect(); });
     server.on("/api/wifi/forget", HTTP_POST, [this]() { handleWifiClientForget(); });
     server.on("/api/wifi/enable", HTTP_POST, [this]() { handleWifiClientEnable(); });
+
+    // OBD integration API routes
+    server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
+    server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
+    server.on("/api/obd/scan/stop", HTTP_POST, [this]() { handleObdScanStop(); });
+    server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
+    server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
+    server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
+    server.on("/api/obd/disconnect", HTTP_POST, [this]() { handleObdDisconnect(); });
+    server.on("/api/obd/remembered", HTTP_GET, [this]() { handleObdRemembered(); });
+    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() { handleObdRememberedAutoConnect(); });
+    server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -3537,4 +3550,224 @@ void WiFiManager::handleWifiClientEnable() {
         WiFi.mode(WIFI_AP);
         server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client disabled\"}");
     }
+}
+
+// ==================== OBD API Handlers ====================
+
+void WiFiManager::handleObdStatus() {
+    markUiActivity();
+
+    JsonDocument doc;
+    doc["state"] = obdHandler.getStateString();
+    doc["connected"] = obdHandler.isConnected();
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["deviceName"] = obdHandler.getConnectedDeviceName();
+    doc["deviceAddress"] = obdHandler.getConnectedDeviceAddress();
+    doc["v1Connected"] = bleClient.isConnected();
+    doc["hasValidData"] = obdHandler.hasValidData();
+
+    if (obdHandler.hasValidData()) {
+        OBDData data = obdHandler.getData();
+        doc["speedMph"] = data.speed_mph;
+        doc["speedKph"] = data.speed_kph;
+        doc["rpm"] = data.rpm;
+        doc["voltage"] = data.voltage;
+        doc["sampleTsMs"] = data.timestamp_ms;
+    }
+
+    auto remembered = obdHandler.getRememberedDevices();
+    doc["rememberedCount"] = remembered.size();
+    size_t autoCount = 0;
+    for (const auto& d : remembered) {
+        if (d.autoConnect) autoCount++;
+    }
+    doc["autoConnectCount"] = autoCount;
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdScan() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    if (!bleClient.isConnected()) {
+        server.send(409, "application/json", "{\"success\":false,\"message\":\"Connect V1 before OBD scan\"}");
+        return;
+    }
+
+    obdHandler.startScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan started\"}");
+}
+
+void WiFiManager::handleObdScanStop() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    obdHandler.stopScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan stopped\"}");
+}
+
+void WiFiManager::handleObdDevices() {
+    markUiActivity();
+
+    JsonDocument doc;
+    JsonArray devices = doc["devices"].to<JsonArray>();
+    auto found = obdHandler.getFoundDevices();
+    for (const auto& device : found) {
+        JsonObject d = devices.add<JsonObject>();
+        d["address"] = device.address;
+        d["name"] = device.name;
+        d["rssi"] = device.rssi;
+    }
+    doc["scanning"] = obdHandler.isScanActive();
+    doc["count"] = found.size();
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdDevicesClear() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    obdHandler.clearFoundDevices();
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleObdConnect() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    String address;
+    String name;
+    String pin;
+    bool remember = true;
+    bool autoConnect = false;
+
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        if (error) {
+            server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+            return;
+        }
+        address = doc["address"] | "";
+        name = doc["name"] | "";
+        pin = doc["pin"] | "";
+        remember = doc["remember"].is<bool>() ? doc["remember"].as<bool>() : true;
+        autoConnect = doc["autoConnect"].is<bool>() ? doc["autoConnect"].as<bool>() : false;
+    } else {
+        address = server.arg("address");
+        name = server.arg("name");
+        pin = server.arg("pin");
+        if (server.hasArg("remember")) {
+            remember = server.arg("remember") == "1" || server.arg("remember") == "true";
+        }
+        if (server.hasArg("autoConnect")) {
+            autoConnect = server.arg("autoConnect") == "1" || server.arg("autoConnect") == "true";
+        }
+    }
+
+    if (address.length() == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing address\"}");
+        return;
+    }
+
+    if (!bleClient.isConnected()) {
+        server.send(409, "application/json", "{\"success\":false,\"message\":\"Connect V1 before OBD connect\"}");
+        return;
+    }
+
+    bool queued = obdHandler.connectToAddress(address, name, pin, remember, autoConnect);
+    if (!queued) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to queue OBD connect\"}");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD connect queued\"}");
+}
+
+void WiFiManager::handleObdDisconnect() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+    obdHandler.disconnect();
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleObdRemembered() {
+    markUiActivity();
+
+    JsonDocument doc;
+    JsonArray arr = doc["devices"].to<JsonArray>();
+    auto remembered = obdHandler.getRememberedDevices();
+    String connectedAddr = obdHandler.getConnectedDeviceAddress();
+    for (const auto& device : remembered) {
+        JsonObject d = arr.add<JsonObject>();
+        d["address"] = device.address;
+        d["name"] = device.name;
+        d["autoConnect"] = device.autoConnect;
+        d["pinSet"] = device.pin.length() > 0;
+        d["lastSeenMs"] = device.lastSeenMs;
+        d["connected"] = connectedAddr.length() > 0 && connectedAddr.equalsIgnoreCase(device.address);
+    }
+    doc["count"] = remembered.size();
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleObdRememberedAutoConnect() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing request body\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (error || !doc["address"].is<const char*>() || !doc["enabled"].is<bool>()) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid payload\"}");
+        return;
+    }
+
+    String address = doc["address"].as<String>();
+    bool enabled = doc["enabled"].as<bool>();
+
+    if (!obdHandler.setRememberedAutoConnect(address, enabled)) {
+        server.send(404, "application/json", "{\"success\":false,\"message\":\"Remembered device not found\"}");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleObdForget() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    String address;
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument doc;
+        if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+            address = doc["address"] | "";
+        }
+    }
+    if (address.length() == 0) {
+        address = server.arg("address");
+    }
+    if (address.length() == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing address\"}");
+        return;
+    }
+
+    if (!obdHandler.forgetRemembered(address)) {
+        server.send(404, "application/json", "{\"success\":false,\"message\":\"Remembered device not found\"}");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true}");
 }

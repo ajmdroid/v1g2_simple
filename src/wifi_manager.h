@@ -243,6 +243,16 @@ private:
     void handleWifiClientDisconnect();
     void handleWifiClientForget();
     void handleWifiClientEnable();
+    void handleObdStatus();
+    void handleObdScan();
+    void handleObdScanStop();
+    void handleObdDevices();
+    void handleObdDevicesClear();
+    void handleObdConnect();
+    void handleObdDisconnect();
+    void handleObdRemembered();
+    void handleObdRememberedAutoConnect();
+    void handleObdForget();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

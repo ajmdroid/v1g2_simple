@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "debug_logger.h"
 #include "perf_metrics.h"
+#include "obd_handler.h"
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
@@ -167,6 +168,8 @@ constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default O
 static portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
 // Spinlock for proxy command telemetry (avoid Serial in BLE callback)
 static portMUX_TYPE proxyCmdMux = portMUX_INITIALIZER_UNLOCKED;
+// Spinlock for deferring OBD scan results from BLE scan callbacks
+static portMUX_TYPE obdScanMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Static instance for callbacks
 static V1BLEClient* instancePtr = nullptr;
@@ -574,6 +577,11 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     //                   debugCount++, addrStr.c_str(), rssi,
     //                   name.length() > 0 ? name.c_str() : "(no name)");
     // }
+
+    // During OBD manual scan, collect all named devices for UI selection.
+    if (!name.empty() && obdHandler.isScanActive()) {
+        bleClient->enqueueObdScanResult(name.c_str(), addrStr.c_str(), rssi);
+    }
     
     // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
     // V1 Gen2 advertises as "V1G*" (like "V1G27B7A") or sometimes "V1-*"
@@ -597,6 +605,12 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // Check if we're already connecting or connected
     if (bleClient->bleState == BLEState::CONNECTING || 
         bleClient->bleState == BLEState::CONNECTED) {
+        return;
+    }
+
+    // If V1 is already connected and this scan was user-triggered for OBD discovery,
+    // do not disrupt the existing V1 session.
+    if (obdHandler.isScanActive() && bleClient->connected) {
         return;
     }
     
@@ -647,6 +661,11 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
         } else {
             instancePtr->pendingScanEndUpdate = true;
         }
+    }
+
+    // Notify OBD handler that a manual scan has completed.
+    if (obdHandler.isScanActive() && instancePtr) {
+        instancePtr->pendingObdScanComplete = true;
     }
 }
 
@@ -1723,6 +1742,27 @@ void V1BLEClient::process() {
             settingsManager.setLastV1Address(addrCopy);
         }
     }
+    if (pendingObdScanComplete) {
+        pendingObdScanComplete = false;
+        obdHandler.onScanComplete();
+    }
+    // Drain deferred OBD scan results in main loop context.
+    while (obdScanCount > 0) {
+        ObdScanItem item;
+        bool haveItem = false;
+        portENTER_CRITICAL(&obdScanMux);
+        if (obdScanCount > 0) {
+            item = obdScanQueue[obdScanTail];
+            obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
+            obdScanCount--;
+            haveItem = true;
+        }
+        portEXIT_CRITICAL(&obdScanMux);
+        if (!haveItem) {
+            break;
+        }
+        obdHandler.onDeviceFoundDeferred(item.name, item.addr, item.rssi);
+    }
     // Process phone->V1 commands (up to queue size per loop to drain any backlog)
     // Each call processes one command to minimize mutex hold time during BLE writes
     for (int i = 0; i < MAX_PHONE_CMDS_PER_LOOP; i++) {
@@ -1922,6 +1962,22 @@ void V1BLEClient::startScanning() {
     }
 }
 
+void V1BLEClient::startOBDScan() {
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (!pScan) {
+        return;
+    }
+
+    if (!pScan->isScanning()) {
+        Serial.println("[BLE] Starting OBD device scan (30 seconds)...");
+        pScan->clearResults();
+        pScan->start(30000, false, false);
+        return;
+    }
+
+    Serial.println("[BLE] Scan already in progress - OBD devices will be collected");
+}
+
 bool V1BLEClient::isScanning() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     return pScan && pScan->isScanning();
@@ -2034,6 +2090,27 @@ void V1BLEClient::deferLastV1Address(const char* addr) {
     snprintf(pendingLastV1Address, sizeof(pendingLastV1Address), "%s", addr);
     pendingLastV1AddressValid = true;
     portEXIT_CRITICAL(&pendingAddrMux);
+}
+
+void V1BLEClient::enqueueObdScanResult(const char* name, const char* addr, int rssi) {
+    if (!name || !addr || name[0] == '\0' || addr[0] == '\0') {
+        return;
+    }
+
+    portENTER_CRITICAL(&obdScanMux);
+    if (obdScanCount >= OBD_SCAN_QUEUE_SIZE) {
+        // Drop oldest entry on overflow.
+        obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
+        obdScanCount--;
+    }
+
+    ObdScanItem& item = obdScanQueue[obdScanHead];
+    snprintf(item.name, sizeof(item.name), "%s", name);
+    snprintf(item.addr, sizeof(item.addr), "%s", addr);
+    item.rssi = rssi;
+    obdScanHead = (obdScanHead + 1) % OBD_SCAN_QUEUE_SIZE;
+    obdScanCount++;
+    portEXIT_CRITICAL(&obdScanMux);
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {

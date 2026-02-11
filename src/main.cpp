@@ -31,6 +31,7 @@
 #include "settings.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
+#include "obd_handler.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
 #include "debug_logger.h"
@@ -83,6 +84,8 @@ static unsigned long bootReadyDeadlineMs = 0;
 static bool bootSplashHoldActive = false;
 static unsigned long bootSplashHoldUntilMs = 0;
 static bool initialScanningScreenShown = false;
+static bool obdAutoConnectPending = false;
+static unsigned long obdAutoConnectAtMs = 0;
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -347,6 +350,10 @@ void onV1Connected() {
     AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
 
     autoPushModule.start(activeSlotIndex);
+
+    // Attempt OBD auto-connect shortly after V1 stabilizes.
+    obdAutoConnectPending = true;
+    obdAutoConnectAtMs = millis() + 1500;
 }
 
 // Helper for fatal boot errors - shows message, waits, then restarts
@@ -604,6 +611,7 @@ void setup() {
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    obdHandler.begin();
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -762,6 +770,18 @@ void loop() {
     uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
+
+    if (obdAutoConnectPending && now >= obdAutoConnectAtMs) {
+        obdAutoConnectPending = false;
+        obdHandler.tryAutoConnect();
+    }
+
+    if (obdHandler.update()) {
+        OBDData obdData = obdHandler.getData();
+        if (obdData.valid) {
+            voiceModule.updateSpeedSample(obdData.speed_mph, obdData.timestamp_ms);
+        }
+    }
     
     // Drain only parsed-frame events; keep non-frame events available for
     // dedicated consumers (OBD/GPS/connection modules) as they are added.
