@@ -2628,7 +2628,15 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
-    
+
+    // Get settings reference for priorityArrowOnly
+    const V1Settings& s = settingsManager.get();
+
+    // If no valid priority alert, return (caller should use updatePersisted or update(state) instead)
+    if (!priority.isValid || priority.band == BAND_NONE) {
+        return;
+    }
+
     // Track screen mode transitions - force redraw when entering live mode from resting/scanning
     bool enteringLiveMode = (currentScreen != ScreenMode::Live);
     if (enteringLiveMode) {
@@ -2636,18 +2644,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                     (int)currentScreen, alertCount);
     }
     currentScreen = ScreenMode::Live;
-    
+
     // Always use multi-alert mode (raised layout for cards)
     g_multiAlertMode = true;
     multiAlertMode = true;
-    
-    // Get settings reference for priorityArrowOnly
-    const V1Settings& s = settingsManager.get();
-    
-    // If no valid priority alert, return (caller should use updatePersisted or update(state) instead)
-    if (!priority.isValid || priority.band == BAND_NONE) {
-        return;
-    }
 
     // V1 is source of truth - use activeBands directly, no debouncing
     // This allows V1's native blinking to come through
