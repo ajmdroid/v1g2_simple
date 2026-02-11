@@ -40,10 +40,12 @@ static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Seria
 // Global OpenFontRender instances
 static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
 static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
+static OpenFontRender ofrTopCounter;         // Dedicated Segment7 renderer for top counter (isolated from frequency)
 static OpenFontRender ofrHemi;               // For Hemi style (Hemi Head - retro speedometer)
 static OpenFontRender ofrSerpentine;         // For Serpentine style (JB's favorite)
 static bool ofrInitialized = false;
 static bool ofrSegment7Initialized = false;
+static bool ofrTopCounterInitialized = false;
 static bool ofrHemiInitialized = false;
 static bool ofrSerpentineInitialized = false;
 
@@ -356,7 +358,7 @@ static void cacheTopCounterBounds(char symbol, bool showDot) {
         text[1] = '.';
     }
 
-    FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+    FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
         0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
     int xMin = static_cast<int>(bbox.xMin);
     int xMax = static_cast<int>(bbox.xMax);
@@ -370,11 +372,11 @@ static void cacheTopCounterBounds(char symbol, bool showDot) {
 
 static void primeTopCounterBoundsCache() {
     resetTopCounterBoundsCache();
-    if (!ofrSegment7Initialized) {
+    if (!ofrTopCounterInitialized) {
         return;
     }
 
-    ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+    ofrTopCounter.setFontSize(TOP_COUNTER_FONT_SIZE);
     for (uint8_t c = 32; c < 127; ++c) {
         cacheTopCounterBounds(static_cast<char>(c), false);
         cacheTopCounterBounds(static_cast<char>(c), true);
@@ -396,7 +398,7 @@ static bool getTopCounterBounds(char symbol, bool showDot, int& xMin, int& xMax)
         }
     }
 
-    if (!ofrSegment7Initialized) {
+    if (!ofrTopCounterInitialized) {
         return false;
     }
 
@@ -404,7 +406,7 @@ static bool getTopCounterBounds(char symbol, bool showDot, int& xMin, int& xMax)
     if (showDot) {
         text[1] = '.';
     }
-    FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+    FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
         0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
     xMin = static_cast<int>(bbox.xMin);
     xMax = static_cast<int>(bbox.xMax);
@@ -634,9 +636,11 @@ bool V1Display::begin() {
     // Prefer larger caches when PSRAM is available; keep safe fallbacks otherwise.
     const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
     const uint32_t numericCacheBytes = psramOk ? 49152u : 8192u;
-    Serial.printf("[Display] Font cache budget: psram=%s seg7=%lu serp=%lu\n",
+    const uint32_t topCounterCacheBytes = psramOk ? 16384u : 4096u;
+    Serial.printf("[Display] Font cache budget: psram=%s seg7=%lu top=%lu serp=%lu\n",
                   psramOk ? "yes" : "no",
                   static_cast<unsigned long>(numericCacheBytes),
+                  static_cast<unsigned long>(topCounterCacheBytes),
                   static_cast<unsigned long>(numericCacheBytes));
     
     ofrSegment7.setDrawer(*tft);
@@ -644,8 +648,14 @@ bool V1Display::begin() {
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
+    
+    ofrTopCounter.setDrawer(*tft);
+    ofrTopCounter.setCacheSize(1, 2, topCounterCacheBytes);  // Small dedicated cache for top counter symbols
+    FT_Error ftErrTop = ofrTopCounter.loadFont(Segment7Font, sizeof(Segment7Font));
+    ofrTopCounterInitialized = (ftErrTop == 0);
+    if (ftErrTop) Serial.printf("[Display] ERROR: TopCounter font failed (0x%02X)\n", ftErrTop);
     primeTopCounterBoundsCache();  // Boot-time glyph bounds cache for stable right-aligned counter layout
-    if (ofrSegment7Initialized) {
+    if (ofrTopCounterInitialized) {
         int oneMin = 0, oneMax = 0;
         int twoMin = 0, twoMax = 0;
         int eightMin = 0, eightMax = 0;
@@ -673,9 +683,9 @@ bool V1Display::begin() {
     // Note: glyph warm-up is intentionally disabled at boot.
     // Warm-up can increase memory pressure before WiFi init on some boards.
     
-    Serial.printf("[Display] OK %dx%d, fonts(seg7/serp)=%d/%d\n",
+    Serial.printf("[Display] OK %dx%d, fonts(seg7/top/serp)=%d/%d/%d\n",
                   SCREEN_WIDTH, SCREEN_HEIGHT,
-                  ofrSegment7Initialized, ofrSerpentineInitialized);
+                  ofrSegment7Initialized, ofrTopCounterInitialized, ofrSerpentineInitialized);
     
     // Load color theme from settings
     updateColorTheme();
@@ -1165,29 +1175,18 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     int fallbackX = -1;
 
     bool drewWithOfr = false;
-    if (ofrSegment7Initialized) {
+    if (ofrTopCounterInitialized) {
         // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
         //
-        // IMPORTANT: We compute glyph bounds just-in-time (immediately before
-        // printf) rather than using boot-time cached bounds.  OpenFontRender's
-        // drawHString() adjusts the first character's X position by reading
-        // face->glyph->metrics.horiBearingX from the FreeType face slot — a
-        // value that is only updated on FreeType cache *misses*.  Between bogey
-        // counter renders the frequency display renders "35.500" via the same
-        // ofrSegment7 instance at a different font size, leaving a *stale*
-        // horiBearingX in the face slot.  The boot-time cached bounds assumed a
-        // *correct* horiBearingX, so the cursor+rendering disagree by the
-        // difference, visibly shifting the digit.
-        //
-        // By calling calculateBoundingBox right before printf, both calls go
-        // through drawHString sharing the same stale horiBearingX.  The error
-        // term cancels algebraically in the centering math, giving a stable
-        // position regardless of FreeType cache state.
+        // IMPORTANT: compute bounds just-in-time on the same dedicated OFR
+        // instance used for top-counter drawing. This avoids cross-talk with
+        // frequency rendering and keeps cursor placement tied to current glyph
+        // metrics in the same render path.
 
-        ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+        ofrTopCounter.setFontSize(TOP_COUNTER_FONT_SIZE);
 
         // Compute fresh bounds for the actual glyph string we are about to draw.
-        FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+        FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
             0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, buf);
         int glyphXMin = static_cast<int>(bbox.xMin);
         int glyphXMax = static_cast<int>(bbox.xMax);
@@ -1226,11 +1225,11 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             uint8_t bgR = (PALETTE_BG >> 11) << 3;
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
             uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+            ofrTopCounter.setBackgroundColor(bgR, bgG, bgB);
             // Font size already set above (before calculateBoundingBox).
-            ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-            ofrSegment7.setCursor(x, y);
-            ofrSegment7.printf("%s", buf);
+            ofrTopCounter.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+            ofrTopCounter.setCursor(x, y);
+            ofrTopCounter.printf("%s", buf);
             drewWithOfr = true;
         }
     }
