@@ -16,6 +16,7 @@
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "time_service.h"
+#include "modules/system/system_event_bus.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
@@ -30,6 +31,7 @@
 
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
+extern SystemEventBus systemEventBus;
 // Preview hold helper to keep color demo visible briefly
 extern void requestColorPreviewHold(uint32_t durationMs);
 extern bool isColorPreviewRunning();
@@ -2357,6 +2359,12 @@ void WiFiManager::handleDebugMetrics() {
     proxyObj["errorCount"] = proxy.errorCount;
     proxyObj["queueHighWater"] = proxy.queueHighWater;
     proxyObj["connected"] = bleClient.isProxyClientConnected();
+
+    // Event-bus health metrics (used to verify no backlog/drop under load).
+    JsonObject eventBusObj = doc["eventBus"].to<JsonObject>();
+    eventBusObj["publishCount"] = systemEventBus.getPublishCount();
+    eventBusObj["dropCount"] = systemEventBus.getDropCount();
+    eventBusObj["size"] = static_cast<uint32_t>(systemEventBus.size());
     
     String json;
     serializeJson(doc, json);
