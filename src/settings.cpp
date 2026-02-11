@@ -606,7 +606,9 @@ static const char* WIFI_CLIENT_NS = "v1wificlient";
 
 String SettingsManager::getWifiClientPassword() {
     Preferences prefs;
-    if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
+    // Use read-write open here to avoid noisy NOT_FOUND logs on fresh systems
+    // where the namespace has not been created yet.
+    if (!prefs.begin(WIFI_CLIENT_NS, false)) {
         return "";
     }
     String storedPwd;

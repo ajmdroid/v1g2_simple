@@ -1179,11 +1179,11 @@ void WiFiManager::checkWifiClientStatus() {
                     break;
                 }
                 
-                String savedPassword = settingsManager.getWifiClientPassword();
                 // Only try auto-reconnect every 30 seconds (first attempt is immediate).
                 static unsigned long lastReconnectAttempt = 0;
                 unsigned long nowMs = millis();
                 if (lastReconnectAttempt == 0 || (nowMs - lastReconnectAttempt) > WIFI_RECONNECT_INTERVAL_MS) {
+                    String savedPassword = settingsManager.getWifiClientPassword();
                     lastReconnectAttempt = nowMs;
                     wifiReconnectFailures++;
                     
