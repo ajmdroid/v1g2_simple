@@ -2,6 +2,7 @@
 
 #include "voice_module.h"
 #include "settings.h"
+#include "debug_logger.h"
 
 #ifdef UNIT_TEST
 #include "../../test/mocks/ble_client.h"
@@ -149,8 +150,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         markPriorityAnnounced(ctx.now);
         markAlertAnnounced(priority.band, currentFreq);
         
-        Serial.printf("[Voice] New priority: band=%d freq=%u dir=%d bogeys=%d\n",
-                      (int)action.band, action.freq, (int)action.dir, action.bogeyCount);
+        DBG_LOGF(DebugLogCategory::Audio,
+                 "[Voice] New priority: band=%d freq=%u dir=%d bogeys=%d\n",
+                 (int)action.band, action.freq, (int)action.dir, action.bogeyCount);
         return action;
     }
     
@@ -161,8 +163,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnouncedDirection(priority.direction, (uint8_t)ctx.alertCount);
         
         if (throttled) {
-            Serial.printf("[Voice] Direction THROTTLED: freq=%u changes=%d\n",
-                          currentFreq, getDirectionChangeCount());
+            DBG_LOGF(DebugLogCategory::Audio,
+                     "[Voice] Direction THROTTLED: freq=%u changes=%d\n",
+                     currentFreq, getDirectionChangeCount());
             return action;
         }
         
@@ -173,8 +176,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnouncedTime(ctx.now);
         markPriorityAnnounced(ctx.now);
         
-        Serial.printf("[Voice] Direction change: freq=%u dir=%d bogeys=%d\n",
-                      currentFreq, (int)action.dir, action.bogeyCount);
+        DBG_LOGF(DebugLogCategory::Audio,
+                 "[Voice] Direction change: freq=%u dir=%d bogeys=%d\n",
+                 currentFreq, (int)action.dir, action.bogeyCount);
         return action;
     }
     
@@ -191,8 +195,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnouncedTime(ctx.now);
         markPriorityAnnounced(ctx.now);
         
-        Serial.printf("[Voice] Bogey count: freq=%u dir=%d bogeys=%d (was %d)\n",
-                      currentFreq, (int)action.dir, action.bogeyCount, previousBogeyCount);
+        DBG_LOGF(DebugLogCategory::Audio,
+                 "[Voice] Bogey count: freq=%u dir=%d bogeys=%d (was %d)\n",
+                 currentFreq, (int)action.dir, action.bogeyCount, previousBogeyCount);
         return action;
     }
     
@@ -227,8 +232,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
             markAlertAnnounced(alert.band, alertFreq);
             updateLastAnnouncedTime(ctx.now);
             
-            Serial.printf("[Voice] Secondary: band=%d freq=%u dir=%d\n",
-                          (int)action.band, action.freq, (int)action.dir);
+            DBG_LOGF(DebugLogCategory::Audio,
+                     "[Voice] Secondary: band=%d freq=%u dir=%d\n",
+                     (int)action.band, action.freq, (int)action.dir);
             return action;
         }
     }
@@ -294,8 +300,9 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
                     
                     updateLastAnnouncedTime(ctx.now);
                     
-                    Serial.printf("[Voice] Escalation: band=%d freq=%u - %d bogeys (%d/%d/%d)\n",
-                                  (int)action.band, action.freq, total, aheadCount, behindCount, sideCount);
+                    DBG_LOGF(DebugLogCategory::Audio,
+                             "[Voice] Escalation: band=%d freq=%u - %d bogeys (%d/%d/%d)\n",
+                             (int)action.band, action.freq, total, aheadCount, behindCount, sideCount);
                     return action;
                 }
             }
@@ -435,8 +442,9 @@ bool VoiceModule::shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8
     bool notAnnounced = !h->escalationAnnounced;
     
     if (wasWeak && nowStrong && sustained && notNoisy && notAnnounced) {
-        Serial.printf("[Voice] Escalation trigger: band=%d freq=%u bars=%d strongFor=%lums\n",
-                   (int)band, freq, h->currentBars, now - h->strongSinceMs);
+        DBG_LOGF(DebugLogCategory::Audio,
+                 "[Voice] Escalation trigger: band=%d freq=%u bars=%d strongFor=%lums\n",
+                 (int)band, freq, h->currentBars, now - h->strongSinceMs);
         return true;
     }
     return false;
@@ -602,7 +610,10 @@ bool VoiceModule::isLowSpeedMuted(unsigned long now) const {
     if (muted) {
         static unsigned long lastLogTime = 0;
         if (now - lastLogTime > 5000) {
-            Serial.printf("[Voice] Low speed mute: %.1f mph < %d\n", speedMph, s.lowSpeedMuteThresholdMph);
+            DBG_LOGF(DebugLogCategory::Audio,
+                     "[Voice] Low speed mute: %.1f mph < %d\n",
+                     speedMph,
+                     s.lowSpeedMuteThresholdMph);
             lastLogTime = now;
         }
     }
