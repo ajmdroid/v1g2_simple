@@ -795,6 +795,7 @@ void WiFiManager::process() {
 
     server.handleClient();
     processWifiClientConnectPhase();
+    processPendingPushNow();
     checkAutoTimeout();
     
     // Check WiFi client (STA) connection status
@@ -971,6 +972,86 @@ void WiFiManager::processWifiClientConnectPhase() {
         case WifiConnectPhase::IDLE:
         default:
             break;
+    }
+}
+
+void WiFiManager::processPendingPushNow() {
+    if (pushNowState.step == PushNowStep::IDLE) {
+        return;
+    }
+
+    if (!bleClient.isConnected()) {
+        Serial.println("[PushNow] Aborted: V1 disconnected");
+        pushNowState.step = PushNowStep::IDLE;
+        return;
+    }
+
+    unsigned long now = millis();
+    if (now < pushNowState.nextAtMs) {
+        return;
+    }
+
+    auto scheduleRetry = [&](const char* op) {
+        if (pushNowState.retries < PUSH_NOW_MAX_RETRIES) {
+            pushNowState.retries++;
+            pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
+            Serial.printf("[PushNow] %s deferred, retry %u/%u\n",
+                          op,
+                          static_cast<unsigned int>(pushNowState.retries),
+                          static_cast<unsigned int>(PUSH_NOW_MAX_RETRIES));
+            return;
+        }
+        Serial.printf("[PushNow] ERROR: %s failed after %u retries\n",
+                      op,
+                      static_cast<unsigned int>(PUSH_NOW_MAX_RETRIES));
+        pushNowState.step = PushNowStep::IDLE;
+    };
+
+    switch (pushNowState.step) {
+        case PushNowStep::WRITE_PROFILE:
+            if (bleClient.writeUserBytes(pushNowState.profileBytes)) {
+                bleClient.startUserBytesVerification(pushNowState.profileBytes);
+                bleClient.requestUserBytes();
+                pushNowState.step = PushNowStep::SET_DISPLAY;
+                pushNowState.retries = 0;
+                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
+                return;
+            }
+            scheduleRetry("writeUserBytes");
+            return;
+
+        case PushNowStep::SET_DISPLAY:
+            if (bleClient.setDisplayOn(pushNowState.displayOn)) {
+                pushNowState.step = PushNowStep::SET_MODE;
+                pushNowState.retries = 0;
+                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
+                return;
+            }
+            scheduleRetry("setDisplayOn");
+            return;
+
+        case PushNowStep::SET_MODE:
+            if (!pushNowState.applyMode || bleClient.setMode(static_cast<uint8_t>(pushNowState.mode))) {
+                pushNowState.step = PushNowStep::SET_VOLUME;
+                pushNowState.retries = 0;
+                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
+                return;
+            }
+            scheduleRetry("setMode");
+            return;
+
+        case PushNowStep::SET_VOLUME:
+            if (!pushNowState.applyVolume || bleClient.setVolume(pushNowState.mainVol, pushNowState.muteVol)) {
+                Serial.println("[PushNow] Complete");
+                pushNowState.step = PushNowStep::IDLE;
+                return;
+            }
+            scheduleRetry("setVolume");
+            return;
+
+        case PushNowStep::IDLE:
+        default:
+            return;
     }
 }
 
@@ -1932,6 +2013,16 @@ void WiFiManager::handleAutoPushPushNow() {
         server.send(400, "application/json", "{\"error\":\"Invalid slot\"}");
         return;
     }
+
+    if (!bleClient.isConnected()) {
+        server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
+        return;
+    }
+
+    if (pushNowState.step != PushNowStep::IDLE) {
+        server.send(409, "application/json", "{\"error\":\"Push already in progress\"}");
+        return;
+    }
     
     // Check if profile/mode are passed directly (from Push Now button)
     String profileName;
@@ -1963,48 +2054,47 @@ void WiFiManager::handleAutoPushPushNow() {
         return;
     }
     
-    // Load and push the profile
+    // Load profile once, then execute BLE writes via non-blocking loop state machine.
     V1Profile profile;
     if (!v1ProfileManager.loadProfile(profileName, profile)) {
         server.send(500, "application/json", "{\"error\":\"Failed to load profile\"}");
         return;
     }
-    
-    if (!bleClient.writeUserBytes(profile.settings.bytes)) {
-        server.send(500, "application/json", "{\"error\":\"Failed to push settings\"}");
-        return;
-    }
-    
+
     // Use slot's dark mode setting, not the profile's stored displayOn value
     // (slot dark mode is the user-facing toggle in auto-push config)
     bool slotDarkMode = settingsManager.getSlotDarkMode(slot);
-    bleClient.setDisplayOn(!slotDarkMode);  // Dark mode = display off
-    
-    if (mode != V1_MODE_UNKNOWN) {
-        bleClient.setMode(static_cast<uint8_t>(mode));
-    }
-    
+
     // Set volumes if configured (not 0xFF = no change)
     uint8_t mainVol = settingsManager.getSlotVolume(slot);
     uint8_t muteVol = settingsManager.getSlotMuteVolume(slot);
     
     Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n", slot, mainVol, muteVol);
-    
-    // Only set volume if BOTH are configured (both != 0xFF means both 0-9)
-    if (mainVol != 0xFF && muteVol != 0xFF) {
-        delay(100);
-        Serial.printf("[PushNow] Setting volume - main: %d, muted: %d\n", mainVol, muteVol);
-        bleClient.setVolume(mainVol, muteVol);
-    } else {
-        Serial.printf("[PushNow] Volume: skipping (need both 0-9, got main=%d mute=%d)\n", 
-                        mainVol, muteVol);
-    }
-    
+
     // Update active slot and refresh display profile indicator
     settingsManager.setActiveSlot(slot);
     display.drawProfileIndicator(slot);
-    
-    server.send(200, "application/json", "{\"success\":true}");
+
+    pushNowState.slot = slot;
+    memcpy(pushNowState.profileBytes, profile.settings.bytes, sizeof(pushNowState.profileBytes));
+    pushNowState.displayOn = !slotDarkMode;  // Dark mode=true => display off
+    pushNowState.applyMode = (mode != V1_MODE_UNKNOWN);
+    pushNowState.mode = mode;
+    pushNowState.applyVolume = (mainVol != 0xFF && muteVol != 0xFF);
+    pushNowState.mainVol = mainVol;
+    pushNowState.muteVol = muteVol;
+    pushNowState.retries = 0;
+    pushNowState.step = PushNowStep::WRITE_PROFILE;
+    pushNowState.nextAtMs = millis();
+
+    Serial.printf("[PushNow] Queued slot=%d profile='%s' mode=%d displayOn=%d volume=%s\n",
+                  slot,
+                  profileName.c_str(),
+                  static_cast<int>(mode),
+                  pushNowState.displayOn ? 1 : 0,
+                  pushNowState.applyVolume ? "set" : "skip");
+
+    server.send(200, "application/json", "{\"success\":true,\"queued\":true}");
 }
 
 void WiFiManager::handleAutoPushStatus() {

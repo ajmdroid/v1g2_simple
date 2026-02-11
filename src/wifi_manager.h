@@ -168,12 +168,37 @@ private:
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
     std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
+
+    enum class PushNowStep : uint8_t {
+        IDLE = 0,
+        WRITE_PROFILE,
+        SET_DISPLAY,
+        SET_MODE,
+        SET_VOLUME,
+    };
+
+    struct PushNowState {
+        PushNowStep step = PushNowStep::IDLE;
+        unsigned long nextAtMs = 0;
+        uint8_t retries = 0;
+        int slot = 0;
+        uint8_t profileBytes[6] = {0};
+        bool displayOn = true;
+        bool applyMode = false;
+        V1Mode mode = V1_MODE_UNKNOWN;
+        bool applyVolume = false;
+        uint8_t mainVol = 0xFF;
+        uint8_t muteVol = 0xFF;
+    } pushNowState;
+    static constexpr uint8_t PUSH_NOW_MAX_RETRIES = 8;
+    static constexpr unsigned long PUSH_NOW_RETRY_DELAY_MS = 30;
     
     // Setup functions
     void setupAP();
     void setupWebServer();
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
+    void processPendingPushNow();
     
     // Web handlers
     void handleStatus();
