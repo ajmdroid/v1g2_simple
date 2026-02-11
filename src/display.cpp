@@ -1113,46 +1113,55 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         buf[1] = '.';
     }
 
-    // Numeric bogey counts are performance-critical and must be deterministic.
-    // Keep them on the software renderer to avoid OFR glyph-bearing edge cases.
-    const bool useSoftwareDigits = (symbol >= '0' && symbol <= '9');
-
     // Fixed field clear every update prevents stale pixels from variable-width glyphs.
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
-    
-    if (ofrSegment7Initialized && !useSoftwareDigits) {
-        // Use Segment7 TTF font (JBV1 style), right-aligned by true glyph bounds.
-        // Bounding boxes include glyph bearings; width-only alignment shifts narrow glyphs ('1') too far right.
-        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH - TOP_COUNTER_PAD_RIGHT;
+
+    bool drewWithOfr = false;
+    if (ofrSegment7Initialized) {
+        // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
+        // Keep center-biased placement for utility counter readability.
+        int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH) / 2);
         int glyphXMin = 0;
         int glyphXMax = 0;
         if (getTopCounterBounds(symbol, showDot, glyphXMin, glyphXMax)) {
             const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
             const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
-            x = fieldRight - glyphXMax;  // Cursor X that puts rendered right edge on the field right edge.
-            const int minCursorX = fieldLeft - glyphXMin;
-            const int maxCursorX = fieldRight - glyphXMax;
-            if (minCursorX <= maxCursorX) {
-                x = std::max(minCursorX, std::min(x, maxCursorX));
+            const int glyphW = glyphXMax - glyphXMin;
+            if (glyphW > 0 && glyphW <= (TOP_COUNTER_FIELD_W * 4)) {
+                const int centerBiasPx = 2;
+                const int fieldCenterX = fieldLeft + ((fieldRight - fieldLeft) / 2) + centerBiasPx;
+                const int glyphCenterX = glyphXMin + (glyphW / 2);
+                x = fieldCenterX - glyphCenterX;
+                const int minCursorX = fieldLeft - glyphXMin;
+                const int maxCursorX = fieldRight - glyphXMax;
+                if (minCursorX <= maxCursorX) {
+                    x = std::max(minCursorX, std::min(x, maxCursorX));
+                } else {
+                    // Glyph wider than field; keep left edge inside the field.
+                    x = minCursorX;
+                }
             } else {
-                // Glyph wider than field; keep left edge inside the field.
-                x = minCursorX;
+                // Pathological bounds: fall back to software renderer.
+                x = TOP_COUNTER_FIELD_X + 1;
             }
-        } else if (x < TOP_COUNTER_FIELD_X + 1) {
-            x = TOP_COUNTER_FIELD_X + 1;
         }
-        const int y = TOP_COUNTER_TEXT_Y;
-        
-        // Convert RGB565 to RGB888 for OpenFontRender
-        uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
-        ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-        ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", buf);
-    } else {
+        if (x >= TOP_COUNTER_FIELD_X + 1) {
+            const int y = TOP_COUNTER_TEXT_Y;
+
+            // Convert RGB565 to RGB888 for OpenFontRender
+            uint8_t bgR = (PALETTE_BG >> 11) << 3;
+            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+            ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
+            ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+            ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+            ofrSegment7.setCursor(x, y);
+            ofrSegment7.printf("%s", buf);
+            drewWithOfr = true;
+        }
+    }
+
+    if (!drewWithOfr) {
         // Fallback to software 7-segment renderer
 #if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.2f;
@@ -1160,13 +1169,8 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         const float scale = 2.0f;
 #endif
         int textWidth = measureSevenSegmentText(buf, scale);
-        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
-        if (useSoftwareDigits) {
-            // Bogey utility counter should read near center, not hard-right.
-            // Keep a slight right bias to match the original panel feel.
-            const int centerBiasPx = 2;
-            x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - textWidth) / 2) + centerBiasPx;
-        }
+        const int centerBiasPx = 2;
+        int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - textWidth) / 2) + centerBiasPx;
         if (x < TOP_COUNTER_FIELD_X + 1) {
             x = TOP_COUNTER_FIELD_X + 1;
         }
