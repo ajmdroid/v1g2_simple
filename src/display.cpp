@@ -309,15 +309,23 @@ constexpr int TOP_COUNTER_TEXT_Y = 8;
 constexpr int TOP_COUNTER_PAD_RIGHT = 2;
 constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
 
-static int16_t s_topCounterWidthCache[128][2];
-static bool s_topCounterWidthCacheReady = false;
+constexpr int16_t TOP_COUNTER_BOUNDS_INVALID = static_cast<int16_t>(-32768);
 
-static void resetTopCounterWidthCache() {
-    memset(s_topCounterWidthCache, 0xFF, sizeof(s_topCounterWidthCache));
-    s_topCounterWidthCacheReady = false;
+static int16_t s_topCounterXMinCache[128][2];
+static int16_t s_topCounterXMaxCache[128][2];
+static bool s_topCounterBoundsCacheReady = false;
+
+static void resetTopCounterBoundsCache() {
+    for (uint8_t c = 0; c < 128; ++c) {
+        s_topCounterXMinCache[c][0] = TOP_COUNTER_BOUNDS_INVALID;
+        s_topCounterXMinCache[c][1] = TOP_COUNTER_BOUNDS_INVALID;
+        s_topCounterXMaxCache[c][0] = TOP_COUNTER_BOUNDS_INVALID;
+        s_topCounterXMaxCache[c][1] = TOP_COUNTER_BOUNDS_INVALID;
+    }
+    s_topCounterBoundsCacheReady = false;
 }
 
-static void cacheTopCounterWidth(char symbol, bool showDot) {
+static void cacheTopCounterBounds(char symbol, bool showDot) {
     const uint8_t idx = static_cast<uint8_t>(symbol);
     if (idx >= 128) {
         return;
@@ -330,39 +338,57 @@ static void cacheTopCounterWidth(char symbol, bool showDot) {
 
     FT_BBox bbox = ofrSegment7.calculateBoundingBox(
         0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
-    int width = bbox.xMax - bbox.xMin;
-    if (width < 0) {
-        width = 0;
-    }
-    if (width > 32767) {
-        width = 32767;
-    }
-    s_topCounterWidthCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(width);
+    int xMin = static_cast<int>(bbox.xMin);
+    int xMax = static_cast<int>(bbox.xMax);
+    if (xMin < -32767) xMin = -32767;
+    if (xMin > 32767) xMin = 32767;
+    if (xMax < -32767) xMax = -32767;
+    if (xMax > 32767) xMax = 32767;
+    s_topCounterXMinCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(xMin);
+    s_topCounterXMaxCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(xMax);
 }
 
-static void primeTopCounterWidthCache() {
-    resetTopCounterWidthCache();
+static void primeTopCounterBoundsCache() {
+    resetTopCounterBoundsCache();
     if (!ofrSegment7Initialized) {
         return;
     }
 
     ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
     for (uint8_t c = 32; c < 127; ++c) {
-        cacheTopCounterWidth(static_cast<char>(c), false);
-        cacheTopCounterWidth(static_cast<char>(c), true);
+        cacheTopCounterBounds(static_cast<char>(c), false);
+        cacheTopCounterBounds(static_cast<char>(c), true);
     }
-    s_topCounterWidthCacheReady = true;
+    s_topCounterBoundsCacheReady = true;
 }
 
-static int getTopCounterWidthCached(char symbol, bool showDot) {
+static bool getTopCounterBounds(char symbol, bool showDot, int& xMin, int& xMax) {
     const uint8_t idx = static_cast<uint8_t>(symbol);
-    if (idx < 128) {
-        int16_t cached = s_topCounterWidthCache[idx][showDot ? 1 : 0];
-        if (cached >= 0) {
-            return cached;
+    const uint8_t dotIdx = showDot ? 1 : 0;
+
+    if (s_topCounterBoundsCacheReady && idx < 128) {
+        int16_t cachedMin = s_topCounterXMinCache[idx][dotIdx];
+        int16_t cachedMax = s_topCounterXMaxCache[idx][dotIdx];
+        if (cachedMin != TOP_COUNTER_BOUNDS_INVALID && cachedMax != TOP_COUNTER_BOUNDS_INVALID) {
+            xMin = cachedMin;
+            xMax = cachedMax;
+            return true;
         }
     }
-    return TOP_COUNTER_FALLBACK_WIDTH + (showDot ? 4 : 0);
+
+    if (!ofrSegment7Initialized) {
+        return false;
+    }
+
+    char text[3] = {symbol, 0, 0};
+    if (showDot) {
+        text[1] = '.';
+    }
+    FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+        0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
+    xMin = static_cast<int>(bbox.xMin);
+    xMax = static_cast<int>(bbox.xMax);
+    return true;
 }
 
 constexpr bool DIGIT_SEGMENTS[10][7] = {
@@ -598,7 +624,7 @@ bool V1Display::begin() {
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
-    primeTopCounterWidthCache();  // Boot-time width cache for stable right-aligned counter layout
+    primeTopCounterBoundsCache();  // Boot-time glyph bounds cache for stable right-aligned counter layout
     
     ofrSerpentine.setDrawer(*tft);
     ofrSerpentine.setCacheSize(1, 4, numericCacheBytes);  // Serpentine digits cache
@@ -1079,12 +1105,24 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
     
     if (ofrSegment7Initialized) {
-        // Use Segment7 TTF font (JBV1 style), right-aligned in fixed field.
-        const int textWidth = s_topCounterWidthCacheReady
-                                  ? getTopCounterWidthCached(symbol, showDot)
-                                  : (TOP_COUNTER_FALLBACK_WIDTH + (showDot ? 4 : 0));
-        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
-        if (x < TOP_COUNTER_FIELD_X + 1) {
+        // Use Segment7 TTF font (JBV1 style), right-aligned by true glyph bounds.
+        // Bounding boxes include glyph bearings; width-only alignment shifts narrow glyphs ('1') too far right.
+        int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH - TOP_COUNTER_PAD_RIGHT;
+        int glyphXMin = 0;
+        int glyphXMax = 0;
+        if (getTopCounterBounds(symbol, showDot, glyphXMin, glyphXMax)) {
+            const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
+            const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
+            x = fieldRight - glyphXMax;  // Cursor X that puts rendered right edge on the field right edge.
+            const int minCursorX = fieldLeft - glyphXMin;
+            const int maxCursorX = fieldRight - glyphXMax;
+            if (minCursorX <= maxCursorX) {
+                x = std::max(minCursorX, std::min(x, maxCursorX));
+            } else {
+                // Glyph wider than field; keep left edge inside the field.
+                x = minCursorX;
+            }
+        } else if (x < TOP_COUNTER_FIELD_X + 1) {
             x = TOP_COUNTER_FIELD_X + 1;
         }
         const int y = TOP_COUNTER_TEXT_Y;
