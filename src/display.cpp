@@ -1108,8 +1108,11 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     }
     
     // Build display string
+    // Keep numeric glyph placement fixed like an LED cluster by drawing the dot
+    // separately at a fixed location instead of appending '.' to the glyph.
+    const bool drawFixedDigitDot = isDigit && showDot;
     char buf[3] = {symbol, 0, 0};
-    if (showDot) {
+    if (showDot && !drawFixedDigitDot) {
         buf[1] = '.';
     }
 
@@ -1182,6 +1185,14 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         }
         int y = 10;
         drawSevenSegmentText(buf, x, y, scale, color, PALETTE_BG);
+    }
+
+    if (drawFixedDigitDot) {
+        const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
+        const int dotR = 4;
+        const int dotX = fieldRight - 2;
+        const int dotY = TOP_COUNTER_TEXT_Y + TOP_COUNTER_FONT_SIZE - 5;
+        FILL_CIRCLE(dotX, dotY, dotR, color);
     }
 }
 
