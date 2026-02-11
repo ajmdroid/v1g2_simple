@@ -99,6 +99,14 @@ void OBDHandler::begin() {
         obdMutex = xSemaphoreCreateMutex();
     }
 
+    // Ensure namespace exists to avoid repeated NOT_FOUND reads on clean NVS.
+    Preferences p;
+    if (p.begin("obd_store", false)) {
+        p.end();
+    } else {
+        Serial.println("[OBD] WARN: Failed to initialize obd_store namespace");
+    }
+
     loadRememberedDevices();
 
     state = OBDState::IDLE;

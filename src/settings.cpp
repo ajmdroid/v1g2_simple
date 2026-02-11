@@ -26,6 +26,7 @@ static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
 static const char* SETTINGS_NS_LEGACY = "v1settings";
+static const char* WIFI_CLIENT_NS = "v1wificlient";
 
 // Global instance
 SettingsManager settingsManager;
@@ -332,6 +333,15 @@ bool SettingsManager::persistSettingsAtomically() {
 SettingsManager::SettingsManager() {}
 
 void SettingsManager::begin() {
+    // Ensure WiFi client namespace exists so read-only opens do not spam
+    // NOT_FOUND on fresh/erased NVS.
+    Preferences wifiClientNs;
+    if (wifiClientNs.begin(WIFI_CLIENT_NS, false)) {
+        wifiClientNs.end();
+    } else {
+        Serial.println("[Settings] WARN: Failed to initialize WiFi client namespace");
+    }
+
     load();
     
     // Note: SD card may not be mounted yet during begin().
@@ -601,14 +611,9 @@ void SettingsManager::setAPCredentials(const String& ssid, const String& passwor
     save();
 }
 
-// WiFi client (STA) credential functions - stored in separate secure namespace
-static const char* WIFI_CLIENT_NS = "v1wificlient";
-
 String SettingsManager::getWifiClientPassword() {
     Preferences prefs;
-    // Use read-write open here to avoid noisy NOT_FOUND logs on fresh systems
-    // where the namespace has not been created yet.
-    if (!prefs.begin(WIFI_CLIENT_NS, false)) {
+    if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
         return "";
     }
     String storedPwd;
