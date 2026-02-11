@@ -218,6 +218,10 @@ public:
     void setWifiPriority(bool enabled);  // Enable = suppress BLE activity
     bool isWifiPriority() const { return wifiPriorityMode; }
 
+    // Boot readiness gate - blocks BLE scan/connect state machine until setup is ready
+    void setBootReady(bool ready);
+    bool isBootReady() const { return bootReadyFlag; }
+
 private:
     // Nested callback classes - defined before member declarations that use them
     class ClientCallbacks : public NimBLEClientCallbacks {
@@ -439,6 +443,7 @@ private:
     
     // WiFi priority mode flag
     bool wifiPriorityMode = false;
+    bool bootReadyFlag = false;
     
     // Initialize BLE server for proxy mode
     void initProxyServer(const char* deviceName);

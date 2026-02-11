@@ -1743,6 +1743,11 @@ void V1BLEClient::process() {
     
     unsigned long now = millis();
     NimBLEScan* pScan = NimBLEDevice::getScan();
+
+    // Boot readiness gate: keep state machine idle until setup opens the gate.
+    if (!bootReadyFlag) {
+        return;
+    }
     
     // ========== BLE STATE MACHINE ==========
     switch (bleState) {
@@ -1937,6 +1942,10 @@ void V1BLEClient::disconnect() {
 
 // ==================== WiFi Priority Mode ====================
 // Deprioritize BLE when web UI is active to maximize responsiveness
+
+void V1BLEClient::setBootReady(bool ready) {
+    bootReadyFlag = ready;
+}
 
 void V1BLEClient::setWifiPriority(bool enabled) {
     if (wifiPriorityMode == enabled) return;  // No change
