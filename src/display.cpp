@@ -1161,6 +1161,12 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 #endif
         int textWidth = measureSevenSegmentText(buf, scale);
         int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
+        if (symbol == '1') {
+            // Optical correction: software 7-seg "1" is very narrow/right-heavy.
+            // Nudge left so it matches the perceived placement of other digits.
+            const int oneNudgePx = std::max(3, static_cast<int>(scale * 4.0f));
+            x -= oneNudgePx;
+        }
         if (x < TOP_COUNTER_FIELD_X + 1) {
             x = TOP_COUNTER_FIELD_X + 1;
         }
