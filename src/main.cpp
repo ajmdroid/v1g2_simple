@@ -511,6 +511,9 @@ void setup() {
         .startWifi = [] { getWifiOrchestrator().startWifi(); },
         .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
         .restoreDisplay = [] {
+            if (bootSplashHoldActive) {
+                return;
+            }
             if (bleClient.isConnected()) {
                 display.forceNextRedraw();
                 DisplayState state = parser.getDisplayState();
@@ -691,13 +694,15 @@ void loop() {
     if (!overloadThisLoop) {
         // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
         // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
-        unsigned long lastRx = bleQueueModule.getLastRxMillis();
-        bool bleReceiving = (now - lastRx) < 2000;
-        display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
+        if (!bootSplashHoldActive) {
+            unsigned long lastRx = bleQueueModule.getLastRxMillis();
+            bool bleReceiving = (now - lastRx) < 2000;
+            display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
+        }
     }
     
     // Drive color preview (band cycle) first; skip other updates if active
-    if (!overloadThisLoop) {
+    if (!overloadThisLoop && !bootSplashHoldActive) {
         if (displayPreviewModule.isRunning()) {
             displayPreviewModule.update();
         } else {
@@ -784,7 +789,7 @@ void loop() {
 
     // Drive display pipeline separately from BLE drain (decoupled for accurate timing)
     // This is intentionally outside the bleDrain timing to isolate display latency
-    if (parsedReady) {
+    if (parsedReady && !bootSplashHoldActive) {
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
             uint32_t nowMs = millis();
@@ -802,7 +807,7 @@ void loop() {
 
     bool previewRunning = displayPreviewModule.isRunning();
     unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
-    if ((now - lastFreqUiMs) >= freqUiMaxMs) {
+    if (!bootSplashHoldActive && (now - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser.getDisplayState();
         const AlertData priority = parser.getPriorityAlert();
         bool hasPriority = parser.hasAlerts() && priority.isValid && priority.band != BAND_NONE;
@@ -815,7 +820,7 @@ void loop() {
         lastFreqUiMs = now;
     }
 
-    if (!displayPreviewModule.isRunning() && overloadThisLoop && (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
+    if (!bootSplashHoldActive && !displayPreviewModule.isRunning() && overloadThisLoop && (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
         const auto& allAlerts = parser.getAllAlerts();
         int alertCount = static_cast<int>(parser.getAlertCount());
         const AlertData priority = parser.getPriorityAlert();
