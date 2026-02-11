@@ -2,6 +2,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#ifdef UNIT_TEST
+#include <atomic>
+#else
+#include <freertos/FreeRTOS.h>
+#endif
 
 // Event types for low-overhead module decoupling.
 // Keep payloads POD and fixed-size to avoid heap/format overhead in hot paths.
@@ -26,6 +31,7 @@ public:
     static constexpr size_t kCapacity = 32;
 
     void reset() {
+        LockGuard guard(*this);
         head = 0;
         tail = 0;
         count = 0;
@@ -38,6 +44,7 @@ public:
     // oldest frame event first when available.
     // Returns true if no drop occurred for this publish.
     bool publish(const SystemEvent& event) {
+        LockGuard guard(*this);
         bool dropped = false;
         if (count == kCapacity) {
             uint8_t dropOffset = 0;
@@ -58,6 +65,7 @@ public:
     }
 
     bool consume(SystemEvent& out) {
+        LockGuard guard(*this);
         if (count == 0) {
             return false;
         }
@@ -71,6 +79,7 @@ public:
     // Consume the oldest event matching the requested type while preserving
     // FIFO order for all remaining events.
     bool consumeByType(SystemEventType type, SystemEvent& out) {
+        LockGuard guard(*this);
         if (count == 0) {
             return false;
         }
@@ -93,11 +102,47 @@ public:
         return removeAtOffset(matchOffset, &out);
     }
 
-    uint32_t getPublishCount() const { return publishCount; }
-    uint32_t getDropCount() const { return dropCount; }
-    size_t size() const { return count; }
+    uint32_t getPublishCount() const {
+        LockGuard guard(*this);
+        return publishCount;
+    }
+    uint32_t getDropCount() const {
+        LockGuard guard(*this);
+        return dropCount;
+    }
+    size_t size() const {
+        LockGuard guard(*this);
+        return count;
+    }
 
 private:
+    void lock() const {
+#ifdef UNIT_TEST
+        while (lockFlag.test_and_set(std::memory_order_acquire)) {
+        }
+#else
+        portENTER_CRITICAL(&lockMux);
+#endif
+    }
+
+    void unlock() const {
+#ifdef UNIT_TEST
+        lockFlag.clear(std::memory_order_release);
+#else
+        portEXIT_CRITICAL(&lockMux);
+#endif
+    }
+
+    struct LockGuard {
+        explicit LockGuard(const SystemEventBus& ownerRef) : owner(ownerRef) {
+            owner.lock();
+        }
+        ~LockGuard() {
+            owner.unlock();
+        }
+        const SystemEventBus& owner;
+    };
+
     static bool isFrameEventType(SystemEventType type) {
         return type == SystemEventType::BLE_FRAME_PARSED;
     }
@@ -145,4 +190,9 @@ private:
     uint8_t count = 0;
     uint32_t publishCount = 0;
     uint32_t dropCount = 0;
+#ifdef UNIT_TEST
+    mutable std::atomic_flag lockFlag = ATOMIC_FLAG_INIT;
+#else
+    mutable portMUX_TYPE lockMux = portMUX_INITIALIZER_UNLOCKED;
+#endif
 };
