@@ -1161,11 +1161,11 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 #endif
         int textWidth = measureSevenSegmentText(buf, scale);
         int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - textWidth - TOP_COUNTER_PAD_RIGHT;
-        if (symbol == '1') {
-            // Optical correction: software 7-seg "1" is very narrow/right-heavy.
-            // Nudge left so it matches the perceived placement of other digits.
-            const int oneNudgePx = std::max(3, static_cast<int>(scale * 4.0f));
-            x -= oneNudgePx;
+        if (useSoftwareDigits) {
+            // Bogey utility counter should read near center, not hard-right.
+            // Keep a slight right bias to match the original panel feel.
+            const int centerBiasPx = 2;
+            x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - textWidth) / 2) + centerBiasPx;
         }
         if (x < TOP_COUNTER_FIELD_X + 1) {
             x = TOP_COUNTER_FIELD_X + 1;
