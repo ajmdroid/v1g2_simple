@@ -100,6 +100,11 @@ struct PerfCounters {
     std::atomic<uint32_t> bleMutexTimeout{0};     // COLD path timeout failures
     std::atomic<uint32_t> cmdPaceNotYet{0};       // sendCommand pacing deferrals
     std::atomic<uint32_t> cmdBleBusy{0};          // sendCommand BLE write failed (transient)
+    std::atomic<uint32_t> uuid128FallbackHits{0}; // 128-bit custom UUID fast extraction path hits
+    std::atomic<uint32_t> bleDiscTaskCreateFail{0}; // Discovery task spawn failures
+    std::atomic<uint32_t> wifiConnectDeferred{0}; // WiFi connects staged via non-blocking phase machine
+    std::atomic<uint32_t> pushNowRetries{0};      // Non-blocking Push Now retry attempts
+    std::atomic<uint32_t> pushNowFailures{0};     // Non-blocking Push Now exhausted retries
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -130,6 +135,11 @@ struct PerfCounters {
         bleMutexTimeout.store(0, std::memory_order_relaxed);
         cmdPaceNotYet.store(0, std::memory_order_relaxed);
         cmdBleBusy.store(0, std::memory_order_relaxed);
+        uuid128FallbackHits.store(0, std::memory_order_relaxed);
+        bleDiscTaskCreateFail.store(0, std::memory_order_relaxed);
+        wifiConnectDeferred.store(0, std::memory_order_relaxed);
+        pushNowRetries.store(0, std::memory_order_relaxed);
+        pushNowFailures.store(0, std::memory_order_relaxed);
     }
 };
 

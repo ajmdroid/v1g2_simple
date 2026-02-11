@@ -111,6 +111,7 @@ static bool extractV1ShortUuidFrom128(const NimBLEUUID& uuid, uint16_t& out) {
 
     // 16-bit short UUID lives in bytes [12..13] (little-endian) for this custom base.
     out = static_cast<uint16_t>((static_cast<uint16_t>(raw[13]) << 8) | raw[12]);
+    PERF_INC(uuid128FallbackHits);
     return true;
 }
 
@@ -1015,6 +1016,7 @@ void V1BLEClient::processDiscovering() {
         if (rc != pdPASS) {
             // Never run discovery synchronously on the main loop; back off and retry.
             Serial.println("[BLE] disc task create failed - backing off");
+            PERF_INC(bleDiscTaskCreateFail);
             discoveryTaskResult.store(false);
             discoveryTaskDone.store(true);
             discoveryTaskRunning.store(false);

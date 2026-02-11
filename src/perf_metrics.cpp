@@ -314,6 +314,7 @@ void perfMetricsPrint() {
         "dUpd=%lu dSkip=%lu "
         "reconn=%lu disc=%lu "
         "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
+        "uuid128=%lu discTaskFail=%lu wifiConnDef=%lu pushRetry=%lu pushFail=%lu "
         "sdFail=%lu/%lu/%lu/%lu/%lu/%lu "
         "logRate=%lu logBuf=%lu logQ=%lu "
         "latMin=%luus avg=%luus max=%luus n=%lu\n",
@@ -335,6 +336,11 @@ void perfMetricsPrint() {
         (unsigned long)perfCounters.bleMutexTimeout.load(),
         (unsigned long)perfCounters.cmdPaceNotYet.load(),
         (unsigned long)perfCounters.cmdBleBusy.load(),
+        (unsigned long)perfCounters.uuid128FallbackHits.load(),
+        (unsigned long)perfCounters.bleDiscTaskCreateFail.load(),
+        (unsigned long)perfCounters.wifiConnectDeferred.load(),
+        (unsigned long)perfCounters.pushNowRetries.load(),
+        (unsigned long)perfCounters.pushNowFailures.load(),
         (unsigned long)perfCounters.perfSdLockFail.load(),
         (unsigned long)perfCounters.perfSdDirFail.load(),
         (unsigned long)perfCounters.perfSdOpenFail.load(),
@@ -381,6 +387,11 @@ String perfMetricsToJson() {
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
+    doc["uuid128FallbackHits"] = perfCounters.uuid128FallbackHits.load();
+    doc["bleDiscTaskCreateFail"] = perfCounters.bleDiscTaskCreateFail.load();
+    doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
+    doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
+    doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

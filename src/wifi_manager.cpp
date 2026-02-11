@@ -906,6 +906,7 @@ bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
     wifiClientState = WIFI_CLIENT_CONNECTING;
     wifiConnectPhase = WifiConnectPhase::PREPARE_OFF;
     wifiConnectPhaseStartMs = millis();
+    PERF_INC(wifiConnectDeferred);
     return true;
 }
 
@@ -994,6 +995,7 @@ void WiFiManager::processPendingPushNow() {
     auto scheduleRetry = [&](const char* op) {
         if (pushNowState.retries < PUSH_NOW_MAX_RETRIES) {
             pushNowState.retries++;
+            PERF_INC(pushNowRetries);
             pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
             Serial.printf("[PushNow] %s deferred, retry %u/%u\n",
                           op,
@@ -1004,6 +1006,7 @@ void WiFiManager::processPendingPushNow() {
         Serial.printf("[PushNow] ERROR: %s failed after %u retries\n",
                       op,
                       static_cast<unsigned int>(PUSH_NOW_MAX_RETRIES));
+        PERF_INC(pushNowFailures);
         pushNowState.step = PushNowStep::IDLE;
     };
 
@@ -2496,6 +2499,11 @@ void WiFiManager::handleDebugMetrics() {
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
+    doc["uuid128FallbackHits"] = perfCounters.uuid128FallbackHits.load();
+    doc["bleDiscTaskCreateFail"] = perfCounters.bleDiscTaskCreateFail.load();
+    doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
+    doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
+    doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
     doc["loopMaxUs"] = perfGetLoopMaxUs();
     doc["wifiMaxUs"] = perfGetWifiMaxUs();
     doc["fsMaxUs"] = perfGetFsMaxUs();
