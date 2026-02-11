@@ -942,13 +942,24 @@ void WiFiManager::processWifiClientConnectPhase() {
     unsigned long now = millis();
     switch (wifiConnectPhase) {
         case WifiConnectPhase::PREPARE_OFF:
-            if (WiFi.getMode() != WIFI_OFF) {
-                Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
-                WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
-                WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
+            if (setupModeState == SETUP_MODE_AP_ON) {
+                // Keep AP online (and IP stable) while refreshing STA connection state.
+                Serial.println("[WiFiClient] Preserving AP, resetting STA before reconnect...");
+                if (WiFi.getMode() != WIFI_AP_STA) {
+                    WiFi.mode(WIFI_AP_STA);
+                }
+                WiFi.disconnect(false);  // STA disconnect only; do not tear down AP
+                wifiConnectPhaseStartMs = now;
+                wifiConnectPhase = WifiConnectPhase::WAIT_AP_STA;
+            } else {
+                if (WiFi.getMode() != WIFI_OFF) {
+                    Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
+                    WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
+                    WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
+                }
+                wifiConnectPhaseStartMs = now;
+                wifiConnectPhase = WifiConnectPhase::WAIT_OFF;
             }
-            wifiConnectPhaseStartMs = now;
-            wifiConnectPhase = WifiConnectPhase::WAIT_OFF;
             break;
 
         case WifiConnectPhase::WAIT_OFF:
