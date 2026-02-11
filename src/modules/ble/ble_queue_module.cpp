@@ -174,6 +174,7 @@ void BleQueueModule::process() {
     if (latestPktTs != 0) {
         lastRxMillis = latestPktTs;
         lastNotifyTsMs = latestPktTs;
+        perfRecordBleTimelineEvent(PerfBleTimelineEvent::FirstRx, latestPktTs);
     }
 #endif
 

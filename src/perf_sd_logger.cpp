@@ -14,7 +14,7 @@ namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,wifiMax_us\n";
+    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
@@ -210,11 +210,11 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    char line[420];
+    char line[700];
     int n = snprintf(
         line,
         sizeof(line),
-        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
+        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu\n",
         static_cast<unsigned long>(snapshot.millisTs),
         static_cast<unsigned int>(snapshot.timeValid),
         static_cast<unsigned int>(snapshot.timeSource),
@@ -236,7 +236,27 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         static_cast<unsigned long>(snapshot.dmaLargestMin),
         static_cast<unsigned long>(snapshot.bleProcessMaxUs),
         static_cast<unsigned long>(snapshot.touchMaxUs),
-        static_cast<unsigned long>(snapshot.wifiMaxUs));
+        static_cast<unsigned long>(snapshot.wifiMaxUs),
+        static_cast<unsigned long>(snapshot.uiToScanCount),
+        static_cast<unsigned long>(snapshot.uiToRestCount),
+        static_cast<unsigned long>(snapshot.uiScanToRestCount),
+        static_cast<unsigned long>(snapshot.uiFastScanExitCount),
+        static_cast<unsigned long>(snapshot.uiLastScanDwellMs),
+        static_cast<unsigned long>(snapshot.uiMinScanDwellMs),
+        static_cast<unsigned long>(snapshot.fadeDownCount),
+        static_cast<unsigned long>(snapshot.fadeRestoreCount),
+        static_cast<unsigned long>(snapshot.fadeSkipEqualCount),
+        static_cast<unsigned long>(snapshot.fadeSkipNoBaselineCount),
+        static_cast<unsigned long>(snapshot.fadeSkipNotFadedCount),
+        static_cast<unsigned int>(snapshot.fadeLastDecision),
+        static_cast<unsigned int>(snapshot.fadeLastCurrentVol),
+        static_cast<unsigned int>(snapshot.fadeLastOriginalVol),
+        static_cast<unsigned long>(snapshot.fadeLastDecisionMs),
+        static_cast<unsigned long>(snapshot.bleScanStartMs),
+        static_cast<unsigned long>(snapshot.bleTargetFoundMs),
+        static_cast<unsigned long>(snapshot.bleConnectStartMs),
+        static_cast<unsigned long>(snapshot.bleConnectedMs),
+        static_cast<unsigned long>(snapshot.bleFirstRxMs));
 
     if (n <= 0 || n >= static_cast<int>(sizeof(line))) {
         f.close();

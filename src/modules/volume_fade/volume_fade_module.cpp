@@ -1,5 +1,6 @@
 #include "volume_fade_module.h"
 #include "settings.h"
+#include "perf_metrics.h"
 #include <cstring>
 #include <Arduino.h>
 
@@ -53,9 +54,19 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = originalVolume;
             pendingRestoreMuteVolume = originalMuteVolume;
             pendingRestoreSetMs = ctx.now;
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreApplied,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
             Serial.printf("[VolumeFade] RESTORE: current=%d -> original=%d\n",
                           ctx.currentVolume, originalVolume);
         } else if (originalVolume != 0xFF) {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedEqual,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
             Serial.printf("[VolumeFade] No restore needed: current=%d == original=%d\n",
                           ctx.currentVolume, originalVolume);
         }
@@ -72,6 +83,29 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = originalVolume;
             pendingRestoreMuteVolume = originalMuteVolume;
             pendingRestoreSetMs = ctx.now;
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreApplied,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
+        } else if (fadeActive && originalVolume != 0xFF) {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedEqual,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
+        } else if (originalVolume == 0xFF) {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedNoBaseline,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
+        } else {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedNotFaded,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
         }
         resetSessionState();
         return action;
@@ -100,6 +134,23 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = originalVolume;
             pendingRestoreMuteVolume = originalMuteVolume;
             pendingRestoreSetMs = ctx.now;
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreApplied,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
+        } else if (originalVolume != 0xFF) {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedEqual,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
+        } else {
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::RestoreSkippedNoBaseline,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
         }
         alertStartMs = now;
         fadeActive = false;
@@ -142,6 +193,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.targetVolume = fadeVol;
             action.targetMuteVolume = originalMuteVolume;
             fadeActive = true;
+            perfRecordVolumeFadeDecision(
+                PerfFadeDecision::FadeDown,
+                ctx.currentVolume,
+                originalVolume,
+                ctx.now);
         }
         commandSent = true;  // Do not retry if it fails; mirrors prior behavior
         return action;

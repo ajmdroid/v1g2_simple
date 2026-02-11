@@ -1978,6 +1978,10 @@ void V1Display::showResting(bool forceRedraw) {
         // Log screen mode transition for debugging display refresh issues
         if (currentScreen != ScreenMode::Resting) {
             DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen);
+            perfRecordDisplayScreenTransition(
+                static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+                PerfDisplayScreen::Resting,
+                millis());
         }
         currentScreen = ScreenMode::Resting;
 
@@ -2162,6 +2166,12 @@ void V1Display::showScanning() {
     DISPLAY_FLUSH();
 #endif
 
+    if (currentScreen != ScreenMode::Scanning) {
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Scanning,
+            millis());
+    }
     currentScreen = ScreenMode::Scanning;
     lastRestingProfileSlot = -1;
 }
@@ -2570,6 +2580,12 @@ void V1Display::update(const DisplayState& state) {
     DISPLAY_FLUSH();  // Push canvas to display
 #endif
 
+    if (currentScreen != ScreenMode::Resting) {
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Resting,
+            millis());
+    }
     currentScreen = ScreenMode::Resting;  // Set screen mode after redraw complete
     lastState = state;
 }
@@ -2611,6 +2627,12 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     persistedMode = true;
     
     // Track screen mode - persisted is NOT Live, so transition to Live will trigger full redraw
+    if (currentScreen != ScreenMode::Resting) {
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Resting,
+            millis());
+    }
     currentScreen = ScreenMode::Resting;
     
     // Always use multi-alert layout positioning
@@ -2679,6 +2701,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (enteringLiveMode) {
         DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n", 
                     (int)currentScreen, alertCount);
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Live,
+            millis());
     }
     currentScreen = ScreenMode::Live;
 

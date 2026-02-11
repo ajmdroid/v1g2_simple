@@ -37,6 +37,26 @@ struct PerfSdSnapshot {
     uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
     uint32_t wifiMaxUs;       // Window max wifiManager.process() duration
+    uint32_t uiToScanCount;   // Screen transitions to scanning
+    uint32_t uiToRestCount;   // Screen transitions to resting
+    uint32_t uiScanToRestCount;   // Scanning -> resting transitions
+    uint32_t uiFastScanExitCount; // Scan dwell below threshold before exit
+    uint32_t uiLastScanDwellMs;   // Most recent scan dwell duration
+    uint32_t uiMinScanDwellMs;    // Session minimum scan dwell duration
+    uint32_t fadeDownCount;       // Fade-down actions emitted
+    uint32_t fadeRestoreCount;    // Restore actions emitted
+    uint32_t fadeSkipEqualCount;  // Restore skipped (current == baseline)
+    uint32_t fadeSkipNoBaselineCount; // Restore skipped (missing baseline)
+    uint32_t fadeSkipNotFadedCount;   // Restore skipped (session never faded)
+    uint8_t fadeLastDecision;     // PerfFadeDecision code
+    uint8_t fadeLastCurrentVol;   // Last observed current volume
+    uint8_t fadeLastOriginalVol;  // Last observed baseline/original volume
+    uint32_t fadeLastDecisionMs;  // Last fade decision timestamp
+    uint32_t bleScanStartMs;      // First scan start timestamp
+    uint32_t bleTargetFoundMs;    // First target-found timestamp
+    uint32_t bleConnectStartMs;   // First connect-start timestamp
+    uint32_t bleConnectedMs;      // First connected timestamp
+    uint32_t bleFirstRxMs;        // First parsed/received V1 packet timestamp
 };
 
 class PerfSdLogger {

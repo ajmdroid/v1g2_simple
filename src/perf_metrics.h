@@ -163,6 +163,32 @@ struct PerfHistogramMs {
     }
 };
 
+enum class PerfDisplayScreen : uint8_t {
+    Unknown = 0,
+    Resting = 1,
+    Scanning = 2,
+    Disconnected = 3,
+    Live = 4,
+    Persisted = 5
+};
+
+enum class PerfFadeDecision : uint8_t {
+    None = 0,
+    FadeDown = 1,
+    RestoreApplied = 2,
+    RestoreSkippedEqual = 3,
+    RestoreSkippedNoBaseline = 4,
+    RestoreSkippedNotFaded = 5
+};
+
+enum class PerfBleTimelineEvent : uint8_t {
+    ScanStart = 1,
+    TargetFound = 2,
+    ConnectStart = 3,
+    Connected = 4,
+    FirstRx = 5
+};
+
 struct PerfExtendedMetrics {
     PerfHistogramMs notifyToDisplayMs;
     PerfHistogramMs notifyToProxyMs;
@@ -184,6 +210,27 @@ struct PerfExtendedMetrics {
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
+    uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
+    uint32_t uiToRestCount = 0;       // Screen transitions -> Resting
+    uint32_t uiScanToRestCount = 0;   // Scanning -> Resting transitions
+    uint32_t uiFastScanExitCount = 0; // Scanning dwell < threshold before leaving
+    uint32_t uiLastScanDwellMs = 0;   // Last measured scanning dwell
+    uint32_t uiMinScanDwellMs = UINT32_MAX; // Session minimum scanning dwell
+    uint32_t uiLastScanEnteredMs = 0; // Internal marker for scanning dwell
+    uint32_t fadeDownCount = 0;       // Fade-down commands generated
+    uint32_t fadeRestoreCount = 0;    // Restore commands generated
+    uint32_t fadeSkipEqualCount = 0;  // Restore skipped because current == original
+    uint32_t fadeSkipNoBaselineCount = 0; // Restore skipped (baseline missing)
+    uint32_t fadeSkipNotFadedCount = 0;   // Restore skipped (session not faded)
+    uint8_t fadeLastDecision = 0;     // PerfFadeDecision
+    uint8_t fadeLastCurrentVol = 0xFF;
+    uint8_t fadeLastOriginalVol = 0xFF;
+    uint32_t fadeLastDecisionMs = 0;
+    uint32_t bleScanStartMs = 0;      // First transition to SCANNING
+    uint32_t bleTargetFoundMs = 0;    // First "V1 found" scan-stop transition
+    uint32_t bleConnectStartMs = 0;   // First transition to CONNECTING
+    uint32_t bleConnectedMs = 0;      // First transition to CONNECTED
+    uint32_t bleFirstRxMs = 0;        // First packet observed in BLE drain path
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -205,6 +252,27 @@ struct PerfExtendedMetrics {
         bleProcessMaxUs = 0;
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
+        uiToScanCount = 0;
+        uiToRestCount = 0;
+        uiScanToRestCount = 0;
+        uiFastScanExitCount = 0;
+        uiLastScanDwellMs = 0;
+        uiMinScanDwellMs = UINT32_MAX;
+        uiLastScanEnteredMs = 0;
+        fadeDownCount = 0;
+        fadeRestoreCount = 0;
+        fadeSkipEqualCount = 0;
+        fadeSkipNoBaselineCount = 0;
+        fadeSkipNotFadedCount = 0;
+        fadeLastDecision = static_cast<uint8_t>(PerfFadeDecision::None);
+        fadeLastCurrentVol = 0xFF;
+        fadeLastOriginalVol = 0xFF;
+        fadeLastDecisionMs = 0;
+        bleScanStartMs = 0;
+        bleTargetFoundMs = 0;
+        bleConnectStartMs = 0;
+        bleConnectedMs = 0;
+        bleFirstRxMs = 0;
     }
 };
 
@@ -226,6 +294,9 @@ void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
+void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
+void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
+void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
 
 uint32_t perfGetNotifyToDisplayP95Ms();
 uint32_t perfGetNotifyToDisplayMaxMs();

@@ -56,6 +56,7 @@ namespace {
 static constexpr uint32_t kLatencyBucketsMs[PerfHistogramMs::kBucketCount] = {
     1, 2, 5, 10, 20, 50, 100, 200, 500, 1000
 };
+static constexpr uint32_t kFastScanExitThresholdMs = 2500;
 static portMUX_TYPE sPerfSnapshotMux = portMUX_INITIALIZER_UNLOCKED;
 
 static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
@@ -130,6 +131,26 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
+    snapshot.uiToScanCount = perfExtended.uiToScanCount;
+    snapshot.uiToRestCount = perfExtended.uiToRestCount;
+    snapshot.uiScanToRestCount = perfExtended.uiScanToRestCount;
+    snapshot.uiFastScanExitCount = perfExtended.uiFastScanExitCount;
+    snapshot.uiLastScanDwellMs = perfExtended.uiLastScanDwellMs;
+    snapshot.uiMinScanDwellMs = (perfExtended.uiMinScanDwellMs == UINT32_MAX) ? 0 : perfExtended.uiMinScanDwellMs;
+    snapshot.fadeDownCount = perfExtended.fadeDownCount;
+    snapshot.fadeRestoreCount = perfExtended.fadeRestoreCount;
+    snapshot.fadeSkipEqualCount = perfExtended.fadeSkipEqualCount;
+    snapshot.fadeSkipNoBaselineCount = perfExtended.fadeSkipNoBaselineCount;
+    snapshot.fadeSkipNotFadedCount = perfExtended.fadeSkipNotFadedCount;
+    snapshot.fadeLastDecision = perfExtended.fadeLastDecision;
+    snapshot.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
+    snapshot.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
+    snapshot.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
+    snapshot.bleScanStartMs = perfExtended.bleScanStartMs;
+    snapshot.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
+    snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
+    snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
+    snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -247,6 +268,98 @@ void perfRecordTouchUs(uint32_t us) {
     if (us > perfExtended.touchMaxUs) {
         perfExtended.touchMaxUs = us;
     }
+}
+
+void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs) {
+    if (from == to) {
+        return;
+    }
+
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+
+    if (to == PerfDisplayScreen::Scanning) {
+        perfExtended.uiToScanCount++;
+        perfExtended.uiLastScanEnteredMs = nowMs;
+    } else if (to == PerfDisplayScreen::Resting) {
+        perfExtended.uiToRestCount++;
+    }
+
+    if (from == PerfDisplayScreen::Scanning && to == PerfDisplayScreen::Resting) {
+        perfExtended.uiScanToRestCount++;
+    }
+
+    if (from == PerfDisplayScreen::Scanning && to != PerfDisplayScreen::Scanning) {
+        if (to != PerfDisplayScreen::Unknown && perfExtended.uiLastScanEnteredMs > 0) {
+            uint32_t dwellMs = nowMs - perfExtended.uiLastScanEnteredMs;
+            perfExtended.uiLastScanDwellMs = dwellMs;
+            if (dwellMs < perfExtended.uiMinScanDwellMs) {
+                perfExtended.uiMinScanDwellMs = dwellMs;
+            }
+            if (dwellMs < kFastScanExitThresholdMs) {
+                perfExtended.uiFastScanExitCount++;
+            }
+        }
+        perfExtended.uiLastScanEnteredMs = 0;
+    }
+
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    switch (decision) {
+        case PerfFadeDecision::FadeDown:
+            perfExtended.fadeDownCount++;
+            break;
+        case PerfFadeDecision::RestoreApplied:
+            perfExtended.fadeRestoreCount++;
+            break;
+        case PerfFadeDecision::RestoreSkippedEqual:
+            perfExtended.fadeSkipEqualCount++;
+            break;
+        case PerfFadeDecision::RestoreSkippedNoBaseline:
+            perfExtended.fadeSkipNoBaselineCount++;
+            break;
+        case PerfFadeDecision::RestoreSkippedNotFaded:
+            perfExtended.fadeSkipNotFadedCount++;
+            break;
+        case PerfFadeDecision::None:
+        default:
+            break;
+    }
+    perfExtended.fadeLastDecision = static_cast<uint8_t>(decision);
+    perfExtended.fadeLastCurrentVol = currentVolume;
+    perfExtended.fadeLastOriginalVol = originalVolume;
+    perfExtended.fadeLastDecisionMs = nowMs;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    uint32_t* target = nullptr;
+    switch (event) {
+        case PerfBleTimelineEvent::ScanStart:
+            target = &perfExtended.bleScanStartMs;
+            break;
+        case PerfBleTimelineEvent::TargetFound:
+            target = &perfExtended.bleTargetFoundMs;
+            break;
+        case PerfBleTimelineEvent::ConnectStart:
+            target = &perfExtended.bleConnectStartMs;
+            break;
+        case PerfBleTimelineEvent::Connected:
+            target = &perfExtended.bleConnectedMs;
+            break;
+        case PerfBleTimelineEvent::FirstRx:
+            target = &perfExtended.bleFirstRxMs;
+            break;
+        default:
+            break;
+    }
+    if (target && *target == 0) {
+        *target = nowMs;
+    }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }

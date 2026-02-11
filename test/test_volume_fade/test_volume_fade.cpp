@@ -4,6 +4,9 @@
 #include "../../src/modules/volume_fade/volume_fade_module.h"
 #include "../../src/modules/volume_fade/volume_fade_module.cpp"  // Pull implementation when test_build_src=false
 
+// Native unit test builds this module translation unit directly; provide perf hook stub.
+void perfRecordVolumeFadeDecision(PerfFadeDecision, uint8_t, uint8_t, uint32_t) {}
+
 // Extern from mocks
 #ifndef ARDUINO
 SerialClass Serial;

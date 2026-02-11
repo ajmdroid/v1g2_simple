@@ -29,6 +29,7 @@
 #include <set>
 #include <string>
 #include <cstdlib>
+#include <cstring>
 
 // Helper: calculate V1 packet checksum (sum of bytes)
 static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
@@ -236,6 +237,16 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     
     bleState = newState;
     stateEnteredMs = now;
+
+    if (newState == BLEState::SCANNING) {
+        perfRecordBleTimelineEvent(PerfBleTimelineEvent::ScanStart, now);
+    } else if (newState == BLEState::SCAN_STOPPING && reason && strstr(reason, "V1 found")) {
+        perfRecordBleTimelineEvent(PerfBleTimelineEvent::TargetFound, now);
+    } else if (newState == BLEState::CONNECTING) {
+        perfRecordBleTimelineEvent(PerfBleTimelineEvent::ConnectStart, now);
+    } else if (newState == BLEState::CONNECTED) {
+        perfRecordBleTimelineEvent(PerfBleTimelineEvent::Connected, now);
+    }
     
     BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
                   now,
