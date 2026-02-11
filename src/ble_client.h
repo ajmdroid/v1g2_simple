@@ -341,7 +341,7 @@ private:
     // ESP32-S3 BLE: radio needs time after scan to be ready for connect
     // Cold boot needs significantly more time for NimBLE stack to stabilize
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
-    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 250;  // 250ms on cold boot - trial tuning
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 400;  // 400ms on cold boot - reliability/speed midpoint
     bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts
