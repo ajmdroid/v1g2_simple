@@ -1460,6 +1460,7 @@ void WiFiManager::handleSettingsSave() {
     
     Serial.println("=== handleSettingsSave() called ===");
     const V1Settings& currentSettings = settingsManager.get();
+    V1Settings& mutableSettings = const_cast<V1Settings&>(currentSettings);
 
     if (server.hasArg("ap_ssid")) {
         String apSsid = server.arg("ap_ssid");
@@ -1486,19 +1487,19 @@ void WiFiManager::handleSettingsSave() {
     // BLE proxy settings
     if (server.hasArg("proxy_ble")) {
         bool proxyEnabled = server.arg("proxy_ble") == "true" || server.arg("proxy_ble") == "1";
-        settingsManager.setProxyBLE(proxyEnabled);
+        mutableSettings.proxyBLE = proxyEnabled;
     }
     if (server.hasArg("proxy_name")) {
         String proxyName = server.arg("proxy_name");
         if (proxyName.length() > 32) {
             proxyName = proxyName.substring(0, 32);  // Truncate to max 32 chars
         }
-        settingsManager.setProxyName(proxyName);
+        mutableSettings.proxyName = proxyName;
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
         minutes = std::max(0, std::min(minutes, 60));  // Clamp 0-60 minutes
-        settingsManager.setAutoPowerOffMinutes(minutes);
+        mutableSettings.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
     }
     if (server.hasArg("apTimeoutMinutes")) {
         int minutes = server.arg("apTimeoutMinutes").toInt();
@@ -1506,7 +1507,7 @@ void WiFiManager::handleSettingsSave() {
         if (minutes != 0) {
             minutes = std::max(5, std::min(minutes, 60));
         }
-        settingsManager.setApTimeoutMinutes(minutes);
+        mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
     }
 
     // Display style setting
@@ -3218,8 +3219,8 @@ void WiFiManager::handleSettingsRestore() {
     V1Settings& s = const_cast<V1Settings&>(settingsManager.get());
     
     // BLE settings
-    if (doc["proxyBLE"].is<bool>()) settingsManager.setProxyBLE(doc["proxyBLE"]);
-    if (doc["proxyName"].is<const char*>()) settingsManager.setProxyName(doc["proxyName"].as<String>());
+    if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
+    if (doc["proxyName"].is<const char*>()) s.proxyName = doc["proxyName"].as<String>();
     
     // WiFi settings (password intentionally excluded from backups)
     if (doc["apSSID"].is<const char*>()) {
