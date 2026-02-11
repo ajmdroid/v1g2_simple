@@ -1155,24 +1155,23 @@ void WiFiManager::checkWifiClientStatus() {
                 }
                 
                 String savedPassword = settingsManager.getWifiClientPassword();
-                if (savedPassword.length() > 0 || status == WL_NO_SSID_AVAIL) {
-                    // Only try auto-reconnect every 30 seconds
-                    static unsigned long lastReconnectAttempt = 0;
-                    if (millis() - lastReconnectAttempt > WIFI_RECONNECT_INTERVAL_MS) {
-                        lastReconnectAttempt = millis();
-                        wifiReconnectFailures++;
-                        
-                        if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
-                            Serial.printf("[WiFiClient] Giving up after %d failed attempts. Use BOOT button to retry.\n",
-                                          wifiReconnectFailures);
-                            // Stay in FAILED state, user must toggle WiFi to retry
-                            break;
-                        }
-                        
-                        Serial.printf("[WiFiClient] Auto-reconnect attempt %d/%d...\n",
-                                      wifiReconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
-                        connectToNetwork(settings.wifiClientSSID, savedPassword);
+                // Only try auto-reconnect every 30 seconds (first attempt is immediate).
+                static unsigned long lastReconnectAttempt = 0;
+                unsigned long nowMs = millis();
+                if (lastReconnectAttempt == 0 || (nowMs - lastReconnectAttempt) > WIFI_RECONNECT_INTERVAL_MS) {
+                    lastReconnectAttempt = nowMs;
+                    wifiReconnectFailures++;
+                    
+                    if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
+                        Serial.printf("[WiFiClient] Giving up after %d failed attempts. Use BOOT button to retry.\n",
+                                      wifiReconnectFailures);
+                        // Stay in FAILED state, user must toggle WiFi to retry
+                        break;
                     }
+                    
+                    Serial.printf("[WiFiClient] Auto-reconnect attempt %d/%d...\n",
+                                  wifiReconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
+                    connectToNetwork(settings.wifiClientSSID, savedPassword);
                 }
             }
             break;

@@ -34,6 +34,7 @@ SettingsManager settingsManager;
 // See security note above for rationale
 static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
 static const int SETTINGS_VERSION = 2;  // Increment when changing password encoding
+static const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 // NVS recovery: clear unused namespace when NVS is full
 // Returns true if space was freed
@@ -82,6 +83,70 @@ static String xorObfuscate(const String& input) {
     return output;
 }
 
+static char hexDigit(uint8_t nibble) {
+    nibble &= 0x0F;
+    return (nibble < 10) ? static_cast<char>('0' + nibble)
+                         : static_cast<char>('A' + (nibble - 10));
+}
+
+static int hexNibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static String bytesToHex(const String& input) {
+    if (input.length() == 0) return "";
+    String out;
+    out.reserve(input.length() * 2);
+    for (size_t i = 0; i < input.length(); ++i) {
+        uint8_t b = static_cast<uint8_t>(input[i]);
+        out += hexDigit(b >> 4);
+        out += hexDigit(b);
+    }
+    return out;
+}
+
+static bool hexToBytes(const String& input, String& out) {
+    if ((input.length() % 2) != 0) return false;
+    out = "";
+    out.reserve(input.length() / 2);
+    for (size_t i = 0; i < input.length(); i += 2) {
+        int hi = hexNibble(input[i]);
+        int lo = hexNibble(input[i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        char decoded = static_cast<char>((hi << 4) | lo);
+        out += decoded;
+    }
+    return true;
+}
+
+static String encodeObfuscatedForStorage(const String& plainText) {
+    if (plainText.length() == 0) return "";
+    String obfuscated = xorObfuscate(plainText);
+    String encoded = OBFUSCATION_HEX_PREFIX;
+    encoded += bytesToHex(obfuscated);
+    return encoded;
+}
+
+static String decodeObfuscatedFromStorage(const String& stored) {
+    if (stored.length() == 0) return "";
+
+    if (stored.startsWith(OBFUSCATION_HEX_PREFIX)) {
+        String hexPayload = stored.substring(strlen(OBFUSCATION_HEX_PREFIX));
+        String obfuscated;
+        if (!hexToBytes(hexPayload, obfuscated)) {
+            Serial.println("[Settings] WARN: Invalid obfuscated hex payload");
+            return "";
+        }
+        return xorObfuscate(obfuscated);
+    }
+
+    // Legacy format: raw XOR bytes stored directly as a String.
+    return xorObfuscate(stored);
+}
+
 String SettingsManager::getActiveNamespace() {
     Preferences meta;
     if (meta.begin(SETTINGS_NS_META, true)) {
@@ -116,7 +181,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putInt("wifiMode", settings.wifiMode);
     written += prefs.putString("apSSID", settings.apSSID);
     // Obfuscate passwords before storing
-    written += prefs.putString("apPassword", xorObfuscate(settings.apPassword));
+    written += prefs.putString("apPassword", encodeObfuscatedForStorage(settings.apPassword));
     // WiFi client (STA) settings - password stored in separate secure namespace
     written += prefs.putBool("wifiClientEn", settings.wifiClientEnabled);
     written += prefs.putString("wifiClSSID", settings.wifiClientSSID);
@@ -344,7 +409,7 @@ void SettingsManager::load() {
     
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode them
-        settings.apPassword = storedApPwd.length() > 0 ? xorObfuscate(storedApPwd) : "setupv1g2";
+        settings.apPassword = storedApPwd.length() > 0 ? decodeObfuscatedFromStorage(storedApPwd) : "setupv1g2";
     } else {
         // Version 1 - passwords stored in plain text, use as-is
         settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "setupv1g2";
@@ -541,7 +606,7 @@ static const char* WIFI_CLIENT_NS = "v1wificlient";
 
 String SettingsManager::getWifiClientPassword() {
     Preferences prefs;
-    if (!prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write (create namespace if missing)
+    if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
         return "";
     }
     String storedPwd;
@@ -550,8 +615,8 @@ String SettingsManager::getWifiClientPassword() {
     }
     prefs.end();
     
-    // Password is XOR obfuscated
-    return storedPwd.length() > 0 ? xorObfuscate(storedPwd) : "";
+    // Password is stored as obfuscated hex payload (legacy raw XOR still supported).
+    return storedPwd.length() > 0 ? decodeObfuscatedFromStorage(storedPwd) : "";
 }
 
 void SettingsManager::setWifiClientEnabled(bool enabled) {
@@ -568,7 +633,7 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
     // Store password in separate namespace with obfuscation
     Preferences prefs;
     if (prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write
-        size_t written = prefs.putString("password", xorObfuscate(password));
+        size_t written = prefs.putString("password", encodeObfuscatedForStorage(password));
         prefs.end();
         
         if (written > 0) {
@@ -581,7 +646,7 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
             
             // Retry save
             if (prefs.begin(WIFI_CLIENT_NS, false)) {
-                written = prefs.putString("password", xorObfuscate(password));
+                written = prefs.putString("password", encodeObfuscatedForStorage(password));
                 prefs.end();
                 if (written > 0) {
                     Serial.println("[Settings] WiFi client credentials saved after recovery");
