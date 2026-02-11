@@ -46,6 +46,16 @@
 	let metricsAutoRefresh = $state(false);
 	let metricsRefreshInterval = $state(null);
 
+	// Perf CSV file management
+	let perfFiles = $state([]);
+	let perfFilesLoading = $state(true);
+	let perfFileActionBusy = $state('');
+	let perfFilesInfo = $state({
+		storageReady: false,
+		onSdCard: false,
+		path: '/perf'
+	});
+
 	const formatBytes = (bytes) => {
 		if (!bytes) return '0 B';
 		if (bytes < 1024) return `${bytes} B`;
@@ -54,7 +64,7 @@
 	};
 
 	onMount(async () => {
-		await Promise.all([loadSettings(), loadLogInfo()]);
+		await Promise.all([loadSettings(), loadLogInfo(), loadPerfFiles()]);
 	});
 
 	async function loadSettings() {
@@ -320,6 +330,72 @@
 		if (!us) return '-';
 		if (us < 1000) return `${us}µs`;
 		return `${(us / 1000).toFixed(1)}ms`;
+	}
+
+	async function loadPerfFiles() {
+		perfFilesLoading = true;
+		try {
+			const response = await fetch('/api/debug/perf-files');
+			if (!response.ok) throw new Error('Failed to load perf files');
+			const data = await response.json();
+			perfFiles = data.files || [];
+			perfFilesInfo.storageReady = data.storageReady ?? false;
+			perfFilesInfo.onSdCard = data.onSdCard ?? false;
+			perfFilesInfo.path = data.path || '/perf';
+		} catch (error) {
+			console.error('Failed to load perf files:', error);
+			perfFiles = [];
+			message = 'Failed to load perf files';
+		} finally {
+			perfFilesLoading = false;
+		}
+	}
+
+	function downloadPerfFile(name) {
+		if (!acknowledged) {
+			message = 'Please acknowledge the warning before downloading files';
+			return;
+		}
+		if (!name) return;
+		try {
+			window.open(`/api/debug/perf-files/download?name=${encodeURIComponent(name)}`, '_blank');
+			message = `Downloading ${name}...`;
+		} catch (error) {
+			console.error('Perf file download failed:', error);
+			message = `Failed to download ${name}`;
+		}
+	}
+
+	async function deletePerfFile(name) {
+		if (!acknowledged) {
+			message = 'Please acknowledge the warning before deleting files';
+			return;
+		}
+		if (!name) return;
+		if (!confirm(`Delete ${name} from /perf?`)) return;
+
+		perfFileActionBusy = name;
+		try {
+			const params = new URLSearchParams();
+			params.append('name', name);
+			const response = await fetch('/api/debug/perf-files/delete', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: params
+			});
+			const data = await response.json().catch(() => ({}));
+			if (response.ok && data.success) {
+				message = `Deleted ${name}`;
+				await loadPerfFiles();
+			} else {
+				message = data.error ? `Failed to delete ${name}: ${data.error}` : `Failed to delete ${name}`;
+			}
+		} catch (error) {
+			console.error('Perf file delete failed:', error);
+			message = `Failed to delete ${name}`;
+		} finally {
+			perfFileActionBusy = '';
+		}
 	}
 
 	onDestroy(() => {
@@ -657,6 +733,92 @@
 								Click Refresh or enable Auto to load metrics
 							</div>
 						{/if}
+					</div>
+				{/if}
+			</div>
+		</div>
+
+		<!-- Perf CSV Files -->
+		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
+			<div class="card-body">
+				<div class="flex items-center justify-between gap-2">
+					<h2 class="card-title">🗂️ Perf CSV Files</h2>
+					<button
+						class="btn btn-sm btn-outline"
+						onclick={loadPerfFiles}
+						disabled={perfFilesLoading}
+					>
+						{#if perfFilesLoading}
+							<span class="loading loading-spinner loading-xs"></span>
+						{:else}
+							🔄 Refresh
+						{/if}
+					</button>
+				</div>
+
+				<p class="text-xs opacity-70">
+					Files under <span class="font-mono">{perfFilesInfo.path}</span>.
+					Download or delete without opening contents.
+				</p>
+
+				{#if perfFilesLoading}
+					<div class="flex items-center justify-center py-4">
+						<span class="loading loading-spinner loading-sm"></span>
+					</div>
+				{:else if !perfFilesInfo.storageReady || !perfFilesInfo.onSdCard}
+					<div class="alert alert-warning">
+						<span class="text-sm">SD storage not ready. Perf CSV files are unavailable.</span>
+					</div>
+				{:else if perfFiles.length === 0}
+					<div class="text-sm opacity-60 py-2">
+						No perf CSV files found.
+					</div>
+				{:else}
+					<div class="overflow-x-auto">
+						<table class="table table-sm">
+							<thead>
+								<tr>
+									<th>File</th>
+									<th class="text-right">Size</th>
+									<th class="text-right">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each perfFiles as file}
+									<tr>
+										<td class="font-mono text-xs">
+											{file.name}
+											{#if file.active}
+												<span class="badge badge-xs badge-primary ml-2">active</span>
+											{/if}
+										</td>
+										<td class="text-right text-xs">{formatBytes(file.sizeBytes || 0)}</td>
+										<td class="text-right">
+											<div class="flex justify-end gap-2">
+												<button
+													class="btn btn-xs btn-outline"
+													onclick={() => downloadPerfFile(file.name)}
+													disabled={!acknowledged || perfFileActionBusy === file.name}
+												>
+													Download
+												</button>
+												<button
+													class="btn btn-xs btn-outline btn-error"
+													onclick={() => deletePerfFile(file.name)}
+													disabled={!acknowledged || perfFileActionBusy === file.name}
+												>
+													{#if perfFileActionBusy === file.name}
+														<span class="loading loading-spinner loading-xs"></span>
+													{:else}
+														Delete
+													{/if}
+												</button>
+											</div>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					</div>
 				{/if}
 			</div>

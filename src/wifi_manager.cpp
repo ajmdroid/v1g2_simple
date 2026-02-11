@@ -13,6 +13,7 @@
 #include "v1_profiles.h"
 #include "ble_client.h"
 #include "perf_metrics.h"
+#include "perf_sd_logger.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "time_service.h"
@@ -104,6 +105,49 @@ static bool parseUint64Strict(const String& input, uint64_t& out) {
         return false;
     }
     out = static_cast<uint64_t>(v);
+    return true;
+}
+
+static String fileNameFromPath(const String& path) {
+    int slash = path.lastIndexOf('/');
+    if (slash >= 0) {
+        return path.substring(slash + 1);
+    }
+    return path;
+}
+
+static bool isValidPerfFileName(const String& name) {
+    if (name.length() == 0 || name.length() > 64) {
+        return false;
+    }
+    if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf("..") >= 0) {
+        return false;
+    }
+    if (name == "perf.csv") {
+        return true;  // Legacy fallback filename.
+    }
+    if (!name.startsWith("perf_boot_") || !name.endsWith(".csv")) {
+        return false;
+    }
+    int digitStart = strlen("perf_boot_");
+    int digitEnd = name.length() - 4;  // Exclude ".csv"
+    if (digitEnd <= digitStart) {
+        return false;
+    }
+    for (int i = digitStart; i < digitEnd; ++i) {
+        char c = name.charAt(i);
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool perfFilePathFromName(const String& name, String& outPath) {
+    if (!isValidPerfFileName(name)) {
+        return false;
+    }
+    outPath = "/perf/" + name;
     return true;
 }
 
@@ -654,6 +698,9 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/logs/download", HTTP_GET, [this]() { handleDebugLogsDownload(); });
     server.on("/api/debug/logs/tail", HTTP_GET, [this]() { handleDebugLogsTail(); });
     server.on("/api/debug/logs/clear", HTTP_POST, [this]() { handleDebugLogsClear(); });
+    server.on("/api/debug/perf-files", HTTP_GET, [this]() { handleDebugPerfFilesList(); });
+    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() { handleDebugPerfFileDownload(); });
+    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() { handleDebugPerfFileDelete(); });
     
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
@@ -2555,6 +2602,234 @@ void WiFiManager::handleDebugLogsClear() {
     doc["enabled"] = debugLogger.isEnabled();
     doc["exists"] = debugLogger.exists();
     doc["sizeBytes"] = static_cast<uint32_t>(debugLogger.size());
+
+    String json;
+    serializeJson(doc, json);
+    server.send(ok ? 200 : 500, "application/json", json);
+}
+
+void WiFiManager::handleDebugPerfFilesList() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["storageReady"] = storageManager.isReady();
+    doc["onSdCard"] = storageManager.isSDCard();
+    doc["path"] = "/perf";
+
+    JsonArray filesArr = doc["files"].to<JsonArray>();
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+        return;
+    }
+
+    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    if (!lock) {
+        doc["success"] = false;
+        doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
+        String json;
+        serializeJson(doc, json);
+        server.send(503, "application/json", json);
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists("/perf")) {
+        String json;
+        serializeJson(doc, json);
+        server.send(200, "application/json", json);
+        return;
+    }
+
+    File dir = fs->open("/perf");
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        doc["success"] = false;
+        doc["error"] = "Failed to open /perf directory";
+        String json;
+        serializeJson(doc, json);
+        server.send(500, "application/json", json);
+        return;
+    }
+
+    struct PerfFileInfo {
+        String name;
+        uint32_t sizeBytes;
+        uint32_t bootId;
+    };
+    std::vector<PerfFileInfo> rows;
+    rows.reserve(16);
+
+    File entry;
+    while ((entry = dir.openNextFile())) {
+        if (entry.isDirectory()) {
+            entry.close();
+            continue;
+        }
+
+        String name = fileNameFromPath(entry.name());
+        if (!isValidPerfFileName(name)) {
+            entry.close();
+            continue;
+        }
+
+        uint32_t bootId = 0;
+        if (name.startsWith("perf_boot_") && name.endsWith(".csv")) {
+            String digits = name.substring(strlen("perf_boot_"), name.length() - 4);
+            bootId = static_cast<uint32_t>(strtoul(digits.c_str(), nullptr, 10));
+        }
+
+        rows.push_back({name, static_cast<uint32_t>(entry.size()), bootId});
+        entry.close();
+    }
+    dir.close();
+
+    std::sort(rows.begin(), rows.end(), [](const PerfFileInfo& a, const PerfFileInfo& b) {
+        if (a.bootId != b.bootId) {
+            return a.bootId > b.bootId;
+        }
+        return a.name > b.name;
+    });
+
+    for (const PerfFileInfo& row : rows) {
+        JsonObject f = filesArr.add<JsonObject>();
+        f["name"] = row.name;
+        f["sizeBytes"] = row.sizeBytes;
+        f["bootId"] = row.bootId;
+        f["active"] = (String("/perf/") + row.name) == String(perfSdLogger.csvPath());
+    }
+    doc["count"] = static_cast<uint32_t>(rows.size());
+
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "application/json", json);
+}
+
+void WiFiManager::handleDebugPerfFileDownload() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    if (!server.hasArg("name")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing file name\"}");
+        return;
+    }
+
+    String requestedName = server.arg("name");
+    String path;
+    if (!perfFilePathFromName(requestedName, path)) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid file name\"}");
+        return;
+    }
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"SD storage unavailable\"}");
+        return;
+    }
+
+    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    if (!lock) {
+        if (lock.isDmaStarved()) {
+            server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
+        } else {
+            server.send(503, "application/json", "{\"success\":false,\"error\":\"SD busy\"}");
+        }
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(path)) {
+        server.send(404, "application/json", "{\"success\":false,\"error\":\"File not found\"}");
+        return;
+    }
+
+    File f = fs->open(path, FILE_READ);
+    if (!f) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open file\"}");
+        return;
+    }
+
+    size_t fileSize = f.size();
+    server.sendHeader("Content-Type", "text/csv");
+    String contentDisposition = String("attachment; filename=\"") + requestedName + "\"";
+    server.sendHeader("Content-Disposition", contentDisposition);
+    server.sendHeader("Cache-Control", "no-cache");
+    server.setContentLength(fileSize);
+    server.send(200, "text/csv", "");
+
+    const size_t CHUNK_SIZE = 4096;
+    uint8_t* buffer = static_cast<uint8_t*>(malloc(CHUNK_SIZE));
+    if (!buffer) {
+        f.close();
+        return;
+    }
+
+    size_t totalSent = 0;
+    while (f.available() && server.client().connected()) {
+        size_t toRead = min(CHUNK_SIZE, static_cast<size_t>(f.available()));
+        size_t bytesRead = f.read(buffer, toRead);
+        if (bytesRead > 0) {
+            server.client().write(buffer, bytesRead);
+            totalSent += bytesRead;
+        }
+        yield();
+        if ((totalSent % 32768) == 0) {
+            delay(1);
+        }
+    }
+
+    free(buffer);
+    f.close();
+}
+
+void WiFiManager::handleDebugPerfFileDelete() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    if (!server.hasArg("name")) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing file name\"}");
+        return;
+    }
+
+    String requestedName = server.arg("name");
+    String path;
+    if (!perfFilePathFromName(requestedName, path)) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid file name\"}");
+        return;
+    }
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"SD storage unavailable\"}");
+        return;
+    }
+
+    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    if (!lock) {
+        if (lock.isDmaStarved()) {
+            server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
+        } else {
+            server.send(503, "application/json", "{\"success\":false,\"error\":\"SD busy\"}");
+        }
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(path)) {
+        server.send(404, "application/json", "{\"success\":false,\"error\":\"File not found\"}");
+        return;
+    }
+
+    bool ok = fs->remove(path);
+
+    JsonDocument doc;
+    doc["success"] = ok;
+    doc["name"] = requestedName;
+    if (!ok) {
+        doc["error"] = "Delete failed";
+    }
 
     String json;
     serializeJson(doc, json);

@@ -195,6 +195,9 @@ private:
     void handleDebugLogsDownload();
     void handleDebugLogsTail();
     void handleDebugLogsClear();
+    void handleDebugPerfFilesList();
+    void handleDebugPerfFileDownload();
+    void handleDebugPerfFileDelete();
     void handleSettingsBackup();
     void handleSettingsRestore();
     void handleWifiClientStatus();
