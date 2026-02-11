@@ -124,7 +124,8 @@ public:
     V1ProfileManager();
     
     // Initialize with filesystem
-    bool begin(fs::FS* filesystem);
+    bool begin(fs::FS* filesystem, fs::FS* importFilesystem = nullptr);
+    bool isReady() const { return ready; }
     
     // Profile CRUD
     std::vector<String> listProfiles() const;
@@ -161,6 +162,7 @@ private:
     
     // Startup recovery for interrupted saves
     void recoverInterruptedSaves();
+    size_t migrateProfilesFrom(fs::FS* sourceFs);
 };
 
 // Global instance

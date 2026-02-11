@@ -1450,6 +1450,7 @@ void WiFiManager::handleV1ProfileSave() {
     
     ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
     if (result.success) {
+        settingsManager.backupToSD();
         Serial.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
         server.send(200, "application/json", "{\"success\":true}");
     } else {
@@ -1486,6 +1487,7 @@ void WiFiManager::handleV1ProfileDelete() {
     }
     
     if (v1ProfileManager.deleteProfile(name)) {
+        settingsManager.backupToSD();
         server.send(200, "application/json", "{\"success\":true}");
     } else {
         server.send(404, "application/json", "{\"error\":\"Profile not found\"}");

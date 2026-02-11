@@ -71,6 +71,14 @@ V1ProfileManager::V1ProfileManager()
     , currentValid(false) {
 }
 
+static String basenameFromPath(const String& path) {
+    int lastSlash = path.lastIndexOf('/');
+    if (lastSlash >= 0) {
+        return path.substring(lastSlash + 1);
+    }
+    return path;
+}
+
 void V1ProfileManager::recoverInterruptedSaves() {
     // Scan for .tmp and .bak files that indicate interrupted saves
     // .tmp = incomplete new save (delete it)
@@ -136,7 +144,7 @@ void V1ProfileManager::recoverInterruptedSaves() {
     }
 }
 
-bool V1ProfileManager::begin(fs::FS* filesystem) {
+bool V1ProfileManager::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
     if (!filesystem) {
         Serial.println("[V1Profiles] No filesystem provided");;
         return false;
@@ -152,6 +160,14 @@ bool V1ProfileManager::begin(fs::FS* filesystem) {
         }
         Serial.println("[V1Profiles] Created profiles directory");
     }
+
+    if (importFilesystem && importFilesystem != fs) {
+        size_t migrated = migrateProfilesFrom(importFilesystem);
+        if (migrated > 0) {
+            Serial.printf("[V1Profiles] Migrated %u profile(s) from secondary filesystem\n",
+                          static_cast<unsigned>(migrated));
+        }
+    }
     
     // Run startup integrity check - recover any interrupted saves
     recoverInterruptedSaves();
@@ -159,6 +175,84 @@ bool V1ProfileManager::begin(fs::FS* filesystem) {
     ready = true;
     Serial.println("[V1Profiles] Initialized");
     return true;
+}
+
+size_t V1ProfileManager::migrateProfilesFrom(fs::FS* sourceFs) {
+    if (!sourceFs || !fs || sourceFs == fs) {
+        return 0;
+    }
+    if (!sourceFs->exists(profileDir)) {
+        return 0;
+    }
+
+    File dir = sourceFs->open(profileDir);
+    if (!dir || !dir.isDirectory()) {
+        if (dir) {
+            dir.close();
+        }
+        return 0;
+    }
+
+    size_t migrated = 0;
+    File entry;
+    while ((entry = dir.openNextFile())) {
+        if (entry.isDirectory()) {
+            entry.close();
+            continue;
+        }
+
+        String sourceName = basenameFromPath(entry.name());
+        if (!sourceName.endsWith(".json") || sourceName.startsWith("_") || sourceName.startsWith(".")) {
+            entry.close();
+            continue;
+        }
+
+        String targetPath = profileDir + "/" + sourceName;
+        if (fs->exists(targetPath)) {
+            entry.close();
+            continue;
+        }
+
+        String tmpPath = targetPath + ".tmpimport";
+        File out = fs->open(tmpPath, FILE_WRITE);
+        if (!out) {
+            Serial.printf("[V1Profiles] Migration skipped (write open failed): %s\n", targetPath.c_str());
+            entry.close();
+            continue;
+        }
+
+        bool ok = true;
+        uint8_t buffer[256];
+        while (entry.available()) {
+            size_t read = entry.read(buffer, sizeof(buffer));
+            if (read == 0) {
+                break;
+            }
+            if (out.write(buffer, read) != read) {
+                ok = false;
+                break;
+            }
+        }
+        out.flush();
+        out.close();
+        entry.close();
+
+        if (!ok) {
+            fs->remove(tmpPath);
+            Serial.printf("[V1Profiles] Migration skipped (copy failed): %s\n", targetPath.c_str());
+            continue;
+        }
+        if (!fs->rename(tmpPath, targetPath)) {
+            fs->remove(tmpPath);
+            Serial.printf("[V1Profiles] Migration skipped (rename failed): %s\n", targetPath.c_str());
+            continue;
+        }
+
+        migrated++;
+        Serial.printf("[V1Profiles] Migrated profile file: %s\n", targetPath.c_str());
+    }
+    dir.close();
+    return migrated;
 }
 
 String V1ProfileManager::profilePath(const String& name) const {

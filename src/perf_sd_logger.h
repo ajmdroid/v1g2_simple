@@ -1,7 +1,7 @@
 /**
  * Standalone SD-backed performance CSV logger.
  *
- * Writes compact perf snapshots to /perf/perf.csv using a dedicated
+ * Writes compact perf snapshots to /perf/perf_boot_<bootId>.csv using a dedicated
  * FreeRTOS writer task. Enqueue is non-blocking and drops on queue full.
  */
 
@@ -39,9 +39,10 @@ struct PerfSdSnapshot {
 class PerfSdLogger {
 public:
     void begin(bool sdAvailable);
-    void setBootId(uint32_t id) { bootId = id; }
+    void setBootId(uint32_t id);
     bool enqueue(const PerfSdSnapshot& snapshot);
     bool isEnabled() const { return enabled; }
+    const char* csvPath() const { return csvPathBuf; }
 
 private:
     static void writerTaskEntry(void* param);
@@ -61,6 +62,7 @@ private:
     uint32_t sessionToken = 0;
     uint32_t sessionStartMs = 0;
     uint32_t bootId = 0;
+    char csvPathBuf[64] = {0};
 };
 
 extern PerfSdLogger perfSdLogger;

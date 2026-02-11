@@ -21,7 +21,7 @@
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
-static const int SD_BACKUP_VERSION = 2;  // Increment when adding new fields to backup
+static const int SD_BACKUP_VERSION = 3;  // Increment when adding new fields to backup
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
@@ -279,22 +279,42 @@ bool SettingsManager::checkAndRestoreFromSD() {
     // Check if NVS was erased (appears default) and backup exists on SD
     // This can be called after storage is mounted to retry the restore
     bool needsRestore = checkNeedsRestore();
+    fs::FS* fs = nullptr;
+    bool hasSdBackup = false;
+    if (storageManager.isReady() && storageManager.isSDCard()) {
+        fs = storageManager.getFilesystem();
+        hasSdBackup = fs && (fs->exists(SETTINGS_BACKUP_PATH)
+            || fs->exists("/v1simple_settings.json")
+            || fs->exists("/v1settings_backup.json"));
+    }
+
     if (!needsRestore) {
         bool slotsEmpty = settings.slot0_default.profileName.length() == 0
             && settings.slot1_highway.profileName.length() == 0
             && settings.slot2_comfort.profileName.length() == 0;
-        if (slotsEmpty && storageManager.isReady() && storageManager.isSDCard()) {
-            fs::FS* fs = storageManager.getFilesystem();
-            if (fs && (fs->exists(SETTINGS_BACKUP_PATH)
-                || fs->exists("/v1simple_settings.json")
-                || fs->exists("/v1settings_backup.json"))) {
-                Serial.println("[Settings] Slots empty, checking for SD backup...");
+        if (slotsEmpty && hasSdBackup) {
+            Serial.println("[Settings] Slots empty, checking for SD backup...");
+            needsRestore = true;
+        } else if (hasSdBackup && v1ProfileManager.isReady()) {
+            auto slotProfileMissing = [&](const AutoPushSlot& slot) -> bool {
+                if (slot.profileName.length() == 0) {
+                    return false;
+                }
+                V1Profile testProfile;
+                return !v1ProfileManager.loadProfile(slot.profileName, testProfile);
+            };
+
+            if (slotProfileMissing(settings.slot0_default)
+                || slotProfileMissing(settings.slot1_highway)
+                || slotProfileMissing(settings.slot2_comfort)) {
+                Serial.println("[Settings] Slot profile reference missing on filesystem, checking SD backup...");
                 needsRestore = true;
             }
         }
     }
+
     if (needsRestore) {
-        Serial.println("[Settings] NVS appears default, checking for SD backup...");
+        Serial.println("[Settings] Checking for SD backup restore...");
         if (restoreFromSD()) {
             Serial.println("[Settings] Restored settings from SD backup!");
             return true;
@@ -1217,6 +1237,32 @@ void SettingsManager::backupToSD() {
     doc["slot2PriorityArrow"] = settings.slot2PriorityArrow;
     doc["slot2ProfileName"] = settings.slot2_comfort.profileName;
     doc["slot2Mode"] = settings.slot2_comfort.mode;
+
+    // Include full V1 profile payloads so restore can recover from filesystem loss
+    JsonArray profilesArr = doc["profiles"].to<JsonArray>();
+    int profilesBackedUp = 0;
+    if (v1ProfileManager.isReady()) {
+        std::vector<String> profileNames = v1ProfileManager.listProfiles();
+        for (const String& name : profileNames) {
+            V1Profile profile;
+            if (!v1ProfileManager.loadProfile(name, profile)) {
+                continue;
+            }
+
+            JsonObject p = profilesArr.add<JsonObject>();
+            p["name"] = profile.name;
+            p["description"] = profile.description;
+            p["displayOn"] = profile.displayOn;
+            p["mainVolume"] = profile.mainVolume;
+            p["mutedVolume"] = profile.mutedVolume;
+
+            JsonArray bytes = p["bytes"].to<JsonArray>();
+            for (int i = 0; i < 6; i++) {
+                bytes.add(profile.settings.bytes[i]);
+            }
+            profilesBackedUp++;
+        }
+    }
     
     // Write to file
     File file = fs->open(SETTINGS_BACKUP_PATH, FILE_WRITE);
@@ -1229,7 +1275,7 @@ void SettingsManager::backupToSD() {
     file.flush();
     file.close();
     
-    Serial.println("[Settings] Full backup saved to SD card");
+    Serial.printf("[Settings] Full backup saved to SD card (%d profiles)\n", profilesBackedUp);
     Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
                   settings.slot0_default.mode, settings.slot1_highway.mode, settings.slot2_comfort.mode);
 }
@@ -1425,6 +1471,42 @@ bool SettingsManager::restoreFromSD() {
     if (doc["slot2PriorityArrow"].is<bool>()) settings.slot2PriorityArrow = doc["slot2PriorityArrow"];
     if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
     if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
+
+    // Restore V1 profiles if present in backup
+    int profilesRestored = 0;
+    if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArray>()) {
+        JsonArray profilesArr = doc["profiles"].as<JsonArray>();
+        for (JsonObject p : profilesArr) {
+            if (!p["name"].is<const char*>() || !p["bytes"].is<JsonArray>()) {
+                continue;
+            }
+
+            JsonArray bytes = p["bytes"].as<JsonArray>();
+            if (bytes.size() != 6) {
+                continue;
+            }
+
+            V1Profile profile;
+            profile.name = p["name"].as<String>();
+            if (p["description"].is<const char*>()) profile.description = p["description"].as<String>();
+            if (p["displayOn"].is<bool>()) profile.displayOn = p["displayOn"];
+            if (p["mainVolume"].is<int>()) profile.mainVolume = p["mainVolume"];
+            if (p["mutedVolume"].is<int>()) profile.mutedVolume = p["mutedVolume"];
+
+            for (int i = 0; i < 6; i++) {
+                profile.settings.bytes[i] = bytes[i].as<uint8_t>();
+            }
+
+            ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
+            if (result.success) {
+                profilesRestored++;
+            } else {
+                Serial.printf("[Settings] Failed to restore profile '%s': %s\n",
+                              profile.name.c_str(),
+                              result.error.c_str());
+            }
+        }
+    }
     
     // Debug: log what modes were restored
     Serial.printf("[Settings] Restored modes from backup: slot0Mode=%d (in json: %s), slot1Mode=%d (in json: %s), slot2Mode=%d (in json: %s)\n",
@@ -1437,7 +1519,7 @@ bool SettingsManager::restoreFromSD() {
         return false;
     }
 
-    Serial.println("[Settings] ✅ Full restore from SD backup complete!");
+    Serial.printf("[Settings] ✅ Full restore from SD backup complete (%d profiles)\n", profilesRestored);
     return true;
 }
 
@@ -1466,9 +1548,11 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
     validateSlot(settings.slot2_comfort, "Slot 2 (Comfort)");
     
     if (needsSave) {
-        save();
-        backupToSD();  // Also update SD backup
-        Serial.println("[Settings] Cleared invalid profile references and saved");
+        if (persistSettingsAtomically()) {
+            Serial.println("[Settings] Cleared invalid profile references and saved");
+        } else {
+            Serial.println("[Settings] ERROR: Failed to persist cleared profile references");
+        }
     }
 
     // No additional side effects needed beyond clearing invalid references.

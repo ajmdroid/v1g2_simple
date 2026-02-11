@@ -460,27 +460,30 @@ void setup() {
     SerialLog.println("[Setup] Mounting storage...");
     if (storageManager.begin()) {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
-        v1ProfileManager.begin(storageManager.getFilesystem());
+        v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
         audio_init_sd();  // Initialize SD-based frequency voice audio
-        
-        // Validate profile references in auto-push slots
-        // Clear references to profiles that don't exist
-        settingsManager.validateProfileReferences(v1ProfileManager);
-        
+
         // Retry settings restore now that SD is mounted
         // (settings.begin() runs before storage, so restore may have failed)
         if (settingsManager.checkAndRestoreFromSD()) {
             // Settings were restored from SD - update display with restored brightness
             display.setBrightness(settingsManager.get().brightness);
         }
+
+        // Validate profile references in auto-push slots
+        // Clear references to profiles that don't exist
+        settingsManager.validateProfileReferences(v1ProfileManager);
     } else {
         SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
     }
 
+    uint32_t bootId = nextBootId();
+    perfSdLogger.setBootId(bootId);
+
     // Standalone perf CSV logger (SD only).
     perfSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
     if (perfSdLogger.isEnabled()) {
-        SerialLog.println("[Perf] SD logger enabled");
+        SerialLog.printf("[Perf] SD logger enabled (%s)\n", perfSdLogger.csvPath());
     } else {
         SerialLog.println("[Perf] SD logger disabled (no SD)");
     }
@@ -523,8 +526,6 @@ void setup() {
                            &alertPersistenceModule,
                            &displayMode);
 
-    uint32_t bootId = nextBootId();
-    perfSdLogger.setBootId(bootId);
     DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
     uint32_t logMask = buildLogCategoryBitmap(bootCfg);
     const V1Settings& bootSettings = settingsManager.get();

@@ -247,6 +247,9 @@ fi
 
 # Step 5: Upload filesystem if requested
 if [ "$UPLOAD_FS" = true ]; then
+    echo -e "${YELLOW}⚠️  uploadfs overwrites internal LittleFS data${NC}"
+    echo -e "${YELLOW}   If profile storage ever fell back to LittleFS, those profiles will be erased.${NC}"
+    echo -e "${YELLOW}   Confirm SD is mounted in boot logs before relying on profile persistence.${NC}"
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
     "$PIO_CMD" run $PIO_ARGS -t uploadfs
     

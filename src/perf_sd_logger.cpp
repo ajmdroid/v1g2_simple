@@ -12,21 +12,43 @@
 
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
-static constexpr const char* PERF_CSV_PATH = "/perf/perf.csv";
+static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
 static constexpr const char* PERF_CSV_HEADER =
     "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
 static constexpr UBaseType_t PERF_SD_WRITER_PRIORITY = 1;
+
+static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
+    if (!out || outLen == 0) {
+        return;
+    }
+    if (bootId == 0) {
+        snprintf(out, outLen, "%s", PERF_CSV_PATH_FALLBACK);
+        return;
+    }
+    snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId));
+}
 }  // namespace
 
 PerfSdLogger perfSdLogger;
+
+void PerfSdLogger::setBootId(uint32_t id) {
+    bootId = id;
+    buildPerfCsvPath(bootId, csvPathBuf, sizeof(csvPathBuf));
+    csvHeaderReady = false;
+    sessionMarkerPending = true;
+}
 
 void PerfSdLogger::begin(bool sdAvailable) {
     enabled = false;
     if (!sdAvailable) {
         return;
+    }
+
+    if (csvPathBuf[0] == '\0') {
+        setBootId(bootId);
     }
 
     // Reset cached file state for each runtime session and emit a marker on first write.
@@ -169,12 +191,13 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    File f = fs->open(PERF_CSV_PATH, FILE_APPEND, true);
+    const char* csvPath = (csvPathBuf[0] != '\0') ? csvPathBuf : PERF_CSV_PATH_FALLBACK;
+    File f = fs->open(csvPath, FILE_APPEND, true);
     if (!f && perfDirReady) {
         // Directory can be removed while running; invalidate cache and retry once.
         perfDirReady = false;
         if (ensurePerfDir(*fs)) {
-            f = fs->open(PERF_CSV_PATH, FILE_APPEND, true);
+            f = fs->open(csvPath, FILE_APPEND, true);
         }
     }
     if (!f) {
