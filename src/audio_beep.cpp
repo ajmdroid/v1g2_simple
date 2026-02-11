@@ -376,7 +376,9 @@ static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;  // Keep amp on for 3
 // These are safe to use without mutex because audio_playing atomic flag
 // ensures only one audio task runs at a time.
 // ============================================================================
-static constexpr int AUDIO_CHUNK_SAMPLES = 2048;  // Mono samples per chunk
+// Keep chunking reasonably large for throughput, but reduce RAM footprint.
+// 1024 keeps playback responsive while recovering ~5KB vs 2048.
+static constexpr int AUDIO_CHUNK_SAMPLES = 1024;  // Mono samples per chunk
 static constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;  // Stereo samples
 // Stereo buffer for PCM/mu-law to stereo conversion (8KB)
 static int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
@@ -397,13 +399,12 @@ static struct {
 static TaskHandle_t audioTaskHandle = NULL;
 
 // ============================================================================
-// Static task allocation for SD audio playback
+// Static task allocation for SD audio playback.
 // Pre-allocates stack and TCB at compile time to avoid heap allocation failures
-// when heap is low during alerts. This is critical because xTaskCreate fails
-// when there isn't enough contiguous heap for the stack (e.g., 32KB stack needs
-// 32KB+ contiguous heap, but we've seen heapMin as low as 6KB).
+// when heap is low during alerts.
 // ============================================================================
-static constexpr int SD_AUDIO_TASK_STACK_SIZE = 8192;  // 32KB - needed for File I/O operations
+// Conservative stack trim: 6144 has been stable in practice while recovering RAM.
+static constexpr int SD_AUDIO_TASK_STACK_SIZE = 6144;
 static StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 static StaticTask_t g_sdAudioTaskTCB;
 
@@ -819,8 +820,8 @@ static void sd_audio_playback_task(void* pvParameters) {
         }
         
         // Use pre-allocated buffers (no malloc needed)
-        // g_mulawChunkBuffer: 2048 bytes for mu-law data
-        // g_stereoChunkBuffer: 2048*2 int16_t for stereo output
+        // g_mulawChunkBuffer: AUDIO_CHUNK_SAMPLES bytes for mu-law data
+        // g_stereoChunkBuffer: AUDIO_CHUNK_SAMPLES*2 int16_t for stereo output
         size_t bytesRead;
         while ((bytesRead = audioFile.read(g_mulawChunkBuffer, AUDIO_CHUNK_SAMPLES)) > 0) {
             // Decode mu-law to stereo PCM using pre-allocated buffer
