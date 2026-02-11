@@ -125,6 +125,9 @@ public:
     
     // Speed utility - also used by main.cpp for speed-based volume boost
     float getCurrentSpeedMph(unsigned long now);
+    bool getCurrentSpeedSample(unsigned long now, float& speedMphOut) const;
+    void updateSpeedSample(float speedMph, unsigned long timestampMs);
+    void clearSpeedSample();
 
 private:
     // Dependencies

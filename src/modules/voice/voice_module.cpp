@@ -549,19 +549,43 @@ void VoiceModule::resetLastAnnounced() {
 // Speed Helpers - Low Speed Muting
 // ============================================================================
 
-float VoiceModule::getCurrentSpeedMph(unsigned long now) {
-    // No live speed source available.
-    // Return cached speed if still valid, otherwise 0
-    if (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS) {
-        return cachedSpeedMph;
+bool VoiceModule::getCurrentSpeedSample(unsigned long now, float& speedMphOut) const {
+    if (cachedSpeedTimestamp == 0) {
+        return false;
     }
-    
+    if ((now - cachedSpeedTimestamp) >= SPEED_CACHE_MAX_AGE_MS) {
+        return false;
+    }
+    speedMphOut = cachedSpeedMph;
+    return true;
+}
+
+float VoiceModule::getCurrentSpeedMph(unsigned long now) {
+    float speedMph = 0.0f;
+    if (getCurrentSpeedSample(now, speedMph)) {
+        return speedMph;
+    }
+
     return 0.0f;
 }
 
+void VoiceModule::updateSpeedSample(float speedMph, unsigned long timestampMs) {
+    // Ignore invalid/negative input so stale-good data is preserved.
+    if (!(speedMph >= 0.0f)) {
+        return;
+    }
+    cachedSpeedMph = speedMph;
+    cachedSpeedTimestamp = timestampMs;
+}
+
+void VoiceModule::clearSpeedSample() {
+    cachedSpeedMph = 0.0f;
+    cachedSpeedTimestamp = 0;
+}
+
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
-    // Only cached speed is available.
-    return (cachedSpeedTimestamp > 0 && (now - cachedSpeedTimestamp) < SPEED_CACHE_MAX_AGE_MS);
+    float speedMph = 0.0f;
+    return getCurrentSpeedSample(now, speedMph);
 }
 
 bool VoiceModule::isLowSpeedMuted(unsigned long now) const {
