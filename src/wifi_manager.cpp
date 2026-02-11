@@ -794,6 +794,7 @@ void WiFiManager::process() {
     }
 
     server.handleClient();
+    processWifiClientConnectPhase();
     checkAutoTimeout();
     
     // Check WiFi client (STA) connection status
@@ -893,43 +894,84 @@ bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
         Serial.println("[WiFiClient] Cannot connect: empty SSID");
         return false;
     }
-    
-    // CRITICAL: Full cleanup before attempting connection to prevent memory leaks.
-    // The ESP-IDF WiFi driver leaks memory if WiFi.begin() is called repeatedly
-    // without proper cleanup. This was causing ~1.6KB leak per failed attempt.
-    if (WiFi.getMode() != WIFI_OFF) {
-        Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
-        WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
-        WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
-        delay(100);                   // Allow driver to clean up
-    }
-    
-    // Now reinitialize in AP+STA mode
-    Serial.println("[WiFiClient] Initializing WiFi in AP+STA mode");
-    WiFi.mode(WIFI_AP_STA);
-    delay(100);  // Brief delay for mode switch
-    
-    Serial.printf("[WiFiClient] Connecting to: %s\n", ssid.c_str());
-    
+
     // WiFi transitioning - defer SD writes to avoid NVS flash contention
     debugLogger.notifyWifiTransition(false);
-    
+
+    // Stage a non-blocking connect sequence to avoid stalling loop().
     pendingConnectSSID = ssid;
     pendingConnectPassword = password;
-    wifiConnectStartMs = millis();
+    wifiConnectStartMs = 0;
     wifiClientState = WIFI_CLIENT_CONNECTING;
-    
-    WiFi.begin(ssid.c_str(), password.c_str());
-    
+    wifiConnectPhase = WifiConnectPhase::PREPARE_OFF;
+    wifiConnectPhaseStartMs = millis();
     return true;
 }
 
 void WiFiManager::disconnectFromNetwork() {
     Serial.println("[WiFiClient] Disconnecting from network");
+    wifiConnectPhase = WifiConnectPhase::IDLE;
+    wifiConnectPhaseStartMs = 0;
+    wifiConnectStartMs = 0;
     WiFi.disconnect(false);  // Don't turn off station mode
     wifiClientState = WIFI_CLIENT_DISCONNECTED;
     pendingConnectSSID = "";
     pendingConnectPassword = "";
+}
+
+void WiFiManager::processWifiClientConnectPhase() {
+    if (wifiConnectPhase == WifiConnectPhase::IDLE) {
+        return;
+    }
+
+    unsigned long now = millis();
+    switch (wifiConnectPhase) {
+        case WifiConnectPhase::PREPARE_OFF:
+            if (WiFi.getMode() != WIFI_OFF) {
+                Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
+                WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
+                WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
+            }
+            wifiConnectPhaseStartMs = now;
+            wifiConnectPhase = WifiConnectPhase::WAIT_OFF;
+            break;
+
+        case WifiConnectPhase::WAIT_OFF:
+            if (now - wifiConnectPhaseStartMs >= WIFI_MODE_SWITCH_SETTLE_MS) {
+                wifiConnectPhase = WifiConnectPhase::ENABLE_AP_STA;
+            }
+            break;
+
+        case WifiConnectPhase::ENABLE_AP_STA:
+            Serial.println("[WiFiClient] Initializing WiFi in AP+STA mode");
+            WiFi.mode(WIFI_AP_STA);
+            wifiConnectPhaseStartMs = now;
+            wifiConnectPhase = WifiConnectPhase::WAIT_AP_STA;
+            break;
+
+        case WifiConnectPhase::WAIT_AP_STA:
+            if (now - wifiConnectPhaseStartMs >= WIFI_MODE_SWITCH_SETTLE_MS) {
+                wifiConnectPhase = WifiConnectPhase::BEGIN_CONNECT;
+            }
+            break;
+
+        case WifiConnectPhase::BEGIN_CONNECT:
+            if (pendingConnectSSID.length() == 0) {
+                wifiConnectPhase = WifiConnectPhase::IDLE;
+                wifiClientState = WIFI_CLIENT_FAILED;
+                debugLogger.notifyWifiTransition(true);
+                break;
+            }
+            Serial.printf("[WiFiClient] Connecting to: %s\n", pendingConnectSSID.c_str());
+            WiFi.begin(pendingConnectSSID.c_str(), pendingConnectPassword.c_str());
+            wifiConnectStartMs = now;
+            wifiConnectPhase = WifiConnectPhase::IDLE;
+            break;
+
+        case WifiConnectPhase::IDLE:
+        default:
+            break;
+    }
 }
 
 void WiFiManager::checkWifiClientStatus() {
@@ -942,8 +984,14 @@ void WiFiManager::checkWifiClientStatus() {
     
     switch (wifiClientState) {
         case WIFI_CLIENT_CONNECTING: {
+            // Non-blocking mode transition is still in progress.
+            if (wifiConnectPhase != WifiConnectPhase::IDLE || wifiConnectStartMs == 0) {
+                break;
+            }
+
             if (status == WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_CONNECTED;
+                wifiConnectStartMs = 0;
                 Serial.printf("[WiFiClient] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
                 
                 // Reset failure counter on successful connection
@@ -961,6 +1009,7 @@ void WiFiManager::checkWifiClientStatus() {
             } else if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
                 wifiClientState = WIFI_CLIENT_FAILED;
                 Serial.printf("[WiFiClient] Connection failed: %d\n", status);
+                wifiConnectStartMs = 0;
                 
                 // WiFi stable (failed but not transitioning) - resume SD writes
                 debugLogger.notifyWifiTransition(true);
@@ -971,6 +1020,7 @@ void WiFiManager::checkWifiClientStatus() {
                 wifiClientState = WIFI_CLIENT_FAILED;
                 Serial.println("[WiFiClient] Connection timeout");
                 WiFi.disconnect(false);
+                wifiConnectStartMs = 0;
                 
                 // WiFi stable (timed out) - resume SD writes
                 debugLogger.notifyWifiTransition(true);
@@ -3375,8 +3425,6 @@ void WiFiManager::handleWifiClientEnable() {
         
         // If we have saved credentials, try to connect
         if (settings.wifiClientSSID.length() > 0) {
-            WiFi.mode(WIFI_AP_STA);
-            wifiClientState = WIFI_CLIENT_CONNECTING;
             String savedPassword = settingsManager.getWifiClientPassword();
             connectToNetwork(settings.wifiClientSSID, savedPassword);
         } else {

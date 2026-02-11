@@ -123,8 +123,19 @@ private:
     bool wifiScanRunning = false;
     unsigned long wifiConnectStartMs = 0;
     static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;  // 15s connection timeout
+    static constexpr unsigned long WIFI_MODE_SWITCH_SETTLE_MS = 100;  // Preserve existing settle windows, non-blocking
     String pendingConnectSSID;
     String pendingConnectPassword;
+    enum class WifiConnectPhase : uint8_t {
+        IDLE = 0,
+        PREPARE_OFF,
+        WAIT_OFF,
+        ENABLE_AP_STA,
+        WAIT_AP_STA,
+        BEGIN_CONNECT,
+    };
+    WifiConnectPhase wifiConnectPhase = WifiConnectPhase::IDLE;
+    unsigned long wifiConnectPhaseStartMs = 0;
     
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
     int wifiReconnectFailures = 0;
@@ -162,6 +173,7 @@ private:
     void setupAP();
     void setupWebServer();
     void checkAutoTimeout();
+    void processWifiClientConnectPhase();
     
     // Web handlers
     void handleStatus();
