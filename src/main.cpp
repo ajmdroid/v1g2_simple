@@ -526,7 +526,7 @@ void setup() {
                 }
             } else {
                 display.forceNextRedraw();
-                display.showResting();
+                display.showScanning();
             }
         }
     };
@@ -807,7 +807,7 @@ void loop() {
 
     bool previewRunning = displayPreviewModule.isRunning();
     unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
-    if (!bootSplashHoldActive && (now - lastFreqUiMs) >= freqUiMaxMs) {
+    if (!bootSplashHoldActive && bleClient.isConnected() && (now - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser.getDisplayState();
         const AlertData priority = parser.getPriorityAlert();
         bool hasPriority = parser.hasAlerts() && priority.isValid && priority.band != BAND_NONE;
@@ -820,7 +820,11 @@ void loop() {
         lastFreqUiMs = now;
     }
 
-    if (!bootSplashHoldActive && !displayPreviewModule.isRunning() && overloadThisLoop && (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
+    if (!bootSplashHoldActive &&
+        bleClient.isConnected() &&
+        !displayPreviewModule.isRunning() &&
+        overloadThisLoop &&
+        (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
         const auto& allAlerts = parser.getAllAlerts();
         int alertCount = static_cast<int>(parser.getAlertCount());
         const AlertData priority = parser.getPriorityAlert();
