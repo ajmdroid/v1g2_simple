@@ -2,6 +2,7 @@
 #include "perf_metrics.h"
 #include "../../../include/config.h"
 #include "debug_logger.h"
+#include "modules/system/system_event_bus.h"
 #include <algorithm>
 
 // Maximum bytes to buffer from BLE RX before dropping
@@ -111,12 +112,14 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
                            V1ProfileManager* profileMgr,
                            DisplayPreviewModule* previewModule,
                            PowerModule* powerModule,
+                           SystemEventBus* eventBus,
                            Config cfg) {
     ble = bleClient;
     parser = parserPtr;
     profiles = profileMgr;
     preview = previewModule;
     power = powerModule;
+    bus = eventBus;
     config = cfg;
 
     queueHandle = xQueueCreate(config.queueDepth, sizeof(BLEDataPacket));
@@ -280,6 +283,14 @@ void BleQueueModule::process() {
             // This decouples BLE processing from slow display updates
             hadSuccessfulParse = true;
             lastParsedTsMs = lastNotifyTsMs;
+            if (bus) {
+                SystemEvent event;
+                event.type = SystemEventType::BLE_FRAME_PARSED;
+                event.tsMs = lastParsedTsMs;
+                event.seq = ++parsedEventSeq;
+                event.detail = packetId;
+                bus->publish(event);
+            }
         }
     }
 }
@@ -300,4 +311,3 @@ void BleQueueModule::processReplayData() {
     replayIndex = (replayIndex + 1) % REPLAY_SEQUENCE_LENGTH;
 }
 #endif
-

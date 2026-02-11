@@ -48,6 +48,7 @@
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/display/display_pipeline_module.h"
+#include "modules/system/system_event_bus.h"
 #include "esp_heap_caps.h"
 #include "esp_core_dump.h"
 #include "modules/voice/voice_module.h"
@@ -286,6 +287,7 @@ BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
 DisplayPipelineModule displayPipelineModule;
 DisplayRestoreModule displayRestoreModule;
+SystemEventBus systemEventBus;
 
 // Callback for BLE data reception - just queues data, doesn't process
 // This runs in BLE task context, so we avoid SPI operations here
@@ -581,7 +583,8 @@ void setup() {
                                 &voiceModule,
                                 &speedVolumeModule,
                                 &debugLogger);
-    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule);
+    systemEventBus.reset();
+    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
 
@@ -722,15 +725,28 @@ void loop() {
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
     
+    // Drain system events and coalesce parsed-frame notifications.
+    // Fallback flag preserves behavior if event bus drops/coalesces packets under load.
+    bool parsedReady = bleQueueModule.consumeParsedFlag();
+    uint32_t parsedTsMs = bleQueueModule.getLastParsedTimestamp();
+    SystemEvent event;
+    while (systemEventBus.consume(event)) {
+        if (event.type == SystemEventType::BLE_FRAME_PARSED) {
+            parsedReady = true;
+            if (event.tsMs != 0) {
+                parsedTsMs = event.tsMs;
+            }
+        }
+    }
+
     // Drive display pipeline separately from BLE drain (decoupled for accurate timing)
     // This is intentionally outside the bleDrain timing to isolate display latency
-    if (bleQueueModule.consumeParsedFlag()) {
+    if (parsedReady) {
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
             uint32_t nowMs = millis();
-            uint32_t parsedTs = bleQueueModule.getLastParsedTimestamp();
-            if (parsedTs != 0 && nowMs >= parsedTs) {
-                perfRecordNotifyToDisplayMs(nowMs - parsedTs);
+            if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
+                perfRecordNotifyToDisplayMs(nowMs - parsedTsMs);
             }
             if (!overloadThisLoop) {
                 uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();

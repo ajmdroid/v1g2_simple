@@ -12,6 +12,8 @@
 #include "modules/power/power_module.h"
 #include "v1_profiles.h"
 
+class SystemEventBus;
+
 class BleQueueModule {
 public:
     struct Config {
@@ -26,6 +28,7 @@ public:
                V1ProfileManager* profileMgr,
                DisplayPreviewModule* previewModule,
                PowerModule* powerModule,
+               SystemEventBus* eventBus = nullptr,
                Config cfg = Config());
 
     // Returns timestamp of last successfully parsed packet (for display latency tracking)
@@ -55,6 +58,7 @@ private:
     V1ProfileManager* profiles = nullptr;
     DisplayPreviewModule* preview = nullptr;
     PowerModule* power = nullptr;
+    SystemEventBus* bus = nullptr;
     QueueHandle_t queueHandle = nullptr;
 
     std::vector<uint8_t> rxBuffer;
@@ -62,6 +66,7 @@ private:
     uint32_t lastNotifyTsMs = 0;
     uint32_t lastParsedTsMs = 0;      // Timestamp of last successful parse (for display latency)
     bool hadSuccessfulParse = false;  // Flag: at least one packet parsed since last check
+    uint32_t parsedEventSeq = 0;
 
     Config config;
 
