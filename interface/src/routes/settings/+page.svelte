@@ -33,12 +33,17 @@
 	let wifiPassword = $state('');
 	let wifiConnecting = $state(false);
 	let wifiPollInterval = $state(null);
+	let timePollInterval = $state(null);
+	let timeTickInterval = $state(null);
+	let clientNowMs = $state(Date.now());
 
 	let timeStatus = $state({
 		valid: false,
 		source: 0,
 		epochMs: 0,
 		tzOffsetMin: 0,
+		ageMs: 0,
+		sampleClientMs: 0,
 		syncing: false
 	});
 	
@@ -46,10 +51,16 @@
 		await fetchSettings();
 		await fetchWifiStatus();
 		await fetchTimeStatus();
+		timePollInterval = setInterval(fetchTimeStatus, 5000);
+		timeTickInterval = setInterval(() => {
+			clientNowMs = Date.now();
+		}, 1000);
 		
 		// Poll WiFi status every 3 seconds when modal is open
 		return () => {
 			if (wifiPollInterval) clearInterval(wifiPollInterval);
+			if (timePollInterval) clearInterval(timePollInterval);
+			if (timeTickInterval) clearInterval(timeTickInterval);
 		};
 	});
 	
@@ -89,16 +100,62 @@
 		}
 	}
 
+	function pad2(n) {
+		return String(n).padStart(2, '0');
+	}
+
+	function formatOffset(mins) {
+		const sign = mins >= 0 ? '+' : '-';
+		const absMins = Math.abs(mins);
+		const hh = Math.floor(absMins / 60);
+		const mm = absMins % 60;
+		return `${sign}${pad2(hh)}:${pad2(mm)}`;
+	}
+
+	function getProjectedEpochMs() {
+		if (!timeStatus.valid || !timeStatus.epochMs || !timeStatus.sampleClientMs) return 0;
+		const deltaMs = Math.max(0, clientNowMs - timeStatus.sampleClientMs);
+		return timeStatus.epochMs + deltaMs;
+	}
+
+	function getProjectedAgeMs() {
+		if (!timeStatus.valid || !timeStatus.sampleClientMs) return 0;
+		const deltaMs = Math.max(0, clientNowMs - timeStatus.sampleClientMs);
+		return (timeStatus.ageMs || 0) + deltaMs;
+	}
+
+	function formatDeviceDateTime() {
+		const projectedEpochMs = getProjectedEpochMs();
+		if (!projectedEpochMs) return '—';
+		const tzOffsetMs = (timeStatus.tzOffsetMin || 0) * 60000;
+		const d = new Date(projectedEpochMs + tzOffsetMs);
+		return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())} (UTC${formatOffset(timeStatus.tzOffsetMin || 0)})`;
+	}
+
+	function formatAgeMs(ms) {
+		if (!ms || ms < 0) return '0s';
+		const totalSeconds = Math.floor(ms / 1000);
+		const hours = Math.floor(totalSeconds / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const seconds = totalSeconds % 60;
+		if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+		if (minutes > 0) return `${minutes}m ${seconds}s`;
+		return `${seconds}s`;
+	}
+
 	async function fetchTimeStatus() {
 		try {
 			const res = await fetch('/api/status');
 			if (res.ok) {
 				const data = await res.json();
 				const t = data?.time || {};
+				const now = Date.now();
 				timeStatus.valid = !!t.valid;
 				timeStatus.source = Number(t.source || 0);
 				timeStatus.epochMs = Number(t.epochMs || 0);
 				timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
+				timeStatus.ageMs = Number(t.ageMs || 0);
+				timeStatus.sampleClientMs = timeStatus.valid ? now : 0;
 			}
 		} catch (e) {
 			console.error('Failed to fetch time status:', e);
@@ -119,10 +176,13 @@
 			});
 			const data = await res.json().catch(() => ({}));
 			if (res.ok && (data.ok || data.success)) {
+				const now = Date.now();
 				timeStatus.valid = !!data.timeValid;
 				timeStatus.source = Number(data.timeSource || 0);
 				timeStatus.epochMs = Number(data.epochMs || 0);
 				timeStatus.tzOffsetMin = Number(data.tzOffsetMin ?? data.tzOffsetMinutes ?? 0);
+				timeStatus.ageMs = Number(data.ageMs ?? data.epochAgeMs ?? 0);
+				timeStatus.sampleClientMs = timeStatus.valid ? now : 0;
 				message = { type: 'success', text: 'Time synced from phone.' };
 			} else {
 				message = { type: 'error', text: data.error || 'Failed to sync time' };
@@ -459,8 +519,12 @@
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
 					{#if timeStatus.valid}
-						<div><strong>epochMs:</strong> {timeStatus.epochMs}</div>
+						<div><strong>deviceTime:</strong> <span class="font-mono">{formatDeviceDateTime()}</span></div>
+						<div><strong>timeAge:</strong> {formatAgeMs(getProjectedAgeMs())}</div>
+						<div><strong>epochMs (projected):</strong> <span class="font-mono">{getProjectedEpochMs()}</span></div>
 						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
+					{:else}
+						<div class="text-warning"><strong>status:</strong> time not set</div>
 					{/if}
 				</div>
 				<button class="btn btn-primary btn-sm w-fit" onclick={syncTimeFromPhone} disabled={timeStatus.syncing}>
