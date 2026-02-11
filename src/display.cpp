@@ -1119,39 +1119,50 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     // Fixed field clear every update prevents stale pixels from variable-width glyphs.
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
 
-    const bool isDigitSymbol = (symbol >= '0' && symbol <= '9');
     bool drewWithOfr = false;
     if (ofrSegment7Initialized) {
         // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
-        // Keep center-biased placement for utility counter readability.
+        //
+        // IMPORTANT: We compute glyph bounds just-in-time (immediately before
+        // printf) rather than using boot-time cached bounds.  OpenFontRender's
+        // drawHString() adjusts the first character's X position by reading
+        // face->glyph->metrics.horiBearingX from the FreeType face slot — a
+        // value that is only updated on FreeType cache *misses*.  Between bogey
+        // counter renders the frequency display renders "35.500" via the same
+        // ofrSegment7 instance at a different font size, leaving a *stale*
+        // horiBearingX in the face slot.  The boot-time cached bounds assumed a
+        // *correct* horiBearingX, so the cursor+rendering disagree by the
+        // difference, visibly shifting the digit.
+        //
+        // By calling calculateBoundingBox right before printf, both calls go
+        // through drawHString sharing the same stale horiBearingX.  The error
+        // term cancels algebraically in the centering math, giving a stable
+        // position regardless of FreeType cache state.
+
+        ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+
+        // Compute fresh bounds for the actual glyph string we are about to draw.
+        FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+            0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, buf);
+        int glyphXMin = static_cast<int>(bbox.xMin);
+        int glyphXMax = static_cast<int>(bbox.xMax);
+
         int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH) / 2);
-        int glyphXMin = 0;
-        int glyphXMax = 0;
-        // Keep digit placement fixed like a hardware LED cluster.
-        // Anchor numeric placement to the same cell as 'A' so '1' lines up with
-        // the right leg position used in the original cluster look.
-        const char boundsSymbol = isDigitSymbol ? 'A' : symbol;
-        const bool boundsShowDot = isDigitSymbol ? false : showDot;
-        if (getTopCounterBounds(boundsSymbol, boundsShowDot, glyphXMin, glyphXMax)) {
-            const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
-            const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
-            const int glyphW = glyphXMax - glyphXMin;
-            if (glyphW > 0 && glyphW <= (TOP_COUNTER_FIELD_W * 4)) {
-                const int centerBiasPx = 2;
-                const int fieldCenterX = fieldLeft + ((fieldRight - fieldLeft) / 2) + centerBiasPx;
-                const int glyphCenterX = glyphXMin + (glyphW / 2);
-                x = fieldCenterX - glyphCenterX;
-                const int minCursorX = fieldLeft - glyphXMin;
-                const int maxCursorX = fieldRight - glyphXMax;
-                if (minCursorX <= maxCursorX) {
-                    x = std::max(minCursorX, std::min(x, maxCursorX));
-                } else {
-                    // Glyph wider than field; keep left edge inside the field.
-                    x = minCursorX;
-                }
+        const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
+        const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
+        const int glyphW = glyphXMax - glyphXMin;
+        if (glyphW > 0 && glyphW <= (TOP_COUNTER_FIELD_W * 4)) {
+            const int centerBiasPx = 2;
+            const int fieldCenterX = fieldLeft + ((fieldRight - fieldLeft) / 2) + centerBiasPx;
+            const int glyphCenterX = glyphXMin + (glyphW / 2);
+            x = fieldCenterX - glyphCenterX;
+            const int minCursorX = fieldLeft - glyphXMin;
+            const int maxCursorX = fieldRight - glyphXMax;
+            if (minCursorX <= maxCursorX) {
+                x = std::max(minCursorX, std::min(x, maxCursorX));
             } else {
-                // Pathological bounds: fall back to software renderer.
-                x = TOP_COUNTER_FIELD_X + 1;
+                // Glyph wider than field; keep left edge inside the field.
+                x = minCursorX;
             }
         }
         if (x >= TOP_COUNTER_FIELD_X + 1) {
@@ -1162,7 +1173,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
             uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
             ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-            ofrSegment7.setFontSize(TOP_COUNTER_FONT_SIZE);
+            // Font size already set above (before calculateBoundingBox).
             ofrSegment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
             ofrSegment7.setCursor(x, y);
             ofrSegment7.printf("%s", buf);
