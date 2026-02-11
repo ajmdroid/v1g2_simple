@@ -34,6 +34,9 @@ struct PerfSdSnapshot {
     uint32_t largestDmaCap;   // True MALLOC_CAP_DMA largest free block
     uint32_t dmaFreeMin;      // Min MALLOC_CAP_DMA free bytes since session start
     uint32_t dmaLargestMin;   // Min MALLOC_CAP_DMA largest block since session start
+    uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
+    uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
+    uint32_t wifiMaxUs;       // Window max wifiManager.process() duration
 };
 
 class PerfSdLogger {

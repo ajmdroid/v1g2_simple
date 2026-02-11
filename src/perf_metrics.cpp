@@ -127,11 +127,17 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.largestDmaCap = largestDmaCap;
     snapshot.dmaFreeMin = (sDmaFreeCapMin == UINT32_MAX) ? freeDmaCap : sDmaFreeCapMin;
     snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
+    snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
+    snapshot.touchMaxUs = perfExtended.touchMaxUs;
+    snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
     perfExtended.bleDrainMaxUs = 0;
     perfExtended.dispPipeMaxUs = 0;
+    perfExtended.bleProcessMaxUs = 0;
+    perfExtended.touchMaxUs = 0;
+    perfExtended.wifiMaxUs = 0;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 } // namespace
