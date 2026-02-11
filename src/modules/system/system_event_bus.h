@@ -33,13 +33,18 @@ public:
         dropCount = 0;
     }
 
-    // Non-blocking publish: never waits; drops oldest when full.
+    // Non-blocking publish: never waits.
+    // Overflow policy favors preserving low-rate control events by dropping the
+    // oldest frame event first when available.
     // Returns true if no drop occurred for this publish.
     bool publish(const SystemEvent& event) {
         bool dropped = false;
         if (count == kCapacity) {
-            tail = nextIndex(tail);
-            count--;
+            uint8_t dropOffset = 0;
+            if (!findOldestFrameOffset(dropOffset)) {
+                dropOffset = 0;  // No frame events present, drop oldest control event
+            }
+            removeAtOffset(dropOffset, nullptr);
             dropCount++;
             dropped = true;
         }
@@ -85,9 +90,35 @@ public:
             return false;
         }
 
-        for (uint8_t offset = matchOffset; offset + 1u < count; ++offset) {
-            uint8_t dst = static_cast<uint8_t>((tail + offset) % kCapacity);
-            uint8_t src = static_cast<uint8_t>((tail + offset + 1u) % kCapacity);
+        return removeAtOffset(matchOffset, &out);
+    }
+
+    uint32_t getPublishCount() const { return publishCount; }
+    uint32_t getDropCount() const { return dropCount; }
+    size_t size() const { return count; }
+
+private:
+    static bool isFrameEventType(SystemEventType type) {
+        return type == SystemEventType::BLE_FRAME_PARSED;
+    }
+
+    static uint8_t nextIndex(uint8_t i) {
+        return static_cast<uint8_t>((i + 1u) % kCapacity);
+    }
+
+    bool removeAtOffset(uint8_t offset, SystemEvent* removed) {
+        if (offset >= count) {
+            return false;
+        }
+
+        uint8_t idx = static_cast<uint8_t>((tail + offset) % kCapacity);
+        if (removed) {
+            *removed = ring[idx];
+        }
+
+        for (uint8_t pos = offset; pos + 1u < count; ++pos) {
+            uint8_t dst = static_cast<uint8_t>((tail + pos) % kCapacity);
+            uint8_t src = static_cast<uint8_t>((tail + pos + 1u) % kCapacity);
             ring[dst] = ring[src];
         }
 
@@ -96,13 +127,16 @@ public:
         return true;
     }
 
-    uint32_t getPublishCount() const { return publishCount; }
-    uint32_t getDropCount() const { return dropCount; }
-    size_t size() const { return count; }
-
-private:
-    static uint8_t nextIndex(uint8_t i) {
-        return static_cast<uint8_t>((i + 1u) % kCapacity);
+    bool findOldestFrameOffset(uint8_t& offsetOut) const {
+        uint8_t idx = tail;
+        for (uint8_t offset = 0; offset < count; ++offset) {
+            if (isFrameEventType(ring[idx].type)) {
+                offsetOut = offset;
+                return true;
+            }
+            idx = nextIndex(idx);
+        }
+        return false;
     }
 
     SystemEvent ring[kCapacity] = {};

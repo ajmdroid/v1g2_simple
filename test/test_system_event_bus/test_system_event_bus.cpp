@@ -70,6 +70,51 @@ void test_publish_overflow_drops_oldest() {
     TEST_ASSERT_EQUAL_UINT32(999, out.seq);  // Latest event is retained
 }
 
+void test_publish_overflow_prefers_dropping_frame_events() {
+    SystemEvent control;
+    control.type = SystemEventType::BLE_CONNECTED;
+    control.seq = 1;
+    TEST_ASSERT_TRUE(bus.publish(control));
+
+    for (size_t i = 1; i < SystemEventBus::kCapacity; ++i) {
+        SystemEvent frame;
+        frame.type = SystemEventType::BLE_FRAME_PARSED;
+        frame.seq = static_cast<uint32_t>(i + 1);
+        TEST_ASSERT_TRUE(bus.publish(frame));
+    }
+
+    SystemEvent overflowFrame;
+    overflowFrame.type = SystemEventType::BLE_FRAME_PARSED;
+    overflowFrame.seq = 999;
+    TEST_ASSERT_FALSE(bus.publish(overflowFrame));
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::BLE_CONNECTED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT32(1, out.seq);  // Control event preserved
+
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(3, out.seq);  // Oldest frame (seq=2) was dropped
+}
+
+void test_publish_overflow_without_frames_drops_oldest_control() {
+    for (size_t i = 0; i < SystemEventBus::kCapacity; ++i) {
+        SystemEvent control;
+        control.type = SystemEventType::BLE_CONNECTED;
+        control.seq = static_cast<uint32_t>(i + 1);
+        TEST_ASSERT_TRUE(bus.publish(control));
+    }
+
+    SystemEvent overflowControl;
+    overflowControl.type = SystemEventType::BLE_DISCONNECTED;
+    overflowControl.seq = 777;
+    TEST_ASSERT_FALSE(bus.publish(overflowControl));
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(2, out.seq);  // Oldest control dropped when no frames exist
+}
+
 void test_reset_clears_queue_and_counters() {
     SystemEvent event;
     event.type = SystemEventType::OBD_UPDATED;
@@ -211,6 +256,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_publish_consume_fifo_order);
     RUN_TEST(test_publish_overflow_drops_oldest);
+    RUN_TEST(test_publish_overflow_prefers_dropping_frame_events);
+    RUN_TEST(test_publish_overflow_without_frames_drops_oldest_control);
     RUN_TEST(test_reset_clears_queue_and_counters);
     RUN_TEST(test_fifo_wraparound_preserves_order);
     RUN_TEST(test_mixed_event_types_drain_to_empty);
