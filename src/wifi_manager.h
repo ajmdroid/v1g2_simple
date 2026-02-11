@@ -141,6 +141,8 @@ private:
     int wifiReconnectFailures = 0;
     static constexpr int WIFI_MAX_RECONNECT_FAILURES = 5;  // Give up after 5 failures
     static constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 30000;  // 30s between attempts
+    static constexpr unsigned long WIFI_RECONNECT_DEFER_NO_V1_MS = 90000;  // Protect BLE acquisition on boot
+    bool wifiReconnectDeferredLogged = false;
     
     // Web activity tracking for WiFi priority mode
     unsigned long lastUiActivityMs = 0;

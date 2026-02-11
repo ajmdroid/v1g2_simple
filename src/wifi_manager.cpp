@@ -1141,9 +1141,23 @@ void WiFiManager::checkWifiClientStatus() {
         
         case WIFI_CLIENT_DISCONNECTED:
         case WIFI_CLIENT_FAILED: {
-            // Note: Previously deferred WiFi until V1 connected to avoid blocking BLE.
-            // Removed: WiFi.begin() is non-blocking on ESP32-S3, and users want
-            // auto-connect for log download testing without V1 present.
+            // Defer background STA reconnect attempts during early boot until V1 is
+            // connected. This protects BLE acquisition from AP+STA mode churn.
+            bool v1Connected = isV1Connected ? isV1Connected() : bleClient.isConnected();
+            bool withinBootGrace = (setupModeStartTime != 0) &&
+                                   ((millis() - setupModeStartTime) < WIFI_RECONNECT_DEFER_NO_V1_MS);
+            if (!v1Connected && withinBootGrace) {
+                if (!wifiReconnectDeferredLogged) {
+                    Serial.printf("[WiFiClient] Auto-reconnect deferred (waiting for V1 or %lu ms grace)\n",
+                                  (unsigned long)WIFI_RECONNECT_DEFER_NO_V1_MS);
+                    wifiReconnectDeferredLogged = true;
+                }
+                break;
+            }
+            if (wifiReconnectDeferredLogged) {
+                Serial.println("[WiFiClient] Auto-reconnect resumed");
+                wifiReconnectDeferredLogged = false;
+            }
             
             // Auto-reconnect if we have saved credentials (with failure limit)
             const V1Settings& settings = settingsManager.get();
