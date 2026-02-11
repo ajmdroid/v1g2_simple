@@ -13,6 +13,7 @@ public:
     uint8_t lastVolume = 0;
     uint8_t lastMuteVolume = 0;
     int requestAlertDataCalls = 0;
+    bool bootReadyFlag = true;  // Default true to preserve existing test behavior
     
     void reset() {
         proxyConnected = false;
@@ -23,6 +24,7 @@ public:
         lastVolume = 0;
         lastMuteVolume = 0;
         requestAlertDataCalls = 0;
+        bootReadyFlag = true;
     }
     
     // Connection state
@@ -30,6 +32,8 @@ public:
     void setProxyConnected(bool v) { proxyConnected = v; }
     bool isConnected() const { return connected; }
     void setConnected(bool v) { connected = v; }
+    void setBootReady(bool ready) { bootReadyFlag = ready; }
+    bool isBootReady() const { return bootReadyFlag; }
     
     // BLE commands (tracked)
     bool setMute(bool mute) { 
