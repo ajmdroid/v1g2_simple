@@ -173,6 +173,21 @@ void test_no_transition_when_state_unchanged() {
     TEST_ASSERT_EQUAL(0, powerModule.onV1ConnectionChangeCalls);
 }
 
+void test_boot_hold_no_spurious_transition() {
+    // Boot-hold scenario: BLE stays disconnected before boot gate opens.
+    bleClient.setConnected(false);
+    connectionState.reset();
+    display.reset();
+    powerModule.reset();
+
+    mockMillis = 1000;
+    bool result = connectionState.process(mockMillis, &bleClient, &parser, &display, &powerModule, &bleQueueModule);
+
+    TEST_ASSERT_FALSE(result);
+    TEST_ASSERT_EQUAL(0, display.showRestingCalls);
+    TEST_ASSERT_EQUAL(0, display.showScanningCalls);
+}
+
 // ============================================================================
 // Test: Stale Data Detection
 // ============================================================================
@@ -303,6 +318,7 @@ void runAllTests() {
     RUN_TEST(test_connect_transition_shows_resting);
     RUN_TEST(test_disconnect_transition_shows_scanning);
     RUN_TEST(test_no_transition_when_state_unchanged);
+    RUN_TEST(test_boot_hold_no_spurious_transition);
     
     // Stale data detection
     RUN_TEST(test_stale_data_triggers_alert_request);
@@ -329,4 +345,3 @@ int main(int argc, char **argv) {
     return UNITY_END();
 }
 #endif
-

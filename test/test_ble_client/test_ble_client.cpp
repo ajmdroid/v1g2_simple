@@ -109,6 +109,27 @@ uint16_t shortUuid(const char* uuidStr) {
     return 0;
 }
 
+/**
+ * Minimal boot-gated state machine model for testing the bootReady contract:
+ * if boot gate is closed, process() must not advance connection state.
+ */
+struct BootGateStateMachine {
+    bool bootReadyFlag = false;
+    BLEState state = BLEState::DISCONNECTED;
+
+    void setBootReady(bool ready) { bootReadyFlag = ready; }
+    bool isBootReady() const { return bootReadyFlag; }
+
+    void process() {
+        if (!bootReadyFlag) {
+            return;
+        }
+        if (state == BLEState::DISCONNECTED) {
+            state = BLEState::SCANNING;
+        }
+    }
+};
+
 // ============================================================================
 // STATE TO STRING TESTS
 // ============================================================================
@@ -282,6 +303,34 @@ void test_state_enum_values() {
     TEST_ASSERT_EQUAL_INT(9, static_cast<int>(BLEState::BACKOFF));
 }
 
+void test_boot_gate_blocks_state_machine() {
+    BootGateStateMachine sm;
+    sm.state = BLEState::DISCONNECTED;
+    sm.setBootReady(false);
+
+    sm.process();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BLEState::DISCONNECTED), static_cast<int>(sm.state));
+
+    sm.setBootReady(true);
+    sm.process();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(BLEState::SCANNING), static_cast<int>(sm.state));
+}
+
+void test_boot_gate_default_true_after_set() {
+    BootGateStateMachine sm;
+    TEST_ASSERT_FALSE(sm.isBootReady());
+
+    sm.setBootReady(true);
+    TEST_ASSERT_TRUE(sm.isBootReady());
+
+    sm.process();
+    TEST_ASSERT_TRUE(sm.isBootReady());
+
+    sm.state = BLEState::CONNECTED;
+    sm.process();
+    TEST_ASSERT_TRUE(sm.isBootReady());
+}
+
 void test_all_states_have_strings() {
     // Every valid state should have a non-empty, non-UNKNOWN string
     BLEState states[] = {
@@ -355,6 +404,10 @@ void runAllTests() {
     // State enum tests
     RUN_TEST(test_state_enum_values);
     RUN_TEST(test_all_states_have_strings);
+
+    // Boot gate behavior tests
+    RUN_TEST(test_boot_gate_blocks_state_machine);
+    RUN_TEST(test_boot_gate_default_true_after_set);
 }
 
 #ifdef ARDUINO
