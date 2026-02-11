@@ -2177,9 +2177,9 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     
     // Start/stop advertising to initialize the stack cleanly before scanning
     pAdvertising->start();
-    delay(50);
+    delay(25);
     NimBLEDevice::stopAdvertising();
-    delay(50);
+    delay(25);
 }
 
 bool V1BLEClient::isProxyAdvertising() const {

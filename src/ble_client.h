@@ -341,7 +341,7 @@ private:
     // ESP32-S3 BLE: radio needs time after scan to be ready for connect
     // Cold boot needs significantly more time for NimBLE stack to stabilize
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
-    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 750;  // 750ms on cold boot - BLE stack needs warmup
+    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 250;  // 250ms on cold boot - trial tuning
     bool firstScanAfterBoot = true;  // Use longer settle on first scan
     
     // Connection attempt guard - prevents overlapping attempts
@@ -418,9 +418,9 @@ private:
     static constexpr unsigned long BACKOFF_MAX_MS = 1500;    // 1.5s max - keep retries snappy
     
     // Deferred proxy advertising start (non-blocking - avoids stall)
-    // 150ms matches Kenny's v1g2-t4s3 approach - just enough for radio to settle
+    // Tuned lower to reduce post-connect latency while preserving radio settle margin
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
-    static constexpr unsigned long PROXY_STABILIZE_MS = 150;  // Match Kenny's 150ms delay
+    static constexpr unsigned long PROXY_STABILIZE_MS = 100;
     
     // Write verification state
     bool verifyPending = false;

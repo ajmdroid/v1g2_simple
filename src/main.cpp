@@ -80,6 +80,9 @@ VoiceModule voiceModule;
 unsigned long lastDisplayUpdate = 0;
 static bool bootReady = false;
 static unsigned long bootReadyDeadlineMs = 0;
+static bool bootSplashHoldActive = false;
+static unsigned long bootSplashHoldUntilMs = 0;
+static bool initialScanningScreenShown = false;
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -109,6 +112,15 @@ static const char* resetReasonToString(esp_reset_reason_t reason) {
         case ESP_RST_SDIO: return "SDIO";
         default: return "UNKNOWN";
     }
+}
+
+static void showInitialScanningScreen() {
+    if (initialScanningScreenShown) {
+        return;
+    }
+    display.showScanning();
+    display.drawProfileIndicator(settingsManager.get().activeSlot);
+    initialScanningScreenShown = true;
 }
 
 static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
@@ -367,7 +379,7 @@ static void fatalBootError(const char* message, bool displayAvailable) {
 
 void setup() {
     // Wait for USB to stabilize after upload
-    delay(100);
+    delay(50);
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
 #if defined(PIN_POWER_ON) && PIN_POWER_ON >= 0
@@ -377,7 +389,7 @@ void setup() {
 #endif
 
     Serial.begin(115200);
-    delay(200);  // Reduced from 500ms - brief delay for serial init
+    delay(100);  // Reduced from 500ms - brief delay for serial init
     
     // PANIC BREADCRUMBS: Log crash info FIRST (before any other init)
     logPanicBreadcrumbs();
@@ -432,7 +444,7 @@ void setup() {
     bootReadyDeadlineMs = millis() + 5000;
     
     // Brief delay to ensure panel is fully cleared before enabling backlight
-    delay(100);
+    delay(50);
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();
@@ -444,15 +456,13 @@ void setup() {
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
-        // True cold boot - show splash
+        // True cold boot: keep splash visible for 2.5s without blocking setup
         display.showBootSplash();
-        delay(2500);  // Show logo for 2.5 seconds
+        bootSplashHoldActive = true;
+        bootSplashHoldUntilMs = millis() + 2500;
+    } else {
+        showInitialScanningScreen();
     }
-    // After splash (or skipping it), show scanning screen until connected
-    display.showScanning();
-    
-    // Show the current profile indicator
-    display.drawProfileIndicator(settingsManager.get().activeSlot);
 
     // Initialize display preview driver
     displayPreviewModule.begin(&display);
@@ -648,6 +658,16 @@ void loop() {
     static unsigned long lastCardUiMs = 0;
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
+
+    if (bootSplashHoldActive && now >= bootSplashHoldUntilMs) {
+        bootSplashHoldActive = false;
+        if (!bleClient.isConnected()) {
+            showInitialScanningScreen();
+        } else {
+            initialScanningScreenShown = true;
+        }
+    }
+
     unsigned long audioTickUs = micros();
     unsigned long sinceAudioUs = audioTickUs - lastAudioTickUs;
     lastAudioTickUs = audioTickUs;
@@ -829,7 +849,9 @@ void loop() {
         lastDisplayUpdate = now;
         if (!displayPreviewModule.isRunning()) {
             // Handle connection state transitions (connect/disconnect, stale data re-request)
-            connectionStateModule.process(now);
+            if (!bootSplashHoldActive) {
+                connectionStateModule.process(now);
+            }
         }
     }
     
