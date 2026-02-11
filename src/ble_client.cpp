@@ -91,6 +91,29 @@ private:
     bool locked_;
 };
 
+static bool extractV1ShortUuidFrom128(const NimBLEUUID& uuid, uint16_t& out) {
+    if (uuid.bitSize() != BLE_UUID_TYPE_128) {
+        return false;
+    }
+    const uint8_t* raw = uuid.getValue();
+    if (!raw) {
+        return false;
+    }
+
+    // NimBLE stores UUID128 in little-endian form.
+    // V1 base UUID suffix is "-9E05-11E2-AA59-F23C91AEC05E" => first 12 bytes below.
+    static constexpr uint8_t kV1UuidBaseLePrefix[12] = {
+        0x5E, 0xC0, 0xAE, 0x91, 0x3C, 0xF2, 0x59, 0xAA, 0xE2, 0x11, 0x05, 0x9E
+    };
+    if (memcmp(raw, kV1UuidBaseLePrefix, sizeof(kV1UuidBaseLePrefix)) != 0) {
+        return false;
+    }
+
+    // 16-bit short UUID lives in bytes [12..13] (little-endian) for this custom base.
+    out = static_cast<uint16_t>((static_cast<uint16_t>(raw[13]) << 8) | raw[12]);
+    return true;
+}
+
 uint16_t shortUuid(const NimBLEUUID& uuid) {
     NimBLEUUID uuid16 = uuid;
     uuid16.to16();
@@ -102,10 +125,10 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
             return out;
         }
     }
-    std::string s = uuid.toString();
-    if (s.size() >= 8) {
-        // UUID is like 92a0b2ce-9e05-11e2-aa59-f23c91aec05e → take b2ce
-        return static_cast<uint16_t>(strtoul(s.substr(4, 4).c_str(), nullptr, 16));
+
+    uint16_t v1Short = 0;
+    if (extractV1ShortUuidFrom128(uuid, v1Short)) {
+        return v1Short;
     }
     return 0;
 }
@@ -990,12 +1013,26 @@ void V1BLEClient::processDiscovering() {
         BaseType_t rc = xTaskCreatePinnedToCore(
             discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY);
         if (rc != pdPASS) {
-            // Fallback: run blocking if task creation fails
-            Serial.println("[BLE] disc task fail, blocking");
-            bool result = pClient->discoverAttributes();
-            discoveryTaskResult.store(result);
+            // Never run discovery synchronously on the main loop; back off and retry.
+            Serial.println("[BLE] disc task create failed - backing off");
+            discoveryTaskResult.store(false);
             discoveryTaskDone.store(true);
             discoveryTaskRunning.store(false);
+            consecutiveConnectFailures++;
+            if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
+                hardResetBLEClient();
+                return;
+            }
+
+            int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
+            unsigned long backoffMs = BACKOFF_BASE_MS * (1 << exponent);
+            if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
+            nextConnectAllowedMs = millis() + backoffMs;
+
+            connectInProgress = false;
+            connectStartMs = 0;
+            disconnect();
+            setBLEState(BLEState::BACKOFF, "discovery task create failed");
         }
         return;  // Yield to loop while task runs
     }
