@@ -84,6 +84,10 @@ static unsigned long bootReadyDeadlineMs = 0;
 static bool bootSplashHoldActive = false;
 static unsigned long bootSplashHoldUntilMs = 0;
 static bool initialScanningScreenShown = false;
+static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 3000;
+static unsigned long scanScreenEnteredMs = 0;
+static bool scanScreenDwellActive = false;
+static bool lastBleConnectedForScanDwell = false;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
 
@@ -124,6 +128,8 @@ static void showInitialScanningScreen() {
     display.showScanning();
     display.drawProfileIndicator(settingsManager.get().activeSlot);
     initialScanningScreenShown = true;
+    scanScreenEnteredMs = millis();
+    scanScreenDwellActive = true;
 }
 
 static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
@@ -679,6 +685,8 @@ void loop() {
         }
     }
 
+    bool bleConnectedNow = bleClient.isConnected();
+
     unsigned long audioTickUs = micros();
     unsigned long sinceAudioUs = audioTickUs - lastAudioTickUs;
     lastAudioTickUs = audioTickUs;
@@ -862,13 +870,30 @@ void loop() {
     
     // Update display periodically
     now = millis();
+    bleConnectedNow = bleClient.isConnected();
+    if (lastBleConnectedForScanDwell && !bleConnectedNow && !bootSplashHoldActive) {
+        scanScreenEnteredMs = now;
+        scanScreenDwellActive = true;
+    }
+    lastBleConnectedForScanDwell = bleConnectedNow;
     
     if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
         lastDisplayUpdate = now;
         if (!displayPreviewModule.isRunning()) {
             // Handle connection state transitions (connect/disconnect, stale data re-request)
             if (!bootSplashHoldActive) {
-                connectionStateModule.process(now);
+                bool holdScanDwell = false;
+                if (scanScreenDwellActive && bleConnectedNow) {
+                    unsigned long scanDwellMs = now - scanScreenEnteredMs;
+                    holdScanDwell = scanDwellMs < MIN_SCAN_SCREEN_DWELL_MS;
+                }
+
+                if (!holdScanDwell) {
+                    connectionStateModule.process(now);
+                    if (bleConnectedNow) {
+                        scanScreenDwellActive = false;
+                    }
+                }
             }
         }
     }
