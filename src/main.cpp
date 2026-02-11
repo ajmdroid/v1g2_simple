@@ -78,6 +78,8 @@ AlertPersistenceModule alertPersistenceModule;
 VoiceModule voiceModule;
 
 unsigned long lastDisplayUpdate = 0;
+static bool bootReady = false;
+static unsigned long bootReadyDeadlineMs = 0;
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -427,6 +429,7 @@ void setup() {
         SerialLog.println("Display initialization failed!");
         fatalBootError("Display init failed", false);
     }
+    bootReadyDeadlineMs = millis() + 5000;
     
     // Brief delay to ensure panel is fully cleared before enabling backlight
     delay(100);
@@ -588,6 +591,9 @@ void setup() {
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    bootReady = true;
+    bleClient.setBootReady(true);
+    SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
 
 #ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
@@ -700,6 +706,12 @@ void loop() {
     tapGestureModule.process(now);
     
 #ifndef REPLAY_MODE
+    if (!bootReady && millis() >= bootReadyDeadlineMs) {
+        bootReady = true;
+        bleClient.setBootReady(true);
+        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", millis());
+    }
+
     // WiFi priority mode: web UI can deprioritize BLE background work, but never
     // at the expense of establishing/maintaining V1 connectivity.
     // Use hysteresis so a delayed poll does not immediately flap ENABLED/DISABLED.
