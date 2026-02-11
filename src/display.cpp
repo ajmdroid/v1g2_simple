@@ -625,6 +625,18 @@ bool V1Display::begin() {
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
     primeTopCounterBoundsCache();  // Boot-time glyph bounds cache for stable right-aligned counter layout
+    if (ofrSegment7Initialized) {
+        int oneMin = 0, oneMax = 0;
+        int twoMin = 0, twoMax = 0;
+        int eightMin = 0, eightMax = 0;
+        if (getTopCounterBounds('1', false, oneMin, oneMax) &&
+            getTopCounterBounds('2', false, twoMin, twoMax) &&
+            getTopCounterBounds('8', false, eightMin, eightMax)) {
+            Serial.printf("[Display] TopCounter OFR bounds @%dpx: '1'=%d..%d '2'=%d..%d '8'=%d..%d\n",
+                          TOP_COUNTER_FONT_SIZE,
+                          oneMin, oneMax, twoMin, twoMax, eightMin, eightMax);
+        }
+    }
     
     ofrSerpentine.setDrawer(*tft);
     ofrSerpentine.setCacheSize(1, 4, numericCacheBytes);  // Serpentine digits cache
@@ -1101,10 +1113,14 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         buf[1] = '.';
     }
 
+    // Numeric bogey counts are performance-critical and must be deterministic.
+    // Keep them on the software renderer to avoid OFR glyph-bearing edge cases.
+    const bool useSoftwareDigits = (symbol >= '0' && symbol <= '9');
+
     // Fixed field clear every update prevents stale pixels from variable-width glyphs.
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
     
-    if (ofrSegment7Initialized) {
+    if (ofrSegment7Initialized && !useSoftwareDigits) {
         // Use Segment7 TTF font (JBV1 style), right-aligned by true glyph bounds.
         // Bounding boxes include glyph bearings; width-only alignment shifts narrow glyphs ('1') too far right.
         int x = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH - TOP_COUNTER_PAD_RIGHT;
