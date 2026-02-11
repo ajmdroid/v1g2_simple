@@ -1116,6 +1116,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     // Fixed field clear every update prevents stale pixels from variable-width glyphs.
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
 
+    const bool isDigitSymbol = (symbol >= '0' && symbol <= '9');
     bool drewWithOfr = false;
     if (ofrSegment7Initialized) {
         // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
@@ -1123,7 +1124,12 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - TOP_COUNTER_FALLBACK_WIDTH) / 2);
         int glyphXMin = 0;
         int glyphXMax = 0;
-        if (getTopCounterBounds(symbol, showDot, glyphXMin, glyphXMax)) {
+        // Keep digit placement fixed like a hardware LED cluster.
+        // Anchor numeric placement to the same cell as 'A' so '1' lines up with
+        // the right leg position used in the original cluster look.
+        const char boundsSymbol = isDigitSymbol ? 'A' : symbol;
+        const bool boundsShowDot = isDigitSymbol ? false : showDot;
+        if (getTopCounterBounds(boundsSymbol, boundsShowDot, glyphXMin, glyphXMax)) {
             const int fieldLeft = TOP_COUNTER_FIELD_X + 1;
             const int fieldRight = TOP_COUNTER_FIELD_X + TOP_COUNTER_FIELD_W - TOP_COUNTER_PAD_RIGHT;
             const int glyphW = glyphXMax - glyphXMin;
