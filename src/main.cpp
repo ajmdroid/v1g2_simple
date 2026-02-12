@@ -84,7 +84,8 @@ static unsigned long bootReadyDeadlineMs = 0;
 static bool bootSplashHoldActive = false;
 static unsigned long bootSplashHoldUntilMs = 0;
 static bool initialScanningScreenShown = false;
-static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 3000;
+static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
+static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static unsigned long scanScreenEnteredMs = 0;
 static bool scanScreenDwellActive = false;
 static bool lastBleConnectedForScanDwell = false;
@@ -469,10 +470,10 @@ void setup() {
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
-        // True cold boot: keep splash visible for 2.5s without blocking setup
+        // True cold boot: brief non-blocking splash for immediate visual confirmation
         display.showBootSplash();
         bootSplashHoldActive = true;
-        bootSplashHoldUntilMs = millis() + 2500;
+        bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
     } else {
         showInitialScanningScreen();
     }

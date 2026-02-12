@@ -56,7 +56,8 @@ namespace {
 static constexpr uint32_t kLatencyBucketsMs[PerfHistogramMs::kBucketCount] = {
     1, 2, 5, 10, 20, 50, 100, 200, 500, 1000
 };
-static constexpr uint32_t kFastScanExitThresholdMs = 2500;
+// Keep aligned with UI scan dwell target so "fast exit" remains actionable.
+static constexpr uint32_t kFastScanExitThresholdMs = 400;
 static portMUX_TYPE sPerfSnapshotMux = portMUX_INITIALIZER_UNLOCKED;
 
 static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
