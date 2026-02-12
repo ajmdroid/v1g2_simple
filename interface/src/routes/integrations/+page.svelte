@@ -84,7 +84,8 @@
 
 	function formatTemp(value) {
 		if (typeof value !== 'number') return '—';
-		return `${Math.round(value)}°C`;
+		const f = Math.round(value * 9 / 5 + 32);
+		return `${f}°F`;
 	}
 
 	async function refreshAll() {
