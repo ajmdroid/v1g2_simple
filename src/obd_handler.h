@@ -12,6 +12,7 @@
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <atomic>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,9 @@ enum class OBDState {
 
 class OBDHandler {
 public:
+    using BoolCallback = std::function<bool()>;
+    using VoidCallback = std::function<void()>;
+
     OBDHandler();
     ~OBDHandler();
 
@@ -129,6 +133,11 @@ public:
     bool requestRPM();
     bool requestVoltage();
     bool requestIntakeAirTemp();
+    bool requestOilTemp();
+
+    // Dependency injection hooks: keeps OBD logic independent from V1 BLE implementation.
+    void setLinkReadyCallback(BoolCallback cb);
+    void setStartScanCallback(VoidCallback cb);
 
 private:
     // BLE UART service UUIDs
@@ -138,6 +147,9 @@ private:
 
     static constexpr size_t RESPONSE_BUFFER_SIZE = 256;
     static constexpr uint32_t POLL_INTERVAL_MS = 1000;
+    static constexpr uint8_t RPM_POLL_DIV = 2;
+    static constexpr uint8_t IAT_POLL_DIV = 15;
+    static constexpr uint8_t OIL_TEMP_POLL_DIV = 20;
     static constexpr uint8_t MAX_CONNECTION_FAILURES = 5;
     static constexpr uint32_t BASE_RETRY_DELAY_MS = 3000;
     static constexpr uint32_t MAX_RETRY_DELAY_MS = 30000;
@@ -216,9 +228,15 @@ private:
     bool parseRPMResponse(const String& response, uint16_t& rpm);
     bool parseVoltageResponse(const String& response, float& voltage);
     bool parseIntakeAirTempResponse(const String& response, int8_t& tempC);
+    bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC);
 
     static bool isObdLinkName(const std::string& name);
     static uint32_t normalizePin(const String& pin, bool obdLinkDefault);
+    bool isLinkReady() const;
+    void requestScanStart() const;
+
+    BoolCallback isLinkReadyCb;
+    VoidCallback startScanCb;
 
     // Notification callback
     static void notificationCallback(NimBLERemoteCharacteristic* pChar,

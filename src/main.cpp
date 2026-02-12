@@ -617,6 +617,8 @@ void setup() {
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
+    obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.begin();
     bootReady = true;
     bleClient.setBootReady(true);

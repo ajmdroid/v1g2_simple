@@ -27,6 +27,9 @@ static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
 static const char* SETTINGS_NS_LEGACY = "v1settings";
 static const char* WIFI_CLIENT_NS = "v1wificlient";
+static const char* WIFI_CLIENT_SD_SECRET_PATH = "/v1wifi_secret.json";
+static const char* WIFI_CLIENT_SD_SECRET_TYPE = "v1wifi_secret";
+static const int WIFI_CLIENT_SD_SECRET_VERSION = 1;
 
 // Global instance
 SettingsManager settingsManager;
@@ -146,6 +149,105 @@ static String decodeObfuscatedFromStorage(const String& stored) {
 
     // Legacy format: raw XOR bytes stored directly as a String.
     return xorObfuscate(stored);
+}
+
+static bool saveWifiClientSecretToSD(const String& ssid, const String& encodedPassword) {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return false;
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        Serial.println("[Settings] WARN: Failed to acquire SD mutex for WiFi secret save");
+        return false;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) {
+        return false;
+    }
+
+    JsonDocument doc;
+    doc["_type"] = WIFI_CLIENT_SD_SECRET_TYPE;
+    doc["_version"] = WIFI_CLIENT_SD_SECRET_VERSION;
+    doc["ssid"] = ssid;
+    doc["password_obf"] = encodedPassword;
+    doc["timestamp"] = millis();
+
+    File file = fs->open(WIFI_CLIENT_SD_SECRET_PATH, FILE_WRITE);
+    if (!file) {
+        Serial.println("[Settings] WARN: Failed to open SD WiFi secret file for write");
+        return false;
+    }
+
+    serializeJson(doc, file);
+    file.flush();
+    file.close();
+    return true;
+}
+
+static String loadWifiClientSecretFromSD(const String& expectedSsid) {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return "";
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return "";
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs || !fs->exists(WIFI_CLIENT_SD_SECRET_PATH)) {
+        return "";
+    }
+
+    File file = fs->open(WIFI_CLIENT_SD_SECRET_PATH, FILE_READ);
+    if (!file) {
+        return "";
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, file);
+    file.close();
+    if (err) {
+        Serial.printf("[Settings] WARN: Failed to parse SD WiFi secret: %s\n", err.c_str());
+        return "";
+    }
+
+    const char* type = doc["_type"] | "";
+    if (strcmp(type, WIFI_CLIENT_SD_SECRET_TYPE) != 0) {
+        return "";
+    }
+
+    String savedSsid = doc["ssid"] | "";
+    if (expectedSsid.length() > 0 && savedSsid.length() > 0 && savedSsid != expectedSsid) {
+        Serial.printf("[Settings] WARN: SD WiFi secret SSID mismatch (want='%s' got='%s')\n",
+                      expectedSsid.c_str(),
+                      savedSsid.c_str());
+        return "";
+    }
+
+    return doc["password_obf"] | "";
+}
+
+static void clearWifiClientSecretFromSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return;
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) {
+        return;
+    }
+
+    if (fs->exists(WIFI_CLIENT_SD_SECRET_PATH)) {
+        fs->remove(WIFI_CLIENT_SD_SECRET_PATH);
+    }
 }
 
 String SettingsManager::getActiveNamespace() {
@@ -613,17 +715,48 @@ void SettingsManager::setAPCredentials(const String& ssid, const String& passwor
 
 String SettingsManager::getWifiClientPassword() {
     Preferences prefs;
+    bool hasNvsKey = false;
+    String storedPwd;
     if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
+        storedPwd = "";
+    } else {
+        hasNvsKey = prefs.isKey("password");
+        if (hasNvsKey) {
+            storedPwd = prefs.getString("password", "");
+        }
+        prefs.end();
+    }
+
+    // Open-network credential: key present with empty value is valid.
+    if (hasNvsKey && storedPwd.length() == 0) {
         return "";
     }
-    String storedPwd;
-    if (prefs.isKey("password")) {
-        storedPwd = prefs.getString("password", "");
+
+    if (storedPwd.length() > 0) {
+        // Password is stored as obfuscated hex payload (legacy raw XOR still supported).
+        return decodeObfuscatedFromStorage(storedPwd);
     }
-    prefs.end();
-    
-    // Password is stored as obfuscated hex payload (legacy raw XOR still supported).
-    return storedPwd.length() > 0 ? decodeObfuscatedFromStorage(storedPwd) : "";
+
+    // Fallback: recover password from SD-backed secret store if available.
+    String sdEncoded = loadWifiClientSecretFromSD(settings.wifiClientSSID);
+    if (sdEncoded.length() == 0) {
+        return "";
+    }
+
+    String decoded = decodeObfuscatedFromStorage(sdEncoded);
+    if (decoded.length() == 0) {
+        return "";
+    }
+
+    // Heal NVS from SD fallback so future reconnects do not hit SD.
+    Preferences healPrefs;
+    if (healPrefs.begin(WIFI_CLIENT_NS, false)) {
+        healPrefs.putString("password", sdEncoded);
+        healPrefs.end();
+        Serial.println("[Settings] Recovered WiFi client password from SD secret");
+    }
+
+    return decoded;
 }
 
 void SettingsManager::setWifiClientEnabled(bool enabled) {
@@ -636,26 +769,43 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
     settings.wifiClientSSID = ssid;
     settings.wifiClientEnabled = true;
     settings.wifiMode = V1_WIFI_APSTA;
-    
+
+    const String encodedPassword = encodeObfuscatedForStorage(password);
+    bool nvsSaved = false;
+
     // Store password in separate namespace with obfuscation
     Preferences prefs;
     if (prefs.begin(WIFI_CLIENT_NS, false)) {  // Read-write
-        size_t written = prefs.putString("password", encodeObfuscatedForStorage(password));
+        size_t written = 0;
+        if (password.length() == 0) {
+            // Open network: no password required.
+            prefs.remove("password");
+            nvsSaved = true;
+        } else {
+            written = prefs.putString("password", encodedPassword);
+            nvsSaved = written > 0;
+        }
         prefs.end();
-        
-        if (written > 0) {
+
+        if (nvsSaved) {
             Serial.println("[Settings] WiFi client credentials saved");
         } else {
             // NVS might be full - try recovery and retry
             Serial.println("[Settings] WiFi password save failed, trying NVS recovery...");
             String activeNs = getActiveNamespace();
             attemptNvsRecovery(activeNs.c_str());
-            
+
             // Retry save
             if (prefs.begin(WIFI_CLIENT_NS, false)) {
-                written = prefs.putString("password", encodeObfuscatedForStorage(password));
+                if (password.length() == 0) {
+                    prefs.remove("password");
+                    nvsSaved = true;
+                } else {
+                    written = prefs.putString("password", encodedPassword);
+                    nvsSaved = written > 0;
+                }
                 prefs.end();
-                if (written > 0) {
+                if (nvsSaved) {
                     Serial.println("[Settings] WiFi client credentials saved after recovery");
                 } else {
                     Serial.println("[Settings] ERROR: WiFi password save failed even after recovery");
@@ -665,7 +815,12 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
     } else {
         Serial.println("[Settings] ERROR: Failed to open WiFi client namespace");
     }
-    
+
+    // Redundant SD copy for recovery when NVS gets wiped/corrupted.
+    if (saveWifiClientSecretToSD(ssid, encodedPassword)) {
+        Serial.println("[Settings] WiFi client secret mirrored to SD");
+    }
+
     save();
 }
 
@@ -681,6 +836,8 @@ void SettingsManager::clearWifiClientCredentials() {
         prefs.end();
         Serial.println("[Settings] WiFi client credentials cleared");
     }
+
+    clearWifiClientSecretFromSD();
     
     save();
 }

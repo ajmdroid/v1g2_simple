@@ -20,6 +20,10 @@
 		speedKph: 0,
 		rpm: 0,
 		voltage: 0,
+		sampleTsMs: 0,
+		sampleAgeMs: 0,
+		oilTempC: null,
+		intakeAirTempC: null,
 		rememberedCount: 0,
 		autoConnectCount: 0
 	});
@@ -74,6 +78,11 @@
 			default:
 				return 'badge-ghost';
 		}
+	}
+
+	function formatTemp(value) {
+		if (typeof value !== 'number') return '—';
+		return `${Math.round(value)}°C`;
 	}
 
 	async function refreshAll() {
@@ -302,21 +311,38 @@
 				</div>
 			</div>
 
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
-				<div class="stat py-3 px-4">
-					<div class="stat-title">V1 Link</div>
-					<div class="stat-value text-base">{status.v1Connected ? 'Ready' : 'Offline'}</div>
+				<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+					<div class="stat py-3 px-4">
+						<div class="stat-title">V1 Link</div>
+						<div class="stat-value text-base">{status.v1Connected ? 'Ready' : 'Offline'}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Speed (mph)</div>
+						<div class="stat-value text-base">{status.hasValidData ? Math.round(status.speedMph) : '—'}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">RPM</div>
+						<div class="stat-value text-base">{status.sampleTsMs ? Math.round(status.rpm || 0) : '—'}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">IAT</div>
+						<div class="stat-value text-base">{formatTemp(status.intakeAirTempC)}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Oil Temp</div>
+						<div class="stat-value text-base">{formatTemp(status.oilTempC)}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Data Age</div>
+						<div class="stat-value text-base">{status.sampleTsMs ? `${Math.round(status.sampleAgeMs / 1000)}s` : '—'}</div>
+						<div class="stat-desc">{status.sampleTsMs && status.sampleAgeMs <= 4000 ? 'fresh' : 'waiting for data'}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Remembered</div>
+						<div class="stat-value text-base">{status.rememberedCount}</div>
+						<div class="stat-desc">Auto-connect: {status.autoConnectCount}</div>
+					</div>
 				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Speed (mph)</div>
-					<div class="stat-value text-base">{status.hasValidData ? Math.round(status.speedMph) : '—'}</div>
-				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Remembered</div>
-					<div class="stat-value text-base">{status.rememberedCount}</div>
-					<div class="stat-desc">Auto-connect: {status.autoConnectCount}</div>
-				</div>
-			</div>
 		</div>
 	</div>
 

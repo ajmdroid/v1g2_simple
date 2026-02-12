@@ -2,15 +2,11 @@
 
 #include "obd_handler.h"
 
-#include "ble_client.h"
-
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
 
 #include <algorithm>
 #include <cstring>
-
-extern V1BLEClient bleClient;
 
 OBDHandler obdHandler;
 
@@ -94,6 +90,24 @@ OBDHandler::~OBDHandler() {
     }
 }
 
+void OBDHandler::setLinkReadyCallback(BoolCallback cb) {
+    isLinkReadyCb = std::move(cb);
+}
+
+void OBDHandler::setStartScanCallback(VoidCallback cb) {
+    startScanCb = std::move(cb);
+}
+
+bool OBDHandler::isLinkReady() const {
+    return isLinkReadyCb ? isLinkReadyCb() : false;
+}
+
+void OBDHandler::requestScanStart() const {
+    if (startScanCb) {
+        startScanCb();
+    }
+}
+
 void OBDHandler::begin() {
     if (!obdMutex) {
         obdMutex = xSemaphoreCreateMutex();
@@ -129,7 +143,7 @@ bool OBDHandler::update() {
 }
 
 void OBDHandler::tryAutoConnect() {
-    if (!bleClient.isConnected()) {
+    if (!isLinkReady()) {
         return;
     }
 
@@ -207,7 +221,7 @@ void OBDHandler::clearFoundDevices() {
 }
 
 void OBDHandler::startScan() {
-    if (!bleClient.isConnected()) {
+    if (!isLinkReady()) {
         Serial.println("[OBD] Scan blocked: connect V1 first");
         return;
     }
@@ -226,7 +240,7 @@ void OBDHandler::startScan() {
     }
 
     Serial.println("[OBD] Manual scan started");
-    bleClient.startOBDScan();
+    requestScanStart();
 }
 
 void OBDHandler::stopScan() {
@@ -298,6 +312,50 @@ bool OBDHandler::connectToAddress(const String& address,
 
     if (!obdMutex) {
         obdMutex = xSemaphoreCreateMutex();
+    }
+
+    bool alreadyActiveForTarget = false;
+    String effectiveName = name.length() ? name : address;
+    {
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+        if (!lock.ok()) {
+            return false;
+        }
+
+        if (hasTargetDevice) {
+            const String currentAddr = String(targetAddress.toString().c_str());
+            const bool sameTarget = currentAddr.equalsIgnoreCase(address);
+            const bool activeState =
+                (state == OBDState::CONNECTING ||
+                 state == OBDState::INITIALIZING ||
+                 state == OBDState::READY ||
+                 state == OBDState::POLLING);
+            if (sameTarget && activeState) {
+                alreadyActiveForTarget = true;
+                if (name.length()) {
+                    targetDeviceName = name;
+                    effectiveName = name;
+                } else {
+                    effectiveName = targetDeviceName.length() ? targetDeviceName : address;
+                }
+                if (pin.length()) {
+                    targetPin = pin;
+                }
+                rememberTargetOnConnect = rememberTargetOnConnect || remember;
+                targetAutoConnect = autoConnect;
+            }
+        }
+    }
+
+    if (alreadyActiveForTarget) {
+        if (remember) {
+            upsertRemembered(address, effectiveName, pin, autoConnect, millis());
+            saveRememberedDevices();
+        }
+        Serial.printf("[OBD] Connect ignored: already active for %s (%s)\n",
+                      effectiveName.c_str(),
+                      address.c_str());
+        return true;
     }
 
     disconnect();
@@ -494,7 +552,7 @@ bool OBDHandler::runStateMachine() {
             return lastData.valid;
 
         case OBDState::DISCONNECTED:
-            if (!hasTargetDevice || !bleClient.isConnected()) {
+            if (!hasTargetDevice || !isLinkReady()) {
                 return false;
             }
             if (connectionFailures >= MAX_CONNECTION_FAILURES) {
@@ -517,7 +575,7 @@ bool OBDHandler::runStateMachine() {
 }
 
 void OBDHandler::handleConnecting() {
-    if (!bleClient.isConnected()) {
+    if (!isLinkReady()) {
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();
         return;
@@ -584,13 +642,27 @@ void OBDHandler::handlePolling() {
     }
     lastPollMs = millis();
 
+    static uint32_t pollCounter = 0;
+    pollCounter++;
+
+    // Keep speed as the primary metric at 1 Hz.
     requestSpeed();
 
-    static uint8_t slowCounter = 0;
-    slowCounter++;
-    if (slowCounter >= 30) {
-        slowCounter = 0;
+    // Secondary metrics are polled at lower rates to avoid BLE/UART saturation.
+    if ((pollCounter % RPM_POLL_DIV) == 0) {
+        requestRPM();
+    }
+
+    if ((pollCounter % IAT_POLL_DIV) == 0) {
         requestIntakeAirTemp();
+    }
+
+    if ((pollCounter % OIL_TEMP_POLL_DIV) == 0) {
+        requestOilTemp();
+    }
+
+    if ((pollCounter % 30) == 0) {
+        requestVoltage();
     }
 }
 
@@ -607,24 +679,85 @@ bool OBDHandler::connectToDevice() {
         }
         pOBDClient->setClientCallbacks(&obdSecurityCallbacks);
         pOBDClient->setConnectionParams(12, 12, 0, 500);
+        // NimBLE timeout is configured on the client, not via connect() args.
+        pOBDClient->setConnectTimeout(10000);
     }
 
     s_activePinCode = normalizePin(targetPin, targetIsObdLink);
 
+    const std::string targetAddrStr = targetAddress.toString();
+    const uint8_t primaryAddrType = targetAddress.getType();
+
+    struct SecurityProfile {
+        bool mitm;
+        bool sc;
+        uint8_t ioCap;
+        const char* label;
+    };
+
+    SecurityProfile profiles[2];
+    size_t profileCount = 0;
+
     if (targetIsObdLink) {
-        NimBLEDevice::setSecurityAuth(true, true, true);
-        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO);
+        // OBDLink CX typically uses Secure Connections, but keep a legacy fallback.
+        profiles[profileCount++] = SecurityProfile{true, true, BLE_HS_IO_DISPLAY_YESNO, "sc"};
+        profiles[profileCount++] = SecurityProfile{true, false, BLE_HS_IO_KEYBOARD_ONLY, "legacy"};
     } else {
-        NimBLEDevice::setSecurityAuth(true, false, false);
-        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY);
+        profiles[profileCount++] = SecurityProfile{false, false, BLE_HS_IO_KEYBOARD_ONLY, "legacy"};
     }
 
-    if (!pOBDClient->connect(targetAddress, false, 10)) {
-        return false;
+    for (size_t i = 0; i < profileCount; i++) {
+        NimBLEDevice::setSecurityAuth(true, profiles[i].mitm, profiles[i].sc);
+        NimBLEDevice::setSecurityIOCap(profiles[i].ioCap);
+
+        // Some adapters (or bonded identities) may resolve with ID address types.
+        // Try a small set of valid NimBLE peer types in deterministic order.
+        uint8_t addrTypes[4] = {0};
+        size_t addrTypeCount = 0;
+        auto pushAddrType = [&](uint8_t t) {
+            for (size_t k = 0; k < addrTypeCount; k++) {
+                if (addrTypes[k] == t) return;
+            }
+            addrTypes[addrTypeCount++] = t;
+        };
+
+        pushAddrType(primaryAddrType);
+        pushAddrType(BLE_ADDR_PUBLIC);
+        pushAddrType(BLE_ADDR_RANDOM);
+        pushAddrType(BLE_ADDR_PUBLIC_ID);
+        pushAddrType(BLE_ADDR_RANDOM_ID);
+
+        for (size_t j = 0; j < addrTypeCount; j++) {
+            const uint8_t addrType = addrTypes[j];
+            NimBLEAddress candidate(targetAddrStr, addrType);
+
+            Serial.printf("[OBD] Connect try (%s, addrType=%u)\n",
+                          profiles[i].label,
+                          (unsigned)addrType);
+
+            // NimBLE signature: connect(address, deleteAttributes, asyncConnect, exchangeMTU)
+            // Use blocking connect with configured timeout.
+            if (!pOBDClient->connect(candidate, false, false, true)) {
+                Serial.printf("[OBD] Connect attempt failed (%s, addrType=%u, err=%d)\n",
+                              profiles[i].label,
+                              (unsigned)addrType,
+                              pOBDClient->getLastError());
+                continue;
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(250));
+            if (pOBDClient->isConnected()) {
+                // Preserve the working address type for subsequent reconnects.
+                targetAddress = candidate;
+                return true;
+            }
+
+            pOBDClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(250));
-    return pOBDClient->isConnected();
+    return false;
 }
 
 bool OBDHandler::discoverServices() {
@@ -755,6 +888,10 @@ bool OBDHandler::requestSpeed() {
 
     uint8_t speedKph = 0;
     if (!parseSpeedResponse(response, speedKph)) {
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+        if (lock.ok()) {
+            lastData.valid = false;
+        }
         return false;
     }
 
@@ -830,6 +967,36 @@ bool OBDHandler::requestIntakeAirTemp() {
     return true;
 }
 
+bool OBDHandler::requestOilTemp() {
+    String response;
+    if (!sendATCommand("ATSH7E0", response, 500)) {
+        return false;
+    }
+
+    bool parsed = false;
+    int8_t tempC = -128;
+
+    if (sendATCommand("22F40C", response, 500)) {
+        parsed = parseVwMode22TempResponse(response, "F40C", tempC);
+    }
+
+    // Always restore default functional header after VW-specific request.
+    String restoreResponse;
+    (void)sendATCommand("ATSH7DF", restoreResponse, 200);
+
+    if (!parsed) {
+        return false;
+    }
+
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+    if (!lock.ok()) {
+        return false;
+    }
+    lastData.oil_temp_c = tempC;
+    lastData.timestamp_ms = millis();
+    return true;
+}
+
 bool OBDHandler::isValidHexString(const String& str, size_t expectedLen) {
     if (str.length() == 0) return false;
     if (expectedLen > 0 && str.length() != expectedLen) return false;
@@ -847,11 +1014,14 @@ bool OBDHandler::isValidHexString(const String& str, size_t expectedLen) {
 }
 
 bool OBDHandler::parseSpeedResponse(const String& response, uint8_t& speedKph) {
-    int idx = response.indexOf("410D");
-    if (idx < 0) idx = response.indexOf("410d");
+    String normalized(response);
+    normalized.toUpperCase();
+    normalized.replace(" ", "");
+
+    int idx = normalized.indexOf("410D");
     if (idx < 0) return false;
 
-    const String hexVal = response.substring(idx + 4, idx + 6);
+    const String hexVal = normalized.substring(idx + 4, idx + 6);
     if (!isValidHexString(hexVal, 2)) return false;
 
     speedKph = static_cast<uint8_t>(strtoul(hexVal.c_str(), nullptr, 16));
@@ -859,12 +1029,15 @@ bool OBDHandler::parseSpeedResponse(const String& response, uint8_t& speedKph) {
 }
 
 bool OBDHandler::parseRPMResponse(const String& response, uint16_t& rpm) {
-    int idx = response.indexOf("410C");
-    if (idx < 0) idx = response.indexOf("410c");
+    String normalized(response);
+    normalized.toUpperCase();
+    normalized.replace(" ", "");
+
+    int idx = normalized.indexOf("410C");
     if (idx < 0) return false;
 
-    const String hexA = response.substring(idx + 4, idx + 6);
-    const String hexB = response.substring(idx + 6, idx + 8);
+    const String hexA = normalized.substring(idx + 4, idx + 6);
+    const String hexB = normalized.substring(idx + 6, idx + 8);
 
     if (!isValidHexString(hexA, 2) || !isValidHexString(hexB, 2)) {
         return false;
@@ -882,14 +1055,52 @@ bool OBDHandler::parseVoltageResponse(const String& response, float& voltage) {
 }
 
 bool OBDHandler::parseIntakeAirTempResponse(const String& response, int8_t& tempC) {
-    int idx = response.indexOf("410F");
-    if (idx < 0) idx = response.indexOf("410f");
+    String normalized(response);
+    normalized.toUpperCase();
+    normalized.replace(" ", "");
+
+    int idx = normalized.indexOf("410F");
     if (idx < 0) return false;
 
-    const String hexVal = response.substring(idx + 4, idx + 6);
+    const String hexVal = normalized.substring(idx + 4, idx + 6);
     if (!isValidHexString(hexVal, 2)) return false;
 
     const uint8_t raw = static_cast<uint8_t>(strtoul(hexVal.c_str(), nullptr, 16));
+    tempC = static_cast<int8_t>(raw - 40);
+    return true;
+}
+
+bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC) {
+    if (!pidEcho || pidEcho[0] == '\0') {
+        return false;
+    }
+
+    String normalized(response);
+    normalized.toUpperCase();
+
+    String pattern = String("62") + String(pidEcho);
+    pattern.toUpperCase();
+
+    const int idx = normalized.indexOf(pattern);
+    if (idx < 0) {
+        return false;
+    }
+
+    const int dataStart = idx + pattern.length();
+    if (dataStart + 2 > normalized.length()) {
+        return false;
+    }
+
+    const String hexVal = normalized.substring(dataStart, dataStart + 2);
+    if (!isValidHexString(hexVal, 2)) {
+        return false;
+    }
+
+    const uint8_t raw = static_cast<uint8_t>(strtoul(hexVal.c_str(), nullptr, 16));
+    if (raw == 0) {
+        return false;
+    }
+
     tempC = static_cast<int8_t>(raw - 40);
     return true;
 }

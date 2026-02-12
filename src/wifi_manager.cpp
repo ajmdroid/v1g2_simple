@@ -943,14 +943,16 @@ void WiFiManager::processWifiClientConnectPhase() {
     switch (wifiConnectPhase) {
         case WifiConnectPhase::PREPARE_OFF:
             if (setupModeState == SETUP_MODE_AP_ON) {
-                // Keep AP online (and IP stable) while refreshing STA connection state.
-                Serial.println("[WiFiClient] Preserving AP, resetting STA before reconnect...");
+                // Keep AP online and use a direct STA begin path.
+                // Repeated STA resets in AP+STA mode have proven brittle on some routers.
+                Serial.println("[WiFiClient] Preserving AP, preparing STA connect...");
                 if (WiFi.getMode() != WIFI_AP_STA) {
                     WiFi.mode(WIFI_AP_STA);
+                    wifiConnectPhaseStartMs = now;
+                    wifiConnectPhase = WifiConnectPhase::WAIT_AP_STA;
+                } else {
+                    wifiConnectPhase = WifiConnectPhase::BEGIN_CONNECT;
                 }
-                WiFi.disconnect(false);  // STA disconnect only; do not tear down AP
-                wifiConnectPhaseStartMs = now;
-                wifiConnectPhase = WifiConnectPhase::WAIT_AP_STA;
             } else {
                 if (WiFi.getMode() != WIFI_OFF) {
                     Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
@@ -988,6 +990,9 @@ void WiFiManager::processWifiClientConnectPhase() {
                 debugLogger.notifyWifiTransition(true);
                 break;
             }
+            // Improve coexistence stability while connecting alongside BLE links.
+            WiFi.setSleep(false);
+            WiFi.setAutoReconnect(true);
             Serial.printf("[WiFiClient] Connecting to: %s\n", pendingConnectSSID.c_str());
             WiFi.begin(pendingConnectSSID.c_str(), pendingConnectPassword.c_str());
             wifiConnectStartMs = now;
@@ -1169,7 +1174,7 @@ void WiFiManager::checkWifiClientStatus() {
                 Serial.println("[WiFiClient] Auto-reconnect resumed");
                 wifiReconnectDeferredLogged = false;
             }
-            
+
             // Auto-reconnect if we have saved credentials (with failure limit)
             const V1Settings& settings = settingsManager.get();
             if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
@@ -3583,6 +3588,12 @@ void WiFiManager::handleObdStatus() {
     markUiActivity();
 
     JsonDocument doc;
+    OBDData data = obdHandler.getData();
+    const uint32_t nowMs = millis();
+    const uint32_t dataAgeMs = (data.timestamp_ms > 0 && nowMs >= data.timestamp_ms)
+                                   ? (nowMs - data.timestamp_ms)
+                                   : 0;
+
     doc["state"] = obdHandler.getStateString();
     doc["connected"] = obdHandler.isConnected();
     doc["scanning"] = obdHandler.isScanActive();
@@ -3590,14 +3601,29 @@ void WiFiManager::handleObdStatus() {
     doc["deviceAddress"] = obdHandler.getConnectedDeviceAddress();
     doc["v1Connected"] = bleClient.isConnected();
     doc["hasValidData"] = obdHandler.hasValidData();
+    doc["speedMph"] = data.speed_mph;
+    doc["speedKph"] = data.speed_kph;
+    doc["rpm"] = data.rpm;
+    doc["voltage"] = data.voltage;
+    doc["sampleTsMs"] = data.timestamp_ms;
+    doc["sampleAgeMs"] = dataAgeMs;
 
-    if (obdHandler.hasValidData()) {
-        OBDData data = obdHandler.getData();
-        doc["speedMph"] = data.speed_mph;
-        doc["speedKph"] = data.speed_kph;
-        doc["rpm"] = data.rpm;
-        doc["voltage"] = data.voltage;
-        doc["sampleTsMs"] = data.timestamp_ms;
+    if (data.oil_temp_c == -128) {
+        doc["oilTempC"] = nullptr;
+    } else {
+        doc["oilTempC"] = data.oil_temp_c;
+    }
+
+    if (data.dsg_temp_c == -128) {
+        doc["dsgTempC"] = nullptr;
+    } else {
+        doc["dsgTempC"] = data.dsg_temp_c;
+    }
+
+    if (data.intake_air_temp_c == -128) {
+        doc["intakeAirTempC"] = nullptr;
+    } else {
+        doc["intakeAirTempC"] = data.intake_air_temp_c;
     }
 
     auto remembered = obdHandler.getRememberedDevices();
@@ -3726,6 +3752,7 @@ void WiFiManager::handleObdRemembered() {
     JsonDocument doc;
     JsonArray arr = doc["devices"].to<JsonArray>();
     auto remembered = obdHandler.getRememberedDevices();
+    const bool obdConnected = obdHandler.isConnected();
     String connectedAddr = obdHandler.getConnectedDeviceAddress();
     for (const auto& device : remembered) {
         JsonObject d = arr.add<JsonObject>();
@@ -3734,7 +3761,9 @@ void WiFiManager::handleObdRemembered() {
         d["autoConnect"] = device.autoConnect;
         d["pinSet"] = device.pin.length() > 0;
         d["lastSeenMs"] = device.lastSeenMs;
-        d["connected"] = connectedAddr.length() > 0 && connectedAddr.equalsIgnoreCase(device.address);
+        d["connected"] = obdConnected &&
+                         connectedAddr.length() > 0 &&
+                         connectedAddr.equalsIgnoreCase(device.address);
     }
     doc["count"] = remembered.size();
 
