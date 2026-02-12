@@ -3075,10 +3075,12 @@ bool V1Display::drawRestTelemetryCards(bool forceRedraw) {
     const bool voltAvailable = hasFreshData && (obd.voltage > 0.0f);
 
     if (oilAvailable) {
-        snprintf(valueOil, sizeof(valueOil), "%dC", static_cast<int>(obd.oil_temp_c));
+        const int oilF = static_cast<int>(obd.oil_temp_c) * 9 / 5 + 32;
+        snprintf(valueOil, sizeof(valueOil), "%dF", oilF);
     }
     if (iatAvailable) {
-        snprintf(valueIat, sizeof(valueIat), "%dC", static_cast<int>(obd.intake_air_temp_c));
+        const int iatF = static_cast<int>(obd.intake_air_temp_c) * 9 / 5 + 32;
+        snprintf(valueIat, sizeof(valueIat), "%dF", iatF);
     }
     if (voltAvailable) {
         snprintf(valueVolt, sizeof(valueVolt), "%.1fV", obd.voltage);
