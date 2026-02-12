@@ -392,6 +392,9 @@ static void fatalBootError(const char* message, bool displayAvailable) {
 
 
 void setup() {
+    const unsigned long setupStartMs = millis();
+    unsigned long setupStageStartMs = setupStartMs;
+
     // Wait for USB to stabilize after upload
     delay(50);
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
@@ -410,6 +413,15 @@ void setup() {
     
     // Check NVS health early - before other subsystems start using it
     nvsHealthCheck();
+
+    auto logBootStage = [&](const char* stageName) {
+        const unsigned long now = millis();
+        SerialLog.printf("[Boot] stage=%s delta=%lu total=%lu\n",
+                         stageName,
+                         now - setupStageStartMs,
+                         now - setupStartMs);
+        setupStageStartMs = now;
+    };
     
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
@@ -440,6 +452,7 @@ void setup() {
                      static_cast<unsigned long>(psramTotal),
                      static_cast<unsigned long>(psramFree),
                      static_cast<unsigned long>(psramLargest));
+    logBootStage("preflight");
     
     // Initialize battery manager EARLY - needs to latch power on if running on battery
     // This must happen before any long-running init to prevent shutdown
@@ -449,6 +462,7 @@ void setup() {
     // DEBUG: Simulate battery for testing UI (uncomment to test)
     // batteryManager.simulateBattery(3800);  // 60% battery
 #endif
+    logBootStage("battery");
     
     // Initialize display
     if (!display.begin()) {
@@ -459,6 +473,7 @@ void setup() {
     
     // Brief post-display settle before settings init
     delay(10);
+    logBootStage("display");
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();
@@ -467,6 +482,7 @@ void setup() {
     powerModule.begin(&batteryManager, &display, &settingsManager, &debugLogger);
     powerModule.logStartupStatus();
 #endif
+    logBootStage("settings");
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
@@ -477,6 +493,7 @@ void setup() {
     } else {
         showInitialScanningScreen();
     }
+    logBootStage("boot_ui");
 
     // Initialize display preview driver
     displayPreviewModule.begin(&display);
@@ -514,6 +531,7 @@ void setup() {
     } else {
         SerialLog.println("[Perf] SD logger disabled (no SD)");
     }
+    logBootStage("storage");
 
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
@@ -555,6 +573,7 @@ void setup() {
                            &autoPushModule,
                            &alertPersistenceModule,
                            &displayMode);
+    logBootStage("ui_modules");
 
     DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
     uint32_t logMask = buildLogCategoryBitmap(bootCfg);
@@ -588,6 +607,7 @@ void setup() {
     } else {
         SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
     }
+    logBootStage("touch");
     
     // Initialize BOOT button (GPIO 0) for brightness adjustment
 #if defined(DISPLAY_WAVESHARE_349)
@@ -624,6 +644,7 @@ void setup() {
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
+    logBootStage("core_pipeline");
 
 #ifndef REPLAY_MODE
     // Initialize BLE client with proxy settings from preferences
@@ -650,6 +671,7 @@ void setup() {
     
     // Register V1 connection callback for auto-push
     bleClient.onV1Connected(onV1Connected);
+    logBootStage("ble_start");
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
@@ -662,6 +684,8 @@ void setup() {
     } else {
         SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
     }
+    logBootStage("wifi");
+    SerialLog.printf("[Boot] setup total: %lu ms\n", millis() - setupStartMs);
 }
 
 void loop() {
