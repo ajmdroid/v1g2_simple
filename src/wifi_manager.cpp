@@ -308,6 +308,8 @@ bool WiFiManager::canStartSetupMode(uint32_t* freeInternal, uint32_t* largestInt
 // (called on every HTTP request via checkRateLimit/markUiActivity)
 
 bool WiFiManager::startSetupMode() {
+    timeService.begin();  // Ensure persisted/system time is restored before serving UI.
+
     // Always-on AP; idempotent start
     if (setupModeState == SETUP_MODE_AP_ON) {
         WIFI_LOG("[SetupMode] Already active\n");
@@ -719,6 +721,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
     server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
     server.on("/api/obd/disconnect", HTTP_POST, [this]() { handleObdDisconnect(); });
+    server.on("/api/obd/config", HTTP_POST, [this]() { handleObdConfig(); });
     server.on("/api/obd/remembered", HTTP_GET, [this]() { handleObdRemembered(); });
     server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() { handleObdRememberedAutoConnect(); });
     server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
@@ -1247,6 +1250,7 @@ void WiFiManager::handleStatus() {
         const bool timeValid = timeService.timeValid();
         time["valid"] = timeValid;
         time["source"] = timeService.timeSource();
+        time["confidence"] = timeService.timeConfidence();
         time["tzOffsetMin"] = timeService.tzOffsetMinutes();
         time["tzOffsetMinutes"] = timeService.tzOffsetMinutes();
         if (timeValid) {
@@ -1416,6 +1420,7 @@ void WiFiManager::handleTimeSet() {
     response["ok"] = true;
     response["timeValid"] = timeService.timeValid();
     response["timeSource"] = timeService.timeSource();
+    response["timeConfidence"] = timeService.timeConfidence();
     response["epochMs"] = timeService.nowEpochMsOr0();
     response["tzOffsetMin"] = timeService.tzOffsetMinutes();
 
@@ -1439,6 +1444,7 @@ void WiFiManager::handleSettingsApi() {
     doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
+    doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1500,6 +1506,11 @@ void WiFiManager::handleSettingsSave() {
             proxyName = proxyName.substring(0, 32);  // Truncate to max 32 chars
         }
         mutableSettings.proxyName = proxyName;
+    }
+    if (server.hasArg("obdVwDataEnabled")) {
+        mutableSettings.obdVwDataEnabled =
+            (server.arg("obdVwDataEnabled") == "true" || server.arg("obdVwDataEnabled") == "1");
+        obdHandler.setVwDataEnabled(mutableSettings.obdVwDataEnabled);
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
@@ -2163,244 +2174,133 @@ void WiFiManager::handleDisplayColorsSave() {
     for (int i = 0; i < server.args(); i++) {
         Serial.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
     }
-    
-    // Handle main display colors only if any color arg provided
+
+    const V1Settings& currentSettings = settingsManager.get();
+    V1Settings& s = const_cast<V1Settings&>(currentSettings);
+
+    auto argBool = [this](const char* key, bool fallback) -> bool {
+        if (!server.hasArg(key)) return fallback;
+        return server.arg(key) == "true" || server.arg(key) == "1";
+    };
+
+    // Main display colors
     if (server.hasArg("bogey") || server.hasArg("freq") || server.hasArg("arrowFront") ||
         server.hasArg("arrowSide") || server.hasArg("arrowRear") || server.hasArg("bandL") ||
         server.hasArg("bandKa") || server.hasArg("bandK") || server.hasArg("bandX")) {
-        const V1Settings& current = settingsManager.get();
-        uint16_t bogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : current.colorBogey;
-        uint16_t freq = server.hasArg("freq") ? server.arg("freq").toInt() : current.colorFrequency;
-        uint16_t arrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : current.colorArrowFront;
-        uint16_t arrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : current.colorArrowSide;
-        uint16_t arrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : current.colorArrowRear;
-        uint16_t bandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : current.colorBandL;
-        uint16_t bandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : current.colorBandKa;
-        uint16_t bandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : current.colorBandK;
-        uint16_t bandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : current.colorBandX;
-        
-        Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n", bogey, freq, arrowFront, arrowSide, arrowRear);
-        
-        settingsManager.setDisplayColors(bogey, freq, arrowFront, arrowSide, arrowRear, bandL, bandKa, bandK, bandX, true);
+        s.colorBogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : s.colorBogey;
+        s.colorFrequency = server.hasArg("freq") ? server.arg("freq").toInt() : s.colorFrequency;
+        s.colorArrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : s.colorArrowFront;
+        s.colorArrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : s.colorArrowSide;
+        s.colorArrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : s.colorArrowRear;
+        s.colorBandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : s.colorBandL;
+        s.colorBandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : s.colorBandKa;
+        s.colorBandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : s.colorBandK;
+        s.colorBandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : s.colorBandX;
+
+        Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n",
+                      s.colorBogey, s.colorFrequency, s.colorArrowFront, s.colorArrowSide, s.colorArrowRear);
     }
-    
-    // Handle WiFi icon colors if provided
-    if (server.hasArg("wifiIcon") || server.hasArg("wifiConnected")) {
-        uint16_t wifiIcon = server.hasArg("wifiIcon") ? server.arg("wifiIcon").toInt() : 0x07FF;
-        uint16_t wifiConn = server.hasArg("wifiConnected") ? server.arg("wifiConnected").toInt() : 0x07E0;
-        settingsManager.setWiFiIconColors(wifiIcon, wifiConn);
-    }
-    
-    // Handle BLE icon colors if provided
-    if (server.hasArg("bleConnected") || server.hasArg("bleDisconnected")) {
-        uint16_t bleConn = server.hasArg("bleConnected") ? server.arg("bleConnected").toInt() : 0x07E0;
-        uint16_t bleDisc = server.hasArg("bleDisconnected") ? server.arg("bleDisconnected").toInt() : 0x001F;
-        settingsManager.setBleIconColors(bleConn, bleDisc);
-    }
-    
-    // Handle signal bar colors if provided
-    if (server.hasArg("bar1") || server.hasArg("bar2") || server.hasArg("bar3") ||
-        server.hasArg("bar4") || server.hasArg("bar5") || server.hasArg("bar6")) {
-        uint16_t bar1 = server.hasArg("bar1") ? server.arg("bar1").toInt() : 0x07E0;
-        uint16_t bar2 = server.hasArg("bar2") ? server.arg("bar2").toInt() : 0x07E0;
-        uint16_t bar3 = server.hasArg("bar3") ? server.arg("bar3").toInt() : 0xFFE0;
-        uint16_t bar4 = server.hasArg("bar4") ? server.arg("bar4").toInt() : 0xFFE0;
-        uint16_t bar5 = server.hasArg("bar5") ? server.arg("bar5").toInt() : 0xF800;
-        uint16_t bar6 = server.hasArg("bar6") ? server.arg("bar6").toInt() : 0xF800;
-        settingsManager.setSignalBarColors(bar1, bar2, bar3, bar4, bar5, bar6);
-    }
-    
-    // Handle muted color if provided
-    if (server.hasArg("muted")) {
-        uint16_t mutedColor = server.arg("muted").toInt();
-        settingsManager.setMutedColor(mutedColor);
-    }
-    
-    // Handle photo radar band color if provided
-    if (server.hasArg("bandPhoto")) {
-        uint16_t bandPhotoColor = server.arg("bandPhoto").toInt();
-        settingsManager.setBandPhotoColor(bandPhotoColor);
-    }
-    
-    // Handle persisted color if provided
-    if (server.hasArg("persisted")) {
-        uint16_t persistedColor = server.arg("persisted").toInt();
-        settingsManager.setPersistedColor(persistedColor);
-    }
-    
-    // Handle volume indicator colors
-    if (server.hasArg("volumeMain")) {
-        uint16_t volMainColor = server.arg("volumeMain").toInt();
-        settingsManager.setVolumeMainColor(volMainColor);
-    }
-    if (server.hasArg("volumeMute")) {
-        uint16_t volMuteColor = server.arg("volumeMute").toInt();
-        settingsManager.setVolumeMuteColor(volMuteColor);
-    }
-    
-    // Handle RSSI label colors
-    if (server.hasArg("rssiV1")) {
-        uint16_t rssiV1Color = server.arg("rssiV1").toInt();
-        settingsManager.setRssiV1Color(rssiV1Color);
-    }
-    if (server.hasArg("rssiProxy")) {
-        uint16_t rssiProxyColor = server.arg("rssiProxy").toInt();
-        settingsManager.setRssiProxyColor(rssiProxyColor);
-    }
-    
-    // Handle status bar colors
-    // Handle frequency uses band color setting
-    if (server.hasArg("freqUseBandColor")) {
-        settingsManager.setFreqUseBandColor(server.arg("freqUseBandColor") == "true" || server.arg("freqUseBandColor") == "1");
-    }
-    
-    // Handle display visibility settings
-    if (server.hasArg("hideWifiIcon")) {
-        settingsManager.setHideWifiIcon(server.arg("hideWifiIcon") == "true" || server.arg("hideWifiIcon") == "1");
-    }
-    if (server.hasArg("hideProfileIndicator")) {
-        settingsManager.setHideProfileIndicator(server.arg("hideProfileIndicator") == "true" || server.arg("hideProfileIndicator") == "1");
-    }
-    if (server.hasArg("hideBatteryIcon")) {
-        settingsManager.setHideBatteryIcon(server.arg("hideBatteryIcon") == "true" || server.arg("hideBatteryIcon") == "1");
-    }
-    if (server.hasArg("showBatteryPercent")) {
-        settingsManager.setShowBatteryPercent(server.arg("showBatteryPercent") == "true" || server.arg("showBatteryPercent") == "1");
-    }
-    if (server.hasArg("hideBleIcon")) {
-        settingsManager.setHideBleIcon(server.arg("hideBleIcon") == "true" || server.arg("hideBleIcon") == "1");
-    }
-    if (server.hasArg("hideVolumeIndicator")) {
-        settingsManager.setHideVolumeIndicator(server.arg("hideVolumeIndicator") == "true" || server.arg("hideVolumeIndicator") == "1");
-    }
-    if (server.hasArg("hideRssiIndicator")) {
-        settingsManager.setHideRssiIndicator(server.arg("hideRssiIndicator") == "true" || server.arg("hideRssiIndicator") == "1");
-    }
-    if (server.hasArg("enableWifiAtBoot")) {
-        settingsManager.setEnableWifiAtBoot(server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1", true);
-    }
-    if (server.hasArg("enableDebugLogging")) {
-        settingsManager.setEnableDebugLogging(server.arg("enableDebugLogging") == "true" || server.arg("enableDebugLogging") == "1", true);
-    }
-    if (server.hasArg("logAlerts")) {
-        settingsManager.setLogAlerts(server.arg("logAlerts") == "true" || server.arg("logAlerts") == "1", true);
-    }
-    if (server.hasArg("logWifi")) {
-        settingsManager.setLogWifi(server.arg("logWifi") == "true" || server.arg("logWifi") == "1", true);
-    }
-    if (server.hasArg("logBle")) {
-        settingsManager.setLogBle(server.arg("logBle") == "true" || server.arg("logBle") == "1", true);
-    }
-    if (server.hasArg("logSystem")) {
-        settingsManager.setLogSystem(server.arg("logSystem") == "true" || server.arg("logSystem") == "1", true);
-    }
-    if (server.hasArg("logDisplay")) {
-        settingsManager.setLogDisplay(server.arg("logDisplay") == "true" || server.arg("logDisplay") == "1", true);
-    }
-    if (server.hasArg("logPerfMetrics")) {
-        settingsManager.setLogPerfMetrics(server.arg("logPerfMetrics") == "true" || server.arg("logPerfMetrics") == "1", true);
-    }
-    if (server.hasArg("logAudio")) {
-        settingsManager.setLogAudio(server.arg("logAudio") == "true" || server.arg("logAudio") == "1", true);
-    }
-    if (server.hasArg("logTouch")) {
-        settingsManager.setLogTouch(server.arg("logTouch") == "true" || server.arg("logTouch") == "1", true);
-    }
-    // Voice alert mode (dropdown: 0=disabled, 1=band, 2=freq, 3=band+freq)
+
+    // Color groups
+    if (server.hasArg("wifiIcon")) s.colorWiFiIcon = server.arg("wifiIcon").toInt();
+    if (server.hasArg("wifiConnected")) s.colorWiFiConnected = server.arg("wifiConnected").toInt();
+    if (server.hasArg("bleConnected")) s.colorBleConnected = server.arg("bleConnected").toInt();
+    if (server.hasArg("bleDisconnected")) s.colorBleDisconnected = server.arg("bleDisconnected").toInt();
+    if (server.hasArg("bar1")) s.colorBar1 = server.arg("bar1").toInt();
+    if (server.hasArg("bar2")) s.colorBar2 = server.arg("bar2").toInt();
+    if (server.hasArg("bar3")) s.colorBar3 = server.arg("bar3").toInt();
+    if (server.hasArg("bar4")) s.colorBar4 = server.arg("bar4").toInt();
+    if (server.hasArg("bar5")) s.colorBar5 = server.arg("bar5").toInt();
+    if (server.hasArg("bar6")) s.colorBar6 = server.arg("bar6").toInt();
+    if (server.hasArg("muted")) s.colorMuted = server.arg("muted").toInt();
+    if (server.hasArg("bandPhoto")) s.colorBandPhoto = server.arg("bandPhoto").toInt();
+    if (server.hasArg("persisted")) s.colorPersisted = server.arg("persisted").toInt();
+    if (server.hasArg("volumeMain")) s.colorVolumeMain = server.arg("volumeMain").toInt();
+    if (server.hasArg("volumeMute")) s.colorVolumeMute = server.arg("volumeMute").toInt();
+    if (server.hasArg("rssiV1")) s.colorRssiV1 = server.arg("rssiV1").toInt();
+    if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
+
+    // Display toggles
+    if (server.hasArg("freqUseBandColor")) s.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor);
+    if (server.hasArg("hideWifiIcon")) s.hideWifiIcon = argBool("hideWifiIcon", s.hideWifiIcon);
+    if (server.hasArg("hideProfileIndicator")) s.hideProfileIndicator = argBool("hideProfileIndicator", s.hideProfileIndicator);
+    if (server.hasArg("hideBatteryIcon")) s.hideBatteryIcon = argBool("hideBatteryIcon", s.hideBatteryIcon);
+    if (server.hasArg("showBatteryPercent")) s.showBatteryPercent = argBool("showBatteryPercent", s.showBatteryPercent);
+    if (server.hasArg("hideBleIcon")) s.hideBleIcon = argBool("hideBleIcon", s.hideBleIcon);
+    if (server.hasArg("hideVolumeIndicator")) s.hideVolumeIndicator = argBool("hideVolumeIndicator", s.hideVolumeIndicator);
+    if (server.hasArg("hideRssiIndicator")) s.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator);
+    if (server.hasArg("showRestTelemetryCards")) s.showRestTelemetryCards = argBool("showRestTelemetryCards", s.showRestTelemetryCards);
+
+    // Debug/runtime toggles
+    if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
+    if (server.hasArg("enableDebugLogging")) s.enableDebugLogging = argBool("enableDebugLogging", s.enableDebugLogging);
+    if (server.hasArg("logAlerts")) s.logAlerts = argBool("logAlerts", s.logAlerts);
+    if (server.hasArg("logWifi")) s.logWifi = argBool("logWifi", s.logWifi);
+    if (server.hasArg("logBle")) s.logBle = argBool("logBle", s.logBle);
+    if (server.hasArg("logSystem")) s.logSystem = argBool("logSystem", s.logSystem);
+    if (server.hasArg("logDisplay")) s.logDisplay = argBool("logDisplay", s.logDisplay);
+    if (server.hasArg("logPerfMetrics")) s.logPerfMetrics = argBool("logPerfMetrics", s.logPerfMetrics);
+    if (server.hasArg("logAudio")) s.logAudio = argBool("logAudio", s.logAudio);
+    if (server.hasArg("logTouch")) s.logTouch = argBool("logTouch", s.logTouch);
+
+    // Voice settings
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();
         mode = std::max(0, std::min(mode, 3));
-        settingsManager.setVoiceAlertMode((VoiceAlertMode)mode);
+        s.voiceAlertMode = static_cast<VoiceAlertMode>(mode);
     }
-    // Voice direction toggle (separate from mode)
-    if (server.hasArg("voiceDirectionEnabled")) {
-        settingsManager.setVoiceDirectionEnabled(server.arg("voiceDirectionEnabled") == "true" || server.arg("voiceDirectionEnabled") == "1");
+    if (server.hasArg("voiceDirectionEnabled")) s.voiceDirectionEnabled = argBool("voiceDirectionEnabled", s.voiceDirectionEnabled);
+    if (server.hasArg("announceBogeyCount")) s.announceBogeyCount = argBool("announceBogeyCount", s.announceBogeyCount);
+    if (server.hasArg("muteVoiceIfVolZero")) s.muteVoiceIfVolZero = argBool("muteVoiceIfVolZero", s.muteVoiceIfVolZero);
+
+    // Secondary alerts
+    if (server.hasArg("announceSecondaryAlerts")) s.announceSecondaryAlerts = argBool("announceSecondaryAlerts", s.announceSecondaryAlerts);
+    if (server.hasArg("secondaryLaser")) s.secondaryLaser = argBool("secondaryLaser", s.secondaryLaser);
+    if (server.hasArg("secondaryKa")) s.secondaryKa = argBool("secondaryKa", s.secondaryKa);
+    if (server.hasArg("secondaryK")) s.secondaryK = argBool("secondaryK", s.secondaryK);
+    if (server.hasArg("secondaryX")) s.secondaryX = argBool("secondaryX", s.secondaryX);
+
+    // Volume fade
+    if (server.hasArg("alertVolumeFadeEnabled")) s.alertVolumeFadeEnabled = argBool("alertVolumeFadeEnabled", s.alertVolumeFadeEnabled);
+    if (server.hasArg("alertVolumeFadeDelaySec")) {
+        int val = server.arg("alertVolumeFadeDelaySec").toInt();
+        s.alertVolumeFadeDelaySec = static_cast<uint8_t>(std::max(1, std::min(val, 10)));
     }
-    if (server.hasArg("announceBogeyCount")) {
-        settingsManager.setAnnounceBogeyCount(server.arg("announceBogeyCount") == "true" || server.arg("announceBogeyCount") == "1");
+    if (server.hasArg("alertVolumeFadeVolume")) {
+        int val = server.arg("alertVolumeFadeVolume").toInt();
+        s.alertVolumeFadeVolume = static_cast<uint8_t>(std::max(0, std::min(val, 9)));
     }
-    if (server.hasArg("muteVoiceIfVolZero")) {
-        settingsManager.setMuteVoiceIfVolZero(server.arg("muteVoiceIfVolZero") == "true" || server.arg("muteVoiceIfVolZero") == "1");
+
+    // Speed volume
+    if (server.hasArg("speedVolumeEnabled")) s.speedVolumeEnabled = argBool("speedVolumeEnabled", s.speedVolumeEnabled);
+    if (server.hasArg("speedVolumeThresholdMph")) {
+        int val = server.arg("speedVolumeThresholdMph").toInt();
+        s.speedVolumeThresholdMph = static_cast<uint8_t>(std::max(10, std::min(val, 100)));
     }
-    // Secondary alert settings
-    if (server.hasArg("announceSecondaryAlerts")) {
-        settingsManager.setAnnounceSecondaryAlerts(server.arg("announceSecondaryAlerts") == "true" || server.arg("announceSecondaryAlerts") == "1");
+    if (server.hasArg("speedVolumeBoost")) {
+        int val = server.arg("speedVolumeBoost").toInt();
+        s.speedVolumeBoost = static_cast<uint8_t>(std::max(1, std::min(val, 5)));
     }
-    if (server.hasArg("secondaryLaser")) {
-        settingsManager.setSecondaryLaser(server.arg("secondaryLaser") == "true" || server.arg("secondaryLaser") == "1");
+
+    // Low-speed mute
+    if (server.hasArg("lowSpeedMuteEnabled")) s.lowSpeedMuteEnabled = argBool("lowSpeedMuteEnabled", s.lowSpeedMuteEnabled);
+    if (server.hasArg("lowSpeedMuteThresholdMph")) {
+        int val = server.arg("lowSpeedMuteThresholdMph").toInt();
+        s.lowSpeedMuteThresholdMph = static_cast<uint8_t>(std::max(1, std::min(val, 30)));
     }
-    if (server.hasArg("secondaryKa")) {
-        settingsManager.setSecondaryKa(server.arg("secondaryKa") == "true" || server.arg("secondaryKa") == "1");
-    }
-    if (server.hasArg("secondaryK")) {
-        settingsManager.setSecondaryK(server.arg("secondaryK") == "true" || server.arg("secondaryK") == "1");
-    }
-    if (server.hasArg("secondaryX")) {
-        settingsManager.setSecondaryX(server.arg("secondaryX") == "true" || server.arg("secondaryX") == "1");
-    }
-    // Volume fade settings
-    if (server.hasArg("alertVolumeFadeEnabled") || server.hasArg("alertVolumeFadeDelaySec") || server.hasArg("alertVolumeFadeVolume")) {
-        const V1Settings& current = settingsManager.get();
-        bool enabled = current.alertVolumeFadeEnabled;
-        uint8_t delaySec = current.alertVolumeFadeDelaySec;
-        uint8_t volume = current.alertVolumeFadeVolume;
-        if (server.hasArg("alertVolumeFadeEnabled")) {
-            enabled = server.arg("alertVolumeFadeEnabled") == "true" || server.arg("alertVolumeFadeEnabled") == "1";
-        }
-        if (server.hasArg("alertVolumeFadeDelaySec")) {
-            int val = server.arg("alertVolumeFadeDelaySec").toInt();
-            delaySec = (uint8_t)std::max(1, std::min(val, 10));
-        }
-        if (server.hasArg("alertVolumeFadeVolume")) {
-            int val = server.arg("alertVolumeFadeVolume").toInt();
-            volume = (uint8_t)std::max(0, std::min(val, 9));
-        }
-        settingsManager.setAlertVolumeFade(enabled, delaySec, volume);
-    }
-    // Speed-based volume settings
-    if (server.hasArg("speedVolumeEnabled") || server.hasArg("speedVolumeThresholdMph") || server.hasArg("speedVolumeBoost")) {
-        const V1Settings& current = settingsManager.get();
-        bool enabled = current.speedVolumeEnabled;
-        uint8_t threshold = current.speedVolumeThresholdMph;
-        uint8_t boost = current.speedVolumeBoost;
-        if (server.hasArg("speedVolumeEnabled")) {
-            enabled = server.arg("speedVolumeEnabled") == "true" || server.arg("speedVolumeEnabled") == "1";
-        }
-        if (server.hasArg("speedVolumeThresholdMph")) {
-            int val = server.arg("speedVolumeThresholdMph").toInt();
-            threshold = (uint8_t)std::max(10, std::min(val, 100));
-        }
-        if (server.hasArg("speedVolumeBoost")) {
-            int val = server.arg("speedVolumeBoost").toInt();
-            boost = (uint8_t)std::max(1, std::min(val, 5));
-        }
-        settingsManager.setSpeedVolume(enabled, threshold, boost);
-    }
-    // Low-speed mute settings
-    if (server.hasArg("lowSpeedMuteEnabled") || server.hasArg("lowSpeedMuteThresholdMph")) {
-        const V1Settings& current = settingsManager.get();
-        bool enabled = current.lowSpeedMuteEnabled;
-        uint8_t threshold = current.lowSpeedMuteThresholdMph;
-        if (server.hasArg("lowSpeedMuteEnabled")) {
-            enabled = server.arg("lowSpeedMuteEnabled") == "true" || server.arg("lowSpeedMuteEnabled") == "1";
-        }
-        if (server.hasArg("lowSpeedMuteThresholdMph")) {
-            int val = server.arg("lowSpeedMuteThresholdMph").toInt();
-            threshold = (uint8_t)std::max(1, std::min(val, 30));  // 1-30 mph range
-        }
-        settingsManager.setLowSpeedMute(enabled, threshold);
-    }
+
+    // Misc sliders
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
-        settingsManager.updateBrightness((uint8_t)brightness);
-        display.setBrightness((uint8_t)brightness);
+        s.brightness = static_cast<uint8_t>(brightness);
+        display.setBrightness(static_cast<uint8_t>(brightness));
     }
     if (server.hasArg("voiceVolume")) {
         int volume = server.arg("voiceVolume").toInt();
         volume = std::max(0, std::min(volume, 100));
-        settingsManager.updateVoiceVolume((uint8_t)volume);
-        audio_set_volume((uint8_t)volume);
+        s.voiceVolume = static_cast<uint8_t>(volume);
+        audio_set_volume(static_cast<uint8_t>(volume));
     }
 
     // Persist all color/visibility changes
@@ -2421,24 +2321,40 @@ void WiFiManager::handleDisplayColorsSave() {
 
 void WiFiManager::handleDisplayColorsReset() {
     if (!checkRateLimit()) return;
-    
+
+    const V1Settings& currentSettings = settingsManager.get();
+    V1Settings& s = const_cast<V1Settings&>(currentSettings);
+
     // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
-    settingsManager.setDisplayColors(0xF800, 0xF800, 0xF800, 0xF800, 0xF800, 0x001F, 0xF800, 0x001F, 0x07E0);
-    settingsManager.setWiFiIconColors(0x07FF, 0x07E0);  // Cyan (no client), Green (connected)
-    // Reset bar colors: Green, Green, Yellow, Yellow, Red, Red
-    settingsManager.setSignalBarColors(0x07E0, 0x07E0, 0xFFE0, 0xFFE0, 0xF800, 0xF800);
-    // Reset muted color to default dark grey
-    settingsManager.setMutedColor(0x3186);
-    // Reset persisted color to darker grey
-    settingsManager.setPersistedColor(0x18C3);
-    // Reset volume indicator colors: Main=Blue, Mute=Yellow
-    settingsManager.setVolumeMainColor(0x001F);
-    settingsManager.setVolumeMuteColor(0xFFE0);
-    // Reset RSSI label colors: V1=Green, Proxy=Blue
-    settingsManager.setRssiV1Color(0x07E0);
-    settingsManager.setRssiProxyColor(0x001F);
-    // Reset frequency use band color to off
-    settingsManager.setFreqUseBandColor(false);
+    s.colorBogey = 0xF800;
+    s.colorFrequency = 0xF800;
+    s.colorArrowFront = 0xF800;
+    s.colorArrowSide = 0xF800;
+    s.colorArrowRear = 0xF800;
+    s.colorBandL = 0x001F;
+    s.colorBandKa = 0xF800;
+    s.colorBandK = 0x001F;
+    s.colorBandX = 0x07E0;
+    s.colorBandPhoto = 0x780F;
+    s.colorWiFiIcon = 0x07FF;
+    s.colorWiFiConnected = 0x07E0;
+    s.colorBleConnected = 0x07E0;
+    s.colorBleDisconnected = 0x001F;
+    s.colorBar1 = 0x07E0;
+    s.colorBar2 = 0x07E0;
+    s.colorBar3 = 0xFFE0;
+    s.colorBar4 = 0xFFE0;
+    s.colorBar5 = 0xF800;
+    s.colorBar6 = 0xF800;
+    s.colorMuted = 0x3186;
+    s.colorPersisted = 0x18C3;
+    s.colorVolumeMain = 0x001F;
+    s.colorVolumeMute = 0xFFE0;
+    s.colorRssiV1 = 0x07E0;
+    s.colorRssiProxy = 0x001F;
+    s.freqUseBandColor = false;
+
+    settingsManager.save();
     
     // Trigger immediate display preview to show reset colors
     display.showDemo();
@@ -2485,6 +2401,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
+    doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
     doc["enableDebugLogging"] = s.enableDebugLogging;
     doc["logAlerts"] = s.logAlerts;
@@ -3037,7 +2954,7 @@ void WiFiManager::handleSettingsBackup() {
     JsonDocument doc;
     
     // Metadata
-    doc["_version"] = 2;  // Backup format version
+    doc["_version"] = 3;  // Backup format version
     doc["_type"] = "v1simple_backup";
     doc["_timestamp"] = millis();
     
@@ -3048,6 +2965,7 @@ void WiFiManager::handleSettingsBackup() {
     // BLE settings
     doc["proxyBLE"] = s.proxyBLE;
     doc["proxyName"] = s.proxyName;
+    doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     
     // Display settings
     doc["brightness"] = s.brightness;
@@ -3091,6 +3009,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
+    doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     
     // Development/Debug
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
@@ -3226,6 +3145,7 @@ void WiFiManager::handleSettingsRestore() {
     // BLE settings
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) s.proxyName = doc["proxyName"].as<String>();
+    if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     
     // WiFi settings (password intentionally excluded from backups)
     if (doc["apSSID"].is<const char*>()) {
@@ -3275,6 +3195,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
+    if (doc["showRestTelemetryCards"].is<bool>()) s.showRestTelemetryCards = doc["showRestTelemetryCards"];
     
     // Development/Debug
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
@@ -3385,6 +3306,7 @@ void WiFiManager::handleSettingsRestore() {
     // Re-apply debug logging runtime state based on restored settings
     applyDebugLogFilterFromSettings();
     debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
+    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     
@@ -3607,6 +3529,7 @@ void WiFiManager::handleObdStatus() {
     doc["voltage"] = data.voltage;
     doc["sampleTsMs"] = data.timestamp_ms;
     doc["sampleAgeMs"] = dataAgeMs;
+    doc["vwDataEnabled"] = settingsManager.get().obdVwDataEnabled;
 
     if (data.oil_temp_c == -128) {
         doc["oilTempC"] = nullptr;
@@ -3744,6 +3667,46 @@ void WiFiManager::handleObdDisconnect() {
     markUiActivity();
     obdHandler.disconnect();
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleObdConfig() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    bool hasValue = false;
+    bool enabled = settingsManager.get().obdVwDataEnabled;
+
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        if (error || !doc["vwDataEnabled"].is<bool>()) {
+            server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid payload\"}");
+            return;
+        }
+        enabled = doc["vwDataEnabled"].as<bool>();
+        hasValue = true;
+    } else if (server.hasArg("vwDataEnabled")) {
+        String value = server.arg("vwDataEnabled");
+        value.toLowerCase();
+        enabled = (value == "1" || value == "true" || value == "on");
+        hasValue = true;
+    }
+
+    if (!hasValue) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing vwDataEnabled\"}");
+        return;
+    }
+
+    settingsManager.setObdVwDataEnabled(enabled);
+    obdHandler.setVwDataEnabled(enabled);
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["vwDataEnabled"] = enabled;
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
 }
 
 void WiFiManager::handleObdRemembered() {

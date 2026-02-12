@@ -24,9 +24,19 @@ public:
         SOURCE_RTC = 4
     };
 
+    enum Confidence : uint8_t {
+        CONFIDENCE_NONE = 0,
+        CONFIDENCE_ESTIMATED = 1,
+        CONFIDENCE_ACCURATE = 2
+    };
+
+    // Initialize from persisted/system time once at boot (idempotent).
+    void begin();
+
     uint32_t nowMonoMs() const { return millis(); }
     bool timeValid() const { return valid_.load(std::memory_order_acquire) != 0; }
     uint8_t timeSource() const { return source_.load(std::memory_order_relaxed); }
+    uint8_t timeConfidence() const { return confidence_.load(std::memory_order_relaxed); }
     int32_t tzOffsetMinutes() const { return tzOffsetMinutes_.load(std::memory_order_relaxed); }
 
     // Returns 0 when epoch is not valid.
@@ -40,9 +50,11 @@ public:
 private:
     std::atomic<uint8_t> valid_{0};
     std::atomic<uint8_t> source_{SOURCE_NONE};
+    std::atomic<uint8_t> confidence_{CONFIDENCE_NONE};
     std::atomic<int32_t> tzOffsetMinutes_{0};
     std::atomic<int64_t> epochBaseMs_{0};   // epoch_ms - mono_ms_at_set
     std::atomic<uint32_t> setMonoMs_{0};    // millis() when epoch base was set
+    std::atomic<uint8_t> initialized_{0};
 };
 
 extern TimeService timeService;

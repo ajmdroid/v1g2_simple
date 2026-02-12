@@ -7,6 +7,7 @@
 	let message = $state(null);
 	let statusPoll = $state(null);
 	let scanPoll = $state(null);
+	let savingVwData = $state(false);
 
 	let status = $state({
 		state: 'IDLE',
@@ -22,6 +23,7 @@
 		voltage: 0,
 		sampleTsMs: 0,
 		sampleAgeMs: 0,
+		vwDataEnabled: true,
 		oilTempC: null,
 		intakeAirTempC: null,
 		rememberedCount: 0,
@@ -278,6 +280,35 @@
 			// ignore
 		}
 	}
+
+	async function toggleVwData(enabled) {
+		if (savingVwData) return;
+		const previous = !!status.vwDataEnabled;
+		status = { ...status, vwDataEnabled: enabled };
+		savingVwData = true;
+
+		try {
+			const res = await fetch('/api/obd/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ vwDataEnabled: enabled })
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to update VW data setting');
+				status = { ...status, vwDataEnabled: previous };
+				return;
+			}
+
+			status = { ...status, vwDataEnabled: !!data.vwDataEnabled };
+			setMsg('success', `VW data ${enabled ? 'enabled' : 'disabled'}`);
+		} catch (e) {
+			status = { ...status, vwDataEnabled: previous };
+			setMsg('error', 'Failed to update VW data setting');
+		} finally {
+			savingVwData = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
@@ -310,6 +341,19 @@
 					<button class="btn btn-warning btn-sm" onclick={disconnectObd} disabled={!status.connected}>Disconnect</button>
 				</div>
 			</div>
+			<div class="form-control">
+				<label class="label cursor-pointer justify-start gap-3 py-0">
+					<input
+						type="checkbox"
+						class="toggle toggle-sm toggle-primary"
+						checked={!!status.vwDataEnabled}
+						onchange={(e) => toggleVwData(e.currentTarget.checked)}
+						disabled={savingVwData}
+					/>
+					<span class="label-text">VW data</span>
+				</label>
+				<div class="text-xs text-base-content/60">Enable VW-specific PIDs (oil temp)</div>
+			</div>
 
 				<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
 					<div class="stat py-3 px-4">
@@ -331,6 +375,7 @@
 					<div class="stat py-3 px-4">
 						<div class="stat-title">Oil Temp</div>
 						<div class="stat-value text-base">{formatTemp(status.oilTempC)}</div>
+						<div class="stat-desc">{status.vwDataEnabled ? 'VW PID' : 'disabled'}</div>
 					</div>
 					<div class="stat py-3 px-4">
 						<div class="stat-title">Data Age</div>

@@ -89,18 +89,29 @@ private:
 };
 
 // OBD Handler stub
+struct OBDData {
+    float voltage = 0.0f;
+    int8_t oil_temp_c = -128;
+    int8_t intake_air_temp_c = -128;
+    bool valid = false;
+    uint32_t timestamp_ms = 0;
+};
+
 class OBDHandler {
 public:
     bool isConnected() const { return connected_; }
     int getSpeed() const { return speed_; }
+    OBDData getData() const { return data_; }
     
     // Test helpers
     void setConnected(bool c) { connected_ = c; }
     void setSpeed(int s) { speed_ = s; }
+    void setData(const OBDData& d) { data_ = d; }
     
 private:
     bool connected_ = false;
     int speed_ = 0;
+    OBDData data_{};
 };
 
 // Global instances

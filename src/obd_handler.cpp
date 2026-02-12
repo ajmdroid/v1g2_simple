@@ -410,9 +410,29 @@ bool OBDHandler::connectToAddress(const String& address,
         }
 
         targetAddress = NimBLEAddress(std::string(address.c_str()), BLE_ADDR_PUBLIC);
-        targetDeviceName = name.length() ? name : address;
+        String adapterName = name;
+        if (adapterName.length() == 0) {
+            for (const auto& d : foundDevices) {
+                if (d.address.equalsIgnoreCase(address) && d.name.length() > 0) {
+                    adapterName = d.name;
+                    break;
+                }
+            }
+        }
+        if (adapterName.length() == 0) {
+            for (const auto& d : rememberedDevices) {
+                if (d.address.equalsIgnoreCase(address) && d.name.length() > 0) {
+                    adapterName = d.name;
+                    break;
+                }
+            }
+        }
+        targetDeviceName = adapterName.length() ? adapterName : address;
         targetPin = pin;
-        targetIsObdLink = isObdLinkName(std::string(targetDeviceName.c_str()));
+        // Allow address-only connects from API clients; when a name is provided,
+        // enforce CX-only support at queue time.
+        targetIsObdLink = adapterName.length() == 0 ||
+                          isObdLinkName(std::string(adapterName.c_str()));
         if (!targetIsObdLink) {
             Serial.printf("[OBD] Unsupported adapter '%s' - only OBDLink CX is supported\n",
                           targetDeviceName.c_str());
@@ -823,6 +843,13 @@ bool OBDHandler::connectToDevice() {
 
                     vTaskDelay(pdMS_TO_TICKS(250));
                     if (pOBDClient->isConnected()) {
+                        if (!connectedPeerLooksLikeObd()) {
+                            Serial.printf("[OBD] Bonded peer rejected (missing OBD UART): %s\n",
+                                          bondedStr.c_str());
+                            pOBDClient->disconnect();
+                            vTaskDelay(pdMS_TO_TICKS(100));
+                            continue;
+                        }
                         targetAddress = candidate;
                         Serial.printf("[OBD] Bonded reconnect selected address: %s\n",
                                       targetAddress.toString().c_str());
@@ -915,6 +942,14 @@ bool OBDHandler::connectToDevice() {
 
             vTaskDelay(pdMS_TO_TICKS(250));
             if (pOBDClient->isConnected()) {
+                if (!connectedPeerLooksLikeObd()) {
+                    Serial.printf("[OBD] Connected peer rejected (%s, addrType=%u): missing OBD UART\n",
+                                  profile.label,
+                                  (unsigned)addrType);
+                    pOBDClient->disconnect();
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    continue;
+                }
                 targetAddress = candidate;
                 return true;
             }
@@ -1005,6 +1040,21 @@ bool OBDHandler::connectToDevice() {
     }
 
     return false;
+}
+
+bool OBDHandler::connectedPeerLooksLikeObd() {
+    if (!pOBDClient || !pOBDClient->isConnected()) {
+        return false;
+    }
+
+    NimBLERemoteService* service = pOBDClient->getService(NUS_SERVICE_UUID);
+    if (!service) {
+        return false;
+    }
+
+    NimBLERemoteCharacteristic* tx = service->getCharacteristic(NUS_TX_CHAR_UUID);
+    NimBLERemoteCharacteristic* rx = service->getCharacteristic(NUS_RX_CHAR_UUID);
+    return tx != nullptr && rx != nullptr;
 }
 
 bool OBDHandler::discoverServices() {
@@ -1511,8 +1561,6 @@ bool OBDHandler::resolveTargetAddress() {
 
         const NimBLEAdvertisedDevice* bestNamedDevice = nullptr;
         int bestNamedRssi = -127;
-        const NimBLEAdvertisedDevice* bestAnyDevice = nullptr;
-        int bestAnyRssi = -127;
         size_t nonNullCount = 0;
         bool sawNamedCx = false;
         bool sawNamedCxNullAddr = false;
@@ -1539,10 +1587,6 @@ bool OBDHandler::resolveTargetAddress() {
 
             nonNullCount++;
             const int rssi = dev->getRSSI();
-            if (!bestAnyDevice || rssi > bestAnyRssi) {
-                bestAnyDevice = dev;
-                bestAnyRssi = rssi;
-            }
             if (namedCx && (!bestNamedDevice || rssi > bestNamedRssi)) {
                 bestNamedDevice = dev;
                 bestNamedRssi = rssi;
@@ -1558,21 +1602,6 @@ bool OBDHandler::resolveTargetAddress() {
                           label,
                           targetAddress.toString().c_str(),
                           bestNamedRssi);
-            return true;
-        }
-
-        // Fallback for NimBLE scan edge-case where CX name appears on a null-address record
-        // while a sibling record in the same results has the real address.
-        if (targetIsObdLink && sawNamedCx && sawNamedCxNullAddr && bestAnyDevice) {
-            targetAddress = bestAnyDevice->getAddress();
-            if (targetDeviceName.length() == 0 && !bestAnyDevice->getName().empty()) {
-                targetDeviceName = String(bestAnyDevice->getName().c_str());
-            }
-            Serial.printf("[OBD] Resolved CX address via %s fallback: %s RSSI:%d (nonNull=%u)\n",
-                          label,
-                          targetAddress.toString().c_str(),
-                          bestAnyRssi,
-                          (unsigned)nonNullCount);
             return true;
         }
 
@@ -1700,6 +1729,14 @@ bool OBDHandler::connectViaAdvertisedDevice(const char* profileLabel, bool using
 
     vTaskDelay(pdMS_TO_TICKS(250));
     if (pOBDClient->isConnected()) {
+        if (!connectedPeerLooksLikeObd()) {
+            Serial.printf("[OBD] Advertised peer rejected (%s): missing OBD UART\n",
+                          profileLabel ? profileLabel : "n/a");
+            pOBDClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            restoreScanConfig();
+            return false;
+        }
         targetAddress = bestDevice->getAddress();
         restoreScanConfig();
         return true;

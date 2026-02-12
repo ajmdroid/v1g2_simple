@@ -37,6 +37,7 @@
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
+		showRestTelemetryCards: true,
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -98,11 +99,11 @@
 				const data = await res.json();
 				// Ensure all color values are parsed as integers (API might return strings)
 				for (const key of Object.keys(data)) {
-					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator'].includes(key)) {
+					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator', 'showRestTelemetryCards'].includes(key)) {
 						data[key] = parseInt(data[key], 10);
 					}
 				}
-				colors = data;
+				colors = { ...colors, ...data };
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load colors' };
@@ -258,6 +259,7 @@
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			params.append('hideRssiIndicator', colors.hideRssiIndicator);
+			params.append('showRestTelemetryCards', colors.showRestTelemetryCards);
 			params.append('brightness', colors.brightness);
 			
 			const res = await fetch('/api/displaycolors', {
@@ -332,7 +334,8 @@
 					showBatteryPercent: false,
 					hideBleIcon: false,
 					hideVolumeIndicator: false,
-					hideRssiIndicator: false
+					hideRssiIndicator: false,
+					showRestTelemetryCards: true
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -1066,22 +1069,37 @@
 					</label>
 				</div>
 				
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<div>
-							<span class="label-text">Hide RSSI Indicator</span>
-							<p class="text-xs text-base-content/50">Hide the BLE signal strength display</p>
-						</div>
-						<input 
-							type="checkbox" 
-							class="toggle toggle-primary" 
-							checked={colors.hideRssiIndicator}
-							onchange={(e) => colors.hideRssiIndicator = e.target.checked}
-						/>
-					</label>
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text">Hide RSSI Indicator</span>
+								<p class="text-xs text-base-content/50">Hide the BLE signal strength display</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								checked={colors.hideRssiIndicator}
+								onchange={(e) => colors.hideRssiIndicator = e.target.checked}
+							/>
+						</label>
+					</div>
+
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text">Show Rest OBD Cards</span>
+								<p class="text-xs text-base-content/50">Show oil temp, IAT, and voltage cards on resting screen</p>
+							</div>
+							<input
+								type="checkbox"
+								class="toggle toggle-primary"
+								checked={colors.showRestTelemetryCards}
+								onchange={(e) => colors.showRestTelemetryCards = e.target.checked}
+							/>
+						</label>
+					</div>
 				</div>
 			</div>
-		</div>
 		
 		<!-- Display Brightness -->
 		<div class="card bg-base-200">

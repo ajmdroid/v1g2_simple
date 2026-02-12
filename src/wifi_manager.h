@@ -252,6 +252,7 @@ private:
     void handleObdDevicesClear();
     void handleObdConnect();
     void handleObdDisconnect();
+    void handleObdConfig();
     void handleObdRemembered();
     void handleObdRememberedAutoConnect();
     void handleObdForget();

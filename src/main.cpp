@@ -57,6 +57,7 @@
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/perf/debug_macros.h"
+#include "time_service.h"
 #include <FS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
@@ -477,6 +478,7 @@ void setup() {
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();
+    timeService.begin();
 
 #if defined(DISPLAY_WAVESHARE_349)
     powerModule.begin(&batteryManager, &display, &settingsManager, &debugLogger);
@@ -640,6 +642,7 @@ void setup() {
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
+    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     obdHandler.begin();
     bootReady = true;
     bleClient.setBootReady(true);
@@ -790,7 +793,14 @@ void loop() {
     const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
                                                           : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
     const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
-    const bool wifiPriority = wifiPriorityAllowed && uiActive;
+    const OBDState obdState = obdHandler.getState();
+    const bool obdBleCritical =
+        obdHandler.isScanActive() ||
+        obdState == OBDState::CONNECTING ||
+        obdState == OBDState::INITIALIZING;
+    // Keep BLE background suppression active through OBD scan/connect/init so
+    // proxy advertising or scan resumes do not interrupt OBD pairing flow.
+    const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
     if (wifiPriority != wifiPriorityCurrent) {
         bleClient.setWifiPriority(wifiPriority);
     }

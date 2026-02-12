@@ -21,7 +21,7 @@
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
-static const int SD_BACKUP_VERSION = 3;  // Increment when adding new fields to backup
+static const int SD_BACKUP_VERSION = 4;  // Increment when adding new fields to backup
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
@@ -290,6 +290,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("wifiClSSID", settings.wifiClientSSID);
     written += prefs.putBool("proxyBLE", settings.proxyBLE);
     written += prefs.putString("proxyName", settings.proxyName);
+    written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -327,6 +328,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideBle", settings.hideBleIcon);
     written += prefs.putBool("hideVol", settings.hideVolumeIndicator);
     written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
+    written += prefs.putBool("restTelem", settings.showRestTelemetryCards);
     written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
     written += prefs.putBool("debugLog", settings.enableDebugLogging);
     written += prefs.putBool("logAlerts", settings.logAlerts);
@@ -543,6 +545,7 @@ void SettingsManager::load() {
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
+    settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -580,6 +583,7 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
+    settings.showRestTelemetryCards = preferences.getBool("restTelem", true);
     
     // Development/Debug settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
@@ -852,6 +856,14 @@ void SettingsManager::setProxyName(const String& name) {
     save();
 }
 
+void SettingsManager::setObdVwDataEnabled(bool enabled) {
+    if (settings.obdVwDataEnabled == enabled) {
+        return;
+    }
+    settings.obdVwDataEnabled = enabled;
+    save();
+}
+
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings.autoPowerOffMinutes = minutes;
     save();
@@ -1042,6 +1054,11 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
 
 void SettingsManager::setHideRssiIndicator(bool hide) {
     settings.hideRssiIndicator = hide;
+    save();
+}
+
+void SettingsManager::setShowRestTelemetryCards(bool show) {
+    settings.showRestTelemetryCards = show;
     save();
 }
 
@@ -1349,6 +1366,7 @@ void SettingsManager::backupToSD() {
     doc["wifiClientSSID"] = settings.wifiClientSSID;
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
+    doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1396,6 +1414,7 @@ void SettingsManager::backupToSD() {
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
+    doc["showRestTelemetryCards"] = settings.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableDebugLogging"] = settings.enableDebugLogging;
     doc["logAlerts"] = settings.logAlerts;
@@ -1576,6 +1595,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = doc["wifiClientSSID"].as<String>();
     if (doc["proxyBLE"].is<bool>()) settings.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
+    if (doc["obdVwDataEnabled"].is<bool>()) settings.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
     if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
     if (doc["apTimeoutMinutes"].is<int>()) settings.apTimeoutMinutes = doc["apTimeoutMinutes"];
@@ -1623,6 +1643,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideBleIcon"].is<bool>()) settings.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) settings.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
+    if (doc["showRestTelemetryCards"].is<bool>()) settings.showRestTelemetryCards = doc["showRestTelemetryCards"];
     if (doc["enableWifiAtBoot"].is<bool>()) settings.enableWifiAtBoot = doc["enableWifiAtBoot"];
     if (doc["enableDebugLogging"].is<bool>()) settings.enableDebugLogging = doc["enableDebugLogging"];
     if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];

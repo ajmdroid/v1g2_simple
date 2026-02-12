@@ -40,6 +40,7 @@
 	let timeStatus = $state({
 		valid: false,
 		source: 0,
+		confidence: 0,
 		epochMs: 0,
 		tzOffsetMin: 0,
 		ageMs: 0,
@@ -100,6 +101,14 @@
 		}
 	}
 
+	function getTimeConfidenceLabel(confidence) {
+		switch (confidence) {
+			case 2: return 'ACCURATE';
+			case 1: return 'ESTIMATED';
+			default: return 'NONE';
+		}
+	}
+
 	function pad2(n) {
 		return String(n).padStart(2, '0');
 	}
@@ -152,6 +161,7 @@
 				const now = Date.now();
 				timeStatus.valid = !!t.valid;
 				timeStatus.source = Number(t.source || 0);
+				timeStatus.confidence = Number(t.confidence || 0);
 				timeStatus.epochMs = Number(t.epochMs || 0);
 				timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
 				timeStatus.ageMs = Number(t.ageMs || 0);
@@ -179,6 +189,7 @@
 				const now = Date.now();
 				timeStatus.valid = !!data.timeValid;
 				timeStatus.source = Number(data.timeSource || 0);
+				timeStatus.confidence = Number(data.timeConfidence || 0);
 				timeStatus.epochMs = Number(data.epochMs || 0);
 				timeStatus.tzOffsetMin = Number(data.tzOffsetMin ?? data.tzOffsetMinutes ?? 0);
 				timeStatus.ageMs = Number(data.ageMs ?? data.epochAgeMs ?? 0);
@@ -518,6 +529,7 @@
 				<div class="text-sm space-y-1">
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
+					<div><strong>timeConfidence:</strong> {timeStatus.confidence} ({getTimeConfidenceLabel(timeStatus.confidence)})</div>
 					{#if timeStatus.valid}
 						<div><strong>deviceTime:</strong> <span class="font-mono">{formatDeviceDateTime()}</span></div>
 						<div><strong>timeAge:</strong> {formatAgeMs(getProjectedAgeMs())}</div>

@@ -104,6 +104,7 @@ struct V1Settings {
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
     String proxyName;       // BLE device name when proxying
+    bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     
     // Display settings
     bool turnOffDisplay;
@@ -147,6 +148,7 @@ struct V1Settings {
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
+    bool showRestTelemetryCards; // Show OBD cards (oil temp / IAT / voltage) on resting screen
     
     // Development/Debug settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
@@ -237,6 +239,7 @@ struct V1Settings {
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
+        obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -274,6 +277,7 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
+        showRestTelemetryCards(true), // Show resting OBD cards by default
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
         enableDebugLogging(false),  // Debug logging off by default — matches NVS default
         logAlerts(false),                // Alert logging off by default
@@ -352,6 +356,7 @@ public:
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
+    void setObdVwDataEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }
@@ -383,6 +388,7 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
+    void setShowRestTelemetryCards(bool show);
     void setEnableWifiAtBoot(bool enable, bool deferSave = false);
     void setEnableDebugLogging(bool enable, bool deferSave = false);
     void setLogAlerts(bool enable, bool deferSave = false);

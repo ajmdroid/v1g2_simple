@@ -13,6 +13,7 @@
 #include "battery_manager.h"
 #include "wifi_manager.h"
 #include "ble_client.h"
+#include "obd_handler.h"
 #include "storage_manager.h"
 #include "audio_beep.h"
 #include "perf_metrics.h"
@@ -2019,6 +2020,11 @@ void V1Display::showResting(bool forceRedraw) {
         // Status bar indicators
         drawStatusBar();
 
+        // Reset secondary alert card state, then draw resting telemetry cards.
+        AlertData emptyPriority;
+        drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+        drawRestTelemetryCards(true);
+
         lastRestingPaletteRevision = paletteRevision;
         lastRestingProfileSlot = profileSlot;
         
@@ -2489,6 +2495,12 @@ void V1Display::update(const DisplayState& state) {
     }
     
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
+        if (drawRestTelemetryCards(false)) {
+            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                        SECONDARY_ROW_HEIGHT);
+        }
         return;
     }
     
@@ -2524,6 +2536,7 @@ void V1Display::update(const DisplayState& state) {
             lastRestingBogeyByte = state.bogeyCounterByte;
             drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
         }
+        drawRestTelemetryCards(false);
 #if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
 #endif
@@ -2625,6 +2638,7 @@ void V1Display::update(const DisplayState& state) {
     // Clear any persisted card slots when entering resting state
     AlertData emptyPriority;
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
+    drawRestTelemetryCards(true);
 
 #if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();  // Push canvas to display
@@ -3016,6 +3030,125 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     lastAlert = priority;
     lastState = state;
+}
+
+bool V1Display::drawRestTelemetryCards(bool forceRedraw) {
+#if defined(DISPLAY_WAVESHARE_349)
+    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;
+    const int rowX = DisplayLayout::CONTENT_LEFT_MARGIN;
+    const int rowW = DisplayLayout::CONTENT_AVAILABLE_WIDTH;
+    const int cardSpacing = 10;
+    const int cardW = (rowW - (cardSpacing * 2)) / 3;
+    const int cardH = SECONDARY_ROW_HEIGHT;
+    const V1Settings& s = settingsManager.get();
+
+    static bool cacheValid = false;
+    static bool lastAvailable[3] = {false, false, false};
+    static char lastValues[3][12] = {{0}};
+
+    if (!s.showRestTelemetryCards) {
+        if (cacheValid) {
+            FILL_RECT(rowX, cardY, rowW, cardH, PALETTE_BG);
+            cacheValid = false;
+            for (int i = 0; i < 3; i++) {
+                lastAvailable[i] = false;
+                lastValues[i][0] = '\0';
+            }
+            return true;
+        }
+        return false;
+    }
+
+    const OBDData obd = obdHandler.getData();
+    const unsigned long nowMs = millis();
+    const bool hasFreshData = obd.valid && (nowMs - obd.timestamp_ms <= 3000);
+
+    char valueOil[12];
+    char valueIat[12];
+    char valueVolt[12];
+    strcpy(valueOil, "---");
+    strcpy(valueIat, "---");
+    strcpy(valueVolt, "---");
+
+    const bool oilAvailable = hasFreshData && (obd.oil_temp_c != -128);
+    const bool iatAvailable = hasFreshData && (obd.intake_air_temp_c != -128);
+    const bool voltAvailable = hasFreshData && (obd.voltage > 0.0f);
+
+    if (oilAvailable) {
+        snprintf(valueOil, sizeof(valueOil), "%dC", static_cast<int>(obd.oil_temp_c));
+    }
+    if (iatAvailable) {
+        snprintf(valueIat, sizeof(valueIat), "%dC", static_cast<int>(obd.intake_air_temp_c));
+    }
+    if (voltAvailable) {
+        snprintf(valueVolt, sizeof(valueVolt), "%.1fV", obd.voltage);
+    }
+
+    bool needsRedraw = forceRedraw || !cacheValid;
+
+    const bool availableNow[3] = {oilAvailable, iatAvailable, voltAvailable};
+    const char* valuesNow[3] = {valueOil, valueIat, valueVolt};
+    for (int i = 0; i < 3 && !needsRedraw; i++) {
+        if (lastAvailable[i] != availableNow[i] || strcmp(lastValues[i], valuesNow[i]) != 0) {
+            needsRedraw = true;
+        }
+    }
+    if (!needsRedraw) {
+        return false;
+    }
+
+    cacheValid = true;
+    for (int i = 0; i < 3; i++) {
+        lastAvailable[i] = availableNow[i];
+        strncpy(lastValues[i], valuesNow[i], sizeof(lastValues[i]));
+        lastValues[i][sizeof(lastValues[i]) - 1] = '\0';
+    }
+
+    const uint16_t accentColors[3] = {s.colorBandKa, s.colorBandK, s.colorBandX};
+    const char* labels[3] = {"OIL", "IAT", "VOLT"};
+
+    // Clear only the telemetry row in the content area before redrawing cards.
+    FILL_RECT(rowX, cardY, rowW, cardH, PALETTE_BG);
+
+    for (int i = 0; i < 3; i++) {
+        const int cardX = rowX + i * (cardW + cardSpacing);
+        const bool available = availableNow[i];
+        const uint16_t accent = accentColors[i];
+
+        uint16_t borderCol = PALETTE_MUTED;
+        uint16_t bgCol = 0x2104;
+        uint16_t labelCol = PALETTE_MUTED;
+        uint16_t valueCol = PALETTE_MUTED;
+
+        if (available) {
+            uint8_t r = ((accent >> 11) & 0x1F) * 3 / 10;
+            uint8_t g = ((accent >> 5) & 0x3F) * 3 / 10;
+            uint8_t b = (accent & 0x1F) * 3 / 10;
+            bgCol = (r << 11) | (g << 5) | b;
+            borderCol = accent;
+            labelCol = accent;
+            valueCol = TFT_WHITE;
+        }
+
+        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
+        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
+
+        GFX_setTextDatum(TC_DATUM);
+        TFT_CALL(setTextSize)(1);
+        TFT_CALL(setTextColor)(labelCol, bgCol);
+        GFX_drawString(tft, labels[i], cardX + cardW / 2, cardY + 5);
+
+        GFX_setTextDatum(MC_DATUM);
+        TFT_CALL(setTextSize)(2);
+        TFT_CALL(setTextColor)(valueCol, bgCol);
+        GFX_drawString(tft, valuesNow[i], cardX + cardW / 2, cardY + (cardH / 2) + 8);
+    }
+
+    return true;
+#else
+    (void)forceRedraw;
+    return false;
+#endif
 }
 
 // Draw mini alert cards for secondary (non-priority) alerts

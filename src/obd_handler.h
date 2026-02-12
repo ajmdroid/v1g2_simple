@@ -208,6 +208,7 @@ private:
 
     // BLE operations
     bool connectToDevice();
+    bool connectedPeerLooksLikeObd();
     bool discoverServices();
     bool initializeAdapter();
     bool sendATCommand(const char* cmd, String& response, uint32_t timeoutMs = 2000);
