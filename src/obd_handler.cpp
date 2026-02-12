@@ -1047,6 +1047,11 @@ bool OBDHandler::connectedPeerLooksLikeObd() {
         return false;
     }
 
+    // GATT table may not be populated yet after a bonded reconnect.
+    // discoverAttributes() is idempotent and returns cached results
+    // if already discovered.
+    pOBDClient->discoverAttributes();
+
     NimBLERemoteService* service = pOBDClient->getService(NUS_SERVICE_UUID);
     if (!service) {
         return false;
