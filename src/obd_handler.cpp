@@ -1572,16 +1572,35 @@ bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* p
     }
 
     const int dataStart = idx + pattern.length();
-    if (dataStart + 2 > normalized.length()) {
+    const int remaining = normalized.length() - dataStart;
+
+    // VW UDS temperature DIDs may return 1 or 2 data bytes.
+    // When 2 bytes are present (e.g. 62F40C 0C 86), the first byte is
+    // a qualifier/format identifier and the second byte is the actual
+    // temperature value using the standard A-40 formula.
+    uint8_t raw = 0;
+    if (remaining >= 4) {
+        const String hexA = normalized.substring(dataStart, dataStart + 2);
+        const String hexB = normalized.substring(dataStart + 2, dataStart + 4);
+        if (isValidHexString(hexA, 2) && isValidHexString(hexB, 2)) {
+            raw = static_cast<uint8_t>(strtoul(hexB.c_str(), nullptr, 16));
+            Serial.printf("[OBD] VW temp %s raw: %s %s → using byte B=%u\n",
+                          pidEcho, hexA.c_str(), hexB.c_str(), (unsigned)raw);
+        } else if (isValidHexString(hexA, 2)) {
+            raw = static_cast<uint8_t>(strtoul(hexA.c_str(), nullptr, 16));
+        } else {
+            return false;
+        }
+    } else if (remaining >= 2) {
+        const String hexVal = normalized.substring(dataStart, dataStart + 2);
+        if (!isValidHexString(hexVal, 2)) {
+            return false;
+        }
+        raw = static_cast<uint8_t>(strtoul(hexVal.c_str(), nullptr, 16));
+    } else {
         return false;
     }
 
-    const String hexVal = normalized.substring(dataStart, dataStart + 2);
-    if (!isValidHexString(hexVal, 2)) {
-        return false;
-    }
-
-    const uint8_t raw = static_cast<uint8_t>(strtoul(hexVal.c_str(), nullptr, 16));
     if (raw == 0) {
         return false;
     }
