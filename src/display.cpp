@@ -497,7 +497,7 @@ bool V1Display::begin() {
 #if PIN_POWER_ON >= 0
     // Power was held low in setup(); bring it up now
     digitalWrite(PIN_POWER_ON, HIGH);
-    delay(80);  // Keep margin above panel power-up minimum
+    delay(200);
 #endif
     
 #if defined(DISPLAY_USE_ARDUINO_GFX)
