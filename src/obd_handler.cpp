@@ -1052,13 +1052,36 @@ bool OBDHandler::connectedPeerLooksLikeObd() {
     // if already discovered.
     pOBDClient->discoverAttributes();
 
+    // Check all service UUIDs that discoverServices() accepts.
     NimBLERemoteService* service = pOBDClient->getService(NUS_SERVICE_UUID);
+    if (!service) {
+        service = pOBDClient->getService("FFF0");
+    }
+    if (!service) {
+        service = pOBDClient->getService("FFE0");
+    }
     if (!service) {
         return false;
     }
 
+    // Check for TX/RX characteristics using the same fallback order
+    // as discoverServices().
     NimBLERemoteCharacteristic* tx = service->getCharacteristic(NUS_TX_CHAR_UUID);
+    if (!tx) {
+        tx = service->getCharacteristic("FFF1");
+    }
+    if (!tx) {
+        tx = service->getCharacteristic("FFE1");
+    }
+
     NimBLERemoteCharacteristic* rx = service->getCharacteristic(NUS_RX_CHAR_UUID);
+    if (!rx) {
+        rx = service->getCharacteristic("FFF2");
+    }
+    if (!rx) {
+        rx = service->getCharacteristic("FFE1");
+    }
+
     return tx != nullptr && rx != nullptr;
 }
 
