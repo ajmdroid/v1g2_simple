@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <freertos/FreeRTOS.h>
+#include <freertos/stream_buffer.h>
 #include <freertos/task.h>
 
 // Forward declarations
@@ -138,6 +139,8 @@ public:
     // Dependency injection hooks: keeps OBD logic independent from V1 BLE implementation.
     void setLinkReadyCallback(BoolCallback cb);
     void setStartScanCallback(VoidCallback cb);
+    void setVwDataEnabled(bool enabled);
+    bool isVwDataEnabled() const { return vwDataEnabled.load(); }
 
 private:
     // BLE UART service UUIDs
@@ -181,17 +184,19 @@ private:
 
     char responseBuffer[RESPONSE_BUFFER_SIZE + 1] = {0};
     size_t responseLength = 0;
-    bool responseComplete = false;
+    std::atomic<bool> responseComplete{false};
     std::atomic<uint32_t> notifyDropCount{0};
 
     uint32_t lastPollMs = 0;
     uint8_t connectionFailures = 0;
+    std::atomic<bool> vwDataEnabled{true};
 
     TaskHandle_t obdTaskHandle = nullptr;
     volatile bool taskRunning = false;
     volatile bool taskShouldExit = false;
 
     SemaphoreHandle_t obdMutex = nullptr;
+    StreamBufferHandle_t notifyStream = nullptr;
 
     Preferences prefs;
 
@@ -231,7 +236,10 @@ private:
     bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC);
 
     static bool isObdLinkName(const std::string& name);
+    static bool isNullAddressString(const String& address);
     static uint32_t normalizePin(const String& pin, bool obdLinkDefault);
+    bool resolveTargetAddress();
+    bool connectViaAdvertisedDevice(const char* profileLabel, bool usingPin);
     bool isLinkReady() const;
     void requestScanStart() const;
 
