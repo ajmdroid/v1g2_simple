@@ -2224,10 +2224,26 @@ void V1Display::showBootSplash() {
     drawBaseFrame();
 
     // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
-    for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
-        for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
-            uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
-            TFT_CALL(drawPixel)(sx, sy, pixel);
+    bool drewLogo = false;
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    uint16_t* fb = tft ? tft->getFramebuffer() : nullptr;
+    if (fb && tft->width() == V1SIMPLE_LOGO_WIDTH && tft->height() == V1SIMPLE_LOGO_HEIGHT) {
+        const size_t rowPixels = V1SIMPLE_LOGO_WIDTH;
+        const size_t rowBytes = rowPixels * sizeof(uint16_t);
+        for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
+            uint16_t* dst = fb + (static_cast<size_t>(sy) * rowPixels);
+            const uint16_t* src = &v1simple_logo_rgb565[static_cast<size_t>(sy) * rowPixels];
+            memcpy(dst, src, rowBytes);
+        }
+        drewLogo = true;
+    }
+#endif
+    if (!drewLogo) {
+        for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
+            for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
+                uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
+                TFT_CALL(drawPixel)(sx, sy, pixel);
+            }
         }
     }
     
