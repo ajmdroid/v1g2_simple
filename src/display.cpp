@@ -163,6 +163,38 @@ static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 
 // Global display instance reference for access to color palette (set by V1Display)
 V1Display* g_displayInstance = nullptr;
+static uint32_t gNumericCacheBytes = 8192u;
+static bool gSerpentineLoadAttempted = false;
+
+static bool ensureSerpentineFontLoaded() {
+    if (ofrSerpentineInitialized) {
+        return true;
+    }
+    if (gSerpentineLoadAttempted) {
+        return false;
+    }
+    if (!g_displayInstance) {
+        return false;
+    }
+
+    Arduino_Canvas* canvas = g_displayInstance->getCanvas();
+    if (!canvas) {
+        return false;
+    }
+
+    gSerpentineLoadAttempted = true;
+    const unsigned long loadStartMs = millis();
+    ofrSerpentine.setDrawer(*canvas);
+    ofrSerpentine.setCacheSize(1, 4, gNumericCacheBytes);
+    FT_Error err = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
+    ofrSerpentineInitialized = (err == 0);
+    if (ofrSerpentineInitialized) {
+        Serial.printf("[Display] Serpentine font lazy-loaded in %lu ms\n", millis() - loadStartMs);
+    } else {
+        Serial.printf("[Display] ERROR: Serpentine lazy load failed (0x%02X)\n", err);
+    }
+    return ofrSerpentineInitialized;
+}
 
 // Helper to get current color palette
 inline const ColorPalette& getColorPalette() {
@@ -493,6 +525,16 @@ V1Display::~V1Display() {
 
 bool V1Display::begin() {
     Serial.printf("[Display] Init %s...\n", DISPLAY_NAME);
+    const unsigned long beginStartMs = millis();
+    unsigned long stageStartMs = beginStartMs;
+    auto logDisplayStage = [&](const char* stageName) {
+        const unsigned long now = millis();
+        Serial.printf("[Display] Stage %s: %lu ms (total=%lu)\n",
+                      stageName,
+                      now - stageStartMs,
+                      now - beginStartMs);
+        stageStartMs = now;
+    };
     
 #if PIN_POWER_ON >= 0
     // Power was held low in setup(); bring it up now
@@ -610,6 +652,7 @@ bool V1Display::begin() {
 #endif
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+    logDisplayStage("hw_init");
     
     // Initialize OpenFontRender fonts with glyph caching enabled.
     // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont.
@@ -617,6 +660,8 @@ bool V1Display::begin() {
     const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
     const uint32_t numericCacheBytes = psramOk ? 49152u : 8192u;
     const uint32_t topCounterCacheBytes = psramOk ? 16384u : 4096u;
+    gNumericCacheBytes = numericCacheBytes;
+    gSerpentineLoadAttempted = false;
     Serial.printf("[Display] Font cache budget: psram=%s seg7=%lu top=%lu serp=%lu\n",
                   psramOk ? "yes" : "no",
                   static_cast<unsigned long>(numericCacheBytes),
@@ -628,6 +673,7 @@ bool V1Display::begin() {
     FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
     ofrSegment7Initialized = (ftErr2 == 0);
     if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
+    logDisplayStage("font_segment7");
     
     ofrTopCounter.setDrawer(*tft);
     ofrTopCounter.setCacheSize(1, 2, topCounterCacheBytes);  // Small dedicated cache for top counter symbols
@@ -647,12 +693,12 @@ bool V1Display::begin() {
                           oneMin, oneMax, twoMin, twoMax, eightMin, eightMax);
         }
     }
+    logDisplayStage("font_topcounter");
     
-    ofrSerpentine.setDrawer(*tft);
-    ofrSerpentine.setCacheSize(1, 4, numericCacheBytes);  // Serpentine digits cache
-    FT_Error ftErr4 = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
-    ofrSerpentineInitialized = (ftErr4 == 0);
-    if (ftErr4) Serial.printf("[Display] ERROR: Serpentine font failed (0x%02X)\n", ftErr4);
+    // Defer Serpentine font load until style actually uses it.
+    // This trims cold boot latency for the default Classic style.
+    ofrSerpentineInitialized = false;
+    logDisplayStage("font_serp_deferred");
 
 #ifdef CONFIG_SPIRAM_SUPPORT
     Serial.println("[Display] OFR using PSRAM-preferring allocator (ps_malloc)");
@@ -669,6 +715,7 @@ bool V1Display::begin() {
     
     // Load color theme from settings
     updateColorTheme();
+    logDisplayStage("ready");
     
     return true;
 }
@@ -2045,6 +2092,9 @@ void V1Display::showScanning() {
     drawStatusBar();  // Top status indicators
     
     // Draw "SCAN" in frequency area - match display style
+    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
+        ensureSerpentineFontLoaded();
+    }
     if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
         // Modern style: use Montserrat Bold via OFR
         const int fontSize = 66;
@@ -4159,6 +4209,9 @@ void V1Display::drawVolumeZeroWarning() {
 // Router: calls appropriate frequency draw method based on display style setting
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
+    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
+        ensureSerpentineFontLoaded();
+    }
     frequencyRenderDirty = false;
     frequencyDirtyValid = false;
     frequencyDirtyX = 0;
