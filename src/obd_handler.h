@@ -156,6 +156,8 @@ private:
     static constexpr uint8_t MAX_CONNECTION_FAILURES = 5;
     static constexpr uint32_t BASE_RETRY_DELAY_MS = 3000;
     static constexpr uint32_t MAX_RETRY_DELAY_MS = 30000;
+    static constexpr uint8_t MAX_CONSECUTIVE_POLL_FAILURES = 10;
+    static constexpr uint32_t MAX_RECONNECT_COOLDOWN_MS = 300000; // 5 min
     static constexpr size_t MAX_REMEMBERED_DEVICES = 8;
 
     OBDData lastData{};
@@ -189,6 +191,8 @@ private:
 
     uint32_t lastPollMs = 0;
     uint8_t connectionFailures = 0;
+    uint8_t consecutivePollFailures = 0;
+    uint8_t reconnectCycleCount = 0;
     std::atomic<bool> vwDataEnabled{true};
 
     TaskHandle_t obdTaskHandle = nullptr;

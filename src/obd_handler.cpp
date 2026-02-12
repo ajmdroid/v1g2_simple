@@ -650,9 +650,16 @@ bool OBDHandler::runStateMachine() {
                 return false;
             }
             if (connectionFailures >= MAX_CONNECTION_FAILURES) {
-                // After a cooldown, return to IDLE so auto-connect can
-                // discover the adapter again.
-                if ((millis() - lastPollMs) >= 60000) {
+                // Escalating cooldown: 60s → 120s → 240s → 300s (cap).
+                // Reduces BLE radio churn when the adapter is off for
+                // extended periods (e.g. car parked).
+                uint32_t cooldown = 60000u * (1u << (reconnectCycleCount < 3 ? reconnectCycleCount : 3));
+                if (cooldown > MAX_RECONNECT_COOLDOWN_MS) cooldown = MAX_RECONNECT_COOLDOWN_MS;
+                if ((millis() - lastPollMs) >= cooldown) {
+                    reconnectCycleCount = (reconnectCycleCount < 10) ? reconnectCycleCount + 1 : 10;
+                    Serial.printf("[OBD] Reconnect cooldown elapsed (%lus) - returning to IDLE (cycle %u)\n",
+                                  (unsigned long)(cooldown / 1000),
+                                  (unsigned)reconnectCycleCount);
                     connectionFailures = 0;
                     hasTargetDevice = false;
                     state = OBDState::IDLE;
@@ -685,6 +692,7 @@ void OBDHandler::handleConnecting() {
 
     if (connectToDevice() && discoverServices()) {
         connectionFailures = 0;
+        reconnectCycleCount = 0;
         state = OBDState::INITIALIZING;
         return;
     }
@@ -702,6 +710,8 @@ void OBDHandler::handleInitializing() {
     if (initializeAdapter()) {
         Serial.println("[OBD] Adapter initialized");
         connectionFailures = 0;
+        reconnectCycleCount = 0;
+        consecutivePollFailures = 0;
         state = OBDState::READY;
 
         if (rememberTargetOnConnect) {
@@ -727,6 +737,7 @@ void OBDHandler::handlePolling() {
         if (lock.ok()) {
             lastData.valid = false;
         }
+        consecutivePollFailures = 0;
         state = OBDState::DISCONNECTED;
         lastPollMs = millis();
         return;
@@ -741,7 +752,26 @@ void OBDHandler::handlePolling() {
     pollCounter++;
 
     // Keep speed as the primary metric at 1 Hz.
-    requestSpeed();
+    // Track consecutive failures to detect adapter/ECU going offline
+    // and proactively disconnect before the BLE supervision timeout.
+    if (requestSpeed()) {
+        consecutivePollFailures = 0;
+    } else {
+        consecutivePollFailures++;
+        if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+            Serial.printf("[OBD] %u consecutive poll failures - proactive disconnect\n",
+                          (unsigned)consecutivePollFailures);
+            ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+            if (lock.ok()) {
+                lastData.valid = false;
+            }
+            consecutivePollFailures = 0;
+            disconnect();
+            state = OBDState::DISCONNECTED;
+            lastPollMs = millis();
+            return;
+        }
+    }
 
     // Secondary metrics are polled at lower rates to avoid BLE/UART saturation.
     if ((pollCounter % RPM_POLL_DIV) == 0) {
@@ -792,6 +822,37 @@ bool OBDHandler::connectToDevice() {
         Serial.printf("[OBD] Connect aborted: unsupported adapter '%s' (CX only)\n",
                       targetDeviceName.c_str());
         return false;
+    }
+
+    // Quick pre-scan: is any OBDLink CX advertising?
+    // If not, the adapter is likely powered off — bail immediately
+    // to avoid dozens of expensive BLE connection attempts.
+    {
+        NimBLEScan* pPreScan = NimBLEDevice::getScan();
+        if (pPreScan) {
+            pPreScan->setDuplicateFilter(true);
+            pPreScan->setMaxResults(20);
+            pPreScan->setActiveScan(true);
+            NimBLEScanResults preResults = pPreScan->getResults(2000, false);
+
+            bool cxAdvertising = false;
+            for (int i = 0; i < preResults.getCount(); i++) {
+                const NimBLEAdvertisedDevice* dev = preResults.getDevice(i);
+                if (dev && isObdLinkName(dev->getName())) {
+                    cxAdvertising = true;
+                    break;
+                }
+            }
+
+            pPreScan->setMaxResults(0);
+            pPreScan->setActiveScan(true);
+            pPreScan->clearResults();
+
+            if (!cxAdvertising) {
+                Serial.println("[OBD] No OBDLink CX advertising - adapter may be off");
+                return false;
+            }
+        }
     }
 
     if (targetAddress.isNull() || isAllZeroAddress(targetAddress)) {
