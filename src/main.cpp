@@ -403,7 +403,7 @@ void setup() {
 #endif
 
     Serial.begin(115200);
-    delay(100);  // Reduced from 500ms - brief delay for serial init
+    delay(30);   // Conservative USB CDC settle
     
     // PANIC BREADCRUMBS: Log crash info FIRST (before any other init)
     logPanicBreadcrumbs();
@@ -457,8 +457,8 @@ void setup() {
     }
     bootReadyDeadlineMs = millis() + 5000;
     
-    // Brief delay to ensure panel is fully cleared before enabling backlight
-    delay(50);
+    // Brief post-display settle before settings init
+    delay(10);
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
     settingsManager.begin();

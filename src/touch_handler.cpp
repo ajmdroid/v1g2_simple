@@ -42,7 +42,7 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     Wire.begin(sda, scl);
     Wire.setClock(400000);  // 400kHz I2C speed
     
-    delay(100);  // Give touch controller time to initialize
+    delay(30);   // Conservative I2C/touch controller settle
     
     // Reset the touch controller if reset pin is available
     if (rstPin >= 0) {
