@@ -21,7 +21,10 @@
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
+static const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
+static const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
 static const int SD_BACKUP_VERSION = 5;  // Increment when adding new fields to backup
+static const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
@@ -135,6 +138,151 @@ static String sanitizeProfileDescriptionValue(const String& raw) {
 
 static String sanitizeLastV1AddressValue(const String& raw) {
     return clampStringLength(raw, MAX_V1_ADDRESS_LEN);
+}
+
+static bool isSupportedBackupType(const JsonDocument& doc) {
+    if (!doc["_type"].is<const char*>()) {
+        return true;  // Legacy backups may not include a type marker.
+    }
+    const String type = doc["_type"].as<String>();
+    return type == "v1simple_sd_backup" || type == "v1simple_backup";
+}
+
+static bool hasBackupSignature(const JsonDocument& doc) {
+    // Require a small signature set to avoid accepting arbitrary JSON blobs.
+    return doc["apSSID"].is<const char*>() ||
+           doc["brightness"].is<int>() ||
+           doc["colorBogey"].is<int>() ||
+           doc["slot0Name"].is<const char*>();
+}
+
+static bool parseBackupFile(fs::FS* fs,
+                            const char* path,
+                            JsonDocument& doc,
+                            bool verboseErrors = true) {
+    if (!fs || !path || path[0] == '\0') {
+        return false;
+    }
+
+    File file = fs->open(path, FILE_READ);
+    if (!file) {
+        if (verboseErrors) {
+            Serial.printf("[Settings] Failed to open backup file: %s\n", path);
+        }
+        return false;
+    }
+
+    const size_t size = file.size();
+    if (size == 0 || size > SETTINGS_BACKUP_MAX_BYTES) {
+        if (verboseErrors) {
+            Serial.printf("[Settings] Backup file size invalid (%u bytes): %s\n",
+                          static_cast<unsigned int>(size),
+                          path);
+        }
+        file.close();
+        return false;
+    }
+
+    DeserializationError err = deserializeJson(doc, file);
+    file.close();
+
+    if (err) {
+        if (verboseErrors) {
+            Serial.printf("[Settings] Failed to parse backup '%s': %s\n", path, err.c_str());
+        }
+        return false;
+    }
+
+    if (!isSupportedBackupType(doc)) {
+        if (verboseErrors) {
+            Serial.printf("[Settings] Unsupported backup type in %s\n", path);
+        }
+        return false;
+    }
+    if (!hasBackupSignature(doc)) {
+        if (verboseErrors) {
+            Serial.printf("[Settings] Backup signature check failed for %s\n", path);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+static bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
+    if (!fs) {
+        return false;
+    }
+
+    if (fs->exists(SETTINGS_BACKUP_TMP_PATH)) {
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+    }
+
+    File tmp = fs->open(SETTINGS_BACKUP_TMP_PATH, FILE_WRITE);
+    if (!tmp) {
+        Serial.println("[Settings] Failed to create temp SD backup file");
+        return false;
+    }
+
+    const size_t written = serializeJson(doc, tmp);
+    tmp.flush();
+    tmp.close();
+
+    if (written == 0) {
+        Serial.println("[Settings] Failed to write temp SD backup");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+        return false;
+    }
+
+    // Parse-check temp backup before promotion.
+    JsonDocument verifyTmp;
+    if (!parseBackupFile(fs, SETTINGS_BACKUP_TMP_PATH, verifyTmp, true)) {
+        Serial.println("[Settings] Temp SD backup failed validation");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+        return false;
+    }
+
+    if (fs->exists(SETTINGS_BACKUP_PREV_PATH)) {
+        fs->remove(SETTINGS_BACKUP_PREV_PATH);
+    }
+
+    bool rotatedPrimary = false;
+    if (fs->exists(SETTINGS_BACKUP_PATH)) {
+        if (fs->rename(SETTINGS_BACKUP_PATH, SETTINGS_BACKUP_PREV_PATH)) {
+            rotatedPrimary = true;
+        } else {
+            Serial.println("[Settings] ERROR: Failed to rotate primary backup; keeping existing file");
+            fs->remove(SETTINGS_BACKUP_TMP_PATH);
+            return false;
+        }
+    }
+
+    if (!fs->rename(SETTINGS_BACKUP_TMP_PATH, SETTINGS_BACKUP_PATH)) {
+        Serial.println("[Settings] ERROR: Failed to promote temp backup to primary");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+
+        if (rotatedPrimary && fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
+            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
+                Serial.println("[Settings] CRITICAL: Failed to rollback previous backup");
+            }
+        }
+        return false;
+    }
+
+    // Final parse-check on promoted backup.
+    JsonDocument verifyPrimary;
+    if (!parseBackupFile(fs, SETTINGS_BACKUP_PATH, verifyPrimary, true)) {
+        Serial.println("[Settings] ERROR: Promoted backup failed validation");
+        fs->remove(SETTINGS_BACKUP_PATH);
+        if (fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
+            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
+                Serial.println("[Settings] CRITICAL: Failed to restore previous backup after validation failure");
+            }
+        }
+        return false;
+    }
+
+    return true;
 }
 
 // Global instance
@@ -566,6 +714,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
     if (storageManager.isReady() && storageManager.isSDCard()) {
         fs = storageManager.getFilesystem();
         hasSdBackup = fs && (fs->exists(SETTINGS_BACKUP_PATH)
+            || fs->exists(SETTINGS_BACKUP_PREV_PATH)
             || fs->exists("/v1simple_settings.json")
             || fs->exists("/v1settings_backup.json"));
     }
@@ -1574,16 +1723,10 @@ void SettingsManager::backupToSD() {
         }
     }
     
-    // Write to file
-    File file = fs->open(SETTINGS_BACKUP_PATH, FILE_WRITE);
-    if (!file) {
-        Serial.println("[Settings] Failed to create SD backup file");
+    if (!writeBackupAtomically(fs, doc)) {
+        Serial.println("[Settings] ERROR: Failed to commit SD backup atomically");
         return;
     }
-    
-    serializeJson(doc, file);
-    file.flush();
-    file.close();
     
     Serial.printf("[Settings] Full backup saved to SD card (%d profiles)\n", profilesBackedUp);
     Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
@@ -1606,35 +1749,33 @@ bool SettingsManager::restoreFromSD() {
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
     
-    // Check both old and new backup paths for compatibility
-    const char* backupPath = SETTINGS_BACKUP_PATH;
-    if (!fs->exists(backupPath)) {
-        // Try legacy paths
-        if (fs->exists("/v1simple_settings.json")) {
-            backupPath = "/v1simple_settings.json";
-        } else if (fs->exists("/v1settings_backup.json")) {
-            backupPath = "/v1settings_backup.json";
-        } else {
-            Serial.println("[Settings] No SD backup found");
-            return false;
-        }
-    }
-    
-    Serial.printf("[Settings] Using backup file: %s\n", backupPath);
-    File file = fs->open(backupPath, FILE_READ);
-    if (!file) {
-        Serial.println("[Settings] Failed to open SD backup");
-        return false;
-    }
-    
+    const char* backupPath = nullptr;
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, file);
-    file.close();
-    
-    if (err) {
-        Serial.printf("[Settings] Failed to parse SD backup: %s\n", err.c_str());
+    const char* candidates[] = {
+        SETTINGS_BACKUP_PATH,
+        SETTINGS_BACKUP_PREV_PATH,
+        "/v1simple_settings.json",
+        "/v1settings_backup.json"
+    };
+
+    for (const char* candidate : candidates) {
+        if (!fs->exists(candidate)) {
+            continue;
+        }
+        doc.clear();
+        if (parseBackupFile(fs, candidate, doc, false)) {
+            backupPath = candidate;
+            break;
+        }
+        Serial.printf("[Settings] WARN: Ignoring invalid backup candidate: %s\n", candidate);
+    }
+
+    if (!backupPath) {
+        Serial.println("[Settings] No valid SD backup found");
         return false;
     }
+
+    Serial.printf("[Settings] Using backup file: %s\n", backupPath);
     
     int backupVersion = doc["_version"] | doc["version"] | 1;
     Serial.printf("[Settings] Restoring from SD backup (version %d)\n", backupVersion);
