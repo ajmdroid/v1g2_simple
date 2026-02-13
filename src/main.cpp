@@ -424,6 +424,12 @@ void setup() {
                          now - setupStartMs);
         setupStageStartMs = now;
     };
+    auto logBootCheckpoint = [&](const char* label) {
+        const unsigned long now = millis();
+        SerialLog.printf("[BootTiming] checkpoint=%s total=%lu\n",
+                         label,
+                         now - setupStartMs);
+    };
     
     SerialLog.println("\n===================================");
     SerialLog.println("V1 Gen2 Simple Display");
@@ -445,6 +451,12 @@ void setup() {
         SerialLog.printf("(Other: %d)\n", resetReason);
     }
     SerialLog.println("===================================\n");
+    SerialLog.printf("[BootTiming] reset=%s (%d)\n",
+                     resetReasonToString(resetReason),
+                     static_cast<int>(resetReason));
+    if (resetReason == ESP_RST_DEEPSLEEP) {
+        logBootCheckpoint("wake_deepsleep");
+    }
 
     // Runtime PSRAM visibility: board metadata can differ from actual hardware.
     bool psramOk = psramFound();
@@ -492,11 +504,19 @@ void setup() {
     // Show boot splash only on true power-on (not crash reboots or firmware uploads)
     if (resetReason == ESP_RST_POWERON) {
         // True cold boot: brief non-blocking splash for immediate visual confirmation
+        logBootCheckpoint("splash_begin");
+        const unsigned long splashCallStartMs = millis();
         display.showBootSplash();
+        SerialLog.printf("[BootTiming] splash_call_ms=%lu\n",
+                         millis() - splashCallStartMs);
         bootSplashHoldActive = true;
         bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
     } else {
+        logBootCheckpoint("wake_ui_scan_begin");
+        const unsigned long wakeUiStartMs = millis();
         showInitialScanningScreen();
+        SerialLog.printf("[BootTiming] wake_ui_scan_ms=%lu\n",
+                         millis() - wakeUiStartMs);
     }
     logBootStage("boot_ui");
 
@@ -666,23 +686,30 @@ void setup() {
                   bleSettings.proxyName.c_str());
 
     // Initialize BLE stack first (required before any BLE operations)
+    logBootCheckpoint("ble_init_begin");
+    const unsigned long bleInitStartMs = millis();
     if (!bleClient.initBLE(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
         SerialLog.println("BLE initialization failed!");
         fatalBootError("BLE init failed", true);
     }
+    SerialLog.printf("[BootTiming] ble_init_ms=%lu\n", millis() - bleInitStartMs);
     
     // Start normal scanning
     SerialLog.println("Starting BLE scan for V1...");
+    logBootCheckpoint("ble_scan_begin");
+    const unsigned long bleScanStartMs = millis();
     if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
         SerialLog.println("BLE scan failed to start!");
         fatalBootError("BLE scan failed", true);
     }
+    SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
     
     // Register data callback
     bleClient.onDataReceived(onV1Data);
     
     // Register V1 connection callback for auto-push
     bleClient.onV1Connected(onV1Connected);
+    logBootCheckpoint("ble_callbacks_registered");
     logBootStage("ble_start");
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");

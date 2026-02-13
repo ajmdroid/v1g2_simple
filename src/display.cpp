@@ -2277,16 +2277,19 @@ void V1Display::showDemo() {
 }
 
 void V1Display::showBootSplash() {
+    const unsigned long splashStartMs = millis();
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
     // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
+    const unsigned long logoStartMs = millis();
     for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
         for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
             uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
             TFT_CALL(drawPixel)(sx, sy, pixel);
         }
     }
+    const unsigned long logoMs = millis() - logoStartMs;
     
     // Draw version number in bottom-right corner
     GFX_setTextDatum(BR_DATUM);  // Bottom-right alignment
@@ -2296,7 +2299,11 @@ void V1Display::showBootSplash() {
 
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display before enabling backlight
+    const unsigned long flushStartMs = millis();
     DISPLAY_FLUSH();
+    const unsigned long flushMs = millis() - flushStartMs;
+#else
+    const unsigned long flushMs = 0;
 #endif
 
     // Turn on backlight now that splash is drawn
@@ -2307,6 +2314,10 @@ void V1Display::showBootSplash() {
     digitalWrite(TFT_BL, HIGH);
 #endif
     Serial.println("Backlight ON (post-splash, inverted)");
+    Serial.printf("[BootTiming] splash total=%lu logo=%lu flush=%lu\n",
+                  millis() - splashStartMs,
+                  logoMs,
+                  flushMs);
 }
 
 void V1Display::showShutdown() {
