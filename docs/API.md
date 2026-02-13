@@ -721,27 +721,6 @@ Get runtime performance counters and subsystem health snapshots.
 - Counters are boot-session counters (monotonic until reboot/reset).
 - This endpoint is intended to match SD perf CSV counters for runtime/CSV correlation checks.
 
-### GET /api/debug/events
-
-Get recent debug events.
-
-**Response:**
-```json
-{
-  "events": [
-    {
-      "time": 3600,
-      "type": "BLE",
-      "message": "V1 connected"
-    }
-  ]
-}
-```
-
-### POST /api/debug/events/clear
-
-Clear event log.
-
 ### POST /api/debug/enable
 
 Enable/disable runtime perf debug reporting.

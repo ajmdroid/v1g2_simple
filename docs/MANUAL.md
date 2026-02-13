@@ -1480,8 +1480,6 @@ Enable verbose logging by checking serial output for:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/debug/metrics` | Performance metrics |
-| GET | `/api/debug/events` | Event ring buffer |
-| POST | `/api/debug/events/clear` | Clear event buffer |
 | POST | `/api/debug/enable` | Toggle debug features |
 
 **Captive Portal Handlers:**
@@ -1491,21 +1489,6 @@ Enable verbose logging by checking serial output for:
 - `/ncsi.txt` - Windows NCSI check
 
 **Source:** [src/wifi_manager.cpp](src/wifi_manager.cpp#L270-L434)
-
-### Event Ring
-
-Debug events viewable at `/api/debug/events`:
-
-```json
-{
-  "events": [
-    {"t": 12345, "type": "EVT_BLE_CONNECT", "data": 0},
-    {"t": 12400, "type": "EVT_PARSE_OK", "data": 49}
-  ]
-}
-```
-
-**Source:** [src/event_ring.h](src/event_ring.h#L1-L100)
 
 ---
 
