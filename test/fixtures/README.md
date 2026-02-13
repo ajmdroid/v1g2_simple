@@ -1,83 +1,33 @@
 # Test Fixtures
 
-This directory contains captured BLE packet traces for replay testing.
+This directory holds captured logs and JSON fixtures used by offline analysis
+tools and CI checks.
 
-## Creating Fixtures
+## Current Usage
 
-### 1. Enable BLE Debug Logging
+### Stability scorecard fixture (CI)
 
-In the web UI, go to **Dev** → **Log Categories** and enable:
-- ✅ BLE (captures raw packet hex)
-- ✅ Alerts (captures alert state changes)
+`test/fixtures/debug_base_stable.log` is used by `.github/workflows/scorecard.yml`.
 
-### 2. Drive / Trigger Alerts
-
-Go for a drive or use another method to generate alerts. The debug log will capture:
-- Raw BLE packets with timestamps: `[BLE:PKT] ts=12345 len=19 hex=AA040A43...`
-- Alert state changes: `[Alerts] count=1 pri=Ka dir=FRONT freq=34712...`
-
-### 3. Download the Log
-
-Go to **Dev** → **Download Log** to get `debug.log`
-
-### 4. Parse and Extract Fixtures
+Run locally:
 
 ```bash
-# Analyze log and show statistics
-python tools/replay_ble.py debug.log --analyze
-
-# Find alert segments
-python tools/replay_ble.py debug.log --segments
-
-# Extract packets from a specific alert segment
-python tools/replay_ble.py debug.log --extract-segment 0 -o test/fixtures/ka_alert.json
-
-# Extract all packets around alert windows
-python tools/replay_ble.py debug.log --extract-alerts -o test/fixtures/all_alerts.json
-
-# Replay packets over serial (with timing)
-python tools/replay_ble.py test/fixtures/ka_alert.json --replay --port /dev/tty.usbserial-XXX
-
-# Dry-run replay (show what would be sent)
-python tools/replay_ble.py test/fixtures/ka_alert.json --replay --dry-run
+python3 tools/scorecard.py test/fixtures/debug_base_stable.log
+python3 tools/scorecard.py test/fixtures/debug_base_stable.log --json
 ```
 
-## Fixture Format
+### Log analysis fixtures
 
-```json
-{
-  "metadata": {
-    "source": "debug.log",
-    "captured": "2026-01-30T12:00:00",
-    "packet_count": 1234,
-    "stats": {
-      "duration_ms": 300000,
-      "packet_types": {"DisplayData": 500, "AlertData": 100}
-    }
-  },
-  "packets": [
-    {"ts": 12345, "len": 19, "hex": "AA040A430C0401050000D02F0100000001E8AB"},
-    ...
-  ]
-}
+`tools/bench.py`, `tools/analyze_clusters.py`, and `tools/analyze_drive_log.py`
+can be run against fixtures in this folder, for example:
+
+```bash
+python3 tools/bench.py test/fixtures/drive_session.log
+python3 tools/analyze_clusters.py test/fixtures/drive_session.log
+python3 tools/analyze_drive_log.py test/fixtures/drive_session.log
 ```
 
-## Using Fixtures in Tests
+## Notes
 
-See `test/test_perf/test_replay.cpp` for example usage:
-
-```cpp
-// Load fixture and feed packets to parser
-ReplayFixture fixture("test/fixtures/ka_alert.json");
-for (const auto& pkt : fixture.packets) {
-    feedPacket(pkt.hex, pkt.ts);
-    // Assert latency, state, etc.
-}
-```
-
-## Included Fixtures
-
-| File | Description | Packets | Duration |
-|------|-------------|---------|----------|
-| `sample_ka.json` | Single Ka alert cycle | ~50 | 5s |
-| *(add your captures here)* | | | |
+- SD-backed `debug.log` capture and Dev-page log download are removed.
+- Keep existing fixtures for repeatable offline analysis and regression checks.
