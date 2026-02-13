@@ -94,6 +94,8 @@ static unsigned long bootSplashHoldUntilMs = 0;
 static bool initialScanningScreenShown = false;
 static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
+static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
+static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
 static unsigned long scanScreenEnteredMs = 0;
 static bool scanScreenDwellActive = false;
 static bool lastBleConnectedForScanDwell = false;
@@ -457,6 +459,9 @@ void setup() {
     if (resetReason == ESP_RST_DEEPSLEEP) {
         logBootCheckpoint("wake_deepsleep");
     }
+    activeScanScreenDwellMs =
+        (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
+    SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
 
     // Runtime PSRAM visibility: board metadata can differ from actual hardware.
     bool psramOk = psramFound();
@@ -488,7 +493,9 @@ void setup() {
     bootReadyDeadlineMs = millis() + 5000;
     
     // Brief post-display settle before settings init
-    delay(10);
+    const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
+    delay(postDisplaySettleMs);
+    SerialLog.printf("[BootTiming] post_display_settle_ms=%lu\n", postDisplaySettleMs);
     logBootStage("display");
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
@@ -981,7 +988,7 @@ void loop() {
                 bool holdScanDwell = false;
                 if (scanScreenDwellActive && bleConnectedNow) {
                     unsigned long scanDwellMs = now - scanScreenEnteredMs;
-                    holdScanDwell = scanDwellMs < MIN_SCAN_SCREEN_DWELL_MS;
+                    holdScanDwell = scanDwellMs < activeScanScreenDwellMs;
                 }
 
                 if (!holdScanDwell) {
