@@ -194,7 +194,7 @@
 		}
 		lockoutError = '';
 		try {
-			const res = await fetch(`/api/lockout/events?limit=${LOCKOUT_EVENTS_LIMIT}`);
+			const res = await fetch(`/api/lockouts/events?limit=${LOCKOUT_EVENTS_LIMIT}`);
 			if (!res.ok) {
 				if (!silent) lockoutError = 'Failed to load lockout candidates';
 				return;

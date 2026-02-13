@@ -814,8 +814,16 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
-    server.on("/api/lockout/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
-    server.on("/api/lockout/events", HTTP_GET, [this]() { handleLockoutEvents(); });
+    server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
+    server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
+    server.on("/api/lockout/summary", HTTP_GET, [this]() {
+        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary");
+        handleLockoutSummary();
+    });
+    server.on("/api/lockout/events", HTTP_GET, [this]() {
+        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events");
+        handleLockoutEvents();
+    });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }

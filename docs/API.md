@@ -324,6 +324,26 @@ Clear preview and restore saved colors.
 
 ## Lockouts
 
+### GET /api/lockouts/summary
+
+Get read-only lockout candidate telemetry summary from the in-memory ring buffer.
+
+**Response fields:**
+- `published`: Total observations published since boot
+- `drops`: Number of oldest entries overwritten when buffer was full
+- `size`: Current entries in buffer
+- `capacity`: Fixed ring capacity
+- `latest`: Most recent observation (or `null`)
+
+### GET /api/lockouts/events
+
+Get recent lockout candidate observations (newest first).
+
+**Query Parameters:**
+- `limit` (optional): Number of entries (1-128, default 32)
+
+**Compatibility:** legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work, but return `X-API-Deprecated` and should be migrated.
+
 ### GET /api/lockouts
 
 Get all lockout entries.
