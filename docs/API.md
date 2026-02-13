@@ -334,6 +334,7 @@ Get read-only lockout candidate telemetry summary from the in-memory ring buffer
 - `size`: Current entries in buffer
 - `capacity`: Fixed ring capacity
 - `latest`: Most recent observation (or `null`)
+- `sd`: SD persistence counters and path (`enabled`, `path`, `enqueued`, `queueDrops`, `deduped`, `written`, `writeFail`, `rotations`)
 
 ### GET /api/lockouts/events
 
@@ -342,7 +343,10 @@ Get recent lockout candidate observations (newest first).
 **Query Parameters:**
 - `limit` (optional): Number of entries (1-128, default 32)
 
-**Compatibility:** legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work, but return `X-API-Deprecated` and should be migrated.
+**Notes:**
+- Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
+- SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
+- Legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work with `X-API-Deprecated`.
 
 ### GET /api/lockouts
 

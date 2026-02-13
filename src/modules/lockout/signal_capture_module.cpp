@@ -1,4 +1,5 @@
 #include "signal_capture_module.h"
+#include "signal_observation_sd_logger.h"
 
 #include "../../packet_parser.h"
 #include "../gps/gps_runtime_module.h"
@@ -113,6 +114,7 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     }
 
     signalObservationLog.publish(observation);
+    signalObservationSdLogger.enqueue(observation);
     lastSample_ = observation;
     lastValid_ = true;
 }

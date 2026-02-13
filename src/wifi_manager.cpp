@@ -21,6 +21,7 @@
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
 #include "modules/lockout/signal_observation_log.h"
+#include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
 #include "modules/system/system_event_bus.h"
@@ -3974,6 +3975,20 @@ void WiFiManager::handleLockoutSummary() {
     doc["drops"] = stats.drops;
     doc["size"] = static_cast<uint32_t>(stats.size);
     doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
+    const SignalObservationSdStats sdStats = signalObservationSdLogger.stats();
+    JsonObject sdObj = doc["sd"].to<JsonObject>();
+    sdObj["enabled"] = sdStats.enabled;
+    if (sdStats.enabled) {
+        sdObj["path"] = signalObservationSdLogger.csvPath();
+    } else {
+        sdObj["path"] = nullptr;
+    }
+    sdObj["enqueued"] = sdStats.enqueued;
+    sdObj["queueDrops"] = sdStats.queueDrops;
+    sdObj["deduped"] = sdStats.deduped;
+    sdObj["written"] = sdStats.written;
+    sdObj["writeFail"] = sdStats.writeFail;
+    sdObj["rotations"] = sdStats.rotations;
 
     if (latestCount == 1) {
         const SignalObservation& sample = latest[0];
@@ -4032,6 +4047,20 @@ void WiFiManager::handleLockoutEvents() {
     doc["drops"] = stats.drops;
     doc["size"] = static_cast<uint32_t>(stats.size);
     doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
+    const SignalObservationSdStats sdStats = signalObservationSdLogger.stats();
+    JsonObject sdObj = doc["sd"].to<JsonObject>();
+    sdObj["enabled"] = sdStats.enabled;
+    if (sdStats.enabled) {
+        sdObj["path"] = signalObservationSdLogger.csvPath();
+    } else {
+        sdObj["path"] = nullptr;
+    }
+    sdObj["enqueued"] = sdStats.enqueued;
+    sdObj["queueDrops"] = sdStats.queueDrops;
+    sdObj["deduped"] = sdStats.deduped;
+    sdObj["written"] = sdStats.written;
+    sdObj["writeFail"] = sdStats.writeFail;
+    sdObj["rotations"] = sdStats.rotations;
 
     JsonArray events = doc["events"].to<JsonArray>();
     for (size_t i = 0; i < count; ++i) {

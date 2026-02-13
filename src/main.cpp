@@ -57,6 +57,7 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
+#include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -527,6 +528,7 @@ void setup() {
 
     uint32_t bootId = nextBootId();
     perfSdLogger.setBootId(bootId);
+    signalObservationSdLogger.setBootId(bootId);
 
     // Standalone perf CSV logger (SD only).
     perfSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
@@ -534,6 +536,12 @@ void setup() {
         SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
     } else {
         SerialLog.println("[PERF] SD logger disabled (no SD)");
+    }
+    signalObservationSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
+    if (signalObservationSdLogger.isEnabled()) {
+        SerialLog.printf("[LockoutSD] Candidate logger enabled (%s)\n", signalObservationSdLogger.csvPath());
+    } else {
+        SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
     }
     logBootStage("storage");
 

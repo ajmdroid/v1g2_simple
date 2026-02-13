@@ -61,6 +61,16 @@
 		size: 0,
 		capacity: 0
 	});
+	let lockoutSd = $state({
+		enabled: false,
+		path: '',
+		enqueued: 0,
+		queueDrops: 0,
+		deduped: 0,
+		written: 0,
+		writeFail: 0,
+		rotations: 0
+	});
 
 	let showPinModal = $state(false);
 	let selectedDevice = $state(null);
@@ -206,6 +216,16 @@
 				drops: typeof data.drops === 'number' ? data.drops : 0,
 				size: typeof data.size === 'number' ? data.size : lockoutEvents.length,
 				capacity: typeof data.capacity === 'number' ? data.capacity : lockoutStats.capacity
+			};
+			lockoutSd = {
+				enabled: !!data?.sd?.enabled,
+				path: typeof data?.sd?.path === 'string' ? data.sd.path : '',
+				enqueued: typeof data?.sd?.enqueued === 'number' ? data.sd.enqueued : 0,
+				queueDrops: typeof data?.sd?.queueDrops === 'number' ? data.sd.queueDrops : 0,
+				deduped: typeof data?.sd?.deduped === 'number' ? data.sd.deduped : 0,
+				written: typeof data?.sd?.written === 'number' ? data.sd.written : 0,
+				writeFail: typeof data?.sd?.writeFail === 'number' ? data.sd.writeFail : 0,
+				rotations: typeof data?.sd?.rotations === 'number' ? data.sd.rotations : 0
 			};
 		} catch (e) {
 			if (!silent) lockoutError = 'Failed to load lockout candidates';
@@ -567,6 +587,14 @@
 							: 'no samples yet'}
 					</div>
 				</div>
+			</div>
+
+			<div class="text-xs text-base-content/65">
+				SD {lockoutSd.enabled ? 'enabled' : 'disabled'} · writes {lockoutSd.written} · deduped {lockoutSd.deduped}
+				· queue drops {lockoutSd.queueDrops} · write fail {lockoutSd.writeFail} · rotations {lockoutSd.rotations}
+				{#if lockoutSd.path}
+					· <span class="font-mono">{lockoutSd.path}</span>
+				{/if}
 			</div>
 
 			{#if loading || lockoutLoading}
