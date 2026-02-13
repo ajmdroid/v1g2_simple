@@ -17,6 +17,23 @@ enum VoiceAlertMode : uint8_t {
     VOICE_MODE_BAND_FREQ = 3
 };
 
+enum LockoutRuntimeMode : uint8_t {
+    LOCKOUT_RUNTIME_OFF = 0,
+    LOCKOUT_RUNTIME_SHADOW = 1,
+    LOCKOUT_RUNTIME_ADVISORY = 2,
+    LOCKOUT_RUNTIME_ENFORCE = 3
+};
+
+inline LockoutRuntimeMode clampLockoutRuntimeModeValue(int rawMode) {
+    if (rawMode < static_cast<int>(LOCKOUT_RUNTIME_OFF)) {
+        return LOCKOUT_RUNTIME_OFF;
+    }
+    if (rawMode > static_cast<int>(LOCKOUT_RUNTIME_ENFORCE)) {
+        return LOCKOUT_RUNTIME_ENFORCE;
+    }
+    return static_cast<LockoutRuntimeMode>(rawMode);
+}
+
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
     FONT_STYLE_CLASSIC = 0,
@@ -70,6 +87,11 @@ struct V1Settings {
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
+    LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
+    bool gpsLockoutCoreGuardEnabled = true;
+    uint16_t gpsLockoutMaxQueueDrops = 0;
+    uint16_t gpsLockoutMaxPerfDrops = 0;
+    uint16_t gpsLockoutMaxEventBusDrops = 0;
     bool obdEnabled = false;
     bool bleProxyEnabled = true;
 };
