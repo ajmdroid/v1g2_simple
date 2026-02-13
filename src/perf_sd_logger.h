@@ -66,6 +66,9 @@ struct PerfSdSnapshot {
     uint8_t obdConnFailures;      // OBD connect/init failure count
     uint8_t obdPollFailStreak;    // OBD consecutive poll failure streak
     uint32_t obdNotifyDrops;      // OBD notify stream-buffer drops
+    uint32_t alertPersistStarts;  // Persisted-alert sessions started
+    uint32_t alertPersistExpires; // Persisted-alert windows expired naturally
+    uint32_t alertPersistClears;  // Persisted-alert state cleared explicitly
 };
 
 class PerfSdLogger {

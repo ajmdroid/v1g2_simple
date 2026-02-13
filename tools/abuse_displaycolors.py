@@ -92,6 +92,9 @@ COUNTER_FIELDS: List[str] = [
     "perfSdLockFail",
     "perfSdOpenFail",
     "perfSdWriteFail",
+    "alertPersistStarts",
+    "alertPersistExpires",
+    "alertPersistClears",
 ]
 
 

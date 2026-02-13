@@ -2464,6 +2464,9 @@ void WiFiManager::handleDebugMetrics() {
     doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
     doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
     doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
+    doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
+    doc["alertPersistExpires"] = perfCounters.alertPersistExpires.load();
+    doc["alertPersistClears"] = perfCounters.alertPersistClears.load();
     doc["loopMaxUs"] = perfGetLoopMaxUs();
     doc["wifiMaxUs"] = perfGetWifiMaxUs();
     doc["fsMaxUs"] = perfGetFsMaxUs();

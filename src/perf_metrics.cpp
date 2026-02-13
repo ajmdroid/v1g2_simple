@@ -163,6 +163,9 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.obdConnFailures = obdPerf.connectionFailures;
     snapshot.obdPollFailStreak = obdPerf.consecutivePollFailures;
     snapshot.obdNotifyDrops = obdPerf.notifyDrops;
+    snapshot.alertPersistStarts = perfCounters.alertPersistStarts.load(std::memory_order_relaxed);
+    snapshot.alertPersistExpires = perfCounters.alertPersistExpires.load(std::memory_order_relaxed);
+    snapshot.alertPersistClears = perfCounters.alertPersistClears.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -523,6 +526,9 @@ String perfMetricsToJson() {
     doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
     doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
     doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
+    doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
+    doc["alertPersistExpires"] = perfCounters.alertPersistExpires.load();
+    doc["alertPersistClears"] = perfCounters.alertPersistClears.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
