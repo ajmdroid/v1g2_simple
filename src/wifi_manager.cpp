@@ -2467,6 +2467,15 @@ void WiFiManager::handleDebugMetrics() {
     doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
     doc["alertPersistExpires"] = perfCounters.alertPersistExpires.load();
     doc["alertPersistClears"] = perfCounters.alertPersistClears.load();
+    doc["autoPushStarts"] = perfCounters.autoPushStarts.load();
+    doc["autoPushCompletes"] = perfCounters.autoPushCompletes.load();
+    doc["autoPushNoProfile"] = perfCounters.autoPushNoProfile.load();
+    doc["autoPushProfileLoadFail"] = perfCounters.autoPushProfileLoadFail.load();
+    doc["autoPushProfileWriteFail"] = perfCounters.autoPushProfileWriteFail.load();
+    doc["autoPushBusyRetries"] = perfCounters.autoPushBusyRetries.load();
+    doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
+    doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
+    doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
     doc["loopMaxUs"] = perfGetLoopMaxUs();
     doc["wifiMaxUs"] = perfGetWifiMaxUs();
     doc["fsMaxUs"] = perfGetFsMaxUs();

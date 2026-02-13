@@ -69,6 +69,15 @@ struct PerfSdSnapshot {
     uint32_t alertPersistStarts;  // Persisted-alert sessions started
     uint32_t alertPersistExpires; // Persisted-alert windows expired naturally
     uint32_t alertPersistClears;  // Persisted-alert state cleared explicitly
+    uint32_t autoPushStarts;      // Auto-push runs initiated
+    uint32_t autoPushCompletes;   // Auto-push runs completed
+    uint32_t autoPushNoProfile;   // Auto-push slot had no configured profile
+    uint32_t autoPushProfileLoadFail;  // Auto-push profile load failures
+    uint32_t autoPushProfileWriteFail; // Auto-push profile write exhausted retries
+    uint32_t autoPushBusyRetries; // Auto-push write-busy retries
+    uint32_t autoPushModeFail;    // Auto-push mode set failures
+    uint32_t autoPushVolumeFail;  // Auto-push volume set failures
+    uint32_t autoPushDisconnectAbort; // Auto-push aborted due to disconnect
 };
 
 class PerfSdLogger {

@@ -95,6 +95,15 @@ COUNTER_FIELDS: List[str] = [
     "alertPersistStarts",
     "alertPersistExpires",
     "alertPersistClears",
+    "autoPushStarts",
+    "autoPushCompletes",
+    "autoPushNoProfile",
+    "autoPushProfileLoadFail",
+    "autoPushProfileWriteFail",
+    "autoPushBusyRetries",
+    "autoPushModeFail",
+    "autoPushVolumeFail",
+    "autoPushDisconnectAbort",
 ]
 
 

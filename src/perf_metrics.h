@@ -108,6 +108,15 @@ struct PerfCounters {
     std::atomic<uint32_t> alertPersistStarts{0};  // Persisted-alert sessions started
     std::atomic<uint32_t> alertPersistExpires{0}; // Persisted-alert windows expired naturally
     std::atomic<uint32_t> alertPersistClears{0};  // Persisted-alert state cleared explicitly
+    std::atomic<uint32_t> autoPushStarts{0};      // Auto-push runs initiated
+    std::atomic<uint32_t> autoPushCompletes{0};   // Auto-push runs completed
+    std::atomic<uint32_t> autoPushNoProfile{0};   // Auto-push slot had no configured profile
+    std::atomic<uint32_t> autoPushProfileLoadFail{0}; // Auto-push profile load failures
+    std::atomic<uint32_t> autoPushProfileWriteFail{0}; // Auto-push profile write exhausted retries
+    std::atomic<uint32_t> autoPushBusyRetries{0}; // Auto-push write-busy retries
+    std::atomic<uint32_t> autoPushModeFail{0};    // Auto-push mode set failures
+    std::atomic<uint32_t> autoPushVolumeFail{0};  // Auto-push volume set failures
+    std::atomic<uint32_t> autoPushDisconnectAbort{0}; // Auto-push aborted due to disconnect
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -146,6 +155,15 @@ struct PerfCounters {
         alertPersistStarts.store(0, std::memory_order_relaxed);
         alertPersistExpires.store(0, std::memory_order_relaxed);
         alertPersistClears.store(0, std::memory_order_relaxed);
+        autoPushStarts.store(0, std::memory_order_relaxed);
+        autoPushCompletes.store(0, std::memory_order_relaxed);
+        autoPushNoProfile.store(0, std::memory_order_relaxed);
+        autoPushProfileLoadFail.store(0, std::memory_order_relaxed);
+        autoPushProfileWriteFail.store(0, std::memory_order_relaxed);
+        autoPushBusyRetries.store(0, std::memory_order_relaxed);
+        autoPushModeFail.store(0, std::memory_order_relaxed);
+        autoPushVolumeFail.store(0, std::memory_order_relaxed);
+        autoPushDisconnectAbort.store(0, std::memory_order_relaxed);
     }
 };
 

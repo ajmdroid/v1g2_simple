@@ -166,6 +166,15 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.alertPersistStarts = perfCounters.alertPersistStarts.load(std::memory_order_relaxed);
     snapshot.alertPersistExpires = perfCounters.alertPersistExpires.load(std::memory_order_relaxed);
     snapshot.alertPersistClears = perfCounters.alertPersistClears.load(std::memory_order_relaxed);
+    snapshot.autoPushStarts = perfCounters.autoPushStarts.load(std::memory_order_relaxed);
+    snapshot.autoPushCompletes = perfCounters.autoPushCompletes.load(std::memory_order_relaxed);
+    snapshot.autoPushNoProfile = perfCounters.autoPushNoProfile.load(std::memory_order_relaxed);
+    snapshot.autoPushProfileLoadFail = perfCounters.autoPushProfileLoadFail.load(std::memory_order_relaxed);
+    snapshot.autoPushProfileWriteFail = perfCounters.autoPushProfileWriteFail.load(std::memory_order_relaxed);
+    snapshot.autoPushBusyRetries = perfCounters.autoPushBusyRetries.load(std::memory_order_relaxed);
+    snapshot.autoPushModeFail = perfCounters.autoPushModeFail.load(std::memory_order_relaxed);
+    snapshot.autoPushVolumeFail = perfCounters.autoPushVolumeFail.load(std::memory_order_relaxed);
+    snapshot.autoPushDisconnectAbort = perfCounters.autoPushDisconnectAbort.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -529,6 +538,15 @@ String perfMetricsToJson() {
     doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
     doc["alertPersistExpires"] = perfCounters.alertPersistExpires.load();
     doc["alertPersistClears"] = perfCounters.alertPersistClears.load();
+    doc["autoPushStarts"] = perfCounters.autoPushStarts.load();
+    doc["autoPushCompletes"] = perfCounters.autoPushCompletes.load();
+    doc["autoPushNoProfile"] = perfCounters.autoPushNoProfile.load();
+    doc["autoPushProfileLoadFail"] = perfCounters.autoPushProfileLoadFail.load();
+    doc["autoPushProfileWriteFail"] = perfCounters.autoPushProfileWriteFail.load();
+    doc["autoPushBusyRetries"] = perfCounters.autoPushBusyRetries.load();
+    doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
+    doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
+    doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

@@ -1,4 +1,5 @@
 #include "auto_push_module.h"
+#include "perf_metrics.h"
 
 #if defined(DISABLE_DEBUG_LOGGER)
 #define AUTO_PUSH_LOGF(...) do { } while (0)
@@ -22,6 +23,7 @@ void AutoPushModule::start(int slotIndex) {
     if (!settings || !profiles || !bleClient || !display) {
         return;
     }
+    PERF_INC(autoPushStarts);
 
     static const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
     int clampedIndex = std::max(0, std::min(2, slotIndex));
@@ -55,6 +57,7 @@ void AutoPushModule::process() {
     }
 
     if (!bleClient || !bleClient->isConnected()) {
+        PERF_INC(autoPushDisconnectAbort);
         state.step = Step::Idle;
         return;
     }
@@ -101,19 +104,23 @@ void AutoPushModule::process() {
                     } else {
                         if (state.profileWriteRetries < kMaxProfileWriteRetries) {
                             state.profileWriteRetries++;
+                            PERF_INC(autoPushBusyRetries);
                             AUTO_PUSH_LOGF("[AutoPush] Write busy, retrying (%u/%u)\n",
                                            state.profileWriteRetries, kMaxProfileWriteRetries);
                             state.step = Step::Profile;
                             state.nextStepAtMs = now + 30;  // Fast retry
                             return;
                         }
+                        PERF_INC(autoPushProfileWriteFail);
                         AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
                     }
                 } else {
+                    PERF_INC(autoPushProfileLoadFail);
                     AUTO_PUSH_LOGF("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
                     state.profileLoaded = false;
                 }
             } else {
+                PERF_INC(autoPushNoProfile);
                 AUTO_PUSH_LOGLN("[AutoPush] No profile configured for active slot");
                 state.profileLoaded = false;
             }
@@ -151,6 +158,7 @@ void AutoPushModule::process() {
                 if (bleClient->setMode(static_cast<uint8_t>(state.slot.mode))) {
                     AUTO_PUSH_LOGF("[AutoPush] Mode set to: %s\n", modeName);
                 } else {
+                    PERF_INC(autoPushModeFail);
                     AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set mode");
                 }
             }
@@ -170,10 +178,12 @@ void AutoPushModule::process() {
                 if (bleClient->setVolume(mainVol, muteVol)) {
                     AUTO_PUSH_LOGF("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
                 } else {
+                    PERF_INC(autoPushVolumeFail);
                     AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set volume");
                 }
             }
 
+            PERF_INC(autoPushCompletes);
             AUTO_PUSH_LOGLN("[AutoPush] Complete");
             state.step = Step::Idle;
             state.nextStepAtMs = 0;
