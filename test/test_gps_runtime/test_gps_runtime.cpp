@@ -109,8 +109,8 @@ void test_stale_fix_is_cleared() {
     TEST_ASSERT_TRUE(gpsRuntimeModule.injectNmeaSentenceForTest(
         "$GPRMC,123519,A,4807.038,N,01131.000,E,010.0,084.4,230394,003.1,W*6F", 1000));
 
-    gpsRuntimeModule.update(7002);
-    GpsRuntimeStatus status = gpsRuntimeModule.snapshot(7002);
+    gpsRuntimeModule.update(17002);
+    GpsRuntimeStatus status = gpsRuntimeModule.snapshot(17002);
     TEST_ASSERT_FALSE(status.hasFix);
     TEST_ASSERT_FALSE(status.sampleValid);
 }
