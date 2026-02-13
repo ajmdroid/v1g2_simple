@@ -674,10 +674,15 @@ void WiFiManager::setupWebServer() {
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
     server.on("/settings", HTTP_GET, [this]() { 
+        server.sendHeader("X-API-Deprecated", "Use /api/settings");
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Legacy compat
+    server.on("/settings", HTTP_POST, [this]() {
+        Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings");
+        server.sendHeader("X-API-Deprecated", "Use /api/settings");
+        handleSettingsSave();
+    });  // Legacy compat
     server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
     server.on("/mute", HTTP_POST, [this]() { handleMute(); });
     
