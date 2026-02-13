@@ -2,12 +2,42 @@
 
 #include <ArduinoJson.h>
 #include <climits>
+#include <string>
 
-#include "../../ble_client.h"
-#include "../../obd_handler.h"
-#include "../../settings.h"
+#ifdef UNIT_TEST
+#include "../../../test/mocks/ble_client.h"
+#include "../../../test/mocks/obd_handler.h"
+#include "../../../test/mocks/settings.h"
+#else
+#include "ble_client.h"
+#include "obd_handler.h"
+#include "settings.h"
+#endif
 
 namespace ObdApiService {
+
+namespace {
+
+void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
+#ifdef UNIT_TEST
+    std::string response;
+    serializeJson(doc, response);
+    server.send(statusCode, "application/json", response.c_str());
+#else
+    String response;
+    serializeJson(doc, response);
+    server.send(statusCode, "application/json", response);
+#endif
+}
+
+void sendError(WebServer& server, int statusCode, const char* message) {
+    JsonDocument doc;
+    doc["success"] = false;
+    doc["message"] = message;
+    sendJsonDocument(server, statusCode, doc);
+}
+
+}  // namespace
 
 void sendStatus(WebServer& server,
                 OBDHandler& obdHandler,
@@ -63,9 +93,7 @@ void sendStatus(WebServer& server,
     }
     doc["autoConnectCount"] = autoCount;
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonDocument(server, 200, doc);
 }
 
 void sendDevices(WebServer& server, OBDHandler& obdHandler) {
@@ -81,9 +109,7 @@ void sendDevices(WebServer& server, OBDHandler& obdHandler) {
     doc["scanning"] = obdHandler.isScanActive();
     doc["count"] = found.size();
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonDocument(server, 200, doc);
 }
 
 void sendRemembered(WebServer& server, OBDHandler& obdHandler) {
@@ -105,9 +131,111 @@ void sendRemembered(WebServer& server, OBDHandler& obdHandler) {
     }
     doc["count"] = remembered.size();
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonDocument(server, 200, doc);
+}
+
+void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
+    if (!bleClient.isConnected()) {
+        sendError(server, 409, "Connect V1 before OBD scan");
+        return;
+    }
+
+    obdHandler.startScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan started\"}");
+}
+
+void handleScanStop(WebServer& server, OBDHandler& obdHandler) {
+    obdHandler.stopScan();
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan stopped\"}");
+}
+
+void handleDevicesClear(WebServer& server, OBDHandler& obdHandler) {
+    obdHandler.clearFoundDevices();
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
+    ConnectRequest request;
+    String errorMessage;
+    if (!parseConnectRequest(server, request, errorMessage)) {
+        sendError(server, 400, errorMessage.c_str());
+        return;
+    }
+
+    if (!bleClient.isConnected()) {
+        sendError(server, 409, "Connect V1 before OBD connect");
+        return;
+    }
+
+    bool queued = obdHandler.connectToAddress(request.address,
+                                              request.name,
+                                              request.pin,
+                                              request.remember,
+                                              request.autoConnect);
+    if (!queued) {
+        sendError(server, 500, "Failed to queue OBD connect");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD connect queued\"}");
+}
+
+void handleDisconnect(WebServer& server, OBDHandler& obdHandler) {
+    obdHandler.disconnect();
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager) {
+    bool enabled = settingsManager.get().obdVwDataEnabled;
+    String errorMessage;
+    if (!parseVwDataEnabledRequest(server,
+                                   settingsManager.get().obdVwDataEnabled,
+                                   enabled,
+                                   errorMessage)) {
+        sendError(server, 400, errorMessage.c_str());
+        return;
+    }
+
+    settingsManager.setObdVwDataEnabled(enabled);
+    obdHandler.setVwDataEnabled(enabled);
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["vwDataEnabled"] = enabled;
+    sendJsonDocument(server, 200, doc);
+}
+
+void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
+    String address;
+    bool enabled = false;
+    String errorMessage;
+    if (!parseRememberedAutoConnectRequest(server, address, enabled, errorMessage)) {
+        sendError(server, 400, errorMessage.c_str());
+        return;
+    }
+
+    if (!obdHandler.setRememberedAutoConnect(address, enabled)) {
+        sendError(server, 404, "Remembered device not found");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleForget(WebServer& server, OBDHandler& obdHandler) {
+    String address;
+    String errorMessage;
+    if (!parseForgetAddressRequest(server, address, errorMessage)) {
+        sendError(server, 400, errorMessage.c_str());
+        return;
+    }
+
+    if (!obdHandler.forgetRemembered(address)) {
+        sendError(server, 404, "Remembered device not found");
+        return;
+    }
+
+    server.send(200, "application/json", "{\"success\":true}");
 }
 
 bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage) {
@@ -117,7 +245,7 @@ bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMe
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
         if (error) {
             errorMessage = "Invalid JSON";
             return false;
@@ -162,7 +290,7 @@ bool parseVwDataEnabledRequest(WebServer& server,
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
         if (error || !doc["vwDataEnabled"].is<bool>()) {
             errorMessage = "Invalid payload";
             return false;
@@ -198,13 +326,13 @@ bool parseRememberedAutoConnectRequest(WebServer& server,
     }
 
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
     if (error || !doc["address"].is<const char*>() || !doc["enabled"].is<bool>()) {
         errorMessage = "Invalid payload";
         return false;
     }
 
-    addressOut = doc["address"].as<String>();
+    addressOut = doc["address"] | "";
     enabledOut = doc["enabled"].as<bool>();
     return true;
 }
@@ -215,7 +343,7 @@ bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& er
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument doc;
-        if (deserializeJson(doc, server.arg("plain")) == DeserializationError::Ok) {
+        if (deserializeJson(doc, server.arg("plain").c_str()) == DeserializationError::Ok) {
             addressOut = doc["address"] | "";
         }
     }

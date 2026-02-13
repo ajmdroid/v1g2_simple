@@ -3699,6 +3699,7 @@ void WiFiManager::handleWifiClientEnable() {
 // ==================== OBD API Handlers ====================
 
 void WiFiManager::handleObdStatus() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     ObdApiService::sendStatus(server, obdHandler, bleClient, settingsManager.get());
 }
@@ -3706,24 +3707,17 @@ void WiFiManager::handleObdStatus() {
 void WiFiManager::handleObdScan() {
     if (!checkRateLimit()) return;
     markUiActivity();
-
-    if (!bleClient.isConnected()) {
-        server.send(409, "application/json", "{\"success\":false,\"message\":\"Connect V1 before OBD scan\"}");
-        return;
-    }
-
-    obdHandler.startScan();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan started\"}");
+    ObdApiService::handleScan(server, obdHandler, bleClient);
 }
 
 void WiFiManager::handleObdScanStop() {
     if (!checkRateLimit()) return;
     markUiActivity();
-    obdHandler.stopScan();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan stopped\"}");
+    ObdApiService::handleScanStop(server, obdHandler);
 }
 
 void WiFiManager::handleObdDevices() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     ObdApiService::sendDevices(server, obdHandler);
 }
@@ -3731,83 +3725,29 @@ void WiFiManager::handleObdDevices() {
 void WiFiManager::handleObdDevicesClear() {
     if (!checkRateLimit()) return;
     markUiActivity();
-    obdHandler.clearFoundDevices();
-    server.send(200, "application/json", "{\"success\":true}");
+    ObdApiService::handleDevicesClear(server, obdHandler);
 }
 
 void WiFiManager::handleObdConnect() {
     if (!checkRateLimit()) return;
     markUiActivity();
-
-    ObdApiService::ConnectRequest request;
-    String errorMessage;
-    if (!ObdApiService::parseConnectRequest(server, request, errorMessage)) {
-        JsonDocument doc;
-        doc["success"] = false;
-        doc["message"] = errorMessage;
-        String response;
-        serializeJson(doc, response);
-        server.send(400, "application/json", response);
-        return;
-    }
-
-    if (!bleClient.isConnected()) {
-        server.send(409, "application/json", "{\"success\":false,\"message\":\"Connect V1 before OBD connect\"}");
-        return;
-    }
-
-    bool queued = obdHandler.connectToAddress(request.address,
-                                              request.name,
-                                              request.pin,
-                                              request.remember,
-                                              request.autoConnect);
-    if (!queued) {
-        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to queue OBD connect\"}");
-        return;
-    }
-
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD connect queued\"}");
+    ObdApiService::handleConnect(server, obdHandler, bleClient);
 }
 
 void WiFiManager::handleObdDisconnect() {
     if (!checkRateLimit()) return;
     markUiActivity();
-    obdHandler.disconnect();
-    server.send(200, "application/json", "{\"success\":true}");
+    ObdApiService::handleDisconnect(server, obdHandler);
 }
 
 void WiFiManager::handleObdConfig() {
     if (!checkRateLimit()) return;
     markUiActivity();
-
-    bool enabled = settingsManager.get().obdVwDataEnabled;
-    String errorMessage;
-    if (!ObdApiService::parseVwDataEnabledRequest(server,
-                                                  settingsManager.get().obdVwDataEnabled,
-                                                  enabled,
-                                                  errorMessage)) {
-        JsonDocument doc;
-        doc["success"] = false;
-        doc["message"] = errorMessage;
-        String response;
-        serializeJson(doc, response);
-        server.send(400, "application/json", response);
-        return;
-    }
-
-    settingsManager.setObdVwDataEnabled(enabled);
-    obdHandler.setVwDataEnabled(enabled);
-
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["vwDataEnabled"] = enabled;
-
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    ObdApiService::handleConfig(server, obdHandler, settingsManager);
 }
 
 void WiFiManager::handleObdRemembered() {
+    if (!checkRateLimit()) return;
     markUiActivity();
     ObdApiService::sendRemembered(server, obdHandler);
 }
@@ -3815,50 +3755,13 @@ void WiFiManager::handleObdRemembered() {
 void WiFiManager::handleObdRememberedAutoConnect() {
     if (!checkRateLimit()) return;
     markUiActivity();
-
-    String address;
-    bool enabled = false;
-    String errorMessage;
-    if (!ObdApiService::parseRememberedAutoConnectRequest(server, address, enabled, errorMessage)) {
-        JsonDocument doc;
-        doc["success"] = false;
-        doc["message"] = errorMessage;
-        String response;
-        serializeJson(doc, response);
-        server.send(400, "application/json", response);
-        return;
-    }
-
-    if (!obdHandler.setRememberedAutoConnect(address, enabled)) {
-        server.send(404, "application/json", "{\"success\":false,\"message\":\"Remembered device not found\"}");
-        return;
-    }
-
-    server.send(200, "application/json", "{\"success\":true}");
+    ObdApiService::handleRememberedAutoConnect(server, obdHandler);
 }
 
 void WiFiManager::handleObdForget() {
     if (!checkRateLimit()) return;
     markUiActivity();
-
-    String address;
-    String errorMessage;
-    if (!ObdApiService::parseForgetAddressRequest(server, address, errorMessage)) {
-        JsonDocument doc;
-        doc["success"] = false;
-        doc["message"] = errorMessage;
-        String response;
-        serializeJson(doc, response);
-        server.send(400, "application/json", response);
-        return;
-    }
-
-    if (!obdHandler.forgetRemembered(address)) {
-        server.send(404, "application/json", "{\"success\":false,\"message\":\"Remembered device not found\"}");
-        return;
-    }
-
-    server.send(200, "application/json", "{\"success\":true}");
+    ObdApiService::handleForget(server, obdHandler);
 }
 
 void WiFiManager::handleGpsStatus() {
