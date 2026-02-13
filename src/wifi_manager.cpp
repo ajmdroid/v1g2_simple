@@ -1493,11 +1493,24 @@ void WiFiManager::handleTimeSet() {
     if (tzOffsetMin < -840) tzOffsetMin = -840;
     if (tzOffsetMin > 840) tzOffsetMin = 840;
 
-    timeService.setEpochBaseMs(
-        static_cast<int64_t>(unixMs),
-        tzOffsetMin,
-        TimeService::SOURCE_CLIENT_AP);
-    lastStatusJsonTime = 0;  // Invalidate cached /api/status response.
+    const int64_t requestedEpochMs = static_cast<int64_t>(unixMs);
+    const bool hasExistingTime = timeService.timeValid();
+    const int64_t existingEpochMs = hasExistingTime ? timeService.nowEpochMsOr0() : 0;
+    const int32_t existingTzOffsetMin = timeService.tzOffsetMinutes();
+    const uint8_t existingSource = timeService.timeSource();
+    static constexpr int64_t TIME_SET_NOOP_DELTA_MS = 2000LL;
+    const bool nearNoopClientSync = hasExistingTime
+        && existingSource == TimeService::SOURCE_CLIENT_AP
+        && existingTzOffsetMin == tzOffsetMin
+        && llabs(requestedEpochMs - existingEpochMs) <= TIME_SET_NOOP_DELTA_MS;
+
+    if (!nearNoopClientSync) {
+        timeService.setEpochBaseMs(
+            requestedEpochMs,
+            tzOffsetMin,
+            TimeService::SOURCE_CLIENT_AP);
+        lastStatusJsonTime = 0;  // Invalidate cached /api/status response.
+    }
 
     JsonDocument response;
     response["ok"] = true;

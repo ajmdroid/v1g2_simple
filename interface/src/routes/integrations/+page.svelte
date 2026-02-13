@@ -7,8 +7,14 @@
 	let message = $state(null);
 	let statusPoll = $state(null);
 	let scanPoll = $state(null);
+	let statusFetchInFlight = false;
+	let gpsStatusFetchInFlight = false;
+	let nearbyFetchInFlight = false;
 	let savingVwData = $state(false);
 	let savingGpsEnabled = $state(false);
+
+	const STATUS_POLL_INTERVAL_MS = 2500;
+	const SCAN_POLL_INTERVAL_MS = 1500;
 
 	let status = $state({
 		state: 'IDLE',
@@ -59,7 +65,7 @@
 				scanning = false;
 				stopScanPoll();
 			}
-		}, 1500);
+		}, STATUS_POLL_INTERVAL_MS);
 
 		return () => {
 			if (statusPoll) clearInterval(statusPoll);
@@ -106,6 +112,8 @@
 	}
 
 	async function fetchStatus() {
+		if (statusFetchInFlight) return;
+		statusFetchInFlight = true;
 		try {
 			const res = await fetch('/api/obd/status');
 			if (!res.ok) return;
@@ -114,10 +122,14 @@
 			scanning = !!data.scanning;
 		} catch (e) {
 			// Polling should fail silently.
+		} finally {
+			statusFetchInFlight = false;
 		}
 	}
 
 	async function fetchGpsStatus() {
+		if (gpsStatusFetchInFlight) return;
+		gpsStatusFetchInFlight = true;
 		try {
 			const res = await fetch('/api/gps/status');
 			if (!res.ok) return;
@@ -125,10 +137,14 @@
 			gpsStatus = { ...gpsStatus, ...data };
 		} catch (e) {
 			// Polling should fail silently.
+		} finally {
+			gpsStatusFetchInFlight = false;
 		}
 	}
 
 	async function fetchNearby() {
+		if (nearbyFetchInFlight) return;
+		nearbyFetchInFlight = true;
 		try {
 			const res = await fetch('/api/obd/devices');
 			if (!res.ok) return;
@@ -137,6 +153,8 @@
 			scanning = !!data.scanning;
 		} catch (e) {
 			// ignore
+		} finally {
+			nearbyFetchInFlight = false;
 		}
 	}
 
@@ -161,27 +179,27 @@
 		scanning = true;
 		nearby = [];
 
-		try {
-			const res = await fetch('/api/obd/scan', { method: 'POST' });
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				setMsg('error', data.message || 'Failed to start scan');
-				scanning = false;
-				return;
-			}
-
-			stopScanPoll();
-			scanPoll = setInterval(async () => {
-				await Promise.all([fetchNearby(), fetchStatus()]);
-				if (!scanning) {
-					stopScanPoll();
+			try {
+				const res = await fetch('/api/obd/scan', { method: 'POST' });
+				const data = await res.json().catch(() => ({}));
+				if (!res.ok) {
+					setMsg('error', data.message || 'Failed to start scan');
+					scanning = false;
+					return;
 				}
-			}, 1200);
-		} catch (e) {
-			setMsg('error', 'Failed to start scan');
-			scanning = false;
+
+				stopScanPoll();
+				scanPoll = setInterval(async () => {
+					await fetchNearby();
+					if (!scanning) {
+						stopScanPoll();
+					}
+				}, SCAN_POLL_INTERVAL_MS);
+			} catch (e) {
+				setMsg('error', 'Failed to start scan');
+				scanning = false;
+			}
 		}
-	}
 
 	async function stopScan() {
 		try {

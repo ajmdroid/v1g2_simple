@@ -36,6 +36,9 @@
 	let timePollInterval = $state(null);
 	let timeTickInterval = $state(null);
 	let clientNowMs = $state(Date.now());
+	let wifiStatusFetchInFlight = false;
+	let timeStatusFetchInFlight = false;
+	const TIME_STATUS_POLL_INTERVAL_MS = 7000;
 
 	let timeStatus = $state({
 		valid: false,
@@ -52,7 +55,9 @@
 		await fetchSettings();
 		await fetchWifiStatus();
 		await fetchTimeStatus();
-		timePollInterval = setInterval(fetchTimeStatus, 5000);
+		timePollInterval = setInterval(() => {
+			void fetchTimeStatus();
+		}, TIME_STATUS_POLL_INTERVAL_MS);
 		timeTickInterval = setInterval(() => {
 			clientNowMs = Date.now();
 		}, 1000);
@@ -80,6 +85,8 @@
 	}
 	
 	async function fetchWifiStatus() {
+		if (wifiStatusFetchInFlight) return;
+		wifiStatusFetchInFlight = true;
 		try {
 			const res = await fetch('/api/wifi/status');
 			if (res.ok) {
@@ -88,6 +95,8 @@
 			}
 		} catch (e) {
 			console.error('Failed to fetch WiFi status:', e);
+		} finally {
+			wifiStatusFetchInFlight = false;
 		}
 	}
 
@@ -153,6 +162,8 @@
 	}
 
 	async function fetchTimeStatus() {
+		if (timeStatusFetchInFlight) return;
+		timeStatusFetchInFlight = true;
 		try {
 			const res = await fetch('/api/status');
 			if (res.ok) {
@@ -169,6 +180,8 @@
 			}
 		} catch (e) {
 			console.error('Failed to fetch time status:', e);
+		} finally {
+			timeStatusFetchInFlight = false;
 		}
 	}
 

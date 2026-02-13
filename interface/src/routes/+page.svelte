@@ -32,10 +32,13 @@
 	let loading = $state(true);
 	let error = $state(null);
 	let statusInterval = null;
+	let statusFetchInFlight = false;
 
 	onMount(async () => {
 		await fetchStatus();
-		statusInterval = setInterval(fetchStatus, 2000);
+		statusInterval = setInterval(() => {
+			void fetchStatus();
+		}, 3000);
 	});
 
 	onDestroy(() => {
@@ -43,6 +46,8 @@
 	});
 
 	async function fetchStatus() {
+		if (statusFetchInFlight) return;
+		statusFetchInFlight = true;
 		try {
 			const [statusRes, gpsRes] = await Promise.all([
 				fetch('/api/status'),
@@ -64,6 +69,7 @@
 			error = 'Connection lost';
 		} finally {
 			loading = false;
+			statusFetchInFlight = false;
 		}
 	}
 

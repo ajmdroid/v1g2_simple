@@ -13,6 +13,7 @@ constexpr const char* KEY_SOURCE = "source";
 
 constexpr int64_t MIN_VALID_UNIX_MS = 1700000000000LL;  // ~2023-11
 constexpr int64_t MAX_VALID_UNIX_MS = 4102444800000LL;  // 2100-01-01
+constexpr int64_t MIN_PERSIST_REBASE_DELTA_MS = 5LL * 60LL * 1000LL;  // 5 minutes
 
 struct PersistedTime {
     bool valid = false;
@@ -55,6 +56,25 @@ bool normalizeSource(uint8_t& source) {
         return false;
     }
     return true;
+}
+
+bool hasMaterialPersistChange(bool hadValid,
+                              int64_t previousEpochMs,
+                              int32_t previousTzOffsetMin,
+                              uint8_t previousSource,
+                              int64_t newEpochMs,
+                              int32_t newTzOffsetMin,
+                              uint8_t newSource) {
+    if (!hadValid || !isValidUnixMs(previousEpochMs)) {
+        return true;
+    }
+    if (previousTzOffsetMin != newTzOffsetMin) {
+        return true;
+    }
+    if (previousSource != newSource) {
+        return true;
+    }
+    return llabs(newEpochMs - previousEpochMs) >= MIN_PERSIST_REBASE_DELTA_MS;
 }
 
 void clearPersistedTimeSnapshot() {
@@ -259,6 +279,11 @@ void TimeService::setEpochBaseMs(int64_t trustedEpochMs, int32_t tzOffsetMinutes
         source = SOURCE_CLIENT_AP;
     }
 
+    const bool hadValid = valid_.load(std::memory_order_acquire) != 0;
+    const int64_t previousEpochMs = hadValid ? nowEpochMsOr0() : 0;
+    const int32_t previousTzOffsetMinutes = tzOffsetMinutes_.load(std::memory_order_relaxed);
+    const uint8_t previousSource = source_.load(std::memory_order_relaxed);
+
     const int32_t clampedTzOffsetMinutes = clampTzOffset(tzOffsetMinutes);
     const uint32_t monoNow = nowMonoMs();
     const int64_t base = trustedEpochMs - static_cast<int64_t>(monoNow);
@@ -276,12 +301,20 @@ void TimeService::setEpochBaseMs(int64_t trustedEpochMs, int32_t tzOffsetMinutes
     Serial.printf("[Time] Set from source %u: epoch=%lld, tz=%d\n",
                   (unsigned)source, (long long)trustedEpochMs, (int)clampedTzOffsetMinutes);
 
-    PersistedTime snapshot;
-    snapshot.valid = true;
-    snapshot.epochMs = trustedEpochMs;
-    snapshot.tzOffsetMin = clampedTzOffsetMinutes;
-    snapshot.source = static_cast<uint8_t>(source);
-    savePersistedTimeSnapshot(snapshot);
+    if (hasMaterialPersistChange(hadValid,
+                                 previousEpochMs,
+                                 previousTzOffsetMinutes,
+                                 previousSource,
+                                 trustedEpochMs,
+                                 clampedTzOffsetMinutes,
+                                 static_cast<uint8_t>(source))) {
+        PersistedTime snapshot;
+        snapshot.valid = true;
+        snapshot.epochMs = trustedEpochMs;
+        snapshot.tzOffsetMin = clampedTzOffsetMinutes;
+        snapshot.source = static_cast<uint8_t>(source);
+        savePersistedTimeSnapshot(snapshot);
+    }
 }
 
 void TimeService::clear() {
