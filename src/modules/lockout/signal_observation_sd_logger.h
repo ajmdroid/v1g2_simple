@@ -34,6 +34,11 @@ public:
     SignalObservationSdStats stats() const;
 
 private:
+    struct DedupeBucket {
+        SignalObservation observation = {};
+        bool valid = false;
+    };
+
     static void writerTaskEntry(void* param);
     void writerTaskLoop();
     bool appendObservation(const SignalObservation& observation);
@@ -42,7 +47,9 @@ private:
     bool rotateIfNeeded(fs::FS& fs);
 
     static bool sameBucket(const SignalObservation& a, const SignalObservation& b);
-    bool shouldDedupe(const SignalObservation& observation) const;
+    bool shouldDedupe(const SignalObservation& observation, size_t* matchedBucketIndex) const;
+    void rememberPersistedObservation(const SignalObservation& observation, size_t matchedBucketIndex);
+    void resetDedupeState();
 
     bool enabled_ = false;
     QueueHandle_t queue_ = nullptr;
@@ -51,8 +58,9 @@ private:
     bool headerReady_ = false;
     uint32_t bootId_ = 0;
     char csvPathBuf_[80] = {0};
-    SignalObservation lastPersisted_ = {};
-    bool hasLastPersisted_ = false;
+    static constexpr size_t kDedupeBucketCount = 16;
+    DedupeBucket dedupeBuckets_[kDedupeBucketCount] = {};
+    size_t nextDedupeBucketIndex_ = 0;
 
     std::atomic<uint32_t> enqueued_{0};
     std::atomic<uint32_t> queueDrops_{0};

@@ -53,7 +53,7 @@ void SignalObservationSdLogger::begin(bool sdAvailable) {
 
     dirReady_ = false;
     headerReady_ = false;
-    hasLastPersisted_ = false;
+    resetDedupeState();
 
     if (!queue_) {
         queue_ = xQueueCreate(LOCKOUT_SD_QUEUE_DEPTH, sizeof(SignalObservation));
@@ -149,15 +149,44 @@ bool SignalObservationSdLogger::sameBucket(const SignalObservation& a,
     return latDiff <= LOCKOUT_SD_LOCATION_TOL_E5 && lonDiff <= LOCKOUT_SD_LOCATION_TOL_E5;
 }
 
-bool SignalObservationSdLogger::shouldDedupe(const SignalObservation& observation) const {
-    if (!hasLastPersisted_) {
-        return false;
+bool SignalObservationSdLogger::shouldDedupe(const SignalObservation& observation,
+                                             size_t* matchedBucketIndex) const {
+    if (matchedBucketIndex) {
+        *matchedBucketIndex = kDedupeBucketCount;
     }
-    if (!sameBucket(observation, lastPersisted_)) {
-        return false;
+    for (size_t i = 0; i < kDedupeBucketCount; ++i) {
+        const DedupeBucket& bucket = dedupeBuckets_[i];
+        if (!bucket.valid) {
+            continue;
+        }
+        if (!sameBucket(observation, bucket.observation)) {
+            continue;
+        }
+        if (matchedBucketIndex) {
+            *matchedBucketIndex = i;
+        }
+        const uint32_t elapsedMs = static_cast<uint32_t>(observation.tsMs - bucket.observation.tsMs);
+        return elapsedMs < LOCKOUT_SD_DEDUPE_MIN_REPEAT_MS;
     }
-    const uint32_t elapsedMs = static_cast<uint32_t>(observation.tsMs - lastPersisted_.tsMs);
-    return elapsedMs < LOCKOUT_SD_DEDUPE_MIN_REPEAT_MS;
+    return false;
+}
+
+void SignalObservationSdLogger::rememberPersistedObservation(const SignalObservation& observation,
+                                                            size_t matchedBucketIndex) {
+    size_t index = matchedBucketIndex;
+    if (index >= kDedupeBucketCount) {
+        index = nextDedupeBucketIndex_;
+        nextDedupeBucketIndex_ = (nextDedupeBucketIndex_ + 1) % kDedupeBucketCount;
+    }
+    dedupeBuckets_[index].observation = observation;
+    dedupeBuckets_[index].valid = true;
+}
+
+void SignalObservationSdLogger::resetDedupeState() {
+    for (size_t i = 0; i < kDedupeBucketCount; ++i) {
+        dedupeBuckets_[i].valid = false;
+    }
+    nextDedupeBucketIndex_ = 0;
 }
 
 bool SignalObservationSdLogger::ensureLockoutDir(fs::FS& fs) {
@@ -214,13 +243,14 @@ bool SignalObservationSdLogger::rotateIfNeeded(fs::FS& fs) {
     }
 
     headerReady_ = false;
-    hasLastPersisted_ = false;
+    resetDedupeState();
     rotations_.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
 bool SignalObservationSdLogger::appendObservation(const SignalObservation& observation) {
-    if (shouldDedupe(observation)) {
+    size_t matchedBucketIndex = kDedupeBucketCount;
+    if (shouldDedupe(observation, &matchedBucketIndex)) {
         deduped_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -301,8 +331,6 @@ bool SignalObservationSdLogger::appendObservation(const SignalObservation& obser
     }
 
     written_.fetch_add(1, std::memory_order_relaxed);
-    lastPersisted_ = observation;
-    hasLastPersisted_ = true;
+    rememberPersistedObservation(observation, matchedBucketIndex);
     return true;
 }
-
