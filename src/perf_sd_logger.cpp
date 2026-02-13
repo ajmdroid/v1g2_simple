@@ -13,6 +13,7 @@
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
+static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 1;
 static constexpr const char* PERF_CSV_HEADER =
     "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,obdState,obdConnected,obdScanActive,obdHasValidData,obdSampleAgeMs,obdSpeedMph_x10,obdConnFailures,obdPollFailStreak,obdNotifyDrops,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,speedVolBoosts,speedVolRestores,speedVolFadeTakeovers,speedVolNoHeadroom,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown\n";
 
@@ -129,11 +130,12 @@ bool PerfSdLogger::writeSessionMarker(File& f) {
     int n = snprintf(
         marker,
         sizeof(marker),
-        "#session_start,seq=%lu,bootId=%lu,uptime_ms=%lu,token=%08lX\n",
+        "#session_start,seq=%lu,bootId=%lu,uptime_ms=%lu,token=%08lX,schema=%lu\n",
         static_cast<unsigned long>(sessionSeq),
         static_cast<unsigned long>(bootId),
         static_cast<unsigned long>(sessionStartMs),
-        static_cast<unsigned long>(sessionToken));
+        static_cast<unsigned long>(sessionToken),
+        static_cast<unsigned long>(PERF_CSV_SCHEMA_VERSION));
     if (n <= 0 || n >= static_cast<int>(sizeof(marker))) {
         return false;
     }
