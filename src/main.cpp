@@ -529,9 +529,9 @@ void setup() {
     // Standalone perf CSV logger (SD only).
     perfSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
     if (perfSdLogger.isEnabled()) {
-        SerialLog.printf("[Perf] SD logger enabled (%s)\n", perfSdLogger.csvPath());
+        SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
     } else {
-        SerialLog.println("[Perf] SD logger disabled (no SD)");
+        SerialLog.println("[PERF] SD logger disabled (no SD)");
     }
     logBootStage("storage");
 
