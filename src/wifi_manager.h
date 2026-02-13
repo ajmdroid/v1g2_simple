@@ -255,6 +255,8 @@ private:
     void handleGpsStatus();
     void handleGpsObservations();
     void handleGpsConfig();
+    void handleLockoutEvents();
+    void handleLockoutSummary();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

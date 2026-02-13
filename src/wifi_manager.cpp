@@ -20,10 +20,12 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/lockout/signal_observation_log.h"
 #include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
 #include "modules/system/system_event_bus.h"
 #include "../include/config.h"
+#include "../include/band_utils.h"
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
 #include <algorithm>
@@ -812,6 +814,8 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
+    server.on("/api/lockout/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
+    server.on("/api/lockout/events", HTTP_GET, [this]() { handleLockoutEvents(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -3937,6 +3941,105 @@ void WiFiManager::handleGpsObservations() {
         if (sample.locationValid) {
             entry["latitude"] = sample.latitudeDeg;
             entry["longitude"] = sample.longitudeDeg;
+        } else {
+            entry["latitude"] = nullptr;
+            entry["longitude"] = nullptr;
+        }
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleLockoutSummary() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    const SignalObservationLogStats stats = signalObservationLog.stats();
+    SignalObservation latest[1] = {};
+    const size_t latestCount = signalObservationLog.copyRecent(latest, 1);
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["published"] = stats.published;
+    doc["drops"] = stats.drops;
+    doc["size"] = static_cast<uint32_t>(stats.size);
+    doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
+
+    if (latestCount == 1) {
+        const SignalObservation& sample = latest[0];
+        JsonObject latestObj = doc["latest"].to<JsonObject>();
+        latestObj["tsMs"] = sample.tsMs;
+        latestObj["band"] = bandName(static_cast<Band>(sample.bandRaw));
+        latestObj["bandRaw"] = sample.bandRaw;
+        latestObj["frequencyMHz"] = sample.frequencyMHz;
+        latestObj["strength"] = sample.strength;
+        latestObj["hasFix"] = sample.hasFix;
+        latestObj["satellites"] = sample.satellites;
+        latestObj["locationValid"] = sample.locationValid;
+        if (sample.hdopX10 == SignalObservation::HDOP_X10_INVALID) {
+            latestObj["hdop"] = nullptr;
+        } else {
+            latestObj["hdop"] = static_cast<float>(sample.hdopX10) / 10.0f;
+        }
+        if (sample.locationValid) {
+            latestObj["latitude"] = static_cast<double>(sample.latitudeE5) / 100000.0;
+            latestObj["longitude"] = static_cast<double>(sample.longitudeE5) / 100000.0;
+        } else {
+            latestObj["latitude"] = nullptr;
+            latestObj["longitude"] = nullptr;
+        }
+    } else {
+        doc["latest"] = nullptr;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleLockoutEvents() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    uint16_t limit = 32;
+    if (server.hasArg("limit")) {
+        limit = clampU16Value(server.arg("limit").toInt(), 1, 128);
+    }
+
+    SignalObservation samples[128] = {};
+    const size_t count = signalObservationLog.copyRecent(samples, limit);
+    const SignalObservationLogStats stats = signalObservationLog.stats();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["count"] = static_cast<uint32_t>(count);
+    doc["published"] = stats.published;
+    doc["drops"] = stats.drops;
+    doc["size"] = static_cast<uint32_t>(stats.size);
+    doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
+
+    JsonArray events = doc["events"].to<JsonArray>();
+    for (size_t i = 0; i < count; ++i) {
+        const SignalObservation& sample = samples[i];
+        JsonObject entry = events.add<JsonObject>();
+        entry["tsMs"] = sample.tsMs;
+        entry["band"] = bandName(static_cast<Band>(sample.bandRaw));
+        entry["bandRaw"] = sample.bandRaw;
+        entry["frequencyMHz"] = sample.frequencyMHz;
+        entry["strength"] = sample.strength;
+        entry["hasFix"] = sample.hasFix;
+        entry["satellites"] = sample.satellites;
+        if (sample.hdopX10 == SignalObservation::HDOP_X10_INVALID) {
+            entry["hdop"] = nullptr;
+        } else {
+            entry["hdop"] = static_cast<float>(sample.hdopX10) / 10.0f;
+        }
+        entry["locationValid"] = sample.locationValid;
+        if (sample.locationValid) {
+            entry["latitude"] = static_cast<double>(sample.latitudeE5) / 100000.0;
+            entry["longitude"] = static_cast<double>(sample.longitudeE5) / 100000.0;
         } else {
             entry["latitude"] = nullptr;
             entry["longitude"] = nullptr;
