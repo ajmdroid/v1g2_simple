@@ -632,20 +632,93 @@ Enable or disable WiFi client mode.
 
 ### GET /api/debug/metrics
 
-Get performance metrics.
+Get runtime performance counters and subsystem health snapshots.
 
-**Response:**
+**Response (example):**
 ```json
 {
-  "freeHeap": 180000,
-  "minFreeHeap": 150000,
-  "uptime": 3600,
-  "blePackets": 15000,
-  "gpsUpdates": 3600,
-  "wifiClients": 1,
-  "taskHighWater": {...}
+  "rxPackets": 15000,
+  "parseSuccesses": 14999,
+  "parseFailures": 1,
+  "queueDrops": 0,
+  "powerAutoPowerArmed": 1,
+  "powerAutoPowerTimerStart": 1,
+  "powerAutoPowerTimerCancel": 1,
+  "powerAutoPowerTimerExpire": 0,
+  "powerCriticalWarn": 0,
+  "powerCriticalShutdown": 0,
+  "loopMaxUs": 8200,
+  "heapFree": 180000,
+  "heapMinFree": 150000,
+  "heapDma": 92000,
+  "heapDmaMin": 86000,
+  "obd": {
+    "state": 5,
+    "connected": true,
+    "scanActive": false,
+    "hasValidData": true,
+    "sampleAgeMs": 220,
+    "speedMphX10": 653,
+    "connFailures": 0,
+    "pollFailStreak": 0,
+    "notifyDrops": 0
+  },
+  "proxy": {
+    "sendCount": 3500,
+    "dropCount": 0,
+    "errorCount": 0,
+    "queueHighWater": 4,
+    "connected": true
+  },
+  "eventBus": {
+    "publishCount": 9800,
+    "dropCount": 0,
+    "size": 0
+  }
 }
 ```
+
+**Power counters:**
+
+| Field | Increments when |
+|------|------------------|
+| `powerAutoPowerArmed` | Auto power-off is armed after first valid V1 data |
+| `powerAutoPowerTimerStart` | Auto power-off timer starts after V1 disconnect |
+| `powerAutoPowerTimerCancel` | Auto power-off timer is canceled by reconnect |
+| `powerAutoPowerTimerExpire` | Auto power-off timer reaches timeout |
+| `powerCriticalWarn` | Critical battery warning is issued |
+| `powerCriticalShutdown` | Critical battery shutdown path is triggered |
+
+**OBD snapshot (`obd`) fields:**
+
+| Field | Type | Notes |
+|------|------|-------|
+| `state` | int | OBD state enum value (see map below) |
+| `connected` | bool | `true` when OBD state is READY/POLLING |
+| `scanActive` | bool | `true` while manual OBD scan is active |
+| `hasValidData` | bool | `true` when OBD data is fresh/valid |
+| `sampleAgeMs` | int or `null` | Age of last OBD sample in ms, null if unavailable |
+| `speedMphX10` | int or `null` | Vehicle speed in mph * 10, null if unavailable |
+| `connFailures` | int | Current connect/init failure count |
+| `pollFailStreak` | int | Current consecutive poll failure streak |
+| `notifyDrops` | int | Stream buffer notification drops |
+
+**OBD state map (`obd.state`):**
+
+| Value | State |
+|------|-------|
+| `0` | `IDLE` |
+| `1` | `SCANNING` |
+| `2` | `CONNECTING` |
+| `3` | `INITIALIZING` |
+| `4` | `READY` |
+| `5` | `POLLING` |
+| `6` | `DISCONNECTED` |
+| `7` | `FAILED` |
+
+**Notes:**
+- Counters are boot-session counters (monotonic until reboot/reset).
+- This endpoint is intended to match SD perf CSV counters for runtime/CSV correlation checks.
 
 ### GET /api/debug/events
 
@@ -695,6 +768,48 @@ Get last N lines of log file.
 ### POST /api/debug/logs/clear
 
 Clear log file.
+
+### GET /api/debug/perf-files
+
+List SD-backed perf CSV files under `/perf`.
+
+**Response (example):**
+```json
+{
+  "success": true,
+  "storageReady": true,
+  "onSdCard": true,
+  "path": "/perf",
+  "count": 2,
+  "files": [
+    {
+      "name": "perf_boot_9.csv",
+      "sizeBytes": 14822,
+      "bootId": 9,
+      "active": true
+    },
+    {
+      "name": "perf_boot_8.csv",
+      "sizeBytes": 9621,
+      "bootId": 8,
+      "active": false
+    }
+  ]
+}
+```
+
+### GET /api/debug/perf-files/download
+
+Download one perf CSV file.
+
+**Query Parameters:**
+- `name` (required): file name returned by `/api/debug/perf-files`
+
+### POST /api/debug/perf-files/delete
+
+Delete one perf CSV file.
+
+**Request (form data):** `name=perf_boot_8.csv`
 
 ---
 

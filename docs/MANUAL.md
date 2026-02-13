@@ -1593,7 +1593,7 @@ npm run deploy                            # Copy build/ to data/
 | `scripts/pio-size.sh` | Report firmware size |
 | `scripts/pio-check.sh` | Run clang-tidy static analysis |
 | `tools/perf_test.sh` | Performance testing |
-| `tools/parse_metrics.py` | Parse performance logs |
+| `tools/analyze_perf_log.py` | Parse perf metrics from `debug.log` |
 | `tools/smoke_metrics_runtime.py` | Runtime perf counter smoke checks (API + CSV reflection) |
 
 **Source:** [build.sh](build.sh), [scripts/](scripts/)
@@ -1613,6 +1613,16 @@ No automated tests exist. Manual testing procedure:
    - Test all web UI pages
    - Test auto-push slot cycling
    - Test color customization
+
+**Runtime metrics smoke check (API + CSV):**
+
+```bash
+python tools/smoke_metrics_runtime.py --base-url http://192.168.160.212 --profile power_safe
+```
+
+- Uses `/api/debug/metrics` to verify target counters increment.
+- Uses `/api/debug/perf-files` + `/api/debug/perf-files/download` to confirm CSV reflection.
+- Use `--profile power_full` only when intentionally testing shutdown-producing counters.
 
 ### Performance-Sensitive Paths
 
