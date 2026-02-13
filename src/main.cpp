@@ -59,6 +59,7 @@
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
+#include "modules/lockout/lockout_learner.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -712,6 +713,7 @@ void setup() {
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex);
+    lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -1010,6 +1012,9 @@ void loop() {
     // Periodic time persistence (every 5 min) — ensures NVS has a recent epoch
     // for restoration after deep sleep battery death or hard power loss.
     timeService.periodicSave(now);
+
+    // Lockout learner: ingest observations, manage candidates, promote (Tier 7)
+    lockoutLearner.process(now, timeService.nowEpochMsOr0());
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
