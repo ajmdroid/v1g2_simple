@@ -67,7 +67,7 @@ jobs:
         run: pip install platformio
 
       - name: Build firmware
-        run: pio run -e esp32-s3-devkitc-1
+        run: pio run -e waveshare-349
 
   test:
     name: PlatformIO Native Tests

@@ -93,6 +93,7 @@ struct V1Settings {
     bool proxyBLE;          // Enable BLE proxy for JBV1
     String proxyName;       // BLE device name when proxying
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
+    bool gpsEnabled;        // Enable GPS runtime scaffold (stage 2 prep)
     
     // Display settings
     bool turnOffDisplay;
@@ -219,6 +220,7 @@ struct V1Settings {
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
+        gpsEnabled(false),      // GPS disabled by default until module is installed
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -327,6 +329,7 @@ public:
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
     void setObdVwDataEnabled(bool enabled);
+    void setGpsEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }

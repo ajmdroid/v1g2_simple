@@ -17,12 +17,15 @@
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "obd_handler.h"
+#include "modules/gps/gps_runtime_module.h"
+#include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
 #include "modules/system/system_event_bus.h"
 #include "../include/config.h"
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <map>
@@ -101,6 +104,84 @@ static bool parseUint64Strict(const String& input, uint64_t& out) {
     }
     out = static_cast<uint64_t>(v);
     return true;
+}
+
+static uint8_t clampU8Value(int value, int minVal, int maxVal) {
+    return static_cast<uint8_t>(std::max(minVal, std::min(value, maxVal)));
+}
+
+static uint8_t clampSlotVolumeValue(int value) {
+    if (value == 0xFF) {
+        return 0xFF;
+    }
+    return clampU8Value(value, 0, 9);
+}
+
+static uint8_t clampApTimeoutValue(int value) {
+    if (value == 0) {
+        return 0;
+    }
+    return clampU8Value(value, 5, 60);
+}
+
+static V1Mode normalizeV1ModeValue(int raw) {
+    switch (raw) {
+        case V1_MODE_UNKNOWN:
+        case V1_MODE_ALL_BOGEYS:
+        case V1_MODE_LOGIC:
+        case V1_MODE_ADVANCED_LOGIC:
+            return static_cast<V1Mode>(raw);
+        default:
+            return V1_MODE_UNKNOWN;
+    }
+}
+
+static constexpr size_t MAX_WIFI_SSID_LEN = 32;
+static constexpr size_t MAX_AP_PASSWORD_LEN = 63;
+static constexpr size_t MAX_PROXY_NAME_LEN = 32;
+static constexpr size_t MAX_SLOT_NAME_LEN = 20;
+static constexpr size_t MAX_PROFILE_NAME_LEN = 64;
+static constexpr size_t MAX_PROFILE_DESCRIPTION_LEN = 160;
+
+static String clampStringLength(const String& value, size_t maxLen) {
+    if (value.length() <= maxLen) {
+        return value;
+    }
+    return value.substring(0, maxLen);
+}
+
+static String sanitizeApSsidValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_WIFI_SSID_LEN);
+    if (value.length() == 0) {
+        return "V1-Simple";
+    }
+    return value;
+}
+
+static String sanitizeWifiClientSsidValue(const String& raw) {
+    return clampStringLength(raw, MAX_WIFI_SSID_LEN);
+}
+
+static String sanitizeProxyNameValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_PROXY_NAME_LEN);
+    if (value.length() == 0) {
+        return "V1-Proxy";
+    }
+    return value;
+}
+
+static String sanitizeSlotNameValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_SLOT_NAME_LEN);
+    value.toUpperCase();
+    return value;
+}
+
+static String sanitizeProfileNameValue(const String& raw) {
+    return clampStringLength(raw, MAX_PROFILE_NAME_LEN);
+}
+
+static String sanitizeProfileDescriptionValue(const String& raw) {
+    return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
 }
 
 static String fileNameFromPath(const String& path) {
@@ -715,6 +796,10 @@ void WiFiManager::setupWebServer() {
     server.on("/api/obd/remembered", HTTP_GET, [this]() { handleObdRemembered(); });
     server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() { handleObdRememberedAutoConnect(); });
     server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
+
+    // GPS scaffold API routes
+    server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
+    server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
@@ -1435,6 +1520,7 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
+    doc["gpsEnabled"] = settings.gpsEnabled;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1455,8 +1541,11 @@ void WiFiManager::handleSettingsSave() {
     V1Settings& mutableSettings = const_cast<V1Settings&>(currentSettings);
 
     if (server.hasArg("ap_ssid")) {
-        String apSsid = server.arg("ap_ssid");
+        String apSsid = clampStringLength(server.arg("ap_ssid"), MAX_WIFI_SSID_LEN);
         String apPass = server.arg("ap_password");
+        if (apPass.length() > MAX_AP_PASSWORD_LEN && apPass != "********") {
+            apPass = apPass.substring(0, MAX_AP_PASSWORD_LEN);
+        }
         
         // If password is placeholder, keep existing password
         if (apPass == "********") {
@@ -1482,16 +1571,18 @@ void WiFiManager::handleSettingsSave() {
         mutableSettings.proxyBLE = proxyEnabled;
     }
     if (server.hasArg("proxy_name")) {
-        String proxyName = server.arg("proxy_name");
-        if (proxyName.length() > 32) {
-            proxyName = proxyName.substring(0, 32);  // Truncate to max 32 chars
-        }
-        mutableSettings.proxyName = proxyName;
+        mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
     }
     if (server.hasArg("obdVwDataEnabled")) {
         mutableSettings.obdVwDataEnabled =
             (server.arg("obdVwDataEnabled") == "true" || server.arg("obdVwDataEnabled") == "1");
         obdHandler.setVwDataEnabled(mutableSettings.obdVwDataEnabled);
+    }
+    if (server.hasArg("gpsEnabled")) {
+        mutableSettings.gpsEnabled =
+            (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
+        gpsRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
+        speedSourceSelector.setGpsEnabled(mutableSettings.gpsEnabled);
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
@@ -2006,7 +2097,7 @@ void WiFiManager::handleAutoPushSlotSave() {
         Serial.printf("[SaveSlot] Saved priorityArrowOnly=%s for slot %d\n", prioArrow ? "true" : "false", slot);
     }
     
-    settingsManager.setSlot(slot, profile, static_cast<V1Mode>(mode));
+    settingsManager.setSlot(slot, profile, normalizeV1ModeValue(mode));
     
     // If this is the currently active slot, update the display immediately
     if (slot == settingsManager.get().activeSlot) {
@@ -2068,9 +2159,9 @@ void WiFiManager::handleAutoPushPushNow() {
     
     if (server.hasArg("profile") && server.arg("profile").length() > 0) {
         // Use the form values directly
-        profileName = server.arg("profile");
+        profileName = sanitizeProfileNameValue(server.arg("profile"));
         if (server.hasArg("mode")) {
-            mode = static_cast<V1Mode>(server.arg("mode").toInt());
+            mode = normalizeV1ModeValue(server.arg("mode").toInt());
         }
     } else {
         // Fall back to saved slot settings
@@ -2083,8 +2174,8 @@ void WiFiManager::handleAutoPushPushNow() {
             case 2: pushSlot = s.slot2_comfort; break;
         }
         
-        profileName = pushSlot.profileName;
-        mode = pushSlot.mode;
+        profileName = sanitizeProfileNameValue(pushSlot.profileName);
+        mode = normalizeV1ModeValue(static_cast<int>(pushSlot.mode));
     }
     
     if (profileName.length() == 0) {
@@ -2214,6 +2305,11 @@ void WiFiManager::handleDisplayColorsSave() {
 
     // Development/runtime toggles
     if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
+    if (server.hasArg("gpsEnabled")) {
+        s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
+        gpsRuntimeModule.setEnabled(s.gpsEnabled);
+        speedSourceSelector.setGpsEnabled(s.gpsEnabled);
+    }
 
     // Voice settings
     if (server.hasArg("voiceAlertMode")) {
@@ -2390,6 +2486,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["speedVolumeBoost"] = s.speedVolumeBoost;
     doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
+    doc["gpsEnabled"] = s.gpsEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -2481,6 +2578,62 @@ void WiFiManager::handleDebugMetrics() {
     obdObj["connFailures"] = obdPerf.connectionFailures;
     obdObj["pollFailStreak"] = obdPerf.consecutivePollFailures;
     obdObj["notifyDrops"] = obdPerf.notifyDrops;
+
+    const uint32_t nowMs = millis();
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    JsonObject gpsObj = doc["gps"].to<JsonObject>();
+    gpsObj["enabled"] = gpsStatus.enabled;
+    gpsObj["sampleValid"] = gpsStatus.sampleValid;
+    gpsObj["hasFix"] = gpsStatus.hasFix;
+    gpsObj["satellites"] = gpsStatus.satellites;
+    gpsObj["injectedSamples"] = gpsStatus.injectedSamples;
+    if (std::isnan(gpsStatus.hdop)) {
+        gpsObj["hdop"] = nullptr;
+    } else {
+        gpsObj["hdop"] = gpsStatus.hdop;
+    }
+    if (gpsStatus.sampleValid) {
+        gpsObj["speedMph"] = gpsStatus.speedMph;
+        gpsObj["sampleTsMs"] = gpsStatus.sampleTsMs;
+    } else {
+        gpsObj["speedMph"] = nullptr;
+        gpsObj["sampleTsMs"] = nullptr;
+    }
+    if (gpsStatus.sampleAgeMs == UINT32_MAX) {
+        gpsObj["sampleAgeMs"] = nullptr;
+    } else {
+        gpsObj["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+    JsonObject speedObj = doc["speedSource"].to<JsonObject>();
+    speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
+    speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
+    if (speedStatus.selectedSource == SpeedSource::NONE) {
+        speedObj["selectedMph"] = nullptr;
+        speedObj["selectedAgeMs"] = nullptr;
+    } else {
+        speedObj["selectedMph"] = speedStatus.selectedSpeedMph;
+        speedObj["selectedAgeMs"] = speedStatus.selectedAgeMs;
+    }
+    speedObj["obdFresh"] = speedStatus.obdFresh;
+    speedObj["obdMph"] = speedStatus.obdSpeedMph;
+    if (speedStatus.obdAgeMs == UINT32_MAX) {
+        speedObj["obdAgeMs"] = nullptr;
+    } else {
+        speedObj["obdAgeMs"] = speedStatus.obdAgeMs;
+    }
+    speedObj["gpsFresh"] = speedStatus.gpsFresh;
+    speedObj["gpsMph"] = speedStatus.gpsSpeedMph;
+    if (speedStatus.gpsAgeMs == UINT32_MAX) {
+        speedObj["gpsAgeMs"] = nullptr;
+    } else {
+        speedObj["gpsAgeMs"] = speedStatus.gpsAgeMs;
+    }
+    speedObj["sourceSwitches"] = speedStatus.sourceSwitches;
+    speedObj["obdSelections"] = speedStatus.obdSelections;
+    speedObj["gpsSelections"] = speedStatus.gpsSelections;
+    speedObj["noSourceSelections"] = speedStatus.noSourceSelections;
     
     // Heap stats - both total and DMA-capable (for WiFi/SD contention diagnosis)
     doc["heapFree"] = ESP.getFreeHeap();
@@ -2847,6 +3000,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["proxyBLE"] = s.proxyBLE;
     doc["proxyName"] = s.proxyName;
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
+    doc["gpsEnabled"] = s.gpsEnabled;
     
     // Display settings
     doc["brightness"] = s.brightness;
@@ -2902,6 +3056,7 @@ void WiFiManager::handleSettingsBackup() {
     
     // Auto power-off
     doc["autoPowerOffMinutes"] = s.autoPowerOffMinutes;
+    doc["apTimeoutMinutes"] = s.apTimeoutMinutes;
     
     // Voice settings
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
@@ -3016,17 +3171,18 @@ void WiFiManager::handleSettingsRestore() {
     
     // BLE settings
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
-    if (doc["proxyName"].is<const char*>()) s.proxyName = doc["proxyName"].as<String>();
+    if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
+    if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
     
     // WiFi settings (password intentionally excluded from backups)
     if (doc["apSSID"].is<const char*>()) {
         // Preserve existing password while restoring SSID
-        settingsManager.updateAPCredentials(doc["apSSID"].as<String>(), settingsManager.get().apPassword);
+        settingsManager.updateAPCredentials(sanitizeApSsidValue(doc["apSSID"].as<String>()), settingsManager.get().apPassword);
     }
     
     // Display settings
-    if (doc["brightness"].is<int>()) s.brightness = doc["brightness"];
+    if (doc["brightness"].is<int>()) s.brightness = clampU8Value(doc["brightness"].as<int>(), 1, 255);
     if (doc["displayStyle"].is<int>()) s.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
     if (doc["turnOffDisplay"].is<bool>()) s.turnOffDisplay = doc["turnOffDisplay"];
     
@@ -3073,19 +3229,50 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
     
     // WiFi client settings
-    if (doc["wifiMode"].is<int>()) s.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
+    if (doc["wifiMode"].is<int>()) {
+        int mode = doc["wifiMode"].as<int>();
+        mode = std::max(static_cast<int>(V1_WIFI_OFF), std::min(mode, static_cast<int>(V1_WIFI_APSTA)));
+        s.wifiMode = static_cast<WiFiModeSetting>(mode);
+    }
     if (doc["wifiClientEnabled"].is<bool>()) s.wifiClientEnabled = doc["wifiClientEnabled"];
-    if (doc["wifiClientSSID"].is<const char*>()) s.wifiClientSSID = doc["wifiClientSSID"].as<String>();
+    if (doc["wifiClientSSID"].is<const char*>()) s.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
     
     // Auto power-off
-    if (doc["autoPowerOffMinutes"].is<int>()) s.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
+    if (doc["autoPowerOffMinutes"].is<int>()) {
+        s.autoPowerOffMinutes = clampU8Value(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
+    }
+    if (doc["apTimeoutMinutes"].is<int>()) {
+        s.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
+    }
     
     // Voice settings
-    if (doc["voiceAlertMode"].is<int>()) s.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
+    if (doc["voiceAlertMode"].is<int>()) {
+        int mode = doc["voiceAlertMode"].as<int>();
+        mode = std::max(static_cast<int>(VOICE_MODE_DISABLED), std::min(mode, static_cast<int>(VOICE_MODE_BAND_FREQ)));
+        s.voiceAlertMode = static_cast<VoiceAlertMode>(mode);
+    }
     if (doc["voiceDirectionEnabled"].is<bool>()) s.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
     if (doc["announceBogeyCount"].is<bool>()) s.announceBogeyCount = doc["announceBogeyCount"];
     if (doc["muteVoiceIfVolZero"].is<bool>()) s.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
-    if (doc["voiceVolume"].is<int>()) s.voiceVolume = doc["voiceVolume"];
+    if (doc["voiceVolume"].is<int>()) s.voiceVolume = clampU8Value(doc["voiceVolume"].as<int>(), 0, 100);
+    if (doc["alertVolumeFadeEnabled"].is<bool>()) s.alertVolumeFadeEnabled = doc["alertVolumeFadeEnabled"];
+    if (doc["alertVolumeFadeDelaySec"].is<int>()) {
+        s.alertVolumeFadeDelaySec = clampU8Value(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
+    }
+    if (doc["alertVolumeFadeVolume"].is<int>()) {
+        s.alertVolumeFadeVolume = clampU8Value(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
+    }
+    if (doc["speedVolumeEnabled"].is<bool>()) s.speedVolumeEnabled = doc["speedVolumeEnabled"];
+    if (doc["speedVolumeThresholdMph"].is<int>()) {
+        s.speedVolumeThresholdMph = clampU8Value(doc["speedVolumeThresholdMph"].as<int>(), 10, 100);
+    }
+    if (doc["speedVolumeBoost"].is<int>()) {
+        s.speedVolumeBoost = clampU8Value(doc["speedVolumeBoost"].as<int>(), 1, 5);
+    }
+    if (doc["lowSpeedMuteEnabled"].is<bool>()) s.lowSpeedMuteEnabled = doc["lowSpeedMuteEnabled"];
+    if (doc["lowSpeedMuteThresholdMph"].is<int>()) {
+        s.lowSpeedMuteThresholdMph = clampU8Value(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
+    }
     if (doc["announceSecondaryAlerts"].is<bool>()) s.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
     if (doc["secondaryLaser"].is<bool>()) s.secondaryLaser = doc["secondaryLaser"];
     if (doc["secondaryKa"].is<bool>()) s.secondaryKa = doc["secondaryKa"];
@@ -3097,37 +3284,37 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["autoPushEnabled"].is<bool>() && doc["autoPushEnabled"].as<bool>()) {
         s.autoPushEnabled = true;
     }
-    if (doc["activeSlot"].is<int>()) s.activeSlot = doc["activeSlot"];
-    if (doc["slot0Name"].is<const char*>()) s.slot0Name = doc["slot0Name"].as<String>();
-    if (doc["slot1Name"].is<const char*>()) s.slot1Name = doc["slot1Name"].as<String>();
-    if (doc["slot2Name"].is<const char*>()) s.slot2Name = doc["slot2Name"].as<String>();
+    if (doc["activeSlot"].is<int>()) s.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
+    if (doc["slot0Name"].is<const char*>()) s.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
+    if (doc["slot1Name"].is<const char*>()) s.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
+    if (doc["slot2Name"].is<const char*>()) s.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
     if (doc["slot0Color"].is<int>()) s.slot0Color = doc["slot0Color"];
     if (doc["slot1Color"].is<int>()) s.slot1Color = doc["slot1Color"];
     if (doc["slot2Color"].is<int>()) s.slot2Color = doc["slot2Color"];
-    if (doc["slot0Volume"].is<int>()) s.slot0Volume = doc["slot0Volume"];
-    if (doc["slot1Volume"].is<int>()) s.slot1Volume = doc["slot1Volume"];
-    if (doc["slot2Volume"].is<int>()) s.slot2Volume = doc["slot2Volume"];
-    if (doc["slot0MuteVolume"].is<int>()) s.slot0MuteVolume = doc["slot0MuteVolume"];
-    if (doc["slot1MuteVolume"].is<int>()) s.slot1MuteVolume = doc["slot1MuteVolume"];
-    if (doc["slot2MuteVolume"].is<int>()) s.slot2MuteVolume = doc["slot2MuteVolume"];
+    if (doc["slot0Volume"].is<int>()) s.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
+    if (doc["slot1Volume"].is<int>()) s.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
+    if (doc["slot2Volume"].is<int>()) s.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
+    if (doc["slot0MuteVolume"].is<int>()) s.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
+    if (doc["slot1MuteVolume"].is<int>()) s.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
+    if (doc["slot2MuteVolume"].is<int>()) s.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
     if (doc["slot0DarkMode"].is<bool>()) s.slot0DarkMode = doc["slot0DarkMode"];
     if (doc["slot1DarkMode"].is<bool>()) s.slot1DarkMode = doc["slot1DarkMode"];
     if (doc["slot2DarkMode"].is<bool>()) s.slot2DarkMode = doc["slot2DarkMode"];
     if (doc["slot0MuteToZero"].is<bool>()) s.slot0MuteToZero = doc["slot0MuteToZero"];
     if (doc["slot1MuteToZero"].is<bool>()) s.slot1MuteToZero = doc["slot1MuteToZero"];
     if (doc["slot2MuteToZero"].is<bool>()) s.slot2MuteToZero = doc["slot2MuteToZero"];
-    if (doc["slot0AlertPersist"].is<int>()) s.slot0AlertPersist = doc["slot0AlertPersist"];
-    if (doc["slot1AlertPersist"].is<int>()) s.slot1AlertPersist = doc["slot1AlertPersist"];
-    if (doc["slot2AlertPersist"].is<int>()) s.slot2AlertPersist = doc["slot2AlertPersist"];
+    if (doc["slot0AlertPersist"].is<int>()) s.slot0AlertPersist = clampU8Value(doc["slot0AlertPersist"].as<int>(), 0, 5);
+    if (doc["slot1AlertPersist"].is<int>()) s.slot1AlertPersist = clampU8Value(doc["slot1AlertPersist"].as<int>(), 0, 5);
+    if (doc["slot2AlertPersist"].is<int>()) s.slot2AlertPersist = clampU8Value(doc["slot2AlertPersist"].as<int>(), 0, 5);
     if (doc["slot0PriorityArrow"].is<bool>()) s.slot0PriorityArrow = doc["slot0PriorityArrow"];
     if (doc["slot1PriorityArrow"].is<bool>()) s.slot1PriorityArrow = doc["slot1PriorityArrow"];
     if (doc["slot2PriorityArrow"].is<bool>()) s.slot2PriorityArrow = doc["slot2PriorityArrow"];
-    if (doc["slot0ProfileName"].is<const char*>()) s.slot0_default.profileName = doc["slot0ProfileName"].as<String>();
-    if (doc["slot0Mode"].is<int>()) s.slot0_default.mode = static_cast<V1Mode>(doc["slot0Mode"].as<int>());
-    if (doc["slot1ProfileName"].is<const char*>()) s.slot1_highway.profileName = doc["slot1ProfileName"].as<String>();
-    if (doc["slot1Mode"].is<int>()) s.slot1_highway.mode = static_cast<V1Mode>(doc["slot1Mode"].as<int>());
-    if (doc["slot2ProfileName"].is<const char*>()) s.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
-    if (doc["slot2Mode"].is<int>()) s.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
+    if (doc["slot0ProfileName"].is<const char*>()) s.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
+    if (doc["slot0Mode"].is<int>()) s.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
+    if (doc["slot1ProfileName"].is<const char*>()) s.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
+    if (doc["slot1Mode"].is<int>()) s.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
+    if (doc["slot2ProfileName"].is<const char*>()) s.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
+    if (doc["slot2Mode"].is<int>()) s.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
     
     // Restore V1 profiles if present
     int profilesRestored = 0;
@@ -3139,11 +3326,16 @@ void WiFiManager::handleSettingsRestore() {
             }
             
             V1Profile profile;
-            profile.name = p["name"].as<String>();
-            if (p["description"].is<const char*>()) profile.description = p["description"].as<String>();
+            profile.name = sanitizeProfileNameValue(p["name"].as<String>());
+            if (profile.name.length() == 0) {
+                continue;
+            }
+            if (p["description"].is<const char*>()) {
+                profile.description = sanitizeProfileDescriptionValue(p["description"].as<String>());
+            }
             if (p["displayOn"].is<bool>()) profile.displayOn = p["displayOn"];
-            if (p["mainVolume"].is<int>()) profile.mainVolume = p["mainVolume"];
-            if (p["mutedVolume"].is<int>()) profile.mutedVolume = p["mutedVolume"];
+            if (p["mainVolume"].is<int>()) profile.mainVolume = clampSlotVolumeValue(p["mainVolume"].as<int>());
+            if (p["mutedVolume"].is<int>()) profile.mutedVolume = clampSlotVolumeValue(p["mutedVolume"].as<int>());
             
             JsonArray bytes = p["bytes"].as<JsonArray>();
             if (bytes.size() == 6) {
@@ -3167,6 +3359,8 @@ void WiFiManager::handleSettingsRestore() {
     settingsManager.save();
 
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
+    gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
+    speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     
@@ -3647,4 +3841,167 @@ void WiFiManager::handleObdForget() {
     }
 
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WiFiManager::handleGpsStatus() {
+    markUiActivity();
+
+    const uint32_t nowMs = millis();
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+
+    JsonDocument doc;
+    doc["enabled"] = settingsManager.get().gpsEnabled;
+    doc["runtimeEnabled"] = gpsStatus.enabled;
+    doc["mode"] = "scaffold";
+    doc["sampleValid"] = gpsStatus.sampleValid;
+    doc["hasFix"] = gpsStatus.hasFix;
+    doc["satellites"] = gpsStatus.satellites;
+    doc["injectedSamples"] = gpsStatus.injectedSamples;
+
+    if (std::isnan(gpsStatus.hdop)) {
+        doc["hdop"] = nullptr;
+    } else {
+        doc["hdop"] = gpsStatus.hdop;
+    }
+
+    if (gpsStatus.sampleValid) {
+        doc["speedMph"] = gpsStatus.speedMph;
+        doc["sampleTsMs"] = gpsStatus.sampleTsMs;
+    } else {
+        doc["speedMph"] = nullptr;
+        doc["sampleTsMs"] = nullptr;
+    }
+
+    if (gpsStatus.sampleAgeMs == UINT32_MAX) {
+        doc["sampleAgeMs"] = nullptr;
+    } else {
+        doc["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+
+    JsonObject speedObj = doc["speedSource"].to<JsonObject>();
+    speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
+    speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
+    speedObj["obdFresh"] = speedStatus.obdFresh;
+    speedObj["gpsFresh"] = speedStatus.gpsFresh;
+    speedObj["sourceSwitches"] = speedStatus.sourceSwitches;
+    if (speedStatus.selectedSource == SpeedSource::NONE) {
+        speedObj["selectedMph"] = nullptr;
+        speedObj["selectedAgeMs"] = nullptr;
+    } else {
+        speedObj["selectedMph"] = speedStatus.selectedSpeedMph;
+        speedObj["selectedAgeMs"] = speedStatus.selectedAgeMs;
+    }
+    if (speedStatus.obdAgeMs == UINT32_MAX) {
+        speedObj["obdAgeMs"] = nullptr;
+    } else {
+        speedObj["obdAgeMs"] = speedStatus.obdAgeMs;
+    }
+    if (speedStatus.gpsAgeMs == UINT32_MAX) {
+        speedObj["gpsAgeMs"] = nullptr;
+    } else {
+        speedObj["gpsAgeMs"] = speedStatus.gpsAgeMs;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleGpsConfig() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    bool hasEnabled = false;
+    bool enabled = settingsManager.get().gpsEnabled;
+    bool hasScaffoldSample = false;
+    float scaffoldSpeedMph = 0.0f;
+    bool scaffoldHasFix = true;
+    uint8_t scaffoldSatellites = 0;
+    float scaffoldHdop = NAN;
+
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument body;
+        DeserializationError error = deserializeJson(body, server.arg("plain"));
+        if (error) {
+            server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+            return;
+        }
+
+        if (body["enabled"].is<bool>()) {
+            enabled = body["enabled"].as<bool>();
+            hasEnabled = true;
+        }
+        if (body["speedMph"].is<float>() || body["speedMph"].is<double>() || body["speedMph"].is<int>()) {
+            scaffoldSpeedMph = body["speedMph"].as<float>();
+            hasScaffoldSample = true;
+        }
+        if (body["hasFix"].is<bool>()) {
+            scaffoldHasFix = body["hasFix"].as<bool>();
+        }
+        if (body["satellites"].is<int>()) {
+            int sats = body["satellites"].as<int>();
+            scaffoldSatellites = static_cast<uint8_t>(std::max(0, std::min(sats, 99)));
+        }
+        if (body["hdop"].is<float>() || body["hdop"].is<double>() || body["hdop"].is<int>()) {
+            scaffoldHdop = body["hdop"].as<float>();
+        }
+    }
+
+    if (!hasEnabled && server.hasArg("enabled")) {
+        String value = server.arg("enabled");
+        value.toLowerCase();
+        if (value == "1" || value == "true" || value == "on") {
+            enabled = true;
+            hasEnabled = true;
+        } else if (value == "0" || value == "false" || value == "off") {
+            enabled = false;
+            hasEnabled = true;
+        }
+    }
+
+    if (!hasEnabled) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled\"}");
+        return;
+    }
+
+    if (hasScaffoldSample &&
+        (!std::isfinite(scaffoldSpeedMph) ||
+         scaffoldSpeedMph < 0.0f ||
+         scaffoldSpeedMph > SpeedSourceSelector::MAX_VALID_SPEED_MPH)) {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"speedMph out of range\"}");
+        return;
+    }
+    if (std::isfinite(scaffoldHdop) && scaffoldHdop < 0.0f) {
+        scaffoldHdop = 0.0f;
+    }
+
+    settingsManager.setGpsEnabled(enabled);
+    gpsRuntimeModule.setEnabled(enabled);
+    speedSourceSelector.setGpsEnabled(enabled);
+
+    if (enabled && hasScaffoldSample) {
+        gpsRuntimeModule.setScaffoldSample(scaffoldSpeedMph,
+                                           scaffoldHasFix,
+                                           scaffoldSatellites,
+                                           scaffoldHdop,
+                                           millis());
+    }
+
+    const uint32_t nowMs = millis();
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+
+    JsonDocument response;
+    response["success"] = true;
+    response["enabled"] = settingsManager.get().gpsEnabled;
+    response["runtimeEnabled"] = gpsStatus.enabled;
+    response["sampleValid"] = gpsStatus.sampleValid;
+    response["hasFix"] = gpsStatus.hasFix;
+    response["injectedSamples"] = gpsStatus.injectedSamples;
+    response["speedSource"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
+
+    String json;
+    serializeJson(response, json);
+    server.send(200, "application/json", json);
 }

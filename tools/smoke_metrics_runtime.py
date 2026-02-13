@@ -69,7 +69,7 @@ class CounterResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Runtime smoke verification for perf counters")
-    parser.add_argument("--base-url", default="http://192.168.35.1", help="Device base URL")
+    parser.add_argument("--base-url", default="http://192.168.35.5", help="Device base URL")
     parser.add_argument(
         "--profile",
         choices=sorted(PROFILE_COUNTERS.keys()),

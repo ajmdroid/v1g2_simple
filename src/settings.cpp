@@ -31,6 +31,112 @@ static const char* WIFI_CLIENT_SD_SECRET_PATH = "/v1wifi_secret.json";
 static const char* WIFI_CLIENT_SD_SECRET_TYPE = "v1wifi_secret";
 static const int WIFI_CLIENT_SD_SECRET_VERSION = 1;
 
+static uint8_t clampU8(int value, int minVal, int maxVal) {
+    return static_cast<uint8_t>(std::max(minVal, std::min(value, maxVal)));
+}
+
+static uint8_t clampSlotVolumeValue(int value) {
+    // 0xFF means "no change"; otherwise valid range is 0..9.
+    if (value == 0xFF) {
+        return 0xFF;
+    }
+    return clampU8(value, 0, 9);
+}
+
+static uint8_t clampApTimeoutValue(int value) {
+    // 0 means always-on, otherwise enforce 5..60 minutes.
+    if (value == 0) {
+        return 0;
+    }
+    return clampU8(value, 5, 60);
+}
+
+static WiFiModeSetting clampWifiModeValue(int raw) {
+    int clamped = std::max(static_cast<int>(V1_WIFI_OFF),
+                           std::min(raw, static_cast<int>(V1_WIFI_APSTA)));
+    return static_cast<WiFiModeSetting>(clamped);
+}
+
+static VoiceAlertMode clampVoiceAlertModeValue(int raw) {
+    int clamped = std::max(static_cast<int>(VOICE_MODE_DISABLED),
+                           std::min(raw, static_cast<int>(VOICE_MODE_BAND_FREQ)));
+    return static_cast<VoiceAlertMode>(clamped);
+}
+
+static V1Mode normalizeV1ModeValue(int raw) {
+    switch (raw) {
+        case V1_MODE_UNKNOWN:
+        case V1_MODE_ALL_BOGEYS:
+        case V1_MODE_LOGIC:
+        case V1_MODE_ADVANCED_LOGIC:
+            return static_cast<V1Mode>(raw);
+        default:
+            return V1_MODE_UNKNOWN;
+    }
+}
+
+static constexpr size_t MAX_WIFI_SSID_LEN = 32;
+static constexpr size_t MAX_AP_PASSWORD_LEN = 63;
+static constexpr size_t MIN_AP_PASSWORD_LEN = 8;
+static constexpr size_t MAX_PROXY_NAME_LEN = 32;
+static constexpr size_t MAX_SLOT_NAME_LEN = 20;
+static constexpr size_t MAX_PROFILE_NAME_LEN = 64;
+static constexpr size_t MAX_PROFILE_DESCRIPTION_LEN = 160;
+static constexpr size_t MAX_V1_ADDRESS_LEN = 32;
+
+static String clampStringLength(const String& value, size_t maxLen) {
+    if (value.length() <= maxLen) {
+        return value;
+    }
+    return value.substring(0, maxLen);
+}
+
+static String sanitizeApSsidValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_WIFI_SSID_LEN);
+    if (value.length() == 0) {
+        return "V1-Simple";
+    }
+    return value;
+}
+
+static String sanitizeApPasswordValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_AP_PASSWORD_LEN);
+    if (value.length() < MIN_AP_PASSWORD_LEN) {
+        return "setupv1g2";
+    }
+    return value;
+}
+
+static String sanitizeWifiClientSsidValue(const String& raw) {
+    return clampStringLength(raw, MAX_WIFI_SSID_LEN);
+}
+
+static String sanitizeProxyNameValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_PROXY_NAME_LEN);
+    if (value.length() == 0) {
+        return "V1-Proxy";
+    }
+    return value;
+}
+
+static String sanitizeSlotNameValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_SLOT_NAME_LEN);
+    value.toUpperCase();
+    return value;
+}
+
+static String sanitizeProfileNameValue(const String& raw) {
+    return clampStringLength(raw, MAX_PROFILE_NAME_LEN);
+}
+
+static String sanitizeProfileDescriptionValue(const String& raw) {
+    return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
+}
+
+static String sanitizeLastV1AddressValue(const String& raw) {
+    return clampStringLength(raw, MAX_V1_ADDRESS_LEN);
+}
+
 // Global instance
 SettingsManager settingsManager;
 
@@ -291,6 +397,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("proxyBLE", settings.proxyBLE);
     written += prefs.putString("proxyName", settings.proxyName);
     written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
+    written += prefs.putBool("gpsEn", settings.gpsEnabled);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -513,19 +620,20 @@ void SettingsManager::load() {
     String storedApPwd = preferences.getString("apPassword", "");
     
     if (storedVersion >= 2) {
-        // Passwords are obfuscated - decode them
-        settings.apPassword = storedApPwd.length() > 0 ? decodeObfuscatedFromStorage(storedApPwd) : "setupv1g2";
+        // Passwords are obfuscated - decode and sanitize them.
+        settings.apPassword = sanitizeApPasswordValue(
+            storedApPwd.length() > 0 ? decodeObfuscatedFromStorage(storedApPwd) : "setupv1g2");
     } else {
-        // Version 1 - passwords stored in plain text, use as-is
-        settings.apPassword = storedApPwd.length() > 0 ? storedApPwd : "setupv1g2";
+        // Version 1 - passwords stored in plain text, use as-is then sanitize.
+        settings.apPassword = sanitizeApPasswordValue(storedApPwd.length() > 0 ? storedApPwd : "setupv1g2");
         Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
     
-    settings.apSSID = preferences.getString("apSSID", "V1-Simple");
+    settings.apSSID = sanitizeApSsidValue(preferences.getString("apSSID", "V1-Simple"));
     
     // WiFi client (STA) settings
     settings.wifiClientEnabled = preferences.getBool("wifiClientEn", false);
-    settings.wifiClientSSID = preferences.getString("wifiClSSID", "");
+    settings.wifiClientSSID = sanitizeWifiClientSsidValue(preferences.getString("wifiClSSID", ""));
     // Determine WiFi mode based on client enabled state
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
@@ -535,8 +643,9 @@ void SettingsManager::load() {
                   settings.wifiClientSSID.c_str());
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
-    settings.proxyName = preferences.getString("proxyName", "V1-Proxy");
+    settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
+    settings.gpsEnabled = preferences.getBool("gpsEn", false);
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -588,7 +697,7 @@ void SettingsManager::load() {
         settings.voiceAlertMode = oldEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
         settings.voiceDirectionEnabled = true;  // Old behavior always included direction
     } else {
-        settings.voiceAlertMode = (VoiceAlertMode)preferences.getUChar("voiceMode", VOICE_MODE_BAND_FREQ);
+        settings.voiceAlertMode = clampVoiceAlertModeValue(preferences.getUChar("voiceMode", VOICE_MODE_BAND_FREQ));
         settings.voiceDirectionEnabled = preferences.getBool("voiceDir", true);
     }
     
@@ -622,30 +731,30 @@ void SettingsManager::load() {
     
     // Speed-based volume settings
     settings.speedVolumeEnabled = preferences.getBool("spdVolEn", false);
-    settings.speedVolumeThresholdMph = preferences.getUChar("spdVolThr", 45);  // No upper bound needed for speed
-    settings.speedVolumeBoost = std::min<uint8_t>(9, preferences.getUChar("spdVolBoost", 2));  // 0-9 (V1 volume range)
+    settings.speedVolumeThresholdMph = clampU8(preferences.getUChar("spdVolThr", 45), 10, 100);
+    settings.speedVolumeBoost = clampU8(preferences.getUChar("spdVolBoost", 2), 1, 5);
     
     // Low-speed mute settings
     settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
-    settings.lowSpeedMuteThresholdMph = preferences.getUChar("lowSpdThr", 5);  // No upper bound needed for speed;
+    settings.lowSpeedMuteThresholdMph = clampU8(preferences.getUChar("lowSpdThr", 5), 1, 30);
     
     settings.autoPushEnabled = preferences.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {
         settings.activeSlot = 0;
     }
-    settings.slot0Name = preferences.getString("slot0name", "DEFAULT");
-    settings.slot1Name = preferences.getString("slot1name", "HIGHWAY");
-    settings.slot2Name = preferences.getString("slot2name", "COMFORT");
+    settings.slot0Name = sanitizeSlotNameValue(preferences.getString("slot0name", "DEFAULT"));
+    settings.slot1Name = sanitizeSlotNameValue(preferences.getString("slot1name", "HIGHWAY"));
+    settings.slot2Name = sanitizeSlotNameValue(preferences.getString("slot2name", "COMFORT"));
     settings.slot0Color = preferences.getUShort("slot0color", 0x400A);
     settings.slot1Color = preferences.getUShort("slot1color", 0x07E0);
     settings.slot2Color = preferences.getUShort("slot2color", 0x8410);
-    settings.slot0Volume = preferences.getUChar("slot0vol", 0xFF);
-    settings.slot1Volume = preferences.getUChar("slot1vol", 0xFF);
-    settings.slot2Volume = preferences.getUChar("slot2vol", 0xFF);
-    settings.slot0MuteVolume = preferences.getUChar("slot0mute", 0xFF);
-    settings.slot1MuteVolume = preferences.getUChar("slot1mute", 0xFF);
-    settings.slot2MuteVolume = preferences.getUChar("slot2mute", 0xFF);
+    settings.slot0Volume = clampSlotVolumeValue(preferences.getUChar("slot0vol", 0xFF));
+    settings.slot1Volume = clampSlotVolumeValue(preferences.getUChar("slot1vol", 0xFF));
+    settings.slot2Volume = clampSlotVolumeValue(preferences.getUChar("slot2vol", 0xFF));
+    settings.slot0MuteVolume = clampSlotVolumeValue(preferences.getUChar("slot0mute", 0xFF));
+    settings.slot1MuteVolume = clampSlotVolumeValue(preferences.getUChar("slot1mute", 0xFF));
+    settings.slot2MuteVolume = clampSlotVolumeValue(preferences.getUChar("slot2mute", 0xFF));
     settings.slot0DarkMode = preferences.getBool("slot0dark", false);
     settings.slot1DarkMode = preferences.getBool("slot1dark", false);
     settings.slot2DarkMode = preferences.getBool("slot2dark", false);
@@ -658,15 +767,15 @@ void SettingsManager::load() {
     settings.slot0PriorityArrow = preferences.getBool("slot0prio", false);
     settings.slot1PriorityArrow = preferences.getBool("slot1prio", false);
     settings.slot2PriorityArrow = preferences.getBool("slot2prio", false);
-    settings.slot0_default.profileName = preferences.getString("slot0prof", "");
-    settings.slot0_default.mode = static_cast<V1Mode>(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
-    settings.slot1_highway.profileName = preferences.getString("slot1prof", "");
-    settings.slot1_highway.mode = static_cast<V1Mode>(preferences.getInt("slot1mode", V1_MODE_UNKNOWN));
-    settings.slot2_comfort.profileName = preferences.getString("slot2prof", "");
-    settings.slot2_comfort.mode = static_cast<V1Mode>(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
-    settings.lastV1Address = preferences.getString("lastV1Addr", "");
-    settings.autoPowerOffMinutes = preferences.getUChar("autoPwrOff", 0);
-    settings.apTimeoutMinutes = preferences.getUChar("apTimeout", 0);  // Default: always on
+    settings.slot0_default.profileName = sanitizeProfileNameValue(preferences.getString("slot0prof", ""));
+    settings.slot0_default.mode = normalizeV1ModeValue(preferences.getInt("slot0mode", V1_MODE_UNKNOWN));
+    settings.slot1_highway.profileName = sanitizeProfileNameValue(preferences.getString("slot1prof", ""));
+    settings.slot1_highway.mode = normalizeV1ModeValue(preferences.getInt("slot1mode", V1_MODE_UNKNOWN));
+    settings.slot2_comfort.profileName = sanitizeProfileNameValue(preferences.getString("slot2prof", ""));
+    settings.slot2_comfort.mode = normalizeV1ModeValue(preferences.getInt("slot2mode", V1_MODE_UNKNOWN));
+    settings.lastV1Address = sanitizeLastV1AddressValue(preferences.getString("lastV1Addr", ""));
+    settings.autoPowerOffMinutes = clampU8(preferences.getUChar("autoPwrOff", 0), 0, 60);
+    settings.apTimeoutMinutes = clampApTimeoutValue(preferences.getUChar("apTimeout", 0));
     
     preferences.end();
     
@@ -694,8 +803,8 @@ void SettingsManager::setWiFiEnabled(bool enabled) {
 }
 
 void SettingsManager::setAPCredentials(const String& ssid, const String& password) {
-    settings.apSSID = ssid;
-    settings.apPassword = password;
+    settings.apSSID = sanitizeApSsidValue(ssid);
+    settings.apPassword = sanitizeApPasswordValue(password);
     save();
 }
 
@@ -752,9 +861,9 @@ void SettingsManager::setWifiClientEnabled(bool enabled) {
 }
 
 void SettingsManager::setWifiClientCredentials(const String& ssid, const String& password) {
-    settings.wifiClientSSID = ssid;
-    settings.wifiClientEnabled = true;
-    settings.wifiMode = V1_WIFI_APSTA;
+    settings.wifiClientSSID = sanitizeWifiClientSsidValue(ssid);
+    settings.wifiClientEnabled = settings.wifiClientSSID.length() > 0;
+    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
 
     const String encodedPassword = encodeObfuscatedForStorage(password);
     bool nvsSaved = false;
@@ -803,7 +912,7 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
     }
 
     // Redundant SD copy for recovery when NVS gets wiped/corrupted.
-    if (saveWifiClientSecretToSD(ssid, encodedPassword)) {
+    if (settings.wifiClientSSID.length() > 0 && saveWifiClientSecretToSD(settings.wifiClientSSID, encodedPassword)) {
         Serial.println("[Settings] WiFi client secret mirrored to SD");
     }
 
@@ -834,7 +943,7 @@ void SettingsManager::setProxyBLE(bool enabled) {
 }
 
 void SettingsManager::setProxyName(const String& name) {
-    settings.proxyName = name;
+    settings.proxyName = sanitizeProxyNameValue(name);
     save();
 }
 
@@ -846,13 +955,21 @@ void SettingsManager::setObdVwDataEnabled(bool enabled) {
     save();
 }
 
+void SettingsManager::setGpsEnabled(bool enabled) {
+    if (settings.gpsEnabled == enabled) {
+        return;
+    }
+    settings.gpsEnabled = enabled;
+    save();
+}
+
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
-    settings.autoPowerOffMinutes = minutes;
+    settings.autoPowerOffMinutes = clampU8(minutes, 0, 60);
     save();
 }
 
 void SettingsManager::setApTimeoutMinutes(uint8_t minutes) {
-    settings.apTimeoutMinutes = minutes;
+    settings.apTimeoutMinutes = clampApTimeoutValue(minutes);
     save();
 }
 
@@ -877,30 +994,27 @@ void SettingsManager::setActiveSlot(int slot) {
 }
 
 void SettingsManager::setSlot(int slotNum, const String& profileName, V1Mode mode) {
+    const String safeProfileName = sanitizeProfileNameValue(profileName);
+    const V1Mode safeMode = normalizeV1ModeValue(static_cast<int>(mode));
     switch (slotNum) {
         case 0:
-            settings.slot0_default.profileName = profileName;
-            settings.slot0_default.mode = mode;
+            settings.slot0_default.profileName = safeProfileName;
+            settings.slot0_default.mode = safeMode;
             break;
         case 1:
-            settings.slot1_highway.profileName = profileName;
-            settings.slot1_highway.mode = mode;
+            settings.slot1_highway.profileName = safeProfileName;
+            settings.slot1_highway.mode = safeMode;
             break;
         case 2:
-            settings.slot2_comfort.profileName = profileName;
-            settings.slot2_comfort.mode = mode;
+            settings.slot2_comfort.profileName = safeProfileName;
+            settings.slot2_comfort.mode = safeMode;
             break;
     }
     save();
 }
 
 void SettingsManager::setSlotName(int slotNum, const String& name) {
-    // Convert to uppercase and limit to 20 characters for display consistency
-    String upperName = name;
-    upperName.toUpperCase();
-    if (upperName.length() > 20) {
-        upperName = upperName.substring(0, 20);
-    }
+    String upperName = sanitizeSlotNameValue(name);
     
     switch (slotNum) {
         case 0: settings.slot0Name = upperName; break;
@@ -920,10 +1034,12 @@ void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
 }
 
 void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume) {
+    uint8_t safeVolume = clampSlotVolumeValue(volume);
+    uint8_t safeMuteVolume = clampSlotVolumeValue(muteVolume);
     switch (slotNum) {
-        case 0: settings.slot0Volume = volume; settings.slot0MuteVolume = muteVolume; break;
-        case 1: settings.slot1Volume = volume; settings.slot1MuteVolume = muteVolume; break;
-        case 2: settings.slot2Volume = volume; settings.slot2MuteVolume = muteVolume; break;
+        case 0: settings.slot0Volume = safeVolume; settings.slot0MuteVolume = safeMuteVolume; break;
+        case 1: settings.slot1Volume = safeVolume; settings.slot1MuteVolume = safeMuteVolume; break;
+        case 2: settings.slot2Volume = safeVolume; settings.slot2MuteVolume = safeMuteVolume; break;
     }
     save();
 }
@@ -1050,7 +1166,7 @@ void SettingsManager::setEnableWifiAtBoot(bool enable, bool deferSave) {
 }
 
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
-    settings.voiceAlertMode = mode;
+    settings.voiceAlertMode = clampVoiceAlertModeValue(static_cast<int>(mode));
     save();
 }
 
@@ -1096,21 +1212,21 @@ void SettingsManager::setSecondaryX(bool enabled) {
 
 void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume) {
     settings.alertVolumeFadeEnabled = enabled;
-    settings.alertVolumeFadeDelaySec = delaySec;
-    settings.alertVolumeFadeVolume = volume;
+    settings.alertVolumeFadeDelaySec = clampU8(delaySec, 1, 10);
+    settings.alertVolumeFadeVolume = clampU8(volume, 0, 9);
     save();
 }
 
 void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost) {
     settings.speedVolumeEnabled = enabled;
-    settings.speedVolumeThresholdMph = thresholdMph;
-    settings.speedVolumeBoost = boost;
+    settings.speedVolumeThresholdMph = clampU8(thresholdMph, 10, 100);
+    settings.speedVolumeBoost = clampU8(boost, 1, 5);
     save();
 }
 
 void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph) {
     settings.lowSpeedMuteEnabled = enabled;
-    settings.lowSpeedMuteThresholdMph = thresholdMph;
+    settings.lowSpeedMuteThresholdMph = clampU8(thresholdMph, 1, 30);
     save();
 }
 
@@ -1229,10 +1345,11 @@ void SettingsManager::resetToDefaults() {
 }
 
 void SettingsManager::setLastV1Address(const String& addr) {
-    if (addr != settings.lastV1Address) {
-        settings.lastV1Address = addr;
+    String safeAddr = sanitizeLastV1AddressValue(addr);
+    if (safeAddr != settings.lastV1Address) {
+        settings.lastV1Address = safeAddr;
         save();
-        Serial.printf("Saved new V1 address: %s\n", addr.c_str());
+        Serial.printf("Saved new V1 address: %s\n", safeAddr.c_str());
     }
 }
 // Check if NVS appears to be in default state (likely erased during reflash)
@@ -1304,6 +1421,7 @@ void SettingsManager::backupToSD() {
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
+    doc["gpsEnabled"] = settings.gpsEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1517,20 +1635,25 @@ bool SettingsManager::restoreFromSD() {
     // === WiFi/Network Settings (v2+) ===
     // Note: AP password NOT restored from SD for security - user must re-enter after restore
     if (doc["enableWifi"].is<bool>()) settings.enableWifi = doc["enableWifi"];
-    if (doc["wifiMode"].is<int>()) settings.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
-    if (doc["apSSID"].is<const char*>()) settings.apSSID = doc["apSSID"].as<String>();
+    if (doc["wifiMode"].is<int>()) settings.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
+    if (doc["apSSID"].is<const char*>()) settings.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
     if (doc["wifiClientEnabled"].is<bool>()) settings.wifiClientEnabled = doc["wifiClientEnabled"];
-    if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = doc["wifiClientSSID"].as<String>();
+    if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
     if (doc["proxyBLE"].is<bool>()) settings.proxyBLE = doc["proxyBLE"];
-    if (doc["proxyName"].is<const char*>()) settings.proxyName = doc["proxyName"].as<String>();
+    if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) settings.obdVwDataEnabled = doc["obdVwDataEnabled"];
-    if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = doc["lastV1Address"].as<String>();
-    if (doc["autoPowerOffMinutes"].is<int>()) settings.autoPowerOffMinutes = doc["autoPowerOffMinutes"];
-    if (doc["apTimeoutMinutes"].is<int>()) settings.apTimeoutMinutes = doc["apTimeoutMinutes"];
+    if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
+    if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
+    if (doc["autoPowerOffMinutes"].is<int>()) {
+        settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
+    }
+    if (doc["apTimeoutMinutes"].is<int>()) {
+        settings.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
+    }
     
     
     // === Display Settings ===
-    if (doc["brightness"].is<int>()) settings.brightness = doc["brightness"];
+    if (doc["brightness"].is<int>()) settings.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
     if (doc["turnOffDisplay"].is<bool>()) settings.turnOffDisplay = doc["turnOffDisplay"];
     if (doc["displayStyle"].is<int>()) settings.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
     
@@ -1576,70 +1699,80 @@ bool SettingsManager::restoreFromSD() {
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
-        settings.voiceAlertMode = (VoiceAlertMode)doc["voiceAlertMode"].as<int>();
+        settings.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
     } else if (doc["voiceAlertsEnabled"].is<bool>()) {
         settings.voiceAlertMode = doc["voiceAlertsEnabled"].as<bool>() ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
     }
     if (doc["voiceDirectionEnabled"].is<bool>()) settings.voiceDirectionEnabled = doc["voiceDirectionEnabled"];
     if (doc["announceBogeyCount"].is<bool>()) settings.announceBogeyCount = doc["announceBogeyCount"];
     if (doc["muteVoiceIfVolZero"].is<bool>()) settings.muteVoiceIfVolZero = doc["muteVoiceIfVolZero"];
-    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = doc["voiceVolume"];
+    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = clampU8(doc["voiceVolume"].as<int>(), 0, 100);
     if (doc["announceSecondaryAlerts"].is<bool>()) settings.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
     if (doc["secondaryLaser"].is<bool>()) settings.secondaryLaser = doc["secondaryLaser"];
     if (doc["secondaryKa"].is<bool>()) settings.secondaryKa = doc["secondaryKa"];
     if (doc["secondaryK"].is<bool>()) settings.secondaryK = doc["secondaryK"];
     if (doc["secondaryX"].is<bool>()) settings.secondaryX = doc["secondaryX"];
     if (doc["alertVolumeFadeEnabled"].is<bool>()) settings.alertVolumeFadeEnabled = doc["alertVolumeFadeEnabled"];
-    if (doc["alertVolumeFadeDelaySec"].is<int>()) settings.alertVolumeFadeDelaySec = doc["alertVolumeFadeDelaySec"];
-    if (doc["alertVolumeFadeVolume"].is<int>()) settings.alertVolumeFadeVolume = doc["alertVolumeFadeVolume"];
+    if (doc["alertVolumeFadeDelaySec"].is<int>()) {
+        settings.alertVolumeFadeDelaySec = clampU8(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
+    }
+    if (doc["alertVolumeFadeVolume"].is<int>()) {
+        settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
+    }
     if (doc["speedVolumeEnabled"].is<bool>()) settings.speedVolumeEnabled = doc["speedVolumeEnabled"];
-    if (doc["speedVolumeThresholdMph"].is<int>()) settings.speedVolumeThresholdMph = doc["speedVolumeThresholdMph"];
-    if (doc["speedVolumeBoost"].is<int>()) settings.speedVolumeBoost = doc["speedVolumeBoost"];
+    if (doc["speedVolumeThresholdMph"].is<int>()) {
+        settings.speedVolumeThresholdMph = clampU8(doc["speedVolumeThresholdMph"].as<int>(), 10, 100);
+    }
+    if (doc["speedVolumeBoost"].is<int>()) {
+        settings.speedVolumeBoost = clampU8(doc["speedVolumeBoost"].as<int>(), 1, 5);
+    }
     if (doc["lowSpeedMuteEnabled"].is<bool>()) settings.lowSpeedMuteEnabled = doc["lowSpeedMuteEnabled"];
-    if (doc["lowSpeedMuteThresholdMph"].is<int>()) settings.lowSpeedMuteThresholdMph = doc["lowSpeedMuteThresholdMph"];
+    if (doc["lowSpeedMuteThresholdMph"].is<int>()) {
+        settings.lowSpeedMuteThresholdMph = clampU8(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
+    }
     
     // === Auto-Push Settings (v2+) ===
     // Only allow backup to enable auto-push (avoid stale backups disabling it)
     if (doc["autoPushEnabled"].is<bool>() && doc["autoPushEnabled"].as<bool>()) {
         settings.autoPushEnabled = true;
     }
-    if (doc["activeSlot"].is<int>()) settings.activeSlot = doc["activeSlot"];
+    if (doc["activeSlot"].is<int>()) settings.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
     
     // === Slot 0 Full Settings ===
-    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = doc["slot0Name"].as<String>();
+    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
     if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
-    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = doc["slot0Volume"];
-    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = doc["slot0MuteVolume"];
+    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
+    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
     if (doc["slot0DarkMode"].is<bool>()) settings.slot0DarkMode = doc["slot0DarkMode"];
     if (doc["slot0MuteToZero"].is<bool>()) settings.slot0MuteToZero = doc["slot0MuteToZero"];
-    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = doc["slot0AlertPersist"];
+    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = clampU8(doc["slot0AlertPersist"].as<int>(), 0, 5);
     if (doc["slot0PriorityArrow"].is<bool>()) settings.slot0PriorityArrow = doc["slot0PriorityArrow"];
-    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = doc["slot0ProfileName"].as<String>();
-    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = static_cast<V1Mode>(doc["slot0Mode"].as<int>());
+    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
+    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
     
     // === Slot 1 Full Settings ===
-    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = doc["slot1Name"].as<String>();
+    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
     if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
-    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = doc["slot1Volume"];
-    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = doc["slot1MuteVolume"];
+    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
+    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
     if (doc["slot1DarkMode"].is<bool>()) settings.slot1DarkMode = doc["slot1DarkMode"];
     if (doc["slot1MuteToZero"].is<bool>()) settings.slot1MuteToZero = doc["slot1MuteToZero"];
-    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = doc["slot1AlertPersist"];
+    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = clampU8(doc["slot1AlertPersist"].as<int>(), 0, 5);
     if (doc["slot1PriorityArrow"].is<bool>()) settings.slot1PriorityArrow = doc["slot1PriorityArrow"];
-    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = doc["slot1ProfileName"].as<String>();
-    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = static_cast<V1Mode>(doc["slot1Mode"].as<int>());
+    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
+    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
     
     // === Slot 2 Full Settings ===
-    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = doc["slot2Name"].as<String>();
+    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
     if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
-    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = doc["slot2Volume"];
-    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = doc["slot2MuteVolume"];
+    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
+    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
     if (doc["slot2DarkMode"].is<bool>()) settings.slot2DarkMode = doc["slot2DarkMode"];
     if (doc["slot2MuteToZero"].is<bool>()) settings.slot2MuteToZero = doc["slot2MuteToZero"];
-    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = doc["slot2AlertPersist"];
+    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = clampU8(doc["slot2AlertPersist"].as<int>(), 0, 5);
     if (doc["slot2PriorityArrow"].is<bool>()) settings.slot2PriorityArrow = doc["slot2PriorityArrow"];
-    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = doc["slot2ProfileName"].as<String>();
-    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = static_cast<V1Mode>(doc["slot2Mode"].as<int>());
+    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
+    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
 
     // Restore V1 profiles if present in backup
     int profilesRestored = 0;
@@ -1656,11 +1789,16 @@ bool SettingsManager::restoreFromSD() {
             }
 
             V1Profile profile;
-            profile.name = p["name"].as<String>();
-            if (p["description"].is<const char*>()) profile.description = p["description"].as<String>();
+            profile.name = sanitizeProfileNameValue(p["name"].as<String>());
+            if (profile.name.length() == 0) {
+                continue;
+            }
+            if (p["description"].is<const char*>()) {
+                profile.description = sanitizeProfileDescriptionValue(p["description"].as<String>());
+            }
             if (p["displayOn"].is<bool>()) profile.displayOn = p["displayOn"];
-            if (p["mainVolume"].is<int>()) profile.mainVolume = p["mainVolume"];
-            if (p["mutedVolume"].is<int>()) profile.mutedVolume = p["mutedVolume"];
+            if (p["mainVolume"].is<int>()) profile.mainVolume = clampSlotVolumeValue(p["mainVolume"].as<int>());
+            if (p["mutedVolume"].is<int>()) profile.mutedVolume = clampSlotVolumeValue(p["mutedVolume"].as<int>());
 
             for (int i = 0; i < 6; i++) {
                 profile.settings.bytes[i] = bytes[i].as<uint8_t>();

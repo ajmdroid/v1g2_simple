@@ -252,6 +252,8 @@ private:
     void handleObdRemembered();
     void handleObdRememberedAutoConnect();
     void handleObdForget();
+    void handleGpsStatus();
+    void handleGpsConfig();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

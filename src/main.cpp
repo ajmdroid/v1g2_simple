@@ -55,6 +55,8 @@
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
+#include "modules/gps/gps_runtime_module.h"
+#include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
@@ -639,6 +641,8 @@ void setup() {
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     obdHandler.begin();
+    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
+    speedSourceSelector.begin(settingsManager.get().gpsEnabled);
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -818,9 +822,21 @@ void loop() {
 
     if (obdHandler.update()) {
         OBDData obdData = obdHandler.getData();
-        if (obdData.valid) {
-            voiceModule.updateSpeedSample(obdData.speed_mph, obdData.timestamp_ms);
-        }
+        speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
+    }
+
+    gpsRuntimeModule.update(now);
+    float gpsSpeedMph = 0.0f;
+    uint32_t gpsSampleTsMs = 0;
+    if (gpsRuntimeModule.getFreshSpeed(now, gpsSpeedMph, gpsSampleTsMs)) {
+        speedSourceSelector.updateGpsSample(gpsSpeedMph, gpsSampleTsMs, true);
+    }
+
+    SpeedSelection speedSelection;
+    if (speedSourceSelector.select(now, speedSelection)) {
+        voiceModule.updateSpeedSample(speedSelection.speedMph, speedSelection.timestampMs);
+    } else {
+        voiceModule.clearSpeedSample();
     }
     
     // Drain only parsed-frame events; keep non-frame events available for
