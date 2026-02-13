@@ -583,6 +583,23 @@ void setup() {
     }
     SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
     logBootStage("ble_preinit");
+
+    // Start scan early so discovery overlaps remaining setup work.
+    // Connection state-machine work still waits for bootReady gate later in setup().
+    bleClient.onDataReceived(onV1Data);
+    bleClient.onV1Connected(onV1Connected);
+    logBootCheckpoint("ble_callbacks_registered");
+    const V1Settings& bleScanSettings = settingsManager.get();
+    SerialLog.printf("Starting BLE scan for V1 early (proxy: %s, name: %s)\n",
+                     bleScanSettings.proxyBLE ? "enabled" : "disabled",
+                     bleScanSettings.proxyName.c_str());
+    logBootCheckpoint("ble_scan_begin");
+    const unsigned long bleScanStartMs = millis();
+    if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
+        SerialLog.println("BLE scan failed to start!");
+        fatalBootError("BLE scan failed", true);
+    }
+    SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
 #endif
 
     // Initialize auto-push module after settings/profiles are ready
@@ -699,27 +716,7 @@ void setup() {
     logBootStage("core_pipeline");
 
 #ifndef REPLAY_MODE
-    // Start BLE scanning using pre-initialized BLE stack.
-    const V1Settings& bleSettings = settingsManager.get();
-    SerialLog.printf("Starting BLE scan for V1 (proxy: %s, name: %s)\n", 
-                  bleSettings.proxyBLE ? "enabled" : "disabled",
-                  bleSettings.proxyName.c_str());
-    
-    // Start normal scanning
-    logBootCheckpoint("ble_scan_begin");
-    const unsigned long bleScanStartMs = millis();
-    if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
-        SerialLog.println("BLE scan failed to start!");
-        fatalBootError("BLE scan failed", true);
-    }
-    SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
-    
-    // Register data callback
-    bleClient.onDataReceived(onV1Data);
-    
-    // Register V1 connection callback for auto-push
-    bleClient.onV1Connected(onV1Connected);
-    logBootCheckpoint("ble_callbacks_registered");
+    SerialLog.println("BLE scan already active from early setup path");
     logBootStage("ble_start");
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
