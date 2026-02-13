@@ -190,6 +190,17 @@ void OBDHandler::tryAutoConnect() {
         return;
     }
 
+    // If we're in DISCONNECTED with active cooldown/backoff, reset it.
+    // This path is triggered by V1 connecting (car turned on), which is
+    // a strong signal that the OBD adapter should be reachable now.
+    if (state == OBDState::DISCONNECTED) {
+        Serial.println("[OBD] tryAutoConnect: resetting DISCONNECTED cooldown (V1 trigger)");
+        connectionFailures = 0;
+        reconnectCycleCount = 0;
+        consecutivePollFailures = 0;
+        state = OBDState::IDLE;
+    }
+
     const uint32_t now = millis();
     if (now - lastAutoConnectAttemptMs < AUTO_CONNECT_RETRY_MS) {
         return;

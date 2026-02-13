@@ -348,6 +348,11 @@ void onV1Connected() {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
                         s.activeSlot, activeSlotIndex);
     }
+
+    // Attempt OBD auto-connect shortly after V1 stabilizes.
+    // This runs regardless of autoPush — V1 connecting is the "car on" signal.
+    obdAutoConnectPending = true;
+    obdAutoConnectAtMs = millis() + 1500;
     
     if (!s.autoPushEnabled) {
         AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
@@ -358,10 +363,6 @@ void onV1Connected() {
     AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
 
     autoPushModule.start(activeSlotIndex);
-
-    // Attempt OBD auto-connect shortly after V1 stabilizes.
-    obdAutoConnectPending = true;
-    obdAutoConnectAtMs = millis() + 1500;
 }
 
 // Helper for fatal boot errors - shows message, waits, then restarts
