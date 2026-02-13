@@ -572,6 +572,19 @@ void setup() {
     }
     logBootStage("storage");
 
+#ifndef REPLAY_MODE
+    // Initialize BLE stack early (no scan yet) once settings/storage are ready.
+    const V1Settings& blePreInitSettings = settingsManager.get();
+    logBootCheckpoint("ble_preinit_begin");
+    const unsigned long blePreInitStartMs = millis();
+    if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
+        SerialLog.println("BLE pre-initialization failed!");
+        fatalBootError("BLE pre-init failed", true);
+    }
+    SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
+    logBootStage("ble_preinit");
+#endif
+
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
 
@@ -686,23 +699,13 @@ void setup() {
     logBootStage("core_pipeline");
 
 #ifndef REPLAY_MODE
-    // Initialize BLE client with proxy settings from preferences
+    // Start BLE scanning using pre-initialized BLE stack.
     const V1Settings& bleSettings = settingsManager.get();
-    SerialLog.printf("Starting BLE (proxy: %s, name: %s)\n", 
+    SerialLog.printf("Starting BLE scan for V1 (proxy: %s, name: %s)\n", 
                   bleSettings.proxyBLE ? "enabled" : "disabled",
                   bleSettings.proxyName.c_str());
-
-    // Initialize BLE stack first (required before any BLE operations)
-    logBootCheckpoint("ble_init_begin");
-    const unsigned long bleInitStartMs = millis();
-    if (!bleClient.initBLE(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
-        SerialLog.println("BLE initialization failed!");
-        fatalBootError("BLE init failed", true);
-    }
-    SerialLog.printf("[BootTiming] ble_init_ms=%lu\n", millis() - bleInitStartMs);
     
     // Start normal scanning
-    SerialLog.println("Starting BLE scan for V1...");
     logBootCheckpoint("ble_scan_begin");
     const unsigned long bleScanStartMs = millis();
     if (!bleClient.begin(bleSettings.proxyBLE, bleSettings.proxyName.c_str())) {
