@@ -1,12 +1,15 @@
 // OBD-II Handler implementation
 
 #include "obd_handler.h"
+#include "storage_manager.h"
 
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
 
 #include <algorithm>
 #include <cstring>
+
+static constexpr const char* OBD_SD_BACKUP_PATH = "/v1simple_obd_devices.json";
 
 OBDHandler obdHandler;
 
@@ -24,6 +27,13 @@ static bool isAllZeroAddress(const NimBLEAddress& address) {
         }
     }
     return true;
+}
+
+// Free-function mirror of OBDHandler::isNullAddressString for use in static helpers.
+static bool isNullAddress(const String& address) {
+    if (address.length() == 0) return true;
+    const NimBLEAddress parsed(std::string(address.c_str()), BLE_ADDR_PUBLIC);
+    return parsed.isNull() || isAllZeroAddress(parsed);
 }
 
 class ObdLock {
@@ -171,7 +181,21 @@ void OBDHandler::begin() {
     connectionFailures = 0;
 
     startTask();
-    Serial.printf("[OBD] Handler ready (remembered=%u)\n", (unsigned)rememberedDevices.size());
+
+    // Diagnostic: log remembered devices at boot
+    {
+        ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+        if (lock.ok()) {
+            Serial.printf("[OBD] Handler ready (remembered=%u)\n", (unsigned)rememberedDevices.size());
+            for (size_t i = 0; i < rememberedDevices.size(); ++i) {
+                Serial.printf("[OBD]   [%u] %s (%s) autoConnect=%s\n",
+                              (unsigned)i,
+                              rememberedDevices[i].name.c_str(),
+                              rememberedDevices[i].address.c_str(),
+                              rememberedDevices[i].autoConnect ? "yes" : "no");
+            }
+        }
+    }
 }
 
 bool OBDHandler::update() {
@@ -1900,60 +1924,112 @@ bool OBDHandler::connectViaAdvertisedDevice(const char* profileLabel, bool using
     return false;
 }
 
+// Parse a JSON blob into a vector of OBDRememberedDevice.
+// Returns the number of valid devices parsed.
+static size_t parseDevicesJson(const String& blob,
+                               std::vector<OBDRememberedDevice>& out,
+                               size_t maxDevices) {
+    if (blob.length() == 0) return 0;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, blob) != DeserializationError::Ok) return 0;
+
+    JsonArray arr = doc["devices"].as<JsonArray>();
+    if (arr.isNull()) return 0;
+
+    size_t count = 0;
+    for (JsonObject item : arr) {
+        if (out.size() >= maxDevices) break;
+
+        const char* addr = item["address"] | "";
+        if (!addr || addr[0] == '\0') continue;
+
+        OBDRememberedDevice d;
+        d.address = String(addr);
+        if (isNullAddress(d.address)) continue;
+        d.name = String((const char*)(item["name"] | ""));
+        d.pin = String((const char*)(item["pin"] | ""));
+        d.autoConnect = item["autoConnect"] | false;
+        d.lastSeenMs = item["lastSeenMs"] | 0;
+        out.push_back(d);
+        ++count;
+    }
+    return count;
+}
+
 void OBDHandler::loadRememberedDevices() {
     std::vector<OBDRememberedDevice> loaded;
     loaded.reserve(MAX_REMEMBERED_DEVICES);
 
-    Preferences p;
-    if (!p.begin("obd_store", true)) {
-        return;
+    // --- Phase 1: Try NVS ---
+    bool nvsOk = false;
+    {
+        Preferences p;
+        if (p.begin("obd_store", true)) {
+            String blob;
+            if (p.isKey("devices")) {
+                blob = p.getString("devices", "");
+            }
+            p.end();
+
+            if (parseDevicesJson(blob, loaded, MAX_REMEMBERED_DEVICES) > 0) {
+                nvsOk = true;
+            }
+        }
     }
 
-    String blob;
-    // Avoid Preferences NOT_FOUND noise on fresh NVS when key does not exist yet.
-    if (p.isKey("devices")) {
-        blob = p.getString("devices", "");
+    // --- Phase 2: If NVS empty/corrupt, try SD backup ---
+    if (!nvsOk) {
+        if (storageManager.isReady() && storageManager.isSDCard()) {
+            StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+            if (sdLock) {
+                fs::FS* sdFs = storageManager.getFilesystem();
+                if (sdFs && sdFs->exists(OBD_SD_BACKUP_PATH)) {
+                    File f = sdFs->open(OBD_SD_BACKUP_PATH, "r");
+                    if (f) {
+                        // Sanity-check file size (< 4KB for 8 devices)
+                        if (f.size() > 0 && f.size() < 4096) {
+                            String blob = f.readString();
+                            f.close();
+                            if (parseDevicesJson(blob, loaded, MAX_REMEMBERED_DEVICES) > 0) {
+                                Serial.printf("[OBD] Restored %u device(s) from SD backup\n",
+                                              (unsigned)loaded.size());
+                                // Re-persist to NVS so next boot is fast
+                                JsonDocument doc;
+                                JsonArray arr = doc["devices"].to<JsonArray>();
+                                for (const auto& d : loaded) {
+                                    JsonObject o = arr.add<JsonObject>();
+                                    o["address"] = d.address;
+                                    o["name"] = d.name;
+                                    o["pin"] = d.pin;
+                                    o["autoConnect"] = d.autoConnect;
+                                    o["lastSeenMs"] = d.lastSeenMs;
+                                }
+                                String nvsBlob;
+                                serializeJson(doc, nvsBlob);
+                                Preferences p;
+                                if (p.begin("obd_store", false)) {
+                                    p.putString("devices", nvsBlob);
+                                    p.end();
+                                }
+                            } else {
+                                f.close();
+                            }
+                        } else {
+                            f.close();
+                        }
+                    }
+                }
+            }
+        }
     }
-    p.end();
 
-    if (blob.length() == 0) {
+    if (loaded.empty()) {
         ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
         if (lock.ok()) {
             rememberedDevices.clear();
         }
         return;
-    }
-
-    JsonDocument doc;
-    if (deserializeJson(doc, blob) != DeserializationError::Ok) {
-        return;
-    }
-
-    JsonArray arr = doc["devices"].as<JsonArray>();
-    if (arr.isNull()) {
-        return;
-    }
-
-    for (JsonObject item : arr) {
-        if (loaded.size() >= MAX_REMEMBERED_DEVICES) {
-            break;
-        }
-
-        const char* addr = item["address"] | "";
-        if (!addr || addr[0] == '\0') {
-            continue;
-        }
-
-        OBDRememberedDevice d;
-        d.address = String(addr);
-        if (isNullAddressString(d.address)) {
-            continue;
-        }
-        d.name = String((const char*)(item["name"] | ""));
-        d.pin = String((const char*)(item["pin"] | ""));
-        d.autoConnect = item["autoConnect"] | false;
-        d.lastSeenMs = item["lastSeenMs"] | 0;
-        loaded.push_back(d);
     }
 
     ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
@@ -1986,10 +2062,34 @@ void OBDHandler::saveRememberedDevices() {
     String blob;
     serializeJson(doc, blob);
 
-    Preferences p;
-    if (p.begin("obd_store", false)) {
-        p.putString("devices", blob);
-        p.end();
+    // --- Save to NVS (primary) ---
+    bool nvsOk = false;
+    {
+        Preferences p;
+        if (p.begin("obd_store", false)) {
+            p.putString("devices", blob);
+            p.end();
+            nvsOk = true;
+        }
+    }
+
+    // --- Backup to SD (secondary) ---
+    if (storageManager.isReady() && storageManager.isSDCard()) {
+        StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+        if (sdLock) {
+            fs::FS* sdFs = storageManager.getFilesystem();
+            if (sdFs) {
+                if (StorageManager::writeJsonFileAtomic(*sdFs, OBD_SD_BACKUP_PATH, doc)) {
+                    Serial.printf("[OBD] Backed up %u device(s) to SD\n", (unsigned)snapshot.size());
+                } else {
+                    Serial.println("[OBD] WARN: SD backup write failed");
+                }
+            }
+        }
+    }
+
+    if (!nvsOk) {
+        Serial.println("[OBD] WARN: NVS save failed");
     }
 }
 
