@@ -455,6 +455,16 @@ bool perfMetricsCheckReport() {
 }
 #endif
 
+bool perfMetricsEnqueueSnapshotNow() {
+    if (!perfSdLogger.isEnabled()) {
+        return false;
+    }
+
+    PerfSdSnapshot snapshot{};
+    captureSdSnapshot(snapshot);
+    return perfSdLogger.enqueue(snapshot);
+}
+
 void perfMetricsPrint() {
 #if PERF_METRICS && PERF_MONITORING
     uint32_t avgUs = perfLatency.avgUs();

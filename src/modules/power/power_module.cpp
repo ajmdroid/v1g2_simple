@@ -2,8 +2,10 @@
 #ifndef UNIT_TEST
 #include "perf_metrics.h"
 #define POWER_PERF_INC(counter) PERF_INC(counter)
+#define POWER_PERF_FLUSH_NOW() do { (void)perfMetricsEnqueueSnapshotNow(); } while (0)
 #else
 #define POWER_PERF_INC(counter) do { } while (0)
+#define POWER_PERF_FLUSH_NOW() do { } while (0)
 #endif
 
 void PowerModule::begin(BatteryManager* batteryMgr,
@@ -76,6 +78,7 @@ void PowerModule::process(unsigned long nowMs) {
             } else if (nowMs - criticalBatteryTime > 5000) {
                 Serial.println("[Battery] CRITICAL - auto shutdown to protect battery");
                 POWER_PERF_INC(powerCriticalShutdown);
+                POWER_PERF_FLUSH_NOW();
                 battery->powerOff();
             }
         } else {
@@ -92,6 +95,7 @@ void PowerModule::process(unsigned long nowMs) {
             Serial.printf("[AutoPowerOff] Timer expired after %d minutes - powering off\n", s.autoPowerOffMinutes);
             autoPowerOffTimerStart = 0;
             POWER_PERF_INC(powerAutoPowerTimerExpire);
+            POWER_PERF_FLUSH_NOW();
             battery->powerOff();
         }
     }

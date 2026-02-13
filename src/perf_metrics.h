@@ -490,6 +490,9 @@ void perfMetricsReset();
 // Returns true if report was printed
 bool perfMetricsCheckReport();
 
+// Best-effort immediate SD snapshot enqueue (non-blocking); returns false on skip/drop.
+bool perfMetricsEnqueueSnapshotNow();
+
 // Force immediate report
 void perfMetricsPrint();
 
