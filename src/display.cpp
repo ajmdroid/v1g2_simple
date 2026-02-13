@@ -2282,13 +2282,25 @@ void V1Display::showBootSplash() {
     drawBaseFrame();
 
     // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
+    // Use row-level bulk blit on Arduino_GFX to reduce draw call overhead.
     const unsigned long logoStartMs = millis();
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+    uint16_t rowBuffer[V1SIMPLE_LOGO_WIDTH];
+    for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
+        const int rowOffset = sy * V1SIMPLE_LOGO_WIDTH;
+        for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
+            rowBuffer[sx] = pgm_read_word(&v1simple_logo_rgb565[rowOffset + sx]);
+        }
+        TFT_CALL(draw16bitRGBBitmap)(0, sy, rowBuffer, V1SIMPLE_LOGO_WIDTH, 1);
+    }
+#else
     for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
         for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
             uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
             TFT_CALL(drawPixel)(sx, sy, pixel);
         }
     }
+#endif
     const unsigned long logoMs = millis() - logoStartMs;
     
     // Draw version number in bottom-right corner
