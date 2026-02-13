@@ -630,7 +630,7 @@ bool V1Display::begin() {
     
     // Turn on backlight (inverted: 0 = full brightness)
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
-    delay(100);
+    delay(30);
     
 #else
     // TFT_eSPI initialization
@@ -642,7 +642,7 @@ bool V1Display::begin() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Second clear to ensure no white flash
 #endif
 
-    delay(50); // Give hardware time to settle
+    delay(10); // Give hardware time to settle
     
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->setTextColor(PALETTE_TEXT);
