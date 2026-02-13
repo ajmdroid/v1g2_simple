@@ -1,6 +1,6 @@
 {
   "name": "V1-Simple",
-  "version": "v3.0.7",
+  "version": "v4.0.0-dev",
   "home_assistant_domain": "",
   "funding_url": "",
   "new_install_prompt_erase": true,

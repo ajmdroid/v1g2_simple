@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.1.0] - 2026-01-29
+## [4.0.0-dev] - 2026-02-13
 
 ### Added
 
@@ -70,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 3.1.0 | TBD | Enterprise quality, WiFi client, OSM sync |
+| 4.0.0-dev | 2026 | Development pre-release with API/runtime refactors |
 | 3.0.7 | 2024 | Quality baseline, all critical bugs fixed |
 | 3.0.x | 2024 | Camera alerts, OBD integration |
 | 2.x.x | 2024 | Auto-lockout, profiles |
@@ -80,9 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Upgrade Notes
 
-### From 3.0.x to 3.1.0
+### From 3.x to 4.0.0-dev
 
-**No breaking changes.** Direct upgrade supported.
+**Pre-release build.** API/behavior changes exist versus 3.0.7; validate integrations before production use.
 
 Recommended post-upgrade actions:
 1. Change default WiFi password if not already done

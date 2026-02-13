@@ -3,15 +3,15 @@
 > ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
 
 
-**Version:** 3.0.7  
+**Version:** 4.0.0-dev  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
-**Last Updated:** January 2026
+**Last Updated:** February 2026
 
 ---
 
-## Recent Changes (v3.0.7)
+## Recent Changes (v4.0.0-dev)
 
-### v3.0.7 - GPS Lockouts & Stability
+### v4.0.0-dev - GPS Lockouts & Stability
 - **GPS Lockout Zones:** Create manual lockout zones that auto-mute specific bands when in range. Supports band-specific muting (X/K/Ka/Laser). Configure via `/gps` page.
 - **Auto-Lockout Learning:** System learns frequent false alert locations and auto-creates lockout zones after repeated hits.
 - **Perf CSV Logging:** SD-backed performance snapshots under `/perf/perf_boot_<id>.csv` for post-mortem analysis.
@@ -308,7 +308,7 @@ V1 Gen2 (BLE)
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
 
-The firmware version (e.g., "v3.0.7") is displayed on the boot splash screen and in the web UI header.
+The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen and in the web UI header.
 
 **Source:** [src/main.cpp](src/main.cpp#L810-L820), [src/display.cpp](src/display.cpp) showBootSplash()
 
@@ -1780,4 +1780,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v3.0.7.*
+*Document generated from source code analysis. Last verified against v4.0.0-dev.*

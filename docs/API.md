@@ -48,7 +48,7 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
     "uptime": 3600,
     "heap_free": 180000,
     "hostname": "v1g2",
-    "firmware_version": "3.0.7"
+    "firmware_version": "4.0.0-dev"
   },
   "battery": {
     "voltage_mv": 4150,
