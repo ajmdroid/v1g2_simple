@@ -8,6 +8,7 @@
 #include <cmath>
 #include <string>
 #include <algorithm>
+#include <cctype>
 
 // Basic Arduino types
 typedef uint8_t byte;
@@ -34,7 +35,29 @@ public:
     String& operator+=(const char* s) { if(s) data_ += s; return *this; }
     String operator+(const String& other) const { return String(data_ + other.data_); }
     bool operator==(const String& other) const { return data_ == other.data_; }
+    bool operator==(const char* s) const { return data_ == (s ? s : ""); }
     bool operator!=(const String& other) const { return data_ != other.data_; }
+    bool operator!=(const char* s) const { return !(*this == s); }
+
+    void toLowerCase() {
+        std::transform(data_.begin(),
+                       data_.end(),
+                       data_.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    }
+
+    bool equalsIgnoreCase(const String& other) const {
+        if (data_.size() != other.data_.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < data_.size(); ++i) {
+            if (std::tolower(static_cast<unsigned char>(data_[i])) !=
+                std::tolower(static_cast<unsigned char>(other.data_[i]))) {
+                return false;
+            }
+        }
+        return true;
+    }
     
     int toInt() const { return std::stoi(data_); }
     float toFloat() const { return std::stof(data_); }
