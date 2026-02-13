@@ -126,6 +126,12 @@ struct PerfCounters {
     std::atomic<uint32_t> voiceAnnounceSecondary{0}; // Voice secondary announcements emitted
     std::atomic<uint32_t> voiceAnnounceEscalation{0}; // Voice escalation announcements emitted
     std::atomic<uint32_t> voiceDirectionThrottled{0}; // Voice direction announcements suppressed by throttle
+    std::atomic<uint32_t> powerAutoPowerArmed{0};    // Auto power-off armed on first V1 data
+    std::atomic<uint32_t> powerAutoPowerTimerStart{0}; // Auto power-off timer started
+    std::atomic<uint32_t> powerAutoPowerTimerCancel{0}; // Auto power-off timer cancelled on reconnect
+    std::atomic<uint32_t> powerAutoPowerTimerExpire{0}; // Auto power-off timer expired
+    std::atomic<uint32_t> powerCriticalWarn{0};      // Critical-battery warning shown
+    std::atomic<uint32_t> powerCriticalShutdown{0};  // Critical-battery shutdown triggered
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -182,6 +188,12 @@ struct PerfCounters {
         voiceAnnounceSecondary.store(0, std::memory_order_relaxed);
         voiceAnnounceEscalation.store(0, std::memory_order_relaxed);
         voiceDirectionThrottled.store(0, std::memory_order_relaxed);
+        powerAutoPowerArmed.store(0, std::memory_order_relaxed);
+        powerAutoPowerTimerStart.store(0, std::memory_order_relaxed);
+        powerAutoPowerTimerCancel.store(0, std::memory_order_relaxed);
+        powerAutoPowerTimerExpire.store(0, std::memory_order_relaxed);
+        powerCriticalWarn.store(0, std::memory_order_relaxed);
+        powerCriticalShutdown.store(0, std::memory_order_relaxed);
     }
 };
 
