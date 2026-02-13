@@ -3,10 +3,9 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
-#include "../../settings.h"
-
 class OBDHandler;
 class V1BLEClient;
+struct V1Settings;
 
 namespace ObdApiService {
 
