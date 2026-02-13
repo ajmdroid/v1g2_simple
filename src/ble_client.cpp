@@ -22,6 +22,7 @@
 #include "debug_logger.h"
 #include "perf_metrics.h"
 #include "obd_handler.h"
+#include "storage_manager.h"
 #include "../include/config.h"
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
@@ -30,6 +31,221 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+
+// NimBLE low-level store API for bond backup/restore
+extern "C" {
+#include "nimble/nimble/host/include/host/ble_store.h"
+}
+
+// =========================================================================
+// BLE Bond Backup/Restore (SD card)
+// =========================================================================
+// NimBLE stores bonds in NVS ("nimble_bond" namespace). NVS is volatile —
+// brownouts, partition changes, and flash erases lose all bonds. This backs
+// up bond key material to SD so it can be restored automatically.
+//
+// File format: /v1simple_ble_bonds.bin
+//   [4 bytes]  magic "BLB\x01" (BLE Bonds v1)
+//   [4 bytes]  uint32_t  ourSecCount
+//   [4 bytes]  uint32_t  peerSecCount
+//   [N * sizeof(ble_store_value_sec)]  our_sec entries
+//   [M * sizeof(ble_store_value_sec)]  peer_sec entries
+// =========================================================================
+
+static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
+static constexpr uint8_t BLE_BOND_MAGIC[4] = { 'B', 'L', 'B', 0x01 };
+static constexpr size_t MAX_BOND_ENTRIES = 8;  // Generous limit
+
+struct BondBackupHeader {
+    uint8_t magic[4];
+    uint32_t ourSecCount;
+    uint32_t peerSecCount;
+};
+
+// Callback context for ble_store_iterate
+struct BondCollector {
+    struct ble_store_value_sec entries[MAX_BOND_ENTRIES];
+    size_t count;
+};
+
+static int bondCollectCallback(int obj_type, union ble_store_value* val, void* cookie) {
+    (void)obj_type;
+    auto* collector = static_cast<BondCollector*>(cookie);
+    if (collector->count < MAX_BOND_ENTRIES) {
+        memcpy(&collector->entries[collector->count], &val->sec, sizeof(struct ble_store_value_sec));
+        collector->count++;
+    }
+    return 0;  // 0 = continue iterating
+}
+
+// Backup all bond keys to SD card. Safe to call anytime after NimBLEDevice::init().
+// Returns number of bonds backed up, or -1 on error.
+static int backupBondsToSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return -1;
+    }
+
+    // Collect bond data from NimBLE store
+    BondCollector ourSecs = {};
+    BondCollector peerSecs = {};
+    ble_store_iterate(BLE_STORE_OBJ_TYPE_OUR_SEC, bondCollectCallback, &ourSecs);
+    ble_store_iterate(BLE_STORE_OBJ_TYPE_PEER_SEC, bondCollectCallback, &peerSecs);
+
+    if (ourSecs.count == 0 && peerSecs.count == 0) {
+        return 0;  // Nothing to backup
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return -1;
+    }
+
+    fs::FS* sdFs = storageManager.getFilesystem();
+    if (!sdFs) {
+        return -1;
+    }
+
+    // Write to .tmp first, then rename (atomic pattern)
+    const String tmpPath = String(BLE_BOND_BACKUP_PATH) + ".tmp";
+    File f = sdFs->open(tmpPath.c_str(), "w");
+    if (!f) {
+        Serial.println("[BLE] WARN: Failed to open bond backup tmp file");
+        return -1;
+    }
+
+    BondBackupHeader hdr = {};
+    memcpy(hdr.magic, BLE_BOND_MAGIC, 4);
+    hdr.ourSecCount = ourSecs.count;
+    hdr.peerSecCount = peerSecs.count;
+
+    bool ok = true;
+    ok = ok && (f.write((const uint8_t*)&hdr, sizeof(hdr)) == sizeof(hdr));
+    if (ourSecs.count > 0) {
+        const size_t sz = ourSecs.count * sizeof(struct ble_store_value_sec);
+        ok = ok && (f.write((const uint8_t*)ourSecs.entries, sz) == sz);
+    }
+    if (peerSecs.count > 0) {
+        const size_t sz = peerSecs.count * sizeof(struct ble_store_value_sec);
+        ok = ok && (f.write((const uint8_t*)peerSecs.entries, sz) == sz);
+    }
+    f.flush();
+    f.close();
+
+    if (!ok) {
+        sdFs->remove(tmpPath.c_str());
+        Serial.println("[BLE] WARN: Bond backup write incomplete");
+        return -1;
+    }
+
+    // Atomic rename
+    if (sdFs->exists(BLE_BOND_BACKUP_PATH)) {
+        sdFs->remove(BLE_BOND_BACKUP_PATH);
+    }
+    if (!sdFs->rename(tmpPath.c_str(), BLE_BOND_BACKUP_PATH)) {
+        sdFs->remove(tmpPath.c_str());
+        Serial.println("[BLE] WARN: Bond backup rename failed");
+        return -1;
+    }
+
+    const int total = (int)(ourSecs.count + peerSecs.count);
+    Serial.printf("[BLE] Backed up %d bond(s) to SD (%u our, %u peer)\n",
+                  total, (unsigned)ourSecs.count, (unsigned)peerSecs.count);
+    return total;
+}
+
+// Restore bond keys from SD card. Must be called after NimBLEDevice::init()
+// but before scanning/connecting. Returns number of bonds restored, or -1 on error.
+static int restoreBondsFromSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return -1;
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return -1;
+    }
+
+    fs::FS* sdFs = storageManager.getFilesystem();
+    if (!sdFs || !sdFs->exists(BLE_BOND_BACKUP_PATH)) {
+        return -1;
+    }
+
+    File f = sdFs->open(BLE_BOND_BACKUP_PATH, "r");
+    if (!f) {
+        return -1;
+    }
+
+    // Sanity: file must be at least header size, and less than a reasonable max
+    const size_t fileSize = f.size();
+    const size_t maxSize = sizeof(BondBackupHeader) + 
+                           2 * MAX_BOND_ENTRIES * sizeof(struct ble_store_value_sec);
+    if (fileSize < sizeof(BondBackupHeader) || fileSize > maxSize) {
+        f.close();
+        Serial.printf("[BLE] Bond backup file size invalid: %u\n", (unsigned)fileSize);
+        return -1;
+    }
+
+    BondBackupHeader hdr = {};
+    if (f.read((uint8_t*)&hdr, sizeof(hdr)) != sizeof(hdr)) {
+        f.close();
+        return -1;
+    }
+
+    // Validate magic
+    if (memcmp(hdr.magic, BLE_BOND_MAGIC, 4) != 0) {
+        f.close();
+        Serial.println("[BLE] Bond backup magic mismatch");
+        return -1;
+    }
+
+    // Validate counts
+    if (hdr.ourSecCount > MAX_BOND_ENTRIES || hdr.peerSecCount > MAX_BOND_ENTRIES) {
+        f.close();
+        Serial.println("[BLE] Bond backup count out of range");
+        return -1;
+    }
+
+    // Validate file size matches header
+    const size_t expectedSize = sizeof(BondBackupHeader) +
+                                hdr.ourSecCount * sizeof(struct ble_store_value_sec) +
+                                hdr.peerSecCount * sizeof(struct ble_store_value_sec);
+    if (fileSize < expectedSize) {
+        f.close();
+        Serial.println("[BLE] Bond backup file truncated");
+        return -1;
+    }
+
+    int restored = 0;
+
+    // Restore our_sec entries
+    for (uint32_t i = 0; i < hdr.ourSecCount; i++) {
+        struct ble_store_value_sec sec = {};
+        if (f.read((uint8_t*)&sec, sizeof(sec)) != sizeof(sec)) {
+            break;
+        }
+        if (ble_store_write_our_sec(&sec) == 0) {
+            restored++;
+        }
+    }
+
+    // Restore peer_sec entries
+    for (uint32_t i = 0; i < hdr.peerSecCount; i++) {
+        struct ble_store_value_sec sec = {};
+        if (f.read((uint8_t*)&sec, sizeof(sec)) != sizeof(sec)) {
+            break;
+        }
+        if (ble_store_write_peer_sec(&sec) == 0) {
+            restored++;
+        }
+    }
+
+    f.close();
+
+    if (restored > 0) {
+        Serial.printf("[BLE] Restored %d bond(s) from SD backup\n", restored);
+    }
+    return restored;
+}
 
 // Helper: calculate V1 packet checksum (sum of bytes)
 static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
@@ -361,15 +577,22 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     
     // Fresh-flash detection: clear BLE bonds if firmware version changed
     // Stale bonding info in NVS can cause connection issues after OTA/flash
+    // BUT: backup bonds to SD first so they can be restored below.
     {
         Preferences blePrefs;
         blePrefs.begin("ble_state", false);  // Read-write mode
         String storedVersion = blePrefs.getString("fwVersion", "");
         if (storedVersion != FIRMWARE_VERSION) {
-            Serial.printf(" fresh-flash, clearing bonds...");
-            // NimBLE must be initialized before deleteAllBonds works
-            // We'll do a minimal init, clear bonds, then deinit and reinit properly
+            Serial.printf(" fresh-flash detected...");
+            // NimBLE must be initialized before bond APIs work
             NimBLEDevice::init("");
+
+            // Backup existing bonds to SD BEFORE deleting them
+            const int backed = backupBondsToSD();
+            if (backed > 0) {
+                Serial.printf(" backed up %d bond(s)...", backed);
+            }
+
             NimBLEDevice::deleteAllBonds();
             NimBLEDevice::deinit(true);  // true = clear all BLE state
             vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
@@ -399,6 +622,17 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
+    }
+
+    // Restore bonds from SD backup if NVS was cleared (fresh-flash or NVS corruption)
+    if (NimBLEDevice::getNumBonds() == 0) {
+        const int restored = restoreBondsFromSD();
+        if (restored > 0) {
+            Serial.printf("[BLE] Restored %d bond(s) from SD\n", restored);
+        }
+    } else {
+        // NVS has bonds — keep SD backup fresh
+        backupBondsToSD();
     }
     
     // Create client once during init - reuse for all connection attempts
@@ -1130,6 +1364,9 @@ void V1BLEClient::processSubscribing() {
         connectStartMs = 0;
         setBLEState(BLEState::CONNECTED, "subscribe complete");
         Serial.println("[BLE] OK");
+
+        // Keep SD bond backup fresh after successful connection
+        backupBondsToSD();
         return;
     }
     
