@@ -2626,6 +2626,7 @@ void WiFiManager::handleDebugMetrics() {
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
+    speedObj["obdConnected"] = speedStatus.obdConnected;
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
     if (speedStatus.selectedSource == SpeedSource::NONE) {
         speedObj["selectedMph"] = nullptr;
@@ -3917,6 +3918,7 @@ void WiFiManager::handleGpsStatus() {
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
+    speedObj["obdConnected"] = speedStatus.obdConnected;
     speedObj["obdFresh"] = speedStatus.obdFresh;
     speedObj["gpsFresh"] = speedStatus.gpsFresh;
     speedObj["sourceSwitches"] = speedStatus.sourceSwitches;

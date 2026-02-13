@@ -18,6 +18,16 @@
 		v1_connected: false,
 		alert: null
 	});
+	let gps = $state({
+		enabled: false,
+		runtimeEnabled: false,
+		mode: 'scaffold',
+		hasFix: false,
+		satellites: 0,
+		speedMph: null,
+		moduleDetected: false,
+		detectionTimedOut: false
+	});
 
 	let loading = $state(true);
 	let error = $state(null);
@@ -34,12 +44,21 @@
 
 	async function fetchStatus() {
 		try {
-			const res = await fetch('/api/status');
-			if (res.ok) {
-				status = await res.json();
+			const [statusRes, gpsRes] = await Promise.all([
+				fetch('/api/status'),
+				fetch('/api/gps/status')
+			]);
+
+			if (statusRes.ok) {
+				status = await statusRes.json();
 				error = null;
 			} else {
 				error = 'API error';
+			}
+
+			if (gpsRes.ok) {
+				const gpsData = await gpsRes.json();
+				gps = { ...gps, ...gpsData };
 			}
 		} catch (e) {
 			error = 'Connection lost';
@@ -89,7 +108,7 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 		<div class="card bg-base-200 shadow-xl">
 			<div class="card-body p-4">
 				<h2 class="card-title text-sm">Valentine One</h2>
@@ -138,10 +157,10 @@
 			</div>
 		</div>
 
-		<div class="card bg-base-200 shadow-xl">
-			<div class="card-body p-4">
-				<h2 class="card-title text-sm">Alerts</h2>
-				{#if loading}
+			<div class="card bg-base-200 shadow-xl">
+				<div class="card-body p-4">
+					<h2 class="card-title text-sm">Alerts</h2>
+					{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if status.alert?.active}
 					<div class="text-xl font-bold text-warning">
@@ -151,10 +170,38 @@
 				{:else}
 					<div class="text-xl font-bold text-success">Clear</div>
 					<div class="text-xs text-base-content/60">No threats</div>
-				{/if}
+					{/if}
+				</div>
+			</div>
+
+			<div class="card bg-base-200 shadow-xl">
+				<div class="card-body p-4">
+					<h2 class="card-title text-sm">GPS</h2>
+					{#if loading}
+						<span class="loading loading-spinner loading-sm"></span>
+					{:else if !gps.enabled}
+						<div class="text-xl font-bold text-base-content/70">Disabled</div>
+						<div class="text-xs text-base-content/60">Enable in Integrations</div>
+					{:else if gps.detectionTimedOut}
+						<div class="text-xl font-bold text-warning">Not Found</div>
+						<div class="text-xs text-base-content/60">Module timeout</div>
+					{:else if gps.hasFix}
+						<div class="text-xl font-bold text-success">
+							{gps.satellites || 0} sats
+						</div>
+						<div class="text-xs text-base-content/60">
+							{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
+						</div>
+					{:else if gps.moduleDetected}
+						<div class="text-xl font-bold text-info">Searching</div>
+						<div class="text-xs text-base-content/60">No fix yet</div>
+					{:else}
+						<div class="text-xl font-bold text-base-content/70">Idle</div>
+						<div class="text-xs text-base-content/60">{gps.mode}</div>
+					{/if}
+				</div>
 			</div>
 		</div>
-	</div>
 
 	{#if error}
 		<div class="alert alert-error" role="alert">{error}</div>

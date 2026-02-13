@@ -16,6 +16,7 @@ struct SpeedSelection {
 
 struct SpeedSelectorStatus {
     bool gpsEnabled = false;
+    bool obdConnected = false;
     SpeedSource selectedSource = SpeedSource::NONE;
     float selectedSpeedMph = 0.0f;
     uint32_t selectedAgeMs = UINT32_MAX;
@@ -42,6 +43,7 @@ public:
 
     void begin(bool gpsEnabled);
     void setGpsEnabled(bool enabled);
+    void setObdConnected(bool connected);
     bool isGpsEnabled() const { return gpsEnabled_; }
 
     void updateObdSample(float speedMph, uint32_t timestampMs, bool valid);
@@ -63,6 +65,7 @@ private:
     static uint32_t sampleAgeMs(const SampleState& sample, uint32_t nowMs);
 
     bool gpsEnabled_ = false;
+    bool obdConnected_ = false;
     SampleState obd_;
     SampleState gps_;
 

@@ -824,6 +824,7 @@ void loop() {
         OBDData obdData = obdHandler.getData();
         speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
     }
+    speedSourceSelector.setObdConnected(obdHandler.isConnected());
 
     gpsRuntimeModule.update(now);
     float gpsSpeedMph = 0.0f;

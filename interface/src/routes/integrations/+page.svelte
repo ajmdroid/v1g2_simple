@@ -8,6 +8,7 @@
 	let statusPoll = $state(null);
 	let scanPoll = $state(null);
 	let savingVwData = $state(false);
+	let savingGpsEnabled = $state(false);
 
 	let status = $state({
 		state: 'IDLE',
@@ -29,6 +30,17 @@
 		rememberedCount: 0,
 		autoConnectCount: 0
 	});
+	let gpsStatus = $state({
+		enabled: false,
+		runtimeEnabled: false,
+		mode: 'scaffold',
+		hasFix: false,
+		satellites: 0,
+		speedMph: null,
+		moduleDetected: false,
+		detectionTimedOut: false,
+		parserActive: false
+	});
 
 	let nearby = $state([]);
 	let remembered = $state([]);
@@ -42,7 +54,7 @@
 	onMount(async () => {
 		await refreshAll();
 		statusPoll = setInterval(async () => {
-			await fetchStatus();
+			await Promise.all([fetchStatus(), fetchGpsStatus()]);
 			if (!status.scanning) {
 				scanning = false;
 				stopScanPoll();
@@ -89,7 +101,7 @@
 	}
 
 	async function refreshAll() {
-		await Promise.all([fetchStatus(), fetchNearby(), fetchRemembered()]);
+		await Promise.all([fetchStatus(), fetchNearby(), fetchRemembered(), fetchGpsStatus()]);
 		loading = false;
 	}
 
@@ -100,6 +112,17 @@
 			const data = await res.json();
 			status = { ...status, ...data };
 			scanning = !!data.scanning;
+		} catch (e) {
+			// Polling should fail silently.
+		}
+	}
+
+	async function fetchGpsStatus() {
+		try {
+			const res = await fetch('/api/gps/status');
+			if (!res.ok) return;
+			const data = await res.json();
+			gpsStatus = { ...gpsStatus, ...data };
 		} catch (e) {
 			// Polling should fail silently.
 		}
@@ -310,11 +333,40 @@
 			savingVwData = false;
 		}
 	}
+
+	async function toggleGpsEnabled(enabled) {
+		if (savingGpsEnabled) return;
+		const previous = !!gpsStatus.enabled;
+		gpsStatus = { ...gpsStatus, enabled };
+		savingGpsEnabled = true;
+
+		try {
+			const res = await fetch('/api/gps/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled })
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to update GPS setting');
+				gpsStatus = { ...gpsStatus, enabled: previous };
+				return;
+			}
+
+			setMsg('success', `GPS ${enabled ? 'enabled' : 'disabled'}`);
+			await fetchGpsStatus();
+		} catch (e) {
+			gpsStatus = { ...gpsStatus, enabled: previous };
+			setMsg('error', 'Failed to update GPS setting');
+		} finally {
+			savingGpsEnabled = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
 	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-2xl font-bold">OBD Integration</h1>
+		<h1 class="text-2xl font-bold">Integrations</h1>
 		<div class="badge {getStateBadge(status.state)} badge-lg">{status.state}</div>
 	</div>
 
@@ -323,6 +375,54 @@
 			<span>{message.text}</span>
 		</div>
 	{/if}
+
+	<div class="card bg-base-200 shadow">
+		<div class="card-body gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h2 class="card-title">GPS Runtime</h2>
+					<p class="text-sm text-base-content/70">
+						Use GPS as fallback speed source when OBD is not connected.
+					</p>
+				</div>
+				<label class="label cursor-pointer justify-start gap-3 py-0">
+					<span class="label-text">Enabled</span>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary"
+						checked={!!gpsStatus.enabled}
+						onchange={(e) => toggleGpsEnabled(e.currentTarget.checked)}
+						disabled={savingGpsEnabled}
+					/>
+				</label>
+			</div>
+
+			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Mode</div>
+					<div class="stat-value text-base">{gpsStatus.mode || 'scaffold'}</div>
+					<div class="stat-desc">{gpsStatus.runtimeEnabled ? 'runtime active' : 'runtime idle'}</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Fix</div>
+					<div class="stat-value text-base">{gpsStatus.hasFix ? 'Yes' : 'No'}</div>
+					<div class="stat-desc">{gpsStatus.moduleDetected ? 'module detected' : 'waiting for module'}</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Satellites</div>
+					<div class="stat-value text-base">{gpsStatus.satellites || 0}</div>
+					<div class="stat-desc">{gpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Speed (mph)</div>
+					<div class="stat-value text-base">
+						{typeof gpsStatus.speedMph === 'number' ? Math.round(gpsStatus.speedMph) : '—'}
+					</div>
+					<div class="stat-desc">{gpsStatus.detectionTimedOut ? 'module timeout' : 'live sample'}</div>
+				</div>
+			</div>
+		</div>
+	</div>
 
 	<div class="card bg-base-200 shadow">
 		<div class="card-body gap-3">
