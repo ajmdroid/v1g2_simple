@@ -1533,7 +1533,10 @@ bool OBDHandler::requestOilTemp() {
 
     // Always restore default functional header after VW-specific request.
     String restoreResponse;
-    (void)sendATCommand("ATSH7DF", restoreResponse, 200);
+    bool restoreOk = sendATCommand("ATSH7DF", restoreResponse, 200);
+    if (!restoreOk) {
+        Serial.println("[OBD] WARN: Failed to restore functional CAN header (ATSH7DF)");
+    }
 
     if (!parsed) {
         return false;
