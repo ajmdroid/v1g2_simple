@@ -21,6 +21,30 @@ static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
 static constexpr UBaseType_t PERF_SD_WRITER_PRIORITY = 1;
 
+static uint16_t countCsvColumns(const char* text, size_t len) {
+    if (!text || len == 0) {
+        return 0;
+    }
+    uint16_t columns = 1;
+    bool sawContent = false;
+    for (size_t i = 0; i < len; ++i) {
+        char c = text[i];
+        if (c == '\0' || c == '\n' || c == '\r') {
+            break;
+        }
+        sawContent = true;
+        if (c == ',') {
+            columns++;
+        }
+    }
+    return sawContent ? columns : 0;
+}
+
+static uint16_t expectedPerfCsvColumns() {
+    static const uint16_t kColumns = countCsvColumns(PERF_CSV_HEADER, strlen(PERF_CSV_HEADER));
+    return kColumns;
+}
+
 static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
     if (!out || outLen == 0) {
         return;
@@ -301,6 +325,14 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
     size_t lineLen = static_cast<size_t>(n);
+    const uint16_t expectedColumns = expectedPerfCsvColumns();
+    const uint16_t lineColumns = countCsvColumns(line, lineLen);
+    if (expectedColumns == 0 || lineColumns != expectedColumns) {
+        PERF_INC(perfSdWriteFail);
+        f.close();
+        return false;
+    }
+
     size_t lineWritten = f.write(reinterpret_cast<const uint8_t*>(line), lineLen);
     if (lineWritten != lineLen) {
         PERF_INC(perfSdWriteFail);
