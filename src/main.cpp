@@ -136,19 +136,6 @@ static void showInitialScanningScreen() {
     scanScreenDwellActive = true;
 }
 
-static uint32_t buildLogCategoryBitmap(const DebugLogConfig& cfg) {
-    uint32_t mask = 0;
-    if (cfg.alerts) mask |= (1u << 0);
-    if (cfg.wifi) mask |= (1u << 1);
-    if (cfg.ble) mask |= (1u << 2);
-    if (cfg.system) mask |= (1u << 3);
-    if (cfg.display) mask |= (1u << 4);
-    if (cfg.perfMetrics) mask |= (1u << 5);
-    if (cfg.audio) mask |= (1u << 6);
-    if (cfg.touch) mask |= (1u << 7);
-    return mask;
-}
-
 // ============================================================================
 // PANIC BREADCRUMBS: Log heap stats + coredump info on crash recovery
 // ============================================================================
@@ -588,8 +575,6 @@ void setup() {
                            &displayMode);
     logBootStage("ui_modules");
 
-    DebugLogConfig bootCfg = settingsManager.getDebugLogConfig();
-    uint32_t logMask = buildLogCategoryBitmap(bootCfg);
     const V1Settings& bootSettings = settingsManager.get();
     const char* scenario = "default";
 #ifdef GIT_SHA
@@ -598,13 +583,12 @@ void setup() {
     const char* gitSha = "unknown";
 #endif
     const char* resetStr = resetReasonToString(resetReason);
-    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s logCats=0x%08lX\n",
+    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s\n",
                     (unsigned long)bootId,
                     resetStr,
                     gitSha,
                     scenario,
-                    bootSettings.enableWifi ? "on" : "off",
-                    (unsigned long)logMask);
+                    bootSettings.enableWifi ? "on" : "off");
 
     // WiFi startup behavior - either auto-start or wait for BOOT button
     if (settingsManager.get().enableWifiAtBoot) {

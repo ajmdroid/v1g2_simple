@@ -330,15 +330,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
     written += prefs.putBool("restTelem", settings.showRestTelemetryCards);
     written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
-    written += prefs.putBool("debugLog", settings.enableDebugLogging);
-    written += prefs.putBool("logAlerts", settings.logAlerts);
-    written += prefs.putBool("logWifi", settings.logWifi);
-    written += prefs.putBool("logBle", settings.logBle);
-    written += prefs.putBool("logSystem", settings.logSystem);
-    written += prefs.putBool("logDisplay", settings.logDisplay);
-    written += prefs.putBool("logPerfMet", settings.logPerfMetrics);
-    written += prefs.putBool("logAudio", settings.logAudio);
-    written += prefs.putBool("logTouch", settings.logTouch);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -585,17 +576,8 @@ void SettingsManager::load() {
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
     settings.showRestTelemetryCards = preferences.getBool("restTelem", true);
     
-    // Development/Debug settings
+    // Development settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
-    settings.enableDebugLogging = preferences.getBool("debugLog", false);  // Off by default for stability
-    settings.logAlerts = preferences.getBool("logAlerts", false);
-    settings.logWifi = preferences.getBool("logWifi", false);
-    settings.logBle = preferences.getBool("logBle", false);
-    settings.logSystem = preferences.getBool("logSystem", false);
-    settings.logDisplay = preferences.getBool("logDisplay", false);
-    settings.logPerfMetrics = preferences.getBool("logPerfMet", true);  // ON by default for stability monitoring
-    settings.logAudio = preferences.getBool("logAudio", false);
-    settings.logTouch = preferences.getBool("logTouch", false);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
@@ -1371,15 +1353,6 @@ void SettingsManager::backupToSD() {
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
     doc["showRestTelemetryCards"] = settings.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    doc["enableDebugLogging"] = settings.enableDebugLogging;
-    doc["logAlerts"] = settings.logAlerts;
-    doc["logWifi"] = settings.logWifi;
-    doc["logBle"] = settings.logBle;
-    doc["logSystem"] = settings.logSystem;
-    doc["logDisplay"] = settings.logDisplay;
-    doc["logPerfMetrics"] = settings.logPerfMetrics;
-    doc["logAudio"] = settings.logAudio;
-    doc["logTouch"] = settings.logTouch;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -1600,15 +1573,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["hideRssiIndicator"].is<bool>()) settings.hideRssiIndicator = doc["hideRssiIndicator"];
     if (doc["showRestTelemetryCards"].is<bool>()) settings.showRestTelemetryCards = doc["showRestTelemetryCards"];
     if (doc["enableWifiAtBoot"].is<bool>()) settings.enableWifiAtBoot = doc["enableWifiAtBoot"];
-    if (doc["enableDebugLogging"].is<bool>()) settings.enableDebugLogging = doc["enableDebugLogging"];
-    if (doc["logAlerts"].is<bool>()) settings.logAlerts = doc["logAlerts"];
-    if (doc["logWifi"].is<bool>()) settings.logWifi = doc["logWifi"];
-    if (doc["logBle"].is<bool>()) settings.logBle = doc["logBle"];
-    if (doc["logSystem"].is<bool>()) settings.logSystem = doc["logSystem"];
-    if (doc["logDisplay"].is<bool>()) settings.logDisplay = doc["logDisplay"];
-    if (doc["logPerfMetrics"].is<bool>()) settings.logPerfMetrics = doc["logPerfMetrics"];
-    if (doc["logAudio"].is<bool>()) settings.logAudio = doc["logAudio"];
-    if (doc["logTouch"].is<bool>()) settings.logTouch = doc["logTouch"];
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

@@ -57,12 +57,6 @@ static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial l
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
 
-static void applyDebugLogFilterFromSettings() {
-    DebugLogConfig cfg = settingsManager.getDebugLogConfig();
-    DebugLogFilter filter{cfg.alerts, cfg.wifi, cfg.ble, cfg.system, cfg.display, cfg.perfMetrics, cfg.audio, cfg.touch};
-    debugLogger.setFilter(filter);
-}
-
 // Dump LittleFS root directory for diagnostics
 static void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
@@ -1445,17 +1439,8 @@ void WiFiManager::handleSettingsApi() {
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     
-    // Development/Debug settings
+    // Development settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    doc["enableDebugLogging"] = settings.enableDebugLogging;
-    doc["logAlerts"] = settings.logAlerts;
-    doc["logWifi"] = settings.logWifi;
-    doc["logBle"] = settings.logBle;
-    doc["logSystem"] = settings.logSystem;
-    doc["logDisplay"] = settings.logDisplay;
-    doc["logPerfMetrics"] = settings.logPerfMetrics;
-    doc["logAudio"] = settings.logAudio;
-    doc["logTouch"] = settings.logTouch;
     
     String json;
     serializeJson(doc, json);
@@ -2227,17 +2212,8 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("hideRssiIndicator")) s.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator);
     if (server.hasArg("showRestTelemetryCards")) s.showRestTelemetryCards = argBool("showRestTelemetryCards", s.showRestTelemetryCards);
 
-    // Debug/runtime toggles
+    // Development/runtime toggles
     if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
-    if (server.hasArg("enableDebugLogging")) s.enableDebugLogging = argBool("enableDebugLogging", s.enableDebugLogging);
-    if (server.hasArg("logAlerts")) s.logAlerts = argBool("logAlerts", s.logAlerts);
-    if (server.hasArg("logWifi")) s.logWifi = argBool("logWifi", s.logWifi);
-    if (server.hasArg("logBle")) s.logBle = argBool("logBle", s.logBle);
-    if (server.hasArg("logSystem")) s.logSystem = argBool("logSystem", s.logSystem);
-    if (server.hasArg("logDisplay")) s.logDisplay = argBool("logDisplay", s.logDisplay);
-    if (server.hasArg("logPerfMetrics")) s.logPerfMetrics = argBool("logPerfMetrics", s.logPerfMetrics);
-    if (server.hasArg("logAudio")) s.logAudio = argBool("logAudio", s.logAudio);
-    if (server.hasArg("logTouch")) s.logTouch = argBool("logTouch", s.logTouch);
 
     // Voice settings
     if (server.hasArg("voiceAlertMode")) {
@@ -2302,10 +2278,6 @@ void WiFiManager::handleDisplayColorsSave() {
     // Persist all color/visibility changes
     settingsManager.save();
 
-    // Apply debug logging runtime state immediately
-    applyDebugLogFilterFromSettings();
-    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
-    
     // Trigger immediate display preview to show new colors (skip if requested)
     if (!server.hasArg("skipPreview") || (server.arg("skipPreview") != "true" && server.arg("skipPreview") != "1")) {
         display.showDemo();
@@ -2399,12 +2371,6 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
-    doc["enableDebugLogging"] = s.enableDebugLogging;
-    doc["logAlerts"] = s.logAlerts;
-    doc["logWifi"] = s.logWifi;
-    doc["logBle"] = s.logBle;
-    doc["logSystem"] = s.logSystem;
-    doc["logDisplay"] = s.logDisplay;
     doc["voiceAlertMode"] = (int)s.voiceAlertMode;
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;
@@ -2926,17 +2892,8 @@ void WiFiManager::handleSettingsBackup() {
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     
-    // Development/Debug
+    // Development
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
-    doc["enableDebugLogging"] = s.enableDebugLogging;
-    doc["logAlerts"] = s.logAlerts;
-    doc["logWifi"] = s.logWifi;
-    doc["logBle"] = s.logBle;
-    doc["logSystem"] = s.logSystem;
-    doc["logDisplay"] = s.logDisplay;
-    doc["logPerfMetrics"] = s.logPerfMetrics;
-    doc["logAudio"] = s.logAudio;
-    doc["logTouch"] = s.logTouch;
     
     // WiFi client settings
     doc["wifiMode"] = (int)s.wifiMode;
@@ -3112,17 +3069,8 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
     if (doc["showRestTelemetryCards"].is<bool>()) s.showRestTelemetryCards = doc["showRestTelemetryCards"];
     
-    // Development/Debug
+    // Development
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
-    if (doc["enableDebugLogging"].is<bool>()) s.enableDebugLogging = doc["enableDebugLogging"];
-    if (doc["logAlerts"].is<bool>()) s.logAlerts = doc["logAlerts"];
-    if (doc["logWifi"].is<bool>()) s.logWifi = doc["logWifi"];
-    if (doc["logBle"].is<bool>()) s.logBle = doc["logBle"];
-    if (doc["logSystem"].is<bool>()) s.logSystem = doc["logSystem"];
-    if (doc["logDisplay"].is<bool>()) s.logDisplay = doc["logDisplay"];
-    if (doc["logPerfMetrics"].is<bool>()) s.logPerfMetrics = doc["logPerfMetrics"];
-    if (doc["logAudio"].is<bool>()) s.logAudio = doc["logAudio"];
-    if (doc["logTouch"].is<bool>()) s.logTouch = doc["logTouch"];
     
     // WiFi client settings
     if (doc["wifiMode"].is<int>()) s.wifiMode = (WiFiModeSetting)doc["wifiMode"].as<int>();
@@ -3218,9 +3166,6 @@ void WiFiManager::handleSettingsRestore() {
     // Save to flash
     settingsManager.save();
 
-    // Re-apply debug logging runtime state based on restored settings
-    applyDebugLogFilterFromSettings();
-    debugLogger.setEnabled(settingsManager.get().enableDebugLogging);
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);

@@ -36,18 +36,6 @@ enum WiFiModeSetting {
     V1_WIFI_APSTA = 3       // Both modes
 };
 
-// Debug logging category configuration
-struct DebugLogConfig {
-    bool alerts;
-    bool wifi;
-    bool ble;
-    bool system;
-    bool display;
-    bool perfMetrics;
-    bool audio;
-    bool touch;
-};
-
 // V1 operating modes (from ESP library)
 enum V1Mode {
     V1_MODE_UNKNOWN = 0x00,
@@ -150,17 +138,8 @@ struct V1Settings {
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
     bool showRestTelemetryCards; // Show OBD cards (oil temp / IAT / voltage) on resting screen
     
-    // Development/Debug settings
+    // Development settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
-    bool enableDebugLogging;     // Write debug logs to SD card
-        bool logAlerts;              // Include alert events in debug log
-        bool logWifi;                // Include WiFi/AP events in debug log
-        bool logBle;                 // Include BLE/proxy events in debug log
-        bool logSystem;              // Include system/storage/events in debug log
-        bool logDisplay;             // Include display latency events in debug log
-        bool logPerfMetrics;         // Log BLE performance metrics periodically
-        bool logAudio;               // Include audio/TTS playback events in debug log
-        bool logTouch;               // Include touch input events in debug log
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -279,15 +258,6 @@ struct V1Settings {
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
         showRestTelemetryCards(true), // Show resting OBD cards by default
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
-        enableDebugLogging(false),  // Debug logging off by default — matches NVS default
-        logAlerts(false),                // Alert logging off by default
-        logWifi(false),                  // WiFi logging off by default (matches NVS)
-        logBle(false),                   // BLE logging off by default
-        logSystem(false),                // System logging off by default
-        logDisplay(false),               // Display latency logging off by default
-        logPerfMetrics(true),            // Perf metrics on by default (disableable via settings)
-        logAudio(false),                 // Audio logging off by default
-        logTouch(false),                 // Touch logging off by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -390,9 +360,6 @@ public:
     void setHideRssiIndicator(bool hide);
     void setShowRestTelemetryCards(bool show);
     void setEnableWifiAtBoot(bool enable, bool deferSave = false);
-    DebugLogConfig getDebugLogConfig() const {
-        return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logTouch };
-    }
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);
     void setAnnounceBogeyCount(bool enabled);

@@ -106,12 +106,7 @@ Get all device settings.
   "cameraAlertsEnabled": true,
   "cameraAudioEnabled": true,
   "cameraAlertDistanceM": 500,
-  "enableWifiAtBoot": false,
-  "enableDebugLogging": false,
-  "logAlerts": false,
-  "logWifi": false,
-  "logBle": false,
-  "logGps": false
+  "enableWifiAtBoot": false
 }
 ```
 
