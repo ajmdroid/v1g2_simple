@@ -794,9 +794,14 @@ void loop() {
 
     // WiFi priority mode: web UI can deprioritize BLE background work, but never
     // at the expense of establishing/maintaining V1 connectivity.
-    // Use hysteresis so a delayed poll does not immediately flap ENABLED/DISABLED.
+    // Hysteresis: different timeouts for enable vs disable prevent oscillation.
+    // Min-hold guard: once a transition fires, suppress further transitions for
+    // a minimum hold period to avoid sub-second flapping caused by HTTP request
+    // arrival racing with this check within the same loop iteration.
     constexpr unsigned long WIFI_PRIORITY_ENABLE_TIMEOUT_MS = 3500;
     constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 8000;
+    constexpr unsigned long WIFI_PRIORITY_MIN_HOLD_MS = 5000;
+    static unsigned long wifiPriorityLastTransitionMs = 0;
     const bool wifiPriorityAllowed = bleClient.isConnected();
     const bool wifiPriorityCurrent = bleClient.isWifiPriority();
     const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
@@ -810,8 +815,10 @@ void loop() {
     // Keep BLE background suppression active through OBD scan/connect/init so
     // proxy advertising or scan resumes do not interrupt OBD pairing flow.
     const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
-    if (wifiPriority != wifiPriorityCurrent) {
+    const bool holdActive = (now - wifiPriorityLastTransitionMs) < WIFI_PRIORITY_MIN_HOLD_MS;
+    if (wifiPriority != wifiPriorityCurrent && !holdActive) {
         bleClient.setWifiPriority(wifiPriority);
+        wifiPriorityLastTransitionMs = now;
     }
     
     // Process BLE events (includes blocking connect/discovery during reconnect)

@@ -2268,8 +2268,14 @@ void V1BLEClient::setWifiPriority(bool enabled) {
     
     wifiPriorityMode = enabled;
     
+    // Rate-limit transition logs to avoid serial spam if caller oscillates.
+    static unsigned long lastLogMs = 0;
+    const unsigned long nowMs = millis();
+    const bool shouldLog = (nowMs - lastLogMs) >= 10000;  // At most once per 10s
+    if (shouldLog) lastLogMs = nowMs;
+    
     if (enabled) {
-        Serial.println("[BLE] WiFi priority ENABLED - suppressing scans/reconnects/proxy");
+        if (shouldLog) Serial.println("[BLE] WiFi priority ENABLED - suppressing scans/reconnects/proxy");
         
         // Stop any active scan
         NimBLEScan* pScan = NimBLEDevice::getScan();
@@ -2281,7 +2287,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         
         // Stop proxy advertising if running
         if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
-            Serial.println("[BLE] Stopping proxy advertising for WiFi priority mode");
+            if (shouldLog) Serial.println("[BLE] Stopping proxy advertising for WiFi priority mode");
             NimBLEDevice::stopAdvertising();
         }
         
@@ -2292,11 +2298,11 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         // to avoid disrupting active radar detection
         
     } else {
-        Serial.println("[BLE] WiFi priority DISABLED - resuming normal BLE operation");
+        if (shouldLog) Serial.println("[BLE] WiFi priority DISABLED - resuming normal BLE operation");
         
         // Resume proxy advertising if we're connected and proxy is enabled
         if (isConnected() && proxyEnabled && proxyServerInitialized) {
-            Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
+            if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
             proxyAdvertisingStartMs = millis() + 500;
         }
