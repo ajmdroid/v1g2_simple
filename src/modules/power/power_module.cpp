@@ -1,4 +1,10 @@
 #include "power_module.h"
+#ifndef UNIT_TEST
+#include "perf_metrics.h"
+#define POWER_PERF_INC(counter) PERF_INC(counter)
+#else
+#define POWER_PERF_INC(counter) do { } while (0)
+#endif
 
 void PowerModule::begin(BatteryManager* batteryMgr,
                         V1Display* disp,
@@ -26,6 +32,7 @@ void PowerModule::logStartupStatus() {
 void PowerModule::onV1DataReceived() {
     if (!autoPowerOffArmed) {
         autoPowerOffArmed = true;
+        POWER_PERF_INC(powerAutoPowerArmed);
         Serial.println("[AutoPowerOff] Armed - V1 data received");
     }
 }
@@ -37,6 +44,7 @@ void PowerModule::onV1ConnectionChange(bool connected) {
         if (autoPowerOffTimerStart != 0) {
             Serial.println("[AutoPowerOff] Timer cancelled - V1 reconnected");
             autoPowerOffTimerStart = 0;
+            POWER_PERF_INC(powerAutoPowerTimerCancel);
         }
         return;
     }
@@ -45,6 +53,7 @@ void PowerModule::onV1ConnectionChange(bool connected) {
     const V1Settings& s = settings->get();
     if (autoPowerOffArmed && s.autoPowerOffMinutes > 0) {
         autoPowerOffTimerStart = millis();
+        POWER_PERF_INC(powerAutoPowerTimerStart);
         Serial.printf("[AutoPowerOff] Timer started: %d minutes\n", s.autoPowerOffMinutes);
     }
 }
@@ -63,8 +72,10 @@ void PowerModule::process(unsigned long nowMs) {
                 display->showLowBattery();
                 lowBatteryWarningShown = true;
                 criticalBatteryTime = nowMs;
+                POWER_PERF_INC(powerCriticalWarn);
             } else if (nowMs - criticalBatteryTime > 5000) {
                 Serial.println("[Battery] CRITICAL - auto shutdown to protect battery");
+                POWER_PERF_INC(powerCriticalShutdown);
                 battery->powerOff();
             }
         } else {
@@ -80,6 +91,7 @@ void PowerModule::process(unsigned long nowMs) {
         if (elapsedMs >= timeoutMs) {
             Serial.printf("[AutoPowerOff] Timer expired after %d minutes - powering off\n", s.autoPowerOffMinutes);
             autoPowerOffTimerStart = 0;
+            POWER_PERF_INC(powerAutoPowerTimerExpire);
             battery->powerOff();
         }
     }

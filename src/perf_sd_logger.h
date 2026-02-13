@@ -87,6 +87,12 @@ struct PerfSdSnapshot {
     uint32_t voiceAnnounceSecondary;  // Voice secondary announcements emitted
     uint32_t voiceAnnounceEscalation; // Voice escalation announcements emitted
     uint32_t voiceDirectionThrottled; // Voice direction announcements suppressed by throttle
+    uint32_t powerAutoPowerArmed;     // Auto power-off armed on first V1 data
+    uint32_t powerAutoPowerTimerStart; // Auto power-off timer started
+    uint32_t powerAutoPowerTimerCancel; // Auto power-off timer cancelled on reconnect
+    uint32_t powerAutoPowerTimerExpire; // Auto power-off timer expired
+    uint32_t powerCriticalWarn;       // Critical-battery warning shown
+    uint32_t powerCriticalShutdown;   // Critical-battery shutdown triggered
 };
 
 class PerfSdLogger {

@@ -184,6 +184,12 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceEscalation = perfCounters.voiceAnnounceEscalation.load(std::memory_order_relaxed);
     snapshot.voiceDirectionThrottled = perfCounters.voiceDirectionThrottled.load(std::memory_order_relaxed);
+    snapshot.powerAutoPowerArmed = perfCounters.powerAutoPowerArmed.load(std::memory_order_relaxed);
+    snapshot.powerAutoPowerTimerStart = perfCounters.powerAutoPowerTimerStart.load(std::memory_order_relaxed);
+    snapshot.powerAutoPowerTimerCancel = perfCounters.powerAutoPowerTimerCancel.load(std::memory_order_relaxed);
+    snapshot.powerAutoPowerTimerExpire = perfCounters.powerAutoPowerTimerExpire.load(std::memory_order_relaxed);
+    snapshot.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
+    snapshot.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -565,6 +571,12 @@ String perfMetricsToJson() {
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();
     doc["voiceAnnounceEscalation"] = perfCounters.voiceAnnounceEscalation.load();
     doc["voiceDirectionThrottled"] = perfCounters.voiceDirectionThrottled.load();
+    doc["powerAutoPowerArmed"] = perfCounters.powerAutoPowerArmed.load();
+    doc["powerAutoPowerTimerStart"] = perfCounters.powerAutoPowerTimerStart.load();
+    doc["powerAutoPowerTimerCancel"] = perfCounters.powerAutoPowerTimerCancel.load();
+    doc["powerAutoPowerTimerExpire"] = perfCounters.powerAutoPowerTimerExpire.load();
+    doc["powerCriticalWarn"] = perfCounters.powerCriticalWarn.load();
+    doc["powerCriticalShutdown"] = perfCounters.powerCriticalShutdown.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

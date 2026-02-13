@@ -113,6 +113,12 @@ COUNTER_FIELDS: List[str] = [
     "voiceAnnounceSecondary",
     "voiceAnnounceEscalation",
     "voiceDirectionThrottled",
+    "powerAutoPowerArmed",
+    "powerAutoPowerTimerStart",
+    "powerAutoPowerTimerCancel",
+    "powerAutoPowerTimerExpire",
+    "powerCriticalWarn",
+    "powerCriticalShutdown",
 ]
 
 
