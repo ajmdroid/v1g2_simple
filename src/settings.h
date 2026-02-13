@@ -362,6 +362,8 @@ public:
     
     // Get current settings (read-only)
     const V1Settings& get() const { return settings; }
+    // Explicit mutable access for batch handlers that apply many fields then call save().
+    V1Settings& mutableSettings() { return settings; }
     
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
