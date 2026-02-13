@@ -121,6 +121,11 @@ struct PerfCounters {
     std::atomic<uint32_t> speedVolRestores{0};    // Speed-volume restores applied
     std::atomic<uint32_t> speedVolFadeTakeovers{0}; // Fade took over while speed boost active
     std::atomic<uint32_t> speedVolNoHeadroom{0};  // Boost requested but volume already maxed
+    std::atomic<uint32_t> voiceAnnouncePriority{0}; // Voice priority announcements emitted
+    std::atomic<uint32_t> voiceAnnounceDirection{0}; // Voice direction/bogey announcements emitted
+    std::atomic<uint32_t> voiceAnnounceSecondary{0}; // Voice secondary announcements emitted
+    std::atomic<uint32_t> voiceAnnounceEscalation{0}; // Voice escalation announcements emitted
+    std::atomic<uint32_t> voiceDirectionThrottled{0}; // Voice direction announcements suppressed by throttle
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -172,6 +177,11 @@ struct PerfCounters {
         speedVolRestores.store(0, std::memory_order_relaxed);
         speedVolFadeTakeovers.store(0, std::memory_order_relaxed);
         speedVolNoHeadroom.store(0, std::memory_order_relaxed);
+        voiceAnnouncePriority.store(0, std::memory_order_relaxed);
+        voiceAnnounceDirection.store(0, std::memory_order_relaxed);
+        voiceAnnounceSecondary.store(0, std::memory_order_relaxed);
+        voiceAnnounceEscalation.store(0, std::memory_order_relaxed);
+        voiceDirectionThrottled.store(0, std::memory_order_relaxed);
     }
 };
 

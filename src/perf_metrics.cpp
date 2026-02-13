@@ -179,6 +179,11 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.speedVolRestores = perfCounters.speedVolRestores.load(std::memory_order_relaxed);
     snapshot.speedVolFadeTakeovers = perfCounters.speedVolFadeTakeovers.load(std::memory_order_relaxed);
     snapshot.speedVolNoHeadroom = perfCounters.speedVolNoHeadroom.load(std::memory_order_relaxed);
+    snapshot.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
+    snapshot.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
+    snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
+    snapshot.voiceAnnounceEscalation = perfCounters.voiceAnnounceEscalation.load(std::memory_order_relaxed);
+    snapshot.voiceDirectionThrottled = perfCounters.voiceDirectionThrottled.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -555,6 +560,11 @@ String perfMetricsToJson() {
     doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
     doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
     doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
+    doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
+    doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
+    doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();
+    doc["voiceAnnounceEscalation"] = perfCounters.voiceAnnounceEscalation.load();
+    doc["voiceDirectionThrottled"] = perfCounters.voiceDirectionThrottled.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

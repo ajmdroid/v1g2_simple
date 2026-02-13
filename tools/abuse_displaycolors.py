@@ -108,6 +108,11 @@ COUNTER_FIELDS: List[str] = [
     "speedVolRestores",
     "speedVolFadeTakeovers",
     "speedVolNoHeadroom",
+    "voiceAnnouncePriority",
+    "voiceAnnounceDirection",
+    "voiceAnnounceSecondary",
+    "voiceAnnounceEscalation",
+    "voiceDirectionThrottled",
 ]
 
 

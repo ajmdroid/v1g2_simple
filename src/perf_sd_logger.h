@@ -82,6 +82,11 @@ struct PerfSdSnapshot {
     uint32_t speedVolRestores;    // Speed-volume restores applied
     uint32_t speedVolFadeTakeovers; // Fade took over while speed boost active
     uint32_t speedVolNoHeadroom;  // Boost requested but volume already maxed
+    uint32_t voiceAnnouncePriority;   // Voice priority announcements emitted
+    uint32_t voiceAnnounceDirection;  // Voice direction/bogey announcements emitted
+    uint32_t voiceAnnounceSecondary;  // Voice secondary announcements emitted
+    uint32_t voiceAnnounceEscalation; // Voice escalation announcements emitted
+    uint32_t voiceDirectionThrottled; // Voice direction announcements suppressed by throttle
 };
 
 class PerfSdLogger {

@@ -3,6 +3,12 @@
 #include "voice_module.h"
 #include "settings.h"
 #include "debug_logger.h"
+#ifndef UNIT_TEST
+#include "perf_metrics.h"
+#define VOICE_PERF_INC(counter) PERF_INC(counter)
+#else
+#define VOICE_PERF_INC(counter) do { } while (0)
+#endif
 
 #ifdef UNIT_TEST
 #include "../../test/mocks/ble_client.h"
@@ -149,6 +155,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnounced(priority.band, priority.direction, currentFreq, (uint8_t)ctx.alertCount, ctx.now);
         markPriorityAnnounced(ctx.now);
         markAlertAnnounced(priority.band, currentFreq);
+        VOICE_PERF_INC(voiceAnnouncePriority);
         
         DBG_LOGF(DebugLogCategory::Audio,
                  "[Voice] New priority: band=%d freq=%u dir=%d bogeys=%d\n",
@@ -163,6 +170,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnouncedDirection(priority.direction, (uint8_t)ctx.alertCount);
         
         if (throttled) {
+            VOICE_PERF_INC(voiceDirectionThrottled);
             DBG_LOGF(DebugLogCategory::Audio,
                      "[Voice] Direction THROTTLED: freq=%u changes=%d\n",
                      currentFreq, getDirectionChangeCount());
@@ -175,6 +183,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         
         updateLastAnnouncedTime(ctx.now);
         markPriorityAnnounced(ctx.now);
+        VOICE_PERF_INC(voiceAnnounceDirection);
         
         DBG_LOGF(DebugLogCategory::Audio,
                  "[Voice] Direction change: freq=%u dir=%d bogeys=%d\n",
@@ -194,6 +203,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         updateLastAnnouncedDirection(priority.direction, (uint8_t)ctx.alertCount);
         updateLastAnnouncedTime(ctx.now);
         markPriorityAnnounced(ctx.now);
+        VOICE_PERF_INC(voiceAnnounceDirection);
         
         DBG_LOGF(DebugLogCategory::Audio,
                  "[Voice] Bogey count: freq=%u dir=%d bogeys=%d (was %d)\n",
@@ -231,6 +241,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
             
             markAlertAnnounced(alert.band, alertFreq);
             updateLastAnnouncedTime(ctx.now);
+            VOICE_PERF_INC(voiceAnnounceSecondary);
             
             DBG_LOGF(DebugLogCategory::Audio,
                      "[Voice] Secondary: band=%d freq=%u dir=%d\n",
@@ -299,6 +310,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
                     action.sideCount = sideCount;
                     
                     updateLastAnnouncedTime(ctx.now);
+                    VOICE_PERF_INC(voiceAnnounceEscalation);
                     
                     DBG_LOGF(DebugLogCategory::Audio,
                              "[Voice] Escalation: band=%d freq=%u - %d bogeys (%d/%d/%d)\n",
