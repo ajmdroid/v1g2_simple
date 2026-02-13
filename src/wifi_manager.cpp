@@ -25,6 +25,7 @@
 #include "../include/color_themes.h"
 #include <HTTPClient.h>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -110,6 +111,10 @@ static uint8_t clampU8Value(int value, int minVal, int maxVal) {
     return static_cast<uint8_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
+static uint16_t clampU16Value(int value, int minVal, int maxVal) {
+    return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
+}
+
 static uint8_t clampSlotVolumeValue(int value) {
     if (value == 0xFF) {
         return 0xFF;
@@ -182,6 +187,83 @@ static String sanitizeProfileNameValue(const String& raw) {
 
 static String sanitizeProfileDescriptionValue(const String& raw) {
     return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
+}
+
+static bool isUnsignedIntString(const String& raw) {
+    if (raw.length() == 0) {
+        return false;
+    }
+    for (size_t i = 0; i < raw.length(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(raw[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static LockoutRuntimeMode parseLockoutRuntimeModeArg(const String& raw, LockoutRuntimeMode fallback) {
+    String value = raw;
+    value.trim();
+    if (value.length() == 0) {
+        return fallback;
+    }
+
+    if (isUnsignedIntString(value)) {
+        return clampLockoutRuntimeModeValue(value.toInt());
+    }
+
+    value.toLowerCase();
+    if (value == "off") {
+        return LOCKOUT_RUNTIME_OFF;
+    }
+    if (value == "shadow") {
+        return LOCKOUT_RUNTIME_SHADOW;
+    }
+    if (value == "advisory") {
+        return LOCKOUT_RUNTIME_ADVISORY;
+    }
+    if (value == "enforce") {
+        return LOCKOUT_RUNTIME_ENFORCE;
+    }
+
+    return fallback;
+}
+
+struct LockoutCoreGuardStatus {
+    bool enabled = false;
+    bool tripped = false;
+    const char* reason = "none";
+};
+
+static LockoutCoreGuardStatus evaluateLockoutCoreGuard(const V1Settings& settings) {
+    LockoutCoreGuardStatus status;
+    status.enabled = settings.gpsLockoutCoreGuardEnabled;
+    if (!status.enabled) {
+        return status;
+    }
+
+    const uint32_t queueDrops = perfCounters.queueDrops.load();
+    if (queueDrops > settings.gpsLockoutMaxQueueDrops) {
+        status.tripped = true;
+        status.reason = "queueDrops";
+        return status;
+    }
+
+    const uint32_t perfDrops = perfCounters.perfDrop.load();
+    if (perfDrops > settings.gpsLockoutMaxPerfDrops) {
+        status.tripped = true;
+        status.reason = "perfDrop";
+        return status;
+    }
+
+    const uint32_t eventBusDrops = systemEventBus.getDropCount();
+    if (eventBusDrops > settings.gpsLockoutMaxEventBusDrops) {
+        status.tripped = true;
+        status.reason = "eventBusDrop";
+        return status;
+    }
+
+    return status;
 }
 
 static String fileNameFromPath(const String& path) {
@@ -1521,6 +1603,12 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
+    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1583,6 +1671,27 @@ void WiFiManager::handleSettingsSave() {
             (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
         gpsRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
         speedSourceSelector.setGpsEnabled(mutableSettings.gpsEnabled);
+    }
+    if (server.hasArg("gpsLockoutMode")) {
+        mutableSettings.gpsLockoutMode = parseLockoutRuntimeModeArg(server.arg("gpsLockoutMode"),
+                                                                    mutableSettings.gpsLockoutMode);
+    }
+    if (server.hasArg("gpsLockoutCoreGuardEnabled")) {
+        mutableSettings.gpsLockoutCoreGuardEnabled =
+            (server.arg("gpsLockoutCoreGuardEnabled") == "true" ||
+             server.arg("gpsLockoutCoreGuardEnabled") == "1");
+    }
+    if (server.hasArg("gpsLockoutMaxQueueDrops")) {
+        mutableSettings.gpsLockoutMaxQueueDrops =
+            clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
+    }
+    if (server.hasArg("gpsLockoutMaxPerfDrops")) {
+        mutableSettings.gpsLockoutMaxPerfDrops =
+            clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
+    }
+    if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
+        mutableSettings.gpsLockoutMaxEventBusDrops =
+            clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
@@ -2310,6 +2419,25 @@ void WiFiManager::handleDisplayColorsSave() {
         gpsRuntimeModule.setEnabled(s.gpsEnabled);
         speedSourceSelector.setGpsEnabled(s.gpsEnabled);
     }
+    if (server.hasArg("gpsLockoutMode")) {
+        s.gpsLockoutMode = parseLockoutRuntimeModeArg(server.arg("gpsLockoutMode"), s.gpsLockoutMode);
+    }
+    if (server.hasArg("gpsLockoutCoreGuardEnabled")) {
+        s.gpsLockoutCoreGuardEnabled =
+            argBool("gpsLockoutCoreGuardEnabled", s.gpsLockoutCoreGuardEnabled);
+    }
+    if (server.hasArg("gpsLockoutMaxQueueDrops")) {
+        s.gpsLockoutMaxQueueDrops =
+            clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
+    }
+    if (server.hasArg("gpsLockoutMaxPerfDrops")) {
+        s.gpsLockoutMaxPerfDrops =
+            clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
+    }
+    if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
+        s.gpsLockoutMaxEventBusDrops =
+            clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
+    }
 
     // Voice settings
     if (server.hasArg("voiceAlertMode")) {
@@ -2487,6 +2615,12 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     doc["gpsEnabled"] = s.gpsEnabled;
+    doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
+    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(s.gpsLockoutMode);
+    doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
+    doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
+    doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
+    doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
     
     String json;
     serializeJson(doc, json);
@@ -2705,6 +2839,21 @@ void WiFiManager::handleDebugMetrics() {
     eventBusObj["publishCount"] = systemEventBus.getPublishCount();
     eventBusObj["dropCount"] = systemEventBus.getDropCount();
     eventBusObj["size"] = static_cast<uint32_t>(systemEventBus.size());
+
+    const V1Settings& settings = settingsManager.get();
+    const LockoutCoreGuardStatus lockoutGuard = evaluateLockoutCoreGuard(settings);
+    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
+    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
+    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
+    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    lockoutObj["enforceRequested"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
+    lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
+                                   !lockoutGuard.tripped;
     
     String json;
     serializeJson(doc, json);
@@ -3007,7 +3156,7 @@ void WiFiManager::handleSettingsBackup() {
     JsonDocument doc;
     
     // Metadata
-    doc["_version"] = 3;  // Backup format version
+    doc["_version"] = 4;  // Backup format version
     doc["_type"] = "v1simple_backup";
     doc["_timestamp"] = millis();
     
@@ -3020,6 +3169,11 @@ void WiFiManager::handleSettingsBackup() {
     doc["proxyName"] = s.proxyName;
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
+    doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
+    doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
+    doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
+    doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
+    doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
     
     // Display settings
     doc["brightness"] = s.brightness;
@@ -3193,6 +3347,24 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
+    if (doc["gpsLockoutMode"].is<int>()) {
+        s.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
+    } else if (doc["gpsLockoutMode"].is<const char*>()) {
+        s.gpsLockoutMode = parseLockoutRuntimeModeArg(doc["gpsLockoutMode"].as<String>(),
+                                                      s.gpsLockoutMode);
+    }
+    if (doc["gpsLockoutCoreGuardEnabled"].is<bool>()) {
+        s.gpsLockoutCoreGuardEnabled = doc["gpsLockoutCoreGuardEnabled"];
+    }
+    if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
+        s.gpsLockoutMaxQueueDrops = clampU16Value(doc["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
+    }
+    if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
+        s.gpsLockoutMaxPerfDrops = clampU16Value(doc["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
+    }
+    if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
+        s.gpsLockoutMaxEventBusDrops = clampU16Value(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+    }
     
     // WiFi settings (password intentionally excluded from backups)
     if (doc["apSSID"].is<const char*>()) {
@@ -3940,6 +4112,17 @@ void WiFiManager::handleGpsStatus() {
         speedObj["gpsAgeMs"] = speedStatus.gpsAgeMs;
     }
 
+    const V1Settings& settings = settingsManager.get();
+    const LockoutCoreGuardStatus lockoutGuard = evaluateLockoutCoreGuard(settings);
+    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
+    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
+    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
+    lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
+                                   !lockoutGuard.tripped;
+
     String response;
     serializeJson(doc, response);
     server.send(200, "application/json", response);
@@ -3949,13 +4132,26 @@ void WiFiManager::handleGpsConfig() {
     if (!checkRateLimit()) return;
     markUiActivity();
 
+    const V1Settings& currentSettings = settingsManager.get();
+    V1Settings& mutableSettings = const_cast<V1Settings&>(currentSettings);
+
     bool hasEnabled = false;
-    bool enabled = settingsManager.get().gpsEnabled;
+    bool enabled = currentSettings.gpsEnabled;
     bool hasScaffoldSample = false;
     float scaffoldSpeedMph = 0.0f;
     bool scaffoldHasFix = true;
     uint8_t scaffoldSatellites = 0;
     float scaffoldHdop = NAN;
+    bool hasLockoutMode = false;
+    LockoutRuntimeMode lockoutMode = currentSettings.gpsLockoutMode;
+    bool hasCoreGuardEnabled = false;
+    bool coreGuardEnabled = currentSettings.gpsLockoutCoreGuardEnabled;
+    bool hasMaxQueueDrops = false;
+    uint16_t maxQueueDrops = currentSettings.gpsLockoutMaxQueueDrops;
+    bool hasMaxPerfDrops = false;
+    uint16_t maxPerfDrops = currentSettings.gpsLockoutMaxPerfDrops;
+    bool hasMaxEventBusDrops = false;
+    uint16_t maxEventBusDrops = currentSettings.gpsLockoutMaxEventBusDrops;
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
@@ -3968,6 +4164,47 @@ void WiFiManager::handleGpsConfig() {
         if (body["enabled"].is<bool>()) {
             enabled = body["enabled"].as<bool>();
             hasEnabled = true;
+        }
+        if (body["lockoutMode"].is<int>()) {
+            lockoutMode = clampLockoutRuntimeModeValue(body["lockoutMode"].as<int>());
+            hasLockoutMode = true;
+        } else if (body["lockoutMode"].is<const char*>()) {
+            lockoutMode = parseLockoutRuntimeModeArg(body["lockoutMode"].as<String>(), lockoutMode);
+            hasLockoutMode = true;
+        } else if (body["gpsLockoutMode"].is<int>()) {
+            lockoutMode = clampLockoutRuntimeModeValue(body["gpsLockoutMode"].as<int>());
+            hasLockoutMode = true;
+        } else if (body["gpsLockoutMode"].is<const char*>()) {
+            lockoutMode = parseLockoutRuntimeModeArg(body["gpsLockoutMode"].as<String>(), lockoutMode);
+            hasLockoutMode = true;
+        }
+        if (body["lockoutCoreGuardEnabled"].is<bool>()) {
+            coreGuardEnabled = body["lockoutCoreGuardEnabled"].as<bool>();
+            hasCoreGuardEnabled = true;
+        } else if (body["gpsLockoutCoreGuardEnabled"].is<bool>()) {
+            coreGuardEnabled = body["gpsLockoutCoreGuardEnabled"].as<bool>();
+            hasCoreGuardEnabled = true;
+        }
+        if (body["lockoutMaxQueueDrops"].is<int>()) {
+            maxQueueDrops = clampU16Value(body["lockoutMaxQueueDrops"].as<int>(), 0, 65535);
+            hasMaxQueueDrops = true;
+        } else if (body["gpsLockoutMaxQueueDrops"].is<int>()) {
+            maxQueueDrops = clampU16Value(body["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
+            hasMaxQueueDrops = true;
+        }
+        if (body["lockoutMaxPerfDrops"].is<int>()) {
+            maxPerfDrops = clampU16Value(body["lockoutMaxPerfDrops"].as<int>(), 0, 65535);
+            hasMaxPerfDrops = true;
+        } else if (body["gpsLockoutMaxPerfDrops"].is<int>()) {
+            maxPerfDrops = clampU16Value(body["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
+            hasMaxPerfDrops = true;
+        }
+        if (body["lockoutMaxEventBusDrops"].is<int>()) {
+            maxEventBusDrops = clampU16Value(body["lockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+            hasMaxEventBusDrops = true;
+        } else if (body["gpsLockoutMaxEventBusDrops"].is<int>()) {
+            maxEventBusDrops = clampU16Value(body["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+            hasMaxEventBusDrops = true;
         }
         if (body["speedMph"].is<float>() || body["speedMph"].is<double>() || body["speedMph"].is<int>()) {
             scaffoldSpeedMph = body["speedMph"].as<float>();
@@ -3996,10 +4233,58 @@ void WiFiManager::handleGpsConfig() {
             hasEnabled = true;
         }
     }
+    if (!hasLockoutMode && server.hasArg("lockoutMode")) {
+        lockoutMode = parseLockoutRuntimeModeArg(server.arg("lockoutMode"), lockoutMode);
+        hasLockoutMode = true;
+    }
+    if (!hasLockoutMode && server.hasArg("gpsLockoutMode")) {
+        lockoutMode = parseLockoutRuntimeModeArg(server.arg("gpsLockoutMode"), lockoutMode);
+        hasLockoutMode = true;
+    }
+    if (!hasCoreGuardEnabled && server.hasArg("lockoutCoreGuardEnabled")) {
+        String value = server.arg("lockoutCoreGuardEnabled");
+        value.toLowerCase();
+        coreGuardEnabled = (value == "1" || value == "true" || value == "on");
+        hasCoreGuardEnabled = true;
+    }
+    if (!hasCoreGuardEnabled && server.hasArg("gpsLockoutCoreGuardEnabled")) {
+        String value = server.arg("gpsLockoutCoreGuardEnabled");
+        value.toLowerCase();
+        coreGuardEnabled = (value == "1" || value == "true" || value == "on");
+        hasCoreGuardEnabled = true;
+    }
+    if (!hasMaxQueueDrops && server.hasArg("lockoutMaxQueueDrops")) {
+        maxQueueDrops = clampU16Value(server.arg("lockoutMaxQueueDrops").toInt(), 0, 65535);
+        hasMaxQueueDrops = true;
+    }
+    if (!hasMaxQueueDrops && server.hasArg("gpsLockoutMaxQueueDrops")) {
+        maxQueueDrops = clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
+        hasMaxQueueDrops = true;
+    }
+    if (!hasMaxPerfDrops && server.hasArg("lockoutMaxPerfDrops")) {
+        maxPerfDrops = clampU16Value(server.arg("lockoutMaxPerfDrops").toInt(), 0, 65535);
+        hasMaxPerfDrops = true;
+    }
+    if (!hasMaxPerfDrops && server.hasArg("gpsLockoutMaxPerfDrops")) {
+        maxPerfDrops = clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
+        hasMaxPerfDrops = true;
+    }
+    if (!hasMaxEventBusDrops && server.hasArg("lockoutMaxEventBusDrops")) {
+        maxEventBusDrops = clampU16Value(server.arg("lockoutMaxEventBusDrops").toInt(), 0, 65535);
+        hasMaxEventBusDrops = true;
+    }
+    if (!hasMaxEventBusDrops && server.hasArg("gpsLockoutMaxEventBusDrops")) {
+        maxEventBusDrops = clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
+        hasMaxEventBusDrops = true;
+    }
 
     if (!hasEnabled) {
-        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled\"}");
-        return;
+        bool hasLockoutUpdate = hasLockoutMode || hasCoreGuardEnabled ||
+                                hasMaxQueueDrops || hasMaxPerfDrops || hasMaxEventBusDrops;
+        if (!hasLockoutUpdate) {
+            server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}");
+            return;
+        }
     }
 
     if (hasScaffoldSample &&
@@ -4013,9 +4298,36 @@ void WiFiManager::handleGpsConfig() {
         scaffoldHdop = 0.0f;
     }
 
-    settingsManager.setGpsEnabled(enabled);
-    gpsRuntimeModule.setEnabled(enabled);
-    speedSourceSelector.setGpsEnabled(enabled);
+    if (hasEnabled) {
+        settingsManager.setGpsEnabled(enabled);
+        gpsRuntimeModule.setEnabled(enabled);
+        speedSourceSelector.setGpsEnabled(enabled);
+    }
+
+    bool lockoutSettingsChanged = false;
+    if (hasLockoutMode && mutableSettings.gpsLockoutMode != lockoutMode) {
+        mutableSettings.gpsLockoutMode = lockoutMode;
+        lockoutSettingsChanged = true;
+    }
+    if (hasCoreGuardEnabled && mutableSettings.gpsLockoutCoreGuardEnabled != coreGuardEnabled) {
+        mutableSettings.gpsLockoutCoreGuardEnabled = coreGuardEnabled;
+        lockoutSettingsChanged = true;
+    }
+    if (hasMaxQueueDrops && mutableSettings.gpsLockoutMaxQueueDrops != maxQueueDrops) {
+        mutableSettings.gpsLockoutMaxQueueDrops = maxQueueDrops;
+        lockoutSettingsChanged = true;
+    }
+    if (hasMaxPerfDrops && mutableSettings.gpsLockoutMaxPerfDrops != maxPerfDrops) {
+        mutableSettings.gpsLockoutMaxPerfDrops = maxPerfDrops;
+        lockoutSettingsChanged = true;
+    }
+    if (hasMaxEventBusDrops && mutableSettings.gpsLockoutMaxEventBusDrops != maxEventBusDrops) {
+        mutableSettings.gpsLockoutMaxEventBusDrops = maxEventBusDrops;
+        lockoutSettingsChanged = true;
+    }
+    if (lockoutSettingsChanged) {
+        settingsManager.save();
+    }
 
     if (enabled && hasScaffoldSample) {
         gpsRuntimeModule.setScaffoldSample(scaffoldSpeedMph,
@@ -4028,6 +4340,8 @@ void WiFiManager::handleGpsConfig() {
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+    const V1Settings& settings = settingsManager.get();
+    const LockoutCoreGuardStatus lockoutGuard = evaluateLockoutCoreGuard(settings);
 
     JsonDocument response;
     response["success"] = true;
@@ -4037,6 +4351,14 @@ void WiFiManager::handleGpsConfig() {
     response["hasFix"] = gpsStatus.hasFix;
     response["injectedSamples"] = gpsStatus.injectedSamples;
     response["speedSource"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
+    response["lockoutMode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    response["lockoutModeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    response["lockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    response["lockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    response["lockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    response["lockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
+    response["lockoutCoreGuardReason"] = lockoutGuard.reason;
 
     String json;
     serializeJson(response, json);

@@ -21,7 +21,7 @@
 
 // SD backup file path
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
-static const int SD_BACKUP_VERSION = 4;  // Increment when adding new fields to backup
+static const int SD_BACKUP_VERSION = 5;  // Increment when adding new fields to backup
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
 static const char* SETTINGS_NS_META = "v1settingsMeta";
@@ -398,6 +398,11 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("proxyName", settings.proxyName);
     written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("gpsEn", settings.gpsEnabled);
+    written += prefs.putUChar("gpsLkMode", static_cast<uint8_t>(settings.gpsLockoutMode));
+    written += prefs.putBool("gpsLkGuard", settings.gpsLockoutCoreGuardEnabled);
+    written += prefs.putUShort("gpsLkQDrop", settings.gpsLockoutMaxQueueDrops);
+    written += prefs.putUShort("gpsLkPDrop", settings.gpsLockoutMaxPerfDrops);
+    written += prefs.putUShort("gpsLkEBDrop", settings.gpsLockoutMaxEventBusDrops);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -646,6 +651,12 @@ void SettingsManager::load() {
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
+    settings.gpsLockoutMode = clampLockoutRuntimeModeValue(
+        preferences.getUChar("gpsLkMode", static_cast<uint8_t>(LOCKOUT_RUNTIME_OFF)));
+    settings.gpsLockoutCoreGuardEnabled = preferences.getBool("gpsLkGuard", true);
+    settings.gpsLockoutMaxQueueDrops = preferences.getUShort("gpsLkQDrop", 0);
+    settings.gpsLockoutMaxPerfDrops = preferences.getUShort("gpsLkPDrop", 0);
+    settings.gpsLockoutMaxEventBusDrops = preferences.getUShort("gpsLkEBDrop", 0);
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -1422,6 +1433,11 @@ void SettingsManager::backupToSD() {
     doc["proxyName"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
+    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1643,6 +1659,36 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) settings.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
+    if (doc["gpsLockoutMode"].is<int>()) {
+        settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
+    } else if (doc["gpsLockoutMode"].is<const char*>()) {
+        String mode = doc["gpsLockoutMode"].as<String>();
+        mode.toLowerCase();
+        if (mode == "shadow") {
+            settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
+        } else if (mode == "advisory") {
+            settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
+        } else if (mode == "enforce") {
+            settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+        } else {
+            settings.gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
+        }
+    }
+    if (doc["gpsLockoutCoreGuardEnabled"].is<bool>()) {
+        settings.gpsLockoutCoreGuardEnabled = doc["gpsLockoutCoreGuardEnabled"];
+    }
+    if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
+        settings.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxQueueDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
+        settings.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxPerfDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
+        settings.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
+    }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {
         settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);

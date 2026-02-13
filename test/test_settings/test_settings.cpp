@@ -42,6 +42,13 @@ enum WiFiMode {
     V1_WIFI_APSTA = 3
 };
 
+enum LockoutRuntimeMode {
+    LOCKOUT_RUNTIME_OFF = 0,
+    LOCKOUT_RUNTIME_SHADOW = 1,
+    LOCKOUT_RUNTIME_ADVISORY = 2,
+    LOCKOUT_RUNTIME_ENFORCE = 3
+};
+
 WiFiMode deriveWifiMode(bool wifiClientEnabled) {
     return wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
 }
@@ -64,6 +71,14 @@ void xorObfuscate(char* data, size_t len) {
  */
 uint8_t clampSlotIndex(uint8_t slot) {
     return clampValue<uint8_t>(slot, 0, 2);
+}
+
+LockoutRuntimeMode clampLockoutRuntimeMode(int raw) {
+    return static_cast<LockoutRuntimeMode>(clampValue<int>(raw, 0, 3));
+}
+
+uint16_t clampGuardDropThreshold(int raw) {
+    return static_cast<uint16_t>(clampValue<int>(raw, 0, 65535));
 }
 
 /**
@@ -108,6 +123,23 @@ void test_clamp_volume_0_to_9() {
     TEST_ASSERT_EQUAL(5, clampValue<uint8_t>(5, 0, 9));
     TEST_ASSERT_EQUAL(9, clampValue<uint8_t>(9, 0, 9));
     TEST_ASSERT_EQUAL(9, clampValue<uint8_t>(15, 0, 9));
+}
+
+void test_clamp_lockout_runtime_mode_0_to_3() {
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_OFF, clampLockoutRuntimeMode(-10));
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_OFF, clampLockoutRuntimeMode(0));
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_SHADOW, clampLockoutRuntimeMode(1));
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ADVISORY, clampLockoutRuntimeMode(2));
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ENFORCE, clampLockoutRuntimeMode(3));
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ENFORCE, clampLockoutRuntimeMode(99));
+}
+
+void test_clamp_guard_drop_threshold_0_to_65535() {
+    TEST_ASSERT_EQUAL(0, clampGuardDropThreshold(-1));
+    TEST_ASSERT_EQUAL(0, clampGuardDropThreshold(0));
+    TEST_ASSERT_EQUAL(42, clampGuardDropThreshold(42));
+    TEST_ASSERT_EQUAL(65535, clampGuardDropThreshold(65535));
+    TEST_ASSERT_EQUAL(65535, clampGuardDropThreshold(70000));
 }
 
 // ============================================================================
@@ -222,6 +254,8 @@ void runAllTests() {
     RUN_TEST(test_clamp_alertVolumeFadeDelaySec_1_to_10);
     RUN_TEST(test_clamp_voiceVolume_0_to_100);
     RUN_TEST(test_clamp_volume_0_to_9);
+    RUN_TEST(test_clamp_lockout_runtime_mode_0_to_3);
+    RUN_TEST(test_clamp_guard_drop_threshold_0_to_65535);
     
     // Slot index tests (2 tests)
     RUN_TEST(test_clampSlotIndex_valid_values);

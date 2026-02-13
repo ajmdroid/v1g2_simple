@@ -23,6 +23,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <FS.h>
+#include <algorithm>
 #include "../include/color_themes.h"
 
 // Forward declaration
@@ -67,6 +68,35 @@ enum VoiceAlertMode {
     VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
 };
 
+// GPS lockout runtime behavior.
+// NOTE: this is config scaffolding only until lockout runtime is explicitly enabled.
+enum LockoutRuntimeMode : uint8_t {
+    LOCKOUT_RUNTIME_OFF = 0,       // No lockout evaluation or suppression
+    LOCKOUT_RUNTIME_SHADOW = 1,    // Evaluate only; never suppress
+    LOCKOUT_RUNTIME_ADVISORY = 2,  // Advisory-only decisions; never suppress
+    LOCKOUT_RUNTIME_ENFORCE = 3    // Enforcement allowed (subject to guardrails)
+};
+
+inline LockoutRuntimeMode clampLockoutRuntimeModeValue(int rawMode) {
+    int clamped = std::max(static_cast<int>(LOCKOUT_RUNTIME_OFF),
+                           std::min(rawMode, static_cast<int>(LOCKOUT_RUNTIME_ENFORCE)));
+    return static_cast<LockoutRuntimeMode>(clamped);
+}
+
+inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
+    switch (mode) {
+        case LOCKOUT_RUNTIME_SHADOW:
+            return "shadow";
+        case LOCKOUT_RUNTIME_ADVISORY:
+            return "advisory";
+        case LOCKOUT_RUNTIME_ENFORCE:
+            return "enforce";
+        case LOCKOUT_RUNTIME_OFF:
+        default:
+            return "off";
+    }
+}
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -94,6 +124,11 @@ struct V1Settings {
     String proxyName;       // BLE device name when proxying
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
+    LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
+    bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
+    uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
+    uint16_t gpsLockoutMaxPerfDrops;      // Max allowed perf snapshot drops before guard trips
+    uint16_t gpsLockoutMaxEventBusDrops;  // Max allowed system-event-bus drops before guard trips
     
     // Display settings
     bool turnOffDisplay;
@@ -221,6 +256,11 @@ struct V1Settings {
         proxyName("V1-Proxy"),  // Must match NVS load() default
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
+        gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
+        gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
+        gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
+        gpsLockoutMaxPerfDrops(0),           // Any core drop trips guard by default
+        gpsLockoutMaxEventBusDrops(0),       // Any core drop trips guard by default
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
