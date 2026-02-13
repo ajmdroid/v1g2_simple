@@ -24,21 +24,6 @@ enum class DebugLogCategory {
     Touch
 };
 
-struct DebugLogFilter {
-    bool alerts = true;
-    bool wifi = false;
-    bool ble = false;
-    bool system = true;
-    bool display = false;
-    bool perfMetrics = false;
-    bool audio = false;
-    bool touch = false;
-};
-
-// Legacy constants retained for web/API compatibility.
-inline constexpr const char* DEBUG_LOG_PATH = "/debug.log";
-inline constexpr size_t DEBUG_LOG_MAX_BYTES = 1024 * 1024 * 1024;
-
 class DebugLogger {
 public:
     enum class TimeSource {
@@ -49,11 +34,8 @@ public:
         ESTIMATED
     };
 
-    static constexpr uint32_t RTC_CACHE_MAX_AGE_HOURS = 24;
-
     void begin() {}
     void setEnabled(bool) {}
-    void setFilter(const DebugLogFilter&) {}
     bool isEnabled() const { return false; }
     bool isEnabledFor(DebugLogCategory) const { return false; }
 
