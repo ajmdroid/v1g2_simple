@@ -117,6 +117,10 @@ struct PerfCounters {
     std::atomic<uint32_t> autoPushModeFail{0};    // Auto-push mode set failures
     std::atomic<uint32_t> autoPushVolumeFail{0};  // Auto-push volume set failures
     std::atomic<uint32_t> autoPushDisconnectAbort{0}; // Auto-push aborted due to disconnect
+    std::atomic<uint32_t> speedVolBoosts{0};      // Speed-volume boosts applied
+    std::atomic<uint32_t> speedVolRestores{0};    // Speed-volume restores applied
+    std::atomic<uint32_t> speedVolFadeTakeovers{0}; // Fade took over while speed boost active
+    std::atomic<uint32_t> speedVolNoHeadroom{0};  // Boost requested but volume already maxed
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -164,6 +168,10 @@ struct PerfCounters {
         autoPushModeFail.store(0, std::memory_order_relaxed);
         autoPushVolumeFail.store(0, std::memory_order_relaxed);
         autoPushDisconnectAbort.store(0, std::memory_order_relaxed);
+        speedVolBoosts.store(0, std::memory_order_relaxed);
+        speedVolRestores.store(0, std::memory_order_relaxed);
+        speedVolFadeTakeovers.store(0, std::memory_order_relaxed);
+        speedVolNoHeadroom.store(0, std::memory_order_relaxed);
     }
 };
 

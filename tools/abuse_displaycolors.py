@@ -104,6 +104,10 @@ COUNTER_FIELDS: List[str] = [
     "autoPushModeFail",
     "autoPushVolumeFail",
     "autoPushDisconnectAbort",
+    "speedVolBoosts",
+    "speedVolRestores",
+    "speedVolFadeTakeovers",
+    "speedVolNoHeadroom",
 ]
 
 

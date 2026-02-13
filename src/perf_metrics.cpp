@@ -175,6 +175,10 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.autoPushModeFail = perfCounters.autoPushModeFail.load(std::memory_order_relaxed);
     snapshot.autoPushVolumeFail = perfCounters.autoPushVolumeFail.load(std::memory_order_relaxed);
     snapshot.autoPushDisconnectAbort = perfCounters.autoPushDisconnectAbort.load(std::memory_order_relaxed);
+    snapshot.speedVolBoosts = perfCounters.speedVolBoosts.load(std::memory_order_relaxed);
+    snapshot.speedVolRestores = perfCounters.speedVolRestores.load(std::memory_order_relaxed);
+    snapshot.speedVolFadeTakeovers = perfCounters.speedVolFadeTakeovers.load(std::memory_order_relaxed);
+    snapshot.speedVolNoHeadroom = perfCounters.speedVolNoHeadroom.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -547,6 +551,10 @@ String perfMetricsToJson() {
     doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
     doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
     doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
+    doc["speedVolBoosts"] = perfCounters.speedVolBoosts.load();
+    doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
+    doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
+    doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

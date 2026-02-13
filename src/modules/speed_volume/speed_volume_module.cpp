@@ -2,6 +2,12 @@
 #include "settings.h"
 #include "packet_parser.h"
 #ifndef UNIT_TEST
+#include "perf_metrics.h"
+#define SPEED_VOL_PERF_INC(counter) PERF_INC(counter)
+#else
+#define SPEED_VOL_PERF_INC(counter) do { } while (0)
+#endif
+#ifndef UNIT_TEST
 #include "ble_client.h"
 #include "modules/voice/voice_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
@@ -78,12 +84,16 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
 
     // Honor feature toggle and BLE connectivity; when fade owns volume, do not touch it
     if (!s.speedVolumeEnabled || !ctx.bleConnected || ctx.fadeTakingControl) {
+        if (ctx.fadeTakingControl && boostActive) {
+            SPEED_VOL_PERF_INC(speedVolFadeTakeovers);
+        }
         if (!ctx.fadeTakingControl && boostActive && originalVolume != 0xFF &&
             ctx.currentVolume != originalVolume) {
             // Restore if we own the boost
             action.type = SpeedVolumeAction::Type::RESTORE;
             action.volume = originalVolume;
             action.muteVolume = ctx.currentMuteVolume;
+            SPEED_VOL_PERF_INC(speedVolRestores);
         }
         reset();
         return action;
@@ -111,8 +121,11 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
             action.volume = boostedVol;
             action.muteVolume = ctx.currentMuteVolume;
             boostActive = true;
+            SPEED_VOL_PERF_INC(speedVolBoosts);
             Serial.printf("[SpeedVolume] BOOST: %d -> %d (fadeBlocked=%d)\n",
                           ctx.currentVolume, boostedVol, ctx.fadeTakingControl);
+        } else {
+            SPEED_VOL_PERF_INC(speedVolNoHeadroom);
         }
         return action;
     }
@@ -122,6 +135,7 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
             action.type = SpeedVolumeAction::Type::RESTORE;
             action.volume = originalVolume;
             action.muteVolume = ctx.currentMuteVolume;
+            SPEED_VOL_PERF_INC(speedVolRestores);
         }
         reset();
         return action;
