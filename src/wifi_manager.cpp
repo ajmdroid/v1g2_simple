@@ -1563,8 +1563,8 @@ void WiFiManager::handleSettingsSave() {
     if (!checkRateLimit()) return;
     
     Serial.println("=== handleSettingsSave() called ===");
-    const V1Settings& currentSettings = settingsManager.get();
-    V1Settings& mutableSettings = const_cast<V1Settings&>(currentSettings);
+    V1Settings& mutableSettings = settingsManager.mutableSettings();
+    const V1Settings& currentSettings = mutableSettings;
 
     if (server.hasArg("ap_ssid")) {
         String apSsid = clampStringLength(server.arg("ap_ssid"), MAX_WIFI_SSID_LEN);
