@@ -12,7 +12,6 @@
 #include "debug_logger.h"
 #include "v1_profiles.h"
 #include "ble_client.h"
-#include "perf_metrics.h"
 #include "perf_sd_logger.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
