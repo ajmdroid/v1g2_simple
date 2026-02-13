@@ -94,6 +94,19 @@ struct PerfSdSnapshot {
     uint32_t powerCriticalWarn;       // Critical-battery warning shown
     uint32_t powerCriticalShutdown;   // Critical-battery shutdown triggered
     uint32_t cmdBleBusy;              // BLE command write transient failures/retries
+    uint8_t gpsEnabled;               // GPS runtime enabled flag
+    uint8_t gpsHasFix;                // GPS currently has fix
+    uint8_t gpsLocationValid;         // GPS location fields are valid
+    uint8_t gpsSatellites;            // Current satellite count
+    uint8_t gpsParserActive;          // GPS parser active flag
+    uint8_t gpsModuleDetected;        // UART/NMEA module detected
+    uint8_t gpsDetectionTimedOut;     // Detection timeout latched
+    int32_t gpsSpeedMphX10;           // GPS speed mph * 10 (-1 when unavailable)
+    uint16_t gpsHdopX10;              // GPS HDOP * 10 (UINT16_MAX when unavailable)
+    uint32_t gpsSampleAgeMs;          // GPS speed sample age (UINT32_MAX when unavailable)
+    uint32_t gpsObsDrops;             // GPS observation ring dropped samples
+    uint32_t gpsObsSize;              // GPS observation ring current size
+    uint32_t gpsObsPublished;         // GPS observation ring lifetime published samples
 };
 
 class PerfSdLogger {

@@ -8,9 +8,12 @@
 #include "storage_manager.h"
 #include "time_service.h"
 #include "obd_handler.h"
+#include "modules/gps/gps_runtime_module.h"
+#include "modules/gps/gps_observation_log.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
+#include <cmath>
 
 // Global instances
 PerfCounters perfCounters;
@@ -103,6 +106,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
     uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
     OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
+    GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     if (freeDmaCap < sDmaFreeCapMin) {
@@ -191,6 +196,25 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
     snapshot.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
     snapshot.cmdBleBusy = perfCounters.cmdBleBusy.load(std::memory_order_relaxed);
+    snapshot.gpsEnabled = gpsStatus.enabled ? 1 : 0;
+    snapshot.gpsHasFix = gpsStatus.hasFix ? 1 : 0;
+    snapshot.gpsLocationValid = gpsStatus.locationValid ? 1 : 0;
+    snapshot.gpsSatellites = gpsStatus.satellites;
+    snapshot.gpsParserActive = gpsStatus.parserActive ? 1 : 0;
+    snapshot.gpsModuleDetected = gpsStatus.moduleDetected ? 1 : 0;
+    snapshot.gpsDetectionTimedOut = gpsStatus.detectionTimedOut ? 1 : 0;
+    snapshot.gpsSpeedMphX10 =
+        (gpsStatus.sampleValid && std::isfinite(gpsStatus.speedMph))
+            ? static_cast<int32_t>(std::lround(gpsStatus.speedMph * 10.0f))
+            : -1;
+    snapshot.gpsHdopX10 =
+        std::isfinite(gpsStatus.hdop)
+            ? static_cast<uint16_t>(std::lround(((gpsStatus.hdop < 0.0f) ? 0.0f : gpsStatus.hdop) * 10.0f))
+            : UINT16_MAX;
+    snapshot.gpsSampleAgeMs = gpsStatus.sampleAgeMs;
+    snapshot.gpsObsDrops = gpsLogStats.drops;
+    snapshot.gpsObsSize = static_cast<uint32_t>(gpsLogStats.size);
+    snapshot.gpsObsPublished = gpsLogStats.published;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
