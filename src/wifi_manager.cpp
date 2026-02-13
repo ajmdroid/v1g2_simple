@@ -2294,8 +2294,8 @@ void WiFiManager::handleDisplayColorsSave() {
         Serial.printf("[HTTP] Arg %s = %s\n", server.argName(i).c_str(), server.arg(i).c_str());
     }
 
-    const V1Settings& currentSettings = settingsManager.get();
-    V1Settings& s = const_cast<V1Settings&>(currentSettings);
+    V1Settings& s = settingsManager.mutableSettings();
+    const V1Settings& currentSettings = s;
 
     auto argBool = [this](const char* key, bool fallback) -> bool {
         if (!server.hasArg(key)) return fallback;
@@ -2452,8 +2452,8 @@ void WiFiManager::handleDisplayColorsSave() {
 void WiFiManager::handleDisplayColorsReset() {
     if (!checkRateLimit()) return;
 
-    const V1Settings& currentSettings = settingsManager.get();
-    V1Settings& s = const_cast<V1Settings&>(currentSettings);
+    V1Settings& s = settingsManager.mutableSettings();
+    const V1Settings& currentSettings = s;
 
     // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
     s.colorBogey = 0xF800;
@@ -3299,7 +3299,7 @@ void WiFiManager::handleSettingsRestore() {
     }
     
     // Restore settings (same logic as restoreFromSD but from JSON body)
-    V1Settings& s = const_cast<V1Settings&>(settingsManager.get());
+    V1Settings& s = settingsManager.mutableSettings();
     
     // BLE settings
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
@@ -3947,8 +3947,8 @@ void WiFiManager::handleGpsConfig() {
     if (!checkRateLimit()) return;
     markUiActivity();
 
-    const V1Settings& currentSettings = settingsManager.get();
-    V1Settings& mutableSettings = const_cast<V1Settings&>(currentSettings);
+    V1Settings& mutableSettings = settingsManager.mutableSettings();
+    const V1Settings& currentSettings = mutableSettings;
 
     bool hasEnabled = false;
     bool enabled = currentSettings.gpsEnabled;
