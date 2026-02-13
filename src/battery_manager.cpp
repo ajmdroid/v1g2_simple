@@ -19,6 +19,7 @@
 #endif
 #include <driver/gpio.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 
 // Only compile for Waveshare 3.49 board
 #if defined(DISPLAY_WAVESHARE_349)
@@ -86,16 +87,24 @@ bool BatteryManager::begin() {
     // Use INPUT (no pullup) to avoid biasing the reading if pin is driven externally
     pinMode(PWR_BUTTON_GPIO, INPUT);
     
-    // Sample GPIO16 multiple times to debounce
-    const int samples = 10;
+    // Sample GPIO16 multiple times to debounce.
+    // Deep-sleep wake uses a shorter debounce window for faster wake perception.
+    const esp_reset_reason_t resetReason = esp_reset_reason();
+    const bool wakeFromDeepSleep = (resetReason == ESP_RST_DEEPSLEEP);
+    const int samples = wakeFromDeepSleep ? 5 : 10;
+    const int sampleDelayMs = wakeFromDeepSleep ? 2 : 5;
     int highCount = 0;
+    Serial.printf("[Battery] Power debounce reset=%d samples=%d delayMs=%d\n",
+                  static_cast<int>(resetReason),
+                  samples,
+                  sampleDelayMs);
     
     BATTERY_LOGLN("[Battery] Sampling power source detection...");
     for (int i = 0; i < samples; i++) {
         if (digitalRead(PWR_BUTTON_GPIO) == HIGH) {
             highCount++;
         }
-        delay(5);  // 5ms between samples = 50ms total
+        delay(sampleDelayMs);
     }
     
     // Majority vote
