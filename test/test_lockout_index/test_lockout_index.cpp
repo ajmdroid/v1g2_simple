@@ -275,6 +275,20 @@ void test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active() {
     TEST_ASSERT_TRUE(idx.at(slot)->isActive());  // Manual stays.
 }
 
+void test_recordCleanPass_removes_plain_active_at_zero() {
+    // Entry is active but has neither MANUAL nor LEARNED flag.
+    // Should still be removed at confidence 0 (all non-manual are pruned).
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.confidence = 1;
+    e.flags = LockoutEntry::FLAG_ACTIVE;  // No MANUAL, no LEARNED
+    int slot = idx.add(e);
+
+    uint8_t c = idx.recordCleanPass(slot, 1700000120000LL);
+    TEST_ASSERT_EQUAL(0, c);
+    TEST_ASSERT_FALSE(idx.at(slot)->isActive());  // Non-manual removed.
+    TEST_ASSERT_EQUAL(0, idx.activeCount());
+}
+
 // ================================================================
 // Timestamp fields: real epoch values
 // ================================================================
@@ -393,6 +407,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_recordCleanPass_decrements_confidence);
     RUN_TEST(test_recordCleanPass_auto_removes_learned_at_zero);
     RUN_TEST(test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active);
+    RUN_TEST(test_recordCleanPass_removes_plain_active_at_zero);
 
     // Timestamps
     RUN_TEST(test_entry_stores_real_epoch_timestamps);

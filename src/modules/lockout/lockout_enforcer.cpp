@@ -93,8 +93,11 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     if (decision.shouldMute) {
         ++stats_.matches;
 
-        // Record the hit on the matching entry (updates lastSeenMs + confidence).
-        index_->recordHit(static_cast<size_t>(decision.matchIndex), epochMs);
+        // Only ENFORCE mode mutates index state (confidence + lastSeenMs).
+        // SHADOW and ADVISORY are read-only so toggling them has no side-effects.
+        if (mode == LOCKOUT_RUNTIME_ENFORCE) {
+            index_->recordHit(static_cast<size_t>(decision.matchIndex), epochMs);
+        }
 
         // Rate-limited log for SHADOW / ADVISORY / ENFORCE.
         if (nowMs - lastLogMs_ >= LOG_INTERVAL_MS) {

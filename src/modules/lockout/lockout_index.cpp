@@ -94,12 +94,12 @@ uint8_t LockoutIndex::recordCleanPass(size_t index, int64_t epochMs) {
     if (epochMs > 0) {
         e.lastPassMs = epochMs;
     }
-    // Decay confidence.  Manual entries floor at 1 (never auto-remove).
+    // Decay confidence.  Manual entries floor at 0 but stay active.
     if (e.confidence > 0) {
         --e.confidence;
     }
     if (e.confidence == 0 && !e.isManual()) {
-        e.clear();  // Auto-demote: remove learned entry.
+        e.clear();  // Auto-remove any non-manual entry at zero confidence.
     }
     return e.confidence;
 }

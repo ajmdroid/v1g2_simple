@@ -21,10 +21,11 @@ struct LockoutEnforcerResult {
 /// Evaluates incoming alerts against the LockoutIndex and decides
 /// whether to mute, advise, or just log.
 ///
-/// This module is intentionally side-effect-free in SHADOW and ADVISORY
-/// modes — it only produces a decision.  The caller (main loop) is
-/// responsible for acting on it (e.g. sending mute commands, updating
-/// display indicators).
+/// SHADOW and ADVISORY modes are read-only — they produce a decision
+/// but never mutate the LockoutIndex (no recordHit).  Only ENFORCE
+/// mode updates confidence and timestamps on matched entries.
+/// The caller (main loop) is responsible for acting on the decision
+/// (e.g. sending mute commands, updating display indicators).
 ///
 /// Thread safety: designed for single-threaded access from loop().
 class LockoutEnforcer {

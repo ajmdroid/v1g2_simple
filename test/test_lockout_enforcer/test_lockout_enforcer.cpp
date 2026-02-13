@@ -168,7 +168,7 @@ void test_no_alerts_evaluates_no_match() {
 }
 
 // ================================================================
-// SHADOW mode: match produces shouldMute but no side-effects
+// SHADOW mode: match produces shouldMute but NO mutation
 // ================================================================
 
 void test_shadow_mode_match() {
@@ -185,14 +185,13 @@ void test_shadow_mode_match() {
     TEST_ASSERT_EQUAL(1, enforcer.stats().evaluations);
     TEST_ASSERT_EQUAL(1, enforcer.stats().matches);
 
-    // Verify confidence was bumped via recordHit
-    TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
-    // Verify lastSeenMs was updated
-    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
+    // SHADOW must NOT mutate the index (read-only).
+    TEST_ASSERT_EQUAL(100, testIndex.at(0)->confidence);       // unchanged
+    TEST_ASSERT_EQUAL(1700000060000LL, testIndex.at(0)->lastSeenMs);  // unchanged
 }
 
 // ================================================================
-// ADVISORY mode: same behavior as SHADOW (for now)
+// ADVISORY mode: read-only match, no mutation
 // ================================================================
 
 void test_advisory_mode_match() {
@@ -207,6 +206,32 @@ void test_advisory_mode_match() {
 
     TEST_ASSERT_TRUE(r.shouldMute);
     TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ADVISORY, r.mode);
+
+    // ADVISORY must NOT mutate the index.
+    TEST_ASSERT_EQUAL(100, testIndex.at(0)->confidence);
+    TEST_ASSERT_EQUAL(1700000060000LL, testIndex.at(0)->lastSeenMs);
+}
+
+// ================================================================
+// ENFORCE mode: match mutates index (recordHit)
+// ================================================================
+
+void test_enforce_mode_mutates() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    enforcer.begin(&settingsManager, &testIndex);
+
+    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.shouldMute);
+    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ENFORCE, r.mode);
+
+    // ENFORCE DOES mutate: confidence bumped, lastSeenMs updated.
+    TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
+    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
 }
 
 // ================================================================
@@ -339,6 +364,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_no_alerts_evaluates_no_match);
     RUN_TEST(test_shadow_mode_match);
     RUN_TEST(test_advisory_mode_match);
+    RUN_TEST(test_enforce_mode_mutates);
     RUN_TEST(test_no_match_outside_zone);
     RUN_TEST(test_no_match_wrong_band);
     RUN_TEST(test_no_match_wrong_freq);
