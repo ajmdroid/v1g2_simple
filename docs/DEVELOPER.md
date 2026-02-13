@@ -85,34 +85,33 @@ The ESP32 has a single shared radio for WiFi and BLE. Rules:
 
 ## Logging Strategy
 
-The codebase uses two logging mechanisms intentionally:
+The codebase uses two active logging mechanisms:
 
 ### Serial/SerialLog (Direct Output)
 Use for:
 - **Critical errors** that must always be visible
 - **Startup messages** and initialization status
 - **Connection state changes** (BLE connect/disconnect)
-- **Performance-critical paths** where debugLogger overhead matters
+- **Runtime traces** while reproducing issues over USB
 
 ```cpp
 Serial.println("[BLE] Connected!");
 Serial.printf("[OBD] Speed: %d km/h\n", speed);
 ```
 
-### debugLogger (Categorized Logging)
+### Perf CSV Logger (`/perf/perf_boot_<id>.csv`)
 Use for:
-- **Debug information** that can be toggled per-module
-- **SD card logging** for post-mortem analysis
-- **Verbose output** during development
+- **Post-mortem analysis** across long drives
+- **Counter/timing correlation** with `/api/debug/metrics`
+- **Field diagnostics** without serial attached
 
 ```cpp
-debugLogger.log(DebugLogCategory::Gps, "Fix acquired");
-debugLogger.logf(DebugLogCategory::Alerts, "Alert: %s %.3f", band, freq);
+perfMetricsCheckReport();          // periodic snapshot enqueue
+perfMetricsEnqueueSnapshotNow();   // immediate snapshot on critical paths
 ```
 
-### Categories
-Enable/disable via web UI (Dev page → Log Categories):
-- System, WiFi, Alerts, BLE, GPS, OBD, Display, PerfMetrics, Audio, Camera, Lockout, Touch
+### Legacy `debugLogger`
+`debugLogger` remains as a compatibility stub so existing call sites compile, but SD-backed `debug.log` capture is removed.
 
 ---
 

@@ -268,7 +268,7 @@ Quick solutions for common issues with the V1-Simple device.
 1. **Reduce clients**: Only connect 1-2 devices at a time
 2. **Close unused pages**: Each page polls for updates
 3. **Check distance**: Poor WiFi signal causes slow response
-4. **Disable debug logging**: High logging rate affects performance
+4. **Limit live diagnostics**: Disable `/dev` auto-refresh metrics when not actively debugging
 
 ### Device restarting/crashing
 
@@ -278,7 +278,7 @@ Quick solutions for common issues with the V1-Simple device.
 1. **Check battery**: Low battery can cause restarts
 2. **Check temperature**: Overheating triggers thermal shutdown
 3. **Check for patterns**: Note what was happening when crash occurred
-4. **Check debug logs**: Download logs for crash analysis
+4. **Collect diagnostics**: Pull `/api/debug/panic`, `/api/debug/metrics`, and latest `/perf/perf_boot_*.csv` if SD is present
 5. **Update firmware**: Latest version may have bug fixes
 
 ### High memory usage warnings
@@ -326,22 +326,18 @@ pio run -t upload -e waveshare-349
 When reporting issues, include:
 
 1. **Firmware version**: Settings → About
-2. **Debug logs**: Debug → Download Logs
+2. **Panic snapshot**: `/api/debug/panic` response (or `/panic.txt` if present)
 3. **Debug metrics**: Debug → View Metrics
-4. **Steps to reproduce**: What exactly triggers the issue
-5. **Device info**: V1 version, phone model, etc.
+4. **Perf CSV files**: `/dev` → Perf CSV Files (if SD card is present)
+5. **Steps to reproduce**: What exactly triggers the issue
+6. **Device info**: V1 version, phone model, etc.
 
 ### Debug mode
 
-Enable detailed logging:
-1. Go to Settings
-2. Enable desired log categories:
-   - `logAlerts` - Alert processing
-   - `logBle` - Bluetooth communication
-   - `logGps` - GPS data
-   - `logWifi` - WiFi/HTTP activity
-3. Reproduce issue
-4. Download logs from Debug page
+Use built-in diagnostics:
+1. Open `/dev` and watch **Performance Metrics** while reproducing the issue
+2. Download the active **Perf CSV** file from `/dev` if SD is installed
+3. Capture serial output over USB for verbose runtime traces
 
 ---
 

@@ -230,10 +230,6 @@ private:
     void handleDebugMetrics();
     void handleDebugPanic();
     void handleDebugEnable();
-    void handleDebugLogsMeta();
-    void handleDebugLogsDownload();
-    void handleDebugLogsTail();
-    void handleDebugLogsClear();
     void handleDebugPerfFilesList();
     void handleDebugPerfFileDownload();
     void handleDebugPerfFileDelete();

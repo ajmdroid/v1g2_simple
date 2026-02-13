@@ -11,10 +11,10 @@
 
 ## Recent Changes (v3.0.7)
 
-### v3.0.7 - GPS Lockouts, Debug Logging & Stability
+### v3.0.7 - GPS Lockouts & Stability
 - **GPS Lockout Zones:** Create manual lockout zones that auto-mute specific bands when in range. Supports band-specific muting (X/K/Ka/Laser). Configure via `/gps` page.
 - **Auto-Lockout Learning:** System learns frequent false alert locations and auto-creates lockout zones after repeated hits.
-- **Debug Logging to SD:** File-based debug logging (requires SD card). 1GB cap with rotation. Enable via `/dev` page.
+- **Perf CSV Logging:** SD-backed performance snapshots under `/perf/perf_boot_<id>.csv` for post-mortem analysis.
 - **Photo Radar Band Color:** Dedicated color for Photo Radar ('P') alerts. Configure via `/colors` page.
 - **Settings Backup to SD:** Automatic SD backup of settings on save; auto-restore on boot if NVS is default/corrupt.
 - **Display Latency Tracking:** Optional display latency metrics for performance debugging.
@@ -1593,7 +1593,6 @@ npm run deploy                            # Copy build/ to data/
 | `scripts/pio-size.sh` | Report firmware size |
 | `scripts/pio-check.sh` | Run clang-tidy static analysis |
 | `tools/perf_test.sh` | Performance testing |
-| `tools/analyze_perf_log.py` | Parse perf metrics from `debug.log` |
 | `tools/smoke_metrics_runtime.py` | Runtime perf counter smoke checks (API + CSV reflection) |
 
 **Source:** [build.sh](build.sh), [scripts/](scripts/)

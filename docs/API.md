@@ -744,31 +744,12 @@ Clear event log.
 
 ### POST /api/debug/enable
 
-Enable/disable debug logging.
+Enable/disable runtime perf debug reporting.
 
 **Request (form data):**
 ```
-logAlerts=true&logBle=true&logGps=false
+enable=true
 ```
-
-### GET /api/debug/logs
-
-Get log file metadata.
-
-### GET /api/debug/logs/download
-
-Download log file.
-
-### GET /api/debug/logs/tail
-
-Get last N lines of log file.
-
-**Query Parameters:**
-- `lines` (optional): Number of lines (default 100)
-
-### POST /api/debug/logs/clear
-
-Clear log file.
 
 ### GET /api/debug/perf-files
 
