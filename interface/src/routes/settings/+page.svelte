@@ -356,6 +356,30 @@
 			wifiPollInterval = null;
 		}
 	}
+
+	async function postSettingsForm(formData) {
+		let res;
+		try {
+			res = await fetch('/api/settings', {
+				method: 'POST',
+				body: formData
+			});
+		} catch (e) {
+			return await fetch('/settings', {
+				method: 'POST',
+				body: formData
+			});
+		}
+
+		if (!res.ok && (res.status === 404 || res.status === 405)) {
+			return await fetch('/settings', {
+				method: 'POST',
+				body: formData
+			});
+		}
+
+		return res;
+	}
 	
 	async function saveSettings() {
 		saving = true;
@@ -370,10 +394,7 @@
 			formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
 			formData.append('apTimeoutMinutes', settings.apTimeoutMinutes);
 			
-			const res = await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
+			const res = await postSettingsForm(formData);
 			
 			if (res.ok) {
 				message = { type: 'success', text: 'Settings saved! WiFi will restart.' };

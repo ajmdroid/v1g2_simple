@@ -123,16 +123,37 @@
 			// Ignore - will use default
 		}
 	}
+
+	async function postSettingsForm(formData) {
+		let res;
+		try {
+			res = await fetch('/api/settings', {
+				method: 'POST',
+				body: formData
+			});
+		} catch (e) {
+			return await fetch('/settings', {
+				method: 'POST',
+				body: formData
+			});
+		}
+
+		if (!res.ok && (res.status === 404 || res.status === 405)) {
+			return await fetch('/settings', {
+				method: 'POST',
+				body: formData
+			});
+		}
+
+		return res;
+	}
 	
 	async function saveDisplayStyle(event) {
 		const newStyle = parseInt(event.target.value);
 		try {
 			const formData = new FormData();
 			formData.append('displayStyle', newStyle);
-			const res = await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
+			const res = await postSettingsForm(formData);
 			if (res.ok) {
 				displayStyle = newStyle;  // Update local state after successful save
 				message = { type: 'success', text: 'Display style updated!' };
