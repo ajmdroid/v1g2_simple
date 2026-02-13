@@ -102,6 +102,10 @@ public:
     // Status bar at top of screen.
     void drawStatusBar();
 
+    // Lockout indicator — shows "L" badge when enforcer matches a zone.
+    // Call from main.cpp after enforcer runs, before display pipeline.
+    void setLockoutIndicator(bool show);
+
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData = true);
@@ -149,6 +153,7 @@ private:
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
+    void drawLockoutIndicator();
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -187,6 +192,7 @@ private:
     int16_t frequencyDirtyY = 0;
     int16_t frequencyDirtyW = 0;
     int16_t frequencyDirtyH = 0;
+    bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

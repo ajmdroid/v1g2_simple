@@ -74,6 +74,7 @@ static bool s_forceArrowRedraw = false;
 static bool s_forceStatusBarRedraw = false;
 static bool s_forceMuteIconRedraw = false;
 static bool s_forceTopCounterRedraw = false;
+static bool s_forceLockoutRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -916,6 +917,7 @@ void V1Display::drawBaseFrame() {
     s_forceStatusBarRedraw = true;  // Force status bar cache invalidation after screen clear
     s_forceMuteIconRedraw = true;   // Force mute icon cache invalidation after screen clear
     s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
+    s_forceLockoutRedraw = true;    // Force lockout indicator cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -1411,6 +1413,43 @@ void V1Display::drawMuteIcon(bool muted) {
         // Clear the badge area when not muted.
         FILL_RECT(leftMargin + (maxWidth - w) / 2, y, w, h, PALETTE_BG);
     }
+}
+
+void V1Display::setLockoutIndicator(bool show) {
+    lockoutIndicatorShown_ = show;
+}
+
+void V1Display::drawLockoutIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    static bool lastShown = false;
+
+    if (!s_forceLockoutRedraw && lockoutIndicatorShown_ == lastShown) {
+        return;
+    }
+    s_forceLockoutRedraw = false;
+    lastShown = lockoutIndicatorShown_;
+
+    // Position: right of the mute badge area.
+    // Mute badge:  X = 225..335,  Y = 5,  H = 26.
+    // Lockout "L":  X = 340,  Y = 5,  26×26 square badge.
+    const int x = 340;
+    const int y = 5;
+    const int sz = 26;
+
+    if (lockoutIndicatorShown_) {
+        // Draw a rounded-rect badge with "L" in green.
+        const uint16_t fillColor  = 0x0320;  // Dark green fill
+        const uint16_t textColor  = TFT_GREEN;
+        FILL_ROUND_RECT(x, y, sz, sz, 5, fillColor);
+        DRAW_ROUND_RECT(x, y, sz, sz, 5, textColor);
+        GFX_setTextDatum(MC_DATUM);
+        TFT_CALL(setTextSize)(2);
+        TFT_CALL(setTextColor)(textColor, fillColor);
+        GFX_drawString(tft, "L", x + sz / 2, y + sz / 2);
+    } else {
+        FILL_RECT(x, y, sz, sz, PALETTE_BG);
+    }
+#endif
 }
 
 void V1Display::drawProfileIndicator(int slot) {
@@ -2014,6 +2053,7 @@ void V1Display::showResting(bool forceRedraw) {
         
         // Mute indicator off
         drawMuteIcon(false);
+        drawLockoutIndicator();
         
         // Profile indicator
         drawProfileIndicator(profileSlot);
@@ -2095,6 +2135,7 @@ void V1Display::showScanning() {
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
+    drawLockoutIndicator();
     drawProfileIndicator(currentProfileSlot);
     drawStatusBar();  // Top status indicators
     
@@ -2656,6 +2697,7 @@ void V1Display::update(const DisplayState& state) {
     // no alert packet arrived, we shouldn't show arrows without frequency.
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
+    drawLockoutIndicator();
     drawProfileIndicator(currentProfileSlot);
     drawStatusBar();  // Top status indicators
     
@@ -3035,6 +3077,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawStatusBar();  // Top status indicators (must be before mute icon)
     drawMuteIcon(state.muted);
+    drawLockoutIndicator();
     drawProfileIndicator(currentProfileSlot);
     DISP_PERF_LOG("arrows+icons");
     

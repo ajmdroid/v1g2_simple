@@ -169,7 +169,7 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     entry.lastSeenMs  = (epochMs > 0) ? epochMs : c.lastSeenMs;
     entry.lastPassMs  = 0;
 
-    const int slot = index_->add(entry);
+    const int slot = index_->addOrUpdate(entry);
     if (slot >= 0) {
         ++stats_.promotions;
         Serial.printf("[Learner] PROMOTED slot=%d band=%u freq=%u lat=%ld lon=%ld hits=%u\n",

@@ -51,6 +51,33 @@ int LockoutIndex::add(const LockoutEntry& entry) {
     return -1;  // Full.
 }
 
+int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
+    // Check for an existing entry that covers the same zone+band+freq.
+    const int existing = findMatch(entry.latE5, entry.lonE5,
+                                   entry.bandMask, entry.freqMHz);
+    if (existing >= 0) {
+        LockoutEntry& e = entries_[existing];
+        // Merge: keep the higher confidence.
+        if (entry.confidence > e.confidence) {
+            e.confidence = entry.confidence;
+        }
+        // Keep the earliest firstSeenMs.
+        if (entry.firstSeenMs > 0 &&
+            (e.firstSeenMs == 0 || entry.firstSeenMs < e.firstSeenMs)) {
+            e.firstSeenMs = entry.firstSeenMs;
+        }
+        // Keep the latest lastSeenMs.
+        if (entry.lastSeenMs > e.lastSeenMs) {
+            e.lastSeenMs = entry.lastSeenMs;
+        }
+        // Merge flags (preserve both manual + learned if applicable).
+        e.flags |= entry.flags;
+        return existing;
+    }
+    // No existing match — insert at the first free slot.
+    return add(entry);
+}
+
 bool LockoutIndex::remove(size_t index) {
     if (index >= kCapacity) {
         return false;

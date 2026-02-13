@@ -916,6 +916,10 @@ void loop() {
         signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
         lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
 
+        // Feed lockout decision into display indicator before rendering.
+        const auto& lockRes = lockoutEnforcer.lastResult();
+        display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
+
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {

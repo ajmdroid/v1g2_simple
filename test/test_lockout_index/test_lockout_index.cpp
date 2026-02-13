@@ -370,6 +370,87 @@ void test_entry_clear_resets_all_fields() {
 }
 
 // ================================================================
+// addOrUpdate (dedup)
+// ================================================================
+
+void test_addOrUpdate_creates_when_no_match() {
+    int slot = idx.addOrUpdate(makeKBandEntry(3736277, -7923221));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+    TEST_ASSERT_EQUAL(1, idx.activeCount());
+}
+
+void test_addOrUpdate_merges_when_match() {
+    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    e1.confidence = 50;
+    idx.addOrUpdate(e1);
+
+    // Same location+band+freq → should merge, not create a second entry.
+    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    e2.confidence = 80;
+    int slot = idx.addOrUpdate(e2);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+    TEST_ASSERT_EQUAL(1, idx.activeCount());  // No duplicate.
+    TEST_ASSERT_EQUAL(80, idx.at(slot)->confidence);  // Max of 50, 80.
+}
+
+void test_addOrUpdate_keeps_earliest_firstSeen() {
+    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    e1.firstSeenMs = 2000000000000LL;
+    e1.lastSeenMs  = 2000000000000LL;
+    idx.addOrUpdate(e1);
+
+    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    e2.firstSeenMs = 1000000000000LL;  // Earlier.
+    e2.lastSeenMs  = 3000000000000LL;
+    int slot = idx.addOrUpdate(e2);
+
+    TEST_ASSERT_EQUAL(1000000000000LL, idx.at(slot)->firstSeenMs);  // Earliest kept.
+}
+
+void test_addOrUpdate_keeps_latest_lastSeen() {
+    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    e1.lastSeenMs = 3000000000000LL;
+    idx.addOrUpdate(e1);
+
+    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    e2.lastSeenMs = 1000000000000LL;  // Older — should NOT overwrite.
+    int slot = idx.addOrUpdate(e2);
+
+    TEST_ASSERT_EQUAL(3000000000000LL, idx.at(slot)->lastSeenMs);  // Latest kept.
+}
+
+void test_addOrUpdate_merges_flags() {
+    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    e1.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    idx.addOrUpdate(e1);
+
+    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    e2.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    int slot = idx.addOrUpdate(e2);
+
+    uint8_t expected = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED | LockoutEntry::FLAG_MANUAL;
+    TEST_ASSERT_EQUAL(expected, idx.at(slot)->flags);
+}
+
+void test_addOrUpdate_no_duplicate() {
+    // Add 3 entries at the same location — only 1 should survive.
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.confidence = 10;
+    idx.addOrUpdate(e);
+    e.confidence = 20;
+    idx.addOrUpdate(e);
+    e.confidence = 30;
+    idx.addOrUpdate(e);
+
+    TEST_ASSERT_EQUAL(1, idx.activeCount());
+    // Confidence should be max seen: 30.
+    const LockoutEntry* p = idx.at(0);
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL(30, p->confidence);
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -419,6 +500,14 @@ int main(int argc, char** argv) {
     // Flags
     RUN_TEST(test_flag_setters_and_getters);
     RUN_TEST(test_entry_clear_resets_all_fields);
+
+    // addOrUpdate (dedup)
+    RUN_TEST(test_addOrUpdate_creates_when_no_match);
+    RUN_TEST(test_addOrUpdate_merges_when_match);
+    RUN_TEST(test_addOrUpdate_keeps_earliest_firstSeen);
+    RUN_TEST(test_addOrUpdate_keeps_latest_lastSeen);
+    RUN_TEST(test_addOrUpdate_merges_flags);
+    RUN_TEST(test_addOrUpdate_no_duplicate);
 
     return UNITY_END();
 }

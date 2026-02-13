@@ -36,6 +36,12 @@ public:
     /// Insert or overwrite at first available slot.  Returns slot index, or -1 if full.
     int add(const LockoutEntry& entry);
 
+    /// Insert, or update an existing entry if one already covers the same zone.
+    /// Uses findMatch() to detect overlap.  On match: merges confidence
+    /// (max of old and new), updates timestamps if newer.  Returns slot index,
+    /// or -1 if full and no match found.
+    int addOrUpdate(const LockoutEntry& entry);
+
     /// Remove entry at index (marks inactive).  Returns false if index out of range.
     bool remove(size_t index);
 
