@@ -6,9 +6,9 @@ Evaluates NDJSON debug logs against the Base Stable standard defined in
 docs/stability_standard.md.
 
 Usage:
-    python tools/scorecard.py debug.log
-    python tools/scorecard.py debug.log --verbose
-    python tools/scorecard.py debug.log --json
+    python tools/scorecard.py test/fixtures/debug_base_stable.log
+    python tools/scorecard.py test/fixtures/debug_base_stable.log --verbose
+    python tools/scorecard.py test/fixtures/debug_base_stable.log --json
 
 Exit codes:
     0 = GREEN (all pass)
