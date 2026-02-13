@@ -7,6 +7,7 @@
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include "time_service.h"
+#include "obd_handler.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -101,6 +102,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t largestDma = StorageManager::getCachedLargestDma();
     uint32_t freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
     uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     if (freeDmaCap < sDmaFreeCapMin) {
@@ -152,6 +154,15 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
     snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
     snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
+    snapshot.obdState = obdPerf.state;
+    snapshot.obdConnected = obdPerf.connected;
+    snapshot.obdScanActive = obdPerf.scanActive;
+    snapshot.obdHasValidData = obdPerf.hasValidData;
+    snapshot.obdSampleAgeMs = obdPerf.sampleAgeMs;
+    snapshot.obdSpeedMphX10 = obdPerf.speedMphX10;
+    snapshot.obdConnFailures = obdPerf.connectionFailures;
+    snapshot.obdPollFailStreak = obdPerf.consecutivePollFailures;
+    snapshot.obdNotifyDrops = obdPerf.notifyDrops;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;

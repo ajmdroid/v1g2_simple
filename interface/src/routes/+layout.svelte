@@ -8,6 +8,23 @@
 	
 	// Check if using default password on mount
 	onMount(async () => {
+		// Auto-sync time from phone on every page load (fire-and-forget).
+		// The ESP32-S3 has no RTC battery, so time is lost on every reboot.
+		// This ensures the device clock is set whenever the UI is opened.
+		try {
+			fetch('/api/time/set', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					unixMs: Date.now(),
+					tzOffsetMin: new Date().getTimezoneOffset() * -1,
+					source: 'client'
+				})
+			}).catch(() => {});  // swallow errors silently
+		} catch (e) {
+			// ignore
+		}
+
 		// Only check once per session (use sessionStorage)
 		if (sessionStorage.getItem('passwordWarningDismissed')) {
 			warningDismissed = true;

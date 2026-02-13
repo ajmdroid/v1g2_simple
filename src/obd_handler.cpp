@@ -573,6 +573,37 @@ OBDData OBDHandler::getData() const {
     return lastData;
 }
 
+OBDPerfSnapshot OBDHandler::getPerfSnapshot() const {
+    OBDPerfSnapshot snapshot;
+    snapshot.notifyDrops = notifyDropCount.load(std::memory_order_relaxed);
+
+    ObdLock lock(obdMutex, 0);
+    if (!lock.ok()) {
+        return snapshot;
+    }
+
+    snapshot.state = static_cast<uint8_t>(state);
+    snapshot.connected = (state == OBDState::READY || state == OBDState::POLLING) ? 1 : 0;
+    snapshot.scanActive = scanActive ? 1 : 0;
+    snapshot.connectionFailures = connectionFailures;
+    snapshot.consecutivePollFailures = consecutivePollFailures;
+
+    const uint32_t nowMs = millis();
+    const uint32_t ageMs =
+        (lastData.timestamp_ms > 0 && nowMs >= lastData.timestamp_ms)
+            ? (nowMs - lastData.timestamp_ms)
+            : UINT32_MAX;
+    snapshot.sampleAgeMs = ageMs;
+
+    const bool hasFreshData = lastData.valid && ageMs <= 3000;
+    snapshot.hasValidData = hasFreshData ? 1 : 0;
+    if (lastData.valid) {
+        snapshot.speedMphX10 = static_cast<int32_t>(lastData.speed_mph * 10.0f);
+    }
+
+    return snapshot;
+}
+
 bool OBDHandler::hasValidData() const {
     ObdLock lock(obdMutex, 0);
     if (!lock.ok()) {

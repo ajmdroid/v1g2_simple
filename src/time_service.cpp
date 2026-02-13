@@ -186,6 +186,9 @@ void TimeService::begin() {
         confidence_.store(CONFIDENCE_ACCURATE, std::memory_order_relaxed);
         valid_.store(1, std::memory_order_release);
 
+        Serial.printf("[Time] Restored from system clock: epoch=%lld, tz=%d\n",
+                      (long long)systemEpochMs, (int)tzOffsetMin);
+
         PersistedTime updatedSnapshot;
         updatedSnapshot.valid = true;
         updatedSnapshot.epochMs = systemEpochMs;
@@ -205,6 +208,9 @@ void TimeService::begin() {
         source_.store(snapshot.source, std::memory_order_relaxed);
         confidence_.store(CONFIDENCE_ESTIMATED, std::memory_order_relaxed);
         valid_.store(1, std::memory_order_release);
+
+        Serial.printf("[Time] Restored from NVS (estimated): epoch=%lld, tz=%d\n",
+                      (long long)snapshot.epochMs, (int)snapshot.tzOffsetMin);
         return;
     }
 
@@ -214,6 +220,8 @@ void TimeService::begin() {
     tzOffsetMinutes_.store(0, std::memory_order_relaxed);
     epochBaseMs_.store(0, std::memory_order_relaxed);
     setMonoMs_.store(0, std::memory_order_relaxed);
+
+    Serial.println("[Time] No valid time source at boot - waiting for client sync");
 }
 
 int64_t TimeService::nowEpochMsOr0() const {
@@ -261,6 +269,9 @@ void TimeService::setEpochBaseMs(int64_t trustedEpochMs, int32_t tzOffsetMinutes
     initialized_.store(1, std::memory_order_release);
 
     setSystemClockIfValid(trustedEpochMs);
+
+    Serial.printf("[Time] Set from source %u: epoch=%lld, tz=%d\n",
+                  (unsigned)source, (long long)trustedEpochMs, (int)clampedTzOffsetMinutes);
 
     PersistedTime snapshot;
     snapshot.valid = true;

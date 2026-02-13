@@ -39,6 +39,20 @@ struct OBDData {
     uint32_t timestamp_ms;    // millis() when last updated
 };
 
+// Lightweight OBD snapshot for perf instrumentation.
+// All fields are scalar and safe to emit to CSV/debug metrics.
+struct OBDPerfSnapshot {
+    uint8_t state = 0xFF;              // OBDState enum value (0xFF when unavailable)
+    uint8_t connected = 0;             // 1 when READY/POLLING
+    uint8_t scanActive = 0;            // 1 when manual scan active
+    uint8_t hasValidData = 0;          // 1 when data is fresh and valid
+    uint32_t sampleAgeMs = UINT32_MAX; // Age of last sample; UINT32_MAX when unknown
+    int32_t speedMphX10 = -1;          // Speed mph * 10; -1 when unavailable
+    uint8_t connectionFailures = 0;    // Current connect/init failure count
+    uint8_t consecutivePollFailures = 0; // Current polling failure streak
+    uint32_t notifyDrops = 0;          // Stream-buffer notification drops
+};
+
 // Found device during manual scan
 struct OBDDeviceInfo {
     String address;
@@ -124,6 +138,7 @@ public:
 
     // Data access
     OBDData getData() const;
+    OBDPerfSnapshot getPerfSnapshot() const;
     bool hasValidData() const;
     bool isDataStale(uint32_t maxAgeMs = 2000) const;
     float getSpeedKph() const;
