@@ -10,11 +10,15 @@
 	let statusFetchInFlight = false;
 	let gpsStatusFetchInFlight = false;
 	let nearbyFetchInFlight = false;
+	let lockoutFetchInFlight = false;
 	let savingVwData = $state(false);
 	let savingGpsEnabled = $state(false);
+	let lockoutLoading = $state(false);
+	let lockoutError = $state('');
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const SCAN_POLL_INTERVAL_MS = 1500;
+	const LOCKOUT_EVENTS_LIMIT = 48;
 
 	let status = $state({
 		state: 'IDLE',
@@ -50,6 +54,13 @@
 
 	let nearby = $state([]);
 	let remembered = $state([]);
+	let lockoutEvents = $state([]);
+	let lockoutStats = $state({
+		published: 0,
+		drops: 0,
+		size: 0,
+		capacity: 0
+	});
 
 	let showPinModal = $state(false);
 	let selectedDevice = $state(null);
@@ -106,8 +117,35 @@
 		return `${f}°F`;
 	}
 
+	function formatBootTime(tsMs) {
+		if (typeof tsMs !== 'number' || !Number.isFinite(tsMs)) return '—';
+		return `${(tsMs / 1000).toFixed(1)}s`;
+	}
+
+	function formatFrequency(mhz) {
+		if (typeof mhz !== 'number' || !Number.isFinite(mhz) || mhz <= 0) return '—';
+		if (mhz >= 1000) return `${(mhz / 1000).toFixed(3)} GHz`;
+		return `${mhz.toFixed(1)} MHz`;
+	}
+
+	function formatCoordinate(value) {
+		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+		return value.toFixed(5);
+	}
+
+	function formatHdop(value) {
+		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+		return value.toFixed(1);
+	}
+
+	function signalMapHref(event) {
+		if (!event?.locationValid) return '';
+		if (typeof event.latitude !== 'number' || typeof event.longitude !== 'number') return '';
+		return `https://maps.google.com/?q=${event.latitude},${event.longitude}`;
+	}
+
 	async function refreshAll() {
-		await Promise.all([fetchStatus(), fetchNearby(), fetchRemembered(), fetchGpsStatus()]);
+		await Promise.all([fetchStatus(), fetchNearby(), fetchRemembered(), fetchGpsStatus(), fetchLockoutEvents()]);
 		loading = false;
 	}
 
@@ -139,6 +177,36 @@
 			// Polling should fail silently.
 		} finally {
 			gpsStatusFetchInFlight = false;
+		}
+	}
+
+	async function fetchLockoutEvents(options = {}) {
+		const { silent = false } = options;
+		if (lockoutFetchInFlight) return;
+		lockoutFetchInFlight = true;
+		if (!silent) {
+			lockoutLoading = true;
+		}
+		lockoutError = '';
+		try {
+			const res = await fetch(`/api/lockout/events?limit=${LOCKOUT_EVENTS_LIMIT}`);
+			if (!res.ok) {
+				if (!silent) lockoutError = 'Failed to load lockout candidates';
+				return;
+			}
+			const data = await res.json();
+			lockoutEvents = Array.isArray(data.events) ? data.events : [];
+			lockoutStats = {
+				published: typeof data.published === 'number' ? data.published : 0,
+				drops: typeof data.drops === 'number' ? data.drops : 0,
+				size: typeof data.size === 'number' ? data.size : lockoutEvents.length,
+				capacity: typeof data.capacity === 'number' ? data.capacity : lockoutStats.capacity
+			};
+		} catch (e) {
+			if (!silent) lockoutError = 'Failed to load lockout candidates';
+		} finally {
+			lockoutFetchInFlight = false;
+			lockoutLoading = false;
 		}
 	}
 
@@ -439,6 +507,110 @@
 					<div class="stat-desc">{gpsStatus.detectionTimedOut ? 'module timeout' : 'live sample'}</div>
 				</div>
 			</div>
+		</div>
+	</div>
+
+	<div class="card bg-base-200 shadow">
+		<div class="card-body gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h2 class="card-title">Lockout Candidates</h2>
+					<p class="text-sm text-base-content/70">
+						Read-only recent signal observations for post-test lockout review.
+					</p>
+				</div>
+				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutEvents()} disabled={lockoutLoading}>
+					{#if lockoutLoading}
+						<span class="loading loading-spinner loading-xs"></span>
+					{/if}
+					Refresh
+				</button>
+			</div>
+
+			{#if lockoutError}
+				<div class="alert alert-warning py-2" role="status">
+					<span>{lockoutError}</span>
+				</div>
+			{/if}
+
+			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Buffer</div>
+					<div class="stat-value text-base">
+						{lockoutStats.size}/{lockoutStats.capacity || '—'}
+					</div>
+					<div class="stat-desc">recent observations</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Published</div>
+					<div class="stat-value text-base">{lockoutStats.published}</div>
+					<div class="stat-desc">since boot</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Drops</div>
+					<div class="stat-value text-base">{lockoutStats.drops}</div>
+					<div class="stat-desc">oldest overwritten</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Latest</div>
+					<div class="stat-value text-base">
+						{lockoutEvents[0]?.band || '—'}
+					</div>
+					<div class="stat-desc">
+						{lockoutEvents[0] ? formatFrequency(lockoutEvents[0].frequencyMHz) : 'no samples yet'}
+					</div>
+				</div>
+			</div>
+
+			{#if loading || lockoutLoading}
+				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+			{:else if lockoutEvents.length === 0}
+				<div class="text-sm text-base-content/70">
+					No candidates logged yet. Run a drive test, then refresh this card.
+				</div>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th>Seen (boot)</th>
+								<th>Band</th>
+								<th>Frequency</th>
+								<th>Strength</th>
+								<th>Sats</th>
+								<th>HDOP</th>
+								<th>Location</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each lockoutEvents as event}
+								<tr>
+									<td class="font-mono text-xs">{formatBootTime(event.tsMs)}</td>
+									<td>{event.band || 'UNK'}</td>
+									<td>{formatFrequency(event.frequencyMHz)}</td>
+									<td>{typeof event.strength === 'number' ? event.strength : '—'}</td>
+									<td>{typeof event.satellites === 'number' ? event.satellites : '—'}</td>
+									<td>{formatHdop(event.hdop)}</td>
+									<td>
+										{#if event.locationValid}
+											<div class="font-mono text-xs">
+												{formatCoordinate(event.latitude)}, {formatCoordinate(event.longitude)}
+											</div>
+											{#if signalMapHref(event)}
+												<a class="link link-primary text-xs" href={signalMapHref(event)} target="_blank" rel="noopener noreferrer">
+													map
+												</a>
+											{/if}
+										{:else}
+											<span class="text-xs text-base-content/60">no fix</span>
+										{/if}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
 		</div>
 	</div>
 
