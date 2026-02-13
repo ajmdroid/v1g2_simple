@@ -11,8 +11,7 @@ class PowerModule {
 public:
     void begin(BatteryManager* batteryMgr,
                V1Display* disp,
-               SettingsManager* settingsMgr,
-               DebugLogger* dbgLogger);
+               SettingsManager* settingsMgr);
 
     // Log initial battery status after display init.
     void logStartupStatus();
@@ -30,7 +29,6 @@ private:
     BatteryManager* battery = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
-    DebugLogger* debugLogger = nullptr;
 
     bool lowBatteryWarningShown = false;
     unsigned long criticalBatteryTime = 0;

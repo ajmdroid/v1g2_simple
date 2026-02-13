@@ -10,12 +10,10 @@
 
 void PowerModule::begin(BatteryManager* batteryMgr,
                         V1Display* disp,
-                        SettingsManager* settingsMgr,
-                        DebugLogger* dbgLogger) {
+                        SettingsManager* settingsMgr) {
     battery = batteryMgr;
     display = disp;
     settings = settingsMgr;
-    debugLogger = dbgLogger;
 }
 
 void PowerModule::logStartupStatus() {

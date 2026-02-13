@@ -91,9 +91,6 @@ public:
     }
 };
 
-// Mock DebugLogger
-class MockDebugLogger {};
-
 // ============================================================================
 // POWER MODULE IMPLEMENTATION (extracted for testing)
 // ============================================================================
@@ -102,12 +99,10 @@ class TestPowerModule {
 public:
     void begin(MockBatteryManager* batteryMgr,
                MockDisplay* disp,
-               MockSettingsManager* settingsMgr,
-               MockDebugLogger* dbgLogger) {
+               MockSettingsManager* settingsMgr) {
         battery = batteryMgr;
         display = disp;
         settings = settingsMgr;
-        debugLogger = dbgLogger;
     }
 
     void onV1DataReceived() {
@@ -183,7 +178,6 @@ private:
     MockBatteryManager* battery = nullptr;
     MockDisplay* display = nullptr;
     MockSettingsManager* settings = nullptr;
-    MockDebugLogger* debugLogger = nullptr;
 
     bool lowBatteryWarningShown = false;
     unsigned long criticalBatteryTime = 0;
@@ -198,7 +192,6 @@ private:
 static MockBatteryManager batteryMgr;
 static MockDisplay displayMock;
 static MockSettingsManager settingsMgr;
-static MockDebugLogger debugLogger;
 static TestPowerModule powerModule;
 
 void setUp(void) {
@@ -207,7 +200,7 @@ void setUp(void) {
     displayMock.reset();
     settingsMgr.reset();
     powerModule.reset();
-    powerModule.begin(&batteryMgr, &displayMock, &settingsMgr, &debugLogger);
+    powerModule.begin(&batteryMgr, &displayMock, &settingsMgr);
 }
 
 void tearDown(void) {}

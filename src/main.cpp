@@ -479,7 +479,7 @@ void setup() {
     timeService.begin();
 
 #if defined(DISPLAY_WAVESHARE_349)
-    powerModule.begin(&batteryManager, &display, &settingsManager, &debugLogger);
+    powerModule.begin(&batteryManager, &display, &settingsManager);
     powerModule.logStartupStatus();
 #endif
     logBootStage("settings");
