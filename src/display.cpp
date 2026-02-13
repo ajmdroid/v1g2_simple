@@ -8,6 +8,7 @@
 #include "../include/config.h"
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/color_themes.h"
+#include "../include/band_utils.h"
 #include "v1simple_logo.h"  // Splash screen image (640x172)
 #include "settings.h"
 #include "battery_manager.h"
@@ -4687,13 +4688,7 @@ void V1Display::drawStatusBar() {
 }
 
 const char* V1Display::bandToString(Band band) {
-    switch (band) {
-        case BAND_LASER: return "Laser";
-        case BAND_KA: return "Ka";
-        case BAND_K: return "K";
-        case BAND_X: return "X";
-        default: return "None";
-    }
+    return bandName(band);
 }
 
 uint16_t V1Display::getBandColor(Band band) {
