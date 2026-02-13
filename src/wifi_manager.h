@@ -253,6 +253,7 @@ private:
     void handleObdRememberedAutoConnect();
     void handleObdForget();
     void handleGpsStatus();
+    void handleGpsObservations();
     void handleGpsConfig();
     void handleNotFound();
     

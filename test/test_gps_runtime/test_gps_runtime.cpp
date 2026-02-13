@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "../../src/modules/gps/gps_runtime_module.h"
+#include "../../src/modules/gps/gps_observation_log.cpp"  // Pull dependency for UNIT_TEST.
 #include "../../src/modules/gps/gps_runtime_module.cpp"  // Pull implementation for UNIT_TEST.
 
 #ifndef ARDUINO
@@ -32,8 +33,11 @@ void test_valid_rmc_updates_speed_and_fix() {
     GpsRuntimeStatus status = gpsRuntimeModule.snapshot(1000);
     TEST_ASSERT_TRUE(status.sampleValid);
     TEST_ASSERT_TRUE(status.hasFix);
+    TEST_ASSERT_TRUE(status.locationValid);
     TEST_ASSERT_EQUAL_UINT32(1, status.hardwareSamples);
     TEST_ASSERT_FLOAT_WITHIN(0.02f, 11.50779f, status.speedMph);
+    TEST_ASSERT_FLOAT_WITHIN(0.0002f, 48.1173f, status.latitudeDeg);
+    TEST_ASSERT_FLOAT_WITHIN(0.0002f, 11.516667f, status.longitudeDeg);
 
     float speedMph = 0.0f;
     uint32_t tsMs = 0;
@@ -52,6 +56,9 @@ void test_valid_gga_sets_quality_without_speed_sample() {
     TEST_ASSERT_FALSE(status.sampleValid);
     TEST_ASSERT_EQUAL_UINT8(8, status.satellites);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.9f, status.hdop);
+    TEST_ASSERT_TRUE(status.locationValid);
+    TEST_ASSERT_FLOAT_WITHIN(0.0002f, 48.1173f, status.latitudeDeg);
+    TEST_ASSERT_FLOAT_WITHIN(0.0002f, 11.516667f, status.longitudeDeg);
 }
 
 void test_bad_checksum_is_rejected_and_counted() {
@@ -75,6 +82,18 @@ void test_fix_loss_invalidates_speed_sample() {
     GpsRuntimeStatus status = gpsRuntimeModule.snapshot(2000);
     TEST_ASSERT_FALSE(status.sampleValid);
     TEST_ASSERT_FALSE(status.hasFix);
+    TEST_ASSERT_FALSE(status.locationValid);
+}
+
+void test_invalid_coordinate_is_rejected() {
+    const bool accepted = gpsRuntimeModule.injectNmeaSentenceForTest(
+        "$GPGGA,123520,4807.038,N,01161.000,E,1,08,0.9,545.4,M,46.9,M,,*48", 2500);
+    TEST_ASSERT_FALSE(accepted);
+
+    GpsRuntimeStatus status = gpsRuntimeModule.snapshot(2500);
+    TEST_ASSERT_FALSE(status.hasFix);
+    TEST_ASSERT_FALSE(status.locationValid);
+    TEST_ASSERT_EQUAL_UINT32(1, status.parseFailures);
 }
 
 void test_detection_timeout_disables_runtime_polling() {
@@ -114,6 +133,7 @@ int main() {
     RUN_TEST(test_valid_gga_sets_quality_without_speed_sample);
     RUN_TEST(test_bad_checksum_is_rejected_and_counted);
     RUN_TEST(test_fix_loss_invalidates_speed_sample);
+    RUN_TEST(test_invalid_coordinate_is_rejected);
     RUN_TEST(test_detection_timeout_disables_runtime_polling);
     RUN_TEST(test_stale_fix_is_cleared);
     RUN_TEST(test_overlong_sentence_is_rejected);

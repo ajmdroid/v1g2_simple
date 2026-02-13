@@ -1,4 +1,5 @@
 #include "gps_runtime_module.h"
+#include "gps_observation_log.h"
 #include "modules/speed/speed_source_selector.h"
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,9 @@ void GpsRuntimeModule::resetRuntimeState() {
     speedMph_ = 0.0f;
     satellites_ = 0;
     hdop_ = NAN;
+    locationValid_ = false;
+    latitudeDeg_ = NAN;
+    longitudeDeg_ = NAN;
     sampleTsMs_ = 0;
     moduleDetected_ = false;
     detectionTimedOut_ = false;
@@ -75,6 +79,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     sentenceActive_ = false;
     sentenceLen_ = 0;
     sentenceBuf_[0] = '\0';
+    gpsObservationLog.reset();
 }
 
 void GpsRuntimeModule::invalidateSpeedSample() {
@@ -98,8 +103,12 @@ void GpsRuntimeModule::updateDetectionTimeout(uint32_t nowMs) {
     ggaFix_ = false;
     satellites_ = 0;
     hdop_ = NAN;
+    locationValid_ = false;
+    latitudeDeg_ = NAN;
+    longitudeDeg_ = NAN;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
+    publishObservation(nowMs);
 
 #if !defined(UNIT_TEST)
     Serial2.end();
@@ -121,8 +130,12 @@ void GpsRuntimeModule::updateFixStaleness(uint32_t nowMs) {
     ggaFix_ = false;
     satellites_ = 0;
     hdop_ = NAN;
+    locationValid_ = false;
+    latitudeDeg_ = NAN;
+    longitudeDeg_ = NAN;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
+    publishObservation(nowMs);
 }
 
 void GpsRuntimeModule::update(uint32_t nowMs) {
@@ -257,6 +270,22 @@ bool GpsRuntimeModule::parseGga(char* fields[], size_t fieldCount, uint32_t nowM
         return false;
     }
     satellites_ = static_cast<uint8_t>(std::min<uint32_t>(satelliteCount, 99));
+    const bool ggaFix = (fixQuality > 0) && (satellites_ > 0);
+
+    float parsedLatitude = NAN;
+    float parsedLongitude = NAN;
+    if (ggaFix) {
+        if (!fields[2] || fields[2][0] == '\0' ||
+            !fields[3] || fields[3][0] == '\0' ||
+            !fields[4] || fields[4][0] == '\0' ||
+            !fields[5] || fields[5][0] == '\0') {
+            return false;
+        }
+        if (!parseNmeaCoordinate(fields[2], fields[3], true, parsedLatitude) ||
+            !parseNmeaCoordinate(fields[4], fields[5], false, parsedLongitude)) {
+            return false;
+        }
+    }
 
     float parsedHdop = NAN;
     if (fieldCount > 8 && fields[8] && fields[8][0] != '\0') {
@@ -266,13 +295,24 @@ bool GpsRuntimeModule::parseGga(char* fields[], size_t fieldCount, uint32_t nowM
     }
     hdop_ = std::isfinite(parsedHdop) ? parsedHdop : NAN;
 
-    ggaFix_ = (fixQuality > 0) && (satellites_ > 0);
+    ggaFix_ = ggaFix;
     hasFix_ = ggaFix_ || rmcFix_;
+    if (ggaFix_) {
+        locationValid_ = true;
+        latitudeDeg_ = parsedLatitude;
+        longitudeDeg_ = parsedLongitude;
+    } else if (!rmcFix_) {
+        locationValid_ = false;
+        latitudeDeg_ = NAN;
+        longitudeDeg_ = NAN;
+    }
     if (hasFix_) {
         lastFixTsMs_ = (nowMs == 0) ? millis() : nowMs;
     } else {
         invalidateSpeedSample();
     }
+
+    publishObservation((nowMs == 0) ? millis() : nowMs);
 
     return true;
 }
@@ -288,8 +328,26 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
         hasFix_ = ggaFix_;
         if (!hasFix_) {
             invalidateSpeedSample();
+            locationValid_ = false;
+            latitudeDeg_ = NAN;
+            longitudeDeg_ = NAN;
         }
+        publishObservation((nowMs == 0) ? millis() : nowMs);
         return true;
+    }
+
+    if (!fields[3] || fields[3][0] == '\0' ||
+        !fields[4] || fields[4][0] == '\0' ||
+        !fields[5] || fields[5][0] == '\0' ||
+        !fields[6] || fields[6][0] == '\0') {
+        return false;
+    }
+
+    float parsedLatitude = NAN;
+    float parsedLongitude = NAN;
+    if (!parseNmeaCoordinate(fields[3], fields[4], true, parsedLatitude) ||
+        !parseNmeaCoordinate(fields[5], fields[6], false, parsedLongitude)) {
+        return false;
     }
 
     float speedKnots = 0.0f;
@@ -310,9 +368,66 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
     speedMph_ = std::clamp(speedMph, 0.0f, SpeedSourceSelector::MAX_VALID_SPEED_MPH);
     sampleTsMs_ = (nowMs == 0) ? millis() : nowMs;
     lastFixTsMs_ = sampleTsMs_;
+    locationValid_ = true;
+    latitudeDeg_ = parsedLatitude;
+    longitudeDeg_ = parsedLongitude;
     hardwareSamples_++;
+    publishObservation(sampleTsMs_);
 
     return true;
+}
+
+bool GpsRuntimeModule::parseNmeaCoordinate(const char* coordText,
+                                           const char* hemisphereText,
+                                           bool isLatitude,
+                                           float& outDegrees) {
+    if (!coordText || coordText[0] == '\0' || !hemisphereText || hemisphereText[0] == '\0') {
+        return false;
+    }
+
+    const char hemi = hemisphereText[0];
+    bool negative = false;
+    if (isLatitude) {
+        if (hemi == 'S' || hemi == 's') {
+            negative = true;
+        } else if (hemi != 'N' && hemi != 'n') {
+            return false;
+        }
+    } else {
+        if (hemi == 'W' || hemi == 'w') {
+            negative = true;
+        } else if (hemi != 'E' && hemi != 'e') {
+            return false;
+        }
+    }
+
+    char* end = nullptr;
+    const double raw = std::strtod(coordText, &end);
+    if (end == coordText || *end != '\0' || !std::isfinite(raw) || raw < 0.0) {
+        return false;
+    }
+
+    const double degreesPart = std::floor(raw / 100.0);
+    const double minutesPart = raw - (degreesPart * 100.0);
+    if (!std::isfinite(degreesPart) || !std::isfinite(minutesPart)) {
+        return false;
+    }
+    if (minutesPart < 0.0 || minutesPart >= 60.0) {
+        return false;
+    }
+
+    double decimalDegrees = degreesPart + (minutesPart / 60.0);
+    const double maxDegrees = isLatitude ? 90.0 : 180.0;
+    if (decimalDegrees > maxDegrees) {
+        return false;
+    }
+
+    if (negative) {
+        decimalDegrees = -decimalDegrees;
+    }
+
+    outDegrees = static_cast<float>(decimalDegrees);
+    return std::isfinite(outDegrees);
 }
 
 bool GpsRuntimeModule::parseFloatStrict(const char* text, float& out) {
@@ -408,7 +523,9 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
                                          bool hasFix,
                                          uint8_t satellites,
                                          float hdop,
-                                         uint32_t timestampMs) {
+                                         uint32_t timestampMs,
+                                         float latitudeDeg,
+                                         float longitudeDeg) {
     if (!enabled_) {
         return;
     }
@@ -423,11 +540,27 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
     speedMph_ = std::clamp(speedMph, 0.0f, SpeedSourceSelector::MAX_VALID_SPEED_MPH);
     satellites_ = satellites;
     hdop_ = std::isfinite(hdop) ? std::max(0.0f, hdop) : NAN;
+    if (hasFix &&
+        std::isfinite(latitudeDeg) &&
+        std::isfinite(longitudeDeg) &&
+        latitudeDeg >= -90.0f &&
+        latitudeDeg <= 90.0f &&
+        longitudeDeg >= -180.0f &&
+        longitudeDeg <= 180.0f) {
+        locationValid_ = true;
+        latitudeDeg_ = latitudeDeg;
+        longitudeDeg_ = longitudeDeg;
+    } else {
+        locationValid_ = false;
+        latitudeDeg_ = NAN;
+        longitudeDeg_ = NAN;
+    }
     sampleTsMs_ = (timestampMs == 0) ? millis() : timestampMs;
     if (hasFix_) {
         lastFixTsMs_ = sampleTsMs_;
     }
     injectedSamples_++;
+    publishObservation(sampleTsMs_);
 }
 
 void GpsRuntimeModule::clearSample() {
@@ -437,7 +570,11 @@ void GpsRuntimeModule::clearSample() {
     ggaFix_ = false;
     satellites_ = 0;
     hdop_ = NAN;
+    locationValid_ = false;
+    latitudeDeg_ = NAN;
+    longitudeDeg_ = NAN;
     lastFixTsMs_ = 0;
+    publishObservation(millis());
 }
 
 bool GpsRuntimeModule::getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const {
@@ -460,6 +597,9 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     status.speedMph = speedMph_;
     status.satellites = satellites_;
     status.hdop = hdop_;
+    status.locationValid = locationValid_;
+    status.latitudeDeg = latitudeDeg_;
+    status.longitudeDeg = longitudeDeg_;
     status.sampleTsMs = sampleTsMs_;
     status.injectedSamples = injectedSamples_;
     status.moduleDetected = moduleDetected_;
@@ -481,6 +621,24 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     }
 
     return status;
+}
+
+void GpsRuntimeModule::publishObservation(uint32_t timestampMs) {
+    GpsObservation observation;
+    observation.tsMs = (timestampMs == 0) ? millis() : timestampMs;
+    observation.hasFix = hasFix_;
+    bool speedFresh = sampleValid_ && hasFix_ && sampleTsMs_ != 0 && observation.tsMs >= sampleTsMs_;
+    if (speedFresh) {
+        speedFresh = (observation.tsMs - sampleTsMs_) <= SAMPLE_MAX_AGE_MS;
+    }
+    observation.speedValid = speedFresh;
+    observation.speedMph = speedFresh ? speedMph_ : 0.0f;
+    observation.satellites = satellites_;
+    observation.hdop = hdop_;
+    observation.locationValid = locationValid_ && hasFix_;
+    observation.latitudeDeg = observation.locationValid ? latitudeDeg_ : NAN;
+    observation.longitudeDeg = observation.locationValid ? longitudeDeg_ : NAN;
+    gpsObservationLog.publish(observation);
 }
 
 #ifdef UNIT_TEST

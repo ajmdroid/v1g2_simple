@@ -9,6 +9,9 @@ struct GpsRuntimeStatus {
     float speedMph = 0.0f;
     uint8_t satellites = 0;
     float hdop = NAN;
+    bool locationValid = false;
+    float latitudeDeg = NAN;
+    float longitudeDeg = NAN;
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
     uint32_t injectedSamples = 0;
@@ -42,7 +45,9 @@ public:
                            bool hasFix,
                            uint8_t satellites,
                            float hdop,
-                           uint32_t timestampMs);
+                           uint32_t timestampMs,
+                           float latitudeDeg = NAN,
+                           float longitudeDeg = NAN);
     void clearSample();
 
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
@@ -66,12 +71,17 @@ private:
 
     void resetRuntimeState();
     void invalidateSpeedSample();
+    void publishObservation(uint32_t timestampMs);
     void updateDetectionTimeout(uint32_t nowMs);
     void updateFixStaleness(uint32_t nowMs);
     void ingestByte(char c, uint32_t nowMs);
     bool processSentence(char* sentence, uint32_t nowMs);
     bool parseGga(char* fields[], size_t fieldCount, uint32_t nowMs);
     bool parseRmc(char* fields[], size_t fieldCount, uint32_t nowMs);
+    static bool parseNmeaCoordinate(const char* coordText,
+                                    const char* hemisphereText,
+                                    bool isLatitude,
+                                    float& outDegrees);
     static bool parseFloatStrict(const char* text, float& out);
     static bool parseUIntStrict(const char* text, uint32_t& out);
     static bool parseChecksum(const char* checksumText, uint8_t& out);
@@ -84,6 +94,9 @@ private:
     float speedMph_ = 0.0f;
     uint8_t satellites_ = 0;
     float hdop_ = NAN;
+    bool locationValid_ = false;
+    float latitudeDeg_ = NAN;
+    float longitudeDeg_ = NAN;
     uint32_t sampleTsMs_ = 0;
     uint32_t injectedSamples_ = 0;
     bool moduleDetected_ = false;

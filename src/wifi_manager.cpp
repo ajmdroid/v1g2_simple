@@ -19,6 +19,7 @@
 #include "obd_handler.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
+#include "modules/gps/gps_observation_log.h"
 #include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
 #include "modules/system/system_event_bus.h"
@@ -804,6 +805,7 @@ void WiFiManager::setupWebServer() {
 
     // GPS scaffold API routes
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
+    server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
@@ -2662,6 +2664,14 @@ void WiFiManager::handleDebugMetrics() {
     } else {
         gpsObj["hdop"] = gpsStatus.hdop;
     }
+    gpsObj["locationValid"] = gpsStatus.locationValid;
+    if (gpsStatus.locationValid) {
+        gpsObj["latitude"] = gpsStatus.latitudeDeg;
+        gpsObj["longitude"] = gpsStatus.longitudeDeg;
+    } else {
+        gpsObj["latitude"] = nullptr;
+        gpsObj["longitude"] = nullptr;
+    }
     if (gpsStatus.sampleValid) {
         gpsObj["speedMph"] = gpsStatus.speedMph;
         gpsObj["sampleTsMs"] = gpsStatus.sampleTsMs;
@@ -2679,6 +2689,12 @@ void WiFiManager::handleDebugMetrics() {
     } else {
         gpsObj["lastSentenceTsMs"] = gpsStatus.lastSentenceTsMs;
     }
+    const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    JsonObject gpsLogObj = doc["gpsLog"].to<JsonObject>();
+    gpsLogObj["published"] = gpsLogStats.published;
+    gpsLogObj["drops"] = gpsLogStats.drops;
+    gpsLogObj["size"] = static_cast<uint32_t>(gpsLogStats.size);
+    gpsLogObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
 
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
@@ -3997,6 +4013,14 @@ void WiFiManager::handleGpsStatus() {
     } else {
         doc["hdop"] = gpsStatus.hdop;
     }
+    doc["locationValid"] = gpsStatus.locationValid;
+    if (gpsStatus.locationValid) {
+        doc["latitude"] = gpsStatus.latitudeDeg;
+        doc["longitude"] = gpsStatus.longitudeDeg;
+    } else {
+        doc["latitude"] = nullptr;
+        doc["longitude"] = nullptr;
+    }
 
     if (gpsStatus.sampleValid) {
         doc["speedMph"] = gpsStatus.speedMph;
@@ -4016,6 +4040,12 @@ void WiFiManager::handleGpsStatus() {
     } else {
         doc["lastSentenceTsMs"] = gpsStatus.lastSentenceTsMs;
     }
+    const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    JsonObject observationsObj = doc["observations"].to<JsonObject>();
+    observationsObj["published"] = gpsLogStats.published;
+    observationsObj["drops"] = gpsLogStats.drops;
+    observationsObj["size"] = static_cast<uint32_t>(gpsLogStats.size);
+    observationsObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
 
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
@@ -4065,6 +4095,58 @@ void WiFiManager::handleGpsStatus() {
     server.send(200, "application/json", response);
 }
 
+void WiFiManager::handleGpsObservations() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    uint16_t limit = 16;
+    if (server.hasArg("limit")) {
+        limit = clampU16Value(server.arg("limit").toInt(), 1, 32);
+    }
+
+    GpsObservation samples[32] = {};
+    const size_t count = gpsObservationLog.copyRecent(samples, limit);
+    const GpsObservationLogStats stats = gpsObservationLog.stats();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["count"] = static_cast<uint32_t>(count);
+    doc["published"] = stats.published;
+    doc["drops"] = stats.drops;
+    doc["size"] = static_cast<uint32_t>(stats.size);
+    doc["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
+
+    JsonArray samplesArray = doc["samples"].to<JsonArray>();
+    for (size_t i = 0; i < count; ++i) {
+        const GpsObservation& sample = samples[i];
+        JsonObject entry = samplesArray.add<JsonObject>();
+        entry["tsMs"] = sample.tsMs;
+        entry["hasFix"] = sample.hasFix;
+        entry["satellites"] = sample.satellites;
+        if (std::isnan(sample.hdop)) {
+            entry["hdop"] = nullptr;
+        } else {
+            entry["hdop"] = sample.hdop;
+        }
+        if (sample.speedValid) {
+            entry["speedMph"] = sample.speedMph;
+        } else {
+            entry["speedMph"] = nullptr;
+        }
+        if (sample.locationValid) {
+            entry["latitude"] = sample.latitudeDeg;
+            entry["longitude"] = sample.longitudeDeg;
+        } else {
+            entry["latitude"] = nullptr;
+            entry["longitude"] = nullptr;
+        }
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
 void WiFiManager::handleGpsConfig() {
     if (!checkRateLimit()) return;
     markUiActivity();
@@ -4079,6 +4161,8 @@ void WiFiManager::handleGpsConfig() {
     bool scaffoldHasFix = true;
     uint8_t scaffoldSatellites = 0;
     float scaffoldHdop = NAN;
+    float scaffoldLatitudeDeg = NAN;
+    float scaffoldLongitudeDeg = NAN;
     bool hasLockoutMode = false;
     LockoutRuntimeMode lockoutMode = currentSettings.gpsLockoutMode;
     bool hasCoreGuardEnabled = false;
@@ -4157,6 +4241,12 @@ void WiFiManager::handleGpsConfig() {
         if (body["hdop"].is<float>() || body["hdop"].is<double>() || body["hdop"].is<int>()) {
             scaffoldHdop = body["hdop"].as<float>();
         }
+        if (body["latitude"].is<float>() || body["latitude"].is<double>() || body["latitude"].is<int>()) {
+            scaffoldLatitudeDeg = body["latitude"].as<float>();
+        }
+        if (body["longitude"].is<float>() || body["longitude"].is<double>() || body["longitude"].is<int>()) {
+            scaffoldLongitudeDeg = body["longitude"].as<float>();
+        }
     }
 
     if (!hasEnabled && server.hasArg("enabled")) {
@@ -4234,6 +4324,20 @@ void WiFiManager::handleGpsConfig() {
     if (std::isfinite(scaffoldHdop) && scaffoldHdop < 0.0f) {
         scaffoldHdop = 0.0f;
     }
+    const bool hasScaffoldLatitude = std::isfinite(scaffoldLatitudeDeg);
+    const bool hasScaffoldLongitude = std::isfinite(scaffoldLongitudeDeg);
+    if (hasScaffoldLatitude != hasScaffoldLongitude) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"latitude and longitude must be provided together\"}");
+        return;
+    }
+    if (hasScaffoldLatitude &&
+        (scaffoldLatitudeDeg < -90.0f || scaffoldLatitudeDeg > 90.0f ||
+         scaffoldLongitudeDeg < -180.0f || scaffoldLongitudeDeg > 180.0f)) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"latitude/longitude out of range\"}");
+        return;
+    }
 
     if (hasEnabled) {
         settingsManager.setGpsEnabled(enabled);
@@ -4271,7 +4375,9 @@ void WiFiManager::handleGpsConfig() {
                                            scaffoldHasFix,
                                            scaffoldSatellites,
                                            scaffoldHdop,
-                                           millis());
+                                           millis(),
+                                           scaffoldLatitudeDeg,
+                                           scaffoldLongitudeDeg);
     }
 
     const uint32_t nowMs = millis();
@@ -4303,6 +4409,17 @@ void WiFiManager::handleGpsConfig() {
     response["lockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;
+    response["locationValid"] = gpsStatus.locationValid;
+    if (gpsStatus.locationValid) {
+        response["latitude"] = gpsStatus.latitudeDeg;
+        response["longitude"] = gpsStatus.longitudeDeg;
+    } else {
+        response["latitude"] = nullptr;
+        response["longitude"] = nullptr;
+    }
+    const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    response["observationSize"] = static_cast<uint32_t>(gpsLogStats.size);
+    response["observationDrops"] = gpsLogStats.drops;
 
     String json;
     serializeJson(response, json);
