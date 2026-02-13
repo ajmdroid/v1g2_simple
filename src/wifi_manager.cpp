@@ -2583,10 +2583,23 @@ void WiFiManager::handleDebugMetrics() {
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     JsonObject gpsObj = doc["gps"].to<JsonObject>();
     gpsObj["enabled"] = gpsStatus.enabled;
+    gpsObj["mode"] = (gpsStatus.parserActive || gpsStatus.moduleDetected || gpsStatus.hardwareSamples > 0)
+                         ? "runtime"
+                         : "scaffold";
     gpsObj["sampleValid"] = gpsStatus.sampleValid;
     gpsObj["hasFix"] = gpsStatus.hasFix;
     gpsObj["satellites"] = gpsStatus.satellites;
     gpsObj["injectedSamples"] = gpsStatus.injectedSamples;
+    gpsObj["moduleDetected"] = gpsStatus.moduleDetected;
+    gpsObj["detectionTimedOut"] = gpsStatus.detectionTimedOut;
+    gpsObj["parserActive"] = gpsStatus.parserActive;
+    gpsObj["hardwareSamples"] = gpsStatus.hardwareSamples;
+    gpsObj["bytesRead"] = gpsStatus.bytesRead;
+    gpsObj["sentencesSeen"] = gpsStatus.sentencesSeen;
+    gpsObj["sentencesParsed"] = gpsStatus.sentencesParsed;
+    gpsObj["parseFailures"] = gpsStatus.parseFailures;
+    gpsObj["checksumFailures"] = gpsStatus.checksumFailures;
+    gpsObj["bufferOverruns"] = gpsStatus.bufferOverruns;
     if (std::isnan(gpsStatus.hdop)) {
         gpsObj["hdop"] = nullptr;
     } else {
@@ -2603,6 +2616,11 @@ void WiFiManager::handleDebugMetrics() {
         gpsObj["sampleAgeMs"] = nullptr;
     } else {
         gpsObj["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+    if (gpsStatus.lastSentenceTsMs == 0) {
+        gpsObj["lastSentenceTsMs"] = nullptr;
+    } else {
+        gpsObj["lastSentenceTsMs"] = gpsStatus.lastSentenceTsMs;
     }
 
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
@@ -3853,11 +3871,23 @@ void WiFiManager::handleGpsStatus() {
     JsonDocument doc;
     doc["enabled"] = settingsManager.get().gpsEnabled;
     doc["runtimeEnabled"] = gpsStatus.enabled;
-    doc["mode"] = "scaffold";
+    doc["mode"] = (gpsStatus.parserActive || gpsStatus.moduleDetected || gpsStatus.hardwareSamples > 0)
+                      ? "runtime"
+                      : "scaffold";
     doc["sampleValid"] = gpsStatus.sampleValid;
     doc["hasFix"] = gpsStatus.hasFix;
     doc["satellites"] = gpsStatus.satellites;
     doc["injectedSamples"] = gpsStatus.injectedSamples;
+    doc["moduleDetected"] = gpsStatus.moduleDetected;
+    doc["detectionTimedOut"] = gpsStatus.detectionTimedOut;
+    doc["parserActive"] = gpsStatus.parserActive;
+    doc["hardwareSamples"] = gpsStatus.hardwareSamples;
+    doc["bytesRead"] = gpsStatus.bytesRead;
+    doc["sentencesSeen"] = gpsStatus.sentencesSeen;
+    doc["sentencesParsed"] = gpsStatus.sentencesParsed;
+    doc["parseFailures"] = gpsStatus.parseFailures;
+    doc["checksumFailures"] = gpsStatus.checksumFailures;
+    doc["bufferOverruns"] = gpsStatus.bufferOverruns;
 
     if (std::isnan(gpsStatus.hdop)) {
         doc["hdop"] = nullptr;
@@ -3877,6 +3907,11 @@ void WiFiManager::handleGpsStatus() {
         doc["sampleAgeMs"] = nullptr;
     } else {
         doc["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+    if (gpsStatus.lastSentenceTsMs == 0) {
+        doc["lastSentenceTsMs"] = nullptr;
+    } else {
+        doc["lastSentenceTsMs"] = gpsStatus.lastSentenceTsMs;
     }
 
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();

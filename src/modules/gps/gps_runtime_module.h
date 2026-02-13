@@ -12,6 +12,17 @@ struct GpsRuntimeStatus {
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
     uint32_t injectedSamples = 0;
+    bool moduleDetected = false;
+    bool detectionTimedOut = false;
+    bool parserActive = false;
+    uint32_t hardwareSamples = 0;
+    uint32_t bytesRead = 0;
+    uint32_t sentencesSeen = 0;
+    uint32_t sentencesParsed = 0;
+    uint32_t parseFailures = 0;
+    uint32_t checksumFailures = 0;
+    uint32_t bufferOverruns = 0;
+    uint32_t lastSentenceTsMs = 0;
 };
 
 class GpsRuntimeModule {
@@ -23,10 +34,10 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const { return enabled_; }
 
-    // Placeholder for future non-blocking hardware parser work.
+    // Non-blocking UART/NMEA ingest with bounded per-loop processing.
     void update(uint32_t nowMs);
 
-    // Stage-2 scaffold path used by API/tools until hardware driver lands.
+    // Manual sample injection path used by API/tools and test scaffolding.
     void setScaffoldSample(float speedMph,
                            bool hasFix,
                            uint8_t satellites,
@@ -37,7 +48,36 @@ public:
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
     GpsRuntimeStatus snapshot(uint32_t nowMs) const;
 
+#ifdef UNIT_TEST
+    // Native-test hook for parser coverage without UART hardware.
+    bool injectNmeaSentenceForTest(const char* nmeaSentence, uint32_t nowMs);
+#endif
+
 private:
+    static constexpr int GPS_RX_PIN = 3;
+    static constexpr int GPS_TX_PIN = 1;
+    static constexpr int GPS_EN_PIN = 2;
+    static constexpr uint32_t GPS_BAUD = 9600;
+    static constexpr uint32_t DETECTION_TIMEOUT_MS = 60000;
+    static constexpr uint32_t FIX_STALE_MS = 5000;
+    static constexpr size_t NMEA_LINE_MAX = 128;
+    static constexpr uint16_t MAX_BYTES_PER_UPDATE = 256;
+    static constexpr float KNOTS_TO_MPH = 1.150779f;
+
+    void resetRuntimeState();
+    void invalidateSpeedSample();
+    void updateDetectionTimeout(uint32_t nowMs);
+    void updateFixStaleness(uint32_t nowMs);
+    void ingestByte(char c, uint32_t nowMs);
+    bool processSentence(char* sentence, uint32_t nowMs);
+    bool parseGga(char* fields[], size_t fieldCount, uint32_t nowMs);
+    bool parseRmc(char* fields[], size_t fieldCount, uint32_t nowMs);
+    static bool parseFloatStrict(const char* text, float& out);
+    static bool parseUIntStrict(const char* text, uint32_t& out);
+    static bool parseChecksum(const char* checksumText, uint8_t& out);
+    static size_t splitCsv(char* payload, char* fields[], size_t maxFields);
+    static bool sentenceTypeEquals(const char* type, const char* suffix);
+
     bool enabled_ = false;
     bool sampleValid_ = false;
     bool hasFix_ = false;
@@ -46,6 +86,24 @@ private:
     float hdop_ = NAN;
     uint32_t sampleTsMs_ = 0;
     uint32_t injectedSamples_ = 0;
+    bool moduleDetected_ = false;
+    bool detectionTimedOut_ = false;
+    bool parserActive_ = false;
+    bool rmcFix_ = false;
+    bool ggaFix_ = false;
+    uint32_t detectionStartMs_ = 0;
+    uint32_t lastFixTsMs_ = 0;
+    uint32_t lastSentenceTsMs_ = 0;
+    uint32_t hardwareSamples_ = 0;
+    uint32_t bytesRead_ = 0;
+    uint32_t sentencesSeen_ = 0;
+    uint32_t sentencesParsed_ = 0;
+    uint32_t parseFailures_ = 0;
+    uint32_t checksumFailures_ = 0;
+    uint32_t bufferOverruns_ = 0;
+    bool sentenceActive_ = false;
+    size_t sentenceLen_ = 0;
+    char sentenceBuf_[NMEA_LINE_MAX] = {};
 };
 
 extern GpsRuntimeModule gpsRuntimeModule;

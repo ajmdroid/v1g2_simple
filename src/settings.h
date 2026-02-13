@@ -93,7 +93,7 @@ struct V1Settings {
     bool proxyBLE;          // Enable BLE proxy for JBV1
     String proxyName;       // BLE device name when proxying
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
-    bool gpsEnabled;        // Enable GPS runtime scaffold (stage 2 prep)
+    bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
     
     // Display settings
     bool turnOffDisplay;
