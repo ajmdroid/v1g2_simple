@@ -56,6 +56,7 @@
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
+#include "modules/lockout/signal_observation_log.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -70,6 +71,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 
 // Global objects
 V1BLEClient bleClient;
@@ -96,6 +98,15 @@ static bool scanScreenDwellActive = false;
 static bool lastBleConnectedForScanDwell = false;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
+
+// Signal-observation capture guardrails.
+// Keeps records useful for lockout learning while bounding write volume.
+static constexpr uint32_t SIGNAL_OBS_MIN_REPEAT_MS = 1500;
+static constexpr uint16_t SIGNAL_OBS_FREQ_TOL_MHZ = 5;
+static constexpr uint8_t SIGNAL_OBS_STRENGTH_TOL = 1;
+static constexpr int32_t SIGNAL_OBS_LOCATION_TOL_E5 = 25;  // ~28m latitude
+static bool signalObsLastValid = false;
+static SignalObservation signalObsLast = {};
 
 // Color preview driver (demo band cycle)
 DisplayPreviewModule displayPreviewModule;
@@ -136,6 +147,99 @@ static void showInitialScanningScreen() {
     initialScanningScreenShown = true;
     scanScreenEnteredMs = millis();
     scanScreenDwellActive = true;
+}
+
+static int32_t degreesToE5(float degrees) {
+    return static_cast<int32_t>(lroundf(degrees * 100000.0f));
+}
+
+static uint16_t hdopToX10(float hdop) {
+    if (!std::isfinite(hdop) || hdop < 0.0f) {
+        return SignalObservation::HDOP_X10_INVALID;
+    }
+    const long scaled = lroundf(hdop * 10.0f);
+    if (scaled < 0 || scaled > static_cast<long>(UINT16_MAX - 1)) {
+        return SignalObservation::HDOP_X10_INVALID;
+    }
+    return static_cast<uint16_t>(scaled);
+}
+
+static bool sameSignalObservationBucket(const SignalObservation& a, const SignalObservation& b) {
+    if (a.bandRaw != b.bandRaw) {
+        return false;
+    }
+
+    const int freqDiff = abs(static_cast<int>(a.frequencyMHz) - static_cast<int>(b.frequencyMHz));
+    if (freqDiff > SIGNAL_OBS_FREQ_TOL_MHZ) {
+        return false;
+    }
+
+    const int strengthDiff = abs(static_cast<int>(a.strength) - static_cast<int>(b.strength));
+    if (strengthDiff > SIGNAL_OBS_STRENGTH_TOL) {
+        return false;
+    }
+
+    if (a.locationValid != b.locationValid) {
+        return false;
+    }
+
+    if (!a.locationValid) {
+        return true;
+    }
+
+    const int32_t latDiff = abs(a.latitudeE5 - b.latitudeE5);
+    const int32_t lonDiff = abs(a.longitudeE5 - b.longitudeE5);
+    return latDiff <= SIGNAL_OBS_LOCATION_TOL_E5 && lonDiff <= SIGNAL_OBS_LOCATION_TOL_E5;
+}
+
+static bool shouldPublishSignalObservation(const SignalObservation& sample) {
+    if (!signalObsLastValid) {
+        return true;
+    }
+
+    if (!sameSignalObservationBucket(sample, signalObsLast)) {
+        return true;
+    }
+
+    return static_cast<uint32_t>(sample.tsMs - signalObsLast.tsMs) >= SIGNAL_OBS_MIN_REPEAT_MS;
+}
+
+static void capturePrioritySignalObservation(uint32_t nowMs) {
+    if (!parser.hasAlerts()) {
+        return;
+    }
+
+    const AlertData priority = parser.getPriorityAlert();
+    if (!priority.isValid || priority.band == BAND_NONE) {
+        return;
+    }
+
+    SignalObservation observation;
+    observation.tsMs = nowMs;
+    observation.bandRaw = static_cast<uint8_t>(priority.band);
+    observation.strength = std::max(priority.frontStrength, priority.rearStrength);
+    observation.frequencyMHz = static_cast<uint16_t>(std::min<uint32_t>(priority.frequency, UINT16_MAX));
+
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    observation.hasFix = gpsStatus.hasFix;
+    observation.satellites = gpsStatus.satellites;
+    observation.hdopX10 = hdopToX10(gpsStatus.hdop);
+    const bool locationValid = gpsStatus.locationValid &&
+                               std::isfinite(gpsStatus.latitudeDeg) &&
+                               std::isfinite(gpsStatus.longitudeDeg);
+    observation.locationValid = locationValid;
+    if (locationValid) {
+        observation.latitudeE5 = degreesToE5(gpsStatus.latitudeDeg);
+        observation.longitudeE5 = degreesToE5(gpsStatus.longitudeDeg);
+    }
+
+    if (!shouldPublishSignalObservation(observation)) {
+        return;
+    }
+
+    signalObservationLog.publish(observation);
+    signalObsLast = observation;
+    signalObsLastValid = true;
 }
 
 // ============================================================================
@@ -856,9 +960,11 @@ void loop() {
     // Drive display pipeline separately from BLE drain (decoupled for accurate timing)
     // This is intentionally outside the bleDrain timing to isolate display latency
     if (parsedReady && !bootSplashHoldActive) {
+        const uint32_t nowMs = millis();
+        capturePrioritySignalObservation(nowMs);
+
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
-            uint32_t nowMs = millis();
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
                 perfRecordNotifyToDisplayMs(nowMs - parsedTsMs);
             }
