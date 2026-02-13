@@ -34,6 +34,7 @@ void test_valid_rmc_updates_speed_and_fix() {
     TEST_ASSERT_TRUE(status.sampleValid);
     TEST_ASSERT_TRUE(status.hasFix);
     TEST_ASSERT_TRUE(status.locationValid);
+    TEST_ASSERT_EQUAL_UINT32(0, status.fixAgeMs);
     TEST_ASSERT_EQUAL_UINT32(1, status.hardwareSamples);
     TEST_ASSERT_FLOAT_WITHIN(0.02f, 11.50779f, status.speedMph);
     TEST_ASSERT_FLOAT_WITHIN(0.0002f, 48.1173f, status.latitudeDeg);
@@ -57,6 +58,7 @@ void test_valid_gga_sets_quality_without_speed_sample() {
     TEST_ASSERT_EQUAL_UINT8(8, status.satellites);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.9f, status.hdop);
     TEST_ASSERT_TRUE(status.locationValid);
+    TEST_ASSERT_EQUAL_UINT32(0, status.fixAgeMs);
     TEST_ASSERT_FLOAT_WITHIN(0.0002f, 48.1173f, status.latitudeDeg);
     TEST_ASSERT_FLOAT_WITHIN(0.0002f, 11.516667f, status.longitudeDeg);
 }
@@ -113,6 +115,7 @@ void test_stale_fix_is_cleared() {
     GpsRuntimeStatus status = gpsRuntimeModule.snapshot(17002);
     TEST_ASSERT_FALSE(status.hasFix);
     TEST_ASSERT_FALSE(status.sampleValid);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, status.fixAgeMs);
 }
 
 void test_overlong_sentence_is_rejected() {

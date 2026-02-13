@@ -19,6 +19,7 @@ struct SignalObservation {
     uint8_t strength = 0;
     uint16_t frequencyMHz = 0;
     bool hasFix = false;
+    uint32_t fixAgeMs = UINT32_MAX;
     bool locationValid = false;
     int32_t latitudeE5 = 0;
     int32_t longitudeE5 = 0;

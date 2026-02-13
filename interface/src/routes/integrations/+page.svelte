@@ -138,6 +138,11 @@
 		return value.toFixed(1);
 	}
 
+	function formatFixAgeMs(value) {
+		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+		return `${(value / 1000).toFixed(1)}s`;
+	}
+
 	function signalMapHref(event) {
 		if (!event?.locationValid) return '';
 		if (typeof event.latitude !== 'number' || typeof event.longitude !== 'number') return '';
@@ -557,7 +562,9 @@
 						{lockoutEvents[0]?.band || '—'}
 					</div>
 					<div class="stat-desc">
-						{lockoutEvents[0] ? formatFrequency(lockoutEvents[0].frequencyMHz) : 'no samples yet'}
+						{lockoutEvents[0]
+							? `${formatFrequency(lockoutEvents[0].frequencyMHz)} • fix age ${formatFixAgeMs(lockoutEvents[0].fixAgeMs)}`
+							: 'no samples yet'}
 					</div>
 				</div>
 			</div>
@@ -577,6 +584,7 @@
 								<th>Band</th>
 								<th>Frequency</th>
 								<th>Strength</th>
+								<th>Fix Age</th>
 								<th>Sats</th>
 								<th>HDOP</th>
 								<th>Location</th>
@@ -589,6 +597,7 @@
 									<td>{event.band || 'UNK'}</td>
 									<td>{formatFrequency(event.frequencyMHz)}</td>
 									<td>{typeof event.strength === 'number' ? event.strength : '—'}</td>
+									<td>{formatFixAgeMs(event.fixAgeMs)}</td>
 									<td>{typeof event.satellites === 'number' ? event.satellites : '—'}</td>
 									<td>{formatHdop(event.hdop)}</td>
 									<td>

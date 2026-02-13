@@ -96,6 +96,7 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     observation.strength = std::max(priority.frontStrength, priority.rearStrength);
     observation.frequencyMHz = static_cast<uint16_t>(std::min<uint32_t>(priority.frequency, UINT16_MAX));
     observation.hasFix = gpsStatus.hasFix;
+    observation.fixAgeMs = gpsStatus.fixAgeMs;
     observation.satellites = gpsStatus.satellites;
     observation.hdopX10 = hdopToX10(gpsStatus.hdop);
     const bool locationValid = gpsStatus.locationValid &&
@@ -115,4 +116,3 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     lastSample_ = observation;
     lastValid_ = true;
 }
-

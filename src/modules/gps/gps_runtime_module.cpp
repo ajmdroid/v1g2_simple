@@ -619,6 +619,11 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     } else {
         status.sampleAgeMs = UINT32_MAX;
     }
+    if (hasFix_ && lastFixTsMs_ != 0) {
+        status.fixAgeMs = static_cast<uint32_t>(nowMs - lastFixTsMs_);
+    } else {
+        status.fixAgeMs = UINT32_MAX;
+    }
 
     return status;
 }

@@ -3976,6 +3976,11 @@ void WiFiManager::handleLockoutSummary() {
         latestObj["frequencyMHz"] = sample.frequencyMHz;
         latestObj["strength"] = sample.strength;
         latestObj["hasFix"] = sample.hasFix;
+        if (sample.fixAgeMs == UINT32_MAX) {
+            latestObj["fixAgeMs"] = nullptr;
+        } else {
+            latestObj["fixAgeMs"] = sample.fixAgeMs;
+        }
         latestObj["satellites"] = sample.satellites;
         latestObj["locationValid"] = sample.locationValid;
         if (sample.hdopX10 == SignalObservation::HDOP_X10_INVALID) {
@@ -4030,6 +4035,11 @@ void WiFiManager::handleLockoutEvents() {
         entry["frequencyMHz"] = sample.frequencyMHz;
         entry["strength"] = sample.strength;
         entry["hasFix"] = sample.hasFix;
+        if (sample.fixAgeMs == UINT32_MAX) {
+            entry["fixAgeMs"] = nullptr;
+        } else {
+            entry["fixAgeMs"] = sample.fixAgeMs;
+        }
         entry["satellites"] = sample.satellites;
         if (sample.hdopX10 == SignalObservation::HDOP_X10_INVALID) {
             entry["hdop"] = nullptr;

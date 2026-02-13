@@ -14,6 +14,7 @@ struct GpsRuntimeStatus {
     float longitudeDeg = NAN;
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
+    uint32_t fixAgeMs = UINT32_MAX;
     uint32_t injectedSamples = 0;
     bool moduleDetected = false;
     bool detectionTimedOut = false;
