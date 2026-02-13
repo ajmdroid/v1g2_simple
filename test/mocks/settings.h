@@ -34,6 +34,16 @@ inline LockoutRuntimeMode clampLockoutRuntimeModeValue(int rawMode) {
     return static_cast<LockoutRuntimeMode>(rawMode);
 }
 
+inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
+    switch (mode) {
+        case LOCKOUT_RUNTIME_OFF:      return "OFF";
+        case LOCKOUT_RUNTIME_SHADOW:   return "SHADOW";
+        case LOCKOUT_RUNTIME_ADVISORY: return "ADVISORY";
+        case LOCKOUT_RUNTIME_ENFORCE:  return "ENFORCE";
+        default:                       return "UNKNOWN";
+    }
+}
+
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
     FONT_STYLE_CLASSIC = 0,

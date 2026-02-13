@@ -58,6 +58,7 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
+#include "modules/lockout/lockout_enforcer.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -710,6 +711,7 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+    lockoutEnforcer.begin(&settingsManager, &lockoutIndex);
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -910,6 +912,7 @@ void loop() {
         const uint32_t nowMs = millis();
         const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
         signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
+        lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
 
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {

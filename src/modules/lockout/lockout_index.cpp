@@ -3,6 +3,8 @@
 #include <cstdlib>   // abs
 #include <cstring>   // memset
 
+LockoutIndex lockoutIndex;
+
 void LockoutIndex::clear() {
     for (size_t i = 0; i < kCapacity; ++i) {
         entries_[i].clear();
