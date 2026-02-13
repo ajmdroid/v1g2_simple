@@ -179,27 +179,27 @@
 		scanning = true;
 		nearby = [];
 
-			try {
-				const res = await fetch('/api/obd/scan', { method: 'POST' });
-				const data = await res.json().catch(() => ({}));
-				if (!res.ok) {
-					setMsg('error', data.message || 'Failed to start scan');
-					scanning = false;
-					return;
-				}
-
-				stopScanPoll();
-				scanPoll = setInterval(async () => {
-					await fetchNearby();
-					if (!scanning) {
-						stopScanPoll();
-					}
-				}, SCAN_POLL_INTERVAL_MS);
-			} catch (e) {
-				setMsg('error', 'Failed to start scan');
+		try {
+			const res = await fetch('/api/obd/scan', { method: 'POST' });
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to start scan');
 				scanning = false;
+				return;
 			}
+
+			stopScanPoll();
+			scanPoll = setInterval(async () => {
+				await fetchNearby();
+				if (!scanning) {
+					stopScanPoll();
+				}
+			}, SCAN_POLL_INTERVAL_MS);
+		} catch (e) {
+			setMsg('error', 'Failed to start scan');
+			scanning = false;
 		}
+	}
 
 	async function stopScan() {
 		try {
