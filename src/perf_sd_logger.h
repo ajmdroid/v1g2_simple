@@ -93,6 +93,7 @@ struct PerfSdSnapshot {
     uint32_t powerAutoPowerTimerExpire; // Auto power-off timer expired
     uint32_t powerCriticalWarn;       // Critical-battery warning shown
     uint32_t powerCriticalShutdown;   // Critical-battery shutdown triggered
+    uint32_t cmdBleBusy;              // BLE command write transient failures/retries
 };
 
 class PerfSdLogger {

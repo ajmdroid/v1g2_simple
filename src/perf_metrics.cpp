@@ -190,6 +190,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.powerAutoPowerTimerExpire = perfCounters.powerAutoPowerTimerExpire.load(std::memory_order_relaxed);
     snapshot.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
     snapshot.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
+    snapshot.cmdBleBusy = perfCounters.cmdBleBusy.load(std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;

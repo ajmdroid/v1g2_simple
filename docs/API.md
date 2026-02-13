@@ -641,6 +641,7 @@ Get runtime performance counters and subsystem health snapshots.
   "parseSuccesses": 14999,
   "parseFailures": 1,
   "queueDrops": 0,
+  "cmdBleBusy": 0,
   "powerAutoPowerArmed": 1,
   "powerAutoPowerTimerStart": 1,
   "powerAutoPowerTimerCancel": 1,
