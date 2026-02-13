@@ -58,6 +58,9 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
+#include <driver/gpio.h>
+#include <esp_sleep.h>
+#include "../include/display_driver.h"
 #include <FS.h>
 #include <LittleFS.h>
 #include <Preferences.h>
@@ -399,6 +402,12 @@ void setup() {
 
     // Wait for USB to stabilize after upload
     delay(50);
+
+    // Release GPIO hold from deep sleep (backlight was held off during sleep).
+    // Must happen before display init re-configures the pin.
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis(static_cast<gpio_num_t>(LCD_BL));
+
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
 #if defined(PIN_POWER_ON) && PIN_POWER_ON >= 0
@@ -439,6 +448,8 @@ void setup() {
         SerialLog.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
     } else if (resetReason == ESP_RST_POWERON) {
         SerialLog.println("(Power-on)");
+    } else if (resetReason == ESP_RST_DEEPSLEEP) {
+        SerialLog.println("(Wake from deep sleep - RTC clock preserved)");
     } else {
         SerialLog.printf("(Other: %d)\n", resetReason);
     }
@@ -938,6 +949,10 @@ void loop() {
     
     // Periodic perf metrics report (stability diagnostics)
     perfMetricsCheckReport();
+
+    // Periodic time persistence (every 5 min) — ensures NVS has a recent epoch
+    // for restoration after deep sleep battery death or hard power loss.
+    timeService.periodicSave(now);
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));

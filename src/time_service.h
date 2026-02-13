@@ -47,6 +47,12 @@ public:
     void setEpochBaseMs(int64_t trustedEpochMs, int32_t tzOffsetMinutes, Source source);
     void clear();
 
+    // Persist current epoch to NVS (call before deep sleep / shutdown).
+    void persistCurrentTime();
+
+    // Periodic NVS save — call from main loop. Saves every ~5 minutes.
+    void periodicSave(uint32_t nowMs);
+
 private:
     std::atomic<uint8_t> valid_{0};
     std::atomic<uint8_t> source_{SOURCE_NONE};
@@ -55,6 +61,8 @@ private:
     std::atomic<int64_t> epochBaseMs_{0};   // epoch_ms - mono_ms_at_set
     std::atomic<uint32_t> setMonoMs_{0};    // millis() when epoch base was set
     std::atomic<uint8_t> initialized_{0};
+    uint32_t lastPeriodicSaveMs_{0};           // millis() of last periodic NVS save
+    static constexpr uint32_t PERIODIC_SAVE_INTERVAL_MS = 5UL * 60UL * 1000UL;  // 5 minutes
 };
 
 extern TimeService timeService;

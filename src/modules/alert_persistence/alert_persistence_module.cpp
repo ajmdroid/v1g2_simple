@@ -6,6 +6,7 @@
 #include "packet_parser.h"
 #include "display.h"
 #include "settings.h"
+#include "perf_metrics.h"
 
 AlertPersistenceModule::AlertPersistenceModule() {
     // Dependencies set in begin()
@@ -48,10 +49,15 @@ void AlertPersistenceModule::startPersistence(unsigned long now) {
     if (persistedAlert.isValid && alertClearedTime == 0) {
         alertClearedTime = now;
         alertPersistenceActive = true;
+        PERF_INC(alertPersistStarts);
     }
 }
 
 void AlertPersistenceModule::clearPersistence() {
+    const bool hadState = alertPersistenceActive || persistedAlert.isValid || (alertClearedTime != 0);
+    if (hadState) {
+        PERF_INC(alertPersistClears);
+    }
     persistedAlert = AlertData();
     alertPersistenceActive = false;
     alertClearedTime = 0;
@@ -60,4 +66,3 @@ void AlertPersistenceModule::clearPersistence() {
 bool AlertPersistenceModule::shouldShowPersisted(unsigned long now, unsigned long persistMs) const {
     return alertPersistenceActive && (now - alertClearedTime) < persistMs;
 }
-

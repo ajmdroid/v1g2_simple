@@ -5,6 +5,7 @@
 #include "battery_manager.h"
 #include "display.h"
 #include "settings.h"
+#include "time_service.h"
 #include <Wire.h>
 #ifdef WINDOWS_BUILD
 // ESP32 Arduino 2.x compatible headers
@@ -519,6 +520,10 @@ bool BatteryManager::powerOff() {
     Serial.println("[Battery] Saving settings...");
     settingsManager.save();
     
+    // Step 1b: Persist current time to NVS (fallback if deep sleep battery dies)
+    Serial.println("[Battery] Persisting time to NVS...");
+    timeService.persistCurrentTime();
+    
     // Step 2: Show shutdown screen
     Serial.println("[Battery] Showing shutdown screen...");
     display.showShutdown();
@@ -540,12 +545,32 @@ bool BatteryManager::powerOff() {
     digitalWrite(LCD_BL, HIGH);  // Force off (inverted backlight)
     delay(50);
     
-    // Step 5: Cut power and enter deep sleep as a hard stop (covers USB power cases)
-    Serial.println("[Battery] Powering OFF...");
-    bool latchCut = setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);
-    delay(200);  // Let serial flush and latch settle
-    esp_deep_sleep_start();  // Does not return
-    return latchCut;
+    // Step 5: Choose shutdown strategy based on battery health.
+    // Critical battery: hard latch drop to protect the cell from deep discharge.
+    // Normal shutdown:  deep sleep with latch ON so the 18650 keeps the ESP32-S3's
+    //                   internal RTC running.  settimeofday() persists through deep
+    //                   sleep, so on button-wake gettimeofday() returns accurate time
+    //                   without needing a phone sync.
+    if (isCritical()) {
+        Serial.println("[Battery] Critical battery - hard power off to protect cell");
+        setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);
+        delay(200);
+        esp_deep_sleep_start();  // fallback (latch already cut)
+        return true;
+    }
+    
+    Serial.println("[Battery] Entering deep sleep (RTC clock preserved by 18650)...");
+    
+    // Hold backlight GPIO state during deep sleep to keep display off
+    gpio_hold_en(static_cast<gpio_num_t>(LCD_BL));
+    gpio_deep_sleep_hold_en();
+    
+    // Configure power button (GPIO 16, active LOW) as deep-sleep wakeup source
+    esp_sleep_enable_ext1_wakeup(1ULL << PWR_BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
+    
+    delay(100);  // Let serial flush
+    esp_deep_sleep_start();  // Does not return — RTC keeps ticking
+    return true;
 }
 
 bool BatteryManager::isPowerButtonPressed() {

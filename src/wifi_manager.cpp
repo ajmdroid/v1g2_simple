@@ -2470,6 +2470,27 @@ void WiFiManager::handleDebugMetrics() {
     doc["sdMaxUs"] = perfGetSdMaxUs();
     doc["flushMaxUs"] = perfGetFlushMaxUs();
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
+
+    // OBD health snapshot (non-blocking lock attempt in OBD handler).
+    const OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
+    JsonObject obdObj = doc["obd"].to<JsonObject>();
+    obdObj["state"] = obdPerf.state;
+    obdObj["connected"] = (obdPerf.connected != 0);
+    obdObj["scanActive"] = (obdPerf.scanActive != 0);
+    obdObj["hasValidData"] = (obdPerf.hasValidData != 0);
+    if (obdPerf.sampleAgeMs == UINT32_MAX) {
+        obdObj["sampleAgeMs"] = nullptr;
+    } else {
+        obdObj["sampleAgeMs"] = obdPerf.sampleAgeMs;
+    }
+    if (obdPerf.speedMphX10 < 0) {
+        obdObj["speedMphX10"] = nullptr;
+    } else {
+        obdObj["speedMphX10"] = obdPerf.speedMphX10;
+    }
+    obdObj["connFailures"] = obdPerf.connectionFailures;
+    obdObj["pollFailStreak"] = obdPerf.consecutivePollFailures;
+    obdObj["notifyDrops"] = obdPerf.notifyDrops;
     
     // Heap stats - both total and DMA-capable (for WiFi/SD contention diagnosis)
     doc["heapFree"] = ESP.getFreeHeap();

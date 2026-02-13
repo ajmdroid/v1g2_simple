@@ -192,6 +192,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
                 recordPerfTiming("display.persisted", startUs, endUs);
             } else {
                 // Persistence window expired - clear flag so isPersistenceActive() returns false
+                PERF_INC(alertPersistExpires);
                 alertPersistence->clearPersistence();
                 if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();

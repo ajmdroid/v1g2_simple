@@ -209,6 +209,9 @@ void TimeService::begin() {
         confidence_.store(CONFIDENCE_ESTIMATED, std::memory_order_relaxed);
         valid_.store(1, std::memory_order_release);
 
+        // Set the system clock so the RTC survives deep sleep with a reasonable value.
+        setSystemClockIfValid(snapshot.epochMs);
+
         Serial.printf("[Time] Restored from NVS (estimated): epoch=%lld, tz=%d\n",
                       (long long)snapshot.epochMs, (int)snapshot.tzOffsetMin);
         return;
@@ -290,4 +293,32 @@ void TimeService::clear() {
     setMonoMs_.store(0, std::memory_order_relaxed);
     initialized_.store(1, std::memory_order_release);
     clearPersistedTimeSnapshot();
+}
+
+void TimeService::persistCurrentTime() {
+    const int64_t epoch = nowEpochMsOr0();
+    if (epoch == 0) {
+        return;  // No valid time to persist
+    }
+
+    PersistedTime snapshot;
+    snapshot.valid = true;
+    snapshot.epochMs = epoch;
+    snapshot.tzOffsetMin = tzOffsetMinutes_.load(std::memory_order_relaxed);
+    snapshot.source = source_.load(std::memory_order_relaxed);
+
+    if (savePersistedTimeSnapshot(snapshot)) {
+        Serial.printf("[Time] Persisted current time to NVS: epoch=%lld\n", (long long)epoch);
+    }
+}
+
+void TimeService::periodicSave(uint32_t nowMs) {
+    if (valid_.load(std::memory_order_acquire) == 0) {
+        return;
+    }
+    if (nowMs - lastPeriodicSaveMs_ < PERIODIC_SAVE_INTERVAL_MS) {
+        return;
+    }
+    lastPeriodicSaveMs_ = nowMs;
+    persistCurrentTime();
 }

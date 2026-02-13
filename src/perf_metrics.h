@@ -105,6 +105,9 @@ struct PerfCounters {
     std::atomic<uint32_t> wifiConnectDeferred{0}; // WiFi connects staged via non-blocking phase machine
     std::atomic<uint32_t> pushNowRetries{0};      // Non-blocking Push Now retry attempts
     std::atomic<uint32_t> pushNowFailures{0};     // Non-blocking Push Now exhausted retries
+    std::atomic<uint32_t> alertPersistStarts{0};  // Persisted-alert sessions started
+    std::atomic<uint32_t> alertPersistExpires{0}; // Persisted-alert windows expired naturally
+    std::atomic<uint32_t> alertPersistClears{0};  // Persisted-alert state cleared explicitly
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -140,6 +143,9 @@ struct PerfCounters {
         wifiConnectDeferred.store(0, std::memory_order_relaxed);
         pushNowRetries.store(0, std::memory_order_relaxed);
         pushNowFailures.store(0, std::memory_order_relaxed);
+        alertPersistStarts.store(0, std::memory_order_relaxed);
+        alertPersistExpires.store(0, std::memory_order_relaxed);
+        alertPersistClears.store(0, std::memory_order_relaxed);
     }
 };
 
