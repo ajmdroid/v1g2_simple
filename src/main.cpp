@@ -9,7 +9,6 @@
  * - WiFi web interface for configuration
  * - 3-slot auto-push profile system
  * - Tap-to-mute functionality
- * - Alert logging and replay
  * - Multiple color themes
  * 
  * Architecture:
