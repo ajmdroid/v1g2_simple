@@ -351,6 +351,20 @@ uint16_t shortUuid(const NimBLEUUID& uuid) {
     }
     return 0;
 }
+
+static unsigned long computeExponentialBackoffMs(unsigned long baseMs,
+                                                 unsigned long maxMs,
+                                                 uint8_t consecutiveFailures) {
+    if (consecutiveFailures == 0) {
+        return 0;
+    }
+    int exponent = (consecutiveFailures > 4) ? 4 : (consecutiveFailures - 1);
+    unsigned long backoffMs = baseMs * (1 << exponent);
+    if (backoffMs > maxMs) {
+        backoffMs = maxMs;
+    }
+    return backoffMs;
+}
 // Debug log controls
 constexpr bool BLE_DEBUG_LOGS = false;           // General BLE operation logs
 constexpr bool CONNECT_ATTEMPT_VERBOSE = false;  // Individual connect attempt logs
@@ -1119,9 +1133,8 @@ bool V1BLEClient::startAsyncConnect() {
         }
         
         // Calculate exponential backoff
-        int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
-        unsigned long backoffMs = BACKOFF_BASE_MS * (1 << exponent);
-        if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
+        unsigned long backoffMs =
+            computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
         nextConnectAllowedMs = millis() + backoffMs;
         
         connectInProgress = false;
@@ -1191,9 +1204,8 @@ void V1BLEClient::processConnectingWait() {
             }
             
             // Calculate exponential backoff
-            int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
-            unsigned long backoffMs = BACKOFF_BASE_MS * (1 << exponent);
-            if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
+            unsigned long backoffMs =
+                computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
             nextConnectAllowedMs = millis() + backoffMs;
             
             connectInProgress = false;
@@ -1230,9 +1242,8 @@ void V1BLEClient::processConnectingWait() {
     }
     
     // Calculate exponential backoff
-    int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
-    unsigned long backoffMs = BACKOFF_BASE_MS * (1 << exponent);
-    if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
+    unsigned long backoffMs =
+        computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
     nextConnectAllowedMs = millis() + backoffMs;
     
     connectInProgress = false;
@@ -1290,9 +1301,8 @@ void V1BLEClient::processDiscovering() {
                 return;
             }
 
-            int exponent = (consecutiveConnectFailures > 4) ? 4 : (consecutiveConnectFailures - 1);
-            unsigned long backoffMs = BACKOFF_BASE_MS * (1 << exponent);
-            if (backoffMs > BACKOFF_MAX_MS) backoffMs = BACKOFF_MAX_MS;
+            unsigned long backoffMs =
+                computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
             nextConnectAllowedMs = millis() + backoffMs;
 
             connectInProgress = false;
