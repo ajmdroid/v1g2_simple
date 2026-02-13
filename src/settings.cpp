@@ -1067,51 +1067,6 @@ void SettingsManager::setEnableWifiAtBoot(bool enable, bool deferSave) {
     if (!deferSave) save();
 }
 
-void SettingsManager::setEnableDebugLogging(bool enable, bool deferSave) {
-    settings.enableDebugLogging = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogAlerts(bool enable, bool deferSave) {
-    settings.logAlerts = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogWifi(bool enable, bool deferSave) {
-    settings.logWifi = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogBle(bool enable, bool deferSave) {
-    settings.logBle = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogSystem(bool enable, bool deferSave) {
-    settings.logSystem = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogDisplay(bool enable, bool deferSave) {
-    settings.logDisplay = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogPerfMetrics(bool enable, bool deferSave) {
-    settings.logPerfMetrics = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogAudio(bool enable, bool deferSave) {
-    settings.logAudio = enable;
-    if (!deferSave) save();
-}
-
-void SettingsManager::setLogTouch(bool enable, bool deferSave) {
-    settings.logTouch = enable;
-    if (!deferSave) save();
-}
-
 void SettingsManager::setVoiceAlertMode(VoiceAlertMode mode) {
     settings.voiceAlertMode = mode;
     save();

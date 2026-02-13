@@ -390,15 +390,6 @@ public:
     void setHideRssiIndicator(bool hide);
     void setShowRestTelemetryCards(bool show);
     void setEnableWifiAtBoot(bool enable, bool deferSave = false);
-    void setEnableDebugLogging(bool enable, bool deferSave = false);
-    void setLogAlerts(bool enable, bool deferSave = false);
-    void setLogWifi(bool enable, bool deferSave = false);
-    void setLogBle(bool enable, bool deferSave = false);
-    void setLogSystem(bool enable, bool deferSave = false);
-    void setLogDisplay(bool enable, bool deferSave = false);
-    void setLogPerfMetrics(bool enable, bool deferSave = false);
-    void setLogAudio(bool enable, bool deferSave = false);
-    void setLogTouch(bool enable, bool deferSave = false);
     DebugLogConfig getDebugLogConfig() const {
         return { settings.logAlerts, settings.logWifi, settings.logBle, settings.logSystem, settings.logDisplay, settings.logPerfMetrics, settings.logAudio, settings.logTouch };
     }
