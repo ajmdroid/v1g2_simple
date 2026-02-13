@@ -3070,7 +3070,7 @@ bool V1Display::drawRestTelemetryCards(bool forceRedraw) {
     strcpy(valueIat, "---");
     strcpy(valueVolt, "---");
 
-    const bool oilAvailable = hasFreshData && (obd.oil_temp_c != -128);
+    const bool oilAvailable = hasFreshData && (obd.oil_temp_c != INT16_MIN);
     const bool iatAvailable = hasFreshData && (obd.intake_air_temp_c != -128);
     const bool voltAvailable = hasFreshData && (obd.voltage > 0.0f);
 

@@ -3573,7 +3573,7 @@ void WiFiManager::handleObdStatus() {
     doc["sampleAgeMs"] = dataAgeMs;
     doc["vwDataEnabled"] = settingsManager.get().obdVwDataEnabled;
 
-    if (data.oil_temp_c == -128) {
+    if (data.oil_temp_c == INT16_MIN) {
         doc["oilTempC"] = nullptr;
     } else {
         doc["oilTempC"] = data.oil_temp_c;

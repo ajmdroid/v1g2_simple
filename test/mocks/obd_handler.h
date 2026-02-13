@@ -1,9 +1,10 @@
 #pragma once
+#include <climits>
 #include <cstdint>
 
 struct OBDData {
     float voltage = 0.0f;
-    int8_t oil_temp_c = -128;
+    int16_t oil_temp_c = INT16_MIN;
     int8_t intake_air_temp_c = -128;
     bool valid = false;
     unsigned long timestamp_ms = 0;

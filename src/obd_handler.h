@@ -32,7 +32,7 @@ struct OBDData {
     float speed_mph;          // Vehicle speed in mph
     uint16_t rpm;             // Engine RPM (PID 0x0C)
     float voltage;            // Battery voltage (AT RV)
-    int8_t oil_temp_c;        // Optional vendor PID (if supported)
+    int16_t oil_temp_c;       // VW UDS DID F40C; offset -60, range -60..192 °C
     int8_t dsg_temp_c;        // Optional vendor PID (if supported)
     int8_t intake_air_temp_c; // PID 0x0F
     bool valid;               // True if OBD connection active and data is fresh
@@ -253,7 +253,7 @@ private:
     bool parseRPMResponse(const String& response, uint16_t& rpm);
     bool parseVoltageResponse(const String& response, float& voltage);
     bool parseIntakeAirTempResponse(const String& response, int8_t& tempC);
-    bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC);
+    bool parseVwMode22TempResponse(const String& response, const char* pidEcho, int16_t& tempC);
 
     static bool isObdLinkName(const std::string& name);
     static bool isNullAddressString(const String& address);

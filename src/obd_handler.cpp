@@ -73,7 +73,7 @@ OBDHandler::OBDHandler()
     lastData.speed_mph = 0;
     lastData.rpm = 0;
     lastData.voltage = 0;
-    lastData.oil_temp_c = -128;
+    lastData.oil_temp_c = INT16_MIN;
     lastData.dsg_temp_c = -128;
     lastData.intake_air_temp_c = -128;
     lastData.valid = false;
@@ -125,7 +125,7 @@ void OBDHandler::setVwDataEnabled(bool enabled) {
     if (!enabled) {
         ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
         if (lock.ok()) {
-            lastData.oil_temp_c = -128;
+            lastData.oil_temp_c = INT16_MIN;
             lastData.dsg_temp_c = -128;
         }
     }
@@ -1501,7 +1501,7 @@ bool OBDHandler::requestOilTemp() {
     }
 
     bool parsed = false;
-    int8_t tempC = -128;
+    int16_t tempC = INT16_MIN;
 
     if (sendATCommand("22F40C", response, 500)) {
         parsed = parseVwMode22TempResponse(response, "F40C", tempC);
@@ -1597,7 +1597,7 @@ bool OBDHandler::parseIntakeAirTempResponse(const String& response, int8_t& temp
     return true;
 }
 
-bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* pidEcho, int8_t& tempC) {
+bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* pidEcho, int16_t& tempC) {
     if (!pidEcho || pidEcho[0] == '\0') {
         return false;
     }
@@ -1619,7 +1619,8 @@ bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* p
     // VW UDS temperature DIDs may return 1 or 2 data bytes.
     // When 2 bytes are present (e.g. 62F40C 0C 86), the first byte is
     // a qualifier/format identifier and the second byte is the actual
-    // temperature value using the standard A-40 formula.
+    // temperature value.  VW MQB oil temp uses offset -60 (per opendbc
+    // MO_Oel_Temp signal: scale 1, offset -60, range -60..192 °C).
     uint8_t raw = 0;
     if (remaining >= 4) {
         const String hexA = normalized.substring(dataStart, dataStart + 2);
@@ -1647,7 +1648,8 @@ bool OBDHandler::parseVwMode22TempResponse(const String& response, const char* p
         return false;
     }
 
-    tempC = static_cast<int8_t>(raw - 40);
+    // VW MQB oil temp: raw - 60  (opendbc MO_Oel_Temp offset = -60)
+    tempC = static_cast<int16_t>(raw) - 60;
     return true;
 }
 
