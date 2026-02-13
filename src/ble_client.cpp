@@ -1114,6 +1114,7 @@ bool V1BLEClient::startAsyncConnect() {
     
     if (!initiated) {
         int err = pClient->getLastError();
+        Serial.printf("[BLE] Async connect initiation failed (error: %d)\n", err);
         BLE_SM_LOGF("[BLE] Async connect initiation failed (error: %d)\n", err);
         asyncConnectPending = false;
         
@@ -1217,6 +1218,7 @@ void V1BLEClient::processConnectingWait() {
     
     // Async connect failed (asyncConnectPending cleared without asyncConnectSuccess)
     int err = pClient ? pClient->getLastError() : -1;
+    Serial.printf("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber, err);
     BLE_SM_LOGF("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber, err);
     
     // Check if we should retry

@@ -424,7 +424,7 @@ static void audio_playback_task(void* pvParameters) {
     }
     
     if (!i2s_initialized) {
-        AUDIO_LOGLN("[AUDIO] ERROR: I2S init failed!");
+        Serial.println("[AUDIO] ERROR: I2S init failed!");
         audio_playing = false;
         vTaskDelete(NULL);
         return;
@@ -505,7 +505,7 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     );
     
     if (result != pdPASS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create audio task!");
+        Serial.println("[AUDIO] ERROR: Failed to create audio task!");
         audio_playing = false;
     }
 }
@@ -763,7 +763,7 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
     );
     
     if (audioTaskHandle == NULL) {
-        AUDIO_LOGLN("[AUDIO] ERROR: Failed to create SD audio task!");
+        Serial.println("[AUDIO] ERROR: Failed to create SD audio task!");
         audio_playing = false;
         return false;
     }
@@ -781,7 +781,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
     
     if (!i2s_initialized) {
-        AUDIO_LOGLN("[AUDIO] ERROR: I2S init failed!");
+        Serial.println("[AUDIO] ERROR: I2S init failed!");
         audio_playing = false;
         vTaskDelete(NULL);
         return;
@@ -804,7 +804,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     
     // Use audioFS (LittleFS) which contains the audio files
     if (!audioFS) {
-        AUDIO_LOGLN("[AUDIO] ERROR: audioFS is null!");
+        Serial.println("[AUDIO] ERROR: audioFS is null!");
         // Don't disable amp here - let timeout handle it
         audio_playing = false;
         vTaskDelete(NULL);
