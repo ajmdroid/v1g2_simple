@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <stdint.h>
 
 #include "camera_index.h"
@@ -9,17 +12,78 @@ struct CameraDataLoaderStatus {
     uint32_t loadFailures = 0;
     uint32_t lastAttemptMs = 0;
     uint32_t lastSuccessMs = 0;
+    bool taskRunning = false;
+    bool loadInProgress = false;
+    bool reloadPending = false;
+    uint32_t readyVersion = 0;
 };
 
-// M1 placeholder for camera dataset loading.
-// M2 will add VCAM file validation + index population.
 class CameraDataLoader {
 public:
+    static constexpr uint32_t kChunkRecords = 1024;
+    static constexpr uint32_t kLoaderTaskStackSize = 8192;
+    static constexpr UBaseType_t kLoaderTaskPriority = 1;
+
+    void begin();
     void reset();
-    bool loadDefault(CameraIndex& index, uint32_t nowMs);
-    CameraDataLoaderStatus status() const { return status_; }
+    void requestReload();
+    bool consumeReady(CameraIndex& activeIndex);
+    CameraDataLoaderStatus status() const;
 
 private:
+    struct VcamHeader {
+        char magic[4];
+        uint32_t version;
+        uint32_t count;
+        uint32_t recordSize;
+    };
+
+    struct RawVcamRecord {
+        float latitudeDeg;
+        float longitudeDeg;
+        float snapLatitudeDeg;
+        float snapLongitudeDeg;
+        int16_t bearingTenthsDeg;
+        uint8_t widthM;
+        uint8_t toleranceDeg;
+        uint8_t type;
+        uint8_t speedLimit;
+        uint8_t flags;
+        uint8_t reserved;
+    };
+
+    static_assert(sizeof(VcamHeader) == 16, "VCAM header must be 16 bytes");
+    static_assert(sizeof(RawVcamRecord) == 24, "VCAM record must be 24 bytes");
+
+    static void loaderTaskEntry(void* param);
+    void loaderTaskLoop();
+    bool buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers);
+    bool accumulateRecordCount(uint32_t& outTotalRecords);
+    bool loadRecords(CameraRecord* outRecords, uint32_t totalRecords);
+    bool loadFileRecords(const char* path,
+                         CameraRecord* outRecords,
+                         uint32_t totalRecords,
+                         uint32_t& writeIndex,
+                         RawVcamRecord* chunkBuffer,
+                         uint32_t chunkCapacity);
+    bool buildSpans(CameraRecord* records,
+                    uint32_t recordCount,
+                    CameraCellSpan*& outSpans,
+                    uint32_t& outSpanCount);
+    void publishReadyBuffers(CameraIndexOwnedBuffers& built);
+    void clearReadyBuffers();
+
+    static constexpr const char* kDatasetFiles[2] = {"/speed_cam.bin", "/redlight_cam.bin"};
+    static constexpr uint32_t kExpectedVersion = 1;
+    static constexpr uint32_t kExpectedRecordSize = 24;
+    static constexpr uint32_t kPsramHeadroomBytes = 256u * 1024u;
+
+    TaskHandle_t loaderTask_ = nullptr;
+    std::atomic<bool> reloadPending_{false};
+    std::atomic<bool> loadInProgress_{false};
+    std::atomic<uint32_t> nextVersion_{1};
+    portMUX_TYPE readyMux_ = portMUX_INITIALIZER_UNLOCKED;
+    mutable portMUX_TYPE statusMux_ = portMUX_INITIALIZER_UNLOCKED;
+    CameraIndexOwnedBuffers readyBuffers_ = {};
     CameraDataLoaderStatus status_ = {};
 };
-

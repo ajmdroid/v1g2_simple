@@ -15,6 +15,8 @@ struct CameraRuntimeCounters {
     uint32_t cameraAlertsStarted = 0;
     uint32_t cameraBudgetExceeded = 0;
     uint32_t cameraLoadFailures = 0;
+    uint32_t cameraIndexSwapCount = 0;
+    uint32_t cameraIndexSwapFailures = 0;
 };
 
 struct CameraRuntimeStatus {
@@ -37,8 +39,9 @@ public:
     // Main-loop low-priority hook.
     void process(uint32_t nowMs, bool skipNonCoreThisLoop, bool overloadThisLoop);
 
-    // M1 helper: placeholder load call (no IO yet, always fails cleanly).
+    // Compatibility helper for existing scaffolding/tests.
     bool tryLoadDefault(uint32_t nowMs);
+    void requestReload();
 
     CameraRuntimeStatus snapshot() const;
 
@@ -56,4 +59,3 @@ private:
 };
 
 extern CameraRuntimeModule cameraRuntimeModule;
-

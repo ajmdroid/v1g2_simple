@@ -9,21 +9,35 @@ void CameraRuntimeModule::begin(bool enabled) {
     index_.clear();
     eventLog_.reset();
     dataLoader_.reset();
+    dataLoader_.begin();
+    if (enabled_) {
+        dataLoader_.requestReload();
+    }
 }
 
 void CameraRuntimeModule::setEnabled(bool enabled) {
+    const bool wasEnabled = enabled_;
     enabled_ = enabled;
+    if (enabled_ && !wasEnabled && !index_.isLoaded()) {
+        dataLoader_.requestReload();
+    }
 }
 
 bool CameraRuntimeModule::tryLoadDefault(uint32_t nowMs) {
-    const bool ok = dataLoader_.loadDefault(index_, nowMs);
-    if (!ok) {
-        counters_.cameraLoadFailures++;
-    }
-    return ok;
+    (void)nowMs;
+    dataLoader_.requestReload();
+    return index_.isLoaded();
+}
+
+void CameraRuntimeModule::requestReload() {
+    dataLoader_.requestReload();
 }
 
 void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool overloadThisLoop) {
+    if (dataLoader_.consumeReady(index_)) {
+        counters_.cameraIndexSwapCount++;
+    }
+
     if (!enabled_) {
         return;
     }
@@ -55,6 +69,6 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.lastTickMs = lastTickMs_;
     out.counters = counters_;
     out.loader = dataLoader_.status();
+    out.counters.cameraLoadFailures = out.loader.loadFailures;
     return out;
 }
-
