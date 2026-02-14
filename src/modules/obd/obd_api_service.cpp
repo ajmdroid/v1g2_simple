@@ -45,10 +45,14 @@ void sendStatus(WebServer& server,
                 const V1Settings& settings) {
     JsonDocument doc;
     OBDData data = obdHandler.getData();
+    static constexpr uint32_t kObdFreshDataMaxAgeMs = 3000;
     const uint32_t nowMs = millis();
     const uint32_t dataAgeMs = (data.timestamp_ms > 0 && nowMs >= data.timestamp_ms)
                                    ? (nowMs - data.timestamp_ms)
-                                   : 0;
+                                   : UINT32_MAX;
+    const bool hasValidData = data.valid &&
+                              (dataAgeMs != UINT32_MAX) &&
+                              (dataAgeMs <= kObdFreshDataMaxAgeMs);
 
     doc["state"] = obdHandler.getStateString();
     doc["connected"] = obdHandler.isConnected();
@@ -56,13 +60,17 @@ void sendStatus(WebServer& server,
     doc["deviceName"] = obdHandler.getConnectedDeviceName();
     doc["deviceAddress"] = obdHandler.getConnectedDeviceAddress();
     doc["v1Connected"] = bleClient.isConnected();
-    doc["hasValidData"] = obdHandler.hasValidData();
+    doc["hasValidData"] = hasValidData;
     doc["speedMph"] = data.speed_mph;
     doc["speedKph"] = data.speed_kph;
     doc["rpm"] = data.rpm;
     doc["voltage"] = data.voltage;
     doc["sampleTsMs"] = data.timestamp_ms;
-    doc["sampleAgeMs"] = dataAgeMs;
+    if (dataAgeMs == UINT32_MAX) {
+        doc["sampleAgeMs"] = nullptr;
+    } else {
+        doc["sampleAgeMs"] = dataAgeMs;
+    }
     doc["vwDataEnabled"] = settings.obdVwDataEnabled;
 
     if (data.oil_temp_c == INT16_MIN) {

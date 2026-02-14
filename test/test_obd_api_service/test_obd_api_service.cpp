@@ -160,6 +160,7 @@ void test_send_status_reports_core_obd_fields() {
     data.speed_kph = 68.4f;
     data.rpm = 3100;
     data.voltage = 13.8f;
+    data.valid = true;
     data.timestamp_ms = 900;
     data.oil_temp_c = 100;
     data.dsg_temp_c = -128;
@@ -183,6 +184,29 @@ void test_send_status_reports_core_obd_fields() {
     TEST_ASSERT_TRUE(responseContains(server, "\"autoConnectCount\":1"));
 }
 
+void test_send_status_uses_single_data_snapshot_for_validity() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+
+    // Deliberately disagree with getData() to verify sendStatus ignores
+    // secondary validity calls and uses one consistent snapshot.
+    obdHandler.setValidData(true);
+
+    OBDData data;
+    data.speed_mph = 41.0f;
+    data.speed_kph = 66.0f;
+    data.valid = false;
+    data.timestamp_ms = 900;
+    obdHandler.setData(data);
+
+    V1Settings settings;
+    ObdApiService::sendStatus(server, obdHandler, bleClient, settings);
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"hasValidData\":false"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_parse_connect_request_from_query_args);
@@ -195,5 +219,6 @@ int main() {
     RUN_TEST(test_handle_remembered_autoconnect_updates_flag);
     RUN_TEST(test_handle_forget_reports_missing_address);
     RUN_TEST(test_send_status_reports_core_obd_fields);
+    RUN_TEST(test_send_status_uses_single_data_snapshot_for_validity);
     return UNITY_END();
 }
