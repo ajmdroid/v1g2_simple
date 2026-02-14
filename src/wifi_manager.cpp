@@ -3301,13 +3301,26 @@ void WiFiManager::handleSettingsRestore() {
     if (!checkRateLimit()) return;
     markUiActivity();
     Serial.println("[HTTP] POST /api/settings/restore");
+    static constexpr size_t kMaxRestoreBodyBytes = 16 * 1024;
     
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"No JSON body provided\"}");
         return;
     }
+
+    if (server.hasHeader("Content-Length")) {
+        long declaredLength = server.header("Content-Length").toInt();
+        if (declaredLength < 0 || static_cast<size_t>(declaredLength) > kMaxRestoreBodyBytes) {
+            server.send(413, "application/json", "{\"success\":false,\"error\":\"Body too large\"}");
+            return;
+        }
+    }
     
     String body = server.arg("plain");
+    if (body.length() > kMaxRestoreBodyBytes) {
+        server.send(413, "application/json", "{\"success\":false,\"error\":\"Body too large\"}");
+        return;
+    }
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
     
