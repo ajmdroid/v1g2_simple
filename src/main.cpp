@@ -139,6 +139,34 @@ static const char* resetReasonToString(esp_reset_reason_t reason) {
     }
 }
 
+static uint32_t normalizeLegacyLockoutRadiusScale(JsonDocument& doc) {
+    JsonArray zones = doc["zones"].as<JsonArray>();
+    if (zones.isNull()) {
+        return 0;
+    }
+
+    // Legacy lockout files stored radiusE5 in a 10x scale.
+    // Heuristic is safe: legacy valid range started at 450.
+    static constexpr uint16_t LEGACY_RADIUS_MIN_E5 = 450;
+    uint32_t migrated = 0;
+    for (JsonObject zone : zones) {
+        if (zone["rad"].isNull()) {
+            continue;
+        }
+        const uint16_t raw = zone["rad"].as<uint16_t>();
+        if (raw < LEGACY_RADIUS_MIN_E5) {
+            continue;
+        }
+        const uint16_t normalized = clampLockoutLearnerRadiusE5Value(
+            static_cast<int>((raw + 5u) / 10u));
+        if (normalized != raw) {
+            zone["rad"] = normalized;
+            ++migrated;
+        }
+    }
+    return migrated;
+}
+
 static void showInitialScanningScreen() {
     if (initialScanningScreenShown) {
         return;
@@ -592,11 +620,18 @@ void setup() {
                 DeserializationError err = deserializeJson(doc, f);
                 f.close();
                 if (!err) {
+                    const uint32_t legacyRadiusMigrations = normalizeLegacyLockoutRadiusScale(doc);
                     lockoutStore.begin(&lockoutIndex);
                     if (lockoutStore.fromJson(doc)) {
                         SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
                                          static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
                                          LOCKOUT_ZONES_PATH);
+                        if (legacyRadiusMigrations > 0) {
+                            SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
+                                             static_cast<unsigned long>(legacyRadiusMigrations));
+                            // Persist normalized values on the next best-effort save cycle.
+                            lockoutStore.markDirty();
+                        }
                     }
                 } else {
                     SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
@@ -749,7 +784,11 @@ void setup() {
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
     cameraRuntimeModule.begin(settingsManager.get().gpsEnabled && settingsManager.get().cameraEnabled);
-    lockoutStore.begin(&lockoutIndex);
+    // Wire lockout store only if not already done during zone-load above.
+    // Calling begin() again would reset the dirty flag set by legacy migration.
+    if (!lockoutStore.isInitialized()) {
+        lockoutStore.begin(&lockoutIndex);
+    }
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     {
@@ -1037,6 +1076,17 @@ void loop() {
             displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
             perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
             lastFreqUiMs = nowMs;
+        }
+    } else if (!bootSplashHoldActive) {
+        // Clear stale lockout badge if parser traffic has stopped or link is down.
+        // Avoids showing a latched "L" when we no longer have fresh lockout decisions.
+        static constexpr uint32_t LOCKOUT_INDICATOR_STALE_MS = 2000;
+        const uint32_t nowMs = millis();
+        const uint32_t lastParsedMs = bleQueueModule.getLastParsedTimestamp();
+        if (!bleClient.isConnected() ||
+            lastParsedMs == 0 ||
+            static_cast<uint32_t>(nowMs - lastParsedMs) > LOCKOUT_INDICATOR_STALE_MS) {
+            display.setLockoutIndicator(false);
         }
     }
 

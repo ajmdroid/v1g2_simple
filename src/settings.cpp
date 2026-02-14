@@ -818,8 +818,17 @@ void SettingsManager::load() {
     settings.gpsLockoutMaxEventBusDrops = preferences.getUShort("gpsLkEBDrop", 0);
     settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
         preferences.getUChar("gpsLkHits", LOCKOUT_LEARNER_HITS_DEFAULT));
-    settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
-        preferences.getUShort("gpsLkRad", LOCKOUT_LEARNER_RADIUS_E5_DEFAULT));
+    uint16_t learnerRadiusRaw = preferences.getUShort("gpsLkRad", LOCKOUT_LEARNER_RADIUS_E5_DEFAULT);
+    // Legacy radius values were written in a 10x scale (450..3600 intended as 50..400 m).
+    // Normalize in-memory during load to preserve intended behavior without immediate NVS rewrite.
+    if (storedVersion <= 2 && learnerRadiusRaw >= 450) {
+        const uint16_t converted = static_cast<uint16_t>((learnerRadiusRaw + 5u) / 10u);
+        Serial.printf("[Settings] Migrated legacy lockout radius %u -> %u\n",
+                      static_cast<unsigned>(learnerRadiusRaw),
+                      static_cast<unsigned>(converted));
+        learnerRadiusRaw = converted;
+    }
+    settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(learnerRadiusRaw);
     settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
         preferences.getUShort("gpsLkFtol", LOCKOUT_LEARNER_FREQ_TOL_DEFAULT));
     settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
@@ -1588,8 +1597,12 @@ void SettingsManager::backupToSD() {
         return;  // SD not available, skip silently
     }
     
-    // Acquire SD mutex to protect file I/O
-    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    // Acquire SD mutex to protect file I/O.
+    // checkDmaHeap=false: backupToSD() is called from save() which runs inside
+    // WiFi handlers — WiFi's SRAM buffers reduce DMA heap below the guard
+    // thresholds, causing every web-UI save to silently skip the SD backup.
+    // The write is small (one JSON file) and infrequent, so bypassing is safe.
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
     if (!sdLock) {
         Serial.println("[Settings] Failed to acquire SD mutex for backup");
         return;

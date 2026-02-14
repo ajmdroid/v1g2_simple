@@ -28,6 +28,9 @@ public:
     /// Wire the index dependency.  Must be called once before toJson/fromJson.
     void begin(LockoutIndex* index);
 
+    /// True after begin() has been called with a non-null index.
+    bool isInitialized() const { return index_ != nullptr; }
+
     /// Populate a JsonDocument with all active entries from the index.
     /// Caller owns the doc (typically stack-allocated JsonDocument).
     void toJson(JsonDocument& doc) const;
