@@ -1047,6 +1047,47 @@ void play_band_only(AlertBand band) {
     start_sd_audio_task(params);
 }
 
+// Play one-shot camera voice phrase: "<type> ahead"
+// Reuses existing SD audio task path to avoid any camera-specific audio pipeline.
+void play_camera_ahead_voice(uint8_t cameraTypeRaw) {
+    AUDIO_LOGF("[AUDIO] play_camera_ahead_voice() type=%u\n", static_cast<unsigned int>(cameraTypeRaw));
+
+    if (audio_playing.load()) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping camera voice");
+        return;
+    }
+
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping camera voice");
+        return;
+    }
+
+    const char* typeFile = nullptr;
+    switch (static_cast<CameraVoiceType>(cameraTypeRaw)) {
+        case CameraVoiceType::REDLIGHT:
+            typeFile = "cam_redlight.mul";
+            break;
+        case CameraVoiceType::SPEED:
+            typeFile = "cam_speed.mul";
+            break;
+        case CameraVoiceType::REDLIGHT_SPEED:
+            typeFile = "cam_both.mul";
+            break;
+        case CameraVoiceType::ALPR:
+            typeFile = "cam_alpr.mul";
+            break;
+        default:
+            AUDIO_LOGF("[AUDIO] Unknown camera voice type: %u\n", static_cast<unsigned int>(cameraTypeRaw));
+            return;
+    }
+
+    SDAudioTaskParams params;
+    params.numClips = 0;
+    snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, typeFile);
+    snprintf(params.filePaths[params.numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
+    start_sd_audio_task(params);
+}
+
 // Play direction-only announcement (used when same alert changes direction)
 // Says "ahead", "behind", or "side", optionally with bogey count if > 1
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
