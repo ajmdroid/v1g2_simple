@@ -2221,9 +2221,8 @@ void OBDHandler::stopTask() {
     }
 
     if (obdTaskHandle) {
-        TaskHandle_t handle = obdTaskHandle;
-        obdTaskHandle = nullptr;
-        taskRunning = false;
-        vTaskDelete(handle);
+        // Avoid deleting by handle from another task context; taskEntry() self-deletes.
+        // External delete races with self-delete and can crash FreeRTOS.
+        Serial.println("[OBD] WARN: stopTask timeout waiting for cooperative exit");
     }
 }
