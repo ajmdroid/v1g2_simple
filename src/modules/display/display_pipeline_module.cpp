@@ -56,6 +56,38 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
+    // Volume fade runs every frame — not gated by display draw throttle.
+    // BLE restore commands must not be delayed by 30ms draw timing.
+    {
+        VolumeFadeContext fadeCtx;
+        if (hasAlerts) {
+            AlertData fadePriority = parser->getPriorityAlert();
+            fadeCtx.hasAlert = true;
+            fadeCtx.alertMuted = state.muted;
+            fadeCtx.alertSuppressed = prioritySuppressed;
+            fadeCtx.currentVolume = state.mainVolume;
+            fadeCtx.currentMuteVolume = state.muteVolume;
+            fadeCtx.currentFrequency = (uint16_t)fadePriority.frequency;
+        } else {
+            fadeCtx.hasAlert = false;
+            fadeCtx.currentVolume = state.mainVolume;
+            fadeCtx.currentMuteVolume = state.muteVolume;
+            fadeCtx.currentFrequency = 0;
+        }
+        fadeCtx.speedBoostActive = speedVolume->isBoostActive();
+        fadeCtx.speedBoostOriginalVolume = speedVolume->getOriginalVolume();
+        fadeCtx.now = nowMs;
+
+        VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
+        if (fadeAction.hasAction()) {
+            if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
+                ble->setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
+            } else if (fadeAction.type == VolumeFadeAction::Type::RESTORE) {
+                ble->setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
+            }
+        }
+    }
+
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
         return;
     }
@@ -69,26 +101,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const auto& currentAlerts = parser->getAllAlerts();
 
         *displayMode = DisplayMode::LIVE;
-
-        VolumeFadeContext fadeCtx;
-        fadeCtx.hasAlert = true;
-        fadeCtx.alertMuted = state.muted;
-        fadeCtx.alertSuppressed = prioritySuppressed;
-        fadeCtx.currentVolume = state.mainVolume;
-        fadeCtx.currentMuteVolume = state.muteVolume;
-        fadeCtx.currentFrequency = (uint16_t)priority.frequency;
-        fadeCtx.speedBoostActive = speedVolume->isBoostActive();
-        fadeCtx.speedBoostOriginalVolume = speedVolume->getOriginalVolume();
-        fadeCtx.now = nowMs;
-
-        VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
-        if (fadeAction.hasAction()) {
-            if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
-                ble->setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
-            } else if (fadeAction.type == VolumeFadeAction::Type::RESTORE) {
-                ble->setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
-            }
-        }
 
         VoiceContext voiceCtx;
         voiceCtx.alerts = currentAlerts.data();
@@ -146,23 +158,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voice->clearAllState();
         // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
         // Persistence is cleared on slot change (below) or when window expires
-
-        const DisplayState& restoreState = parser->getDisplayState();
-        VolumeFadeContext fadeCtx;
-        fadeCtx.hasAlert = false;
-        fadeCtx.alertMuted = false;
-        fadeCtx.alertSuppressed = false;
-        fadeCtx.currentVolume = restoreState.mainVolume;
-        fadeCtx.currentMuteVolume = restoreState.muteVolume;
-        fadeCtx.currentFrequency = 0;
-        fadeCtx.speedBoostActive = speedVolume->isBoostActive();
-        fadeCtx.speedBoostOriginalVolume = speedVolume->getOriginalVolume();
-        fadeCtx.now = nowMs;
-
-        VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
-        if (fadeAction.hasAction() && fadeAction.type == VolumeFadeAction::Type::RESTORE) {
-            ble->setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
-        }
 
         speedVolume->reset();
 
