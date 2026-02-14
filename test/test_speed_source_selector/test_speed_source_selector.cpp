@@ -35,14 +35,14 @@ void test_obd_wins_when_both_sources_fresh() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 42.0f, out.speedMph);
 }
 
-void test_gps_selected_when_obd_disconnected_and_gps_fresh() {
+void test_no_speed_when_only_gps_is_fresh() {
     speedSourceSelector.setObdConnected(false);
     speedSourceSelector.updateGpsSample(38.0f, 1500, true);
 
     SpeedSelection out;
-    TEST_ASSERT_TRUE(speedSourceSelector.select(2000, out));
-    TEST_ASSERT_EQUAL(SpeedSource::GPS, out.source);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, 38.0f, out.speedMph);
+    TEST_ASSERT_FALSE(speedSourceSelector.select(2000, out));
+    TEST_ASSERT_EQUAL(SpeedSource::NONE, out.source);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, out.speedMph);
 }
 
 void test_gps_not_used_when_obd_connected_but_stale() {
@@ -55,7 +55,7 @@ void test_gps_not_used_when_obd_connected_but_stale() {
     TEST_ASSERT_EQUAL(SpeedSource::NONE, out.source);
 }
 
-void test_gps_fallback_restored_when_obd_disconnects() {
+void test_no_gps_fallback_when_obd_disconnects() {
     speedSourceSelector.setObdConnected(true);
     speedSourceSelector.updateObdSample(60.0f, 1000, true);    // stale at now=4501
     speedSourceSelector.updateGpsSample(30.0f, 4500, true);    // fresh at now=4501
@@ -64,16 +64,16 @@ void test_gps_fallback_restored_when_obd_disconnects() {
     TEST_ASSERT_FALSE(speedSourceSelector.select(4501, out));
 
     speedSourceSelector.setObdConnected(false);
-    TEST_ASSERT_TRUE(speedSourceSelector.select(4501, out));
-    TEST_ASSERT_EQUAL(SpeedSource::GPS, out.source);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, 30.0f, out.speedMph);
+    TEST_ASSERT_FALSE(speedSourceSelector.select(4501, out));
+    TEST_ASSERT_EQUAL(SpeedSource::NONE, out.source);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, out.speedMph);
 }
 
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_obd_wins_when_both_sources_fresh);
-    RUN_TEST(test_gps_selected_when_obd_disconnected_and_gps_fresh);
+    RUN_TEST(test_no_speed_when_only_gps_is_fresh);
     RUN_TEST(test_gps_not_used_when_obd_connected_but_stale);
-    RUN_TEST(test_gps_fallback_restored_when_obd_disconnects);
+    RUN_TEST(test_no_gps_fallback_when_obd_disconnects);
     return UNITY_END();
 }

@@ -43,7 +43,6 @@ void SpeedSourceSelector::updateGpsSample(float speedMph, uint32_t timestampMs, 
 
 bool SpeedSourceSelector::select(uint32_t nowMs, SpeedSelection& selection) {
     const bool obdFresh = isSampleFresh(obd_, nowMs, OBD_MAX_AGE_MS);
-    const bool gpsFresh = gpsEnabled_ && isSampleFresh(gps_, nowMs, GPS_MAX_AGE_MS);
 
     SpeedSource nextSource = SpeedSource::NONE;
     const SampleState* nextSample = nullptr;
@@ -52,15 +51,8 @@ bool SpeedSourceSelector::select(uint32_t nowMs, SpeedSelection& selection) {
         nextSource = SpeedSource::OBD;
         nextSample = &obd_;
         obdSelections_++;
-    } else if (obdConnected_) {
-        // When OBD link is active, avoid GPS takeover during transient OBD gaps.
-        // This keeps speed-based muting stable and OBD-priority.
-        noSourceSelections_++;
-    } else if (gpsFresh) {
-        nextSource = SpeedSource::GPS;
-        nextSample = &gps_;
-        gpsSelections_++;
     } else {
+        // OBD-only policy: never fall back to GPS speed.
         noSourceSelections_++;
     }
 

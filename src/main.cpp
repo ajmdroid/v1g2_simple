@@ -914,11 +914,6 @@ void loop() {
     speedSourceSelector.setObdConnected(obdHandler.isConnected());
 
     gpsRuntimeModule.update(now);
-    float gpsSpeedMph = 0.0f;
-    uint32_t gpsSampleTsMs = 0;
-    if (gpsRuntimeModule.getFreshSpeed(now, gpsSpeedMph, gpsSampleTsMs)) {
-        speedSourceSelector.updateGpsSample(gpsSpeedMph, gpsSampleTsMs, true);
-    }
 
     SpeedSelection speedSelection;
     if (speedSourceSelector.select(now, speedSelection)) {
