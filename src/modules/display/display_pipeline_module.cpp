@@ -28,7 +28,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
 static unsigned long lastAlertGapRecoverMs = 0;
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
-    if (!display || !parser || !settings || !alertPersistence ||
+    if (!display || !parser || !settings || !ble || !alertPersistence ||
         !volumeFade || !voice || !speedVolume || !displayMode) {
         return;
     }
