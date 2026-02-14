@@ -16,6 +16,7 @@ unsigned long mockMicros = 0;
 // Lockout data structures + index.
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
+#include "../../src/modules/lockout/lockout_band_policy.cpp"
 #include "../../src/modules/lockout/lockout_index.cpp"
 
 // Store (needed by learner for markDirty on promote).
@@ -60,6 +61,7 @@ static constexpr uint16_t K_FREQ = 24148;
 static constexpr int64_t EPOCH_BASE = 1700000000000LL;
 
 void setUp() {
+    lockoutSetKaLearningEnabled(false);
     testIndex.clear();
     testLog.reset();
     learner.begin(&testIndex, &testLog);
@@ -303,6 +305,17 @@ void test_unsupported_band_skipped() {
     TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
     TEST_ASSERT_EQUAL(0, learner.stats().observed);
     TEST_ASSERT_EQUAL(2, learner.stats().skippedBand);
+}
+
+void test_ka_band_allowed_when_policy_enabled() {
+    lockoutSetKaLearningEnabled(true);
+
+    testLog.publish(makeObs(LAT, LON, KA_BAND, 34700));
+    learner.process(2000, EPOCH_BASE);
+
+    TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(1, learner.stats().observed);
+    TEST_ASSERT_EQUAL(0, learner.stats().skippedBand);
 }
 
 // ================================================================
@@ -580,6 +593,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_already_in_index_skipped);
     RUN_TEST(test_no_location_skipped);
     RUN_TEST(test_unsupported_band_skipped);
+    RUN_TEST(test_ka_band_allowed_when_policy_enabled);
     RUN_TEST(test_rate_limited);
     RUN_TEST(test_backlog_over_batch_fully_processed);
     RUN_TEST(test_prune_stale_candidate);

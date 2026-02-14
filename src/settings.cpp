@@ -23,7 +23,7 @@
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 static const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
 static const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-static const int SD_BACKUP_VERSION = 5;  // Increment when adding new fields to backup
+static const int SD_BACKUP_VERSION = 6;  // Increment when adding new fields to backup
 static const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
@@ -558,6 +558,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("gpsLkUInt", settings.gpsLockoutLearnerUnlearnIntervalHours);
     written += prefs.putUChar("gpsLkUCnt", settings.gpsLockoutLearnerUnlearnCount);
     written += prefs.putUChar("gpsLkMDCnt", settings.gpsLockoutManualDemotionMissCount);
+    written += prefs.putBool("gpsLkKa", settings.gpsLockoutKaLearningEnabled);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -827,6 +828,7 @@ void SettingsManager::load() {
         preferences.getUChar("gpsLkUCnt", LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT));
     settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
         preferences.getUChar("gpsLkMDCnt", LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT));
+    settings.gpsLockoutKaLearningEnabled = preferences.getBool("gpsLkKa", false);
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -1615,6 +1617,7 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
     doc["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     doc["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1885,6 +1888,9 @@ bool SettingsManager::restoreFromSD() {
     if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
         settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
             doc["gpsLockoutManualDemotionMissCount"].as<int>());
+    }
+    if (doc["gpsLockoutKaLearningEnabled"].is<bool>()) {
+        settings.gpsLockoutKaLearningEnabled = doc["gpsLockoutKaLearningEnabled"];
     }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {

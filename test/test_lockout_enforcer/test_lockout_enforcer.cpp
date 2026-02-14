@@ -46,6 +46,7 @@ struct GpsRuntimeStatus {
 // Pull implementation for UNIT_TEST build.
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
+#include "../../src/modules/lockout/lockout_band_policy.cpp"
 #include "../../src/modules/lockout/lockout_index.cpp"
 #include "../../src/modules/lockout/lockout_store.h"
 #include "../../src/modules/lockout/lockout_store.cpp"
@@ -91,6 +92,7 @@ static LockoutEntry makeEntry(float latDeg, float lonDeg,
 }
 
 void setUp() {
+    lockoutSetKaLearningEnabled(false);
     testIndex.clear();
     testStore.begin(&testIndex);
     parser.reset();
@@ -285,6 +287,19 @@ void test_unsupported_band_never_mutes() {
     TEST_ASSERT_TRUE(r.evaluated);
     TEST_ASSERT_FALSE(r.shouldMute);
     TEST_ASSERT_EQUAL(-1, r.matchIndex);
+}
+
+void test_ka_band_mutes_when_policy_enabled() {
+    lockoutSetKaLearningEnabled(true);
+    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x02, 34700));
+    parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 0, 34700, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_TRUE(r.shouldMute);
+    TEST_ASSERT_EQUAL(0, r.matchIndex);
 }
 
 // ================================================================
@@ -541,6 +556,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_no_match_outside_zone);
     RUN_TEST(test_no_match_wrong_band);
     RUN_TEST(test_unsupported_band_never_mutes);
+    RUN_TEST(test_ka_band_mutes_when_policy_enabled);
     RUN_TEST(test_no_match_wrong_freq);
     RUN_TEST(test_stats_accumulate);
     RUN_TEST(test_empty_index_no_match);

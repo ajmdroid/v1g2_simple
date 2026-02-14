@@ -15,7 +15,7 @@
 	let lockoutConfigInitialized = false;
 	let lockoutConfigDirty = $state(false);
 	let advancedUnlocked = $state(false);
-	let kaPreviewEnabled = $state(false);
+	let showKaWarningModal = $state(false);
 	let deletingZoneSlot = $state(null);
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
@@ -83,6 +83,7 @@
 			learnerUnlearnIntervalHours: 0,
 			learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
 			manualDemotionMissCount: 0,
+			kaLearningEnabled: false,
 			coreGuardTripped: false,
 			coreGuardReason: '',
 			enforceAllowed: false
@@ -118,7 +119,8 @@
 		learnerLearnIntervalHours: 0,
 		learnerUnlearnIntervalHours: 0,
 		learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
-		manualDemotionMissCount: 0
+		manualDemotionMissCount: 0,
+		kaLearningEnabled: false
 	});
 	let lockoutZonesStats = $state({
 		activeCount: 0,
@@ -319,6 +321,14 @@
 				: typeof data?.lockoutManualDemotionMissCount === 'number'
 					? data.lockoutManualDemotionMissCount
 					: 0;
+		const kaLearningEnabled =
+			typeof lockout.kaLearningEnabled === 'boolean'
+				? lockout.kaLearningEnabled
+				: typeof data?.lockoutKaLearningEnabled === 'boolean'
+					? data.lockoutKaLearningEnabled
+					: typeof data?.gpsLockoutKaLearningEnabled === 'boolean'
+						? data.gpsLockoutKaLearningEnabled
+						: false;
 		lockoutConfig = {
 			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
@@ -331,7 +341,8 @@
 			learnerLearnIntervalHours: clampIntervalHours(learnerLearnIntervalHours),
 			learnerUnlearnIntervalHours: clampIntervalHours(learnerUnlearnIntervalHours),
 			learnerUnlearnCount: clampUnlearnCount(learnerUnlearnCount),
-			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount)
+			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount),
+			kaLearningEnabled: !!kaLearningEnabled
 		};
 		lockoutConfigInitialized = true;
 	}
@@ -448,7 +459,8 @@
 			clampUnlearnCount(lockoutConfig.learnerUnlearnCount) ===
 				clampUnlearnCount(runtime.learnerUnlearnCount) &&
 			clampManualDemotionMissCount(lockoutConfig.manualDemotionMissCount) ===
-				clampManualDemotionMissCount(runtime.manualDemotionMissCount)
+				clampManualDemotionMissCount(runtime.manualDemotionMissCount) &&
+			!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled
 		);
 	}
 
@@ -462,6 +474,31 @@
 		lockoutConfig.manualDemotionMissCount = clampManualDemotionMissCount(preset.manualDemotionMissCount);
 		lockoutConfigDirty = true;
 		setMsg('info', `${preset.name} preset staged. Review values, then Save.`);
+	}
+
+	function requestKaLearningToggle(nextEnabled) {
+		if (!advancedUnlocked) return;
+		if (!nextEnabled) {
+			if (lockoutConfig.kaLearningEnabled) {
+				lockoutConfig.kaLearningEnabled = false;
+				markLockoutDirty();
+			}
+			return;
+		}
+		if (lockoutConfig.kaLearningEnabled) {
+			return;
+		}
+		showKaWarningModal = true;
+	}
+
+	function cancelKaLearningEnable() {
+		showKaWarningModal = false;
+	}
+
+	function confirmKaLearningEnable() {
+		lockoutConfig.kaLearningEnabled = true;
+		showKaWarningModal = false;
+		markLockoutDirty();
 	}
 
 	async function refreshAll() {
@@ -597,6 +634,7 @@
 			const manualDemotionMissCount = clampManualDemotionMissCount(
 				lockoutConfig.manualDemotionMissCount
 			);
+			const kaLearningEnabled = !!lockoutConfig.kaLearningEnabled;
 			const payload = {
 				lockoutMode: modeRaw,
 				lockoutCoreGuardEnabled: !!lockoutConfig.coreGuardEnabled,
@@ -609,7 +647,8 @@
 				lockoutLearnerLearnIntervalHours: learnerLearnIntervalHours,
 				lockoutLearnerUnlearnIntervalHours: learnerUnlearnIntervalHours,
 				lockoutLearnerUnlearnCount: learnerUnlearnCount,
-				lockoutManualDemotionMissCount: manualDemotionMissCount
+				lockoutManualDemotionMissCount: manualDemotionMissCount,
+				lockoutKaLearningEnabled: kaLearningEnabled
 			};
 			const res = await fetch('/api/gps/config', {
 				method: 'POST',
@@ -628,6 +667,7 @@
 			lockoutConfig.learnerUnlearnIntervalHours = learnerUnlearnIntervalHours;
 			lockoutConfig.learnerUnlearnCount = learnerUnlearnCount;
 			lockoutConfig.manualDemotionMissCount = manualDemotionMissCount;
+			lockoutConfig.kaLearningEnabled = kaLearningEnabled;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
@@ -989,25 +1029,27 @@
 					</label>
 				</div>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<span class="label-text text-sm">Ka lockout learning (preview only)</span>
+					<span class="label-text text-sm">Ka lockout learning (high risk)</span>
 					<input
 						type="checkbox"
 						class="toggle toggle-warning toggle-sm"
-						checked={kaPreviewEnabled}
-						disabled
+						checked={!!lockoutConfig.kaLearningEnabled}
+						disabled={!advancedUnlocked}
 						onchange={(e) => {
-							kaPreviewEnabled = e.currentTarget.checked;
+							requestKaLearningToggle(e.currentTarget.checked);
 						}}
 					/>
 				</label>
 				<div class="text-xs text-warning">
-					Ka learning remains disabled in firmware by policy. If enabled later, it will ship behind a warning gate.
+					Disabled by default. Enabling Ka learning can suppress real Ka threats if lockouts are wrong.
 				</div>
 				<div class="text-xs text-base-content/65">
 					Runtime learner: {runtimeLearnerHits()} hits · interval {formatIntervalLabel(runtimeLearnerLearnIntervalHours())}
 					· ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
 					· unlearn {runtimeLearnerUnlearnCount()} misses / {formatIntervalLabel(runtimeLearnerUnlearnIntervalHours())}
-					· manual delete {runtimeManualDemotionMissCount() || 'disabled'} · candidate expiry: 7 days
+					· manual delete {runtimeManualDemotionMissCount() || 'disabled'}
+					· Ka learning {gpsStatus?.lockout?.kaLearningEnabled ? 'enabled' : 'disabled'}
+					· candidate expiry: 7 days
 				</div>
 			</div>
 		</div>
@@ -1310,4 +1352,26 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if showKaWarningModal}
+		<div class="modal modal-open">
+			<div class="modal-box">
+				<h3 class="font-bold text-lg">Ka Lockout Learning Warning</h3>
+				<p class="py-3 text-sm text-warning">
+					this is a bad idea, please don't enable
+				</p>
+				<p class="text-xs text-base-content/70">
+					Ka lockouts can hide real threats. Keep this off unless you fully understand the risk.
+				</p>
+				<div class="modal-action">
+					<button class="btn btn-outline btn-sm" onclick={cancelKaLearningEnable}>
+						this is a bad idea, please don't enable
+					</button>
+					<button class="btn btn-warning btn-sm" onclick={confirmKaLearningEnable}>
+						i accept this will probably casue me to miss real threats
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>

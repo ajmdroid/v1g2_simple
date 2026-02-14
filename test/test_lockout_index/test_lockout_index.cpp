@@ -3,6 +3,7 @@
 // Pull implementation for header-only UNIT_TEST build.
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
+#include "../../src/modules/lockout/lockout_band_policy.cpp"
 #include "../../src/modules/lockout/lockout_index.cpp"
 
 #ifndef ARDUINO
@@ -13,6 +14,7 @@ SerialClass Serial;
 static LockoutIndex idx;
 
 void setUp() {
+    lockoutSetKaLearningEnabled(false);
     idx.clear();
 }
 
@@ -212,6 +214,18 @@ void test_evaluate_multi_band_entry() {
     // Ka no match
     LockoutDecision dka = idx.evaluate(3736277, -7923221, 0x02, 24148);
     TEST_ASSERT_FALSE(dka.shouldMute);
+}
+
+void test_evaluate_ka_matches_when_policy_enabled() {
+    lockoutSetKaLearningEnabled(true);
+
+    LockoutEntry e = makeKBandEntry(3736277, -7923221, 34700);
+    e.bandMask = 0x02;  // Ka
+    int slot = idx.add(e);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+
+    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x02, 34700);
+    TEST_ASSERT_TRUE(d.shouldMute);
 }
 
 // ================================================================
@@ -626,6 +640,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_evaluate_band_only_lockout_no_freq_filter);
     RUN_TEST(test_evaluate_empty_index_no_match);
     RUN_TEST(test_evaluate_multi_band_entry);
+    RUN_TEST(test_evaluate_ka_matches_when_policy_enabled);
 
     // findMatch
     RUN_TEST(test_findMatch_returns_correct_index);

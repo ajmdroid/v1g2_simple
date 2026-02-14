@@ -13,6 +13,7 @@ unsigned long mockMicros = 0;
 #include "../../src/modules/lockout/signal_observation_log.h"
 #include "../../src/modules/lockout/signal_observation_log.cpp"
 #include "../../src/modules/lockout/signal_capture_module.h"
+#include "../../src/modules/lockout/lockout_band_policy.cpp"
 #include "../../src/modules/lockout/signal_capture_module.cpp"
 
 static uint32_t sdEnqueueCount = 0;
@@ -38,6 +39,7 @@ static GpsRuntimeStatus makeGps() {
 }
 
 void setUp() {
+    lockoutSetKaLearningEnabled(false);
     signalCaptureModule.reset();
     signalObservationLog.reset();
     sdEnqueueCount = 0;
@@ -131,6 +133,19 @@ void test_unsupported_bands_not_published() {
     TEST_ASSERT_EQUAL_UINT32(0, sdEnqueueCount);
 }
 
+void test_ka_band_published_when_policy_enabled() {
+    lockoutSetKaLearningEnabled(true);
+
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+    parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 4, 34700, true, true)});
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps);
+
+    TEST_ASSERT_EQUAL_UINT32(1, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(1, sdEnqueueCount);
+    TEST_ASSERT_EQUAL_UINT8(BAND_KA, lastEnqueued.bandRaw);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_alerts_no_publish);
@@ -139,5 +154,6 @@ int main() {
     RUN_TEST(test_same_bucket_after_repeat_window_publishes);
     RUN_TEST(test_different_bucket_publishes_immediately);
     RUN_TEST(test_unsupported_bands_not_published);
+    RUN_TEST(test_ka_band_published_when_policy_enabled);
     return UNITY_END();
 }

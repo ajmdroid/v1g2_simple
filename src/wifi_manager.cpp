@@ -23,6 +23,7 @@
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
+#include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
@@ -1578,6 +1579,7 @@ void WiFiManager::handleSettingsApi() {
     doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
     doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1661,6 +1663,12 @@ void WiFiManager::handleSettingsSave() {
     if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
         mutableSettings.gpsLockoutMaxEventBusDrops =
             clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
+    }
+    if (server.hasArg("gpsLockoutKaLearningEnabled")) {
+        mutableSettings.gpsLockoutKaLearningEnabled =
+            (server.arg("gpsLockoutKaLearningEnabled") == "true" ||
+             server.arg("gpsLockoutKaLearningEnabled") == "1");
+        lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
@@ -2590,6 +2598,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
     doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
+    doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
     
     String json;
     serializeJson(doc, json);
@@ -2848,6 +2857,7 @@ void WiFiManager::handleDebugMetrics() {
     lockoutObj["learnerUnlearnIntervalHours"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnIntervalHours);
     lockoutObj["learnerUnlearnCount"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnCount);
     lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
+    lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     lockoutObj["enforceRequested"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
@@ -3375,6 +3385,9 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
         s.gpsLockoutMaxEventBusDrops = clampU16Value(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
     }
+    if (doc["gpsLockoutKaLearningEnabled"].is<bool>()) {
+        s.gpsLockoutKaLearningEnabled = doc["gpsLockoutKaLearningEnabled"];
+    }
     
     // WiFi settings (password intentionally excluded from backups)
     if (doc["apSSID"].is<const char*>()) {
@@ -3562,6 +3575,7 @@ void WiFiManager::handleSettingsRestore() {
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
+    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     
@@ -3944,6 +3958,7 @@ void WiFiManager::handleGpsStatus() {
     lockoutObj["learnerUnlearnIntervalHours"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnIntervalHours);
     lockoutObj["learnerUnlearnCount"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnCount);
     lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
+    lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
 
@@ -4178,6 +4193,7 @@ void WiFiManager::handleLockoutZones() {
     doc["unlearnIntervalHours"] = static_cast<uint32_t>(unlearnIntervalHours);
     doc["unlearnCount"] = static_cast<uint32_t>(unlearnCount);
     doc["manualDemotionMissCount"] = static_cast<uint32_t>(manualDemotionMissCount);
+    doc["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["activeLimit"] = activeLimit;
     doc["pendingLimit"] = pendingLimit;
 
@@ -4348,6 +4364,8 @@ void WiFiManager::handleGpsConfig() {
     uint8_t learnerUnlearnCount = currentSettings.gpsLockoutLearnerUnlearnCount;
     bool hasManualDemotionMissCount = false;
     uint8_t manualDemotionMissCount = currentSettings.gpsLockoutManualDemotionMissCount;
+    bool hasKaLearningEnabled = false;
+    bool kaLearningEnabled = currentSettings.gpsLockoutKaLearningEnabled;
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
@@ -4464,6 +4482,13 @@ void WiFiManager::handleGpsConfig() {
             manualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
                 body["lockoutLearnerManualDemotionMissCount"].as<int>());
             hasManualDemotionMissCount = true;
+        }
+        if (body["lockoutKaLearningEnabled"].is<bool>()) {
+            kaLearningEnabled = body["lockoutKaLearningEnabled"].as<bool>();
+            hasKaLearningEnabled = true;
+        } else if (body["gpsLockoutKaLearningEnabled"].is<bool>()) {
+            kaLearningEnabled = body["gpsLockoutKaLearningEnabled"].as<bool>();
+            hasKaLearningEnabled = true;
         }
         if (body["speedMph"].is<float>() || body["speedMph"].is<double>() || body["speedMph"].is<int>()) {
             scaffoldSpeedMph = body["speedMph"].as<float>();
@@ -4613,6 +4638,18 @@ void WiFiManager::handleGpsConfig() {
             server.arg("lockoutLearnerManualDemotionMissCount").toInt());
         hasManualDemotionMissCount = true;
     }
+    if (!hasKaLearningEnabled && server.hasArg("lockoutKaLearningEnabled")) {
+        String value = server.arg("lockoutKaLearningEnabled");
+        value.toLowerCase();
+        kaLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasKaLearningEnabled = true;
+    }
+    if (!hasKaLearningEnabled && server.hasArg("gpsLockoutKaLearningEnabled")) {
+        String value = server.arg("gpsLockoutKaLearningEnabled");
+        value.toLowerCase();
+        kaLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasKaLearningEnabled = true;
+    }
 
     if (!hasEnabled) {
         bool hasLockoutUpdate = hasLockoutMode || hasCoreGuardEnabled ||
@@ -4620,7 +4657,7 @@ void WiFiManager::handleGpsConfig() {
                                 hasLearnerPromotionHits || hasLearnerRadiusE5 ||
                                 hasLearnerFreqToleranceMHz || hasLearnerLearnIntervalHours ||
                                 hasLearnerUnlearnIntervalHours || hasLearnerUnlearnCount ||
-                                hasManualDemotionMissCount;
+                                hasManualDemotionMissCount || hasKaLearningEnabled;
         if (!hasLockoutUpdate) {
             server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}");
             return;
@@ -4719,6 +4756,14 @@ void WiFiManager::handleGpsConfig() {
         mutableSettings.gpsLockoutManualDemotionMissCount = manualDemotionMissCount;
         lockoutSettingsChanged = true;
     }
+    if (hasKaLearningEnabled &&
+        mutableSettings.gpsLockoutKaLearningEnabled != kaLearningEnabled) {
+        mutableSettings.gpsLockoutKaLearningEnabled = kaLearningEnabled;
+        lockoutSettingsChanged = true;
+    }
+    if (hasKaLearningEnabled) {
+        lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
+    }
     if (learnerTuningChanged) {
         lockoutLearner.setTuning(mutableSettings.gpsLockoutLearnerPromotionHits,
                                  mutableSettings.gpsLockoutLearnerRadiusE5,
@@ -4773,6 +4818,7 @@ void WiFiManager::handleGpsConfig() {
     response["lockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
     response["lockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["lockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    response["lockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     response["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
     response["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
     response["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
@@ -4780,6 +4826,7 @@ void WiFiManager::handleGpsConfig() {
     response["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
     response["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    response["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;
     response["locationValid"] = gpsStatus.locationValid;

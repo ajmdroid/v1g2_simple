@@ -106,6 +106,7 @@ struct V1Settings {
     uint8_t gpsLockoutLearnerUnlearnIntervalHours = 0;
     uint8_t gpsLockoutLearnerUnlearnCount = 0;
     uint8_t gpsLockoutManualDemotionMissCount = 0;
+    bool gpsLockoutKaLearningEnabled = false;
     bool obdEnabled = false;
     bool obdVwDataEnabled = true;
     bool bleProxyEnabled = true;

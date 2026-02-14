@@ -62,6 +62,7 @@
 #include "modules/lockout/lockout_enforcer.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
+#include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
@@ -575,6 +576,9 @@ void setup() {
     } else {
         SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
     }
+
+    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
+    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
 
     // Load lockout zones from SD/LittleFS (Tier 7 — best-effort).
     if (storageManager.isReady()) {

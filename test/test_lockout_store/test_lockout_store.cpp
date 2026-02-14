@@ -12,6 +12,7 @@ unsigned long mockMicros = 0;
 // Lockout data structures + index.
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
+#include "../../src/modules/lockout/lockout_band_policy.cpp"
 #include "../../src/modules/lockout/lockout_index.cpp"
 
 // Unit under test.
@@ -22,6 +23,7 @@ static LockoutIndex testIndex;
 static LockoutStore store;
 
 void setUp() {
+    lockoutSetKaLearningEnabled(false);
     testIndex.clear();
     store.begin(&testIndex);
 }
@@ -123,6 +125,19 @@ void test_toJson_skips_unsupported_band_entries() {
     JsonArray zones = doc["zones"];
     TEST_ASSERT_EQUAL(0, zones.size());
     TEST_ASSERT_EQUAL(0, store.stats().entriesSaved);
+}
+
+void test_toJson_keeps_ka_entries_when_policy_enabled() {
+    lockoutSetKaLearningEnabled(true);
+    int slot = testIndex.add(makeEntry(3736277, -7923221, 34700, 0x02));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+
+    JsonDocument doc;
+    store.toJson(doc);
+
+    JsonArray zones = doc["zones"];
+    TEST_ASSERT_EQUAL(1, zones.size());
+    TEST_ASSERT_EQUAL(0x02, zones[0]["band"].as<uint8_t>());
 }
 
 void test_toJson_all_fields_present() {
@@ -541,6 +556,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_toJson_single_entry);
     RUN_TEST(test_toJson_skips_inactive_slots);
     RUN_TEST(test_toJson_skips_unsupported_band_entries);
+    RUN_TEST(test_toJson_keeps_ka_entries_when_policy_enabled);
     RUN_TEST(test_toJson_all_fields_present);
 
     // fromJson
