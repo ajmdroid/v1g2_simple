@@ -171,6 +171,21 @@ int LockoutIndex::findMatch(int32_t latE5,
     return -1;
 }
 
+size_t LockoutIndex::findNearby(int32_t latE5,
+                                int32_t lonE5,
+                                int16_t* out,
+                                size_t outCap) const {
+    size_t found = 0;
+    if (!out || outCap == 0) return 0;
+    for (size_t i = 0; i < kCapacity && found < outCap; ++i) {
+        const LockoutEntry& e = entries_[i];
+        if (!e.isActive()) continue;
+        if (!withinRadius(latE5, lonE5, e)) continue;
+        out[found++] = static_cast<int16_t>(i);
+    }
+    return found;
+}
+
 // --- Private helpers ---
 
 bool LockoutIndex::withinRadius(int32_t latE5,

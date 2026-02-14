@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <ArduinoJson.h>
 
 // Mocks first — must precede real headers that reference Arduino types.
 #include "../mocks/Arduino.h"
@@ -46,10 +47,13 @@ struct GpsRuntimeStatus {
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
 #include "../../src/modules/lockout/lockout_index.cpp"
+#include "../../src/modules/lockout/lockout_store.h"
+#include "../../src/modules/lockout/lockout_store.cpp"
 #include "../../src/modules/lockout/lockout_enforcer.h"
 #include "../../src/modules/lockout/lockout_enforcer.cpp"
 
 static LockoutIndex testIndex;
+static LockoutStore testStore;
 static LockoutEnforcer enforcer;
 static PacketParser parser;
 
@@ -88,9 +92,10 @@ static LockoutEntry makeEntry(float latDeg, float lonDeg,
 
 void setUp() {
     testIndex.clear();
+    testStore.begin(&testIndex);
     parser.reset();
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
-    enforcer.begin(&settingsManager, &testIndex);
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
 }
 
 void tearDown() {}
@@ -213,14 +218,15 @@ void test_advisory_mode_match() {
 }
 
 // ================================================================
-// ENFORCE mode: match mutates index (recordHit)
+// ENFORCE mode: match mutates index (recordHit) and marks store dirty
 // ================================================================
 
 void test_enforce_mode_mutates() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
-    enforcer.begin(&settingsManager, &testIndex);
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
 
     testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testStore.clearDirty();
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
     GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
@@ -232,6 +238,8 @@ void test_enforce_mode_mutates() {
     // ENFORCE DOES mutate: confidence bumped, lastSeenMs updated.
     TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
     TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
+    // Store should be marked dirty after recordHit.
+    TEST_ASSERT_TRUE(testStore.isDirty());
 }
 
 // ================================================================
@@ -350,6 +358,83 @@ void test_epoch_zero_still_evaluates() {
 }
 
 // ================================================================
+// ENFORCE: clean-pass recording when no alerts
+// ================================================================
+
+void test_enforce_clean_pass_demotes_nearby() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    // Add a learned entry with low confidence.
+    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    e.confidence = 1;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    testIndex.add(e);
+
+    testStore.clearDirty();
+    parser.reset();  // No alerts → clean-pass opportunity.
+
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    // First call with epoch > 0 triggers clean pass recording.
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+
+    // Entry had confidence 1, clean pass should decrement to 0 → auto-remove.
+    TEST_ASSERT_EQUAL(0, testIndex.activeCount());
+    TEST_ASSERT_EQUAL(1, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().demotions);
+    TEST_ASSERT_TRUE(testStore.isDirty());
+}
+
+void test_enforce_clean_pass_rate_limited() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    e.confidence = 10;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    testIndex.add(e);
+
+    parser.reset();  // No alerts.
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+
+    // First call: epoch 1700000100000 → should trigger clean pass.
+    enforcer.process(1000, 1700000100000LL, parser, gps);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(9, testIndex.at(0)->confidence);
+
+    // Second call: only 1 second later → should NOT trigger (30s rate limit).
+    enforcer.process(2000, 1700000101000LL, parser, gps);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().cleanPasses);  // still 1
+    TEST_ASSERT_EQUAL(9, testIndex.at(0)->confidence);  // unchanged
+
+    // Third call: 31 seconds later → should trigger again.
+    enforcer.process(32000, 1700000131000LL, parser, gps);
+    TEST_ASSERT_EQUAL(2, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(8, testIndex.at(0)->confidence);
+}
+
+void test_shadow_no_clean_pass() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    e.confidence = 5;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    testIndex.add(e);
+
+    parser.reset();
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    enforcer.process(1000, 1700000100000LL, parser, gps);
+
+    // SHADOW mode should not record clean passes.
+    TEST_ASSERT_EQUAL(0, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(5, testIndex.at(0)->confidence);
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -372,6 +457,11 @@ int main(int argc, char** argv) {
     RUN_TEST(test_empty_index_no_match);
     RUN_TEST(test_lastResult_reflects_latest);
     RUN_TEST(test_epoch_zero_still_evaluates);
+
+    // ENFORCE clean-pass + dirty tracking
+    RUN_TEST(test_enforce_clean_pass_demotes_nearby);
+    RUN_TEST(test_enforce_clean_pass_rate_limited);
+    RUN_TEST(test_shadow_no_clean_pass);
 
     return UNITY_END();
 }

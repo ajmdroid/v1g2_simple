@@ -73,6 +73,14 @@ public:
                   uint8_t band,
                   uint16_t freqMHz) const;
 
+    /// Find all active entries whose zone contains the given position
+    /// (ignores band/freq — position-only).  Fills `out` with slot indices.
+    /// Returns number of entries found (≤ outCap).
+    size_t findNearby(int32_t latE5,
+                      int32_t lonE5,
+                      int16_t* out,
+                      size_t outCap) const;
+
 private:
     /// Fast integer-only proximity check.
     /// Returns true if (latE5, lonE5) is within the entry's bounding box AND

@@ -1,4 +1,5 @@
 #include "lockout_enforcer.h"
+#include "lockout_store.h"
 
 #include "../../packet_parser.h"
 #include "../../settings.h"
@@ -23,12 +24,15 @@ int32_t degreesToE5(float degrees) {
 LockoutEnforcer lockoutEnforcer;
 
 void LockoutEnforcer::begin(const SettingsManager* settings,
-                            LockoutIndex* index) {
+                            LockoutIndex* index,
+                            LockoutStore* store) {
     settings_ = settings;
     index_    = index;
+    store_    = store;
     lastResult_ = LockoutEnforcerResult{};
     stats_ = Stats{};
     lastLogMs_ = 0;
+    lastCleanPassEpochMs_ = 0;
 }
 
 LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
@@ -61,11 +65,18 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
         return lastResult_;
     }
 
+    const int32_t latE5 = degreesToE5(gpsStatus.latitudeDeg);
+    const int32_t lonE5 = degreesToE5(gpsStatus.longitudeDeg);
+
     // --- Gate 3: alert present ---
     if (!parser.hasAlerts()) {
-        // No alert to evaluate — still counts as an evaluation cycle.
         lastResult_.evaluated = true;
         ++stats_.evaluations;
+
+        // No alert → clean-pass opportunity for nearby lockout zones.
+        if (mode == LOCKOUT_RUNTIME_ENFORCE) {
+            recordCleanPasses(latE5, lonE5, -1, epochMs);
+        }
         return lastResult_;
     }
     const AlertData priority = parser.getPriorityAlert();
@@ -76,8 +87,6 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     }
 
     // --- Evaluate ---
-    const int32_t latE5 = degreesToE5(gpsStatus.latitudeDeg);
-    const int32_t lonE5 = degreesToE5(gpsStatus.longitudeDeg);
     const uint8_t band  = static_cast<uint8_t>(priority.band);
     const uint16_t freqMHz = static_cast<uint16_t>(
         (priority.frequency <= UINT16_MAX) ? priority.frequency : 0);
@@ -97,6 +106,7 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
         // SHADOW and ADVISORY are read-only so toggling them has no side-effects.
         if (mode == LOCKOUT_RUNTIME_ENFORCE) {
             index_->recordHit(static_cast<size_t>(decision.matchIndex), epochMs);
+            if (store_) store_->markDirty();
         }
 
         // Rate-limited log for SHADOW / ADVISORY / ENFORCE.
@@ -114,4 +124,46 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     }
 
     return lastResult_;
+}
+// ---------------------------------------------------------------------------
+// Clean-pass recording for demotion (ENFORCE only).
+//
+// When no alert is present and we're within range of lockout entries,
+// those entries receive a clean-pass decrement.  Rate-limited to once
+// per CLEAN_PASS_INTERVAL_MS (~30s) so driving through a 150m zone at
+// 60 mph (5.6s transit) records at most one clean pass per transit.
+// ---------------------------------------------------------------------------
+
+void LockoutEnforcer::recordCleanPasses(int32_t latE5, int32_t lonE5,
+                                        int16_t matchedSlot, int64_t epochMs) {
+    if (!index_ || epochMs <= 0) return;
+
+    // Rate-limit using epoch delta (ms precision, monotonic once synced).
+    if (lastCleanPassEpochMs_ != 0 &&
+        (epochMs - lastCleanPassEpochMs_) < CLEAN_PASS_INTERVAL_MS) {
+        return;
+    }
+    lastCleanPassEpochMs_ = epochMs;
+
+    // Find all entries whose zone covers our current position.
+    int16_t nearby[16];
+    const size_t count = index_->findNearby(latE5, lonE5, nearby, 16);
+
+    bool anyMutated = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (nearby[i] == matchedSlot) continue;  // Skip matched entry.
+
+        const uint8_t conf = index_->recordCleanPass(static_cast<size_t>(nearby[i]), epochMs);
+        ++stats_.cleanPasses;
+        anyMutated = true;
+
+        if (conf == 0) {
+            ++stats_.demotions;
+            Serial.printf("[Lockout] DEMOTED slot=%d (clean-pass decay)\n", nearby[i]);
+        }
+    }
+
+    if (anyMutated && store_) {
+        store_->markDirty();
+    }
 }

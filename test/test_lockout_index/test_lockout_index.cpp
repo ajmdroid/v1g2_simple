@@ -451,6 +451,57 @@ void test_addOrUpdate_no_duplicate() {
 }
 
 // ================================================================
+// findNearby (position-only scan)
+// ================================================================
+
+void test_findNearby_returns_entries_within_radius() {
+    LockoutEntry eK = makeKBandEntry(3736277, -7923221);
+    eK.bandMask = 0x04;
+    eK.freqMHz = 24148;
+    // Add a Ka entry at the SAME location, different band.
+    LockoutEntry eKa = makeKBandEntry(3736277, -7923221);
+    eKa.bandMask = 0x02;
+    eKa.freqMHz = 34700;
+
+    idx.add(eK);
+    idx.add(eKa);
+
+    int16_t nearby[8];
+    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    TEST_ASSERT_EQUAL(2, count);
+    TEST_ASSERT_EQUAL(0, nearby[0]);
+    TEST_ASSERT_EQUAL(1, nearby[1]);
+}
+
+void test_findNearby_excludes_distant_entries() {
+    idx.add(makeKBandEntry(3736277, -7923221));
+    // Add another entry far away.
+    idx.add(makeKBandEntry(4000000, -8000000));
+
+    int16_t nearby[8];
+    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    TEST_ASSERT_EQUAL(1, count);
+    TEST_ASSERT_EQUAL(0, nearby[0]);
+}
+
+void test_findNearby_respects_outCap() {
+    // Add 5 entries at the same location.
+    for (int i = 0; i < 5; ++i) {
+        idx.add(makeKBandEntry(3736277, -7923221));
+    }
+
+    int16_t nearby[3];
+    size_t count = idx.findNearby(3736277, -7923221, nearby, 3);
+    TEST_ASSERT_EQUAL(3, count);
+}
+
+void test_findNearby_empty_returns_zero() {
+    int16_t nearby[8];
+    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    TEST_ASSERT_EQUAL(0, count);
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -508,6 +559,12 @@ int main(int argc, char** argv) {
     RUN_TEST(test_addOrUpdate_keeps_latest_lastSeen);
     RUN_TEST(test_addOrUpdate_merges_flags);
     RUN_TEST(test_addOrUpdate_no_duplicate);
+
+    // findNearby (position-only)
+    RUN_TEST(test_findNearby_returns_entries_within_radius);
+    RUN_TEST(test_findNearby_excludes_distant_entries);
+    RUN_TEST(test_findNearby_respects_outCap);
+    RUN_TEST(test_findNearby_empty_returns_zero);
 
     return UNITY_END();
 }

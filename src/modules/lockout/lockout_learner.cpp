@@ -1,6 +1,7 @@
 #include "lockout_learner.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
+#include "lockout_store.h"
 #include "signal_observation_log.h"
 
 #ifndef UNIT_TEST
@@ -172,6 +173,7 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     const int slot = index_->addOrUpdate(entry);
     if (slot >= 0) {
         ++stats_.promotions;
+        lockoutStore.markDirty();
         Serial.printf("[Learner] PROMOTED slot=%d band=%u freq=%u lat=%ld lon=%ld hits=%u\n",
                       slot, c.band, c.freqMHz,
                       static_cast<long>(c.latE5), static_cast<long>(c.lonE5),

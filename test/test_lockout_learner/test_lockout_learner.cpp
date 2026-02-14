@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <ArduinoJson.h>
 
 // Mock Arduino first — resolved by -I test/mocks for <Arduino.h> includes.
 #include "../mocks/Arduino.h"
@@ -16,6 +17,10 @@ unsigned long mockMicros = 0;
 #include "../../src/modules/lockout/lockout_entry.h"
 #include "../../src/modules/lockout/lockout_index.h"
 #include "../../src/modules/lockout/lockout_index.cpp"
+
+// Store (needed by learner for markDirty on promote).
+#include "../../src/modules/lockout/lockout_store.h"
+#include "../../src/modules/lockout/lockout_store.cpp"
 
 // Unit under test.
 #include "../../src/modules/lockout/lockout_learner.h"

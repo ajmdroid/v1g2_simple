@@ -60,6 +60,7 @@
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
 #include "modules/lockout/lockout_learner.h"
+#include "modules/lockout/lockout_store.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -572,6 +573,34 @@ void setup() {
     } else {
         SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
     }
+
+    // Load lockout zones from SD/LittleFS (Tier 7 — best-effort).
+    if (storageManager.isReady()) {
+        static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs && fs->exists(LOCKOUT_ZONES_PATH)) {
+            File f = fs->open(LOCKOUT_ZONES_PATH, "r");
+            if (f && f.size() > 0 && f.size() < 65536) {
+                JsonDocument doc;
+                DeserializationError err = deserializeJson(doc, f);
+                f.close();
+                if (!err) {
+                    lockoutStore.begin(&lockoutIndex);
+                    if (lockoutStore.fromJson(doc)) {
+                        SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
+                                         static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
+                                         LOCKOUT_ZONES_PATH);
+                    }
+                } else {
+                    SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
+                }
+            } else if (f) {
+                f.close();
+            }
+        } else {
+            SerialLog.println("[Lockout] No saved zones file found");
+        }
+    }
     logBootStage("storage");
 
 #ifndef REPLAY_MODE
@@ -712,7 +741,8 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
-    lockoutEnforcer.begin(&settingsManager, &lockoutIndex);
+    lockoutStore.begin(&lockoutIndex);
+    lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     bootReady = true;
     bleClient.setBootReady(true);
@@ -920,6 +950,22 @@ void loop() {
         const auto& lockRes = lockoutEnforcer.lastResult();
         display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
 
+        // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
+        // Rate-limited: only send once per lockout-match cycle (not every frame).
+        {
+            static bool lockoutMuteActive = false;
+            if (lockRes.evaluated && lockRes.shouldMute &&
+                lockRes.mode == LOCKOUT_RUNTIME_ENFORCE &&
+                !lockoutMuteActive && bleClient.isConnected()) {
+                bleClient.setMute(true);
+                lockoutMuteActive = true;
+                Serial.println("[Lockout] ENFORCE: mute sent to V1");
+            }
+            if (!lockRes.shouldMute) {
+                lockoutMuteActive = false;
+            }
+        }
+
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
@@ -1019,6 +1065,28 @@ void loop() {
 
     // Lockout learner: ingest observations, manage candidates, promote (Tier 7)
     lockoutLearner.process(now, timeService.nowEpochMsOr0());
+
+    // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
+    {
+        static uint32_t lastLockoutSaveMs = 0;
+        static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
+        if (lockoutStore.isDirty() && storageManager.isReady() &&
+            (now - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS) {
+            lastLockoutSaveMs = now;
+            static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+            JsonDocument doc;
+            lockoutStore.toJson(doc);
+            fs::FS* fs = storageManager.getFilesystem();
+            if (fs && StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc)) {
+                lockoutStore.clearDirty();
+                Serial.printf("[Lockout] Saved %lu zones to %s\n",
+                              static_cast<unsigned long>(lockoutStore.stats().entriesSaved),
+                              LOCKOUT_ZONES_PATH);
+            } else {
+                Serial.println("[Lockout] Save failed");
+            }
+        }
+    }
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
