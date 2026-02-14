@@ -748,7 +748,7 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
-    cameraRuntimeModule.begin(settingsManager.get().gpsEnabled);
+    cameraRuntimeModule.begin(settingsManager.get().gpsEnabled && settingsManager.get().cameraEnabled);
     lockoutStore.begin(&lockoutIndex);
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);

@@ -1,6 +1,6 @@
 # Camera Alerts Plan (Draft)
 
-> Status: Draft v0.6 (implementation-aligned)  
+> Status: Draft v0.7 (implementation-aligned)  
 > Date: February 14, 2026  
 > Scope: New camera alerts built on current GPS runtime and current main loop
 
@@ -12,7 +12,10 @@ Add camera alerts without destabilizing the core detector pipeline.
 
 - Camera runtime hook is active in `src/main.cpp` with low-priority guard usage.
 - Loader task, immutable index build/swap, and enforcement matching are implemented under `src/modules/camera/`.
-- Read-only APIs are active in `src/wifi_manager.cpp`: `/api/cameras/status` and `/api/cameras/events`.
+- Camera APIs are active in `src/wifi_manager.cpp`: `/api/cameras/status`, `/api/cameras/events`, and `/api/cameras/catalog`.
+- Camera UI page is active at `interface/src/routes/cameras/+page.svelte` with runtime/status/event/catalog views.
+- Persistent `cameraEnabled` setting is active and gated by GPS:
+  `effectiveCameraEnabled = gpsEnabled && cameraEnabled`.
 - Camera remains log-only in M2 (no camera-specific display/audio side effects yet).
 
 ## Hard Constraints
@@ -38,11 +41,13 @@ Add camera alerts without destabilizing the core detector pipeline.
 5. Active camera runtime hook exists in `src/main.cpp`:
    `cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop)`.
 6. Active camera APIs exist in `src/wifi_manager.cpp`:
-   `/api/cameras/status` and `/api/cameras/events`.
+   `/api/cameras/status`, `/api/cameras/events`, `/api/cameras/catalog`.
 7. Loader task and atomic ready-buffer swap are active in
    `src/modules/camera/camera_data_loader.*`.
 8. Camera binary data files exist in `camera_data/` and camera build
    tooling exists in `tools/`.
+9. Camera web UI route + nav entry exist in `interface/src/routes/cameras/+page.svelte`
+   and `interface/src/routes/+layout.svelte`.
 
 ## Legacy Rejection
 
@@ -205,18 +210,23 @@ Targets are provisional until hardware profiling confirms them.
 
 - `GET /api/cameras/status`
 - `GET /api/cameras/events`
+- `GET /api/cameras/catalog`
 
 ### Phase 2 (Controlled Write)
 
-- `POST /api/cameras/reload` (deferred/best-effort reload)
+- Camera runtime toggle is currently provided via `POST /api/settings` with
+  `cameraEnabled` (persistent), still GPS-gated at runtime.
+- `POST /api/cameras/reload` remains deferred/best-effort.
 
 No test/sync/upload endpoints until runtime stability is verified.
 
 ## UI Rollout (Phased)
 
-1. Add a camera diagnostics/status card in existing integrations style.
-2. Add recent camera event table from bounded event log.
-3. Add enable/reload controls only after profile data confirms low impact.
+1. Camera diagnostics/status card is implemented.
+2. Recent camera event table is implemented.
+3. Dataset catalog table (`alpr`, `speed`, `redlight`) is implemented.
+4. Camera enable toggle is implemented (persistent `cameraEnabled` setting).
+5. Reload control remains deferred until additional runtime profiling.
 
 No high-frequency polling changes until camera runtime impact is measured.
 
@@ -250,9 +260,11 @@ Also expose loader/tick timing and memory telemetry:
    swap, then verify no loop-blocking behavior under reload.
 3. Enable enforcement-only query path (`speed+redlight`) with raw scan cap and
    counters, still no UI/audio side effects.
-4. Add read-only APIs (`/api/cameras/status`, `/api/cameras/events`) and verify
+4. Add read-only APIs (`/api/cameras/status`, `/api/cameras/events`,
+   `/api/cameras/catalog`) and verify
    event-log ownership contract remains loop-only.
-5. Run perf/soak gates before any M3+ audio/display behavior.
+5. Add camera UI observability page and persistent enable toggle.
+6. Run perf/soak gates before any M3+ audio/display behavior.
 
 ## Testing Gates
 
@@ -332,7 +344,7 @@ Implications:
 | ID | Verdict | Verification Status | Notes |
 |----|---------|---------------------|-------|
 | F1 PSRAM omission risk | Confirmed risk | **Verified + inferred impact** | Dataset size is verified. Platform PSRAM flags are verified. Exact crash mode/threshold depends on runtime heap state. |
-| F2 No index detail | Gap addressed for M2 (ALPR path deferred) | **Verified with repository data + sizing math** | v0.6 now locks scan-cap ordering, span budget checks, and enforcement-first loading. |
+| F2 No index detail | Gap addressed for M2 (ALPR path deferred) | **Verified with repository data + sizing math** | v0.6/v0.7 lock scan-cap ordering, span budget checks, and enforcement-first loading. |
 | F3 PSRAM latency budget | Confirmed gap | **Needs hardware measurement** | Repo does not contain camera PSRAM access benchmarks yet. |
 | F4 Load blocking risk | Gap addressed in plan | **Verified + estimated timing** | v0.5 fixes loader-task contract. 400-800 ms timing remains estimate pending device measurement. |
 | F5 Missing heading in snapshot | Confirmed | **Verified** | `GpsRuntimeStatus` has no heading field; `parseRmc` does not parse course field. |
@@ -361,7 +373,7 @@ Implications:
 9. **Build locality:** decode/sort/span build stay fully in loader task, never
    in `loop()`.
 
-### Real Open Issues (After v0.6 Alignment)
+### Real Open Issues (After v0.7 Alignment)
 
 1. **Hardware validation still required**:
    PSRAM access behavior and load timing must be profiled on target hardware.
@@ -553,89 +565,35 @@ MEMORY=y` in sdkconfig.
    camera load cycle.
 
 ---
-## Web UI Camera Page Plan (Draft)
+## Web UI Camera Page Status (v0.7)
 
-### Goal
+### Implemented
 
-Add a dedicated `/cameras` web page for camera observability and safe runtime
-control, without adding core-loop pressure.
+1. Route/UI:
+   - `/cameras` page implemented at `interface/src/routes/cameras/+page.svelte`.
+   - Nav links added in `interface/src/routes/+layout.svelte`.
+2. Runtime observability:
+   - Runtime/index/loader telemetry from `/api/cameras/status`.
+   - Recent events table from `/api/cameras/events`.
+3. Dataset catalog observability:
+   - SD header scan endpoint `/api/cameras/catalog`.
+   - UI shows ALPR/speed/redlight `present/valid/count/bytes`.
+4. Camera runtime control:
+   - Persistent `cameraEnabled` setting implemented.
+   - Effective state is enforced as `gpsEnabled && cameraEnabled`.
+   - UI toggle writes to `POST /api/settings` with `cameraEnabled`.
 
-### Scope (This Plan)
+### Verified Behavior
 
-1. Show camera runtime health and loader/index state.
-2. Show dataset counts as two explicit buckets:
-   - `loaded`: what is currently in active runtime index.
-   - `catalog`: what exists on SD (`alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`).
-3. Add a camera on/off toggle that does not bypass GPS dependency.
+1. Camera can be disabled independently without disabling GPS runtime.
+2. If GPS is disabled, camera remains inactive even when `cameraEnabled=true`.
+3. Settings backup/restore includes `cameraEnabled` and re-applies effective
+   runtime state after restore.
 
-### Non-Goals (This Pass)
+### Remaining Open Items
 
-1. No camera upload/sync/test UI endpoints.
-2. No camera audio/display behavior controls.
-3. No ALPR loading policy changes (ALPR remains staged/deferred per M2 policy).
-
-### Truth Model (Avoid UI Ambiguity)
-
-1. `loaded.*` reflects active index content only (runtime truth).
-2. `catalog.*` reflects SD header counts only (storage truth).
-3. UI must never imply ALPR is loaded if only enforcement datasets are active.
-4. Current repository dataset reference values:
-   - ALPR: 70,327
-   - Speed: 1,125
-   - Red light: 205
-
-### Toggle Semantics (Safety-First)
-
-1. Introduce persistent `cameraEnabled` setting (separate from `gpsEnabled`).
-2. Effective runtime enable is:
-   `effectiveCameraEnabled = gpsEnabled && cameraEnabled`.
-3. If `cameraEnabled=true` but `gpsEnabled=false`, UI shows:
-   "Camera armed, waiting for GPS enable."
-4. Camera toggle must not disable GPS or lockout runtime settings.
-
-### Backend/API Plan
-
-1. Extend `GET /api/cameras/status` with:
-   - `gpsEnabled`, `cameraEnabled`, `effectiveEnabled`
-   - `datasets.loaded` (`total`, optional per-type counts)
-   - `datasets.catalog` (`alpr`, `speed`, `redlight`, `lastScanMs`)
-2. Add `POST /api/cameras/config`:
-   - Request: `{ "enabled": true|false }`
-   - Behavior: update `cameraEnabled`, persist settings, apply effective runtime state.
-3. Ensure `POST /api/gps/config` re-applies camera effective state after GPS changes.
-4. Compute catalog counts off-loop (loader/task path or cached metadata refresh), not
-   per-request SD scans in `loop()`.
-
-### UI Plan
-
-1. Add route: `interface/src/routes/cameras/+page.svelte`.
-2. Add nav links in `interface/src/routes/+layout.svelte` (mobile + desktop).
-3. Page sections:
-   - Runtime state card (enabled/effective/index loaded).
-   - Dataset card (`loaded` vs `catalog` counts).
-   - Loader/memory guard telemetry card (attempts/failures/skips/durations).
-   - Recent events table (from `/api/cameras/events`).
-4. Add enable toggle with optimistic UI + rollback on failed API write.
-
-### Rollout Order (Surgical)
-
-1. Backend read-only status schema extension.
-2. UI read-only `/cameras` page + nav link.
-3. Backend camera config endpoint + persistent setting.
-4. UI toggle wiring to `/api/cameras/config`.
-5. Documentation sync (`API.md`, `DEVELOPER.md`, `ARCHITECTURE.md`).
-
-### Validation Gates
-
-1. No new work in core path beyond existing camera tick call.
-2. No blocking SD I/O added to request handlers or `loop()`.
-3. Toggle behavior verified across:
-   - boot,
-   - `/api/cameras/config`,
-   - `/api/gps/config`,
-   - settings restore path.
-4. UI correctly distinguishes:
-   - camera disabled,
-   - camera enabled but GPS disabled,
-   - camera enabled + index not loaded,
-   - camera enabled + index loaded.
+1. `POST /api/cameras/reload` is still deferred.
+2. `/api/cameras/catalog` currently performs SD header reads per request under
+   SD mutex; this is acceptable for low-frequency UI polling but can be moved
+   to cached metadata if request rates increase.
+3. Docs sync remains: `docs/API.md`, `docs/DEVELOPER.md`, `docs/ARCHITECTURE.md`.

@@ -131,6 +131,10 @@ static uint8_t clampSlotVolumeValue(int value) {
     return clampU8Value(value, 0, 9);
 }
 
+static bool computeCameraRuntimeEnabled(const V1Settings& settings) {
+    return settings.gpsEnabled && settings.cameraEnabled;
+}
+
 static uint8_t clampApTimeoutValue(int value) {
     if (value == 0) {
         return 0;
@@ -231,6 +235,59 @@ static bool isValidPerfFileName(const String& name) {
         }
     }
     return true;
+}
+
+struct VcamHeader {
+    char magic[4];
+    uint32_t version;
+    uint32_t count;
+    uint32_t recordSize;
+};
+static_assert(sizeof(VcamHeader) == 16, "VCAM header must be 16 bytes");
+
+struct CameraCatalogDataset {
+    bool present = false;
+    bool valid = false;
+    uint32_t count = 0;
+    uint32_t bytes = 0;
+};
+
+static CameraCatalogDataset readCameraCatalogDataset(fs::FS* fs, const char* path) {
+    CameraCatalogDataset out;
+    if (!fs || !path) {
+        return out;
+    }
+
+    File file = fs->open(path, FILE_READ);
+    if (!file) {
+        return out;
+    }
+    out.present = true;
+    out.bytes = static_cast<uint32_t>(file.size());
+
+    VcamHeader header{};
+    const size_t headerRead = file.read(reinterpret_cast<uint8_t*>(&header), sizeof(header));
+    file.close();
+    if (headerRead != sizeof(header)) {
+        return out;
+    }
+
+    const bool validHeader =
+        std::memcmp(header.magic, "VCAM", 4) == 0 &&
+        header.version == 1 &&
+        header.recordSize == 24;
+    if (!validHeader) {
+        return out;
+    }
+
+    const uint32_t expectedBytes = static_cast<uint32_t>(sizeof(VcamHeader) + (header.count * header.recordSize));
+    if (out.bytes < expectedBytes) {
+        return out;
+    }
+
+    out.valid = true;
+    out.count = header.count;
+    return out;
 }
 
 static bool perfFilePathFromName(const String& name, String& outPath) {
@@ -821,6 +878,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
     server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
+    server.on("/api/cameras/catalog", HTTP_GET, [this]() { handleCameraCatalog(); });
     server.on("/api/cameras/events", HTTP_GET, [this]() { handleCameraEvents(); });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
@@ -1576,6 +1634,7 @@ void WiFiManager::handleSettingsApi() {
     doc["proxy_name"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["cameraEnabled"] = settings.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
@@ -1645,7 +1704,13 @@ void WiFiManager::handleSettingsSave() {
             (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
         gpsRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
         speedSourceSelector.setGpsEnabled(mutableSettings.gpsEnabled);
-        cameraRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
+    }
+    if (server.hasArg("cameraEnabled")) {
+        mutableSettings.cameraEnabled =
+            (server.arg("cameraEnabled") == "true" || server.arg("cameraEnabled") == "1");
+    }
+    if (server.hasArg("gpsEnabled") || server.hasArg("cameraEnabled")) {
+        cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(mutableSettings));
     }
     if (server.hasArg("gpsLockoutMode")) {
         mutableSettings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"),
@@ -2399,7 +2464,12 @@ void WiFiManager::handleDisplayColorsSave() {
         s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
         gpsRuntimeModule.setEnabled(s.gpsEnabled);
         speedSourceSelector.setGpsEnabled(s.gpsEnabled);
-        cameraRuntimeModule.setEnabled(s.gpsEnabled);
+    }
+    if (server.hasArg("cameraEnabled")) {
+        s.cameraEnabled = argBool("cameraEnabled", s.cameraEnabled);
+    }
+    if (server.hasArg("gpsEnabled") || server.hasArg("cameraEnabled")) {
+        cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(s));
     }
     if (server.hasArg("gpsLockoutMode")) {
         s.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"), s.gpsLockoutMode);
@@ -2597,6 +2667,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     doc["gpsEnabled"] = s.gpsEnabled;
+    doc["cameraEnabled"] = s.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
@@ -3168,7 +3239,7 @@ void WiFiManager::handleSettingsBackup() {
     JsonDocument doc;
     
     // Metadata
-    doc["_version"] = 4;  // Backup format version
+    doc["_version"] = 5;  // Backup format version
     doc["_type"] = "v1simple_backup";
     doc["_timestamp"] = millis();
     
@@ -3181,6 +3252,7 @@ void WiFiManager::handleSettingsBackup() {
     doc["proxyName"] = s.proxyName;
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
+    doc["cameraEnabled"] = s.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
@@ -3372,6 +3444,7 @@ void WiFiManager::handleSettingsRestore() {
     if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
+    if (doc["cameraEnabled"].is<bool>()) s.cameraEnabled = doc["cameraEnabled"];
     if (doc["gpsLockoutMode"].is<int>()) {
         s.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {
@@ -3580,7 +3653,7 @@ void WiFiManager::handleSettingsRestore() {
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
-    cameraRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
+    cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(settingsManager.get()));
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
@@ -4093,6 +4166,86 @@ void WiFiManager::handleCameraStatus() {
     eventsObj["drops"] = eventStats.drops;
     eventsObj["size"] = static_cast<uint32_t>(eventStats.size);
     eventsObj["capacity"] = static_cast<uint32_t>(CameraEventLog::kCapacity);
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraCatalog() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["storageReady"] = false;
+    doc["tsMs"] = millis();
+
+    JsonObject datasets = doc["datasets"].to<JsonObject>();
+    JsonObject alprObj = datasets["alpr"].to<JsonObject>();
+    JsonObject speedObj = datasets["speed"].to<JsonObject>();
+    JsonObject redlightObj = datasets["redlight"].to<JsonObject>();
+
+    auto writeDataset = [](JsonObject& obj, const CameraCatalogDataset& ds) {
+        obj["present"] = ds.present;
+        obj["valid"] = ds.valid;
+        obj["count"] = ds.count;
+        obj["bytes"] = ds.bytes;
+    };
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        doc["message"] = "storage_unavailable";
+        writeDataset(alprObj, {});
+        writeDataset(speedObj, {});
+        writeDataset(redlightObj, {});
+        doc["totalCount"] = 0;
+        doc["totalBytes"] = 0;
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+        return;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) {
+        doc["success"] = false;
+        doc["message"] = "filesystem_unavailable";
+        writeDataset(alprObj, {});
+        writeDataset(speedObj, {});
+        writeDataset(redlightObj, {});
+        doc["totalCount"] = 0;
+        doc["totalBytes"] = 0;
+        String response;
+        serializeJson(doc, response);
+        server.send(500, "application/json", response);
+        return;
+    }
+
+    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    if (!lock) {
+        doc["success"] = false;
+        doc["message"] = "sd_busy";
+        writeDataset(alprObj, {});
+        writeDataset(speedObj, {});
+        writeDataset(redlightObj, {});
+        doc["totalCount"] = 0;
+        doc["totalBytes"] = 0;
+        String response;
+        serializeJson(doc, response);
+        server.send(503, "application/json", response);
+        return;
+    }
+
+    const CameraCatalogDataset alpr = readCameraCatalogDataset(fs, "/alpr.bin");
+    const CameraCatalogDataset speed = readCameraCatalogDataset(fs, "/speed_cam.bin");
+    const CameraCatalogDataset redlight = readCameraCatalogDataset(fs, "/redlight_cam.bin");
+
+    doc["storageReady"] = true;
+    writeDataset(alprObj, alpr);
+    writeDataset(speedObj, speed);
+    writeDataset(redlightObj, redlight);
+    doc["totalCount"] = alpr.count + speed.count + redlight.count;
+    doc["totalBytes"] = alpr.bytes + speed.bytes + redlight.bytes;
 
     String response;
     serializeJson(doc, response);

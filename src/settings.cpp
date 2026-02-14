@@ -546,6 +546,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("proxyName", settings.proxyName);
     written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("gpsEn", settings.gpsEnabled);
+    written += prefs.putBool("camEn", settings.cameraEnabled);
     written += prefs.putUChar("gpsLkMode", static_cast<uint8_t>(settings.gpsLockoutMode));
     written += prefs.putBool("gpsLkGuard", settings.gpsLockoutCoreGuardEnabled);
     written += prefs.putUShort("gpsLkQDrop", settings.gpsLockoutMaxQueueDrops);
@@ -808,6 +809,7 @@ void SettingsManager::load() {
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
+    settings.cameraEnabled = preferences.getBool("camEn", true);
     settings.gpsLockoutMode = clampLockoutRuntimeModeValue(
         preferences.getUChar("gpsLkMode", static_cast<uint8_t>(LOCKOUT_RUNTIME_OFF)));
     settings.gpsLockoutCoreGuardEnabled = preferences.getBool("gpsLkGuard", true);
@@ -1143,6 +1145,14 @@ void SettingsManager::setGpsEnabled(bool enabled) {
         return;
     }
     settings.gpsEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setCameraEnabled(bool enabled) {
+    if (settings.cameraEnabled == enabled) {
+        return;
+    }
+    settings.cameraEnabled = enabled;
     save();
 }
 
@@ -1605,6 +1615,7 @@ void SettingsManager::backupToSD() {
     doc["proxyName"] = settings.proxyName;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["cameraEnabled"] = settings.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
@@ -1831,6 +1842,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdVwDataEnabled"].is<bool>()) settings.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) settings.gpsEnabled = doc["gpsEnabled"];
+    if (doc["cameraEnabled"].is<bool>()) settings.cameraEnabled = doc["cameraEnabled"];
     if (doc["gpsLockoutMode"].is<int>()) {
         settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {

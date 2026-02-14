@@ -177,6 +177,7 @@ struct V1Settings {
     String proxyName;       // BLE device name when proxying
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
+    bool cameraEnabled;     // Enable camera runtime module (gated by gpsEnabled)
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
     bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
     uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
@@ -317,6 +318,7 @@ struct V1Settings {
         proxyName("V1-Proxy"),  // Must match NVS load() default
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
+        cameraEnabled(true),    // Camera defaults on when GPS is enabled
         gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
         gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
         gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
@@ -441,6 +443,7 @@ public:
     void setProxyName(const String& name);
     void setObdVwDataEnabled(bool enabled);
     void setGpsEnabled(bool enabled);
+    void setCameraEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }
