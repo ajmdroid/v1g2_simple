@@ -38,6 +38,26 @@
 	const LEARNER_UNLEARN_COUNT_MIN = 0;
 	const LEARNER_UNLEARN_COUNT_MAX = 10;
 	const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
+	const LOCKOUT_PRESET_LEGACY_SAFE = {
+		name: 'Legacy Safe',
+		learnerPromotionHits: 3,
+		learnerLearnIntervalHours: 0,
+		learnerFreqToleranceMHz: 10,
+		learnerRadiusE5: 1350,
+		learnerUnlearnCount: 0,
+		learnerUnlearnIntervalHours: 0,
+		manualDemotionMissCount: 0
+	};
+	const LOCKOUT_PRESET_JBV1_BLEND = {
+		name: 'JBV1 Blend',
+		learnerPromotionHits: 3,
+		learnerLearnIntervalHours: 4,
+		learnerFreqToleranceMHz: 10,
+		learnerRadiusE5: 1350,
+		learnerUnlearnCount: 5,
+		learnerUnlearnIntervalHours: 4,
+		manualDemotionMissCount: 25
+	};
 
 	let gpsStatus = $state({
 		enabled: false,
@@ -405,6 +425,45 @@
 		return clamped > 0 ? `${clamped}h` : 'disabled';
 	}
 
+	function lockoutConfigMatchesBackend() {
+		const runtime = gpsStatus?.lockout;
+		if (!runtime) return false;
+		const runtimeRadiusE5 = clampLearnerRadiusE5(runtime.learnerRadiusE5);
+		return (
+			Math.max(0, Math.min(3, Number(lockoutConfig.modeRaw) || 0)) ===
+				(Math.max(0, Math.min(3, Number(runtime.modeRaw) || 0))) &&
+			!!lockoutConfig.coreGuardEnabled === !!runtime.coreGuardEnabled &&
+			clampU16(lockoutConfig.maxQueueDrops) === clampU16(runtime.maxQueueDrops) &&
+			clampU16(lockoutConfig.maxPerfDrops) === clampU16(runtime.maxPerfDrops) &&
+			clampU16(lockoutConfig.maxEventBusDrops) === clampU16(runtime.maxEventBusDrops) &&
+			clampLearnerPromotionHits(lockoutConfig.learnerPromotionHits) ===
+				clampLearnerPromotionHits(runtime.learnerPromotionHits) &&
+			feetToRadiusE5(lockoutConfig.learnerRadiusFt) === runtimeRadiusE5 &&
+			clampLearnerFreqToleranceMHz(lockoutConfig.learnerFreqToleranceMHz) ===
+				clampLearnerFreqToleranceMHz(runtime.learnerFreqToleranceMHz) &&
+			clampIntervalHours(lockoutConfig.learnerLearnIntervalHours) ===
+				clampIntervalHours(runtime.learnerLearnIntervalHours) &&
+			clampIntervalHours(lockoutConfig.learnerUnlearnIntervalHours) ===
+				clampIntervalHours(runtime.learnerUnlearnIntervalHours) &&
+			clampUnlearnCount(lockoutConfig.learnerUnlearnCount) ===
+				clampUnlearnCount(runtime.learnerUnlearnCount) &&
+			clampManualDemotionMissCount(lockoutConfig.manualDemotionMissCount) ===
+				clampManualDemotionMissCount(runtime.manualDemotionMissCount)
+		);
+	}
+
+	function stageLearnerPreset(preset) {
+		lockoutConfig.learnerPromotionHits = clampLearnerPromotionHits(preset.learnerPromotionHits);
+		lockoutConfig.learnerLearnIntervalHours = clampIntervalHours(preset.learnerLearnIntervalHours);
+		lockoutConfig.learnerFreqToleranceMHz = clampLearnerFreqToleranceMHz(preset.learnerFreqToleranceMHz);
+		lockoutConfig.learnerRadiusFt = radiusE5ToFeet(clampLearnerRadiusE5(preset.learnerRadiusE5));
+		lockoutConfig.learnerUnlearnCount = clampUnlearnCount(preset.learnerUnlearnCount);
+		lockoutConfig.learnerUnlearnIntervalHours = clampIntervalHours(preset.learnerUnlearnIntervalHours);
+		lockoutConfig.manualDemotionMissCount = clampManualDemotionMissCount(preset.manualDemotionMissCount);
+		lockoutConfigDirty = true;
+		setMsg('info', `${preset.name} preset staged. Review values, then Save.`);
+	}
+
 	async function refreshAll() {
 		await Promise.all([fetchGpsStatus(), fetchLockoutEvents(), fetchLockoutZones()]);
 		loading = false;
@@ -674,6 +733,13 @@
 					</p>
 				</div>
 				<div class="flex gap-2">
+					{#if lockoutConfigDirty}
+						<div class="badge badge-warning badge-sm">staged changes</div>
+					{:else if lockoutConfigMatchesBackend()}
+						<div class="badge badge-success badge-sm">backend synced</div>
+					{:else}
+						<div class="badge badge-ghost badge-sm">awaiting runtime sync</div>
+					{/if}
 					<button class="btn btn-outline btn-sm" onclick={() => fetchGpsStatus()}>Reload</button>
 					<button
 						class="btn btn-primary btn-sm"
@@ -784,6 +850,25 @@
 					<p class="text-sm text-base-content/70">
 						Writes apply immediately and persist in settings. Use conservative values to reduce false muting.
 					</p>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					<button
+						class="btn btn-outline btn-xs"
+						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_LEGACY_SAFE)}
+						disabled={!advancedUnlocked}
+					>
+						Stage Legacy Safe
+					</button>
+					<button
+						class="btn btn-outline btn-xs"
+						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_JBV1_BLEND)}
+						disabled={!advancedUnlocked}
+					>
+						Stage JBV1 Blend
+					</button>
+				</div>
+				<div class="text-xs text-base-content/65">
+					JBV1 blend stages: 3 hits · 4h learn interval · ±10 MHz · 492 ft · unlearn 5 misses / 4h · manual delete 25 misses.
 				</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 					<label class="form-control">
@@ -1009,9 +1094,9 @@
 															: 'active'}
 											</td>
 											<td>{formatBandMask(zone.bandMask)}</td>
-											<td>{formatFrequencyMhz(zone.frequencyMHz)}</td>
+												<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
-											<td>{formatZoneRadiusFeet(zone)}</td>
+												<td class="whitespace-nowrap">{formatZoneRadiusFeet(zone)}</td>
 											<td class="text-xs">
 												{#if typeof zone.demotionMissThreshold === 'number'}
 													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
@@ -1019,7 +1104,7 @@
 														({zone.demotionMissesRemaining} left)
 													{/if}
 												{:else}
-													legacy
+														legacy decay
 												{/if}
 											</td>
 											<td>
@@ -1081,7 +1166,7 @@
 										<tr>
 											<td class="font-mono text-xs">{zone.slot}</td>
 											<td>{zone.band || 'UNK'}</td>
-											<td>{formatFrequencyMhz(zone.frequencyMHz)}</td>
+												<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.hitCount === 'number' ? zone.hitCount : '—'}</td>
 											<td>{typeof zone.hitsRemaining === 'number' ? zone.hitsRemaining : '—'}</td>
 											<td class="text-xs">{formatEpochMs(zone.lastSeenMs)}</td>
