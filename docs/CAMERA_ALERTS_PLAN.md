@@ -551,3 +551,91 @@ MEMORY=y` in sdkconfig.
    remain 0 under normal operation.
 3. Monitor `[WiFi] WARN` messages in serial — should not appear during
    camera load cycle.
+
+---
+## Web UI Camera Page Plan (Draft)
+
+### Goal
+
+Add a dedicated `/cameras` web page for camera observability and safe runtime
+control, without adding core-loop pressure.
+
+### Scope (This Plan)
+
+1. Show camera runtime health and loader/index state.
+2. Show dataset counts as two explicit buckets:
+   - `loaded`: what is currently in active runtime index.
+   - `catalog`: what exists on SD (`alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`).
+3. Add a camera on/off toggle that does not bypass GPS dependency.
+
+### Non-Goals (This Pass)
+
+1. No camera upload/sync/test UI endpoints.
+2. No camera audio/display behavior controls.
+3. No ALPR loading policy changes (ALPR remains staged/deferred per M2 policy).
+
+### Truth Model (Avoid UI Ambiguity)
+
+1. `loaded.*` reflects active index content only (runtime truth).
+2. `catalog.*` reflects SD header counts only (storage truth).
+3. UI must never imply ALPR is loaded if only enforcement datasets are active.
+4. Current repository dataset reference values:
+   - ALPR: 70,327
+   - Speed: 1,125
+   - Red light: 205
+
+### Toggle Semantics (Safety-First)
+
+1. Introduce persistent `cameraEnabled` setting (separate from `gpsEnabled`).
+2. Effective runtime enable is:
+   `effectiveCameraEnabled = gpsEnabled && cameraEnabled`.
+3. If `cameraEnabled=true` but `gpsEnabled=false`, UI shows:
+   "Camera armed, waiting for GPS enable."
+4. Camera toggle must not disable GPS or lockout runtime settings.
+
+### Backend/API Plan
+
+1. Extend `GET /api/cameras/status` with:
+   - `gpsEnabled`, `cameraEnabled`, `effectiveEnabled`
+   - `datasets.loaded` (`total`, optional per-type counts)
+   - `datasets.catalog` (`alpr`, `speed`, `redlight`, `lastScanMs`)
+2. Add `POST /api/cameras/config`:
+   - Request: `{ "enabled": true|false }`
+   - Behavior: update `cameraEnabled`, persist settings, apply effective runtime state.
+3. Ensure `POST /api/gps/config` re-applies camera effective state after GPS changes.
+4. Compute catalog counts off-loop (loader/task path or cached metadata refresh), not
+   per-request SD scans in `loop()`.
+
+### UI Plan
+
+1. Add route: `interface/src/routes/cameras/+page.svelte`.
+2. Add nav links in `interface/src/routes/+layout.svelte` (mobile + desktop).
+3. Page sections:
+   - Runtime state card (enabled/effective/index loaded).
+   - Dataset card (`loaded` vs `catalog` counts).
+   - Loader/memory guard telemetry card (attempts/failures/skips/durations).
+   - Recent events table (from `/api/cameras/events`).
+4. Add enable toggle with optimistic UI + rollback on failed API write.
+
+### Rollout Order (Surgical)
+
+1. Backend read-only status schema extension.
+2. UI read-only `/cameras` page + nav link.
+3. Backend camera config endpoint + persistent setting.
+4. UI toggle wiring to `/api/cameras/config`.
+5. Documentation sync (`API.md`, `DEVELOPER.md`, `ARCHITECTURE.md`).
+
+### Validation Gates
+
+1. No new work in core path beyond existing camera tick call.
+2. No blocking SD I/O added to request handlers or `loop()`.
+3. Toggle behavior verified across:
+   - boot,
+   - `/api/cameras/config`,
+   - `/api/gps/config`,
+   - settings restore path.
+4. UI correctly distinguishes:
+   - camera disabled,
+   - camera enabled but GPS disabled,
+   - camera enabled + index not loaded,
+   - camera enabled + index loaded.

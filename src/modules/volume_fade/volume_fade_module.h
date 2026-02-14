@@ -88,6 +88,7 @@ private:
     uint8_t originalMuteVolume;
     bool fadeActive;
     bool commandSent;
+    bool restoreLogEmitted;
     int seenCount;
     static constexpr int MAX_FADE_SEEN_FREQS = 12;
     uint16_t seenFreqs[MAX_FADE_SEEN_FREQS];

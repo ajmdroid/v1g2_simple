@@ -11,6 +11,7 @@ VolumeFadeModule::VolumeFadeModule()
     , originalMuteVolume(0)
     , fadeActive(false)
     , commandSent(false)
+    , restoreLogEmitted(false)
     , seenCount(0)
     , pendingRestoreVolume(0xFF)
     , pendingRestoreMuteVolume(0)
@@ -45,10 +46,8 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         return action;
     }
     
-    // No active alerts -> optionally restore, then reset tracking
+    // No active alerts -> restore if needed, retry until V1 confirms
     if (!ctx.hasAlert) {
-        // If a fade command was already issued, force a restore even when parser
-        // still reports original volume (fade command may still be in flight).
         const bool shouldRestore =
             (originalVolume != 0xFF) && (fadeActive || ctx.currentVolume != originalVolume);
         if (shouldRestore) {
@@ -58,27 +57,34 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = originalVolume;
             pendingRestoreMuteVolume = originalMuteVolume;
             pendingRestoreSetMs = ctx.now;
-            perfRecordVolumeFadeDecision(
-                PerfFadeDecision::RestoreApplied,
-                ctx.currentVolume,
-                originalVolume,
-                ctx.now);
-            Serial.printf("[VolumeFade] RESTORE: current=%d -> original=%d\n",
-                          ctx.currentVolume, originalVolume);
-        } else if (originalVolume != 0xFF) {
+            if (!restoreLogEmitted) {
+                perfRecordVolumeFadeDecision(
+                    PerfFadeDecision::RestoreApplied,
+                    ctx.currentVolume,
+                    originalVolume,
+                    ctx.now);
+                Serial.printf("[VolumeFade] RESTORE: current=%d -> original=%d\n",
+                              ctx.currentVolume, originalVolume);
+                restoreLogEmitted = true;
+            }
+            // Keep state — retry until V1 confirms volume restored.
+            // setVolume() can fail silently due to 5ms BLE pacing gate.
+            return action;
+        }
+        if (originalVolume != 0xFF) {
             perfRecordVolumeFadeDecision(
                 PerfFadeDecision::RestoreSkippedEqual,
                 ctx.currentVolume,
                 originalVolume,
                 ctx.now);
-            Serial.printf("[VolumeFade] No restore needed: current=%d == original=%d\n",
+            Serial.printf("[VolumeFade] Restore confirmed: current=%d == original=%d\n",
                           ctx.currentVolume, originalVolume);
         }
         resetSessionState();
         return action;
     }
     
-    // Alert muted or suppressed -> restore if we had faded, then reset
+    // Alert muted or suppressed -> restore if we had faded, retry until confirmed
     if (ctx.alertMuted || ctx.alertSuppressed) {
         if (fadeActive && originalVolume != 0xFF) {
             action.type = VolumeFadeAction::Type::RESTORE;
@@ -87,12 +93,18 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = originalVolume;
             pendingRestoreMuteVolume = originalMuteVolume;
             pendingRestoreSetMs = ctx.now;
-            perfRecordVolumeFadeDecision(
-                PerfFadeDecision::RestoreApplied,
-                ctx.currentVolume,
-                originalVolume,
-                ctx.now);
-        } else if (originalVolume == 0xFF) {
+            if (!restoreLogEmitted) {
+                perfRecordVolumeFadeDecision(
+                    PerfFadeDecision::RestoreApplied,
+                    ctx.currentVolume,
+                    originalVolume,
+                    ctx.now);
+                restoreLogEmitted = true;
+            }
+            // Keep state — retry until V1 confirms volume restored.
+            return action;
+        }
+        if (originalVolume == 0xFF) {
             perfRecordVolumeFadeDecision(
                 PerfFadeDecision::RestoreSkippedNoBaseline,
                 ctx.currentVolume,
@@ -204,6 +216,7 @@ void VolumeFadeModule::resetSessionState() {
     originalMuteVolume = 0;
     fadeActive = false;
     commandSent = false;
+    restoreLogEmitted = false;
     seenCount = 0;
     memset(seenFreqs, 0, sizeof(seenFreqs));
 }
