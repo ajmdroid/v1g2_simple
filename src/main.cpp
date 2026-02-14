@@ -1090,20 +1090,45 @@ void loop() {
     // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
     {
         static uint32_t lastLockoutSaveMs = 0;
+        static uint32_t lastLockoutSaveAttemptMs = 0;
         static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
+        static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 5000;      // Retry backoff on contention/failure
         if (lockoutStore.isDirty() && storageManager.isReady() &&
-            (now - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS) {
-            lastLockoutSaveMs = now;
+            (now - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
+            (now - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
+            lastLockoutSaveAttemptMs = now;
             static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
             JsonDocument doc;
             lockoutStore.toJson(doc);
             fs::FS* fs = storageManager.getFilesystem();
-            if (fs && StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc)) {
+            bool saveOk = false;
+            bool saveDeferred = false;
+            if (fs) {
+                if (storageManager.isSDCard()) {
+                    // Core 1 path must never block waiting for SD ownership.
+                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
+                    if (sdLock) {
+                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
+                    } else {
+                        saveDeferred = true;
+                        static uint32_t lastLockoutSaveSkipLogMs = 0;
+                        if ((now - lastLockoutSaveSkipLogMs) >= 10000) {
+                            lastLockoutSaveSkipLogMs = now;
+                            Serial.println("[Lockout] Save deferred (SD busy or DMA-starved)");
+                        }
+                    }
+                } else {
+                    // LittleFS fallback path (single-CPU filesystem access).
+                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
+                }
+            }
+            if (saveOk) {
+                lastLockoutSaveMs = now;
                 lockoutStore.clearDirty();
                 Serial.printf("[Lockout] Saved %lu zones to %s\n",
                               static_cast<unsigned long>(lockoutStore.stats().entriesSaved),
                               LOCKOUT_ZONES_PATH);
-            } else {
+            } else if (!saveDeferred) {
                 Serial.println("[Lockout] Save failed");
             }
         }
