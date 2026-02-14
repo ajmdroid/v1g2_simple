@@ -430,7 +430,12 @@ extern uint32_t perfLastReportMs;    // Last report timestamp
 #define PERF_ADD(counter, value) (perfCounters.counter += (value))
 #define PERF_SET(counter, value) (perfCounters.counter = (value))
 #define PERF_MAX(counter, value) do { \
-    if ((value) > perfCounters.counter) perfCounters.counter = (value); \
+    const uint32_t _perfMaxValue = static_cast<uint32_t>(value); \
+    uint32_t _perfMaxCurrent = perfCounters.counter.load(std::memory_order_relaxed); \
+    while (_perfMaxValue > _perfMaxCurrent && \
+           !perfCounters.counter.compare_exchange_weak(_perfMaxCurrent, _perfMaxValue, \
+                                                       std::memory_order_relaxed, \
+                                                       std::memory_order_relaxed)) {} \
 } while(0)
 
 // Timestamp capture (always on, but cheap)
