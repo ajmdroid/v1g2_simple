@@ -552,15 +552,30 @@ bool V1ProfileManager::deleteProfile(const String& name) {
     }
     
     String path = profilePath(name);
-    if (!fs->exists(path)) {
-        return false;
+    String bakPath = path + ".bak";
+    bool removedAny = false;
+    bool ok = true;
+
+    if (fs->exists(path)) {
+        if (!fs->remove(path)) {
+            ok = false;
+        } else {
+            removedAny = true;
+        }
     }
-    
-    bool ok = fs->remove(path);
-    if (ok) {
+
+    if (fs->exists(bakPath)) {
+        if (!fs->remove(bakPath)) {
+            ok = false;
+        } else {
+            removedAny = true;
+        }
+    }
+
+    if (ok && removedAny) {
         Serial.printf("[V1Profiles] Deleted profile: %s\n", name.c_str());
     }
-    return ok;
+    return ok && removedAny;
 }
 
 bool V1ProfileManager::renameProfile(const String& oldName, const String& newName) {
