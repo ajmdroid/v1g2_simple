@@ -118,8 +118,22 @@ preserve ESP32/FreeRTOS safety and non-blocking loop guarantees.
    - `speedMph < 3`: skip matching.
    - `sampleAgeMs > 1000`: distance-only (no heading corridor).
 4. Do not read GPS UART/serial directly from camera code.
-5. Heading corridor logic remains disabled until heading/course is exposed in
-   `GpsRuntimeStatus`.
+5. M4 forward-only requirement:
+   - camera alerting is allowed only for cameras ahead of travel direction,
+   - non-forward cameras must never alert.
+6. Heading/course prerequisites for M4:
+   - expose course-over-ground in `GpsRuntimeStatus` (parsed from NMEA RMC),
+   - require heading sample freshness (`<= 2000 ms`),
+   - if heading is missing/stale, do not start camera alert (fail open).
+7. Forward corridor gate (M4 defaults):
+   - compute bearing from current GPS position to candidate camera,
+   - allow alert start only when heading delta is within entry corridor
+     (`|delta| <= 35 deg`).
+8. Turn-away graceful clear (M4 defaults):
+   - if active camera heading delta exceeds clear corridor (`|delta| >= 55 deg`)
+     for 2 consecutive camera ticks, clear alert state without re-show,
+   - if user turns away before arrival, camera alert clears and stays cleared
+     for that pass (one-and-done behavior).
 
 ## Camera Data Contract
 
@@ -149,7 +163,8 @@ Dataset staging for rollout:
 2. Use coarse buckets/grid to narrow candidates.
 3. Enforce hard raw scan cap per tick (`<=128` records visited before
    distance filter); stop span walk once cap is reached.
-4. Use distance-only matching until heading/course support is added.
+4. M2 runs distance-only matching; M4 must switch to heading-corridor
+   forward-only matching once heading/course support is available.
 5. Cooldown state is bounded: reuse event ring as cooldown cache (no full
    per-camera cooldown table).
 6. Avoid dynamic map allocation for cooldown state at full dataset scale.
@@ -230,6 +245,43 @@ No test/sync/upload endpoints until runtime stability is verified.
 
 No high-frequency polling changes until camera runtime impact is measured.
 
+## M4 Camera Alert UX Contract (Draft)
+
+1. Reuse existing display primitives only:
+   - no new fonts,
+   - no new draw regions/layout blocks,
+   - no separate camera-specific renderer.
+2. Camera label rendering must reuse the existing frequency/7-seg path as far
+   as practical for limited text display.
+3. Use the same top-arrow glyph path already used by V1 alerts for `^`;
+   do not introduce a new arrow asset or alternate symbol pipeline.
+4. Camera on-screen format is minimal and type-only:
+   - `~ ALPR ^`
+   - `~ SPEED ^`
+   - `~ REDLIGHT ^`
+5. Audio behavior is one-shot at alert start:
+   - announce `"<type> ahead"` once,
+   - do not repeat while the same camera event remains active.
+6. No "camera clear" voice cue in baseline M4 (intentionally omitted to avoid
+   annoyance).
+7. No distance countdown UI/audio (no `X feet` ticks, no repeated distance
+   refreshes).
+8. Clear-to-resting rule:
+   - clear camera UI once inside ~100 ft (`~30 m`) of the matched point, or
+   - clear immediately if camera eligibility/match is no longer valid.
+9. Forward-only rule:
+   - camera UI/audio can trigger only when the matched camera is in the
+     forward heading corridor from GPS course.
+   - if heading corridor is lost (turn-away), clear gracefully and do not
+     re-show in that pass.
+10. Signal preemption rule:
+   - any live V1 signal immediately takes display/audio priority over camera.
+11. One-and-done behavior:
+    - after preemption or clear, do not re-show the same camera alert in that
+      pass; rely on cooldown/debounce for future re-entry.
+12. "Ahead" wording is strict in M4:
+    - "ahead" must be backed by heading corridor checks, not proximity-only.
+
 ## Observability
 
 Add counters:
@@ -293,8 +345,8 @@ Also expose loader/tick timing and memory telemetry:
 
 1. `M1` (complete): scaffolding + no-op hook + counters.
 2. `M2` (implemented): binary load + immutable index + read-only API.
-3. `M3` (pending): silent (log-only) trigger mode hardening.
-4. `M4`: controlled audio/display integration.
+3. `M3` (pending): silent (log-only) trigger mode hardening + heading/course plumbing in GPS snapshot.
+4. `M4`: controlled audio/display integration (minimal one-shot contract above).
 5. `M5`: optional controlled reload endpoint.
 
 Advancement requires hardware perf check at each milestone.
@@ -377,8 +429,9 @@ Implications:
 
 1. **Hardware validation still required**:
    PSRAM access behavior and load timing must be profiled on target hardware.
-2. **Heading-aware matching remains blocked**:
-   GPS snapshot does not currently expose heading/course.
+2. **Forward-only M4 matching is blocked until heading is wired**:
+   `GpsRuntimeStatus` currently has no heading/course field and
+   `parseRmc(...)` does not publish course-over-ground yet.
 3. **ALPR full-dataset mode remains deferred past M2**:
    with current data, full `0.01°` span metadata projects to ~452.6 KiB and
    exceeds current M2 span budget; future path is captured in
