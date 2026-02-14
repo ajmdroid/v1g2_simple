@@ -366,6 +366,8 @@ forward-only M4 camera UX without violating core-priority constraints.
    - alert start once, clear on pass/turn-away/preempt, no re-show in same pass.
 4. Freeze audio baseline:
    - one-shot `"<type> ahead"` only if assets/API are available;
+   - verified on `2026-02-14`: `data/audio` currently has `dir_ahead.mul` but
+     no `alpr` / `redlight` / `speed` type clips;
    - otherwise ship display-only first and defer camera voice to follow-up.
 
 ### Stage 1 (M3-A): Heading/Course Plumbing in GPS Runtime
@@ -417,7 +419,12 @@ forward-only M4 camera UX without violating core-priority constraints.
 
 1. Keep camera voice best-effort and one-shot.
 2. No "camera clear" voice in baseline.
-3. If camera voice causes latency/jitter risk, disable by default and defer.
+3. Reuse existing V1 direction clip path for "`ahead`" (`dir_ahead.mul`);
+   avoid any new audio pipeline/threading code in baseline.
+4. `_disabled/` is not a source-of-truth for camera audio assets; only use
+   assets that exist under active `data/audio` (or newly generated/committed
+   assets validated in-repo).
+5. If camera voice causes latency/jitter risk, disable by default and defer.
 
 ### Stage Gates (Must Pass Before Advancing)
 
