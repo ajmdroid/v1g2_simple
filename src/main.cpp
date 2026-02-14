@@ -1001,12 +1001,13 @@ void loop() {
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
                 perfRecordNotifyToDisplayMs(nowMs - parsedTsMs);
             }
-            if (!overloadThisLoop) {
-                uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
-                displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
-                perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
-                lastFreqUiMs = nowMs;
-            }
+            // No overload guard: handleParsed's internal 30ms throttle gates
+            // expensive draws; fade/debounce/gap-recovery are microsecond-cheap
+            // and must run every frame (BLE volume restore is tier-2 priority).
+            uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
+            displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
+            perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
+            lastFreqUiMs = nowMs;
         }
     }
 
