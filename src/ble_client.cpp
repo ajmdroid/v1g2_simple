@@ -959,8 +959,8 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
     // blocking NimBLE host task.
     if (reason != 0 && reason != BLE_HS_ETIMEOUT) {
         if (instancePtr) {
-            instancePtr->pendingDeleteBond = true;
             instancePtr->pendingDeleteBondAddr = pClient->getPeerAddress();
+            instancePtr->pendingDeleteBond = true;
         }
     }
 
