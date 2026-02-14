@@ -1071,13 +1071,13 @@
 									<tr>
 										<th>Slot</th>
 										<th>Source</th>
+										<th>Action</th>
 										<th>Band</th>
 										<th>Freq</th>
 										<th>Conf</th>
 										<th>Radius</th>
 										<th>Demote</th>
 										<th>Location</th>
-										<th>Action</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -1091,34 +1091,7 @@
 														? 'manual'
 														: zone.learned
 															? 'learned'
-															: 'active'}
-											</td>
-											<td>{formatBandMask(zone.bandMask)}</td>
-												<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
-											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
-												<td class="whitespace-nowrap">{formatZoneRadiusFeet(zone)}</td>
-											<td class="text-xs">
-												{#if typeof zone.demotionMissThreshold === 'number'}
-													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
-													{#if typeof zone.demotionMissesRemaining === 'number'}
-														({zone.demotionMissesRemaining} left)
-													{/if}
-												{:else}
-														legacy decay
-												{/if}
-											</td>
-											<td>
-												<div class="font-mono text-xs">
-													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
-												</div>
-												<a
-													class="link link-primary text-xs"
-													href={`https://maps.google.com/?q=${zone.latitude},${zone.longitude}`}
-													target="_blank"
-													rel="noopener noreferrer"
-												>
-													map
-												</a>
+														: 'active'}
 											</td>
 											<td class="text-xs">
 												{#if zone.learned}
@@ -1135,6 +1108,33 @@
 												{:else}
 													—
 												{/if}
+											</td>
+											<td>{formatBandMask(zone.bandMask)}</td>
+											<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
+											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
+											<td class="whitespace-nowrap">{formatZoneRadiusFeet(zone)}</td>
+											<td class="text-xs">
+												{#if typeof zone.demotionMissThreshold === 'number'}
+													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
+													{#if typeof zone.demotionMissesRemaining === 'number'}
+														({zone.demotionMissesRemaining} left)
+													{/if}
+												{:else}
+													legacy decay
+												{/if}
+											</td>
+											<td>
+												<div class="font-mono text-xs">
+													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
+												</div>
+												<a
+													class="link link-primary text-xs"
+													href={`https://maps.google.com/?q=${zone.latitude},${zone.longitude}`}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													map
+												</a>
 											</td>
 										</tr>
 									{/each}
