@@ -1,5 +1,13 @@
 #include "signal_capture_module.h"
+#ifdef UNIT_TEST
+class SignalObservationSdLogger {
+public:
+    bool enqueue(const SignalObservation& observation);
+};
+extern SignalObservationSdLogger signalObservationSdLogger;
+#else
 #include "signal_observation_sd_logger.h"
+#endif
 
 #include "../../packet_parser.h"
 #include "../gps/gps_runtime_module.h"
