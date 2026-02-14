@@ -62,6 +62,7 @@
 #include "modules/lockout/lockout_enforcer.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
+#include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
@@ -954,8 +955,7 @@ void loop() {
         // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
         // Rate-limited: only send once per lockout-match cycle (not every frame).
         {
-            static bool lockoutMuteActive = false;
-            static bool lockoutGuardBlockedLogged = false;
+            static LockoutRuntimeMuteState lockoutMuteState;
             const V1Settings& lockoutSettings = settingsManager.get();
             const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
                 lockoutSettings.gpsLockoutCoreGuardEnabled,
@@ -965,25 +965,16 @@ void loop() {
                 perfCounters.queueDrops.load(),
                 perfCounters.perfDrop.load(),
                 systemEventBus.getDropCount());
-            const bool enforceAllowed = (lockRes.mode == LOCKOUT_RUNTIME_ENFORCE) &&
-                                        !lockoutGuard.tripped;
-            if (lockRes.evaluated && lockRes.shouldMute &&
-                enforceAllowed &&
-                !lockoutMuteActive && bleClient.isConnected()) {
+
+            const LockoutRuntimeMuteDecision muteDecision =
+                evaluateLockoutRuntimeMute(lockRes, lockoutGuard, bleClient.isConnected(), lockoutMuteState);
+
+            if (muteDecision.sendMute) {
                 bleClient.setMute(true);
-                lockoutMuteActive = true;
-                lockoutGuardBlockedLogged = false;
                 Serial.println("[Lockout] ENFORCE: mute sent to V1");
             }
-            if (lockRes.evaluated && lockRes.shouldMute &&
-                lockRes.mode == LOCKOUT_RUNTIME_ENFORCE &&
-                !enforceAllowed && !lockoutGuardBlockedLogged) {
-                lockoutGuardBlockedLogged = true;
+            if (muteDecision.logGuardBlocked) {
                 Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
-            }
-            if (!lockRes.shouldMute) {
-                lockoutMuteActive = false;
-                lockoutGuardBlockedLogged = false;
             }
         }
 
