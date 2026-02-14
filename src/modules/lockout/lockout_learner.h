@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <ArduinoJson.h>
 
 class LockoutIndex;
 class SignalObservationLog;
@@ -44,6 +45,8 @@ public:
     static constexpr int64_t  kStaleDurationMs    = 7LL * 24 * 3600 * 1000; // 7 days
     static constexpr uint32_t kPruneIntervalMs    = 60000;  // Prune every 60s
     static constexpr size_t   kBatchSize          = 32;     // Max observations per poll
+    static constexpr const char* kPersistTypeTag = "v1simple_lockout_pending";
+    static constexpr uint8_t kPersistVersion = 1;
 
     /// Wire dependencies. Must be called once before process().
     void begin(LockoutIndex* index, SignalObservationLog* log);
@@ -65,6 +68,13 @@ public:
     /// Read-only access to candidate table.
     const LearnerCandidate* candidateAt(size_t index) const;
     size_t activeCandidateCount() const;
+
+    // --- Persistence (best-effort Tier 7) ---
+    void toJson(JsonDocument& doc) const;
+    bool fromJson(JsonDocument& doc, int64_t epochMs);
+    void markDirty() { dirty_ = true; }
+    bool isDirty() const { return dirty_; }
+    void clearDirty() { dirty_ = false; }
 
     struct Stats {
         uint32_t observed          = 0; // Observations ingested
@@ -104,6 +114,7 @@ private:
     uint16_t freqToleranceMHz_ = kDefaultFreqToleranceMHz;
     uint8_t learnIntervalHours_ = kDefaultLearnIntervalHours;
     int64_t learnHitIntervalMs_ = 0;
+    bool dirty_ = false;
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;
 };

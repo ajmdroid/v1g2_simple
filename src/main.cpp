@@ -759,6 +759,35 @@ void setup() {
                                  settings.gpsLockoutLearnerFreqToleranceMHz,
                                  settings.gpsLockoutLearnerLearnIntervalHours);
     }
+    // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
+    if (storageManager.isReady()) {
+        static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs && fs->exists(LOCKOUT_PENDING_PATH)) {
+            File f = fs->open(LOCKOUT_PENDING_PATH, "r");
+            if (f && f.size() > 0 && f.size() < 32768) {
+                JsonDocument doc;
+                const DeserializationError err = deserializeJson(doc, f);
+                f.close();
+                if (!err) {
+                    if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
+                        SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
+                                         static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
+                                         LOCKOUT_PENDING_PATH);
+                    } else {
+                        SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
+                                         LOCKOUT_PENDING_PATH);
+                    }
+                } else {
+                    SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
+                }
+            } else if (f) {
+                f.close();
+            }
+        } else {
+            SerialLog.println("[Learner] No saved pending candidate file found");
+        }
+    }
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -1143,6 +1172,47 @@ void loop() {
                               LOCKOUT_ZONES_PATH);
             } else if (!saveDeferred) {
                 Serial.println("[Lockout] Save failed");
+            }
+        }
+    }
+    // Learner pending candidates: periodic best-effort save (Tier 7).
+    {
+        static uint32_t lastLearnerSaveMs = 0;
+        static uint32_t lastLearnerSaveAttemptMs = 0;
+        static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
+        static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 5000;      // Retry backoff
+        if (lockoutLearner.isDirty() && storageManager.isReady() &&
+            (now - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
+            (now - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
+            lastLearnerSaveAttemptMs = now;
+            static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
+            JsonDocument doc;
+            lockoutLearner.toJson(doc);
+            fs::FS* fs = storageManager.getFilesystem();
+            bool saveOk = false;
+            bool saveDeferred = false;
+            if (fs) {
+                if (storageManager.isSDCard()) {
+                    // Core 1 path must never block waiting for SD ownership.
+                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
+                    if (sdLock) {
+                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
+                    } else {
+                        saveDeferred = true;
+                    }
+                } else {
+                    // LittleFS fallback path (single-CPU filesystem access).
+                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
+                }
+            }
+            if (saveOk) {
+                lastLearnerSaveMs = now;
+                lockoutLearner.clearDirty();
+                Serial.printf("[Learner] Saved %u pending candidates to %s\n",
+                              static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
+                              LOCKOUT_PENDING_PATH);
+            } else if (!saveDeferred) {
+                Serial.println("[Learner] Pending save failed");
             }
         }
     }

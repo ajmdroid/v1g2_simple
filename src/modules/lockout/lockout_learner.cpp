@@ -12,6 +12,7 @@
 #endif
 
 #include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -46,6 +47,7 @@ void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
     for (auto& c : candidates_) {
         c = LearnerCandidate{};
     }
+    dirty_ = false;
 }
 
 void LockoutLearner::setTuning(uint8_t promotionHits,
@@ -137,7 +139,10 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
             int idx = findCandidate(lat, lon, band, freq);
             if (idx >= 0) {
                 LearnerCandidate& c = candidates_[idx];
-                if (epochMs > 0) c.lastSeenMs = epochMs;
+                if (epochMs > 0 && c.lastSeenMs != epochMs) {
+                    c.lastSeenMs = epochMs;
+                    dirty_ = true;
+                }
                 bool countedHit = true;
                 if (learnHitIntervalMs_ > 0 && epochMs > 0 && c.lastCountedHitMs > 0 &&
                     (epochMs - c.lastCountedHitMs) < learnHitIntervalMs_) {
@@ -148,6 +153,7 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     if (epochMs > 0) {
                         c.lastCountedHitMs = epochMs;
                     }
+                    dirty_ = true;
                 }
 
                 // Promote when threshold reached
@@ -169,6 +175,7 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     c.lastCountedHitMs = (epochMs > 0) ? epochMs : 0;
                     c.active     = true;
                     ++stats_.candidatesCreated;
+                    dirty_ = true;
                 }
                 // allocCandidate() returns -1 when table is full — silently skip.
                 // Stale pruning will free slots eventually.
@@ -228,6 +235,7 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     const uint8_t bandMask = lockoutSanitizeBandMask(c.band);
     if (bandMask == 0) {
         candidates_[idx] = LearnerCandidate{};
+        dirty_ = true;
         return;
     }
 
@@ -253,6 +261,7 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
                       static_cast<long>(c.latE5), static_cast<long>(c.lonE5),
                       c.hitCount);
         candidates_[idx] = LearnerCandidate{};
+        dirty_ = true;
     } else {
         ++stats_.promotionsFailed;
         // Index full — candidate stays until slot opens or it ages out.
@@ -268,6 +277,7 @@ void LockoutLearner::pruneStale(int64_t epochMs) {
         if ((epochMs - c.lastSeenMs) > kStaleDurationMs) {
             c = LearnerCandidate{};
             ++stats_.pruned;
+            dirty_ = true;
         }
     }
 }
@@ -285,6 +295,87 @@ size_t LockoutLearner::activeCandidateCount() const {
         if (c.active) ++count;
     }
     return count;
+}
+
+void LockoutLearner::toJson(JsonDocument& doc) const {
+    doc["_type"] = kPersistTypeTag;
+    doc["_version"] = kPersistVersion;
+    JsonArray candidates = doc["candidates"].to<JsonArray>();
+    for (const auto& candidate : candidates_) {
+        if (!candidate.active) {
+            continue;
+        }
+        JsonObject out = candidates.add<JsonObject>();
+        out["lat"] = candidate.latE5;
+        out["lon"] = candidate.lonE5;
+        out["band"] = candidate.band;
+        out["freq"] = candidate.freqMHz;
+        out["hits"] = candidate.hitCount;
+        out["first"] = candidate.firstSeenMs;
+        out["last"] = candidate.lastSeenMs;
+        out["lastHit"] = candidate.lastCountedHitMs;
+    }
+}
+
+bool LockoutLearner::fromJson(JsonDocument& doc, int64_t epochMs) {
+    const char* type = doc["_type"];
+    if (!type || std::strcmp(type, kPersistTypeTag) != 0) {
+        return false;
+    }
+    const uint8_t version = doc["_version"] | static_cast<uint8_t>(0);
+    if (version != kPersistVersion) {
+        return false;
+    }
+
+    JsonArray candidates = doc["candidates"].as<JsonArray>();
+    if (candidates.isNull()) {
+        return false;
+    }
+
+    for (auto& candidate : candidates_) {
+        candidate = LearnerCandidate{};
+    }
+
+    size_t loaded = 0;
+    for (JsonObject in : candidates) {
+        if (loaded >= kCandidateCapacity) {
+            break;
+        }
+        if (in["lat"].isNull() || in["lon"].isNull() || in["band"].isNull() ||
+            in["freq"].isNull() || in["hits"].isNull()) {
+            continue;
+        }
+
+        LearnerCandidate candidate;
+        candidate.latE5 = in["lat"].as<int32_t>();
+        candidate.lonE5 = in["lon"].as<int32_t>();
+        candidate.band = in["band"].as<uint8_t>();
+        candidate.freqMHz = in["freq"].as<uint16_t>();
+        candidate.hitCount = in["hits"].as<uint8_t>();
+        candidate.firstSeenMs = in["first"] | static_cast<int64_t>(0);
+        candidate.lastSeenMs = in["last"] | static_cast<int64_t>(0);
+        candidate.lastCountedHitMs = in["lastHit"] | static_cast<int64_t>(0);
+
+        if (candidate.hitCount == 0 || !lockoutBandSupported(candidate.band)) {
+            continue;
+        }
+        if (epochMs > 0 && candidate.lastSeenMs > 0 &&
+            (epochMs - candidate.lastSeenMs) > kStaleDurationMs) {
+            continue;
+        }
+        if (index_ && index_->findMatch(candidate.latE5,
+                                        candidate.lonE5,
+                                        candidate.band,
+                                        candidate.freqMHz) >= 0) {
+            continue;
+        }
+
+        candidate.active = true;
+        candidates_[loaded++] = candidate;
+    }
+
+    dirty_ = false;
+    return true;
 }
 
 // --- Geometry helpers (integer-only, same algorithm as LockoutIndex) ---
