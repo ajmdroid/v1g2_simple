@@ -351,6 +351,82 @@ Also expose loader/tick timing and memory telemetry:
 
 Advancement requires hardware perf check at each milestone.
 
+## Executable Implementation Path (Post-Planning, No-Code)
+
+This is the concrete execution order to move from current M2 runtime to
+forward-only M4 camera UX without violating core-priority constraints.
+
+### Stage 0: Spec Lock (Docs + API Contract Only)
+
+1. Freeze camera display token set for limited 7-seg rendering:
+   - `ALPR`, `SPEd`, `REDL` (or equivalent fixed set).
+2. Freeze arrow source:
+   - camera uses existing V1 front-arrow renderer path only (`DIR_FRONT`).
+3. Freeze one-and-done lifecycle semantics:
+   - alert start once, clear on pass/turn-away/preempt, no re-show in same pass.
+4. Freeze audio baseline:
+   - one-shot `"<type> ahead"` only if assets/API are available;
+   - otherwise ship display-only first and defer camera voice to follow-up.
+
+### Stage 1 (M3-A): Heading/Course Plumbing in GPS Runtime
+
+1. Add course fields to `GpsRuntimeStatus`:
+   - `courseDeg`, `courseValid`, `courseSampleTsMs`, `courseAgeMs`.
+2. Parse NMEA RMC course-over-ground and publish into snapshot.
+3. Expose course validity/age in GPS API + perf telemetry.
+4. Add unit tests for:
+   - valid RMC course parse,
+   - missing/invalid course handling,
+   - staleness aging behavior.
+
+### Stage 2 (M3-B): Forward-Only Match Gate in Camera Runtime
+
+1. Keep current spatial narrowing + raw scan cap unchanged.
+2. Add heading gate before alert start:
+   - prefer record bearing metadata (`bearingTenthsDeg`, `toleranceDeg`) when valid,
+   - fallback to geometric bearing only when record bearing is unknown.
+3. Apply corridor thresholds with hysteresis:
+   - entry `|delta| <= 35 deg`,
+   - clear `|delta| >= 55 deg` for 2 ticks.
+4. If heading is missing/stale:
+   - fail open (no new camera alert start).
+
+### Stage 3 (M3-C): Camera Alert Lifecycle Controller
+
+1. Add explicit camera lifecycle state machine:
+   - `IDLE`, `ACTIVE`, `PREEMPTED`, `SUPPRESSED_UNTIL_EXIT`.
+2. Persist active camera context minimally:
+   - camera id/type, start ts, last heading delta, clear reason.
+3. Clear conditions:
+   - within pass distance (~30 m),
+   - heading corridor lost (turn-away),
+   - camera eligibility invalid.
+4. Re-show policy:
+   - never re-show same pass after preempt/clear; require exit + re-entry.
+
+### Stage 4 (M4-A): Minimal Display Integration
+
+1. Reuse existing display primitives only (no new fonts/layout regions).
+2. Render camera token in existing frequency area.
+3. Render `^` using existing V1 arrow renderer path.
+4. Immediate V1-signal preemption:
+   - any live V1 alert overrides camera display on first frame.
+5. No camera resume after preempt in same pass.
+
+### Stage 5 (M4-B): Optional Camera Voice (After Drive Validation)
+
+1. Keep camera voice best-effort and one-shot.
+2. No "camera clear" voice in baseline.
+3. If camera voice causes latency/jitter risk, disable by default and defer.
+
+### Stage Gates (Must Pass Before Advancing)
+
+1. No BLE reconnect reliability regression.
+2. No display cadence regression vs baseline.
+3. No additional WiFi SRAM watchdog incidents attributable to camera path.
+4. Verified turn-away clear behavior in real drive logs.
+5. Verified no camera re-show after preempt in same pass.
+
 ## Exit Criteria
 
 1. Core loop behavior unchanged under normal and stress runs.
