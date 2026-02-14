@@ -591,9 +591,15 @@ bool OBDHandler::setRememberedAutoConnect(const String& address, bool enabled) {
 }
 
 OBDData OBDHandler::getData() const {
-    ObdLock lock(obdMutex, 0);
+    ObdLock lock(obdMutex, pdMS_TO_TICKS(5));
     if (!lock.ok()) {
-        return lastData;
+        OBDData snapshot{};
+        snapshot.oil_temp_c = INT16_MIN;
+        snapshot.dsg_temp_c = -128;
+        snapshot.intake_air_temp_c = -128;
+        snapshot.valid = false;
+        snapshot.timestamp_ms = 0;
+        return snapshot;
     }
     return lastData;
 }
