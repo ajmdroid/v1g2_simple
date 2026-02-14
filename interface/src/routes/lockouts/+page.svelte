@@ -16,6 +16,7 @@
 	let lockoutConfigDirty = $state(false);
 	let advancedUnlocked = $state(false);
 	let kaPreviewEnabled = $state(false);
+	let deletingZoneSlot = $state(null);
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const LOCKOUT_EVENTS_LIMIT = 48;
@@ -508,13 +509,13 @@
 			};
 		} catch (e) {
 			if (!silent) lockoutZonesError = 'Failed to load lockout zones';
-			} finally {
-				lockoutZonesFetchInFlight = false;
-				lockoutZonesLoading = false;
-			}
+		} finally {
+			lockoutZonesFetchInFlight = false;
+			lockoutZonesLoading = false;
 		}
+	}
 
-		async function saveLockoutConfig() {
+	async function saveLockoutConfig() {
 		if (!advancedUnlocked) {
 			setMsg('error', 'Unlock advanced controls before applying lockout changes.');
 			return;
@@ -575,6 +576,39 @@
 			setMsg('error', 'Failed to update lockout settings');
 		} finally {
 			savingLockoutConfig = false;
+		}
+	}
+
+	async function deleteLearnedZone(zone) {
+		const slot = Number(zone?.slot);
+		if (!Number.isInteger(slot) || slot < 0) return;
+		if (!zone?.learned) {
+			setMsg('error', 'Only learned lockout zones can be deleted from this table.');
+			return;
+		}
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before deleting learned lockout zones.');
+			return;
+		}
+		if (!confirm(`Delete learned lockout zone in slot ${slot}?`)) return;
+		deletingZoneSlot = slot;
+		try {
+			const res = await fetch('/api/lockouts/zones/delete', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ slot })
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to delete learned lockout zone');
+				return;
+			}
+			setMsg('success', `Deleted learned lockout zone ${slot}`);
+			await fetchLockoutZones({ silent: true });
+		} catch (e) {
+			setMsg('error', 'Failed to delete learned lockout zone');
+		} finally {
+			deletingZoneSlot = null;
 		}
 	}
 </script>
@@ -899,7 +933,7 @@
 				<div>
 					<h2 class="card-title">Lockout Zones</h2>
 					<p class="text-sm text-base-content/70">
-						Read-only snapshot of active lockouts and pending learner candidates.
+						Snapshot of active lockouts and pending learner candidates. Learned zones can be removed.
 					</p>
 				</div>
 				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutZones()} disabled={lockoutZonesLoading}>
@@ -941,13 +975,13 @@
 			{#if lockoutZonesLoading}
 				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
 			{:else}
-				<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 gap-4">
 					<div class="overflow-x-auto">
 						<div class="text-sm font-medium mb-2">Active Zones</div>
 						{#if activeLockoutZones.length === 0}
 							<div class="text-sm text-base-content/70">No active lockout zones.</div>
 						{:else}
-							<table class="table table-sm">
+							<table class="table table-sm min-w-[980px]">
 								<thead>
 									<tr>
 										<th>Slot</th>
@@ -956,8 +990,9 @@
 										<th>Freq</th>
 										<th>Conf</th>
 										<th>Radius</th>
-										<th>Demotion</th>
+										<th>Demote</th>
 										<th>Location</th>
+										<th>Action</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -1000,6 +1035,22 @@
 													map
 												</a>
 											</td>
+											<td class="text-xs">
+												{#if zone.learned}
+													<button
+														class="btn btn-xs btn-error btn-outline"
+														onclick={() => deleteLearnedZone(zone)}
+														disabled={!advancedUnlocked || deletingZoneSlot === zone.slot}
+													>
+														{#if deletingZoneSlot === zone.slot}
+															<span class="loading loading-spinner loading-xs"></span>
+														{/if}
+														Delete
+													</button>
+												{:else}
+													—
+												{/if}
+											</td>
 										</tr>
 									{/each}
 								</tbody>
@@ -1012,7 +1063,7 @@
 						{#if pendingLockoutZones.length === 0}
 							<div class="text-sm text-base-content/70">No pending candidates.</div>
 						{:else}
-							<table class="table table-sm">
+							<table class="table table-sm min-w-[860px]">
 								<thead>
 									<tr>
 										<th>Slot</th>

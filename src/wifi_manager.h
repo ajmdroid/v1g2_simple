@@ -258,6 +258,7 @@ private:
     void handleLockoutZones();
     void handleLockoutEvents();
     void handleLockoutSummary();
+    void handleLockoutZoneDelete();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

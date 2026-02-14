@@ -22,6 +22,7 @@
 #include "modules/gps/gps_observation_log.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
+#include "modules/lockout/lockout_store.h"
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
@@ -820,6 +821,7 @@ void WiFiManager::setupWebServer() {
     server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
     server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
+    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() { handleLockoutZoneDelete(); });
     server.on("/api/lockout/zones", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones");
         handleLockoutZones();
@@ -831,6 +833,10 @@ void WiFiManager::setupWebServer() {
     server.on("/api/lockout/events", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events");
         handleLockoutEvents();
+    });
+    server.on("/api/lockout/zones/delete", HTTP_POST, [this]() {
+        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete");
+        handleLockoutZoneDelete();
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
@@ -4245,6 +4251,60 @@ void WiFiManager::handleLockoutZones() {
 
     String response;
     serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleLockoutZoneDelete() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    int slot = -1;
+    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
+        JsonDocument body;
+        const DeserializationError error = deserializeJson(body, server.arg("plain"));
+        if (error) {
+            server.send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+            return;
+        }
+        if (body["slot"].is<int>()) {
+            slot = body["slot"].as<int>();
+        }
+    }
+    if (slot < 0 && server.hasArg("slot")) {
+        slot = server.arg("slot").toInt();
+    }
+    if (slot < 0 || slot >= static_cast<int>(lockoutIndex.capacity())) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"slot out of range\"}");
+        return;
+    }
+
+    const LockoutEntry* entry = lockoutIndex.at(static_cast<size_t>(slot));
+    if (!entry || !entry->isActive()) {
+        server.send(404, "application/json",
+                    "{\"success\":false,\"message\":\"zone not found\"}");
+        return;
+    }
+    if (!entry->isLearned()) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"only learned zones are deletable\"}");
+        return;
+    }
+
+    if (!lockoutIndex.remove(static_cast<size_t>(slot))) {
+        server.send(500, "application/json",
+                    "{\"success\":false,\"message\":\"failed to delete zone\"}");
+        return;
+    }
+    lockoutStore.markDirty();
+
+    JsonDocument responseDoc;
+    responseDoc["success"] = true;
+    responseDoc["slot"] = slot;
+    responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
+    String response;
+    serializeJson(responseDoc, response);
     server.send(200, "application/json", response);
 }
 
