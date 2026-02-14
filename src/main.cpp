@@ -56,6 +56,7 @@
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
+#include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
@@ -954,15 +955,35 @@ void loop() {
         // Rate-limited: only send once per lockout-match cycle (not every frame).
         {
             static bool lockoutMuteActive = false;
+            static bool lockoutGuardBlockedLogged = false;
+            const V1Settings& lockoutSettings = settingsManager.get();
+            const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
+                lockoutSettings.gpsLockoutCoreGuardEnabled,
+                lockoutSettings.gpsLockoutMaxQueueDrops,
+                lockoutSettings.gpsLockoutMaxPerfDrops,
+                lockoutSettings.gpsLockoutMaxEventBusDrops,
+                perfCounters.queueDrops.load(),
+                perfCounters.perfDrop.load(),
+                systemEventBus.getDropCount());
+            const bool enforceAllowed = (lockRes.mode == LOCKOUT_RUNTIME_ENFORCE) &&
+                                        !lockoutGuard.tripped;
             if (lockRes.evaluated && lockRes.shouldMute &&
-                lockRes.mode == LOCKOUT_RUNTIME_ENFORCE &&
+                enforceAllowed &&
                 !lockoutMuteActive && bleClient.isConnected()) {
                 bleClient.setMute(true);
                 lockoutMuteActive = true;
+                lockoutGuardBlockedLogged = false;
                 Serial.println("[Lockout] ENFORCE: mute sent to V1");
+            }
+            if (lockRes.evaluated && lockRes.shouldMute &&
+                lockRes.mode == LOCKOUT_RUNTIME_ENFORCE &&
+                !enforceAllowed && !lockoutGuardBlockedLogged) {
+                lockoutGuardBlockedLogged = true;
+                Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
             }
             if (!lockRes.shouldMute) {
                 lockoutMuteActive = false;
+                lockoutGuardBlockedLogged = false;
             }
         }
 
