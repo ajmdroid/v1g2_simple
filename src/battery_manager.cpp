@@ -50,6 +50,7 @@ static adc_cali_handle_t adc_cali_handle = NULL;
 
 // I2C for TCA9554 (separate from touch I2C) - also used by ES8311 codec
 TwoWire tca9554Wire(1);  // Use I2C port 1
+SemaphoreHandle_t tca9554WireMutex = nullptr;
 
 BatteryManager::BatteryManager() 
     : initialized(false)
@@ -67,6 +68,14 @@ BatteryManager::BatteryManager()
 
 bool BatteryManager::begin() {
     BATTERY_LOGLN("[Battery] Initializing battery manager...");
+
+    if (!tca9554WireMutex) {
+        tca9554WireMutex = xSemaphoreCreateMutex();
+        if (!tca9554WireMutex) {
+            Serial.println("[Battery] ERROR: failed to create shared TCA9554 I2C mutex");
+            return false;
+        }
+    }
     
     // CRITICAL: Initialize TCA9554 and latch power FIRST, before anything else
     // This MUST happen immediately on ANY boot to handle button-press boot scenarios
@@ -273,6 +282,11 @@ bool BatteryManager::initTCA9554() {
 }
 
 bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
+    if (!tca9554WireMutex || xSemaphoreTake(tca9554WireMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+        Serial.println("[Battery] TCA9554 mutex busy");
+        return false;
+    }
+
     static constexpr int MAX_RETRIES = 3;
     static constexpr int RETRY_DELAY_MS = 5;
     
@@ -289,6 +303,7 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
                 continue;
             }
             Serial.printf("[Battery] TCA9554 read start FAILED after %d attempts\n", MAX_RETRIES);
+            xSemaphoreGive(tca9554WireMutex);
             return false;
         }
         
@@ -301,6 +316,7 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
                 continue;
             }
             Serial.printf("[Battery] TCA9554 read FAILED after %d attempts\n", MAX_RETRIES);
+            xSemaphoreGive(tca9554WireMutex);
             return false;
         }
         
@@ -320,6 +336,7 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
         error = tca9554Wire.endTransmission();
         
         if (error == 0) {
+            xSemaphoreGive(tca9554WireMutex);
             return true;  // Success!
         }
         
@@ -330,6 +347,7 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
     }
     
     Serial.printf("[Battery] TCA9554 pin %d set FAILED after %d attempts\n", pin, MAX_RETRIES);
+    xSemaphoreGive(tca9554WireMutex);
     return false;
 }
 
@@ -631,6 +649,8 @@ String BatteryManager::getStatusString() {
 #else
 // Stub implementation for non-Waveshare boards
 BatteryManager batteryManager;
+TwoWire tca9554Wire(1);
+SemaphoreHandle_t tca9554WireMutex = nullptr;
 
 BatteryManager::BatteryManager() : initialized(false), onBattery(false), lastVoltage(0), cachedVoltage(0), cachedPercent(0), lastUpdateMs(0) {}
 bool BatteryManager::begin() { return false; }

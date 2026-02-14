@@ -12,6 +12,8 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // Hardware Pins
 #define BATTERY_ADC_CHANNEL     ADC1_CHANNEL_3  // GPIO4
@@ -105,5 +107,6 @@ extern BatteryManager batteryManager;
 
 // Shared I2C bus for TCA9554 (also used by ES8311 codec)
 extern TwoWire tca9554Wire;
+extern SemaphoreHandle_t tca9554WireMutex;
 
 #endif // BATTERY_MANAGER_H

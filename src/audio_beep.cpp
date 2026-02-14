@@ -61,8 +61,29 @@ static i2s_chan_handle_t i2s_tx_chan = NULL;  // New I2S driver handle
 // Current volume level (0-100%) - must be declared before es8311_init() uses it
 static uint8_t current_volume_percent = 75;
 
+class ScopedTca9554Lock {
+public:
+    explicit ScopedTca9554Lock(TickType_t timeoutTicks = pdMS_TO_TICKS(50)) {
+        locked_ = (tca9554WireMutex && xSemaphoreTake(tca9554WireMutex, timeoutTicks) == pdTRUE);
+    }
+    ~ScopedTca9554Lock() {
+        if (locked_) {
+            xSemaphoreGive(tca9554WireMutex);
+        }
+    }
+    bool ok() const { return locked_; }
+
+private:
+    bool locked_ = false;
+};
+
 // Write a register to ES8311
 static void es8311_write_reg(uint8_t reg, uint8_t val) {
+    ScopedTca9554Lock lock;
+    if (!lock.ok()) {
+        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in es8311_write_reg");
+        return;
+    }
     audioWire.beginTransmission(ES8311_ADDR);
     audioWire.write(reg);
     audioWire.write(val);
@@ -76,6 +97,12 @@ static void es8311_write_reg(uint8_t reg, uint8_t val) {
 // Note: Battery manager uses pin 6 for power latch, we use pin 7 for speaker amp
 // Per ESP-ADF and Waveshare examples, PA_EN is active-HIGH
 static void set_speaker_amp(bool enable) {
+    ScopedTca9554Lock lock;
+    if (!lock.ok()) {
+        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in set_speaker_amp");
+        return;
+    }
+
     // Step 1: Read current config register
     audioWire.beginTransmission(TCA9554_ADDR);
     audioWire.write(0x03); // Configuration register
@@ -155,6 +182,11 @@ static void set_speaker_amp(bool enable) {
 
 // Read a register from ES8311
 static uint8_t es8311_read_reg(uint8_t reg) {
+    ScopedTca9554Lock lock;
+    if (!lock.ok()) {
+        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in es8311_read_reg");
+        return 0;
+    }
     audioWire.beginTransmission(ES8311_ADDR);
     audioWire.write(reg);
     audioWire.endTransmission(false);
