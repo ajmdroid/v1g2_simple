@@ -63,7 +63,11 @@ void CameraDataLoader::requestReload() {
     status_.reloadPending = true;
     portEXIT_CRITICAL(&statusMux_);
 
-    if (loaderTask_) {
+    // Re-create task if it self-deleted after previous load.
+    // This keeps the 8 KiB stack allocated only while loading.
+    if (!loaderTask_) {
+        begin();
+    } else {
         xTaskNotifyGive(loaderTask_);
     }
 }
@@ -114,12 +118,10 @@ void CameraDataLoader::loaderTaskEntry(void* param) {
 }
 
 void CameraDataLoader::loaderTaskLoop() {
-    while (true) {
-        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (!reloadPending_.exchange(false, std::memory_order_relaxed)) {
-            continue;
-        }
-
+    // Process all pending reload requests, then self-delete to free
+    // the 8 KiB internal SRAM stack.  requestReload() will re-create
+    // this task on demand if another load is needed later.
+    while (reloadPending_.exchange(false, std::memory_order_relaxed)) {
         const uint32_t nowMs = millis();
         loadInProgress_.store(true, std::memory_order_relaxed);
 
@@ -168,6 +170,14 @@ void CameraDataLoader::loaderTaskLoop() {
         status_.loadInProgress = false;
         portEXIT_CRITICAL(&statusMux_);
     }
+
+    // Self-delete: free 8 KiB stack back to internal SRAM heap.
+    // Avoids permanent fragmentation that starves WiFi AP+STA.
+    portENTER_CRITICAL(&statusMux_);
+    status_.taskRunning = false;
+    portEXIT_CRITICAL(&statusMux_);
+    loaderTask_ = nullptr;
+    vTaskDelete(nullptr);
 }
 
 CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {

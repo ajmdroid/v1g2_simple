@@ -474,20 +474,21 @@ Sequence:
 - `camera_runtime_module.h`: `kMemoryGuardMinLargestBlock` 11 KiB → 16 KiB
 - Must always exceed WiFi AP+STA runtime threshold (20 KiB) + margin
 
-### Updated SRAM Budget (Post-Fix)
+### Updated SRAM Budget (Post-Fix Round 2)
 
-After fix, camera module's internal SRAM footprint is reduced to:
+After both fix rounds, camera module's internal SRAM footprint:
 
-| Consumer | SRAM Cost | Notes |
-|----------|-----------|-------|
-| Loader task stack | 8 KiB | Persistent; unavoidable for FreeRTOS task |
-| Span table | **0 KiB** | Moved to PSRAM |
-| Chunk buffer | **0 KiB** | PSRAM-only, no fallback |
-| **Total steady-state** | **8 KiB** | Task stack only |
+| Consumer | SRAM Cost | Duration | Notes |
+|----------|-----------|----------|-------|
+| Loader task stack | 8 KiB | **Transient** (load-time only) | Self-deletes after load completes |
+| Span table | **0 KiB** | — | Moved to PSRAM |
+| Chunk buffer | **0 KiB** | — | PSRAM-only, no fallback |
+| **Total steady-state** | **0 KiB** | — | Task stack freed after load |
+| **Total during load** | **8 KiB** | ~1-3 seconds | Task created on-demand, self-deletes |
 
-WiFi AP+STA needs 20 KiB free internal. With only 8 KiB consumed by camera
-task stack (persistent baseline, not a new allocation during load), the two
-subsystems should coexist without contention.
+WiFi AP+STA needs 20 KiB free internal. Camera module now has zero steady-
+state SRAM footprint. During transient load (~1-3s), the 8 KiB task stack
+is present but total free SRAM should remain above the WiFi floor.
 
 ### Lesson: SRAM Budget Coordination Contract
 
@@ -498,13 +499,50 @@ subsystems should coexist without contention.
 > **Corollary**: Prefer PSRAM for all data structures that are not latency-
 > critical at ISR/callback level. Span binary search is not ISR-level;
 > PSRAM is fine.
+>
+> **Corollary 2**: FreeRTOS tasks that run briefly should self-delete to
+> return their stack to the heap. Long-lived idle tasks permanently fragment
+> internal SRAM.
 
-### Remaining Risk: Loader Task Stack
+### Fix Round 2: Heap Fragmentation (Feb 14, 2026)
 
-The 8 KiB loader task stack is allocated from internal SRAM by FreeRTOS.
-Future optimization: use `xTaskCreateStaticPinnedToCore` with a PSRAM-
-backed stack buffer if internal SRAM pressure increases further. This
-requires `CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y` in sdkconfig.
+**Symptom**: After Fix Round 1 (spans to PSRAM), WiFi still shut down. New
+log showed `free=30948` (above 20 KiB threshold) but `block=8180` (below
+10 KiB block threshold). Even after WiFi released its buffers:
+`largestDma=8692` — meaning fragmentation is permanent.
+
+**Root cause**: The camera loader FreeRTOS task stack (8 KiB) was allocated
+from internal SRAM at boot and sat idle forever via `ulTaskNotifyTake(
+portMAX_DELAY)`. This 8 KiB block in the middle of the heap permanently
+split the largest contiguous block below WiFi's 10 KiB block threshold.
+
+**Fix applied**:
+
+1. **Self-deleting loader task** (`camera_data_loader.cpp`):
+   - Task now processes all pending reloads in a `while` loop, then calls
+     `vTaskDelete(nullptr)` to free its 8 KiB stack
+   - `requestReload()` re-creates the task on-demand via `begin()`
+   - The `begin()` guard (`if (loaderTask_) return`) makes re-creation safe
+   - `loaderTask_ = nullptr` is set before `vTaskDelete()` so
+     `requestReload()` can detect the task is gone
+
+2. **Lowered WiFi block threshold** (`wifi_manager.h`):
+   - `WIFI_RUNTIME_MIN_BLOCK_AP_STA` 10 KiB → 8 KiB (defense-in-depth)
+   - WiFi TX/RX buffers are typically 1.6 KiB; 8 KiB contiguous is ample
+   - Prevents false-positive shutdowns from transient fragmentation
+
+### Remaining Risk: Transient Task Stack During Load
+
+The 8 KiB loader task stack is allocated from internal SRAM by FreeRTOS
+only during the load window (~1-3s). After load completes, the task self-
+deletes and the stack is freed. If a reload is triggered during a period
+of already-low internal SRAM, the 8 KiB allocation could temporarily push
+the heap below WiFi thresholds. The 32 KiB memory guard should prevent
+this, but worth monitoring.
+
+Future optimization if needed: use `xTaskCreateStaticPinnedToCore` with a
+PSRAM-backed stack buffer. Requires `CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_
+MEMORY=y` in sdkconfig.
 
 ### Verification Needed
 
