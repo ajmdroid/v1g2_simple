@@ -172,6 +172,7 @@ void CameraDataLoader::loaderTaskLoop() {
 
 CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        Serial.println("[CameraLoader] Build failed: storage not ready or SD not mounted");
         return BuildOutcome::Failed;
     }
 
@@ -183,28 +184,41 @@ CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraInd
     status_.lastInternalLargestBlock = largestInternal;
     portEXIT_CRITICAL(&statusMux_);
     if (freeInternal < kMemoryGuardMinFreeInternal || largestInternal < kMemoryGuardMinLargestBlock) {
+        Serial.printf("[CameraLoader] Build skipped: internal SRAM guard (free=%lu block=%lu need>=%lu/%lu)\n",
+                      static_cast<unsigned long>(freeInternal),
+                      static_cast<unsigned long>(largestInternal),
+                      static_cast<unsigned long>(kMemoryGuardMinFreeInternal),
+                      static_cast<unsigned long>(kMemoryGuardMinLargestBlock));
         return BuildOutcome::SkippedMemoryGuard;
     }
 
     uint32_t totalRecords = 0;
     if (!accumulateRecordCount(totalRecords) || totalRecords == 0) {
+        Serial.println("[CameraLoader] Build failed: unable to count camera records");
         return BuildOutcome::Failed;
     }
 
     const uint32_t requiredBytes = totalRecords * sizeof(CameraRecord);
     const uint32_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
     if (largestPsram < (requiredBytes + kPsramHeadroomBytes)) {
+        Serial.printf("[CameraLoader] Build failed: PSRAM headroom (largest=%lu need=%lu + headroom=%lu)\n",
+                      static_cast<unsigned long>(largestPsram),
+                      static_cast<unsigned long>(requiredBytes),
+                      static_cast<unsigned long>(kPsramHeadroomBytes));
         return BuildOutcome::Failed;
     }
 
     CameraRecord* records = static_cast<CameraRecord*>(
         heap_caps_malloc(requiredBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!records) {
+        Serial.printf("[CameraLoader] Build failed: PSRAM alloc returned null (%lu bytes)\n",
+                      static_cast<unsigned long>(requiredBytes));
         return BuildOutcome::Failed;
     }
 
     bool ok = loadRecords(records, totalRecords);
     if (!ok) {
+        Serial.println("[CameraLoader] Build failed: loadRecords() failed");
         heap_caps_free(records);
         return BuildOutcome::Failed;
     }
@@ -234,6 +248,7 @@ CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraInd
     status_.lastSpanBuildDurationMs = spanDurationMs;
     portEXIT_CRITICAL(&statusMux_);
     if (!ok) {
+        Serial.println("[CameraLoader] Build failed: span table build failed");
         heap_caps_free(records);
         return BuildOutcome::Failed;
     }
@@ -250,17 +265,22 @@ bool CameraDataLoader::accumulateRecordCount(uint32_t& outTotalRecords) {
     outTotalRecords = 0;
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) {
+        Serial.println("[CameraLoader] Record count failed: filesystem unavailable");
         return false;
     }
 
     StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
     if (!lock) {
+        Serial.println("[CameraLoader] Record count failed: SD lock unavailable");
         return false;
     }
 
+    // NOTE: This preflight pass counts records; file contents are read in loadFileRecords().
+    // Keeping it separate preserves simple allocation checks before bulk decode.
     for (const char* path : kDatasetFiles) {
         File file = fs->open(path, FILE_READ);
         if (!file) {
+            Serial.printf("[CameraLoader] Record count failed: open %s\n", path);
             return false;
         }
 
@@ -271,12 +291,17 @@ bool CameraDataLoader::accumulateRecordCount(uint32_t& outTotalRecords) {
             header.version == kExpectedVersion &&
             header.recordSize == kExpectedRecordSize;
         if (headerRead != sizeof(header) || !validHeader) {
+            Serial.printf("[CameraLoader] Record count failed: invalid header in %s\n", path);
             file.close();
             return false;
         }
 
         const size_t expectedBytes = sizeof(VcamHeader) + (header.count * header.recordSize);
         if (file.size() < expectedBytes) {
+            Serial.printf("[CameraLoader] Record count failed: truncated %s (size=%lu expected>=%lu)\n",
+                          path,
+                          static_cast<unsigned long>(file.size()),
+                          static_cast<unsigned long>(expectedBytes));
             file.close();
             return false;
         }
@@ -293,13 +318,13 @@ bool CameraDataLoader::loadRecords(CameraRecord* outRecords, uint32_t totalRecor
         return false;
     }
 
+    // PSRAM-only: do NOT fall back to internal SRAM — 24 KiB from internal
+    // would push WiFi below its runtime SRAM threshold and cause shutdown.
     RawVcamRecord* chunkBuffer = static_cast<RawVcamRecord*>(
         heap_caps_malloc(sizeof(RawVcamRecord) * kChunkRecords, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!chunkBuffer) {
-        chunkBuffer = static_cast<RawVcamRecord*>(
-            heap_caps_malloc(sizeof(RawVcamRecord) * kChunkRecords, MALLOC_CAP_8BIT));
-    }
-    if (!chunkBuffer) {
+        Serial.printf("[CameraLoader] Build failed: chunk buffer alloc returned null (%lu bytes)\n",
+                      static_cast<unsigned long>(sizeof(RawVcamRecord) * kChunkRecords));
         return false;
     }
 
@@ -328,21 +353,25 @@ bool CameraDataLoader::loadFileRecords(const char* path,
                                        RawVcamRecord* chunkBuffer,
                                        uint32_t chunkCapacity) {
     if (!path || !outRecords || !chunkBuffer || chunkCapacity == 0) {
+        Serial.println("[CameraLoader] loadFileRecords failed: invalid arguments");
         return false;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) {
+        Serial.println("[CameraLoader] loadFileRecords failed: filesystem unavailable");
         return false;
     }
 
     StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
     if (!lock) {
+        Serial.println("[CameraLoader] loadFileRecords failed: SD lock unavailable");
         return false;
     }
 
     File file = fs->open(path, FILE_READ);
     if (!file) {
+        Serial.printf("[CameraLoader] loadFileRecords failed: open %s\n", path);
         return false;
     }
 
@@ -353,6 +382,7 @@ bool CameraDataLoader::loadFileRecords(const char* path,
         header.version == kExpectedVersion &&
         header.recordSize == kExpectedRecordSize;
     if (headerRead != sizeof(header) || !validHeader) {
+        Serial.printf("[CameraLoader] loadFileRecords failed: invalid header in %s\n", path);
         file.close();
         return false;
     }
@@ -363,12 +393,17 @@ bool CameraDataLoader::loadFileRecords(const char* path,
         const size_t bytesToRead = static_cast<size_t>(toRead) * sizeof(RawVcamRecord);
         const size_t bytesRead = file.read(reinterpret_cast<uint8_t*>(chunkBuffer), bytesToRead);
         if (bytesRead != bytesToRead) {
+            Serial.printf("[CameraLoader] loadFileRecords failed: short read in %s (%lu/%lu)\n",
+                          path,
+                          static_cast<unsigned long>(bytesRead),
+                          static_cast<unsigned long>(bytesToRead));
             file.close();
             return false;
         }
 
         for (uint32_t i = 0; i < toRead; ++i) {
             if (writeIndex >= totalRecords) {
+                Serial.printf("[CameraLoader] loadFileRecords failed: write overflow in %s\n", path);
                 file.close();
                 return false;
             }
@@ -417,13 +452,20 @@ bool CameraDataLoader::buildSpans(CameraRecord* records,
     }
 
     const uint32_t spanBytes = spanCount * sizeof(CameraCellSpan);
-    if (spanBytes > CameraIndex::kSpanSramBudgetBytes) {
+    if (spanBytes > CameraIndex::kSpanBudgetBytes) {
+        Serial.printf("[CameraLoader] buildSpans failed: span budget exceeded (%lu > %lu)\n",
+                      static_cast<unsigned long>(spanBytes),
+                      static_cast<unsigned long>(CameraIndex::kSpanBudgetBytes));
         return false;
     }
 
+    // Allocate spans in PSRAM to avoid internal SRAM contention with WiFi.
+    // Binary search over spans is O(log n) — PSRAM latency is acceptable.
     CameraCellSpan* spans = static_cast<CameraCellSpan*>(
-        heap_caps_malloc(spanBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+        heap_caps_malloc(spanBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!spans) {
+        Serial.printf("[CameraLoader] buildSpans failed: PSRAM alloc returned null (%lu bytes)\n",
+                      static_cast<unsigned long>(spanBytes));
         return false;
     }
 

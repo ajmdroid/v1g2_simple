@@ -92,8 +92,10 @@ private:
     static constexpr uint32_t kExpectedVersion = 1;
     static constexpr uint32_t kExpectedRecordSize = 24;
     static constexpr uint32_t kPsramHeadroomBytes = 256u * 1024u;
-    static constexpr uint32_t kMemoryGuardMinFreeInternal = 24576;     // 24 KiB
-    static constexpr uint32_t kMemoryGuardMinLargestBlock = 11264;     // 11 KiB
+    // Must stay above WiFi AP+STA runtime threshold (20 KiB) + margin.
+    // Previous value of 24 KiB was too tight — WiFi would shut down.
+    static constexpr uint32_t kMemoryGuardMinFreeInternal = 32768;     // 32 KiB
+    static constexpr uint32_t kMemoryGuardMinLargestBlock = 16384;     // 16 KiB
 
     TaskHandle_t loaderTask_ = nullptr;
     std::atomic<bool> reloadPending_{false};

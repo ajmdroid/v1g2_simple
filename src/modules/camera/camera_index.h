@@ -45,7 +45,7 @@ class CameraIndex {
 public:
     static constexpr float kCellSizeDeg = 0.01f;
     static constexpr uint32_t kRawScanCap = 128;
-    static constexpr uint32_t kSpanSramBudgetBytes = 64u * 1024u;
+    static constexpr uint32_t kSpanBudgetBytes = 64u * 1024u;  // PSRAM budget (moved from SRAM to avoid WiFi contention)
 
     CameraIndex() = default;
     ~CameraIndex();

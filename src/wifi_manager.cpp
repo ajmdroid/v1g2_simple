@@ -1645,6 +1645,7 @@ void WiFiManager::handleSettingsSave() {
             (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
         gpsRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
         speedSourceSelector.setGpsEnabled(mutableSettings.gpsEnabled);
+        cameraRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
     }
     if (server.hasArg("gpsLockoutMode")) {
         mutableSettings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"),
@@ -2398,6 +2399,7 @@ void WiFiManager::handleDisplayColorsSave() {
         s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
         gpsRuntimeModule.setEnabled(s.gpsEnabled);
         speedSourceSelector.setGpsEnabled(s.gpsEnabled);
+        cameraRuntimeModule.setEnabled(s.gpsEnabled);
     }
     if (server.hasArg("gpsLockoutMode")) {
         s.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"), s.gpsLockoutMode);
@@ -3578,6 +3580,7 @@ void WiFiManager::handleSettingsRestore() {
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
+    cameraRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
@@ -4028,6 +4031,7 @@ void WiFiManager::handleCameraStatus() {
 
     const CameraRuntimeStatus runtimeStatus = cameraRuntimeModule.snapshot();
     const CameraIndexStats indexStats = cameraRuntimeModule.index().stats();
+    // Runs from wifiManager.process() in loop(); direct eventLog snapshot reads are loop-context safe.
     const CameraEventLogStats eventStats = cameraRuntimeModule.eventLog().stats();
 
     JsonDocument doc;
@@ -4104,6 +4108,7 @@ void WiFiManager::handleCameraEvents() {
         limit = clampU16Value(server.arg("limit").toInt(), 1, static_cast<int>(CameraEventLog::kCapacity));
     }
 
+    // Runs in loop()-owned WiFi manager context; eventLog() read access is safe here.
     CameraEvent recent[CameraEventLog::kCapacity] = {};
     const size_t count = cameraRuntimeModule.eventLog().copyRecent(recent, limit);
     const CameraEventLogStats stats = cameraRuntimeModule.eventLog().stats();

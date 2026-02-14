@@ -1,6 +1,6 @@
 # Camera Alerts Plan (Draft)
 
-> Status: Draft v0.2  
+> Status: Draft v0.6 (implementation-aligned)  
 > Date: February 14, 2026  
 > Scope: New camera alerts built on current GPS runtime and current main loop
 
@@ -10,9 +10,10 @@ Add camera alerts without destabilizing the core detector pipeline.
 
 ## Implementation Status
 
-- `M1` scaffold is now in code (no-op runtime hook + counters + camera module skeletons).
-- No camera matching, filesystem load, display integration, or audio side effects are active yet.
-- Runtime hook is low-priority and guard-railed by existing overload/non-core signals.
+- Camera runtime hook is active in `src/main.cpp` with low-priority guard usage.
+- Loader task, immutable index build/swap, and enforcement matching are implemented under `src/modules/camera/`.
+- Read-only APIs are active in `src/wifi_manager.cpp`: `/api/cameras/status` and `/api/cameras/events`.
+- Camera remains log-only in M2 (no camera-specific display/audio side effects yet).
 
 ## Hard Constraints
 
@@ -22,6 +23,9 @@ Add camera alerts without destabilizing the core detector pipeline.
    `BLE/process + parser + display pipeline + mute commands`.
 4. OBD, GPS enrichment, and camera work are lower priority than core.
 5. Fail open: if camera work is skipped/fails, core behavior remains unchanged.
+6. Camera dataset allocations for M2+ must not consume internal SRAM at
+   runtime scale; large camera buffers are PSRAM-only.
+7. Camera dataset loading must never run as blocking file I/O in `loop()`.
 
 ## Current Reality (Code-Accurate)
 
@@ -31,8 +35,14 @@ Add camera alerts without destabilizing the core detector pipeline.
    `skipNonCoreThisLoop` and `overloadThisLoop`.
 4. Active GPS APIs exist in `src/wifi_manager.cpp`:
    `/api/gps/status` and `/api/gps/observations`.
-5. There is currently no active camera runtime module in `src/`.
-6. Camera binary data files exist in `camera_data/` and camera build tooling exists in `tools/`.
+5. Active camera runtime hook exists in `src/main.cpp`:
+   `cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop)`.
+6. Active camera APIs exist in `src/wifi_manager.cpp`:
+   `/api/cameras/status` and `/api/cameras/events`.
+7. Loader task and atomic ready-buffer swap are active in
+   `src/modules/camera/camera_data_loader.*`.
+8. Camera binary data files exist in `camera_data/` and camera build
+   tooling exists in `tools/`.
 
 ## Legacy Rejection
 
@@ -55,13 +65,13 @@ Add new code only under `src/modules/camera/`:
 - `camera_runtime_module.h/.cpp`: runtime tick + gating + cooldown logic.
 - `camera_index.h/.cpp`: immutable spatial index for fast nearby lookup.
 - `camera_data_loader.h/.cpp`: best-effort binary load/reload.
-- `camera_event_log.h/.cpp`: bounded ring for diagnostics/API.
+- `camera_event_log.h/.cpp`: bounded ring for diagnostics/API (main-loop-owned in M2/M3).
 
 Boundary rule: main loop gets one call (`cameraRuntimeModule.process(...)`) and one lightweight snapshot accessor. No camera logic in core BLE/parser/display internals.
 
 ## Main Loop Integration Contract
 
-Planned insertion point: low-priority section after parsed-frame display handling and behind overload guards.
+Implemented insertion point: low-priority section after parsed-frame display handling and behind overload guards.
 
 Rules:
 
@@ -71,15 +81,40 @@ Rules:
 4. No filesystem I/O in tick path.
 5. No JSON parsing in tick path.
 6. No blocking waits in tick path.
+7. M2+ load/reload work runs outside `loop()` and publishes data via a
+   non-blocking swap/ready flag contract.
 
 If any guard trips, increment camera skip counters and return immediately.
+
+## Loader Task Contract (M2 Commit)
+
+1. Camera load/reload runs in dedicated FreeRTOS loader task, not in `loop()`.
+2. Loader task priority is below BLE/display critical work (`priority=1` target).
+3. Loader reads camera files in bounded chunks (`~1024 records` per chunk) and
+   yields with `vTaskDelay(1)` between chunks.
+4. Loader builds an inactive index buffer in-task end-to-end:
+   decode, key derivation, sort, and span-table build.
+5. Any long-running build phase must stay in the loader task and yield
+   cooperatively (`vTaskDelay(1)`) between bounded sub-steps.
+6. Runtime continues using current active index until swap.
+7. Publish step uses atomic readiness/version state and pointer swap so
+   `cameraRuntimeModule.process(...)` never blocks.
+8. Reload requests are coalesced (one pending flag/version) to avoid task spam.
+
+This contract is now implemented for M2; any changes to task/swap behavior must
+preserve ESP32/FreeRTOS safety and non-blocking loop guarantees.
 
 ## GPS Contract for Camera Runtime
 
 1. Read GPS state only from `GpsRuntimeStatus` snapshot.
 2. Require `enabled && hasFix && locationValid` before matching.
-3. Treat stale samples as ineligible for directional matching.
+3. Initial thresholds (M2 default):
+   - `sampleAgeMs > 2000`: skip matching.
+   - `speedMph < 3`: skip matching.
+   - `sampleAgeMs > 1000`: distance-only (no heading corridor).
 4. Do not read GPS UART/serial directly from camera code.
+5. Heading corridor logic remains disabled until heading/course is exposed in
+   `GpsRuntimeStatus`.
 
 ## Camera Data Contract
 
@@ -92,14 +127,68 @@ Phase-1 loader behavior:
 2. Validate header/version/record size before accepting data.
 3. Build immutable in-memory index once load succeeds.
 4. On load failure, leave camera runtime disabled and non-fatal.
+5. Enforce pre-allocation guard before load:
+   `heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)` must satisfy required
+   buffer target with headroom.
+6. If pre-allocation guard fails: increment load-failure counters, keep camera
+   runtime disabled, and do not fall back to internal SRAM.
+
+Dataset staging for rollout:
+
+1. M2 default: load enforcement sets first (`speed_cam.bin`, `redlight_cam.bin`).
+2. ALPR dataset (`alpr.bin`) is optional and separately gated.
 
 ## Matching Strategy
 
 1. Convert coordinates to fixed-point (`E5`) for index keys.
 2. Use coarse buckets/grid to narrow candidates.
-3. Enforce hard candidate cap per tick.
-4. Run heading corridor checks only for narrowed candidates and valid heading context.
-5. Add per-camera cooldown to avoid repeated retrigger noise.
+3. Enforce hard raw scan cap per tick (`<=128` records visited before
+   distance filter); stop span walk once cap is reached.
+4. Use distance-only matching until heading/course support is added.
+5. Cooldown state is bounded: reuse event ring as cooldown cache (no full
+   per-camera cooldown table).
+6. Avoid dynamic map allocation for cooldown state at full dataset scale.
+
+## Spatial Index Design (M2 Commit)
+
+1. Camera records are kept in one contiguous PSRAM array.
+2. Grid metadata is span-based:
+   `CellSpan{cellKey, beginIndex, endIndex}`.
+3. Cell key resolution: `0.01°` lat/lon grid.
+4. Span-memory budget contract:
+   - compute projected span bytes as `uniqueCellCount * sizeof(CellSpan)`,
+   - enforce `CameraIndex::kSpanBudgetBytes` (M2 default target: 64 KiB),
+   - if projected span bytes exceed budget, reject that dataset load in M2.
+5. M2 operational mode:
+   - enforcement datasets (`speed_cam.bin`, `redlight_cam.bin`) are default,
+   - ALPR remains optional and stays disabled unless span-budget and perf
+     checks pass.
+6. Load path:
+   - decode VCAM records,
+   - compute `cellKey`,
+   - sort by `cellKey`,
+   - build compact span table.
+7. Query path:
+   - compute current cell,
+   - scan 3x3 neighboring cells via span lookup,
+   - apply raw scan cap first (`<=128` visited records, overflow counted),
+   - run exact distance filter on visited records.
+8. Span metadata currently resides in PSRAM (same class as records) to keep
+   internal SRAM pressure low; budget checks still gate dataset acceptance.
+
+This design is now fixed for M2 unless profiling shows a hard regression.
+
+## Event Log Ownership Contract (M2/M3)
+
+1. `CameraEventLog` is main-loop-owned in M2/M3.
+2. Publish path: main loop only.
+3. Read path: API/status code consumes loop-produced snapshots; no direct
+   cross-thread mutation/read of ring internals.
+   Current implementation detail: camera API handlers execute from
+   `wifiManager.process()` in `loop()`, so reads are same-context today.
+4. If any background thread needs direct access in future, `CameraEventLog`
+   must be upgraded to explicit synchronization (`portMUX` or equivalent)
+   before enabling that access.
 
 ## Initial Performance Targets
 
@@ -138,13 +227,32 @@ Add counters:
 - `cameraTicks`
 - `cameraTickSkipsOverload`
 - `cameraTickSkipsNonCore`
+- `cameraTickSkipsMemoryGuard`
 - `cameraCandidatesChecked`
 - `cameraMatches`
 - `cameraAlertsStarted`
 - `cameraBudgetExceeded`
 - `cameraLoadFailures`
+- `cameraLoadSkipsMemoryGuard`
+- `cameraIndexSwapCount`
+- `cameraIndexSwapFailures`
 
 Expose via status API and perf snapshots.
+Also expose loader/tick timing and memory telemetry:
+- `cameraLastTick_us`, `cameraMaxTick_us`
+- `cameraLastLoadMs`, `cameraMaxLoadMs`, `cameraLastSortMs`, `cameraLastSpanMs`
+- `cameraLastInternalFree`, `cameraLastInternalBlock`, guard thresholds
+
+## M2 Safe Implementation Order
+
+1. Wire guarded runtime hook + status snapshot only (still no matching).
+2. Implement loader task with decode/sort/span build + atomic inactive->active
+   swap, then verify no loop-blocking behavior under reload.
+3. Enable enforcement-only query path (`speed+redlight`) with raw scan cap and
+   counters, still no UI/audio side effects.
+4. Add read-only APIs (`/api/cameras/status`, `/api/cameras/events`) and verify
+   event-log ownership contract remains loop-only.
+5. Run perf/soak gates before any M3+ audio/display behavior.
 
 ## Testing Gates
 
@@ -171,9 +279,9 @@ Expose via status API and perf snapshots.
 
 ## Milestones
 
-1. `M1`: scaffolding + no-op hook + counters.
-2. `M2`: binary load + immutable index + read-only API.
-3. `M3`: silent (log-only) trigger mode.
+1. `M1` (complete): scaffolding + no-op hook + counters.
+2. `M2` (implemented): binary load + immutable index + read-only API.
+3. `M3` (pending): silent (log-only) trigger mode hardening.
 4. `M4`: controlled audio/display integration.
 5. `M5`: optional controlled reload endpoint.
 
@@ -187,213 +295,221 @@ Advancement requires hardware perf check at each milestone.
 4. Docs/API only describe actually shipped endpoints and modules.
 
 ---
+## Trust-But-Verify Audit (February 14, 2026)
 
-## Review Findings (February 14, 2026)
+### Verified Data (Repository Checks)
 
-> Status: Open for resolution before M2 begins.
-> Methodology: Full read of all `src/modules/camera/*`, `src/modules/gps/*`,
-> `src/modules/lockout/*`, `src/main.cpp` loop integration, `platformio.ini`,
-> binary data files, and `tools/enrich_osm/convert_to_binary.py`.
+| File | Records | Bytes |
+|------|---------|-------|
+| `alpr.bin` | 70,327 | 1,687,864 |
+| `speed_cam.bin` | 1,125 | 27,016 |
+| `redlight_cam.bin` | 205 | 4,936 |
+| **Total** | **71,657** | **1,719,816** |
 
-### Data Reality (Measured)
+Verified from VCAM headers (`magic=VCAM`, `version=1`, `recordSize=24`) and
+file-size consistency checks.
+Runtime note: `RawVcamRecord` is 24 bytes on disk; `CameraRecord` is 28 bytes
+in memory after adding derived `cellKey`.
 
-| File | Records | Raw Size |
-|------|---------|----------|
-| alpr.bin | 70,327 | 1,648 KB |
-| speed_cam.bin | 1,125 | 26 KB |
-| redlight_cam.bin | 205 | 5 KB |
-| **Total** | **71,657** | **1,679 KB** |
+### Verified Grid/Sizing Facts (`0.01°`, February 14, 2026)
 
-Record format: 16-byte VCAM header + 24-byte records
-(4 floats + int16 bearing + 6 uint8 fields).
+| Dataset | Unique Cells | Est. Span Bytes (12B/CellSpan) | Max 3x3 Fanout |
+|---------|--------------|----------------------------------|----------------|
+| Enforcement only (`speed+redlight`) | 792 | ~9.3 KiB | 39 |
+| All datasets (`speed+redlight+alpr`) | 38,623 | ~452.6 KiB | 81 |
 
-Free internal SRAM after BLE+WiFi+display: ~250–320 KB typical.
-PSRAM available: 8 MB (QIO-OPI, enabled in platformio.ini).
+Implications:
 
-### F1 — CRITICAL: Plan Omits PSRAM — Will OOM Internal Heap
+1. Current data does **not** show 3x3 candidate explosion (`max=81`), so
+   `<=128` raw scan cap is currently sufficient.
+2. Enforcement-only span metadata remains small; current implementation keeps
+   spans in PSRAM to avoid internal SRAM pressure.
+3. Full ALPR span metadata is too large for current 64 KiB span budget and
+   must remain gated/deferred unless budget policy changes.
 
-The plan never mentions PSRAM. The word does not appear. Raw camera data
-(1,679 KB) is 5–7× the entire free internal heap. Any index overhead
-(hash map buckets, sorted arrays, pointers) adds further. A default
-`malloc()` on ESP32-S3 tries internal SRAM first; at 1.7 MB this is an
-instant OOM crash taking down BLE, display, everything.
+### Finding Verification Matrix
 
-The board has 8 MB PSRAM (`BOARD_HAS_PSRAM`, `qio_opi` memory type) but
-the codebase barely uses it — only OpenFontRender's font cache calls
-`ps_malloc`. No camera code allocates from PSRAM.
+| ID | Verdict | Verification Status | Notes |
+|----|---------|---------------------|-------|
+| F1 PSRAM omission risk | Confirmed risk | **Verified + inferred impact** | Dataset size is verified. Platform PSRAM flags are verified. Exact crash mode/threshold depends on runtime heap state. |
+| F2 No index detail | Gap addressed for M2 (ALPR path deferred) | **Verified with repository data + sizing math** | v0.6 now locks scan-cap ordering, span budget checks, and enforcement-first loading. |
+| F3 PSRAM latency budget | Confirmed gap | **Needs hardware measurement** | Repo does not contain camera PSRAM access benchmarks yet. |
+| F4 Load blocking risk | Gap addressed in plan | **Verified + estimated timing** | v0.5 fixes loader-task contract. 400-800 ms timing remains estimate pending device measurement. |
+| F5 Missing heading in snapshot | Confirmed | **Verified** | `GpsRuntimeStatus` has no heading field; `parseRmc` does not parse course field. |
+| F6 Stale/speed thresholds undefined | Gap addressed in plan | **Verified** | v0.5 fixes explicit age/speed defaults; implementation validation pending. |
+| F7 Cooldown memory unsized | Gap addressed in plan | **Verified** | v0.5 fixes bounded cooldown strategy (event-ring cache). |
+| F8 ALPR dominance | Gap addressed in plan | **Verified data** | Data skew is verified; v0.5 fixes staged loading (enforcement first, ALPR gated). |
+| F9 Doc filename mismatch | Confirmed | **Verified** | ARCHITECTURE/DEVELOPER still reference removed camera module names. |
+| F10 Event-log thread model unstated | Gap addressed in plan | **Verified** | v0.5 codifies main-loop ownership and upgrade rule before cross-thread access. |
+| F11 OOM recovery path undefined | Gap addressed in plan | **Verified** | v0.5 fixes preflight and no-internal-fallback policy; implementation validation pending. |
 
-**Required resolution (pick one):**
+### Decisions Locked For M2/M3
 
-1. **PSRAM-only allocation** — all camera data via
-   `heap_caps_malloc(size, MALLOC_CAP_SPIRAM)`. Simplest path.
-2. **SD streaming** — never load full dataset; page on demand.
-3. **Regional subset loading** — load only cameras within X km from SD.
+1. **Memory policy:** camera record buffers at runtime scale are PSRAM-only.
+   If PSRAM preflight fails, camera stays disabled.
+2. **No internal fallback:** do not retry large camera buffers in internal
+   SRAM.
+3. **Load policy:** no blocking camera file load in `loop()`.
+4. **Read/publish model:** camera runtime reads immutable active index only;
+   loader prepares replacement index and swaps readiness atomically.
+5. **Matching defaults:** until heading support exists in GPS snapshot, use
+   distance-only matching with thresholds in GPS contract above.
+6. **Cooldown policy:** bounded structure only (no full per-camera table).
+7. **Dataset staging:** enforcement sets are default path; ALPR stays separate
+   and gated.
+8. **Scan cap semantics:** cap applies to raw span walk before distance filter.
+9. **Build locality:** decode/sort/span build stay fully in loader task, never
+   in `loop()`.
 
-If option 1: mandate pre-allocation check
-(`heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) >= required + 1 MB`)
-and never fall back to internal SRAM.
+### Real Open Issues (After v0.6 Alignment)
 
-### F2 — HIGH: No Spatial Index Design — 70K Linear Scan = ~17 ms/tick
+1. **Hardware validation still required**:
+   PSRAM access behavior and load timing must be profiled on target hardware.
+2. **Heading-aware matching remains blocked**:
+   GPS snapshot does not currently expose heading/course.
+3. **ALPR full-dataset mode remains deferred past M2**:
+   with current data, full `0.01°` span metadata projects to ~452.6 KiB and
+   exceeds current M2 span budget; future path is captured in
+   "Known M4+ ALPR Design Fork" below.
+4. **Count/decode still use a two-pass open/read flow**:
+   accepted for M2 simplicity; single-pass optimization can be evaluated after
+   hardware profiling.
+5. **Cross-doc drift remains**:
+   `ARCHITECTURE.md`, `DEVELOPER.md`, and `API.md` still contain stale camera references.
 
-The plan says "coarse buckets/grid" but provides no specifics. The lockout
-index (`lockout_index.h`) does O(N) linear scan over 200 entries in ~50 µs
-(~0.25 µs/entry). At 70K entries: **~17.5 ms per tick**. At 5 Hz that
-consumes 87 ms/s of loop budget, violating the 500 ms `loopMax_us` SLO
-from a single subsystem.
+### Low-Severity Implementation Findings (Verified February 14, 2026)
 
-**Unspecified details that matter:**
+1. `cameraRuntimeModule.begin(...)` now follows `gpsEnabled` at boot and runtime setting changes.
+2. Cooldown scan now early-exits once entries are older than `kCooldownMs` (newest-first ring copy).
+3. Plan now explicitly distinguishes 24-byte on-disk VCAM records vs 28-byte in-memory `CameraRecord`.
+4. Loader count pass + decode pass double-open remains a known optimization item (non-blocking, low risk).
+5. Loader failure branches now emit explicit `Serial` diagnostics for field debugging.
+6. Event-log read ownership is now annotated where WiFi handlers read snapshots in loop context.
 
-- Bucket/grid resolution (plan mentions E5 keys but no grid size).
-- Data structure (`std::unordered_map` carries ~64 B/node on ESP32 newlib).
-- Dense-area behavior (downtown Manhattan may have 200+ ALPR in one 1 km²
-  cell — the "hard candidate cap" silently drops real matches).
+### Known M4+ ALPR Design Fork
 
-**Recommended approach:** Flat sorted array in PSRAM, sorted by grid cell
-key at load time. Binary search to find cell boundaries. Grid resolution
-~0.01° (~1.1 km). Keep the grid lookup table (~few KB) in internal SRAM;
-only the record array in PSRAM. This gives zero per-node overhead and
-cache-friendly sequential access.
+If ALPR full-dataset mode is enabled in M4+, choose one of these designs
+explicitly during M4 design review (do not mix both in first pass):
 
-### F3 — HIGH: No PSRAM Access Latency in Performance Budget
+1. **Option A: PSRAM span metadata + PSRAM records**
+   Keep current span-table query model, but allow ALPR spans to reside in
+   PSRAM alongside records. Tradeoff: higher/random query latency risk.
+2. **Option B: PSRAM sorted array + binary-search bounds**
+   Remove ALPR span table requirement; keep ALPR records sorted by `cellKey`
+   and derive per-cell ranges with binary searches at query time. Tradeoff:
+   extra compare work per query, lower SRAM footprint.
 
-PSRAM random access is 3–10× slower than internal SRAM due to cache line
-misses. The plan's 250 µs target was presumably modeled on SRAM speed. A
-grid lookup touching 20–50 scattered PSRAM records generates cache misses
-at ~200 ns each — acceptable for small candidate sets (~10 µs), but the
-budget must account for this.
+Decision gates for M4+:
 
-**Recommendation:** Keep grid/bucket index metadata in internal SRAM.
-Only the camera record array goes to PSRAM. This confines cache misses to
-the final candidate check.
+1. Must pass loop-latency and BLE stability gates from this plan.
+2. Must show query latency distribution on hardware (not synthetic only).
+3. Must include explicit fallback behavior if ALPR path exceeds budget in
+   runtime conditions.
 
-### F4 — MEDIUM: Load Path Will Block loop() — No Background Task Plan
+### Follow-Up Documentation Debt
 
-Loading 1.7 MB from SD at typical SPI speeds (2–4 MB/s) takes 400–800 ms
-of blocking I/O. The plan says "no filesystem I/O in tick path" (correct)
-but does not specify where/when the load happens. If `loadDefault()` runs
-in `loop()`, even behind overload guards, the result is:
+1. Update `docs/ARCHITECTURE.md` camera module names to current `src/modules/camera/*`.
+2. Update `docs/DEVELOPER.md` camera module references to current files.
+3. Align `docs/API.md` camera endpoints/settings with actual implementation
+   status per milestone.
 
-- BLE disconnect (watchdog or scan timeout).
-- `loopMax_us` blown past 500 ms SLO.
-- OBD state machine interrupted mid-transition.
+---
 
-The previous `camera_manager.cpp` (now removed) used a FreeRTOS background
-task. The current plan mentions no threading.
+## HW Field Test: WiFi vs Camera SRAM Contention (Feb 14, 2026)
 
-**Required resolution:**
+### Observed Failure
 
-- Load in a FreeRTOS task at priority 1 (below BLE/display).
-- Yield every ~1000 records (24 KB) with 1 ms `vTaskDelay`.
-- Signal completion via `std::atomic<bool> loadComplete_`.
-- Index swap: build in secondary buffer, atomic pointer swap to main loop.
+With camera loader running and WiFi in AP+STA mode, WiFi self-shutdown was
+triggered by the internal SRAM watchdog:
 
-### F5 — MEDIUM: GPS Heading Not in Runtime Snapshot
+```
+[WiFi] WARN: Internal SRAM low (mode=AP+STA free=19392 block=11252 need>=20480/10240) - grace 1500 ms
+[WiFi] RECOVERED: Internal SRAM back above threshold after 6 ms
+[WiFi] WARN: Internal SRAM low (mode=AP+STA free=19392 block=11252 need>=20480/10240) - grace 1500 ms
+[WiFi] RECOVERED: Internal SRAM back above threshold after 5 ms
+[WiFi] WARN: Internal SRAM low (mode=AP+STA free=19392 block=11252 need>=20480/10240) - grace 1500 ms
+[WiFi] RECOVERED: Internal SRAM back above threshold after 6 ms
+[WiFi] CRITICAL: Internal SRAM low for 1501 ms (free=13064 block=7156) - stopping WiFi
+[SetupMode] Stopping WiFi: reason=low_dma manual=0 freeDma=13064 largestDma=7156
+[SetupMode] WiFi OFF: reason=low_dma manual=0 radio=0 http=0 freeDma=42616 largestDma=18420 durMs=90
+```
 
-The plan says "heading corridor checks" but `GpsRuntimeStatus` has no
-heading/bearing field. GPS course-over-ground comes from RMC sentences
-(already parsed by `gps_runtime_module.cpp`) but is not exposed in the
-snapshot struct. At speeds below ~5 mph, GPS heading is random noise.
+Three brief dips (recovering in 5-6 ms each), then a sustained drop from
+19,392 → 13,064 bytes free (6,328 bytes consumed — matches span table size
+for ~527 unique cells × 12 bytes/span).
 
-**Required resolution:**
+### Root Cause Analysis
 
-- Add `float courseDeg` to `GpsRuntimeStatus`.
-- Parse COG from RMC (field 8) — the NMEA parser already processes RMC.
-- Skip heading corridor checks below 5 mph; use distance-only matching.
+Pre-fix, three camera-module consumers of internal SRAM competed with WiFi's
+20 KiB floor (AP+STA runtime threshold):
 
-### F6 — MEDIUM: "Stale" and Speed Thresholds Undefined
+| Consumer | Location | SRAM Cost |
+|----------|----------|-----------|
+| **Span table (pre-fix)** | `buildSpans()` — `MALLOC_CAP_INTERNAL` | ~6–16 KiB (varies by unique cells) |
+| **Chunk buffer fallback (pre-fix)** | `loadRecords()` — falls back to `MALLOC_CAP_8BIT` | 24 KiB if PSRAM alloc fails |
+| **Loader task stack** | `xTaskCreatePinnedToCore` 8 KiB stack | 8 KiB (persistent while task exists) |
 
-The plan says "treat stale samples as ineligible" without defining stale.
-`GpsRuntimeModule` uses `FIX_STALE_MS = 15000` (15 s). At 60 mph that is
-0.25 miles of drift — matching cameras a quarter mile behind the vehicle.
+Sequence:
+1. WiFi AP+STA is running, internal SRAM already near 20 KiB floor.
+2. Span table allocated in internal SRAM → pushes free below threshold.
+3. WiFi grace period (1,500 ms) expires → WiFi forcibly shut down.
+4. After WiFi off, free jumps to 42,616 (radios released) — too late.
 
-**Required resolution:** Define concrete thresholds in the plan:
+### Fix Applied (Feb 14, 2026)
 
-- `sampleAgeMs > 2000` → skip matching entirely.
-- `speedMph < 3` → suppress matching (parked next to camera = infinite
-  retrigger).
-- `sampleAgeMs > 1000` → distance-only matching (no heading corridor).
+**1. Moved span table to PSRAM** (`camera_data_loader.cpp` `buildSpans()`):
+- Changed `MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT` → `MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`
+- Binary search over ~1K spans is O(log n); PSRAM latency is acceptable
+- Renamed `kSpanSramBudgetBytes` → `kSpanBudgetBytes` in `camera_index.h`
 
-### F7 — MEDIUM: Per-Camera Cooldown Memory Is Unspecified
+**2. Removed chunk buffer internal SRAM fallback** (`camera_data_loader.cpp` `loadRecords()`):
+- Previously: if PSRAM malloc failed, fell back to `MALLOC_CAP_8BIT` (internal SRAM, 24 KiB)
+- Now: PSRAM-only; if PSRAM fails, operation aborts cleanly
+- Rationale: 24 KiB surprise internal alloc would itself exceed WiFi headroom
 
-The plan says "per-camera cooldown" without sizing. At 70K cameras, even
-4 bytes per camera is 280 KB of cooldown state — doubling PSRAM usage.
+**3. Raised memory guards to WiFi-aware levels**:
+- `camera_data_loader.h`: `kMemoryGuardMinFreeInternal` 24 KiB → 32 KiB
+- `camera_data_loader.h`: `kMemoryGuardMinLargestBlock` 11 KiB → 16 KiB
+- `camera_runtime_module.h`: `kMemoryGuardMinFreeInternal` 21 KiB → 32 KiB
+- `camera_runtime_module.h`: `kMemoryGuardMinLargestBlock` 11 KiB → 16 KiB
+- Must always exceed WiFi AP+STA runtime threshold (20 KiB) + margin
 
-**Recommended approach:** Use `CameraEventLog` (already a 64-entry ring)
-as the cooldown table. On match, check if camera ID exists in the ring
-with `(nowMs - event.tsMs) < cooldownMs`. 64 entries × 12 bytes = 768
-bytes. If the user drives past 65+ distinct cameras before the cooldown
-expires, the oldest entry overflows — acceptable because they are in a new
-area by then.
+### Updated SRAM Budget (Post-Fix)
 
-### F8 — MEDIUM: ALPR (70K) Mixed with Enforcement (1.3K)
+After fix, camera module's internal SRAM footprint is reduced to:
 
-70,327 of 71,657 records are ALPR (license plate readers). ALPR cameras
-do not trigger radar/laser — they are informational/privacy-awareness
-only. Speed + red-light cameras (1,330 total, 31 KB) are enforcement and
-directly affect the driver. The plan treats all camera types identically.
+| Consumer | SRAM Cost | Notes |
+|----------|-----------|-------|
+| Loader task stack | 8 KiB | Persistent; unavoidable for FreeRTOS task |
+| Span table | **0 KiB** | Moved to PSRAM |
+| Chunk buffer | **0 KiB** | PSRAM-only, no fallback |
+| **Total steady-state** | **8 KiB** | Task stack only |
 
-**Recommended approach:**
+WiFi AP+STA needs 20 KiB free internal. With only 8 KiB consumed by camera
+task stack (persistent baseline, not a new allocation during load), the two
+subsystems should coexist without contention.
 
-- Load speed_cam + redlight_cam first (31 KB — fits in internal SRAM
-  with no PSRAM dependency).
-- ALPR as optional separate index, PSRAM-only, loaded lazily.
-- Settings toggle: "Enable ALPR alerts" (default off).
-- This lets M2/M3 ship enforcement cameras with zero PSRAM risk, and adds
-  ALPR as opt-in upgrade.
+### Lesson: SRAM Budget Coordination Contract
 
-### F9 — LOW: ARCHITECTURE.md File Name Mismatch
+> **Rule**: Any module that allocates internal SRAM must account for WiFi's
+> runtime floor. WiFi AP+STA requires ≥20 KiB free internal SRAM at all
+> times. Camera memory guards must exceed this by ≥12 KiB margin (32 KiB).
+>
+> **Corollary**: Prefer PSRAM for all data structures that are not latency-
+> critical at ISR/callback level. Span binary search is not ISR-level;
+> PSRAM is fine.
 
-`docs/ARCHITECTURE.md` references `camera_load_coordinator_module` and
-`camera_alert_module`. Actual files are `camera_data_loader`,
-`camera_index`, `camera_runtime_module`, `camera_event_log`. Will confuse
-future readers.
+### Remaining Risk: Loader Task Stack
 
-### F10 — LOW: Event Log Thread Safety Unstated
+The 8 KiB loader task stack is allocated from internal SRAM by FreeRTOS.
+Future optimization: use `xTaskCreateStaticPinnedToCore` with a PSRAM-
+backed stack buffer if internal SRAM pressure increases further. This
+requires `CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y` in sdkconfig.
 
-`CameraEventLog` uses `uint8_t head_/tail_/count_` with no mutex or
-atomic. If a future background loader or API handler calls `copyRecent()`
-while `process()` calls `publish()`, reads will tear. The plan should
-state explicitly: event log is main-loop-only, same as lockout index.
+### Verification Needed
 
-### F11 — LOW: OOM Recovery Path Not Defined
-
-The plan says "camera disabled/failure path leaves behavior unchanged" but
-does not define OOM recovery. If PSRAM allocation fails (fragmentation,
-wrong board variant, silicon defect), the loader must:
-
-1. Check `heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)` before
-   allocating.
-2. If insufficient, log failure, increment `cameraLoadFailures`, leave
-   module disabled.
-3. Never fall back to internal SRAM.
-
-### Findings Summary
-
-| # | Severity | Issue | Resolution |
-|---|----------|-------|------------|
-| F1 | **CRITICAL** | Plan omits PSRAM — 1.7 MB will OOM internal heap | Mandate PSRAM-only allocation |
-| F2 | **HIGH** | No index design — 70K linear scan = 17 ms/tick | Flat sorted array + binary search |
-| F3 | **HIGH** | No PSRAM latency in perf budget | Keep index in SRAM, data in PSRAM |
-| F4 | **MEDIUM** | Load blocks loop — no background task | FreeRTOS task + atomic swap |
-| F5 | **MEDIUM** | GPS heading missing from snapshot | Add courseDeg to GpsRuntimeStatus |
-| F6 | **MEDIUM** | Stale/speed thresholds undefined | Define concrete ms/mph numbers |
-| F7 | **MEDIUM** | Per-camera cooldown memory unsized | Use existing event ring as LRU |
-| F8 | **MEDIUM** | ALPR (70K) mixed with enforcement (1.3K) | Split load; enforcement first, ALPR opt-in |
-| F9 | LOW | Architecture doc file names wrong | Update ARCHITECTURE.md |
-| F10 | LOW | Event log thread safety unstated | Document main-loop-only rule |
-| F11 | LOW | OOM recovery undefined | Pre-allocation heap check |
-
-### What Is Solid
-
-- Overload guard integration (`skipNonCoreThisLoop`, `overloadThisLoop`).
-- Counter observability (all the right things are counted).
-- Milestone gating (hardware perf check required at each stage).
-- Main-loop single-call boundary (`cameraRuntimeModule.process(...)`).
-- Event ring design (bounded, O(1), no heap).
-- M1 scaffold is clean and correctly no-ops.
-
-### Blocking Items for M2
-
-F1, F2, F3, and F4 must be resolved before M2 implementation begins.
-F5 and F6 must be resolved before M3 (silent trigger mode).
-F7 and F8 should be resolved before M3 for practical usability.
+1. Flash updated firmware and confirm WiFi stays alive through camera load.
+2. Check `/api/cameras/status` for `loadSkipsMemoryGuard` counter — should
+   remain 0 under normal operation.
+3. Monitor `[WiFi] WARN` messages in serial — should not appear during
+   camera load cycle.

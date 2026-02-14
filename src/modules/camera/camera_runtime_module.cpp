@@ -69,10 +69,12 @@ bool isCameraCoolingDown(const CameraEventLog& eventLog, uint32_t cameraId, uint
     const size_t count = eventLog.copyRecent(recent, CameraEventLog::kCapacity);
     for (size_t i = 0; i < count; ++i) {
         const CameraEvent& event = recent[i];
-        if (event.cameraId != cameraId) {
-            continue;
+        // copyRecent() is newest-first, so once we hit a stale event we can stop.
+        const uint32_t ageMs = static_cast<uint32_t>(nowMs - event.tsMs);
+        if (ageMs >= kCooldownMs) {
+            break;
         }
-        if (static_cast<uint32_t>(nowMs - event.tsMs) < kCooldownMs) {
+        if (event.cameraId == cameraId) {
             return true;
         }
     }

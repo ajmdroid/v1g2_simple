@@ -42,8 +42,9 @@ struct CameraRuntimeStatus {
 class CameraRuntimeModule {
 public:
     static constexpr uint32_t DEFAULT_TICK_INTERVAL_MS = 200;
-    static constexpr uint32_t kMemoryGuardMinFreeInternal = 21504;      // 21 KiB
-    static constexpr uint32_t kMemoryGuardMinLargestBlock = 11264;      // 11 KiB
+    // Must stay above WiFi AP+STA runtime threshold (20 KiB) + margin.
+    static constexpr uint32_t kMemoryGuardMinFreeInternal = 32768;      // 32 KiB
+    static constexpr uint32_t kMemoryGuardMinLargestBlock = 16384;      // 16 KiB
 
     void begin(bool enabled);
     void setEnabled(bool enabled);
@@ -59,6 +60,7 @@ public:
     CameraRuntimeStatus snapshot() const;
 
     const CameraIndex& index() const { return index_; }
+    // Read access is safe from loop()-owned code paths (e.g., WiFi handlers invoked via wifiManager.process()).
     const CameraEventLog& eventLog() const { return eventLog_; }
 
 private:
