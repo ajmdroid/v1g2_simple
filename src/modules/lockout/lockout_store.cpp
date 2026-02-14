@@ -1,4 +1,5 @@
 #include "lockout_store.h"
+#include "lockout_band_policy.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
 
@@ -38,12 +39,14 @@ void LockoutStore::toJson(JsonDocument& doc) const {
     for (size_t i = 0; i < index_->capacity(); ++i) {
         const LockoutEntry* e = index_->at(i);
         if (!e || !e->isActive()) continue;
+        const uint8_t bandMask = lockoutSanitizeBandMask(e->bandMask);
+        if (bandMask == 0) continue;
 
         JsonObject z = zones.add<JsonObject>();
         z["lat"]   = e->latE5;
         z["lon"]   = e->lonE5;
         z["rad"]   = e->radiusE5;
-        z["band"]  = e->bandMask;
+        z["band"]  = bandMask;
         z["freq"]  = e->freqMHz;
         z["ftol"]  = e->freqTolMHz;
         z["conf"]  = e->confidence;
@@ -115,7 +118,11 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
         entry.latE5      = z["lat"].as<int32_t>();
         entry.lonE5      = z["lon"].as<int32_t>();
         entry.radiusE5   = z["rad"]  | (uint16_t)1350;
-        entry.bandMask   = z["band"] | (uint8_t)0;
+        entry.bandMask   = lockoutSanitizeBandMask(z["band"] | (uint8_t)0);
+        if (entry.bandMask == 0) {
+            ++skipped;
+            continue;
+        }
         entry.freqMHz    = z["freq"] | (uint16_t)0;
         entry.freqTolMHz = z["ftol"] | (uint16_t)10;
         entry.confidence = z["conf"] | (uint8_t)100;
@@ -135,7 +142,7 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
     }
 
     if (skipped > 0) {
-        Serial.printf("[LockoutStore] Skipped %lu entries (missing lat/lon)\n",
+        Serial.printf("[LockoutStore] Skipped %lu entries (missing lat/lon or unsupported band)\n",
                       static_cast<unsigned long>(skipped));
     }
 

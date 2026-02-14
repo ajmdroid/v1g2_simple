@@ -55,6 +55,23 @@ void test_add_returns_slot_index() {
     TEST_ASSERT_EQUAL(1, idx.activeCount());
 }
 
+void test_add_rejects_unsupported_band_only() {
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.bandMask = 0x02;  // Ka only
+    int slot = idx.add(e);
+    TEST_ASSERT_EQUAL(-1, slot);
+    TEST_ASSERT_EQUAL(0, idx.activeCount());
+}
+
+void test_add_sanitizes_mixed_band_mask() {
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.bandMask = 0x06;  // K + Ka
+    int slot = idx.add(e);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+    TEST_ASSERT_EQUAL(1, idx.activeCount());
+    TEST_ASSERT_EQUAL(0x04, idx.at(slot)->bandMask);  // K only
+}
+
 void test_add_fills_first_available_slot() {
     int s0 = idx.add(makeKBandEntry(1000000, -1000000));
     int s1 = idx.add(makeKBandEntry(2000000, -2000000));
@@ -458,13 +475,13 @@ void test_findNearby_returns_entries_within_radius() {
     LockoutEntry eK = makeKBandEntry(3736277, -7923221);
     eK.bandMask = 0x04;
     eK.freqMHz = 24148;
-    // Add a Ka entry at the SAME location, different band.
-    LockoutEntry eKa = makeKBandEntry(3736277, -7923221);
-    eKa.bandMask = 0x02;
-    eKa.freqMHz = 34700;
+    // Add an X entry at the SAME location, different band.
+    LockoutEntry eX = makeKBandEntry(3736277, -7923221);
+    eX.bandMask = 0x08;
+    eX.freqMHz = 10525;
 
     idx.add(eK);
-    idx.add(eKa);
+    idx.add(eX);
 
     int16_t nearby[8];
     size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
@@ -513,6 +530,8 @@ int main(int argc, char** argv) {
     // Capacity & add/remove
     RUN_TEST(test_clear_resets_all_slots);
     RUN_TEST(test_add_returns_slot_index);
+    RUN_TEST(test_add_rejects_unsupported_band_only);
+    RUN_TEST(test_add_sanitizes_mixed_band_mask);
     RUN_TEST(test_add_fills_first_available_slot);
     RUN_TEST(test_add_returns_neg1_when_full);
     RUN_TEST(test_remove_marks_inactive);

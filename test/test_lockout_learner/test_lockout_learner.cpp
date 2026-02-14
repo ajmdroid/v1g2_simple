@@ -53,7 +53,9 @@ static SignalObservation makeObs(int32_t latE5, int32_t lonE5,
 static constexpr int32_t LAT = 3736277;   // ~37.36277°
 static constexpr int32_t LON = -7923221;  // ~-79.23221°
 static constexpr uint8_t K_BAND = (1 << 2);  // BAND_K bitmask = 0x04
+static constexpr uint8_t X_BAND = (1 << 3);  // BAND_X bitmask = 0x08
 static constexpr uint8_t KA_BAND = (1 << 1); // BAND_KA bitmask = 0x02
+static constexpr uint8_t LASER_BAND = (1 << 0); // BAND_LASER bitmask = 0x01
 static constexpr uint16_t K_FREQ = 24148;
 static constexpr int64_t EPOCH_BASE = 1700000000000LL;
 
@@ -145,9 +147,9 @@ void test_three_hits_promotes() {
 // Different band creates separate candidate
 // ================================================================
 
-void test_different_band_separate_candidate() {
+void test_supported_different_band_separate_candidate() {
     testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
-    testLog.publish(makeObs(LAT, LON, KA_BAND, 34700));
+    testLog.publish(makeObs(LAT, LON, X_BAND, 10525));
     learner.process(2000, EPOCH_BASE);
 
     TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
@@ -217,6 +219,20 @@ void test_no_location_skipped() {
     TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
     TEST_ASSERT_EQUAL(1, learner.stats().skippedNoLocation);
     TEST_ASSERT_EQUAL(0, learner.stats().observed);
+}
+
+// ================================================================
+// Unsupported lockout bands are skipped
+// ================================================================
+
+void test_unsupported_band_skipped() {
+    testLog.publish(makeObs(LAT, LON, KA_BAND, 34700));
+    testLog.publish(makeObs(LAT, LON, LASER_BAND, 0));
+    learner.process(2000, EPOCH_BASE);
+
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(0, learner.stats().observed);
+    TEST_ASSERT_EQUAL(2, learner.stats().skippedBand);
 }
 
 // ================================================================
@@ -437,11 +453,12 @@ int main(int argc, char** argv) {
     RUN_TEST(test_single_obs_creates_candidate);
     RUN_TEST(test_nearby_obs_increments_candidate);
     RUN_TEST(test_three_hits_promotes);
-    RUN_TEST(test_different_band_separate_candidate);
+    RUN_TEST(test_supported_different_band_separate_candidate);
     RUN_TEST(test_different_freq_separate_candidate);
     RUN_TEST(test_far_away_separate_candidate);
     RUN_TEST(test_already_in_index_skipped);
     RUN_TEST(test_no_location_skipped);
+    RUN_TEST(test_unsupported_band_skipped);
     RUN_TEST(test_rate_limited);
     RUN_TEST(test_backlog_over_batch_fully_processed);
     RUN_TEST(test_prune_stale_candidate);

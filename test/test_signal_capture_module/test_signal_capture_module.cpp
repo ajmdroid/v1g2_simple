@@ -117,6 +117,20 @@ void test_different_bucket_publishes_immediately() {
     TEST_ASSERT_EQUAL_UINT16(24160, lastEnqueued.frequencyMHz);
 }
 
+void test_unsupported_bands_not_published() {
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+
+    parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 4, 34700, true, true)});
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps);
+
+    parser.setAlerts({AlertData::create(BAND_LASER, DIR_FRONT, 6, 0, 0, true, true)});
+    signalCaptureModule.capturePriorityObservation(2000, parser, gps);
+
+    TEST_ASSERT_EQUAL_UINT32(0, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(0, sdEnqueueCount);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_alerts_no_publish);
@@ -124,5 +138,6 @@ int main() {
     RUN_TEST(test_same_bucket_within_repeat_window_suppressed);
     RUN_TEST(test_same_bucket_after_repeat_window_publishes);
     RUN_TEST(test_different_bucket_publishes_immediately);
+    RUN_TEST(test_unsupported_bands_not_published);
     return UNITY_END();
 }

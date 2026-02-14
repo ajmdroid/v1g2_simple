@@ -1,4 +1,5 @@
 #include "lockout_index.h"
+#include "lockout_band_policy.h"
 
 #include <cstdlib>   // abs
 #include <cstring>   // memset
@@ -16,13 +17,21 @@ LockoutDecision LockoutIndex::evaluate(int32_t latE5,
                                        uint8_t band,
                                        uint16_t freqMHz) const {
     LockoutDecision decision;
+    const uint8_t alertBandMask = lockoutSanitizeBandMask(band);
+    if (alertBandMask == 0) {
+        return decision;
+    }
     for (size_t i = 0; i < kCapacity; ++i) {
         const LockoutEntry& e = entries_[i];
         if (!e.isActive()) {
             continue;
         }
+        const uint8_t entryBandMask = lockoutSanitizeBandMask(e.bandMask);
+        if (entryBandMask == 0) {
+            continue;
+        }
         // Band filter: entry's bandMask must include the alert's band bit.
-        if ((e.bandMask & band) == 0) {
+        if ((entryBandMask & alertBandMask) == 0) {
             continue;
         }
         if (!freqMatches(freqMHz, e)) {
@@ -41,9 +50,14 @@ LockoutDecision LockoutIndex::evaluate(int32_t latE5,
 }
 
 int LockoutIndex::add(const LockoutEntry& entry) {
+    LockoutEntry sanitized = entry;
+    sanitized.bandMask = lockoutSanitizeBandMask(sanitized.bandMask);
+    if (sanitized.bandMask == 0) {
+        return -1;
+    }
     for (size_t i = 0; i < kCapacity; ++i) {
         if (!entries_[i].isActive()) {
-            entries_[i] = entry;
+            entries_[i] = sanitized;
             entries_[i].setActive(true);
             return static_cast<int>(i);
         }
@@ -52,30 +66,36 @@ int LockoutIndex::add(const LockoutEntry& entry) {
 }
 
 int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
+    LockoutEntry sanitized = entry;
+    sanitized.bandMask = lockoutSanitizeBandMask(sanitized.bandMask);
+    if (sanitized.bandMask == 0) {
+        return -1;
+    }
     // Check for an existing entry that covers the same zone+band+freq.
-    const int existing = findMatch(entry.latE5, entry.lonE5,
-                                   entry.bandMask, entry.freqMHz);
+    const int existing = findMatch(sanitized.latE5, sanitized.lonE5,
+                                   sanitized.bandMask, sanitized.freqMHz);
     if (existing >= 0) {
         LockoutEntry& e = entries_[existing];
+        e.bandMask = lockoutSanitizeBandMask(static_cast<uint8_t>(e.bandMask | sanitized.bandMask));
         // Merge: keep the higher confidence.
-        if (entry.confidence > e.confidence) {
-            e.confidence = entry.confidence;
+        if (sanitized.confidence > e.confidence) {
+            e.confidence = sanitized.confidence;
         }
         // Keep the earliest firstSeenMs.
-        if (entry.firstSeenMs > 0 &&
-            (e.firstSeenMs == 0 || entry.firstSeenMs < e.firstSeenMs)) {
-            e.firstSeenMs = entry.firstSeenMs;
+        if (sanitized.firstSeenMs > 0 &&
+            (e.firstSeenMs == 0 || sanitized.firstSeenMs < e.firstSeenMs)) {
+            e.firstSeenMs = sanitized.firstSeenMs;
         }
         // Keep the latest lastSeenMs.
-        if (entry.lastSeenMs > e.lastSeenMs) {
-            e.lastSeenMs = entry.lastSeenMs;
+        if (sanitized.lastSeenMs > e.lastSeenMs) {
+            e.lastSeenMs = sanitized.lastSeenMs;
         }
         // Merge flags (preserve both manual + learned if applicable).
-        e.flags |= entry.flags;
+        e.flags |= sanitized.flags;
         return existing;
     }
     // No existing match — insert at the first free slot.
-    return add(entry);
+    return add(sanitized);
 }
 
 bool LockoutIndex::remove(size_t index) {
@@ -152,12 +172,20 @@ int LockoutIndex::findMatch(int32_t latE5,
                             int32_t lonE5,
                             uint8_t band,
                             uint16_t freqMHz) const {
+    const uint8_t alertBandMask = lockoutSanitizeBandMask(band);
+    if (alertBandMask == 0) {
+        return -1;
+    }
     for (size_t i = 0; i < kCapacity; ++i) {
         const LockoutEntry& e = entries_[i];
         if (!e.isActive()) {
             continue;
         }
-        if ((e.bandMask & band) == 0) {
+        const uint8_t entryBandMask = lockoutSanitizeBandMask(e.bandMask);
+        if (entryBandMask == 0) {
+            continue;
+        }
+        if ((entryBandMask & alertBandMask) == 0) {
             continue;
         }
         if (!freqMatches(freqMHz, e)) {

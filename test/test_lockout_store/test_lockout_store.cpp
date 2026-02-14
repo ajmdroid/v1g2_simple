@@ -105,6 +105,23 @@ void test_toJson_skips_inactive_slots() {
     TEST_ASSERT_EQUAL(2, store.stats().entriesSaved);
 }
 
+void test_toJson_skips_unsupported_band_entries() {
+    int slot = testIndex.add(makeEntry());
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+    LockoutEntry* e = testIndex.mutableAt(static_cast<size_t>(slot));
+    TEST_ASSERT_NOT_NULL(e);
+
+    // Simulate a legacy/corrupt in-memory entry that carries only Ka.
+    e->bandMask = 0x02;
+
+    JsonDocument doc;
+    store.toJson(doc);
+
+    JsonArray zones = doc["zones"];
+    TEST_ASSERT_EQUAL(0, zones.size());
+    TEST_ASSERT_EQUAL(0, store.stats().entriesSaved);
+}
+
 void test_toJson_all_fields_present() {
     LockoutEntry e = makeEntry();
     e.radiusE5    = 2700;
@@ -177,7 +194,7 @@ void test_fromJson_valid_single_entry() {
 void test_fromJson_roundtrip() {
     // Populate index with 3 entries.
     testIndex.add(makeEntry(1000000, -1000000, 24100));
-    testIndex.add(makeEntry(2000000, -2000000, 34700, 0x02));  // Ka
+    testIndex.add(makeEntry(2000000, -2000000, 24160, 0x06));  // K + Ka -> sanitize to K
     testIndex.add(makeEntry(3000000, -3000000, 10525, 0x08));  // X
     TEST_ASSERT_EQUAL(3, testIndex.activeCount());
 
@@ -208,7 +225,7 @@ void test_fromJson_roundtrip() {
         const LockoutEntry* e = testIndex.at(i);
         if (!e || !e->isActive()) continue;
         if (e->latE5 == 1000000) { found[0] = true; TEST_ASSERT_EQUAL(24100, e->freqMHz); }
-        if (e->latE5 == 2000000) { found[1] = true; TEST_ASSERT_EQUAL(0x02, e->bandMask); }
+        if (e->latE5 == 2000000) { found[1] = true; TEST_ASSERT_EQUAL(0x04, e->bandMask); }
         if (e->latE5 == 3000000) { found[2] = true; TEST_ASSERT_EQUAL(0x08, e->bandMask); }
     }
     TEST_ASSERT_TRUE(found[0]);
@@ -219,7 +236,7 @@ void test_fromJson_roundtrip() {
 void test_fromJson_all_fields_survive_roundtrip() {
     LockoutEntry orig = makeEntry();
     orig.radiusE5    = 2700;
-    orig.bandMask    = 0x02;  // Ka
+    orig.bandMask    = 0x08;  // X
     orig.freqMHz     = 34720;
     orig.freqTolMHz  = 15;
     orig.confidence  = 42;
@@ -308,6 +325,7 @@ void test_fromJson_skips_entry_missing_lat() {
     JsonObject z1 = zones.add<JsonObject>();
     z1["lat"] = 1000000;
     z1["lon"] = -1000000;
+    z1["band"] = 4;
 
     // Entry 2: missing lat.
     JsonObject z2 = zones.add<JsonObject>();
@@ -323,16 +341,45 @@ void test_fromJson_skips_entry_missing_lat() {
     TEST_ASSERT_EQUAL(2, store.stats().entriesSkipped);
 }
 
+void test_fromJson_skips_unsupported_band() {
+    JsonDocument doc;
+    doc["_type"] = "v1simple_lockout_zones";
+    doc["_version"] = 1;
+    JsonArray zones = doc["zones"].to<JsonArray>();
+
+    JsonObject ka = zones.add<JsonObject>();
+    ka["lat"] = 1000000;
+    ka["lon"] = -1000000;
+    ka["band"] = 0x02;  // Ka only
+
+    JsonObject laser = zones.add<JsonObject>();
+    laser["lat"] = 2000000;
+    laser["lon"] = -2000000;
+    laser["band"] = 0x01;  // Laser only
+
+    JsonObject k = zones.add<JsonObject>();
+    k["lat"] = 3000000;
+    k["lon"] = -3000000;
+    k["band"] = 0x04;  // K
+
+    bool ok = store.fromJson(doc);
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+    TEST_ASSERT_EQUAL(2, store.stats().entriesSkipped);
+    TEST_ASSERT_EQUAL(1, store.stats().entriesLoaded);
+}
+
 void test_fromJson_defaults_optional_fields() {
     JsonDocument doc;
     doc["_type"]    = "v1simple_lockout_zones";
     doc["_version"] = 1;
     JsonArray zones = doc["zones"].to<JsonArray>();
 
-    // Entry with only lat and lon — everything else defaults.
+    // Entry with required fields + band; everything else defaults.
     JsonObject z = zones.add<JsonObject>();
     z["lat"] = 5000000;
     z["lon"] = -8000000;
+    z["band"] = 4;
 
     bool ok = store.fromJson(doc);
     TEST_ASSERT_TRUE(ok);
@@ -343,7 +390,7 @@ void test_fromJson_defaults_optional_fields() {
     TEST_ASSERT_EQUAL(5000000, e->latE5);
     TEST_ASSERT_EQUAL(-8000000, e->lonE5);
     TEST_ASSERT_EQUAL(1350, e->radiusE5);      // Default radius
-    TEST_ASSERT_EQUAL(0, e->bandMask);          // Default band
+    TEST_ASSERT_EQUAL(4, e->bandMask);          // Provided band
     TEST_ASSERT_EQUAL(0, e->freqMHz);           // Default freq
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);       // Default tolerance
     TEST_ASSERT_EQUAL(100, e->confidence);       // Default confidence
@@ -361,6 +408,7 @@ void test_fromJson_always_sets_active_flag() {
     JsonObject z = zones.add<JsonObject>();
     z["lat"]   = 1000000;
     z["lon"]   = -1000000;
+    z["band"]  = 4;
     z["flags"] = 0;  // Deliberately clear all flags including ACTIVE.
 
     bool ok = store.fromJson(doc);
@@ -399,6 +447,7 @@ void test_fromJson_overflow_truncates() {
         JsonObject z = zones.add<JsonObject>();
         z["lat"] = static_cast<int32_t>(1000000 + i);
         z["lon"] = static_cast<int32_t>(-1000000 - i);
+        z["band"] = 4;
     }
 
     bool ok = store.fromJson(doc);
@@ -474,6 +523,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_toJson_empty_index);
     RUN_TEST(test_toJson_single_entry);
     RUN_TEST(test_toJson_skips_inactive_slots);
+    RUN_TEST(test_toJson_skips_unsupported_band_entries);
     RUN_TEST(test_toJson_all_fields_present);
 
     // fromJson
@@ -485,6 +535,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_fromJson_missing_type_rejected);
     RUN_TEST(test_fromJson_missing_zones_rejected);
     RUN_TEST(test_fromJson_skips_entry_missing_lat);
+    RUN_TEST(test_fromJson_skips_unsupported_band);
     RUN_TEST(test_fromJson_defaults_optional_fields);
     RUN_TEST(test_fromJson_always_sets_active_flag);
     RUN_TEST(test_fromJson_clears_index_first);

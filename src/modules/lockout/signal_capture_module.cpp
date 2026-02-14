@@ -1,4 +1,5 @@
 #include "signal_capture_module.h"
+#include "lockout_band_policy.h"
 #ifdef UNIT_TEST
 class SignalObservationSdLogger {
 public:
@@ -98,10 +99,14 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     if (!priority.isValid || priority.band == BAND_NONE) {
         return;
     }
+    const uint8_t bandRaw = static_cast<uint8_t>(priority.band);
+    if (!lockoutBandSupported(bandRaw)) {
+        return;
+    }
 
     SignalObservation observation;
     observation.tsMs = nowMs;
-    observation.bandRaw = static_cast<uint8_t>(priority.band);
+    observation.bandRaw = bandRaw;
     observation.strength = std::max(priority.frontStrength, priority.rearStrength);
     observation.frequencyMHz = static_cast<uint16_t>(std::min<uint32_t>(priority.frequency, UINT16_MAX));
     observation.hasFix = gpsStatus.hasFix;

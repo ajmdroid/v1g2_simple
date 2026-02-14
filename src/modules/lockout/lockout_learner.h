@@ -55,6 +55,7 @@ public:
         uint32_t promotionsFailed  = 0; // Promotion attempted but index full
         uint32_t pruned            = 0; // Stale candidates removed
         uint32_t skippedNoLocation = 0; // Observations without valid GPS
+        uint32_t skippedBand       = 0; // Observations outside lockout band policy
         uint32_t skippedInIndex    = 0; // Already covered by existing lockout
     };
     const Stats& stats() const { return stats_; }

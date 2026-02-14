@@ -274,6 +274,19 @@ void test_no_match_wrong_band() {
     TEST_ASSERT_FALSE(r.shouldMute);
 }
 
+void test_unsupported_band_never_mutes() {
+    // Mixed K+Ka entry is sanitized to K by lockout policy.
+    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x06, 34700));
+    parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 0, 34700, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+    TEST_ASSERT_EQUAL(-1, r.matchIndex);
+}
+
 // ================================================================
 // No match when wrong frequency
 // ================================================================
@@ -452,6 +465,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_enforce_mode_mutates);
     RUN_TEST(test_no_match_outside_zone);
     RUN_TEST(test_no_match_wrong_band);
+    RUN_TEST(test_unsupported_band_never_mutes);
     RUN_TEST(test_no_match_wrong_freq);
     RUN_TEST(test_stats_accumulate);
     RUN_TEST(test_empty_index_no_match);

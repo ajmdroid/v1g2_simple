@@ -1,4 +1,5 @@
 #include "lockout_learner.h"
+#include "lockout_band_policy.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
 #include "lockout_store.h"
@@ -65,6 +66,10 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
             // Gate: valid GPS location required
             if (!obs.locationValid) {
                 ++stats_.skippedNoLocation;
+                continue;
+            }
+            if (!lockoutBandSupported(obs.bandRaw)) {
+                ++stats_.skippedBand;
                 continue;
             }
 
@@ -162,12 +167,17 @@ int LockoutLearner::allocCandidate() {
 void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     if (idx >= kCandidateCapacity) return;
     const LearnerCandidate& c = candidates_[idx];
+    const uint8_t bandMask = lockoutSanitizeBandMask(c.band);
+    if (bandMask == 0) {
+        candidates_[idx] = LearnerCandidate{};
+        return;
+    }
 
     LockoutEntry entry;
     entry.latE5      = c.latE5;
     entry.lonE5      = c.lonE5;
     entry.radiusE5   = kRadiusE5;
-    entry.bandMask   = c.band;  // band is already a bitmask (Band enum values)
+    entry.bandMask   = bandMask;
     entry.freqMHz    = c.freqMHz;
     entry.freqTolMHz = kFreqToleranceMHz;
     entry.confidence = c.hitCount;

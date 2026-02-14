@@ -1,4 +1,5 @@
 #include "lockout_enforcer.h"
+#include "lockout_band_policy.h"
 #include "lockout_store.h"
 
 #include "../../packet_parser.h"
@@ -85,9 +86,14 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
         ++stats_.evaluations;
         return lastResult_;
     }
+    const uint8_t band = static_cast<uint8_t>(priority.band);
+    if (!lockoutBandSupported(band)) {
+        lastResult_.evaluated = true;
+        ++stats_.evaluations;
+        return lastResult_;
+    }
 
     // --- Evaluate ---
-    const uint8_t band  = static_cast<uint8_t>(priority.band);
     const uint16_t freqMHz = static_cast<uint16_t>(
         (priority.frequency <= UINT16_MAX) ? priority.frequency : 0);
 
