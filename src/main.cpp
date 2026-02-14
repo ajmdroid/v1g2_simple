@@ -195,7 +195,7 @@ static void logPanicBreadcrumbs() {
     
     // Best-effort: Try to write panic.txt to LittleFS (SD not mounted yet)
     // This runs BEFORE storage init, so we use LittleFS directly
-    if (LittleFS.begin(true)) {  // true = format if mount fails
+    if (LittleFS.begin(false)) {  // false = never auto-format during panic logging
         File f = LittleFS.open("/panic.txt", FILE_WRITE);
         if (f) {
             f.printf("CRASH at boot (millis=%lu)\n", millis());
