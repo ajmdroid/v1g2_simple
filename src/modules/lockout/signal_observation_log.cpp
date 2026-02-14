@@ -49,13 +49,23 @@ bool SignalObservationLog::publish(const SignalObservation& observation) {
 }
 
 size_t SignalObservationLog::copyRecent(SignalObservation* out, size_t maxCount) const {
+    return copyRecentSkip(out, maxCount, 0);
+}
+
+size_t SignalObservationLog::copyRecentSkip(SignalObservation* out,
+                                            size_t maxCount,
+                                            size_t skipNewest) const {
     LockGuard guard(*this);
-    if (!out || maxCount == 0 || count_ == 0) {
+    if (!out || maxCount == 0 || count_ == 0 || skipNewest >= count_) {
         return 0;
     }
 
-    const size_t copyCount = std::min<size_t>(maxCount, count_);
+    const size_t available = static_cast<size_t>(count_) - skipNewest;
+    const size_t copyCount = std::min<size_t>(maxCount, available);
     uint16_t idx = head_;
+    for (size_t i = 0; i < skipNewest; ++i) {
+        idx = prevIndex(idx);
+    }
     for (size_t i = 0; i < copyCount; ++i) {
         idx = prevIndex(idx);
         out[i] = ring_[idx];

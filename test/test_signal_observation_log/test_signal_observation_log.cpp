@@ -76,10 +76,26 @@ void test_copy_recent_respects_limit() {
     TEST_ASSERT_EQUAL_UINT32(50, out[1].tsMs);
 }
 
+void test_copy_recent_skip_pages_history() {
+    for (uint32_t i = 1; i <= 8; ++i) {
+        SignalObservation sample;
+        sample.tsMs = i * 10;
+        signalObservationLog.publish(sample);
+    }
+
+    SignalObservation out[3] = {};
+    const size_t count = signalObservationLog.copyRecentSkip(out, 3, 2);
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(count));
+    TEST_ASSERT_EQUAL_UINT32(60, out[0].tsMs);
+    TEST_ASSERT_EQUAL_UINT32(50, out[1].tsMs);
+    TEST_ASSERT_EQUAL_UINT32(40, out[2].tsMs);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_publish_and_copy_recent_order);
     RUN_TEST(test_overflow_drops_oldest);
     RUN_TEST(test_copy_recent_respects_limit);
+    RUN_TEST(test_copy_recent_skip_pages_history);
     return UNITY_END();
 }

@@ -51,64 +51,70 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
     if (newCount > SignalObservationLog::kCapacity) {
         newCount = SignalObservationLog::kCapacity; // Lost some; process what's available
     }
-    const size_t fetchCount = (newCount < kBatchSize) ? newCount : kBatchSize;
-
-    // Copy newest observations (returned newest-first by copyRecent)
     SignalObservation batch[kBatchSize];
-    const size_t copied = log_->copyRecent(batch, fetchCount);
+    size_t remainingNew = static_cast<size_t>(newCount);
+    while (remainingNew > 0) {
+        const size_t fetchCount = (remainingNew < kBatchSize) ? remainingNew : kBatchSize;
+        const size_t skipNewest = remainingNew - fetchCount;
+        const size_t copied = log_->copyRecentSkip(batch, fetchCount, skipNewest);
 
-    // Process in chronological order (reverse of copyRecent order)
-    for (size_t i = copied; i > 0; --i) {
-        const SignalObservation& obs = batch[i - 1];
+        // Process each chunk oldest→newest to preserve deterministic promotion behavior.
+        for (size_t i = copied; i > 0; --i) {
+            const SignalObservation& obs = batch[i - 1];
 
-        // Gate: valid GPS location required
-        if (!obs.locationValid) {
-            ++stats_.skippedNoLocation;
-            continue;
-        }
-
-        ++stats_.observed;
-
-        const int32_t  lat  = obs.latitudeE5;
-        const int32_t  lon  = obs.longitudeE5;
-        const uint8_t  band = obs.bandRaw;
-        const uint16_t freq = obs.frequencyMHz;
-
-        // Gate: already covered by an existing lockout in the index
-        if (index_->findMatch(lat, lon, band, freq) >= 0) {
-            ++stats_.skippedInIndex;
-            continue;
-        }
-
-        // Try to match an existing candidate
-        int idx = findCandidate(lat, lon, band, freq);
-        if (idx >= 0) {
-            LearnerCandidate& c = candidates_[idx];
-            c.hitCount = (c.hitCount < 255) ? static_cast<uint8_t>(c.hitCount + 1) : 255;
-            if (epochMs > 0) c.lastSeenMs = epochMs;
-
-            // Promote when threshold reached
-            if (c.hitCount >= kPromotionHits) {
-                promoteCandidate(static_cast<size_t>(idx), epochMs);
+            // Gate: valid GPS location required
+            if (!obs.locationValid) {
+                ++stats_.skippedNoLocation;
+                continue;
             }
-        } else {
-            // Create new candidate
-            int slot = allocCandidate();
-            if (slot >= 0) {
-                LearnerCandidate& c = candidates_[slot];
-                c.latE5      = lat;
-                c.lonE5      = lon;
-                c.band       = band;
-                c.freqMHz    = freq;
-                c.hitCount   = 1;
-                c.firstSeenMs = (epochMs > 0) ? epochMs : 0;
-                c.lastSeenMs  = (epochMs > 0) ? epochMs : 0;
-                c.active     = true;
-                ++stats_.candidatesCreated;
+
+            ++stats_.observed;
+
+            const int32_t  lat  = obs.latitudeE5;
+            const int32_t  lon  = obs.longitudeE5;
+            const uint8_t  band = obs.bandRaw;
+            const uint16_t freq = obs.frequencyMHz;
+
+            // Gate: already covered by an existing lockout in the index
+            if (index_->findMatch(lat, lon, band, freq) >= 0) {
+                ++stats_.skippedInIndex;
+                continue;
             }
-            // allocCandidate() returns -1 when table is full — silently skip.
-            // Stale pruning will free slots eventually.
+
+            // Try to match an existing candidate
+            int idx = findCandidate(lat, lon, band, freq);
+            if (idx >= 0) {
+                LearnerCandidate& c = candidates_[idx];
+                c.hitCount = (c.hitCount < 255) ? static_cast<uint8_t>(c.hitCount + 1) : 255;
+                if (epochMs > 0) c.lastSeenMs = epochMs;
+
+                // Promote when threshold reached
+                if (c.hitCount >= kPromotionHits) {
+                    promoteCandidate(static_cast<size_t>(idx), epochMs);
+                }
+            } else {
+                // Create new candidate
+                int slot = allocCandidate();
+                if (slot >= 0) {
+                    LearnerCandidate& c = candidates_[slot];
+                    c.latE5      = lat;
+                    c.lonE5      = lon;
+                    c.band       = band;
+                    c.freqMHz    = freq;
+                    c.hitCount   = 1;
+                    c.firstSeenMs = (epochMs > 0) ? epochMs : 0;
+                    c.lastSeenMs  = (epochMs > 0) ? epochMs : 0;
+                    c.active     = true;
+                    ++stats_.candidatesCreated;
+                }
+                // allocCandidate() returns -1 when table is full — silently skip.
+                // Stale pruning will free slots eventually.
+            }
         }
+        if (copied == 0) {
+            break;
+        }
+        remainingNew = skipNewest;
     }
 
     lastProcessedPublished_ = published;

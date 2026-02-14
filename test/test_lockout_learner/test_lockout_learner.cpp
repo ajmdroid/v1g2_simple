@@ -243,6 +243,23 @@ void test_rate_limited() {
 }
 
 // ================================================================
+// Backlog larger than one batch is fully consumed
+// ================================================================
+
+void test_backlog_over_batch_fully_processed() {
+    // Publish 40 unique observations before a single poll.
+    for (int i = 0; i < 40; ++i) {
+        testLog.publish(makeObs(LAT + (i * 5000), LON - (i * 5000), K_BAND, K_FREQ));
+    }
+
+    learner.process(2000, EPOCH_BASE);
+
+    TEST_ASSERT_EQUAL(40, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(40, learner.stats().observed);
+    TEST_ASSERT_EQUAL(40, learner.stats().candidatesCreated);
+}
+
+// ================================================================
 // Stale candidate gets pruned after 7 days
 // ================================================================
 
@@ -426,6 +443,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_already_in_index_skipped);
     RUN_TEST(test_no_location_skipped);
     RUN_TEST(test_rate_limited);
+    RUN_TEST(test_backlog_over_batch_fully_processed);
     RUN_TEST(test_prune_stale_candidate);
     RUN_TEST(test_recent_candidate_not_pruned);
     RUN_TEST(test_promotion_fails_when_index_full);

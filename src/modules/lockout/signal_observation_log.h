@@ -41,6 +41,7 @@ public:
     void reset();
     bool publish(const SignalObservation& observation);
     size_t copyRecent(SignalObservation* out, size_t maxCount) const;
+    size_t copyRecentSkip(SignalObservation* out, size_t maxCount, size_t skipNewest) const;
     SignalObservationLogStats stats() const;
 
 private:
