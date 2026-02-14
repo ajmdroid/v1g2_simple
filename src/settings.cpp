@@ -551,6 +551,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("gpsLkQDrop", settings.gpsLockoutMaxQueueDrops);
     written += prefs.putUShort("gpsLkPDrop", settings.gpsLockoutMaxPerfDrops);
     written += prefs.putUShort("gpsLkEBDrop", settings.gpsLockoutMaxEventBusDrops);
+    written += prefs.putUChar("gpsLkHits", settings.gpsLockoutLearnerPromotionHits);
+    written += prefs.putUShort("gpsLkRad", settings.gpsLockoutLearnerRadiusE5);
+    written += prefs.putUShort("gpsLkFtol", settings.gpsLockoutLearnerFreqToleranceMHz);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -806,6 +809,12 @@ void SettingsManager::load() {
     settings.gpsLockoutMaxQueueDrops = preferences.getUShort("gpsLkQDrop", 0);
     settings.gpsLockoutMaxPerfDrops = preferences.getUShort("gpsLkPDrop", 0);
     settings.gpsLockoutMaxEventBusDrops = preferences.getUShort("gpsLkEBDrop", 0);
+    settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
+        preferences.getUChar("gpsLkHits", LOCKOUT_LEARNER_HITS_DEFAULT));
+    settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
+        preferences.getUShort("gpsLkRad", LOCKOUT_LEARNER_RADIUS_E5_DEFAULT));
+    settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+        preferences.getUShort("gpsLkFtol", LOCKOUT_LEARNER_FREQ_TOL_DEFAULT));
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -1587,6 +1596,9 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
     doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    doc["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    doc["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    doc["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1829,6 +1841,18 @@ bool SettingsManager::restoreFromSD() {
     if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
         settings.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
             std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
+        settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
+            doc["gpsLockoutLearnerPromotionHits"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
+        settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
+            doc["gpsLockoutLearnerRadiusE5"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
+        settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+            doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
     }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {

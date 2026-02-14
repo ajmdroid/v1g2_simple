@@ -23,9 +23,31 @@ void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
     lastPruneMs_  = 0;
     lastLogMs_    = 0;
     stats_ = Stats{};
+    setTuning(kDefaultPromotionHits, kDefaultRadiusE5, kDefaultFreqToleranceMHz);
     for (auto& c : candidates_) {
         c = LearnerCandidate{};
     }
+}
+
+void LockoutLearner::setTuning(uint8_t promotionHits, uint16_t radiusE5, uint16_t freqToleranceMHz) {
+    if (promotionHits < kMinPromotionHits) {
+        promotionHits = kMinPromotionHits;
+    } else if (promotionHits > kMaxPromotionHits) {
+        promotionHits = kMaxPromotionHits;
+    }
+    if (radiusE5 < kMinRadiusE5) {
+        radiusE5 = kMinRadiusE5;
+    } else if (radiusE5 > kMaxRadiusE5) {
+        radiusE5 = kMaxRadiusE5;
+    }
+    if (freqToleranceMHz < kMinFreqToleranceMHz) {
+        freqToleranceMHz = kMinFreqToleranceMHz;
+    } else if (freqToleranceMHz > kMaxFreqToleranceMHz) {
+        freqToleranceMHz = kMaxFreqToleranceMHz;
+    }
+    promotionHits_ = promotionHits;
+    radiusE5_ = radiusE5;
+    freqToleranceMHz_ = freqToleranceMHz;
 }
 
 void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
@@ -94,7 +116,7 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                 if (epochMs > 0) c.lastSeenMs = epochMs;
 
                 // Promote when threshold reached
-                if (c.hitCount >= kPromotionHits) {
+                if (c.hitCount >= promotionHits_) {
                     promoteCandidate(static_cast<size_t>(idx), epochMs);
                 }
             } else {
@@ -150,8 +172,8 @@ int LockoutLearner::findCandidate(int32_t latE5, int32_t lonE5,
         const LearnerCandidate& c = candidates_[i];
         if (!c.active) continue;
         if (c.band != band) continue;
-        if (!freqClose(freqMHz, c.freqMHz, kFreqToleranceMHz)) continue;
-        if (!withinRadius(latE5, lonE5, c.latE5, c.lonE5, kRadiusE5)) continue;
+        if (!freqClose(freqMHz, c.freqMHz, freqToleranceMHz_)) continue;
+        if (!withinRadius(latE5, lonE5, c.latE5, c.lonE5, radiusE5_)) continue;
         return static_cast<int>(i);
     }
     return -1;
@@ -176,10 +198,10 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     LockoutEntry entry;
     entry.latE5      = c.latE5;
     entry.lonE5      = c.lonE5;
-    entry.radiusE5   = kRadiusE5;
+    entry.radiusE5   = radiusE5_;
     entry.bandMask   = bandMask;
     entry.freqMHz    = c.freqMHz;
-    entry.freqTolMHz = kFreqToleranceMHz;
+    entry.freqTolMHz = freqToleranceMHz_;
     entry.confidence = c.hitCount;
     entry.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     entry.firstSeenMs = c.firstSeenMs;

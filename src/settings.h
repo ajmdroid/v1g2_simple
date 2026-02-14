@@ -97,6 +97,32 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
     }
 }
 
+// Lockout learner runtime tuning limits (safety-clamped).
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_DEFAULT = 3;
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_MIN = 2;
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_MAX = 6;
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_DEFAULT = 1350;  // ~150m / ~492ft
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MIN = 450;       // ~50m / ~164ft
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 3600;      // ~400m / ~1312ft
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_DEFAULT = 10;     // MHz
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MIN = 2;          // MHz
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MAX = 20;         // MHz
+
+inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
+                                         std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
+}
+
+inline uint16_t clampLockoutLearnerRadiusE5Value(int rawRadiusE5) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MIN),
+                                          std::min(rawRadiusE5, static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MAX))));
+}
+
+inline uint16_t clampLockoutLearnerFreqTolValue(int rawFreqTol) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MIN),
+                                          std::min(rawFreqTol, static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MAX))));
+}
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -129,6 +155,9 @@ struct V1Settings {
     uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
     uint16_t gpsLockoutMaxPerfDrops;      // Max allowed perf snapshot drops before guard trips
     uint16_t gpsLockoutMaxEventBusDrops;  // Max allowed system-event-bus drops before guard trips
+    uint8_t gpsLockoutLearnerPromotionHits;     // Candidate hits required before promotion
+    uint16_t gpsLockoutLearnerRadiusE5;         // Promotion radius in E5 units
+    uint16_t gpsLockoutLearnerFreqToleranceMHz; // Promotion frequency tolerance in MHz
     
     // Display settings
     bool turnOffDisplay;
@@ -261,6 +290,9 @@ struct V1Settings {
         gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
         gpsLockoutMaxPerfDrops(0),           // Any core drop trips guard by default
         gpsLockoutMaxEventBusDrops(0),       // Any core drop trips guard by default
+        gpsLockoutLearnerPromotionHits(LOCKOUT_LEARNER_HITS_DEFAULT),
+        gpsLockoutLearnerRadiusE5(LOCKOUT_LEARNER_RADIUS_E5_DEFAULT),
+        gpsLockoutLearnerFreqToleranceMHz(LOCKOUT_LEARNER_FREQ_TOL_DEFAULT),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment

@@ -144,6 +144,74 @@ void test_three_hits_promotes() {
 }
 
 // ================================================================
+// Runtime tuning clamps to safe bounds
+// ================================================================
+
+void test_set_tuning_clamps_bounds() {
+    learner.setTuning(0, 1, 0);
+    TEST_ASSERT_EQUAL(LockoutLearner::kMinPromotionHits, learner.promotionHits());
+    TEST_ASSERT_EQUAL(LockoutLearner::kMinRadiusE5, learner.radiusE5());
+    TEST_ASSERT_EQUAL(LockoutLearner::kMinFreqToleranceMHz, learner.freqToleranceMHz());
+
+    learner.setTuning(255, 65535, 255);
+    TEST_ASSERT_EQUAL(LockoutLearner::kMaxPromotionHits, learner.promotionHits());
+    TEST_ASSERT_EQUAL(LockoutLearner::kMaxRadiusE5, learner.radiusE5());
+    TEST_ASSERT_EQUAL(LockoutLearner::kMaxFreqToleranceMHz, learner.freqToleranceMHz());
+}
+
+// ================================================================
+// Runtime tuning: promotion threshold follows configured hits
+// ================================================================
+
+void test_custom_promotion_hits_threshold() {
+    learner.setTuning(4, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz);
+
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    testLog.publish(makeObs(LAT + 4, LON - 3, K_BAND, K_FREQ + 2));
+    learner.process(4000, EPOCH_BASE + 1000);
+    testLog.publish(makeObs(LAT - 4, LON + 2, K_BAND, K_FREQ + 1));
+    learner.process(6000, EPOCH_BASE + 2000);
+
+    TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(0, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(3, learner.candidateAt(0)->hitCount);
+
+    testLog.publish(makeObs(LAT + 1, LON + 1, K_BAND, K_FREQ));
+    learner.process(8000, EPOCH_BASE + 3000);
+
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+}
+
+// ================================================================
+// Runtime tuning: promoted entries inherit radius + freq tolerance
+// ================================================================
+
+void test_promoted_entry_uses_runtime_radius_and_freq_tolerance() {
+    static constexpr uint16_t tunedRadiusE5 = 900;
+    static constexpr uint16_t tunedFreqTolMHz = 7;
+    learner.setTuning(2, tunedRadiusE5, tunedFreqTolMHz);
+
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    // Within tuned radius/frequency tolerance to force a single candidate.
+    testLog.publish(makeObs(LAT + 850, LON, K_BAND, K_FREQ + tunedFreqTolMHz));
+    learner.process(4000, EPOCH_BASE + 1000);
+
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+
+    const LockoutEntry* promoted = testIndex.at(0);
+    TEST_ASSERT_NOT_NULL(promoted);
+    TEST_ASSERT_EQUAL(tunedRadiusE5, promoted->radiusE5);
+    TEST_ASSERT_EQUAL(tunedFreqTolMHz, promoted->freqTolMHz);
+    TEST_ASSERT_EQUAL(2, promoted->confidence);
+}
+
+// ================================================================
 // Different band creates separate candidate
 // ================================================================
 
@@ -453,6 +521,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_single_obs_creates_candidate);
     RUN_TEST(test_nearby_obs_increments_candidate);
     RUN_TEST(test_three_hits_promotes);
+    RUN_TEST(test_set_tuning_clamps_bounds);
+    RUN_TEST(test_custom_promotion_hits_threshold);
+    RUN_TEST(test_promoted_entry_uses_runtime_radius_and_freq_tolerance);
     RUN_TEST(test_supported_different_band_separate_candidate);
     RUN_TEST(test_different_freq_separate_candidate);
     RUN_TEST(test_far_away_separate_candidate);

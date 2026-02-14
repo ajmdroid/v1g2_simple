@@ -2835,6 +2835,9 @@ void WiFiManager::handleDebugMetrics() {
     lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
     lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    lockoutObj["learnerPromotionHits"] = static_cast<uint32_t>(lockoutLearner.promotionHits());
+    lockoutObj["learnerRadiusE5"] = static_cast<uint32_t>(lockoutLearner.radiusE5());
+    lockoutObj["learnerFreqToleranceMHz"] = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
     lockoutObj["enforceRequested"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
@@ -3924,6 +3927,9 @@ void WiFiManager::handleGpsStatus() {
     lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
     lockoutObj["coreGuardReason"] = lockoutGuard.reason;
+    lockoutObj["learnerPromotionHits"] = static_cast<uint32_t>(lockoutLearner.promotionHits());
+    lockoutObj["learnerRadiusE5"] = static_cast<uint32_t>(lockoutLearner.radiusE5());
+    lockoutObj["learnerFreqToleranceMHz"] = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
 
@@ -4137,12 +4143,15 @@ void WiFiManager::handleLockoutZones() {
     }
 
     JsonDocument doc;
+    const uint8_t promotionHits = lockoutLearner.promotionHits();
     doc["success"] = true;
     doc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
     doc["activeCapacity"] = static_cast<uint32_t>(lockoutIndex.capacity());
     doc["pendingCount"] = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
     doc["pendingCapacity"] = static_cast<uint32_t>(LockoutLearner::kCandidateCapacity);
-    doc["promotionHits"] = static_cast<uint32_t>(LockoutLearner::kPromotionHits);
+    doc["promotionHits"] = static_cast<uint32_t>(promotionHits);
+    doc["promotionRadiusE5"] = static_cast<uint32_t>(lockoutLearner.radiusE5());
+    doc["promotionFreqToleranceMHz"] = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
     doc["activeLimit"] = activeLimit;
     doc["pendingLimit"] = pendingLimit;
 
@@ -4157,6 +4166,7 @@ void WiFiManager::handleLockoutZones() {
         zone["slot"] = static_cast<uint32_t>(i);
         zone["latitude"] = static_cast<double>(entry->latE5) / 100000.0;
         zone["longitude"] = static_cast<double>(entry->lonE5) / 100000.0;
+        zone["radiusE5"] = entry->radiusE5;
         zone["radiusM"] = static_cast<float>(entry->radiusE5) * 1.11f;
         zone["bandMask"] = entry->bandMask;
         zone["frequencyMHz"] = entry->freqMHz;
@@ -4187,9 +4197,9 @@ void WiFiManager::handleLockoutZones() {
         pending["frequencyMHz"] = candidate->freqMHz;
         pending["hitCount"] = candidate->hitCount;
         pending["hitsRemaining"] = static_cast<uint8_t>(
-            (candidate->hitCount >= LockoutLearner::kPromotionHits)
+            (candidate->hitCount >= promotionHits)
                 ? 0
-                : (LockoutLearner::kPromotionHits - candidate->hitCount));
+                : (promotionHits - candidate->hitCount));
         pending["firstSeenMs"] = candidate->firstSeenMs;
         pending["lastSeenMs"] = candidate->lastSeenMs;
         ++pendingReturned;
@@ -4227,6 +4237,12 @@ void WiFiManager::handleGpsConfig() {
     uint16_t maxPerfDrops = currentSettings.gpsLockoutMaxPerfDrops;
     bool hasMaxEventBusDrops = false;
     uint16_t maxEventBusDrops = currentSettings.gpsLockoutMaxEventBusDrops;
+    bool hasLearnerPromotionHits = false;
+    uint8_t learnerPromotionHits = currentSettings.gpsLockoutLearnerPromotionHits;
+    bool hasLearnerRadiusE5 = false;
+    uint16_t learnerRadiusE5 = currentSettings.gpsLockoutLearnerRadiusE5;
+    bool hasLearnerFreqToleranceMHz = false;
+    uint16_t learnerFreqToleranceMHz = currentSettings.gpsLockoutLearnerFreqToleranceMHz;
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
@@ -4280,6 +4296,29 @@ void WiFiManager::handleGpsConfig() {
         } else if (body["gpsLockoutMaxEventBusDrops"].is<int>()) {
             maxEventBusDrops = clampU16Value(body["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
             hasMaxEventBusDrops = true;
+        }
+        if (body["lockoutLearnerPromotionHits"].is<int>()) {
+            learnerPromotionHits = clampLockoutLearnerHitsValue(body["lockoutLearnerPromotionHits"].as<int>());
+            hasLearnerPromotionHits = true;
+        } else if (body["gpsLockoutLearnerPromotionHits"].is<int>()) {
+            learnerPromotionHits = clampLockoutLearnerHitsValue(body["gpsLockoutLearnerPromotionHits"].as<int>());
+            hasLearnerPromotionHits = true;
+        }
+        if (body["lockoutLearnerRadiusE5"].is<int>()) {
+            learnerRadiusE5 = clampLockoutLearnerRadiusE5Value(body["lockoutLearnerRadiusE5"].as<int>());
+            hasLearnerRadiusE5 = true;
+        } else if (body["gpsLockoutLearnerRadiusE5"].is<int>()) {
+            learnerRadiusE5 = clampLockoutLearnerRadiusE5Value(body["gpsLockoutLearnerRadiusE5"].as<int>());
+            hasLearnerRadiusE5 = true;
+        }
+        if (body["lockoutLearnerFreqToleranceMHz"].is<int>()) {
+            learnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+                body["lockoutLearnerFreqToleranceMHz"].as<int>());
+            hasLearnerFreqToleranceMHz = true;
+        } else if (body["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
+            learnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+                body["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
+            hasLearnerFreqToleranceMHz = true;
         }
         if (body["speedMph"].is<float>() || body["speedMph"].is<double>() || body["speedMph"].is<int>()) {
             scaffoldSpeedMph = body["speedMph"].as<float>();
@@ -4358,10 +4397,38 @@ void WiFiManager::handleGpsConfig() {
         maxEventBusDrops = clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
         hasMaxEventBusDrops = true;
     }
+    if (!hasLearnerPromotionHits && server.hasArg("lockoutLearnerPromotionHits")) {
+        learnerPromotionHits = clampLockoutLearnerHitsValue(server.arg("lockoutLearnerPromotionHits").toInt());
+        hasLearnerPromotionHits = true;
+    }
+    if (!hasLearnerPromotionHits && server.hasArg("gpsLockoutLearnerPromotionHits")) {
+        learnerPromotionHits = clampLockoutLearnerHitsValue(server.arg("gpsLockoutLearnerPromotionHits").toInt());
+        hasLearnerPromotionHits = true;
+    }
+    if (!hasLearnerRadiusE5 && server.hasArg("lockoutLearnerRadiusE5")) {
+        learnerRadiusE5 = clampLockoutLearnerRadiusE5Value(server.arg("lockoutLearnerRadiusE5").toInt());
+        hasLearnerRadiusE5 = true;
+    }
+    if (!hasLearnerRadiusE5 && server.hasArg("gpsLockoutLearnerRadiusE5")) {
+        learnerRadiusE5 = clampLockoutLearnerRadiusE5Value(server.arg("gpsLockoutLearnerRadiusE5").toInt());
+        hasLearnerRadiusE5 = true;
+    }
+    if (!hasLearnerFreqToleranceMHz && server.hasArg("lockoutLearnerFreqToleranceMHz")) {
+        learnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+            server.arg("lockoutLearnerFreqToleranceMHz").toInt());
+        hasLearnerFreqToleranceMHz = true;
+    }
+    if (!hasLearnerFreqToleranceMHz && server.hasArg("gpsLockoutLearnerFreqToleranceMHz")) {
+        learnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+            server.arg("gpsLockoutLearnerFreqToleranceMHz").toInt());
+        hasLearnerFreqToleranceMHz = true;
+    }
 
     if (!hasEnabled) {
         bool hasLockoutUpdate = hasLockoutMode || hasCoreGuardEnabled ||
-                                hasMaxQueueDrops || hasMaxPerfDrops || hasMaxEventBusDrops;
+                                hasMaxQueueDrops || hasMaxPerfDrops || hasMaxEventBusDrops ||
+                                hasLearnerPromotionHits || hasLearnerRadiusE5 ||
+                                hasLearnerFreqToleranceMHz;
         if (!hasLockoutUpdate) {
             server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}");
             return;
@@ -4400,6 +4467,7 @@ void WiFiManager::handleGpsConfig() {
     }
 
     bool lockoutSettingsChanged = false;
+    bool learnerTuningChanged = false;
     if (hasLockoutMode && mutableSettings.gpsLockoutMode != lockoutMode) {
         mutableSettings.gpsLockoutMode = lockoutMode;
         lockoutSettingsChanged = true;
@@ -4419,6 +4487,29 @@ void WiFiManager::handleGpsConfig() {
     if (hasMaxEventBusDrops && mutableSettings.gpsLockoutMaxEventBusDrops != maxEventBusDrops) {
         mutableSettings.gpsLockoutMaxEventBusDrops = maxEventBusDrops;
         lockoutSettingsChanged = true;
+    }
+    if (hasLearnerPromotionHits &&
+        mutableSettings.gpsLockoutLearnerPromotionHits != learnerPromotionHits) {
+        mutableSettings.gpsLockoutLearnerPromotionHits = learnerPromotionHits;
+        lockoutSettingsChanged = true;
+        learnerTuningChanged = true;
+    }
+    if (hasLearnerRadiusE5 &&
+        mutableSettings.gpsLockoutLearnerRadiusE5 != learnerRadiusE5) {
+        mutableSettings.gpsLockoutLearnerRadiusE5 = learnerRadiusE5;
+        lockoutSettingsChanged = true;
+        learnerTuningChanged = true;
+    }
+    if (hasLearnerFreqToleranceMHz &&
+        mutableSettings.gpsLockoutLearnerFreqToleranceMHz != learnerFreqToleranceMHz) {
+        mutableSettings.gpsLockoutLearnerFreqToleranceMHz = learnerFreqToleranceMHz;
+        lockoutSettingsChanged = true;
+        learnerTuningChanged = true;
+    }
+    if (learnerTuningChanged) {
+        lockoutLearner.setTuning(mutableSettings.gpsLockoutLearnerPromotionHits,
+                                 mutableSettings.gpsLockoutLearnerRadiusE5,
+                                 mutableSettings.gpsLockoutLearnerFreqToleranceMHz);
     }
     if (lockoutSettingsChanged) {
         settingsManager.save();
@@ -4461,6 +4552,12 @@ void WiFiManager::handleGpsConfig() {
     response["lockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
     response["lockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     response["lockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    response["lockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    response["lockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    response["lockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
+    response["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    response["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    response["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;
     response["locationValid"] = gpsStatus.locationValid;

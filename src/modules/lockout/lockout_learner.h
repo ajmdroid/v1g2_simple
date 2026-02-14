@@ -29,9 +29,15 @@ struct LearnerCandidate {
 class LockoutLearner {
 public:
     static constexpr size_t   kCandidateCapacity  = 64;
-    static constexpr uint8_t  kPromotionHits      = 3;
-    static constexpr uint16_t kRadiusE5           = 1350;   // ~150m lat
-    static constexpr uint16_t kFreqToleranceMHz   = 10;
+    static constexpr uint8_t  kDefaultPromotionHits      = 3;
+    static constexpr uint8_t  kMinPromotionHits          = 2;
+    static constexpr uint8_t  kMaxPromotionHits          = 6;
+    static constexpr uint16_t kDefaultRadiusE5           = 1350;   // ~150m lat / ~492ft
+    static constexpr uint16_t kMinRadiusE5               = 450;    // ~50m / ~164ft
+    static constexpr uint16_t kMaxRadiusE5               = 3600;   // ~400m / ~1312ft
+    static constexpr uint16_t kDefaultFreqToleranceMHz   = 10;
+    static constexpr uint16_t kMinFreqToleranceMHz       = 2;
+    static constexpr uint16_t kMaxFreqToleranceMHz       = 20;
     static constexpr uint32_t kPollIntervalMs     = 2000;
     static constexpr int64_t  kStaleDurationMs    = 7LL * 24 * 3600 * 1000; // 7 days
     static constexpr uint32_t kPruneIntervalMs    = 60000;  // Prune every 60s
@@ -39,6 +45,12 @@ public:
 
     /// Wire dependencies. Must be called once before process().
     void begin(LockoutIndex* index, SignalObservationLog* log);
+
+    // Runtime tuning (persisted in SettingsManager and applied at boot/runtime).
+    void setTuning(uint8_t promotionHits, uint16_t radiusE5, uint16_t freqToleranceMHz);
+    uint8_t promotionHits() const { return promotionHits_; }
+    uint16_t radiusE5() const { return radiusE5_; }
+    uint16_t freqToleranceMHz() const { return freqToleranceMHz_; }
 
     /// Ingest new observations and manage candidates.
     /// Rate-limited internally; safe to call every loop().
@@ -81,6 +93,9 @@ private:
     uint32_t lastPruneMs_            = 0;
     uint32_t lastLogMs_              = 0;
     Stats stats_;
+    uint8_t promotionHits_ = kDefaultPromotionHits;
+    uint16_t radiusE5_ = kDefaultRadiusE5;
+    uint16_t freqToleranceMHz_ = kDefaultFreqToleranceMHz;
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;
 };

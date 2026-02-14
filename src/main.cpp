@@ -746,6 +746,12 @@ void setup() {
     lockoutStore.begin(&lockoutIndex);
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
+    {
+        const V1Settings& settings = settingsManager.get();
+        lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
+                                 settings.gpsLockoutLearnerRadiusE5,
+                                 settings.gpsLockoutLearnerFreqToleranceMHz);
+    }
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());

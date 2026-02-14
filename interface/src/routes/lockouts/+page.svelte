@@ -21,9 +21,17 @@
 	const LOCKOUT_EVENTS_LIMIT = 48;
 	const LOCKOUT_ZONES_LIMIT = 64;
 	const FEET_PER_METER = 3.28084;
-	const FALLBACK_PROMOTION_HITS = 3;
-	const FALLBACK_FREQ_TOLERANCE_MHZ = 10;
-	const FALLBACK_RADIUS_FT = 492;
+	const METERS_PER_RADIUS_E5 = 0.111;
+	const FEET_PER_RADIUS_E5 = METERS_PER_RADIUS_E5 * FEET_PER_METER;
+	const LEARNER_PROMOTION_HITS_DEFAULT = 3;
+	const LEARNER_PROMOTION_HITS_MIN = 2;
+	const LEARNER_PROMOTION_HITS_MAX = 6;
+	const LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT = 10;
+	const LEARNER_FREQ_TOLERANCE_MHZ_MIN = 2;
+	const LEARNER_FREQ_TOLERANCE_MHZ_MAX = 20;
+	const LEARNER_RADIUS_E5_DEFAULT = 1350;
+	const LEARNER_RADIUS_E5_MIN = 450;
+	const LEARNER_RADIUS_E5_MAX = 3600;
 
 	let gpsStatus = $state({
 		enabled: false,
@@ -42,6 +50,9 @@
 			maxQueueDrops: 0,
 			maxPerfDrops: 0,
 			maxEventBusDrops: 0,
+			learnerPromotionHits: LEARNER_PROMOTION_HITS_DEFAULT,
+			learnerRadiusE5: LEARNER_RADIUS_E5_DEFAULT,
+			learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
 			coreGuardTripped: false,
 			coreGuardReason: '',
 			enforceAllowed: false
@@ -70,7 +81,10 @@
 		coreGuardEnabled: true,
 		maxQueueDrops: 0,
 		maxPerfDrops: 0,
-		maxEventBusDrops: 0
+		maxEventBusDrops: 0,
+		learnerPromotionHits: LEARNER_PROMOTION_HITS_DEFAULT,
+		learnerRadiusFt: Math.round(LEARNER_RADIUS_E5_DEFAULT * FEET_PER_RADIUS_E5),
+		learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
 	});
 	let lockoutZonesStats = $state({
 		activeCount: 0,
@@ -79,7 +93,9 @@
 		pendingCount: 0,
 		pendingCapacity: 0,
 		pendingReturned: 0,
-		promotionHits: 0
+		promotionHits: 0,
+		promotionRadiusE5: 0,
+		promotionFreqToleranceMHz: 0
 	});
 	let activeLockoutZones = $state([]);
 	let pendingLockoutZones = $state([]);
@@ -155,16 +171,79 @@
 		return Math.max(0, Math.min(65535, Math.round(parsed)));
 	}
 
+	function clampInt(value, min, max, fallback) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return fallback;
+		return Math.max(min, Math.min(max, Math.round(parsed)));
+	}
+
+	function clampLearnerPromotionHits(value) {
+		return clampInt(
+			value,
+			LEARNER_PROMOTION_HITS_MIN,
+			LEARNER_PROMOTION_HITS_MAX,
+			LEARNER_PROMOTION_HITS_DEFAULT
+		);
+	}
+
+	function clampLearnerRadiusE5(value) {
+		return clampInt(value, LEARNER_RADIUS_E5_MIN, LEARNER_RADIUS_E5_MAX, LEARNER_RADIUS_E5_DEFAULT);
+	}
+
+	function clampLearnerFreqToleranceMHz(value) {
+		return clampInt(
+			value,
+			LEARNER_FREQ_TOLERANCE_MHZ_MIN,
+			LEARNER_FREQ_TOLERANCE_MHZ_MAX,
+			LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
+		);
+	}
+
+	function radiusE5ToFeet(radiusE5) {
+		return Math.round(clampLearnerRadiusE5(radiusE5) * FEET_PER_RADIUS_E5);
+	}
+
+	function feetToRadiusE5(radiusFeet) {
+		const parsedFeet = Number(radiusFeet);
+		if (!Number.isFinite(parsedFeet)) return LEARNER_RADIUS_E5_DEFAULT;
+		return clampLearnerRadiusE5(Math.round(parsedFeet / FEET_PER_RADIUS_E5));
+	}
+
+	function normalizeLearnerRadiusFeet(radiusFeet) {
+		return radiusE5ToFeet(feetToRadiusE5(radiusFeet));
+	}
+
 	function applyLockoutStatus(data) {
 		const lockout = data?.lockout;
 		if (!lockout) return;
 		if (lockoutConfigInitialized && lockoutConfigDirty) return;
+		const learnerPromotionHits =
+			typeof lockout.learnerPromotionHits === 'number'
+				? lockout.learnerPromotionHits
+				: typeof data?.lockoutLearnerPromotionHits === 'number'
+					? data.lockoutLearnerPromotionHits
+					: LEARNER_PROMOTION_HITS_DEFAULT;
+		const learnerRadiusE5 =
+			typeof lockout.learnerRadiusE5 === 'number'
+				? lockout.learnerRadiusE5
+				: typeof data?.lockoutLearnerRadiusE5 === 'number'
+					? data.lockoutLearnerRadiusE5
+					: LEARNER_RADIUS_E5_DEFAULT;
+		const learnerFreqToleranceMHz =
+			typeof lockout.learnerFreqToleranceMHz === 'number'
+				? lockout.learnerFreqToleranceMHz
+				: typeof data?.lockoutLearnerFreqToleranceMHz === 'number'
+					? data.lockoutLearnerFreqToleranceMHz
+					: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT;
 		lockoutConfig = {
 			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
 			maxQueueDrops: typeof lockout.maxQueueDrops === 'number' ? lockout.maxQueueDrops : 0,
 			maxPerfDrops: typeof lockout.maxPerfDrops === 'number' ? lockout.maxPerfDrops : 0,
-			maxEventBusDrops: typeof lockout.maxEventBusDrops === 'number' ? lockout.maxEventBusDrops : 0
+			maxEventBusDrops: typeof lockout.maxEventBusDrops === 'number' ? lockout.maxEventBusDrops : 0,
+			learnerPromotionHits: clampLearnerPromotionHits(learnerPromotionHits),
+			learnerRadiusFt: radiusE5ToFeet(learnerRadiusE5),
+			learnerFreqToleranceMHz: clampLearnerFreqToleranceMHz(learnerFreqToleranceMHz)
 		};
 		lockoutConfigInitialized = true;
 	}
@@ -173,26 +252,44 @@
 		lockoutConfigDirty = true;
 	}
 
-	function defaultRadiusFeet() {
-		const fromZone = activeLockoutZones.find(
-			(zone) => typeof zone?.radiusM === 'number' && Number.isFinite(zone.radiusM)
-		);
-		if (fromZone) {
-			return Math.round(fromZone.radiusM * FEET_PER_METER);
+	function formatZoneRadiusFeet(zone) {
+		if (typeof zone?.radiusE5 === 'number' && Number.isFinite(zone.radiusE5) && zone.radiusE5 > 0) {
+			return `${radiusE5ToFeet(zone.radiusE5)} ft`;
 		}
-		return FALLBACK_RADIUS_FT;
+		return formatRadiusFeet(zone?.radiusM);
 	}
 
-	function defaultFreqToleranceMhz() {
-		const fromZone = activeLockoutZones.find(
-			(zone) =>
-				typeof zone?.frequencyToleranceMHz === 'number' &&
-				Number.isFinite(zone.frequencyToleranceMHz)
-		);
-		if (fromZone) {
-			return Math.round(fromZone.frequencyToleranceMHz);
+	function runtimeLearnerHits() {
+		if (typeof gpsStatus?.lockout?.learnerPromotionHits === 'number') {
+			return clampLearnerPromotionHits(gpsStatus.lockout.learnerPromotionHits);
 		}
-		return FALLBACK_FREQ_TOLERANCE_MHZ;
+		if (typeof lockoutZonesStats.promotionHits === 'number' && lockoutZonesStats.promotionHits > 0) {
+			return clampLearnerPromotionHits(lockoutZonesStats.promotionHits);
+		}
+		return '—';
+	}
+
+	function runtimeLearnerFreqToleranceMHz() {
+		if (typeof gpsStatus?.lockout?.learnerFreqToleranceMHz === 'number') {
+			return clampLearnerFreqToleranceMHz(gpsStatus.lockout.learnerFreqToleranceMHz);
+		}
+		if (
+			typeof lockoutZonesStats.promotionFreqToleranceMHz === 'number' &&
+			lockoutZonesStats.promotionFreqToleranceMHz > 0
+		) {
+			return clampLearnerFreqToleranceMHz(lockoutZonesStats.promotionFreqToleranceMHz);
+		}
+		return '—';
+	}
+
+	function runtimeLearnerRadiusFeetText() {
+		if (typeof gpsStatus?.lockout?.learnerRadiusE5 === 'number') {
+			return `${radiusE5ToFeet(gpsStatus.lockout.learnerRadiusE5)} ft`;
+		}
+		if (typeof lockoutZonesStats.promotionRadiusE5 === 'number' && lockoutZonesStats.promotionRadiusE5 > 0) {
+			return `${radiusE5ToFeet(lockoutZonesStats.promotionRadiusE5)} ft`;
+		}
+		return '—';
 	}
 
 	async function refreshAll() {
@@ -282,17 +379,23 @@
 				pendingCapacity: typeof data.pendingCapacity === 'number' ? data.pendingCapacity : 0,
 				pendingReturned:
 					typeof data.pendingReturned === 'number' ? data.pendingReturned : pendingLockoutZones.length,
-				promotionHits: typeof data.promotionHits === 'number' ? data.promotionHits : 0
+				promotionHits: typeof data.promotionHits === 'number' ? data.promotionHits : 0,
+				promotionRadiusE5:
+					typeof data.promotionRadiusE5 === 'number' ? data.promotionRadiusE5 : 0,
+				promotionFreqToleranceMHz:
+					typeof data.promotionFreqToleranceMHz === 'number'
+						? data.promotionFreqToleranceMHz
+						: 0
 			};
 		} catch (e) {
 			if (!silent) lockoutZonesError = 'Failed to load lockout zones';
-		} finally {
-			lockoutZonesFetchInFlight = false;
-			lockoutZonesLoading = false;
+			} finally {
+				lockoutZonesFetchInFlight = false;
+				lockoutZonesLoading = false;
+			}
 		}
-	}
 
-	async function saveLockoutConfig() {
+		async function saveLockoutConfig() {
 		if (!advancedUnlocked) {
 			setMsg('error', 'Unlock advanced controls before applying lockout changes.');
 			return;
@@ -304,12 +407,20 @@
 		savingLockoutConfig = true;
 		try {
 			const modeRaw = Math.max(0, Math.min(3, Number(lockoutConfig.modeRaw) || 0));
+			const learnerPromotionHits = clampLearnerPromotionHits(lockoutConfig.learnerPromotionHits);
+			const learnerRadiusE5 = feetToRadiusE5(lockoutConfig.learnerRadiusFt);
+			const learnerFreqToleranceMHz = clampLearnerFreqToleranceMHz(
+				lockoutConfig.learnerFreqToleranceMHz
+			);
 			const payload = {
 				lockoutMode: modeRaw,
 				lockoutCoreGuardEnabled: !!lockoutConfig.coreGuardEnabled,
 				lockoutMaxQueueDrops: clampU16(lockoutConfig.maxQueueDrops),
 				lockoutMaxPerfDrops: clampU16(lockoutConfig.maxPerfDrops),
-				lockoutMaxEventBusDrops: clampU16(lockoutConfig.maxEventBusDrops)
+				lockoutMaxEventBusDrops: clampU16(lockoutConfig.maxEventBusDrops),
+				lockoutLearnerPromotionHits: learnerPromotionHits,
+				lockoutLearnerRadiusE5: learnerRadiusE5,
+				lockoutLearnerFreqToleranceMHz: learnerFreqToleranceMHz
 			};
 			const res = await fetch('/api/gps/config', {
 				method: 'POST',
@@ -321,6 +432,9 @@
 				setMsg('error', data.message || 'Failed to update lockout settings');
 				return;
 			}
+			lockoutConfig.learnerPromotionHits = learnerPromotionHits;
+			lockoutConfig.learnerRadiusFt = radiusE5ToFeet(learnerRadiusE5);
+			lockoutConfig.learnerFreqToleranceMHz = learnerFreqToleranceMHz;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
@@ -337,7 +451,7 @@
 		<div>
 			<h1 class="text-2xl font-bold">Lockouts</h1>
 			<p class="text-sm text-base-content/70">
-				Dedicated lockout controls and observability. Phase 1 keeps lockout algorithm behavior unchanged.
+				Dedicated lockout controls and observability with safety-gated runtime and learner tuning.
 			</p>
 		</div>
 		<div class="flex gap-2">
@@ -381,9 +495,9 @@
 				Use caution in `Enforce` mode. Bad lockout settings can mute real threats.
 			</div>
 		</div>
-	</div>
+		</div>
 
-	<div class="card bg-base-200 shadow">
+		<div class="card bg-base-200 shadow">
 		<div class="card-body gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
@@ -493,51 +607,84 @@
 		</div>
 	</div>
 
-	<div class="card bg-base-200 shadow">
-		<div class="card-body gap-3">
-			<div>
-				<h2 class="card-title">Learner Settings (Phase 1)</h2>
-				<p class="text-sm text-base-content/70">
-					Displayed for visibility only in this phase. Firmware lockout-learning constants are not writable yet.
-				</p>
-			</div>
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Hits to Promote</div>
-					<div class="stat-value text-base">
-						{lockoutZonesStats.promotionHits || FALLBACK_PROMOTION_HITS}
-					</div>
+		<div class="card bg-base-200 shadow">
+			<div class="card-body gap-3">
+				<div>
+					<h2 class="card-title">Learner Settings</h2>
+					<p class="text-sm text-base-content/70">
+						Writes apply immediately and persist in settings. Use conservative values to reduce false muting.
+					</p>
 				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Drift Tolerance</div>
-					<div class="stat-value text-base">±{defaultFreqToleranceMhz()} MHz</div>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+					<label class="form-control">
+						<span class="label-text text-sm">Hits to promote</span>
+						<input
+							type="number"
+							min={LEARNER_PROMOTION_HITS_MIN}
+							max={LEARNER_PROMOTION_HITS_MAX}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.learnerPromotionHits}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerPromotionHits = clampLearnerPromotionHits(e.currentTarget.value);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Drift tolerance (MHz)</span>
+						<input
+							type="number"
+							min={LEARNER_FREQ_TOLERANCE_MHZ_MIN}
+							max={LEARNER_FREQ_TOLERANCE_MHZ_MAX}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.learnerFreqToleranceMHz}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerFreqToleranceMHz = clampLearnerFreqToleranceMHz(
+									e.currentTarget.value
+								);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Lockout radius (ft)</span>
+						<input
+							type="number"
+							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
+							max={radiusE5ToFeet(LEARNER_RADIUS_E5_MAX)}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.learnerRadiusFt}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerRadiusFt = normalizeLearnerRadiusFeet(e.currentTarget.value);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
 				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Lockout Radius</div>
-					<div class="stat-value text-base">{defaultRadiusFeet()} ft</div>
+				<label class="label cursor-pointer justify-start gap-3 py-0">
+					<span class="label-text text-sm">Ka lockout learning (preview only)</span>
+					<input
+						type="checkbox"
+						class="toggle toggle-warning toggle-sm"
+						checked={kaPreviewEnabled}
+						disabled
+						onchange={(e) => {
+							kaPreviewEnabled = e.currentTarget.checked;
+						}}
+					/>
+				</label>
+				<div class="text-xs text-warning">
+					Ka learning remains disabled in firmware by policy. If enabled later, it will ship behind a warning gate.
 				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Candidate Expiry</div>
-					<div class="stat-value text-base">7 days</div>
+				<div class="text-xs text-base-content/65">
+					Runtime learner: {runtimeLearnerHits()} hits · ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
+					· candidate expiry: 7 days
 				</div>
-			</div>
-			<label class="label cursor-pointer justify-start gap-3 py-0">
-				<span class="label-text text-sm">Ka lockout learning (preview only)</span>
-				<input
-					type="checkbox"
-					class="toggle toggle-warning toggle-sm"
-					checked={kaPreviewEnabled}
-					disabled
-					onchange={(e) => {
-						kaPreviewEnabled = e.currentTarget.checked;
-					}}
-				/>
-			</label>
-			<div class="text-xs text-warning">
-				Ka learning remains disabled in firmware by policy. If enabled later, it will ship behind a warning gate.
 			</div>
 		</div>
-	</div>
 
 	<div class="card bg-base-200 shadow">
 		<div class="card-body gap-3">
@@ -621,7 +768,7 @@
 											<td>{formatBandMask(zone.bandMask)}</td>
 											<td>{formatFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
-											<td>{formatRadiusFeet(zone.radiusM)}</td>
+												<td>{formatZoneRadiusFeet(zone)}</td>
 											<td>
 												<div class="font-mono text-xs">
 													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
