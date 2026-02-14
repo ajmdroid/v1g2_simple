@@ -290,7 +290,7 @@ bool LockoutIndex::withinRadius(int32_t latE5,
     // Squared-distance check (avoids sqrt).
     // At mid-latitudes 1 E5 unit ≈ 1.11 m latitude, ~0.85 m longitude (varies).
     // We treat E5 units as isotropic for simplicity — the radius is already
-    // tuned conservatively (~150 m ≈ 1350 E5) so the error is acceptable.
+    // tuned conservatively (~150 m ≈ 135 E5) so the error is acceptable.
     const int64_t dLat64 = static_cast<int64_t>(dLat);
     const int64_t dLon64 = static_cast<int64_t>(dLon);
     const int64_t r64    = static_cast<int64_t>(radius);

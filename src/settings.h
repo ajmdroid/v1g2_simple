@@ -101,9 +101,9 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
 static constexpr uint8_t LOCKOUT_LEARNER_HITS_DEFAULT = 3;
 static constexpr uint8_t LOCKOUT_LEARNER_HITS_MIN = 2;
 static constexpr uint8_t LOCKOUT_LEARNER_HITS_MAX = 6;
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_DEFAULT = 1350;  // ~150m / ~492ft
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MIN = 450;       // ~50m / ~164ft
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 3600;      // ~400m / ~1312ft
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_DEFAULT = 135;  // ~150m / ~492ft
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MIN = 45;       // ~50m / ~164ft
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 360;      // ~400m / ~1312ft
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_DEFAULT = 10;     // MHz
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MIN = 2;          // MHz
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MAX = 20;         // MHz

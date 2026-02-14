@@ -194,14 +194,14 @@ void test_custom_promotion_hits_threshold() {
 // ================================================================
 
 void test_promoted_entry_uses_runtime_radius_and_freq_tolerance() {
-    static constexpr uint16_t tunedRadiusE5 = 900;
+    static constexpr uint16_t tunedRadiusE5 = 300;
     static constexpr uint16_t tunedFreqTolMHz = 7;
     learner.setTuning(2, tunedRadiusE5, tunedFreqTolMHz, 0);
 
     testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
     learner.process(2000, EPOCH_BASE);
     // Within tuned radius/frequency tolerance to force a single candidate.
-    testLog.publish(makeObs(LAT + 850, LON, K_BAND, K_FREQ + tunedFreqTolMHz));
+    testLog.publish(makeObs(LAT + 250, LON, K_BAND, K_FREQ + tunedFreqTolMHz));
     learner.process(4000, EPOCH_BASE + 1000);
 
     TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());

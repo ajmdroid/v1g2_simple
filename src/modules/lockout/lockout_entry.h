@@ -8,7 +8,7 @@
 struct LockoutEntry {
     int32_t  latE5       = 0;       // Center latitude  (E5 fixed-point)
     int32_t  lonE5       = 0;       // Center longitude (E5 fixed-point)
-    uint16_t radiusE5    = 0;       // Radius in E5 units (~1350 ≈ 150 m lat)
+    uint16_t radiusE5    = 0;       // Radius in E5 units (~135 ≈ 150 m lat)
     uint8_t  bandMask    = 0;       // Which bands to mute (bitmask, matches Band enum)
     uint16_t freqMHz     = 0;       // Center frequency (MHz)
     uint16_t freqTolMHz  = 10;      // ±tolerance (MHz) for frequency match

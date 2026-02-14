@@ -119,7 +119,7 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
         LockoutEntry entry;
         entry.latE5      = z["lat"].as<int32_t>();
         entry.lonE5      = z["lon"].as<int32_t>();
-        entry.radiusE5   = z["rad"]  | (uint16_t)1350;
+        entry.radiusE5   = z["rad"]  | (uint16_t)135;
         entry.bandMask   = lockoutSanitizeBandMask(z["band"] | (uint8_t)0);
         if (entry.bandMask == 0) {
             ++skipped;

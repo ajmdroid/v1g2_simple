@@ -34,9 +34,9 @@ public:
     static constexpr uint8_t  kDefaultPromotionHits      = 3;
     static constexpr uint8_t  kMinPromotionHits          = 2;
     static constexpr uint8_t  kMaxPromotionHits          = 6;
-    static constexpr uint16_t kDefaultRadiusE5           = 1350;   // ~150m lat / ~492ft
-    static constexpr uint16_t kMinRadiusE5               = 450;    // ~50m / ~164ft
-    static constexpr uint16_t kMaxRadiusE5               = 3600;   // ~400m / ~1312ft
+    static constexpr uint16_t kDefaultRadiusE5           = 135;    // ~150m lat / ~492ft
+    static constexpr uint16_t kMinRadiusE5               = 45;     // ~50m / ~164ft
+    static constexpr uint16_t kMaxRadiusE5               = 360;    // ~400m / ~1312ft
     static constexpr uint16_t kDefaultFreqToleranceMHz   = 10;
     static constexpr uint16_t kMinFreqToleranceMHz       = 2;
     static constexpr uint16_t kMaxFreqToleranceMHz       = 20;

@@ -22,7 +22,7 @@
 	const LOCKOUT_EVENTS_LIMIT = 48;
 	const LOCKOUT_ZONES_LIMIT = 64;
 	const FEET_PER_METER = 3.28084;
-	const METERS_PER_RADIUS_E5 = 0.111;
+	const METERS_PER_RADIUS_E5 = 1.11;
 	const FEET_PER_RADIUS_E5 = METERS_PER_RADIUS_E5 * FEET_PER_METER;
 	const LEARNER_PROMOTION_HITS_DEFAULT = 3;
 	const LEARNER_PROMOTION_HITS_MIN = 2;
@@ -30,9 +30,9 @@
 	const LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT = 10;
 	const LEARNER_FREQ_TOLERANCE_MHZ_MIN = 2;
 	const LEARNER_FREQ_TOLERANCE_MHZ_MAX = 20;
-	const LEARNER_RADIUS_E5_DEFAULT = 1350;
-	const LEARNER_RADIUS_E5_MIN = 450;
-	const LEARNER_RADIUS_E5_MAX = 3600;
+	const LEARNER_RADIUS_E5_DEFAULT = 135;
+	const LEARNER_RADIUS_E5_MIN = 45;
+	const LEARNER_RADIUS_E5_MAX = 360;
 	const LOCKOUT_INTERVAL_OPTIONS = [0, 1, 4, 12, 24];
 	const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
 	const LEARNER_UNLEARN_COUNT_MIN = 0;
@@ -43,7 +43,7 @@
 		learnerPromotionHits: 3,
 		learnerLearnIntervalHours: 0,
 		learnerFreqToleranceMHz: 10,
-		learnerRadiusE5: 1350,
+		learnerRadiusE5: 135,
 		learnerUnlearnCount: 0,
 		learnerUnlearnIntervalHours: 0,
 		manualDemotionMissCount: 0
@@ -53,7 +53,7 @@
 		learnerPromotionHits: 3,
 		learnerLearnIntervalHours: 4,
 		learnerFreqToleranceMHz: 10,
-		learnerRadiusE5: 1350,
+		learnerRadiusE5: 135,
 		learnerUnlearnCount: 5,
 		learnerUnlearnIntervalHours: 4,
 		manualDemotionMissCount: 25

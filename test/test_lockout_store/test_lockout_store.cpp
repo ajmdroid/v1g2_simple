@@ -419,7 +419,7 @@ void test_fromJson_defaults_optional_fields() {
     TEST_ASSERT_NOT_NULL(e);
     TEST_ASSERT_EQUAL(5000000, e->latE5);
     TEST_ASSERT_EQUAL(-8000000, e->lonE5);
-    TEST_ASSERT_EQUAL(1350, e->radiusE5);      // Default radius
+    TEST_ASSERT_EQUAL(135, e->radiusE5);       // Default radius (~150m)
     TEST_ASSERT_EQUAL(4, e->bandMask);          // Provided band
     TEST_ASSERT_EQUAL(0, e->freqMHz);           // Default freq
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);       // Default tolerance
