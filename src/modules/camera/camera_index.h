@@ -67,6 +67,7 @@ public:
     const CameraCellSpan* spans() const { return buffers_.spans; }
     CameraIndexStats stats() const;
 
+    static uint32_t encodeCellKeyFromCell(int32_t latitudeCell, int32_t longitudeCell);
     static uint32_t encodeCellKey(float latitudeDeg, float longitudeDeg);
 
 private:

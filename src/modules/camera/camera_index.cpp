@@ -91,9 +91,12 @@ uint32_t CameraIndex::encodeCellKey(float latitudeDeg, float longitudeDeg) {
 
     const int32_t latCellRaw = static_cast<int32_t>(std::floor(latitudeDeg / kCellSizeDeg));
     const int32_t lonCellRaw = static_cast<int32_t>(std::floor(longitudeDeg / kCellSizeDeg));
-    const int32_t latCell = std::clamp(latCellRaw, -kLatitudeCellOffset, kLatitudeCellOffset);
-    const int32_t lonCell = std::clamp(lonCellRaw, -kLongitudeCellOffset, kLongitudeCellOffset);
+    return encodeCellKeyFromCell(latCellRaw, lonCellRaw);
+}
 
+uint32_t CameraIndex::encodeCellKeyFromCell(int32_t latitudeCell, int32_t longitudeCell) {
+    const int32_t latCell = std::clamp(latitudeCell, -kLatitudeCellOffset, kLatitudeCellOffset);
+    const int32_t lonCell = std::clamp(longitudeCell, -kLongitudeCellOffset, kLongitudeCellOffset);
     const uint32_t latEncoded = static_cast<uint32_t>(latCell + kLatitudeCellOffset);
     const uint32_t lonEncoded = static_cast<uint32_t>(lonCell + kLongitudeCellOffset);
     return (latEncoded << 16) | lonEncoded;
