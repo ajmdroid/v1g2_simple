@@ -15,7 +15,7 @@ static constexpr const char* OBD_SD_BACKUP_PATH = "/v1simple_obd_devices.json";
 OBDHandler obdHandler;
 
 static OBDHandler* s_obdInstance = nullptr;
-static volatile uint32_t s_activePinCode = 1234;
+static std::atomic<uint32_t> s_activePinCode{1234};
 
 static bool isAllZeroAddress(const NimBLEAddress& address) {
     const uint8_t* raw = address.getVal();
@@ -62,7 +62,7 @@ private:
 class OBDSecurityCallbacks : public NimBLEClientCallbacks {
 public:
     void onPassKeyEntry(NimBLEConnInfo& connInfo) override {
-        NimBLEDevice::injectPassKey(connInfo, s_activePinCode);
+        NimBLEDevice::injectPassKey(connInfo, s_activePinCode.load(std::memory_order_relaxed));
     }
 
     void onConfirmPasskey(NimBLEConnInfo& connInfo, uint32_t passkey) override {
@@ -200,7 +200,7 @@ void OBDHandler::begin() {
 }
 
 bool OBDHandler::update() {
-    if (taskRunning) {
+    if (taskRunning.load(std::memory_order_relaxed)) {
         return hasValidData();
     }
     return runStateMachine();
@@ -934,7 +934,7 @@ bool OBDHandler::connectToDevice() {
         const int bondCount = NimBLEDevice::getNumBonds();
         if (bondCount > 0) {
             Serial.printf("[OBD] Target address unknown - trying %d bonded peer(s) first\n", bondCount);
-            s_activePinCode = 0;
+            s_activePinCode.store(0, std::memory_order_relaxed);
             NimBLEDevice::setSecurityAuth(false, false, false);
             NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 
@@ -1049,8 +1049,8 @@ bool OBDHandler::connectToDevice() {
             NimBLEAddress candidate(targetAddrStr, addrType);
 
             if (usingPin) {
-                Serial.printf("[OBD] Connect try (pin=%u, %s, addrType=%u)\n",
-                              (unsigned)s_activePinCode,
+                    Serial.printf("[OBD] Connect try (pin=%u, %s, addrType=%u)\n",
+                              (unsigned)s_activePinCode.load(std::memory_order_relaxed),
                               profile.label,
                               (unsigned)addrType);
             } else {
@@ -1063,7 +1063,7 @@ bool OBDHandler::connectToDevice() {
             if (!pOBDClient->connect(candidate, false, false, true)) {
                 if (usingPin) {
                     Serial.printf("[OBD] Connect attempt failed (pin=%u, %s, addrType=%u, err=%d)\n",
-                                  (unsigned)s_activePinCode,
+                                  (unsigned)s_activePinCode.load(std::memory_order_relaxed),
                                   profile.label,
                                   (unsigned)addrType,
                                   pOBDClient->getLastError());
@@ -1111,7 +1111,7 @@ bool OBDHandler::connectToDevice() {
 
     if (isBonded) {
         Serial.println("[OBD] Connect phase: bonded reconnect");
-        s_activePinCode = 0;
+        s_activePinCode.store(0, std::memory_order_relaxed);
         const SecurityProfile bondedProfile{false, false, false, BLE_HS_IO_NO_INPUT_OUTPUT, "bonded-reconnect"};
         if (tryProfile(bondedProfile, false)) {
             return true;
@@ -1151,8 +1151,8 @@ bool OBDHandler::connectToDevice() {
     }
 
     for (size_t pinIndex = 0; pinIndex < pinCount; pinIndex++) {
-        s_activePinCode = pinCandidates[pinIndex];
-        const bool usingPin = s_activePinCode != 0;
+        s_activePinCode.store(pinCandidates[pinIndex], std::memory_order_relaxed);
+        const bool usingPin = s_activePinCode.load(std::memory_order_relaxed) != 0;
 
         SecurityProfile pairProfiles[2];
         size_t profileCount = 0;
@@ -1889,7 +1889,7 @@ bool OBDHandler::connectViaAdvertisedDevice(const char* profileLabel, bool using
 
     if (usingPin) {
         Serial.printf("[OBD] Connect try (pin=%u, %s, advertised, RSSI:%d, addr=%s)\n",
-                      (unsigned)s_activePinCode,
+                      (unsigned)s_activePinCode.load(std::memory_order_relaxed),
                       profileLabel ? profileLabel : "n/a",
                       bestRssi,
                       bestDevice->getAddress().toString().c_str());
@@ -1903,7 +1903,7 @@ bool OBDHandler::connectViaAdvertisedDevice(const char* profileLabel, bool using
     if (!pOBDClient->connect(bestDevice, false, false, true)) {
         if (usingPin) {
             Serial.printf("[OBD] Connect attempt failed (pin=%u, %s, advertised, err=%d)\n",
-                          (unsigned)s_activePinCode,
+                          (unsigned)s_activePinCode.load(std::memory_order_relaxed),
                           profileLabel ? profileLabel : "n/a",
                           pOBDClient->getLastError());
         } else {
@@ -2187,23 +2187,23 @@ void OBDHandler::taskEntry(void* param) {
         return;
     }
 
-    while (!self->taskShouldExit) {
+    while (!self->taskShouldExit.load(std::memory_order_acquire)) {
         self->runStateMachine();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     self->obdTaskHandle = nullptr;
-    self->taskRunning = false;
+    self->taskRunning.store(false, std::memory_order_release);
     vTaskDelete(nullptr);
 }
 
 void OBDHandler::startTask() {
     if (obdTaskHandle) {
-        taskRunning = true;
+        taskRunning.store(true, std::memory_order_release);
         return;
     }
 
-    taskShouldExit = false;
+    taskShouldExit.store(false, std::memory_order_release);
     const BaseType_t res = xTaskCreatePinnedToCore(taskEntry,
                                                     "obdTask",
                                                     6144,
@@ -2211,7 +2211,7 @@ void OBDHandler::startTask() {
                                                     1,
                                                     &obdTaskHandle,
                                                     tskNO_AFFINITY);
-    taskRunning = (res == pdPASS);
+    taskRunning.store(res == pdPASS, std::memory_order_release);
 }
 
 void OBDHandler::stopTask() {
@@ -2219,7 +2219,7 @@ void OBDHandler::stopTask() {
         return;
     }
 
-    taskShouldExit = true;
+    taskShouldExit.store(true, std::memory_order_release);
     const uint32_t startMs = millis();
 
     while (obdTaskHandle && (millis() - startMs) < 500) {

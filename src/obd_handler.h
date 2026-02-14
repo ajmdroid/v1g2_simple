@@ -211,8 +211,8 @@ private:
     std::atomic<bool> vwDataEnabled{true};
 
     TaskHandle_t obdTaskHandle = nullptr;
-    volatile bool taskRunning = false;
-    volatile bool taskShouldExit = false;
+    std::atomic<bool> taskRunning{false};
+    std::atomic<bool> taskShouldExit{false};
 
     SemaphoreHandle_t obdMutex = nullptr;
     StreamBufferHandle_t notifyStream = nullptr;
