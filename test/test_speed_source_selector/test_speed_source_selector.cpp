@@ -69,11 +69,24 @@ void test_no_gps_fallback_when_obd_disconnects() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, out.speedMph);
 }
 
+void test_snapshot_reports_obd_only_policy() {
+    speedSourceSelector.setGpsEnabled(true);
+    speedSourceSelector.updateGpsSample(55.0f, 1000, true);
+
+    SpeedSelectorStatus status = speedSourceSelector.snapshot(2000);
+    TEST_ASSERT_FALSE(status.gpsEnabled);
+    TEST_ASSERT_FALSE(status.gpsFresh);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, status.gpsSpeedMph);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, status.gpsAgeMs);
+    TEST_ASSERT_EQUAL_UINT32(0, status.gpsSelections);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_obd_wins_when_both_sources_fresh);
     RUN_TEST(test_no_speed_when_only_gps_is_fresh);
     RUN_TEST(test_gps_not_used_when_obd_connected_but_stale);
     RUN_TEST(test_no_gps_fallback_when_obd_disconnects);
+    RUN_TEST(test_snapshot_reports_obd_only_policy);
     return UNITY_END();
 }

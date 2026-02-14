@@ -38,15 +38,15 @@ struct SpeedSelectorStatus {
 class SpeedSourceSelector {
 public:
     static constexpr uint32_t OBD_MAX_AGE_MS = 3000;
-    static constexpr uint32_t GPS_MAX_AGE_MS = 3000;
     static constexpr float MAX_VALID_SPEED_MPH = 250.0f;
 
     void begin(bool gpsEnabled);
     void setGpsEnabled(bool enabled);
     void setObdConnected(bool connected);
-    bool isGpsEnabled() const { return gpsEnabled_; }
+    bool isGpsEnabled() const { return false; }
 
     void updateObdSample(float speedMph, uint32_t timestampMs, bool valid);
+    // OBD-only policy: GPS speed samples are intentionally ignored.
     void updateGpsSample(float speedMph, uint32_t timestampMs, bool valid);
 
     bool select(uint32_t nowMs, SpeedSelection& selection);
@@ -64,15 +64,12 @@ private:
     static bool isSampleFresh(const SampleState& sample, uint32_t nowMs, uint32_t maxAgeMs);
     static uint32_t sampleAgeMs(const SampleState& sample, uint32_t nowMs);
 
-    bool gpsEnabled_ = false;
     bool obdConnected_ = false;
     SampleState obd_;
-    SampleState gps_;
 
     SpeedSource selectedSource_ = SpeedSource::NONE;
     uint32_t sourceSwitches_ = 0;
     uint32_t obdSelections_ = 0;
-    uint32_t gpsSelections_ = 0;
     uint32_t noSourceSelections_ = 0;
 };
 

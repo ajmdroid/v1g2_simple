@@ -31,7 +31,7 @@ struct GpsRuntimeStatus {
 
 class GpsRuntimeModule {
 public:
-    // Freshness budget for speed fallback use.
+    // Freshness budget for GPS sample telemetry.
     static constexpr uint32_t SAMPLE_MAX_AGE_MS = 3000;
 
     void begin(bool enabled);

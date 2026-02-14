@@ -4,18 +4,15 @@
 SpeedSourceSelector speedSourceSelector;
 
 void SpeedSourceSelector::begin(bool gpsEnabled) {
-    gpsEnabled_ = gpsEnabled;
+    (void)gpsEnabled;
     obdConnected_ = false;
     selectedSource_ = SpeedSource::NONE;
 }
 
 void SpeedSourceSelector::setGpsEnabled(bool enabled) {
-    gpsEnabled_ = enabled;
-    if (!gpsEnabled_) {
-        gps_.valid = false;
-        if (selectedSource_ == SpeedSource::GPS) {
-            selectedSource_ = SpeedSource::NONE;
-        }
+    (void)enabled;
+    if (selectedSource_ == SpeedSource::GPS) {
+        selectedSource_ = SpeedSource::NONE;
     }
 }
 
@@ -33,12 +30,9 @@ void SpeedSourceSelector::updateObdSample(float speedMph, uint32_t timestampMs, 
 }
 
 void SpeedSourceSelector::updateGpsSample(float speedMph, uint32_t timestampMs, bool valid) {
-    if (!valid || !std::isfinite(speedMph) || speedMph < 0.0f || speedMph > MAX_VALID_SPEED_MPH) {
-        return;
-    }
-    gps_.valid = true;
-    gps_.speedMph = speedMph;
-    gps_.timestampMs = (timestampMs == 0) ? millis() : timestampMs;
+    (void)speedMph;
+    (void)timestampMs;
+    (void)valid;
 }
 
 bool SpeedSourceSelector::select(uint32_t nowMs, SpeedSelection& selection) {
@@ -75,7 +69,7 @@ bool SpeedSourceSelector::select(uint32_t nowMs, SpeedSelection& selection) {
 
 SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) const {
     SpeedSelectorStatus status;
-    status.gpsEnabled = gpsEnabled_;
+    status.gpsEnabled = false;
     status.obdConnected = obdConnected_;
     status.selectedSource = selectedSource_;
 
@@ -83,20 +77,18 @@ SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) const {
     status.obdSpeedMph = obd_.speedMph;
     status.obdAgeMs = sampleAgeMs(obd_, nowMs);
 
-    status.gpsFresh = gpsEnabled_ && isSampleFresh(gps_, nowMs, GPS_MAX_AGE_MS);
-    status.gpsSpeedMph = gps_.speedMph;
-    status.gpsAgeMs = sampleAgeMs(gps_, nowMs);
+    status.gpsFresh = false;
+    status.gpsSpeedMph = 0.0f;
+    status.gpsAgeMs = UINT32_MAX;
 
     status.sourceSwitches = sourceSwitches_;
     status.obdSelections = obdSelections_;
-    status.gpsSelections = gpsSelections_;
+    status.gpsSelections = 0;
     status.noSourceSelections = noSourceSelections_;
 
     const SampleState* selectedSample = nullptr;
     if (selectedSource_ == SpeedSource::OBD) {
         selectedSample = &obd_;
-    } else if (selectedSource_ == SpeedSource::GPS) {
-        selectedSample = &gps_;
     }
 
     if (selectedSample) {

@@ -42,7 +42,7 @@
 		mode: 'scaffold',
 		hasFix: false,
 		satellites: 0,
-		speedMph: null,
+		sampleAgeMs: null,
 		moduleDetected: false,
 		detectionTimedOut: false,
 		parserActive: false
@@ -415,7 +415,7 @@
 				<div>
 					<h2 class="card-title">GPS Runtime</h2>
 					<p class="text-sm text-base-content/70">
-						Use GPS as fallback speed source when OBD is not connected.
+						GPS provides fix/location telemetry only. Speed control is OBD-only.
 					</p>
 				</div>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
@@ -447,11 +447,13 @@
 					<div class="stat-desc">{gpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
 				</div>
 				<div class="stat py-3 px-4">
-					<div class="stat-title">Speed (mph)</div>
+					<div class="stat-title">Sample Age</div>
 					<div class="stat-value text-base">
-						{typeof gpsStatus.speedMph === 'number' ? Math.round(gpsStatus.speedMph) : '—'}
+						{typeof gpsStatus.sampleAgeMs === 'number' ? `${Math.round(gpsStatus.sampleAgeMs / 1000)}s` : '—'}
 					</div>
-					<div class="stat-desc">{gpsStatus.detectionTimedOut ? 'module timeout' : 'live sample'}</div>
+					<div class="stat-desc">
+						{gpsStatus.detectionTimedOut ? 'module timeout' : gpsStatus.hasFix ? 'latest fix sample' : 'waiting for fix'}
+					</div>
 				</div>
 			</div>
 		</div>
