@@ -32,6 +32,11 @@
 	const LEARNER_RADIUS_E5_DEFAULT = 1350;
 	const LEARNER_RADIUS_E5_MIN = 450;
 	const LEARNER_RADIUS_E5_MAX = 3600;
+	const LOCKOUT_INTERVAL_OPTIONS = [0, 1, 4, 12, 24];
+	const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
+	const LEARNER_UNLEARN_COUNT_MIN = 0;
+	const LEARNER_UNLEARN_COUNT_MAX = 10;
+	const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
 
 	let gpsStatus = $state({
 		enabled: false,
@@ -53,6 +58,10 @@
 			learnerPromotionHits: LEARNER_PROMOTION_HITS_DEFAULT,
 			learnerRadiusE5: LEARNER_RADIUS_E5_DEFAULT,
 			learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
+			learnerLearnIntervalHours: 0,
+			learnerUnlearnIntervalHours: 0,
+			learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
+			manualDemotionMissCount: 0,
 			coreGuardTripped: false,
 			coreGuardReason: '',
 			enforceAllowed: false
@@ -84,7 +93,11 @@
 		maxEventBusDrops: 0,
 		learnerPromotionHits: LEARNER_PROMOTION_HITS_DEFAULT,
 		learnerRadiusFt: Math.round(LEARNER_RADIUS_E5_DEFAULT * FEET_PER_RADIUS_E5),
-		learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
+		learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
+		learnerLearnIntervalHours: 0,
+		learnerUnlearnIntervalHours: 0,
+		learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
+		manualDemotionMissCount: 0
 	});
 	let lockoutZonesStats = $state({
 		activeCount: 0,
@@ -95,7 +108,11 @@
 		pendingReturned: 0,
 		promotionHits: 0,
 		promotionRadiusE5: 0,
-		promotionFreqToleranceMHz: 0
+		promotionFreqToleranceMHz: 0,
+		learnIntervalHours: 0,
+		unlearnIntervalHours: 0,
+		unlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
+		manualDemotionMissCount: 0
 	});
 	let activeLockoutZones = $state([]);
 	let pendingLockoutZones = $state([]);
@@ -199,6 +216,28 @@
 		);
 	}
 
+	function clampIntervalHours(value) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return 0;
+		if (parsed <= 0) return 0;
+		if (parsed <= 1) return 1;
+		if (parsed <= 4) return 4;
+		if (parsed <= 12) return 12;
+		return 24;
+	}
+
+	function clampUnlearnCount(value) {
+		return clampInt(value, LEARNER_UNLEARN_COUNT_MIN, LEARNER_UNLEARN_COUNT_MAX, LEARNER_UNLEARN_COUNT_DEFAULT);
+	}
+
+	function clampManualDemotionMissCount(value) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+		if (parsed <= 10) return 10;
+		if (parsed <= 25) return 25;
+		return 50;
+	}
+
 	function radiusE5ToFeet(radiusE5) {
 		return Math.round(clampLearnerRadiusE5(radiusE5) * FEET_PER_RADIUS_E5);
 	}
@@ -235,6 +274,30 @@
 				: typeof data?.lockoutLearnerFreqToleranceMHz === 'number'
 					? data.lockoutLearnerFreqToleranceMHz
 					: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT;
+		const learnerLearnIntervalHours =
+			typeof lockout.learnerLearnIntervalHours === 'number'
+				? lockout.learnerLearnIntervalHours
+				: typeof data?.lockoutLearnerLearnIntervalHours === 'number'
+					? data.lockoutLearnerLearnIntervalHours
+					: 0;
+		const learnerUnlearnIntervalHours =
+			typeof lockout.learnerUnlearnIntervalHours === 'number'
+				? lockout.learnerUnlearnIntervalHours
+				: typeof data?.lockoutLearnerUnlearnIntervalHours === 'number'
+					? data.lockoutLearnerUnlearnIntervalHours
+					: 0;
+		const learnerUnlearnCount =
+			typeof lockout.learnerUnlearnCount === 'number'
+				? lockout.learnerUnlearnCount
+				: typeof data?.lockoutLearnerUnlearnCount === 'number'
+					? data.lockoutLearnerUnlearnCount
+					: LEARNER_UNLEARN_COUNT_DEFAULT;
+		const manualDemotionMissCount =
+			typeof lockout.manualDemotionMissCount === 'number'
+				? lockout.manualDemotionMissCount
+				: typeof data?.lockoutManualDemotionMissCount === 'number'
+					? data.lockoutManualDemotionMissCount
+					: 0;
 		lockoutConfig = {
 			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
@@ -243,7 +306,11 @@
 			maxEventBusDrops: typeof lockout.maxEventBusDrops === 'number' ? lockout.maxEventBusDrops : 0,
 			learnerPromotionHits: clampLearnerPromotionHits(learnerPromotionHits),
 			learnerRadiusFt: radiusE5ToFeet(learnerRadiusE5),
-			learnerFreqToleranceMHz: clampLearnerFreqToleranceMHz(learnerFreqToleranceMHz)
+			learnerFreqToleranceMHz: clampLearnerFreqToleranceMHz(learnerFreqToleranceMHz),
+			learnerLearnIntervalHours: clampIntervalHours(learnerLearnIntervalHours),
+			learnerUnlearnIntervalHours: clampIntervalHours(learnerUnlearnIntervalHours),
+			learnerUnlearnCount: clampUnlearnCount(learnerUnlearnCount),
+			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount)
 		};
 		lockoutConfigInitialized = true;
 	}
@@ -290,6 +357,51 @@
 			return `${radiusE5ToFeet(lockoutZonesStats.promotionRadiusE5)} ft`;
 		}
 		return '—';
+	}
+
+	function runtimeLearnerLearnIntervalHours() {
+		if (typeof gpsStatus?.lockout?.learnerLearnIntervalHours === 'number') {
+			return clampIntervalHours(gpsStatus.lockout.learnerLearnIntervalHours);
+		}
+		if (typeof lockoutZonesStats.learnIntervalHours === 'number') {
+			return clampIntervalHours(lockoutZonesStats.learnIntervalHours);
+		}
+		return 0;
+	}
+
+	function runtimeLearnerUnlearnIntervalHours() {
+		if (typeof gpsStatus?.lockout?.learnerUnlearnIntervalHours === 'number') {
+			return clampIntervalHours(gpsStatus.lockout.learnerUnlearnIntervalHours);
+		}
+		if (typeof lockoutZonesStats.unlearnIntervalHours === 'number') {
+			return clampIntervalHours(lockoutZonesStats.unlearnIntervalHours);
+		}
+		return 0;
+	}
+
+	function runtimeLearnerUnlearnCount() {
+		if (typeof gpsStatus?.lockout?.learnerUnlearnCount === 'number') {
+			return clampUnlearnCount(gpsStatus.lockout.learnerUnlearnCount);
+		}
+		if (typeof lockoutZonesStats.unlearnCount === 'number') {
+			return clampUnlearnCount(lockoutZonesStats.unlearnCount);
+		}
+		return LEARNER_UNLEARN_COUNT_DEFAULT;
+	}
+
+	function runtimeManualDemotionMissCount() {
+		if (typeof gpsStatus?.lockout?.manualDemotionMissCount === 'number') {
+			return clampManualDemotionMissCount(gpsStatus.lockout.manualDemotionMissCount);
+		}
+		if (typeof lockoutZonesStats.manualDemotionMissCount === 'number') {
+			return clampManualDemotionMissCount(lockoutZonesStats.manualDemotionMissCount);
+		}
+		return 0;
+	}
+
+	function formatIntervalLabel(hours) {
+		const clamped = clampIntervalHours(hours);
+		return clamped > 0 ? `${clamped}h` : 'disabled';
 	}
 
 	async function refreshAll() {
@@ -385,7 +497,14 @@
 				promotionFreqToleranceMHz:
 					typeof data.promotionFreqToleranceMHz === 'number'
 						? data.promotionFreqToleranceMHz
-						: 0
+						: 0,
+				learnIntervalHours:
+					typeof data.learnIntervalHours === 'number' ? data.learnIntervalHours : 0,
+				unlearnIntervalHours:
+					typeof data.unlearnIntervalHours === 'number' ? data.unlearnIntervalHours : 0,
+				unlearnCount: typeof data.unlearnCount === 'number' ? data.unlearnCount : 0,
+				manualDemotionMissCount:
+					typeof data.manualDemotionMissCount === 'number' ? data.manualDemotionMissCount : 0
 			};
 		} catch (e) {
 			if (!silent) lockoutZonesError = 'Failed to load lockout zones';
@@ -412,6 +531,12 @@
 			const learnerFreqToleranceMHz = clampLearnerFreqToleranceMHz(
 				lockoutConfig.learnerFreqToleranceMHz
 			);
+			const learnerLearnIntervalHours = clampIntervalHours(lockoutConfig.learnerLearnIntervalHours);
+			const learnerUnlearnIntervalHours = clampIntervalHours(lockoutConfig.learnerUnlearnIntervalHours);
+			const learnerUnlearnCount = clampUnlearnCount(lockoutConfig.learnerUnlearnCount);
+			const manualDemotionMissCount = clampManualDemotionMissCount(
+				lockoutConfig.manualDemotionMissCount
+			);
 			const payload = {
 				lockoutMode: modeRaw,
 				lockoutCoreGuardEnabled: !!lockoutConfig.coreGuardEnabled,
@@ -420,7 +545,11 @@
 				lockoutMaxEventBusDrops: clampU16(lockoutConfig.maxEventBusDrops),
 				lockoutLearnerPromotionHits: learnerPromotionHits,
 				lockoutLearnerRadiusE5: learnerRadiusE5,
-				lockoutLearnerFreqToleranceMHz: learnerFreqToleranceMHz
+				lockoutLearnerFreqToleranceMHz: learnerFreqToleranceMHz,
+				lockoutLearnerLearnIntervalHours: learnerLearnIntervalHours,
+				lockoutLearnerUnlearnIntervalHours: learnerUnlearnIntervalHours,
+				lockoutLearnerUnlearnCount: learnerUnlearnCount,
+				lockoutManualDemotionMissCount: manualDemotionMissCount
 			};
 			const res = await fetch('/api/gps/config', {
 				method: 'POST',
@@ -435,6 +564,10 @@
 			lockoutConfig.learnerPromotionHits = learnerPromotionHits;
 			lockoutConfig.learnerRadiusFt = radiusE5ToFeet(learnerRadiusE5);
 			lockoutConfig.learnerFreqToleranceMHz = learnerFreqToleranceMHz;
+			lockoutConfig.learnerLearnIntervalHours = learnerLearnIntervalHours;
+			lockoutConfig.learnerUnlearnIntervalHours = learnerUnlearnIntervalHours;
+			lockoutConfig.learnerUnlearnCount = learnerUnlearnCount;
+			lockoutConfig.manualDemotionMissCount = manualDemotionMissCount;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
@@ -550,7 +683,7 @@
 					/>
 				</label>
 				<label class="form-control">
-					<span class="label-text text-sm">Max queue drops</span>
+					<span class="label-text text-sm">Max queue drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -565,7 +698,7 @@
 					/>
 				</label>
 				<label class="form-control">
-					<span class="label-text text-sm">Max perf drops</span>
+					<span class="label-text text-sm">Max perf drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -580,7 +713,7 @@
 					/>
 				</label>
 				<label class="form-control">
-					<span class="label-text text-sm">Max event-bus drops</span>
+					<span class="label-text text-sm">Max event-bus drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -594,6 +727,9 @@
 						}}
 					/>
 				</label>
+			</div>
+			<div class="text-xs text-base-content/65">
+				Core guard thresholds: <code>0</code> trips guard on the first drop event.
 			</div>
 
 			<div class="text-xs text-base-content/65">
@@ -615,7 +751,7 @@
 						Writes apply immediately and persist in settings. Use conservative values to reduce false muting.
 					</p>
 				</div>
-				<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 					<label class="form-control">
 						<span class="label-text text-sm">Hits to promote</span>
 						<input
@@ -630,6 +766,24 @@
 								markLockoutDirty();
 							}}
 						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Learn interval (hours, 0 = disabled)</span>
+						<select
+							class="select select-bordered select-sm"
+							value={lockoutConfig.learnerLearnIntervalHours}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerLearnIntervalHours = clampIntervalHours(
+									e.currentTarget.value
+								);
+								markLockoutDirty();
+							}}
+						>
+							{#each LOCKOUT_INTERVAL_OPTIONS as option}
+								<option value={option}>{option === 0 ? 'Disabled' : `${option} hours`}</option>
+							{/each}
+						</select>
 					</label>
 					<label class="form-control">
 						<span class="label-text text-sm">Drift tolerance (MHz)</span>
@@ -663,6 +817,57 @@
 							}}
 						/>
 					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Unlearn count (0 = legacy)</span>
+						<input
+							type="number"
+							min={LEARNER_UNLEARN_COUNT_MIN}
+							max={LEARNER_UNLEARN_COUNT_MAX}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.learnerUnlearnCount}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerUnlearnCount = clampUnlearnCount(e.currentTarget.value);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Unlearn interval (hours, 0 = disabled)</span>
+						<select
+							class="select select-bordered select-sm"
+							value={lockoutConfig.learnerUnlearnIntervalHours}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.learnerUnlearnIntervalHours = clampIntervalHours(
+									e.currentTarget.value
+								);
+								markLockoutDirty();
+							}}
+						>
+							{#each LOCKOUT_INTERVAL_OPTIONS as option}
+								<option value={option}>{option === 0 ? 'Disabled' : `${option} hours`}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Manual delete misses (0 = disabled)</span>
+						<select
+							class="select select-bordered select-sm"
+							value={lockoutConfig.manualDemotionMissCount}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.manualDemotionMissCount = clampManualDemotionMissCount(
+									e.currentTarget.value
+								);
+								markLockoutDirty();
+							}}
+						>
+							{#each MANUAL_DEMOTION_OPTIONS as option}
+								<option value={option}>{option === 0 ? 'Disabled' : `${option} misses`}</option>
+							{/each}
+						</select>
+					</label>
 				</div>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
 					<span class="label-text text-sm">Ka lockout learning (preview only)</span>
@@ -680,8 +885,10 @@
 					Ka learning remains disabled in firmware by policy. If enabled later, it will ship behind a warning gate.
 				</div>
 				<div class="text-xs text-base-content/65">
-					Runtime learner: {runtimeLearnerHits()} hits · ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
-					· candidate expiry: 7 days
+					Runtime learner: {runtimeLearnerHits()} hits · interval {formatIntervalLabel(runtimeLearnerLearnIntervalHours())}
+					· ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
+					· unlearn {runtimeLearnerUnlearnCount()} misses / {formatIntervalLabel(runtimeLearnerUnlearnIntervalHours())}
+					· manual delete {runtimeManualDemotionMissCount() || 'disabled'} · candidate expiry: 7 days
 				</div>
 			</div>
 		</div>
@@ -749,6 +956,7 @@
 										<th>Freq</th>
 										<th>Conf</th>
 										<th>Radius</th>
+										<th>Demotion</th>
 										<th>Location</th>
 									</tr>
 								</thead>
@@ -768,7 +976,17 @@
 											<td>{formatBandMask(zone.bandMask)}</td>
 											<td>{formatFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
-												<td>{formatZoneRadiusFeet(zone)}</td>
+											<td>{formatZoneRadiusFeet(zone)}</td>
+											<td class="text-xs">
+												{#if typeof zone.demotionMissThreshold === 'number'}
+													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
+													{#if typeof zone.demotionMissesRemaining === 'number'}
+														({zone.demotionMissesRemaining} left)
+													{/if}
+												{:else}
+													legacy
+												{/if}
+											</td>
 											<td>
 												<div class="font-mono text-xs">
 													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
@@ -803,6 +1021,7 @@
 										<th>Hits</th>
 										<th>Remaining</th>
 										<th>Last Seen</th>
+										<th>Next Hit</th>
 										<th>Location</th>
 									</tr>
 								</thead>
@@ -815,6 +1034,7 @@
 											<td>{typeof zone.hitCount === 'number' ? zone.hitCount : '—'}</td>
 											<td>{typeof zone.hitsRemaining === 'number' ? zone.hitsRemaining : '—'}</td>
 											<td class="text-xs">{formatEpochMs(zone.lastSeenMs)}</td>
+											<td class="text-xs">{formatEpochMs(zone.nextEligibleHitMs)}</td>
 											<td>
 												<div class="font-mono text-xs">
 													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}

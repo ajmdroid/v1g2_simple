@@ -102,6 +102,10 @@ struct V1Settings {
     uint16_t gpsLockoutMaxQueueDrops = 0;
     uint16_t gpsLockoutMaxPerfDrops = 0;
     uint16_t gpsLockoutMaxEventBusDrops = 0;
+    uint8_t gpsLockoutLearnerLearnIntervalHours = 0;
+    uint8_t gpsLockoutLearnerUnlearnIntervalHours = 0;
+    uint8_t gpsLockoutLearnerUnlearnCount = 0;
+    uint8_t gpsLockoutManualDemotionMissCount = 0;
     bool obdEnabled = false;
     bool obdVwDataEnabled = true;
     bool bleProxyEnabled = true;

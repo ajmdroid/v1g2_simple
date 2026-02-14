@@ -429,6 +429,81 @@ void test_enforce_clean_pass_rate_limited() {
     TEST_ASSERT_EQUAL(8, testIndex.at(0)->confidence);
 }
 
+void test_enforce_clean_pass_policy_interval_and_threshold() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    settingsManager.settings.gpsLockoutLearnerUnlearnCount = 3;
+    settingsManager.settings.gpsLockoutLearnerUnlearnIntervalHours = 1;
+    settingsManager.settings.gpsLockoutManualDemotionMissCount = 0;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    e.confidence = 50;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    testIndex.add(e);
+
+    parser.reset();
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+
+    // Counted miss #1
+    enforcer.process(1000, 1700000000000LL, parser, gps);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, testIndex.at(0)->missCount);
+    TEST_ASSERT_EQUAL(50, testIndex.at(0)->confidence);  // Policy mode no confidence decay
+
+    // Within 1h interval -> not counted (but 30s gate elapsed)
+    enforcer.process(32000, 1700000032000LL, parser, gps);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, testIndex.at(0)->missCount);
+
+    // Counted miss #2
+    enforcer.process(3600000 + 64000, 1700003600000LL, parser, gps);
+    TEST_ASSERT_EQUAL(2, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(2, testIndex.at(0)->missCount);
+
+    // Counted miss #3 -> demoted
+    enforcer.process(7200000 + 96000, 1700007200000LL, parser, gps);
+    TEST_ASSERT_EQUAL(3, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().demotions);
+    TEST_ASSERT_EQUAL(0, testIndex.activeCount());
+}
+
+void test_enforce_manual_demotion_policy_opt_in() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    settingsManager.settings.gpsLockoutLearnerUnlearnCount = 0;
+    settingsManager.settings.gpsLockoutLearnerUnlearnIntervalHours = 0;
+    settingsManager.settings.gpsLockoutManualDemotionMissCount = 10;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    e.confidence = 1;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    testIndex.add(e);
+
+    parser.reset();
+    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+
+    for (int i = 0; i < 9; ++i) {
+        enforcer.process(static_cast<uint32_t>(1000 + i * 31000),
+                         1700000000000LL + static_cast<int64_t>(i) * 31000LL,
+                         parser,
+                         gps);
+    }
+
+    TEST_ASSERT_EQUAL(9, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+    TEST_ASSERT_EQUAL(9, testIndex.at(0)->missCount);
+    TEST_ASSERT_EQUAL(1, testIndex.at(0)->confidence);
+
+    // 10th counted miss removes manual lockout because opt-in threshold is set.
+    enforcer.process(1000 + 9 * 31000,
+                     1700000000000LL + 9LL * 31000LL,
+                     parser,
+                     gps);
+    TEST_ASSERT_EQUAL(10, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().demotions);
+    TEST_ASSERT_EQUAL(0, testIndex.activeCount());
+}
+
 void test_shadow_no_clean_pass() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
@@ -475,6 +550,8 @@ int main(int argc, char** argv) {
     // ENFORCE clean-pass + dirty tracking
     RUN_TEST(test_enforce_clean_pass_demotes_nearby);
     RUN_TEST(test_enforce_clean_pass_rate_limited);
+    RUN_TEST(test_enforce_clean_pass_policy_interval_and_threshold);
+    RUN_TEST(test_enforce_manual_demotion_policy_opt_in);
     RUN_TEST(test_shadow_no_clean_pass);
 
     return UNITY_END();

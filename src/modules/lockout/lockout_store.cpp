@@ -51,9 +51,11 @@ void LockoutStore::toJson(JsonDocument& doc) const {
         z["ftol"]  = e->freqTolMHz;
         z["conf"]  = e->confidence;
         z["flags"] = e->flags;
+        z["miss"]  = e->missCount;
         z["first"] = e->firstSeenMs;
         z["last"]  = e->lastSeenMs;
         z["pass"]  = e->lastPassMs;
+        z["mms"]   = e->lastCountedMissMs;
         ++count;
     }
 
@@ -127,9 +129,11 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
         entry.freqTolMHz = z["ftol"] | (uint16_t)10;
         entry.confidence = z["conf"] | (uint8_t)100;
         entry.flags      = z["flags"] | (uint8_t)LockoutEntry::FLAG_ACTIVE;
+        entry.missCount  = z["miss"] | (uint8_t)0;
         entry.firstSeenMs = z["first"] | (int64_t)0;
         entry.lastSeenMs  = z["last"]  | (int64_t)0;
         entry.lastPassMs  = z["pass"]  | (int64_t)0;
+        entry.lastCountedMissMs = z["mms"] | (int64_t)0;
 
         // Always ensure the entry is active (we only serialize active entries,
         // so deserialize should restore them as active).

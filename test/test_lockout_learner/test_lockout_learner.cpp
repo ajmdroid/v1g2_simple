@@ -148,15 +148,17 @@ void test_three_hits_promotes() {
 // ================================================================
 
 void test_set_tuning_clamps_bounds() {
-    learner.setTuning(0, 1, 0);
+    learner.setTuning(0, 1, 0, 0);
     TEST_ASSERT_EQUAL(LockoutLearner::kMinPromotionHits, learner.promotionHits());
     TEST_ASSERT_EQUAL(LockoutLearner::kMinRadiusE5, learner.radiusE5());
     TEST_ASSERT_EQUAL(LockoutLearner::kMinFreqToleranceMHz, learner.freqToleranceMHz());
+    TEST_ASSERT_EQUAL(0, learner.learnIntervalHours());
 
-    learner.setTuning(255, 65535, 255);
+    learner.setTuning(255, 65535, 255, 255);
     TEST_ASSERT_EQUAL(LockoutLearner::kMaxPromotionHits, learner.promotionHits());
     TEST_ASSERT_EQUAL(LockoutLearner::kMaxRadiusE5, learner.radiusE5());
     TEST_ASSERT_EQUAL(LockoutLearner::kMaxFreqToleranceMHz, learner.freqToleranceMHz());
+    TEST_ASSERT_EQUAL(24, learner.learnIntervalHours());
 }
 
 // ================================================================
@@ -164,7 +166,7 @@ void test_set_tuning_clamps_bounds() {
 // ================================================================
 
 void test_custom_promotion_hits_threshold() {
-    learner.setTuning(4, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz);
+    learner.setTuning(4, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz, 0);
 
     testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
     learner.process(2000, EPOCH_BASE);
@@ -192,7 +194,7 @@ void test_custom_promotion_hits_threshold() {
 void test_promoted_entry_uses_runtime_radius_and_freq_tolerance() {
     static constexpr uint16_t tunedRadiusE5 = 900;
     static constexpr uint16_t tunedFreqTolMHz = 7;
-    learner.setTuning(2, tunedRadiusE5, tunedFreqTolMHz);
+    learner.setTuning(2, tunedRadiusE5, tunedFreqTolMHz, 0);
 
     testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
     learner.process(2000, EPOCH_BASE);
@@ -486,6 +488,54 @@ void test_epoch_zero_creates_candidate() {
     TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
     TEST_ASSERT_EQUAL(0, learner.candidateAt(0)->firstSeenMs);
     TEST_ASSERT_EQUAL(0, learner.candidateAt(0)->lastSeenMs);
+    TEST_ASSERT_EQUAL(0, learner.candidateAt(0)->lastCountedHitMs);
+}
+
+// ================================================================
+// Learn interval gates hitCount increments
+// ================================================================
+
+void test_learn_interval_gates_hit_increment() {
+    learner.setTuning(3, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz, 4);
+    const int64_t hourMs = 3600LL * 1000LL;
+
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    TEST_ASSERT_EQUAL(1, learner.candidateAt(0)->hitCount);
+    TEST_ASSERT_EQUAL(EPOCH_BASE, learner.candidateAt(0)->lastCountedHitMs);
+
+    testLog.publish(makeObs(LAT + 2, LON - 1, K_BAND, K_FREQ));
+    learner.process(4000, EPOCH_BASE + (2 * hourMs));
+    TEST_ASSERT_EQUAL(1, learner.candidateAt(0)->hitCount);  // Not counted (<4h)
+    TEST_ASSERT_EQUAL(EPOCH_BASE, learner.candidateAt(0)->lastCountedHitMs);
+
+    testLog.publish(makeObs(LAT + 1, LON + 1, K_BAND, K_FREQ));
+    learner.process(6000, EPOCH_BASE + (4 * hourMs));
+    TEST_ASSERT_EQUAL(2, learner.candidateAt(0)->hitCount);
+    TEST_ASSERT_EQUAL(EPOCH_BASE + (4 * hourMs), learner.candidateAt(0)->lastCountedHitMs);
+
+    testLog.publish(makeObs(LAT + 3, LON + 1, K_BAND, K_FREQ));
+    learner.process(8000, EPOCH_BASE + (8 * hourMs));
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());  // Promoted on 3rd counted hit
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+}
+
+// ================================================================
+// 24h learn interval supports 6-hit promotion before stale expiry
+// ================================================================
+
+void test_learn_interval_24h_promotes_before_stale_expiry() {
+    learner.setTuning(6, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz, 24);
+    const int64_t dayMs = 24LL * 3600LL * 1000LL;
+
+    for (int i = 0; i < 6; ++i) {
+        testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+        learner.process(static_cast<uint32_t>(2000 + (i * 62000)), EPOCH_BASE + (i * dayMs));
+    }
+
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
 }
 
 // ================================================================
@@ -540,6 +590,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_freq_within_tolerance_matches);
     RUN_TEST(test_freq_outside_tolerance_no_match);
     RUN_TEST(test_epoch_zero_creates_candidate);
+    RUN_TEST(test_learn_interval_gates_hit_increment);
+    RUN_TEST(test_learn_interval_24h_promotes_before_stale_expiry);
     RUN_TEST(test_no_observations_no_crash);
     RUN_TEST(test_null_deps_no_crash);
 

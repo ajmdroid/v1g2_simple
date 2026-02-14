@@ -45,9 +45,11 @@ static LockoutEntry makeEntry(int32_t latE5      = 3736277,
     e.freqTolMHz  = 10;
     e.confidence  = confidence;
     e.flags       = flags;
+    e.missCount   = 0;
     e.firstSeenMs = 1700000000000LL;
     e.lastSeenMs  = 1700000060000LL;
     e.lastPassMs  = 1700000090000LL;
+    e.lastCountedMissMs = 0;
     return e;
 }
 
@@ -86,6 +88,7 @@ void test_toJson_single_entry() {
     TEST_ASSERT_EQUAL(24148, z["freq"].as<uint16_t>());
     TEST_ASSERT_EQUAL(10, z["ftol"].as<uint16_t>());
     TEST_ASSERT_EQUAL(100, z["conf"].as<uint8_t>());
+    TEST_ASSERT_EQUAL(0, z["miss"].as<uint8_t>());
 }
 
 void test_toJson_skips_inactive_slots() {
@@ -127,9 +130,11 @@ void test_toJson_all_fields_present() {
     e.radiusE5    = 2700;
     e.freqTolMHz  = 15;
     e.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.missCount   = 4;
     e.firstSeenMs = 1234567890000LL;
     e.lastSeenMs  = 1234567891000LL;
     e.lastPassMs  = 1234567892000LL;
+    e.lastCountedMissMs = 1234567893000LL;
     testIndex.add(e);
 
     JsonDocument doc;
@@ -140,9 +145,11 @@ void test_toJson_all_fields_present() {
     TEST_ASSERT_EQUAL(15, z["ftol"].as<uint16_t>());
     TEST_ASSERT_EQUAL(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL,
                       z["flags"].as<uint8_t>());
+    TEST_ASSERT_EQUAL(4, z["miss"].as<uint8_t>());
     TEST_ASSERT_EQUAL(1234567890000LL, z["first"].as<int64_t>());
     TEST_ASSERT_EQUAL(1234567891000LL, z["last"].as<int64_t>());
     TEST_ASSERT_EQUAL(1234567892000LL, z["pass"].as<int64_t>());
+    TEST_ASSERT_EQUAL(1234567893000LL, z["mms"].as<int64_t>());
 }
 
 // ================================================================
@@ -164,9 +171,11 @@ void test_fromJson_valid_single_entry() {
     z["ftol"]  = 10;
     z["conf"]  = 100;
     z["flags"] = 5;  // ACTIVE | LEARNED
+    z["miss"]  = 2;
     z["first"] = 1700000000000LL;
     z["last"]  = 1700000060000LL;
     z["pass"]  = 1700000090000LL;
+    z["mms"]   = 1700000110000LL;
 
     bool ok = store.fromJson(doc);
     TEST_ASSERT_TRUE(ok);
@@ -184,11 +193,13 @@ void test_fromJson_valid_single_entry() {
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);
     TEST_ASSERT_EQUAL(100, e->confidence);
     TEST_ASSERT_EQUAL(5, e->flags);
+    TEST_ASSERT_EQUAL(2, e->missCount);
     TEST_ASSERT_TRUE(e->isActive());
     TEST_ASSERT_TRUE(e->isLearned());
     TEST_ASSERT_EQUAL(1700000000000LL, e->firstSeenMs);
     TEST_ASSERT_EQUAL(1700000060000LL, e->lastSeenMs);
     TEST_ASSERT_EQUAL(1700000090000LL, e->lastPassMs);
+    TEST_ASSERT_EQUAL(1700000110000LL, e->lastCountedMissMs);
 }
 
 void test_fromJson_roundtrip() {
@@ -241,9 +252,11 @@ void test_fromJson_all_fields_survive_roundtrip() {
     orig.freqTolMHz  = 15;
     orig.confidence  = 42;
     orig.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    orig.missCount   = 6;
     orig.firstSeenMs = 1111111111111LL;
     orig.lastSeenMs  = 2222222222222LL;
     orig.lastPassMs  = 3333333333333LL;
+    orig.lastCountedMissMs = 4444444444444LL;
     testIndex.add(orig);
 
     // Round-trip through JSON string.
@@ -268,9 +281,11 @@ void test_fromJson_all_fields_survive_roundtrip() {
     TEST_ASSERT_EQUAL(orig.freqTolMHz,  e->freqTolMHz);
     TEST_ASSERT_EQUAL(orig.confidence,  e->confidence);
     TEST_ASSERT_EQUAL(orig.flags,       e->flags);
+    TEST_ASSERT_EQUAL(orig.missCount,   e->missCount);
     TEST_ASSERT_EQUAL(orig.firstSeenMs, e->firstSeenMs);
     TEST_ASSERT_EQUAL(orig.lastSeenMs,  e->lastSeenMs);
     TEST_ASSERT_EQUAL(orig.lastPassMs,  e->lastPassMs);
+    TEST_ASSERT_EQUAL(orig.lastCountedMissMs, e->lastCountedMissMs);
 }
 
 void test_fromJson_wrong_type_rejected() {
@@ -395,9 +410,11 @@ void test_fromJson_defaults_optional_fields() {
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);       // Default tolerance
     TEST_ASSERT_EQUAL(100, e->confidence);       // Default confidence
     TEST_ASSERT_TRUE(e->isActive());             // Always active
+    TEST_ASSERT_EQUAL(0, e->missCount);
     TEST_ASSERT_EQUAL(0, e->firstSeenMs);
     TEST_ASSERT_EQUAL(0, e->lastSeenMs);
     TEST_ASSERT_EQUAL(0, e->lastPassMs);
+    TEST_ASSERT_EQUAL(0, e->lastCountedMissMs);
 }
 
 void test_fromJson_always_sets_active_flag() {

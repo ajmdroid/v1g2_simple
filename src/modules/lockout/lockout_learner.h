@@ -17,6 +17,7 @@ struct LearnerCandidate {
     uint8_t  hitCount   = 0;     // Number of matching observations
     int64_t  firstSeenMs = 0;    // Epoch ms — first observation
     int64_t  lastSeenMs  = 0;    // Epoch ms — most recent observation
+    int64_t  lastCountedHitMs = 0; // Epoch ms — most recent hitCount increment
     bool     active     = false; // Slot in use
 };
 
@@ -38,6 +39,7 @@ public:
     static constexpr uint16_t kDefaultFreqToleranceMHz   = 10;
     static constexpr uint16_t kMinFreqToleranceMHz       = 2;
     static constexpr uint16_t kMaxFreqToleranceMHz       = 20;
+    static constexpr uint8_t  kDefaultLearnIntervalHours = 0;  // 0 = disabled
     static constexpr uint32_t kPollIntervalMs     = 2000;
     static constexpr int64_t  kStaleDurationMs    = 7LL * 24 * 3600 * 1000; // 7 days
     static constexpr uint32_t kPruneIntervalMs    = 60000;  // Prune every 60s
@@ -47,10 +49,14 @@ public:
     void begin(LockoutIndex* index, SignalObservationLog* log);
 
     // Runtime tuning (persisted in SettingsManager and applied at boot/runtime).
-    void setTuning(uint8_t promotionHits, uint16_t radiusE5, uint16_t freqToleranceMHz);
+    void setTuning(uint8_t promotionHits,
+                   uint16_t radiusE5,
+                   uint16_t freqToleranceMHz,
+                   uint8_t learnIntervalHours = kDefaultLearnIntervalHours);
     uint8_t promotionHits() const { return promotionHits_; }
     uint16_t radiusE5() const { return radiusE5_; }
     uint16_t freqToleranceMHz() const { return freqToleranceMHz_; }
+    uint8_t learnIntervalHours() const { return learnIntervalHours_; }
 
     /// Ingest new observations and manage candidates.
     /// Rate-limited internally; safe to call every loop().
@@ -96,6 +102,8 @@ private:
     uint8_t promotionHits_ = kDefaultPromotionHits;
     uint16_t radiusE5_ = kDefaultRadiusE5;
     uint16_t freqToleranceMHz_ = kDefaultFreqToleranceMHz;
+    uint8_t learnIntervalHours_ = kDefaultLearnIntervalHours;
+    int64_t learnHitIntervalMs_ = 0;
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;
 };

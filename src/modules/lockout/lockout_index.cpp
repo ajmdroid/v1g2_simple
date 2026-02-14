@@ -90,6 +90,9 @@ int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
         if (sanitized.lastSeenMs > e.lastSeenMs) {
             e.lastSeenMs = sanitized.lastSeenMs;
         }
+        // Existing-zone refresh should clear miss streak.
+        e.missCount = 0;
+        e.lastCountedMissMs = 0;
         // Merge flags (preserve both manual + learned if applicable).
         e.flags |= sanitized.flags;
         return existing;
@@ -151,6 +154,57 @@ uint8_t LockoutIndex::recordCleanPass(size_t index, int64_t epochMs) {
     return e.confidence;
 }
 
+LockoutCleanPassResult LockoutIndex::recordCleanPassWithPolicy(size_t index,
+                                                               int64_t epochMs,
+                                                               uint32_t missIntervalMs,
+                                                               uint8_t missThreshold) {
+    LockoutCleanPassResult result;
+    if (index >= kCapacity) {
+        return result;
+    }
+
+    LockoutEntry& e = entries_[index];
+    if (!e.isActive()) {
+        return result;
+    }
+
+    if (missThreshold == 0) {
+        const bool wasActive = e.isActive();
+        result.confidence = recordCleanPass(index, epochMs);
+        result.counted = true;
+        result.demoted = wasActive && !entries_[index].isActive();
+        return result;
+    }
+
+    if (epochMs <= 0) {
+        result.confidence = e.confidence;
+        return result;
+    }
+
+    if (missIntervalMs > 0 && e.lastCountedMissMs > 0 &&
+        (epochMs - e.lastCountedMissMs) < static_cast<int64_t>(missIntervalMs)) {
+        result.confidence = e.confidence;
+        return result;
+    }
+
+    e.lastPassMs = epochMs;
+    if (e.missCount < 255) {
+        ++e.missCount;
+    }
+    e.lastCountedMissMs = epochMs;
+    result.counted = true;
+
+    if (e.missCount >= missThreshold) {
+        e.clear();
+        result.confidence = 0;
+        result.demoted = true;
+        return result;
+    }
+
+    result.confidence = e.confidence;
+    return result;
+}
+
 uint8_t LockoutIndex::recordHit(size_t index, int64_t epochMs) {
     if (index >= kCapacity) {
         return 0;
@@ -165,6 +219,8 @@ uint8_t LockoutIndex::recordHit(size_t index, int64_t epochMs) {
     if (e.confidence < 255) {
         ++e.confidence;
     }
+    e.missCount = 0;
+    e.lastCountedMissMs = 0;
     return e.confidence;
 }
 

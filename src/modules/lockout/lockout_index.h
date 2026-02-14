@@ -5,6 +5,12 @@
 
 #include "lockout_entry.h"
 
+struct LockoutCleanPassResult {
+    uint8_t confidence = 0; // Current confidence after mutation
+    bool counted = false;   // True if this pass counted toward policy threshold
+    bool demoted = false;   // True if the entry was removed
+};
+
 /// Fixed-size lockout zone index.
 ///
 /// Provides O(N) scan per query where N ≤ kCapacity (~200).
@@ -61,6 +67,15 @@ public:
     /// Increments the internal miss counter state in the entry's confidence field.
     /// Returns the new confidence value (0 = fully demoted).
     uint8_t recordCleanPass(size_t index, int64_t epochMs);
+
+    /// Record a clean pass with optional interval/count policy.
+    /// - missThreshold == 0 => legacy behavior (recordCleanPass).
+    /// - missThreshold > 0  => counted miss streak with optional interval gate.
+    ///   The entry demotes when missCount reaches missThreshold.
+    LockoutCleanPassResult recordCleanPassWithPolicy(size_t index,
+                                                     int64_t epochMs,
+                                                     uint32_t missIntervalMs,
+                                                     uint8_t missThreshold);
 
     /// Record a hit (alert matched) at the given index.
     /// Returns the new confidence value.

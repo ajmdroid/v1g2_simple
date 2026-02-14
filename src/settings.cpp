@@ -554,6 +554,10 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("gpsLkHits", settings.gpsLockoutLearnerPromotionHits);
     written += prefs.putUShort("gpsLkRad", settings.gpsLockoutLearnerRadiusE5);
     written += prefs.putUShort("gpsLkFtol", settings.gpsLockoutLearnerFreqToleranceMHz);
+    written += prefs.putUChar("gpsLkLInt", settings.gpsLockoutLearnerLearnIntervalHours);
+    written += prefs.putUChar("gpsLkUInt", settings.gpsLockoutLearnerUnlearnIntervalHours);
+    written += prefs.putUChar("gpsLkUCnt", settings.gpsLockoutLearnerUnlearnCount);
+    written += prefs.putUChar("gpsLkMDCnt", settings.gpsLockoutManualDemotionMissCount);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);
@@ -815,6 +819,14 @@ void SettingsManager::load() {
         preferences.getUShort("gpsLkRad", LOCKOUT_LEARNER_RADIUS_E5_DEFAULT));
     settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
         preferences.getUShort("gpsLkFtol", LOCKOUT_LEARNER_FREQ_TOL_DEFAULT));
+    settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+        preferences.getUChar("gpsLkLInt", LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT));
+    settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+        preferences.getUChar("gpsLkUInt", LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT));
+    settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
+        preferences.getUChar("gpsLkUCnt", LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT));
+    settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
+        preferences.getUChar("gpsLkMDCnt", LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT));
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -1599,6 +1611,10 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
     doc["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
     doc["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
+    doc["gpsLockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
+    doc["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -1853,6 +1869,22 @@ bool SettingsManager::restoreFromSD() {
     if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
         settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
             doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
+        settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
+        settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
+        settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
+            doc["gpsLockoutLearnerUnlearnCount"].as<int>());
+    }
+    if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
+        settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
+            doc["gpsLockoutManualDemotionMissCount"].as<int>());
     }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {

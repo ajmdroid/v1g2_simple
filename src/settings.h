@@ -107,6 +107,12 @@ static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 3600;      // ~400m / 
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_DEFAULT = 10;     // MHz
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MIN = 2;          // MHz
 static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MAX = 20;         // MHz
+static constexpr uint8_t LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT = 0;   // 0 = disabled
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT = 0; // 0 = disabled
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT = 0;          // 0 = legacy decay
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
+static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
 
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
@@ -121,6 +127,27 @@ inline uint16_t clampLockoutLearnerRadiusE5Value(int rawRadiusE5) {
 inline uint16_t clampLockoutLearnerFreqTolValue(int rawFreqTol) {
     return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MIN),
                                           std::min(rawFreqTol, static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MAX))));
+}
+
+inline uint8_t clampLockoutLearnerIntervalHoursValue(int rawHours) {
+    if (rawHours <= 0) return 0;
+    if (rawHours <= 1) return 1;
+    if (rawHours <= 4) return 4;
+    if (rawHours <= 12) return 12;
+    return 24;
+}
+
+inline uint8_t clampLockoutLearnerUnlearnCountValue(int rawCount) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MIN),
+                                         std::min(rawCount,
+                                                  static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MAX))));
+}
+
+inline uint8_t clampLockoutManualDemotionMissCountValue(int rawCount) {
+    if (rawCount <= 0) return 0;
+    if (rawCount <= 10) return 10;
+    if (rawCount <= 25) return 25;
+    return 50;
 }
 
 // Auto-push profile slot
@@ -158,6 +185,10 @@ struct V1Settings {
     uint8_t gpsLockoutLearnerPromotionHits;     // Candidate hits required before promotion
     uint16_t gpsLockoutLearnerRadiusE5;         // Promotion radius in E5 units
     uint16_t gpsLockoutLearnerFreqToleranceMHz; // Promotion frequency tolerance in MHz
+    uint8_t gpsLockoutLearnerLearnIntervalHours;   // 0/1/4/12/24h between counted learner hits
+    uint8_t gpsLockoutLearnerUnlearnIntervalHours; // 0/1/4/12/24h between counted clean passes
+    uint8_t gpsLockoutLearnerUnlearnCount;         // Misses to auto-remove learned lockouts (0=legacy)
+    uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
     
     // Display settings
     bool turnOffDisplay;
@@ -293,6 +324,10 @@ struct V1Settings {
         gpsLockoutLearnerPromotionHits(LOCKOUT_LEARNER_HITS_DEFAULT),
         gpsLockoutLearnerRadiusE5(LOCKOUT_LEARNER_RADIUS_E5_DEFAULT),
         gpsLockoutLearnerFreqToleranceMHz(LOCKOUT_LEARNER_FREQ_TOL_DEFAULT),
+        gpsLockoutLearnerLearnIntervalHours(LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT),
+        gpsLockoutLearnerUnlearnIntervalHours(LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT),
+        gpsLockoutLearnerUnlearnCount(LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT),
+        gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment

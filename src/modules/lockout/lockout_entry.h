@@ -14,13 +14,15 @@ struct LockoutEntry {
     uint16_t freqTolMHz  = 10;      // ±tolerance (MHz) for frequency match
     uint8_t  confidence  = 0;       // 0-255: decays on clean pass, grows on hit
     uint8_t  flags       = 0;       // See Flag constants below
+    uint8_t  missCount   = 0;       // Counted clean passes since most recent hit (policy path)
     int64_t  firstSeenMs = 0;       // Unix epoch ms — first observation
     int64_t  lastSeenMs  = 0;       // Unix epoch ms — most recent hit
     int64_t  lastPassMs  = 0;       // Unix epoch ms — most recent clean pass
+    int64_t  lastCountedMissMs = 0; // Unix epoch ms — most recent missCount increment
 
     // --- Flag bit definitions ---
     static constexpr uint8_t FLAG_ACTIVE   = 1 << 0;  // Slot is in use
-    static constexpr uint8_t FLAG_MANUAL   = 1 << 1;  // User-created (never auto-demote)
+    static constexpr uint8_t FLAG_MANUAL   = 1 << 1;  // User-created (auto-demotion optional)
     static constexpr uint8_t FLAG_LEARNED  = 1 << 2;  // Auto-promoted from learner
 
     bool isActive()  const { return (flags & FLAG_ACTIVE)  != 0; }

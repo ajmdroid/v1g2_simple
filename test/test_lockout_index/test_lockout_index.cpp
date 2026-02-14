@@ -306,6 +306,67 @@ void test_recordCleanPass_removes_plain_active_at_zero() {
     TEST_ASSERT_EQUAL(0, idx.activeCount());
 }
 
+void test_recordHit_resets_miss_tracking() {
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.missCount = 4;
+    e.lastCountedMissMs = 1700000000000LL;
+    int slot = idx.add(e);
+
+    idx.recordHit(slot, 1700000120000LL);
+    TEST_ASSERT_EQUAL(0, idx.at(slot)->missCount);
+    TEST_ASSERT_EQUAL(0, idx.at(slot)->lastCountedMissMs);
+}
+
+void test_recordCleanPassWithPolicy_threshold_demotes_after_count() {
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    e.confidence = 80;
+    int slot = idx.add(e);
+
+    LockoutCleanPassResult r1 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700000100000LL, 0, 3);
+    TEST_ASSERT_TRUE(r1.counted);
+    TEST_ASSERT_FALSE(r1.demoted);
+    TEST_ASSERT_EQUAL(1, idx.at(slot)->missCount);
+
+    LockoutCleanPassResult r2 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700000135000LL, 0, 3);
+    TEST_ASSERT_TRUE(r2.counted);
+    TEST_ASSERT_FALSE(r2.demoted);
+    TEST_ASSERT_EQUAL(2, idx.at(slot)->missCount);
+
+    LockoutCleanPassResult r3 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700000170000LL, 0, 3);
+    TEST_ASSERT_TRUE(r3.counted);
+    TEST_ASSERT_TRUE(r3.demoted);
+    TEST_ASSERT_FALSE(idx.at(slot)->isActive());
+}
+
+void test_recordCleanPassWithPolicy_interval_gate() {
+    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    int slot = idx.add(e);
+    const uint32_t oneHourMs = 3600000UL;
+
+    LockoutCleanPassResult r1 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700000100000LL, oneHourMs, 5);
+    TEST_ASSERT_TRUE(r1.counted);
+    TEST_ASSERT_EQUAL(1, idx.at(slot)->missCount);
+    TEST_ASSERT_EQUAL(1700000100000LL, idx.at(slot)->lastPassMs);
+    TEST_ASSERT_EQUAL(1700000100000LL, idx.at(slot)->lastCountedMissMs);
+
+    LockoutCleanPassResult r2 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700000105000LL, oneHourMs, 5);
+    TEST_ASSERT_FALSE(r2.counted);
+    TEST_ASSERT_FALSE(r2.demoted);
+    TEST_ASSERT_EQUAL(1, idx.at(slot)->missCount);
+    TEST_ASSERT_EQUAL(1700000100000LL, idx.at(slot)->lastPassMs);  // unchanged until counted
+
+    LockoutCleanPassResult r3 = idx.recordCleanPassWithPolicy(
+        static_cast<size_t>(slot), 1700003700000LL, oneHourMs, 5);
+    TEST_ASSERT_TRUE(r3.counted);
+    TEST_ASSERT_EQUAL(2, idx.at(slot)->missCount);
+    TEST_ASSERT_EQUAL(1700003700000LL, idx.at(slot)->lastPassMs);
+}
+
 // ================================================================
 // Timestamp fields: real epoch values
 // ================================================================
@@ -381,9 +442,11 @@ void test_entry_clear_resets_all_fields() {
     TEST_ASSERT_EQUAL(0, e.freqMHz);
     TEST_ASSERT_EQUAL(0, e.confidence);
     TEST_ASSERT_EQUAL(0, e.flags);
+    TEST_ASSERT_EQUAL(0, e.missCount);
     TEST_ASSERT_EQUAL(0, e.firstSeenMs);
     TEST_ASSERT_EQUAL(0, e.lastSeenMs);
     TEST_ASSERT_EQUAL(0, e.lastPassMs);
+    TEST_ASSERT_EQUAL(0, e.lastCountedMissMs);
 }
 
 // ================================================================
@@ -465,6 +528,22 @@ void test_addOrUpdate_no_duplicate() {
     const LockoutEntry* p = idx.at(0);
     TEST_ASSERT_NOT_NULL(p);
     TEST_ASSERT_EQUAL(30, p->confidence);
+}
+
+void test_addOrUpdate_resets_miss_tracking_on_merge() {
+    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    e1.missCount = 5;
+    e1.lastCountedMissMs = 1700000000000LL;
+    idx.addOrUpdate(e1);
+
+    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    e2.confidence = 150;
+    idx.addOrUpdate(e2);
+
+    const LockoutEntry* p = idx.at(0);
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL(0, p->missCount);
+    TEST_ASSERT_EQUAL(0, p->lastCountedMissMs);
 }
 
 // ================================================================
@@ -559,6 +638,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_recordCleanPass_auto_removes_learned_at_zero);
     RUN_TEST(test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active);
     RUN_TEST(test_recordCleanPass_removes_plain_active_at_zero);
+    RUN_TEST(test_recordHit_resets_miss_tracking);
+    RUN_TEST(test_recordCleanPassWithPolicy_threshold_demotes_after_count);
+    RUN_TEST(test_recordCleanPassWithPolicy_interval_gate);
 
     // Timestamps
     RUN_TEST(test_entry_stores_real_epoch_timestamps);
@@ -578,6 +660,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_addOrUpdate_keeps_latest_lastSeen);
     RUN_TEST(test_addOrUpdate_merges_flags);
     RUN_TEST(test_addOrUpdate_no_duplicate);
+    RUN_TEST(test_addOrUpdate_resets_miss_tracking_on_merge);
 
     // findNearby (position-only)
     RUN_TEST(test_findNearby_returns_entries_within_radius);

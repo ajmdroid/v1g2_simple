@@ -20,6 +20,11 @@ int32_t degreesToE5(float degrees) {
     return static_cast<int32_t>(lroundf(degrees * 100000.0f));
 }
 
+uint32_t hoursToMs(uint8_t hours) {
+    if (hours == 0) return 0;
+    return static_cast<uint32_t>(hours) * 3600UL * 1000UL;
+}
+
 }  // namespace
 
 LockoutEnforcer lockoutEnforcer;
@@ -135,7 +140,7 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
 // Clean-pass recording for demotion (ENFORCE only).
 //
 // When no alert is present and we're within range of lockout entries,
-// those entries receive a clean-pass decrement.  Rate-limited to once
+// those entries receive a clean-pass update.  Rate-limited to once
 // per CLEAN_PASS_INTERVAL_MS (~30s) so driving through a 150m zone at
 // 60 mph (5.6s transit) records at most one clean pass per transit.
 // ---------------------------------------------------------------------------
@@ -154,18 +159,45 @@ void LockoutEnforcer::recordCleanPasses(int32_t latE5, int32_t lonE5,
     // Find all entries whose zone covers our current position.
     int16_t nearby[16];
     const size_t count = index_->findNearby(latE5, lonE5, nearby, 16);
+    const V1Settings& settings = settings_->get();
+    const uint8_t learnedMissThreshold = settings.gpsLockoutLearnerUnlearnCount;
+    const uint8_t manualMissThreshold = settings.gpsLockoutManualDemotionMissCount;
+    const uint32_t missIntervalMs = hoursToMs(settings.gpsLockoutLearnerUnlearnIntervalHours);
+    const bool missPolicyEnabled = (learnedMissThreshold > 0) || (manualMissThreshold > 0);
 
     bool anyMutated = false;
     for (size_t i = 0; i < count; ++i) {
         if (nearby[i] == matchedSlot) continue;  // Skip matched entry.
+        const size_t slot = static_cast<size_t>(nearby[i]);
+        const LockoutEntry* entryBefore = index_->at(slot);
+        if (!entryBefore || !entryBefore->isActive()) {
+            continue;
+        }
 
-        const uint8_t conf = index_->recordCleanPass(static_cast<size_t>(nearby[i]), epochMs);
-        ++stats_.cleanPasses;
-        anyMutated = true;
+        const uint8_t missThreshold = entryBefore->isManual()
+                                          ? manualMissThreshold
+                                          : learnedMissThreshold;
 
-        if (conf == 0) {
+        LockoutCleanPassResult result;
+        if (!missPolicyEnabled || missThreshold == 0) {
+            const bool wasActive = entryBefore->isActive();
+            const uint8_t conf = index_->recordCleanPass(slot, epochMs);
+            const LockoutEntry* entryAfter = index_->at(slot);
+            result.confidence = conf;
+            result.counted = true;
+            result.demoted = wasActive && (!entryAfter || !entryAfter->isActive());
+        } else {
+            result = index_->recordCleanPassWithPolicy(slot, epochMs, missIntervalMs, missThreshold);
+        }
+
+        if (result.counted) {
+            ++stats_.cleanPasses;
+            anyMutated = true;
+        }
+        if (result.demoted) {
             ++stats_.demotions;
-            Serial.printf("[Lockout] DEMOTED slot=%d (clean-pass decay)\n", nearby[i]);
+            anyMutated = true;
+            Serial.printf("[Lockout] DEMOTED slot=%d (clean-pass policy)\n", nearby[i]);
         }
     }
 

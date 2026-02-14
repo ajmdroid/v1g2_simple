@@ -59,7 +59,7 @@ public:
     struct Stats {
         uint32_t evaluations   = 0;  // Total process() calls that ran evaluation
         uint32_t matches       = 0;  // Times a lockout zone matched an alert
-        uint32_t cleanPasses   = 0;  // Clean-pass decrements applied
+        uint32_t cleanPasses   = 0;  // Counted clean-pass updates applied
         uint32_t demotions     = 0;  // Entries auto-removed by clean-pass decay
         uint32_t skippedOff    = 0;  // Skipped because mode == OFF
         uint32_t skippedNoGps  = 0;  // Skipped because GPS position not valid

@@ -13,6 +13,22 @@
 
 #include <cstdlib>
 
+namespace {
+
+uint8_t clampLearnerIntervalHours(uint8_t hours) {
+    if (hours == 0) return 0;
+    if (hours <= 1) return 1;
+    if (hours <= 4) return 4;
+    if (hours <= 12) return 12;
+    return 24;
+}
+
+int64_t intervalHoursToMs(uint8_t hours) {
+    return static_cast<int64_t>(hours) * 3600LL * 1000LL;
+}
+
+}  // namespace
+
 LockoutLearner lockoutLearner;
 
 void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
@@ -23,13 +39,19 @@ void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
     lastPruneMs_  = 0;
     lastLogMs_    = 0;
     stats_ = Stats{};
-    setTuning(kDefaultPromotionHits, kDefaultRadiusE5, kDefaultFreqToleranceMHz);
+    setTuning(kDefaultPromotionHits,
+              kDefaultRadiusE5,
+              kDefaultFreqToleranceMHz,
+              kDefaultLearnIntervalHours);
     for (auto& c : candidates_) {
         c = LearnerCandidate{};
     }
 }
 
-void LockoutLearner::setTuning(uint8_t promotionHits, uint16_t radiusE5, uint16_t freqToleranceMHz) {
+void LockoutLearner::setTuning(uint8_t promotionHits,
+                               uint16_t radiusE5,
+                               uint16_t freqToleranceMHz,
+                               uint8_t learnIntervalHours) {
     if (promotionHits < kMinPromotionHits) {
         promotionHits = kMinPromotionHits;
     } else if (promotionHits > kMaxPromotionHits) {
@@ -45,9 +67,12 @@ void LockoutLearner::setTuning(uint8_t promotionHits, uint16_t radiusE5, uint16_
     } else if (freqToleranceMHz > kMaxFreqToleranceMHz) {
         freqToleranceMHz = kMaxFreqToleranceMHz;
     }
+    learnIntervalHours = clampLearnerIntervalHours(learnIntervalHours);
     promotionHits_ = promotionHits;
     radiusE5_ = radiusE5;
     freqToleranceMHz_ = freqToleranceMHz;
+    learnIntervalHours_ = learnIntervalHours;
+    learnHitIntervalMs_ = intervalHoursToMs(learnIntervalHours);
 }
 
 void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
@@ -112,8 +137,18 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
             int idx = findCandidate(lat, lon, band, freq);
             if (idx >= 0) {
                 LearnerCandidate& c = candidates_[idx];
-                c.hitCount = (c.hitCount < 255) ? static_cast<uint8_t>(c.hitCount + 1) : 255;
                 if (epochMs > 0) c.lastSeenMs = epochMs;
+                bool countedHit = true;
+                if (learnHitIntervalMs_ > 0 && epochMs > 0 && c.lastCountedHitMs > 0 &&
+                    (epochMs - c.lastCountedHitMs) < learnHitIntervalMs_) {
+                    countedHit = false;
+                }
+                if (countedHit) {
+                    c.hitCount = (c.hitCount < 255) ? static_cast<uint8_t>(c.hitCount + 1) : 255;
+                    if (epochMs > 0) {
+                        c.lastCountedHitMs = epochMs;
+                    }
+                }
 
                 // Promote when threshold reached
                 if (c.hitCount >= promotionHits_) {
@@ -131,6 +166,7 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     c.hitCount   = 1;
                     c.firstSeenMs = (epochMs > 0) ? epochMs : 0;
                     c.lastSeenMs  = (epochMs > 0) ? epochMs : 0;
+                    c.lastCountedHitMs = (epochMs > 0) ? epochMs : 0;
                     c.active     = true;
                     ++stats_.candidatesCreated;
                 }

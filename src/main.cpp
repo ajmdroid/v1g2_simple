@@ -750,7 +750,8 @@ void setup() {
         const V1Settings& settings = settingsManager.get();
         lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
                                  settings.gpsLockoutLearnerRadiusE5,
-                                 settings.gpsLockoutLearnerFreqToleranceMHz);
+                                 settings.gpsLockoutLearnerFreqToleranceMHz,
+                                 settings.gpsLockoutLearnerLearnIntervalHours);
     }
     bootReady = true;
     bleClient.setBootReady(true);
