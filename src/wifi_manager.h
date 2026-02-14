@@ -255,6 +255,8 @@ private:
     void handleGpsStatus();
     void handleGpsObservations();
     void handleGpsConfig();
+    void handleCameraStatus();
+    void handleCameraEvents();
     void handleLockoutZones();
     void handleLockoutEvents();
     void handleLockoutSummary();

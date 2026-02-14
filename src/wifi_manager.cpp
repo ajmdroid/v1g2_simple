@@ -20,6 +20,7 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/camera/camera_runtime_module.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
@@ -819,6 +820,8 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
+    server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
+    server.on("/api/cameras/events", HTTP_GET, [this]() { handleCameraEvents(); });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
     server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
@@ -4012,6 +4015,96 @@ void WiFiManager::handleGpsObservations() {
             entry["latitude"] = nullptr;
             entry["longitude"] = nullptr;
         }
+    }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraStatus() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    const CameraRuntimeStatus runtimeStatus = cameraRuntimeModule.snapshot();
+    const CameraIndexStats indexStats = cameraRuntimeModule.index().stats();
+    const CameraEventLogStats eventStats = cameraRuntimeModule.eventLog().stats();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["enabled"] = runtimeStatus.enabled;
+    doc["indexLoaded"] = runtimeStatus.indexLoaded;
+    doc["tickIntervalMs"] = runtimeStatus.tickIntervalMs;
+    doc["lastTickMs"] = runtimeStatus.lastTickMs;
+
+    JsonObject counters = doc["counters"].to<JsonObject>();
+    counters["cameraTicks"] = runtimeStatus.counters.cameraTicks;
+    counters["cameraTickSkipsOverload"] = runtimeStatus.counters.cameraTickSkipsOverload;
+    counters["cameraTickSkipsNonCore"] = runtimeStatus.counters.cameraTickSkipsNonCore;
+    counters["cameraCandidatesChecked"] = runtimeStatus.counters.cameraCandidatesChecked;
+    counters["cameraMatches"] = runtimeStatus.counters.cameraMatches;
+    counters["cameraAlertsStarted"] = runtimeStatus.counters.cameraAlertsStarted;
+    counters["cameraBudgetExceeded"] = runtimeStatus.counters.cameraBudgetExceeded;
+    counters["cameraLoadFailures"] = runtimeStatus.loader.loadFailures;
+    counters["cameraIndexSwapCount"] = runtimeStatus.counters.cameraIndexSwapCount;
+    counters["cameraIndexSwapFailures"] = runtimeStatus.counters.cameraIndexSwapFailures;
+
+    JsonObject loader = doc["loader"].to<JsonObject>();
+    loader["loadAttempts"] = runtimeStatus.loader.loadAttempts;
+    loader["loadFailures"] = runtimeStatus.loader.loadFailures;
+    loader["lastAttemptMs"] = runtimeStatus.loader.lastAttemptMs;
+    loader["lastSuccessMs"] = runtimeStatus.loader.lastSuccessMs;
+    loader["taskRunning"] = runtimeStatus.loader.taskRunning;
+    loader["loadInProgress"] = runtimeStatus.loader.loadInProgress;
+    loader["reloadPending"] = runtimeStatus.loader.reloadPending;
+    loader["readyVersion"] = runtimeStatus.loader.readyVersion;
+
+    JsonObject indexObj = doc["index"].to<JsonObject>();
+    indexObj["cameraCount"] = indexStats.cameraCount;
+    indexObj["bucketCount"] = indexStats.bucketCount;
+    indexObj["version"] = indexStats.version;
+
+    JsonObject eventsObj = doc["events"].to<JsonObject>();
+    eventsObj["published"] = eventStats.published;
+    eventsObj["drops"] = eventStats.drops;
+    eventsObj["size"] = static_cast<uint32_t>(eventStats.size);
+    eventsObj["capacity"] = static_cast<uint32_t>(CameraEventLog::kCapacity);
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraEvents() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    uint16_t limit = 16;
+    if (server.hasArg("limit")) {
+        limit = clampU16Value(server.arg("limit").toInt(), 1, static_cast<int>(CameraEventLog::kCapacity));
+    }
+
+    CameraEvent recent[CameraEventLog::kCapacity] = {};
+    const size_t count = cameraRuntimeModule.eventLog().copyRecent(recent, limit);
+    const CameraEventLogStats stats = cameraRuntimeModule.eventLog().stats();
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["count"] = static_cast<uint32_t>(count);
+    doc["published"] = stats.published;
+    doc["drops"] = stats.drops;
+    doc["size"] = static_cast<uint32_t>(stats.size);
+    doc["capacity"] = static_cast<uint32_t>(CameraEventLog::kCapacity);
+
+    JsonArray events = doc["events"].to<JsonArray>();
+    for (size_t i = 0; i < count; ++i) {
+        const CameraEvent& sample = recent[i];
+        JsonObject entry = events.add<JsonObject>();
+        entry["tsMs"] = sample.tsMs;
+        entry["cameraId"] = sample.cameraId;
+        entry["distanceM"] = sample.distanceM;
+        entry["type"] = sample.type;
+        entry["synthetic"] = sample.synthetic;
     }
 
     String response;
