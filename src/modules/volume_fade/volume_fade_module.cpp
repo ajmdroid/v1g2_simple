@@ -47,7 +47,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     // No active alerts -> optionally restore, then reset tracking
     if (!ctx.hasAlert) {
-        if (originalVolume != 0xFF && ctx.currentVolume != originalVolume) {
+        // If a fade command was already issued, force a restore even when parser
+        // still reports original volume (fade command may still be in flight).
+        const bool shouldRestore =
+            (originalVolume != 0xFF) && (fadeActive || ctx.currentVolume != originalVolume);
+        if (shouldRestore) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
@@ -76,7 +80,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     // Alert muted or suppressed -> restore if we had faded, then reset
     if (ctx.alertMuted || ctx.alertSuppressed) {
-        if (fadeActive && originalVolume != 0xFF && ctx.currentVolume != originalVolume) {
+        if (fadeActive && originalVolume != 0xFF) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
@@ -85,12 +89,6 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreSetMs = ctx.now;
             perfRecordVolumeFadeDecision(
                 PerfFadeDecision::RestoreApplied,
-                ctx.currentVolume,
-                originalVolume,
-                ctx.now);
-        } else if (fadeActive && originalVolume != 0xFF) {
-            perfRecordVolumeFadeDecision(
-                PerfFadeDecision::RestoreSkippedEqual,
                 ctx.currentVolume,
                 originalVolume,
                 ctx.now);
@@ -127,7 +125,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     // If we're currently faded and a new frequency shows up, restore and restart timer
     if (fadeActive && isNewFrequency) {
-        if (originalVolume != 0xFF && ctx.currentVolume != originalVolume) {
+        if (originalVolume != 0xFF) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
@@ -136,12 +134,6 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreSetMs = ctx.now;
             perfRecordVolumeFadeDecision(
                 PerfFadeDecision::RestoreApplied,
-                ctx.currentVolume,
-                originalVolume,
-                ctx.now);
-        } else if (originalVolume != 0xFF) {
-            perfRecordVolumeFadeDecision(
-                PerfFadeDecision::RestoreSkippedEqual,
                 ctx.currentVolume,
                 originalVolume,
                 ctx.now);

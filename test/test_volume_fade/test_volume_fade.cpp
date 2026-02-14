@@ -114,6 +114,60 @@ void test_alert_clear_restores_if_needed() {
     TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
 }
 
+void test_alert_clear_restores_when_fade_command_inflight_and_volume_stale() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 2;
+
+    auto ctx = makeCtx(true, 1000, 7, 24150);
+    fade.process(ctx);      // start
+    ctx.now = 2100;
+    auto fadeAction = fade.process(ctx);  // issue fade command
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+
+    // Alerts clear before parser reflects the lowered volume (still reports original).
+    auto clearCtx = makeCtx(false, 2200, 7, 0);
+    auto restore = fade.process(clearCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
+}
+
+void test_muted_restore_when_fade_command_inflight_and_volume_stale() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    auto ctx = makeCtx(true, 1000, 6, 24000);
+    fade.process(ctx);      // start
+    ctx.now = 2200;
+    auto fadeAction = fade.process(ctx);  // issue fade command
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+
+    // Mute event arrives before parser reflects the lowered volume.
+    auto mutedCtx = makeCtx(true, 2250, 6, 24000, true /*muted*/);
+    auto restore = fade.process(mutedCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(6, restore.restoreVolume);
+}
+
+void test_new_frequency_restore_when_fade_command_inflight_and_volume_stale() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 2;
+
+    auto ctx = makeCtx(true, 1000, 8, 34700);
+    fade.process(ctx);      // start
+    ctx.now = 2200;
+    auto fadeAction = fade.process(ctx);  // issue fade command
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+
+    // New frequency arrives before parser reflects the lowered volume.
+    auto newFreqCtx = makeCtx(true, 2300, 8, 35500);
+    auto restore = fade.process(newFreqCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
+    TEST_ASSERT_EQUAL_UINT8(8, restore.restoreVolume);
+}
+
 void test_restore_baseline_survives_immediate_realert_with_stale_volume() {
     settingsManager.settings.alertVolumeFadeEnabled = true;
     settingsManager.settings.alertVolumeFadeDelaySec = 1;
@@ -151,6 +205,9 @@ void runAllTests() {
     RUN_TEST(test_new_frequency_restores_when_faded);
     RUN_TEST(test_muted_alert_restores_and_resets);
     RUN_TEST(test_alert_clear_restores_if_needed);
+    RUN_TEST(test_alert_clear_restores_when_fade_command_inflight_and_volume_stale);
+    RUN_TEST(test_muted_restore_when_fade_command_inflight_and_volume_stale);
+    RUN_TEST(test_new_frequency_restore_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_restore_baseline_survives_immediate_realert_with_stale_volume);
 }
 
