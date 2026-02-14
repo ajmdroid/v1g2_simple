@@ -4036,6 +4036,11 @@ void WiFiManager::handleCameraStatus() {
     doc["indexLoaded"] = runtimeStatus.indexLoaded;
     doc["tickIntervalMs"] = runtimeStatus.tickIntervalMs;
     doc["lastTickMs"] = runtimeStatus.lastTickMs;
+    doc["lastTickDurationUs"] = runtimeStatus.lastTickDurationUs;
+    doc["maxTickDurationUs"] = runtimeStatus.maxTickDurationUs;
+    doc["lastCandidatesChecked"] = runtimeStatus.lastCandidatesChecked;
+    doc["lastMatches"] = runtimeStatus.lastMatches;
+    doc["lastCapReached"] = runtimeStatus.lastCapReached;
 
     JsonObject counters = doc["counters"].to<JsonObject>();
     counters["cameraTicks"] = runtimeStatus.counters.cameraTicks;
@@ -4054,6 +4059,10 @@ void WiFiManager::handleCameraStatus() {
     loader["loadFailures"] = runtimeStatus.loader.loadFailures;
     loader["lastAttemptMs"] = runtimeStatus.loader.lastAttemptMs;
     loader["lastSuccessMs"] = runtimeStatus.loader.lastSuccessMs;
+    loader["lastLoadDurationMs"] = runtimeStatus.loader.lastLoadDurationMs;
+    loader["maxLoadDurationMs"] = runtimeStatus.loader.maxLoadDurationMs;
+    loader["lastSortDurationMs"] = runtimeStatus.loader.lastSortDurationMs;
+    loader["lastSpanBuildDurationMs"] = runtimeStatus.loader.lastSpanBuildDurationMs;
     loader["taskRunning"] = runtimeStatus.loader.taskRunning;
     loader["loadInProgress"] = runtimeStatus.loader.loadInProgress;
     loader["reloadPending"] = runtimeStatus.loader.reloadPending;

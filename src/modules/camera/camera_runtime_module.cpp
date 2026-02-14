@@ -92,6 +92,11 @@ CameraRuntimeModule cameraRuntimeModule;
 void CameraRuntimeModule::begin(bool enabled) {
     enabled_ = enabled;
     lastTickMs_ = 0;
+    lastTickDurationUs_ = 0;
+    maxTickDurationUs_ = 0;
+    lastCandidatesChecked_ = 0;
+    lastMatches_ = 0;
+    lastCapReached_ = false;
     counters_ = {};
     index_.clear();
     eventLog_.reset();
@@ -144,13 +149,26 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     }
     lastTickMs_ = nowMs;
     counters_.cameraTicks++;
+    const uint32_t tickStartUs = micros();
+    auto finalizeTickTiming = [this, tickStartUs]() {
+        const uint32_t durationUs = static_cast<uint32_t>(micros() - tickStartUs);
+        lastTickDurationUs_ = durationUs;
+        if (durationUs > maxTickDurationUs_) {
+            maxTickDurationUs_ = durationUs;
+        }
+    };
+    lastCandidatesChecked_ = 0;
+    lastMatches_ = 0;
+    lastCapReached_ = false;
 
     if (!index_.isLoaded()) {
+        finalizeTickTiming();
         return;
     }
 
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     if (!isGpsEligibleForCameraMatch(gpsStatus)) {
+        finalizeTickTiming();
         return;
     }
 
@@ -158,6 +176,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     const CameraCellSpan* spans = index_.spans();
     const uint32_t spanCount = index_.bucketCount();
     if (!records || !spans || spanCount == 0) {
+        finalizeTickTiming();
         return;
     }
 
@@ -218,11 +237,15 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
 
     counters_.cameraCandidatesChecked += visitedCandidates;
     counters_.cameraMatches += matchesThisTick;
+    lastCandidatesChecked_ = visitedCandidates;
+    lastMatches_ = matchesThisTick;
+    lastCapReached_ = capReached;
     if (capReached) {
         counters_.cameraBudgetExceeded++;
     }
 
     if (bestCameraId == 0 || isCameraCoolingDown(eventLog_, bestCameraId, nowMs)) {
+        finalizeTickTiming();
         return;
     }
 
@@ -235,6 +258,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     if (eventLog_.publish(event)) {
         counters_.cameraAlertsStarted++;
     }
+    finalizeTickTiming();
 }
 
 CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
@@ -243,6 +267,11 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.indexLoaded = index_.isLoaded();
     out.tickIntervalMs = tickIntervalMs_;
     out.lastTickMs = lastTickMs_;
+    out.lastTickDurationUs = lastTickDurationUs_;
+    out.maxTickDurationUs = maxTickDurationUs_;
+    out.lastCandidatesChecked = lastCandidatesChecked_;
+    out.lastMatches = lastMatches_;
+    out.lastCapReached = lastCapReached_;
     out.counters = counters_;
     out.loader = dataLoader_.status();
     out.counters.cameraLoadFailures = out.loader.loadFailures;

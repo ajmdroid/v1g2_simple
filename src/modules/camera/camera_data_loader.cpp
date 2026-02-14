@@ -128,7 +128,9 @@ void CameraDataLoader::loaderTaskLoop() {
         portEXIT_CRITICAL(&statusMux_);
 
         CameraIndexOwnedBuffers built{};
+        const uint32_t loadStartMs = millis();
         const bool ok = buildEnforcementIndex(built);
+        const uint32_t loadDurationMs = static_cast<uint32_t>(millis() - loadStartMs);
 
         if (ok) {
             const uint32_t readyVersion = built.version;
@@ -136,11 +138,19 @@ void CameraDataLoader::loaderTaskLoop() {
             portENTER_CRITICAL(&statusMux_);
             status_.lastSuccessMs = millis();
             status_.readyVersion = readyVersion;
+            status_.lastLoadDurationMs = loadDurationMs;
+            if (loadDurationMs > status_.maxLoadDurationMs) {
+                status_.maxLoadDurationMs = loadDurationMs;
+            }
             portEXIT_CRITICAL(&statusMux_);
         } else {
             CameraIndex::freeOwnedBuffers(built);
             portENTER_CRITICAL(&statusMux_);
             status_.loadFailures++;
+            status_.lastLoadDurationMs = loadDurationMs;
+            if (loadDurationMs > status_.maxLoadDurationMs) {
+                status_.maxLoadDurationMs = loadDurationMs;
+            }
             portEXIT_CRITICAL(&statusMux_);
         }
 
@@ -179,6 +189,7 @@ bool CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers
         return false;
     }
 
+    const uint32_t sortStartMs = millis();
     std::sort(records, records + totalRecords, [](const CameraRecord& lhs, const CameraRecord& rhs) {
         if (lhs.cellKey != rhs.cellKey) {
             return lhs.cellKey < rhs.cellKey;
@@ -188,11 +199,20 @@ bool CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers
         }
         return lhs.longitudeDeg < rhs.longitudeDeg;
     });
+    const uint32_t sortDurationMs = static_cast<uint32_t>(millis() - sortStartMs);
+    portENTER_CRITICAL(&statusMux_);
+    status_.lastSortDurationMs = sortDurationMs;
+    portEXIT_CRITICAL(&statusMux_);
     vTaskDelay(pdMS_TO_TICKS(1));
 
     CameraCellSpan* spans = nullptr;
     uint32_t spanCount = 0;
+    const uint32_t spanStartMs = millis();
     ok = buildSpans(records, totalRecords, spans, spanCount);
+    const uint32_t spanDurationMs = static_cast<uint32_t>(millis() - spanStartMs);
+    portENTER_CRITICAL(&statusMux_);
+    status_.lastSpanBuildDurationMs = spanDurationMs;
+    portEXIT_CRITICAL(&statusMux_);
     if (!ok) {
         heap_caps_free(records);
         return false;

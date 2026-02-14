@@ -12,6 +12,10 @@ struct CameraDataLoaderStatus {
     uint32_t loadFailures = 0;
     uint32_t lastAttemptMs = 0;
     uint32_t lastSuccessMs = 0;
+    uint32_t lastLoadDurationMs = 0;
+    uint32_t maxLoadDurationMs = 0;
+    uint32_t lastSortDurationMs = 0;
+    uint32_t lastSpanBuildDurationMs = 0;
     bool taskRunning = false;
     bool loadInProgress = false;
     bool reloadPending = false;

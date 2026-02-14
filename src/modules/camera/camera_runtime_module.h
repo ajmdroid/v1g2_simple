@@ -24,6 +24,11 @@ struct CameraRuntimeStatus {
     bool indexLoaded = false;
     uint32_t tickIntervalMs = 0;
     uint32_t lastTickMs = 0;
+    uint32_t lastTickDurationUs = 0;
+    uint32_t maxTickDurationUs = 0;
+    uint32_t lastCandidatesChecked = 0;
+    uint32_t lastMatches = 0;
+    bool lastCapReached = false;
     CameraRuntimeCounters counters;
     CameraDataLoaderStatus loader;
 };
@@ -52,6 +57,11 @@ private:
     bool enabled_ = false;
     uint32_t tickIntervalMs_ = DEFAULT_TICK_INTERVAL_MS;
     uint32_t lastTickMs_ = 0;
+    uint32_t lastTickDurationUs_ = 0;
+    uint32_t maxTickDurationUs_ = 0;
+    uint32_t lastCandidatesChecked_ = 0;
+    uint32_t lastMatches_ = 0;
+    bool lastCapReached_ = false;
     CameraRuntimeCounters counters_ = {};
     CameraIndex index_;
     CameraEventLog eventLog_;
