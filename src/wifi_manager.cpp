@@ -20,6 +20,8 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/lockout/lockout_index.h"
+#include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
@@ -815,8 +817,13 @@ void WiFiManager::setupWebServer() {
     server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
     server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
     server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
+    server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
     server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
+    server.on("/api/lockout/zones", HTTP_GET, [this]() {
+        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones");
+        handleLockoutZones();
+    });
     server.on("/api/lockout/summary", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary");
         handleLockoutSummary();
@@ -3899,6 +3906,9 @@ void WiFiManager::handleGpsStatus() {
     lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
     lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
     lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
     lockoutObj["coreGuardReason"] = lockoutGuard.reason;
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
@@ -4092,6 +4102,85 @@ void WiFiManager::handleLockoutEvents() {
             entry["longitude"] = nullptr;
         }
     }
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleLockoutZones() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    // Bound endpoint cost (JSON size + serialization time) for lower-tier web UI.
+    uint16_t activeLimit = 64;
+    uint16_t pendingLimit = 64;
+    if (server.hasArg("activeLimit")) {
+        activeLimit = clampU16Value(server.arg("activeLimit").toInt(), 1, 200);
+    }
+    if (server.hasArg("pendingLimit")) {
+        pendingLimit = clampU16Value(server.arg("pendingLimit").toInt(), 1, 64);
+    }
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
+    doc["activeCapacity"] = static_cast<uint32_t>(lockoutIndex.capacity());
+    doc["pendingCount"] = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
+    doc["pendingCapacity"] = static_cast<uint32_t>(LockoutLearner::kCandidateCapacity);
+    doc["promotionHits"] = static_cast<uint32_t>(LockoutLearner::kPromotionHits);
+    doc["activeLimit"] = activeLimit;
+    doc["pendingLimit"] = pendingLimit;
+
+    JsonArray activeZones = doc["activeZones"].to<JsonArray>();
+    uint16_t activeReturned = 0;
+    for (size_t i = 0; i < lockoutIndex.capacity() && activeReturned < activeLimit; ++i) {
+        const LockoutEntry* entry = lockoutIndex.at(i);
+        if (!entry || !entry->isActive()) {
+            continue;
+        }
+        JsonObject zone = activeZones.add<JsonObject>();
+        zone["slot"] = static_cast<uint32_t>(i);
+        zone["latitude"] = static_cast<double>(entry->latE5) / 100000.0;
+        zone["longitude"] = static_cast<double>(entry->lonE5) / 100000.0;
+        zone["radiusM"] = static_cast<float>(entry->radiusE5) * 1.11f;
+        zone["bandMask"] = entry->bandMask;
+        zone["frequencyMHz"] = entry->freqMHz;
+        zone["frequencyToleranceMHz"] = entry->freqTolMHz;
+        zone["confidence"] = entry->confidence;
+        zone["manual"] = entry->isManual();
+        zone["learned"] = entry->isLearned();
+        zone["firstSeenMs"] = entry->firstSeenMs;
+        zone["lastSeenMs"] = entry->lastSeenMs;
+        zone["lastPassMs"] = entry->lastPassMs;
+        ++activeReturned;
+    }
+    doc["activeReturned"] = activeReturned;
+
+    JsonArray pendingZones = doc["pendingZones"].to<JsonArray>();
+    uint16_t pendingReturned = 0;
+    for (size_t i = 0; i < LockoutLearner::kCandidateCapacity && pendingReturned < pendingLimit; ++i) {
+        const LearnerCandidate* candidate = lockoutLearner.candidateAt(i);
+        if (!candidate || !candidate->active) {
+            continue;
+        }
+        JsonObject pending = pendingZones.add<JsonObject>();
+        pending["slot"] = static_cast<uint32_t>(i);
+        pending["latitude"] = static_cast<double>(candidate->latE5) / 100000.0;
+        pending["longitude"] = static_cast<double>(candidate->lonE5) / 100000.0;
+        pending["bandRaw"] = candidate->band;
+        pending["band"] = bandName(static_cast<Band>(candidate->band));
+        pending["frequencyMHz"] = candidate->freqMHz;
+        pending["hitCount"] = candidate->hitCount;
+        pending["hitsRemaining"] = static_cast<uint8_t>(
+            (candidate->hitCount >= LockoutLearner::kPromotionHits)
+                ? 0
+                : (LockoutLearner::kPromotionHits - candidate->hitCount));
+        pending["firstSeenMs"] = candidate->firstSeenMs;
+        pending["lastSeenMs"] = candidate->lastSeenMs;
+        ++pendingReturned;
+    }
+    doc["pendingReturned"] = pendingReturned;
 
     String response;
     serializeJson(doc, response);

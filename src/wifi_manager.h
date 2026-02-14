@@ -255,6 +255,7 @@ private:
     void handleGpsStatus();
     void handleGpsObservations();
     void handleGpsConfig();
+    void handleLockoutZones();
     void handleLockoutEvents();
     void handleLockoutSummary();
     void handleNotFound();

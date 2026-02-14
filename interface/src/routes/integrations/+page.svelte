@@ -11,14 +11,21 @@
 	let gpsStatusFetchInFlight = false;
 	let nearbyFetchInFlight = false;
 	let lockoutFetchInFlight = false;
+	let lockoutZonesFetchInFlight = false;
 	let savingVwData = $state(false);
 	let savingGpsEnabled = $state(false);
 	let lockoutLoading = $state(false);
 	let lockoutError = $state('');
+	let lockoutZonesLoading = $state(false);
+	let lockoutZonesError = $state('');
+	let savingLockoutConfig = $state(false);
+	let lockoutConfigInitialized = false;
+	let lockoutConfigDirty = $state(false);
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const SCAN_POLL_INTERVAL_MS = 1500;
 	const LOCKOUT_EVENTS_LIMIT = 48;
+	const LOCKOUT_ZONES_LIMIT = 64;
 
 	let status = $state({
 		state: 'IDLE',
@@ -49,7 +56,18 @@
 		speedMph: null,
 		moduleDetected: false,
 		detectionTimedOut: false,
-		parserActive: false
+		parserActive: false,
+		lockout: {
+			mode: 'off',
+			modeRaw: 0,
+			coreGuardEnabled: true,
+			maxQueueDrops: 0,
+			maxPerfDrops: 0,
+			maxEventBusDrops: 0,
+			coreGuardTripped: false,
+			coreGuardReason: '',
+			enforceAllowed: false
+		}
 	});
 
 	let nearby = $state([]);
@@ -71,6 +89,24 @@
 		writeFail: 0,
 		rotations: 0
 	});
+	let lockoutConfig = $state({
+		modeRaw: 0,
+		coreGuardEnabled: true,
+		maxQueueDrops: 0,
+		maxPerfDrops: 0,
+		maxEventBusDrops: 0
+	});
+	let lockoutZonesStats = $state({
+		activeCount: 0,
+		activeCapacity: 0,
+		activeReturned: 0,
+		pendingCount: 0,
+		pendingCapacity: 0,
+		pendingReturned: 0,
+		promotionHits: 0
+	});
+	let activeLockoutZones = $state([]);
+	let pendingLockoutZones = $state([]);
 
 	let showPinModal = $state(false);
 	let selectedDevice = $state(null);
@@ -159,8 +195,54 @@
 		return `https://maps.google.com/?q=${event.latitude},${event.longitude}`;
 	}
 
+	function formatEpochMs(epochMs) {
+		if (typeof epochMs !== 'number' || !Number.isFinite(epochMs) || epochMs <= 0) return '—';
+		return new Date(epochMs).toLocaleString();
+	}
+
+	function formatBandMask(mask) {
+		if (typeof mask !== 'number' || !Number.isFinite(mask)) return '—';
+		const parts = [];
+		if (mask & 0x01) parts.push('Laser');
+		if (mask & 0x02) parts.push('Ka');
+		if (mask & 0x04) parts.push('K');
+		if (mask & 0x08) parts.push('X');
+		return parts.length > 0 ? parts.join('+') : '—';
+	}
+
+	function clampU16(value) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return 0;
+		return Math.max(0, Math.min(65535, Math.round(parsed)));
+	}
+
+	function applyLockoutStatus(data) {
+		const lockout = data?.lockout;
+		if (!lockout) return;
+		if (lockoutConfigInitialized && lockoutConfigDirty) return;
+		lockoutConfig = {
+			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
+			coreGuardEnabled: !!lockout.coreGuardEnabled,
+			maxQueueDrops: typeof lockout.maxQueueDrops === 'number' ? lockout.maxQueueDrops : 0,
+			maxPerfDrops: typeof lockout.maxPerfDrops === 'number' ? lockout.maxPerfDrops : 0,
+			maxEventBusDrops: typeof lockout.maxEventBusDrops === 'number' ? lockout.maxEventBusDrops : 0
+		};
+		lockoutConfigInitialized = true;
+	}
+
+	function markLockoutDirty() {
+		lockoutConfigDirty = true;
+	}
+
 	async function refreshAll() {
-		await Promise.all([fetchStatus(), fetchNearby(), fetchRemembered(), fetchGpsStatus(), fetchLockoutEvents()]);
+		await Promise.all([
+			fetchStatus(),
+			fetchNearby(),
+			fetchRemembered(),
+			fetchGpsStatus(),
+			fetchLockoutEvents(),
+			fetchLockoutZones()
+		]);
 		loading = false;
 	}
 
@@ -188,6 +270,7 @@
 			if (!res.ok) return;
 			const data = await res.json();
 			gpsStatus = { ...gpsStatus, ...data };
+			applyLockoutStatus(data);
 		} catch (e) {
 			// Polling should fail silently.
 		} finally {
@@ -232,6 +315,41 @@
 		} finally {
 			lockoutFetchInFlight = false;
 			lockoutLoading = false;
+		}
+	}
+
+	async function fetchLockoutZones(options = {}) {
+		const { silent = false } = options;
+		if (lockoutZonesFetchInFlight) return;
+		lockoutZonesFetchInFlight = true;
+		if (!silent) lockoutZonesLoading = true;
+		lockoutZonesError = '';
+		try {
+			const res = await fetch(
+				`/api/lockouts/zones?activeLimit=${LOCKOUT_ZONES_LIMIT}&pendingLimit=${LOCKOUT_ZONES_LIMIT}`
+			);
+			if (!res.ok) {
+				if (!silent) lockoutZonesError = 'Failed to load lockout zones';
+				return;
+			}
+			const data = await res.json();
+			activeLockoutZones = Array.isArray(data.activeZones) ? data.activeZones : [];
+			pendingLockoutZones = Array.isArray(data.pendingZones) ? data.pendingZones : [];
+			lockoutZonesStats = {
+				activeCount: typeof data.activeCount === 'number' ? data.activeCount : 0,
+				activeCapacity: typeof data.activeCapacity === 'number' ? data.activeCapacity : 0,
+				activeReturned: typeof data.activeReturned === 'number' ? data.activeReturned : activeLockoutZones.length,
+				pendingCount: typeof data.pendingCount === 'number' ? data.pendingCount : 0,
+				pendingCapacity: typeof data.pendingCapacity === 'number' ? data.pendingCapacity : 0,
+				pendingReturned:
+					typeof data.pendingReturned === 'number' ? data.pendingReturned : pendingLockoutZones.length,
+				promotionHits: typeof data.promotionHits === 'number' ? data.promotionHits : 0
+			};
+		} catch (e) {
+			if (!silent) lockoutZonesError = 'Failed to load lockout zones';
+		} finally {
+			lockoutZonesFetchInFlight = false;
+			lockoutZonesLoading = false;
 		}
 	}
 
@@ -473,6 +591,38 @@
 			savingGpsEnabled = false;
 		}
 	}
+
+	async function saveLockoutConfig() {
+		if (savingLockoutConfig) return;
+		savingLockoutConfig = true;
+		try {
+			const modeRaw = Math.max(0, Math.min(3, Number(lockoutConfig.modeRaw) || 0));
+			const payload = {
+				lockoutMode: modeRaw,
+				lockoutCoreGuardEnabled: !!lockoutConfig.coreGuardEnabled,
+				lockoutMaxQueueDrops: clampU16(lockoutConfig.maxQueueDrops),
+				lockoutMaxPerfDrops: clampU16(lockoutConfig.maxPerfDrops),
+				lockoutMaxEventBusDrops: clampU16(lockoutConfig.maxEventBusDrops)
+			};
+			const res = await fetch('/api/gps/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to update lockout settings');
+				return;
+			}
+			lockoutConfigDirty = false;
+			setMsg('success', 'Lockout runtime settings updated');
+			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
+		} catch (e) {
+			setMsg('error', 'Failed to update lockout settings');
+		} finally {
+			savingLockoutConfig = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
@@ -532,6 +682,262 @@
 					<div class="stat-desc">{gpsStatus.detectionTimedOut ? 'module timeout' : 'live sample'}</div>
 				</div>
 			</div>
+		</div>
+	</div>
+
+	<div class="card bg-base-200 shadow">
+		<div class="card-body gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h2 class="card-title">Lockout Runtime Controls</h2>
+					<p class="text-sm text-base-content/70">
+						Configure lockout behavior without enabling extra background work.
+					</p>
+				</div>
+				<div class="flex gap-2">
+					<button class="btn btn-outline btn-sm" onclick={() => fetchGpsStatus()}>
+						Reload
+					</button>
+					<button
+						class="btn btn-primary btn-sm"
+						onclick={saveLockoutConfig}
+						disabled={savingLockoutConfig || !lockoutConfigDirty}
+					>
+						{#if savingLockoutConfig}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Save
+					</button>
+				</div>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+				<label class="form-control">
+					<span class="label-text text-sm">Mode</span>
+					<select class="select select-bordered select-sm" bind:value={lockoutConfig.modeRaw} onchange={markLockoutDirty}>
+						<option value={0}>Off</option>
+						<option value={1}>Shadow (read-only)</option>
+						<option value={2}>Advisory (read-only)</option>
+						<option value={3}>Enforce (mute enabled)</option>
+					</select>
+				</label>
+				<label class="label cursor-pointer justify-start gap-3 py-0">
+					<span class="label-text text-sm">Core guard</span>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary toggle-sm"
+						checked={!!lockoutConfig.coreGuardEnabled}
+						onchange={(e) => {
+							lockoutConfig.coreGuardEnabled = e.currentTarget.checked;
+							markLockoutDirty();
+						}}
+					/>
+				</label>
+				<label class="form-control">
+					<span class="label-text text-sm">Max queue drops</span>
+					<input
+						type="number"
+						min="0"
+						max="65535"
+						class="input input-bordered input-sm"
+						value={lockoutConfig.maxQueueDrops}
+						onchange={(e) => {
+							lockoutConfig.maxQueueDrops = clampU16(e.currentTarget.value);
+							markLockoutDirty();
+						}}
+					/>
+				</label>
+				<label class="form-control">
+					<span class="label-text text-sm">Max perf drops</span>
+					<input
+						type="number"
+						min="0"
+						max="65535"
+						class="input input-bordered input-sm"
+						value={lockoutConfig.maxPerfDrops}
+						onchange={(e) => {
+							lockoutConfig.maxPerfDrops = clampU16(e.currentTarget.value);
+							markLockoutDirty();
+						}}
+					/>
+				</label>
+				<label class="form-control">
+					<span class="label-text text-sm">Max event-bus drops</span>
+					<input
+						type="number"
+						min="0"
+						max="65535"
+						class="input input-bordered input-sm"
+						value={lockoutConfig.maxEventBusDrops}
+						onchange={(e) => {
+							lockoutConfig.maxEventBusDrops = clampU16(e.currentTarget.value);
+							markLockoutDirty();
+						}}
+					/>
+				</label>
+			</div>
+
+			<div class="text-xs text-base-content/65">
+				Current mode: {gpsStatus?.lockout?.mode || 'off'} · enforce allowed:{' '}
+				{gpsStatus?.lockout?.enforceAllowed ? 'yes' : 'no'} · core guard:{' '}
+				{gpsStatus?.lockout?.coreGuardTripped ? 'tripped' : 'clear'}
+				{#if gpsStatus?.lockout?.coreGuardReason}
+					· reason: {gpsStatus.lockout.coreGuardReason}
+				{/if}
+			</div>
+		</div>
+	</div>
+
+	<div class="card bg-base-200 shadow">
+		<div class="card-body gap-3">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h2 class="card-title">Lockout Zones</h2>
+					<p class="text-sm text-base-content/70">
+						Read-only snapshot of active lockouts and pending learner candidates.
+					</p>
+				</div>
+				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutZones()} disabled={lockoutZonesLoading}>
+					{#if lockoutZonesLoading}
+						<span class="loading loading-spinner loading-xs"></span>
+					{/if}
+					Refresh
+				</button>
+			</div>
+
+			{#if lockoutZonesError}
+				<div class="alert alert-warning py-2" role="status">
+					<span>{lockoutZonesError}</span>
+				</div>
+			{/if}
+
+			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Active</div>
+					<div class="stat-value text-base">
+						{lockoutZonesStats.activeReturned}/{lockoutZonesStats.activeCount}
+					</div>
+					<div class="stat-desc">showing/total zones</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Pending</div>
+					<div class="stat-value text-base">
+						{lockoutZonesStats.pendingReturned}/{lockoutZonesStats.pendingCount}
+					</div>
+					<div class="stat-desc">showing/total candidates</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Promotion Hits</div>
+					<div class="stat-value text-base">{lockoutZonesStats.promotionHits || '—'}</div>
+					<div class="stat-desc">candidate threshold</div>
+				</div>
+			</div>
+
+			{#if lockoutZonesLoading}
+				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+			{:else}
+				<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+					<div class="overflow-x-auto">
+						<div class="text-sm font-medium mb-2">Active Zones</div>
+						{#if activeLockoutZones.length === 0}
+							<div class="text-sm text-base-content/70">No active lockout zones.</div>
+						{:else}
+							<table class="table table-sm">
+								<thead>
+									<tr>
+										<th>Slot</th>
+										<th>Source</th>
+										<th>Band</th>
+										<th>Freq</th>
+										<th>Conf</th>
+										<th>Radius</th>
+										<th>Location</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each activeLockoutZones as zone}
+										<tr>
+											<td class="font-mono text-xs">{zone.slot}</td>
+											<td class="text-xs">
+												{zone.manual && zone.learned
+													? 'manual+learned'
+													: zone.manual
+														? 'manual'
+														: zone.learned
+															? 'learned'
+															: 'active'}
+											</td>
+											<td>{formatBandMask(zone.bandMask)}</td>
+											<td>{formatFrequency(zone.frequencyMHz)}</td>
+											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
+											<td>{typeof zone.radiusM === 'number' ? `${Math.round(zone.radiusM)} m` : '—'}</td>
+											<td>
+												<div class="font-mono text-xs">
+													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
+												</div>
+												<a
+													class="link link-primary text-xs"
+													href={`https://maps.google.com/?q=${zone.latitude},${zone.longitude}`}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													map
+												</a>
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						{/if}
+					</div>
+
+					<div class="overflow-x-auto">
+						<div class="text-sm font-medium mb-2">Pending Candidates</div>
+						{#if pendingLockoutZones.length === 0}
+							<div class="text-sm text-base-content/70">No pending candidates.</div>
+						{:else}
+							<table class="table table-sm">
+								<thead>
+									<tr>
+										<th>Slot</th>
+										<th>Band</th>
+										<th>Freq</th>
+										<th>Hits</th>
+										<th>Remaining</th>
+										<th>Last Seen</th>
+										<th>Location</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each pendingLockoutZones as zone}
+										<tr>
+											<td class="font-mono text-xs">{zone.slot}</td>
+											<td>{zone.band || 'UNK'}</td>
+											<td>{formatFrequency(zone.frequencyMHz)}</td>
+											<td>{typeof zone.hitCount === 'number' ? zone.hitCount : '—'}</td>
+											<td>{typeof zone.hitsRemaining === 'number' ? zone.hitsRemaining : '—'}</td>
+											<td class="text-xs">{formatEpochMs(zone.lastSeenMs)}</td>
+											<td>
+												<div class="font-mono text-xs">
+													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
+												</div>
+												<a
+													class="link link-primary text-xs"
+													href={`https://maps.google.com/?q=${zone.latitude},${zone.longitude}`}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													map
+												</a>
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						{/if}
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 
