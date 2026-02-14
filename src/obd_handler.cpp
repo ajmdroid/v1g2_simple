@@ -2,6 +2,7 @@
 
 #include "obd_handler.h"
 #include "storage_manager.h"
+#include "modules/obd/obd_state_policy.h"
 
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
@@ -712,37 +713,39 @@ bool OBDHandler::runStateMachine() {
             return lastData.valid;
 
         case OBDState::DISCONNECTED:
-            if (!hasTargetDevice) {
-                return false;
-            }
-            if (connectionFailures >= MAX_CONNECTION_FAILURES) {
-                // Escalating cooldown: 60s → 120s → 240s → 300s (cap).
-                // Reduces BLE radio churn when the adapter is off for
-                // extended periods (e.g. car parked).
-                uint32_t cooldown = 60000u * (1u << (reconnectCycleCount < 3 ? reconnectCycleCount : 3));
-                if (cooldown > MAX_RECONNECT_COOLDOWN_MS) cooldown = MAX_RECONNECT_COOLDOWN_MS;
-                if ((millis() - lastPollMs) >= cooldown) {
-                    reconnectCycleCount = (reconnectCycleCount < 10) ? reconnectCycleCount + 1 : 10;
-                    Serial.printf("[OBD] Reconnect cooldown elapsed (%lus) - returning to IDLE (cycle %u)\n",
-                                  (unsigned long)(cooldown / 1000),
-                                  (unsigned)reconnectCycleCount);
+        {
+            const uint32_t elapsedSinceDisconnectMs = millis() - lastPollMs;
+            const ObdStatePolicy::DisconnectedDecision decision =
+                ObdStatePolicy::evaluateDisconnected(
+                    hasTargetDevice,
+                    connectionFailures,
+                    MAX_CONNECTION_FAILURES,
+                    reconnectCycleCount,
+                    elapsedSinceDisconnectMs,
+                    BASE_RETRY_DELAY_MS,
+                    MAX_RETRY_DELAY_MS,
+                    MAX_RECONNECT_COOLDOWN_MS);
+
+            if (decision.transitionToIdle) {
+                reconnectCycleCount = decision.nextReconnectCycleCount;
+                Serial.printf("[OBD] Reconnect cooldown elapsed (%lus) - returning to IDLE (cycle %u)\n",
+                              (unsigned long)(decision.waitThresholdMs / 1000),
+                              (unsigned)reconnectCycleCount);
+                if (decision.resetConnectionFailures) {
                     connectionFailures = 0;
-                    hasTargetDevice = false;
-                    state = OBDState::IDLE;
                 }
+                if (decision.clearTargetDevice) {
+                    hasTargetDevice = false;
+                }
+                state = OBDState::IDLE;
                 return false;
             }
 
-            {
-                uint32_t retryDelay = BASE_RETRY_DELAY_MS * (1u << connectionFailures);
-                if (retryDelay > MAX_RETRY_DELAY_MS) {
-                    retryDelay = MAX_RETRY_DELAY_MS;
-                }
-                if ((millis() - lastPollMs) >= retryDelay) {
-                    state = OBDState::CONNECTING;
-                }
+            if (decision.transitionToConnecting) {
+                state = OBDState::CONNECTING;
             }
             return false;
+        }
     }
 
     return false;
