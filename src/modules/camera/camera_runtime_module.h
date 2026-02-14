@@ -10,11 +10,13 @@ struct CameraRuntimeCounters {
     uint32_t cameraTicks = 0;
     uint32_t cameraTickSkipsOverload = 0;
     uint32_t cameraTickSkipsNonCore = 0;
+    uint32_t cameraTickSkipsMemoryGuard = 0;
     uint32_t cameraCandidatesChecked = 0;
     uint32_t cameraMatches = 0;
     uint32_t cameraAlertsStarted = 0;
     uint32_t cameraBudgetExceeded = 0;
     uint32_t cameraLoadFailures = 0;
+    uint32_t cameraLoadSkipsMemoryGuard = 0;
     uint32_t cameraIndexSwapCount = 0;
     uint32_t cameraIndexSwapFailures = 0;
 };
@@ -29,6 +31,10 @@ struct CameraRuntimeStatus {
     uint32_t lastCandidatesChecked = 0;
     uint32_t lastMatches = 0;
     bool lastCapReached = false;
+    uint32_t lastInternalFree = 0;
+    uint32_t lastInternalLargestBlock = 0;
+    uint32_t memoryGuardMinFree = 0;
+    uint32_t memoryGuardMinLargestBlock = 0;
     CameraRuntimeCounters counters;
     CameraDataLoaderStatus loader;
 };
@@ -36,6 +42,8 @@ struct CameraRuntimeStatus {
 class CameraRuntimeModule {
 public:
     static constexpr uint32_t DEFAULT_TICK_INTERVAL_MS = 200;
+    static constexpr uint32_t kMemoryGuardMinFreeInternal = 21504;      // 21 KiB
+    static constexpr uint32_t kMemoryGuardMinLargestBlock = 11264;      // 11 KiB
 
     void begin(bool enabled);
     void setEnabled(bool enabled);
@@ -62,6 +70,8 @@ private:
     uint32_t lastCandidatesChecked_ = 0;
     uint32_t lastMatches_ = 0;
     bool lastCapReached_ = false;
+    uint32_t lastInternalFree_ = 0;
+    uint32_t lastInternalLargestBlock_ = 0;
     CameraRuntimeCounters counters_ = {};
     CameraIndex index_;
     CameraEventLog eventLog_;

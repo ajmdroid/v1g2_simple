@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <esp_heap_caps.h>
 #include <limits>
 
 namespace {
@@ -97,6 +98,8 @@ void CameraRuntimeModule::begin(bool enabled) {
     lastCandidatesChecked_ = 0;
     lastMatches_ = 0;
     lastCapReached_ = false;
+    lastInternalFree_ = 0;
+    lastInternalLargestBlock_ = 0;
     counters_ = {};
     index_.clear();
     eventLog_.reset();
@@ -160,6 +163,15 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     lastCandidatesChecked_ = 0;
     lastMatches_ = 0;
     lastCapReached_ = false;
+    lastInternalFree_ = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    lastInternalLargestBlock_ =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (lastInternalFree_ < kMemoryGuardMinFreeInternal ||
+        lastInternalLargestBlock_ < kMemoryGuardMinLargestBlock) {
+        counters_.cameraTickSkipsMemoryGuard++;
+        finalizeTickTiming();
+        return;
+    }
 
     if (!index_.isLoaded()) {
         finalizeTickTiming();
@@ -272,8 +284,13 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.lastCandidatesChecked = lastCandidatesChecked_;
     out.lastMatches = lastMatches_;
     out.lastCapReached = lastCapReached_;
+    out.lastInternalFree = lastInternalFree_;
+    out.lastInternalLargestBlock = lastInternalLargestBlock_;
+    out.memoryGuardMinFree = kMemoryGuardMinFreeInternal;
+    out.memoryGuardMinLargestBlock = kMemoryGuardMinLargestBlock;
     out.counters = counters_;
     out.loader = dataLoader_.status();
     out.counters.cameraLoadFailures = out.loader.loadFailures;
+    out.counters.cameraLoadSkipsMemoryGuard = out.loader.loadSkipsMemoryGuard;
     return out;
 }

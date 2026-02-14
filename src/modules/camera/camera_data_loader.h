@@ -10,12 +10,17 @@
 struct CameraDataLoaderStatus {
     uint32_t loadAttempts = 0;
     uint32_t loadFailures = 0;
+    uint32_t loadSkipsMemoryGuard = 0;
     uint32_t lastAttemptMs = 0;
     uint32_t lastSuccessMs = 0;
     uint32_t lastLoadDurationMs = 0;
     uint32_t maxLoadDurationMs = 0;
     uint32_t lastSortDurationMs = 0;
     uint32_t lastSpanBuildDurationMs = 0;
+    uint32_t lastInternalFree = 0;
+    uint32_t lastInternalLargestBlock = 0;
+    uint32_t memoryGuardMinFree = 0;
+    uint32_t memoryGuardMinLargestBlock = 0;
     bool taskRunning = false;
     bool loadInProgress = false;
     bool reloadPending = false;
@@ -35,6 +40,12 @@ public:
     CameraDataLoaderStatus status() const;
 
 private:
+    enum class BuildOutcome : uint8_t {
+        Success = 0,
+        Failed = 1,
+        SkippedMemoryGuard = 2,
+    };
+
     struct VcamHeader {
         char magic[4];
         uint32_t version;
@@ -61,7 +72,7 @@ private:
 
     static void loaderTaskEntry(void* param);
     void loaderTaskLoop();
-    bool buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers);
+    BuildOutcome buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers);
     bool accumulateRecordCount(uint32_t& outTotalRecords);
     bool loadRecords(CameraRecord* outRecords, uint32_t totalRecords);
     bool loadFileRecords(const char* path,
@@ -81,6 +92,8 @@ private:
     static constexpr uint32_t kExpectedVersion = 1;
     static constexpr uint32_t kExpectedRecordSize = 24;
     static constexpr uint32_t kPsramHeadroomBytes = 256u * 1024u;
+    static constexpr uint32_t kMemoryGuardMinFreeInternal = 24576;     // 24 KiB
+    static constexpr uint32_t kMemoryGuardMinLargestBlock = 11264;     // 11 KiB
 
     TaskHandle_t loaderTask_ = nullptr;
     std::atomic<bool> reloadPending_{false};

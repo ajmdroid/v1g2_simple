@@ -51,6 +51,8 @@ void CameraDataLoader::reset() {
     portENTER_CRITICAL(&statusMux_);
     status_ = {};
     status_.taskRunning = (loaderTask_ != nullptr);
+    status_.memoryGuardMinFree = kMemoryGuardMinFreeInternal;
+    status_.memoryGuardMinLargestBlock = kMemoryGuardMinLargestBlock;
     portEXIT_CRITICAL(&statusMux_);
 }
 
@@ -101,6 +103,8 @@ CameraDataLoaderStatus CameraDataLoader::status() const {
     out.taskRunning = (loaderTask_ != nullptr);
     out.loadInProgress = loadInProgress_.load(std::memory_order_relaxed);
     out.reloadPending = reloadPending_.load(std::memory_order_relaxed);
+    out.memoryGuardMinFree = kMemoryGuardMinFreeInternal;
+    out.memoryGuardMinLargestBlock = kMemoryGuardMinLargestBlock;
     return out;
 }
 
@@ -129,7 +133,8 @@ void CameraDataLoader::loaderTaskLoop() {
 
         CameraIndexOwnedBuffers built{};
         const uint32_t loadStartMs = millis();
-        const bool ok = buildEnforcementIndex(built);
+        const BuildOutcome outcome = buildEnforcementIndex(built);
+        const bool ok = (outcome == BuildOutcome::Success);
         const uint32_t loadDurationMs = static_cast<uint32_t>(millis() - loadStartMs);
 
         if (ok) {
@@ -146,7 +151,11 @@ void CameraDataLoader::loaderTaskLoop() {
         } else {
             CameraIndex::freeOwnedBuffers(built);
             portENTER_CRITICAL(&statusMux_);
-            status_.loadFailures++;
+            if (outcome == BuildOutcome::SkippedMemoryGuard) {
+                status_.loadSkipsMemoryGuard++;
+            } else {
+                status_.loadFailures++;
+            }
             status_.lastLoadDurationMs = loadDurationMs;
             if (loadDurationMs > status_.maxLoadDurationMs) {
                 status_.maxLoadDurationMs = loadDurationMs;
@@ -161,32 +170,43 @@ void CameraDataLoader::loaderTaskLoop() {
     }
 }
 
-bool CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {
+CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        return false;
+        return BuildOutcome::Failed;
+    }
+
+    const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const uint32_t largestInternal =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    portENTER_CRITICAL(&statusMux_);
+    status_.lastInternalFree = freeInternal;
+    status_.lastInternalLargestBlock = largestInternal;
+    portEXIT_CRITICAL(&statusMux_);
+    if (freeInternal < kMemoryGuardMinFreeInternal || largestInternal < kMemoryGuardMinLargestBlock) {
+        return BuildOutcome::SkippedMemoryGuard;
     }
 
     uint32_t totalRecords = 0;
     if (!accumulateRecordCount(totalRecords) || totalRecords == 0) {
-        return false;
+        return BuildOutcome::Failed;
     }
 
     const uint32_t requiredBytes = totalRecords * sizeof(CameraRecord);
     const uint32_t largestPsram = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
     if (largestPsram < (requiredBytes + kPsramHeadroomBytes)) {
-        return false;
+        return BuildOutcome::Failed;
     }
 
     CameraRecord* records = static_cast<CameraRecord*>(
         heap_caps_malloc(requiredBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!records) {
-        return false;
+        return BuildOutcome::Failed;
     }
 
     bool ok = loadRecords(records, totalRecords);
     if (!ok) {
         heap_caps_free(records);
-        return false;
+        return BuildOutcome::Failed;
     }
 
     const uint32_t sortStartMs = millis();
@@ -215,7 +235,7 @@ bool CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers
     portEXIT_CRITICAL(&statusMux_);
     if (!ok) {
         heap_caps_free(records);
-        return false;
+        return BuildOutcome::Failed;
     }
 
     outBuffers.records = records;
@@ -223,7 +243,7 @@ bool CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers
     outBuffers.spans = spans;
     outBuffers.spanCount = spanCount;
     outBuffers.version = nextVersion_.fetch_add(1, std::memory_order_relaxed);
-    return true;
+    return BuildOutcome::Success;
 }
 
 bool CameraDataLoader::accumulateRecordCount(uint32_t& outTotalRecords) {

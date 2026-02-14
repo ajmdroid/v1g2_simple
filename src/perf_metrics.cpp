@@ -10,6 +10,7 @@
 #include "obd_handler.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/camera/camera_runtime_module.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -108,6 +109,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
     GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
 
     portENTER_CRITICAL(&sPerfSnapshotMux);
     if (freeDmaCap < sDmaFreeCapMin) {
@@ -215,6 +217,31 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.gpsObsDrops = gpsLogStats.drops;
     snapshot.gpsObsSize = static_cast<uint32_t>(gpsLogStats.size);
     snapshot.gpsObsPublished = gpsLogStats.published;
+    snapshot.cameraEnabled = cameraStatus.enabled ? 1u : 0u;
+    snapshot.cameraIndexLoaded = cameraStatus.indexLoaded ? 1u : 0u;
+    snapshot.cameraLastCapReached = cameraStatus.lastCapReached ? 1u : 0u;
+    snapshot.cameraLoaderInProgress = cameraStatus.loader.loadInProgress ? 1u : 0u;
+    snapshot.cameraTicks = cameraStatus.counters.cameraTicks;
+    snapshot.cameraTickSkipsOverload = cameraStatus.counters.cameraTickSkipsOverload;
+    snapshot.cameraTickSkipsNonCore = cameraStatus.counters.cameraTickSkipsNonCore;
+    snapshot.cameraTickSkipsMemGuard = cameraStatus.counters.cameraTickSkipsMemoryGuard;
+    snapshot.cameraCandidatesChecked = cameraStatus.counters.cameraCandidatesChecked;
+    snapshot.cameraMatches = cameraStatus.counters.cameraMatches;
+    snapshot.cameraAlertsStarted = cameraStatus.counters.cameraAlertsStarted;
+    snapshot.cameraBudgetExceeded = cameraStatus.counters.cameraBudgetExceeded;
+    snapshot.cameraLoadFailures = cameraStatus.loader.loadFailures;
+    snapshot.cameraLoadSkipsMemGuard = cameraStatus.loader.loadSkipsMemoryGuard;
+    snapshot.cameraIndexSwapCount = cameraStatus.counters.cameraIndexSwapCount;
+    snapshot.cameraIndexSwapFailures = cameraStatus.counters.cameraIndexSwapFailures;
+    snapshot.cameraLastTickUs = cameraStatus.lastTickDurationUs;
+    snapshot.cameraMaxTickUs = cameraStatus.maxTickDurationUs;
+    snapshot.cameraLastLoadMs = cameraStatus.loader.lastLoadDurationMs;
+    snapshot.cameraMaxLoadMs = cameraStatus.loader.maxLoadDurationMs;
+    snapshot.cameraLastSortMs = cameraStatus.loader.lastSortDurationMs;
+    snapshot.cameraLastSpanMs = cameraStatus.loader.lastSpanBuildDurationMs;
+    snapshot.cameraLastInternalFree = cameraStatus.lastInternalFree;
+    snapshot.cameraLastInternalBlock = cameraStatus.lastInternalLargestBlock;
+    snapshot.cameraLoaderReadyVersion = cameraStatus.loader.readyVersion;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
