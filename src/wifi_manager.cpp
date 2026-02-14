@@ -4059,7 +4059,8 @@ void WiFiManager::handleLockoutEvents() {
         limit = clampU16Value(server.arg("limit").toInt(), 1, 128);
     }
 
-    SignalObservation samples[128] = {};
+    // Keep this large scratch buffer off the loop-task stack.
+    static SignalObservation samples[128];
     const size_t count = signalObservationLog.copyRecent(samples, limit);
     const SignalObservationLogStats stats = signalObservationLog.stats();
 
