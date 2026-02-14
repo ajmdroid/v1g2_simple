@@ -27,7 +27,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
 // Track lastAlertGapRecoverMs locally since it was removed from header
 static unsigned long lastAlertGapRecoverMs = 0;
 
-void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
+void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
         !volumeFade || !voice || !speedVolume || !displayMode) {
         return;
@@ -69,9 +69,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs) {
         const auto& currentAlerts = parser->getAllAlerts();
 
         *displayMode = DisplayMode::LIVE;
-
-        // Suppression subsystem is disabled in this build.
-        bool prioritySuppressed = false;
 
         VolumeFadeContext fadeCtx;
         fadeCtx.hasAlert = true;

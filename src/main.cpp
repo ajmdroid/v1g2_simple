@@ -947,6 +947,8 @@ void loop() {
         const auto& lockRes = lockoutEnforcer.lastResult();
         display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
 
+        bool lockoutPrioritySuppressed = false;
+
         // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
         // Rate-limited: only send once per lockout-match cycle (not every frame).
         {
@@ -960,6 +962,14 @@ void loop() {
                 perfCounters.queueDrops.load(),
                 perfCounters.perfDrop.load(),
                 systemEventBus.getDropCount());
+
+            const bool enforceMode =
+                lockRes.mode == static_cast<uint8_t>(LOCKOUT_RUNTIME_ENFORCE);
+            const bool enforceAllowed = enforceMode && !lockoutGuard.tripped;
+
+            // Suppress local priority announcements in ENFORCE lockout matches.
+            lockoutPrioritySuppressed =
+                lockRes.evaluated && lockRes.shouldMute && enforceAllowed;
 
             const LockoutRuntimeMuteDecision muteDecision =
                 evaluateLockoutRuntimeMute(lockRes, lockoutGuard, bleClient.isConnected(), lockoutMuteState);
@@ -980,7 +990,7 @@ void loop() {
             }
             if (!overloadThisLoop) {
                 uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
-                displayPipelineModule.handleParsed(nowMs);
+                displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
                 perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
                 lastFreqUiMs = nowMs;
             }

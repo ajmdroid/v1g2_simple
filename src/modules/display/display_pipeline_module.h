@@ -28,7 +28,8 @@ public:
                DebugLogger* debugLogger);
 
     // Process after a successful parser.parse(); expects parser state already updated.
-    void handleParsed(unsigned long nowMs);
+    // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
+    void handleParsed(unsigned long nowMs, bool prioritySuppressed);
 
 private:
     DisplayMode* displayMode = nullptr;
