@@ -57,6 +57,7 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
+#include "modules/camera/camera_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
@@ -747,6 +748,7 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+    cameraRuntimeModule.begin(true);
     lockoutStore.begin(&lockoutIndex);
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
@@ -1038,6 +1040,9 @@ void loop() {
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();
+
+    // Camera runtime is strictly low-priority and self-gated on overload/non-core.
+    cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop);
 
     if (!skipNonCoreThisLoop) {
         // Process WiFi/web server
