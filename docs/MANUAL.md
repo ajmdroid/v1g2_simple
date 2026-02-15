@@ -176,20 +176,20 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~2150 | Application entry, loop, touch handling, voice alert logic, volume control |
-| `ble_client.cpp` | ~1743 | NimBLE client/server, V1 connection |
-| `display.cpp` | ~3204 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
-| `wifi_manager.cpp` | ~1500 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `audio_beep.cpp` | ~1178 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
-| `settings.cpp` | ~650 | Preferences (NVS) storage |
-| `v1_profiles.cpp` | ~574 | Profile JSON on SD/LittleFS |
-| `battery_manager.cpp` | ~590 | ADC, TCA9554 I/O expander |
-| `packet_parser.cpp` | ~453 | ESP packet framing and decoding |
-| `storage_manager.cpp` | ~63 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
-| `obd_handler.cpp` | ~600 | OBD-II via ELM327 BLE adapter (vehicle speed) |
+| `main.cpp` | ~1315 | Application entry, loop, touch handling, voice alert logic, volume control |
+| `ble_client.cpp` | ~2878 | NimBLE client/server, V1 connection |
+| `display.cpp` | ~4931 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
+| `wifi_manager.cpp` | ~5334 | WebServer, API endpoints (ArduinoJson), LittleFS |
+| `audio_beep.cpp` | ~1352 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` | ~2318 | Preferences (NVS) storage |
+| `v1_profiles.cpp` | ~776 | Profile JSON on SD/LittleFS |
+| `battery_manager.cpp` | ~705 | ADC, TCA9554 I/O expander |
+| `packet_parser.cpp` | ~577 | ESP packet framing and decoding |
+| `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
+| `touch_handler.cpp` | ~171 | AXS15231B I2C touch polling |
+| `obd_handler.cpp` | ~2234 | OBD-II via ELM327 BLE adapter (vehicle speed) |
 | `src/modules/` | evolving | Runtime modules for GPS, lockout, camera, display pipeline, voice, power, etc. |
-| `perf_metrics.cpp` | ~156 | Latency tracking (ArduinoJson) |
+| `perf_metrics.cpp` | ~753 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -1553,8 +1553,7 @@ npm run deploy                            # Copy build/ to data/
 | Script | Purpose |
 |--------|---------|
 | `scripts/pio-size.sh` | Report firmware size |
-| `scripts/pio-check.sh` | Run clang-tidy static analysis |
-| `tools/perf_test.sh` | Performance testing |
+| `scripts/pio-check.sh` | Run static analysis |
 | `tools/smoke_metrics_runtime.py` | Runtime perf counter smoke checks (API + CSV reflection) |
 | `tools/score_perf_csv.py` | Score `/perf/perf_boot_*.csv` against hard/advisory SLOs |
 
@@ -1562,10 +1561,16 @@ npm run deploy                            # Copy build/ to data/
 
 ### Testing
 
-No automated tests exist. Manual testing procedure:
+Automated unit tests run via PlatformIO's Unity framework:
+
+```bash
+pio test -e native          # Run all native unit tests (~40+ suites)
+```
+
+Manual testing procedure:
 
 1. **Build test:** `./build.sh` (or `pio run -e waveshare-349`)
-2. **Static analysis:** `./scripts/pio-check.sh` (clang-tidy)
+2. **Static analysis:** `./scripts/pio-check.sh`
 3. **Size check:** `./scripts/pio-size.sh`
 4. **Functional test:**
    - Power on, verify splash

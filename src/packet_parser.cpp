@@ -103,11 +103,7 @@ void PacketParser::resetAlertAssembly() {
     chunkCount = 0;
 }
 
-// DEPRECATED: This method is no longer needed since we use V1's isPriority flag
-// (aux0 bit 7) directly from the packet data. Kept for API compatibility only.
-void PacketParser::resetPriorityState() {
-    // No-op: priority state is now read directly from V1 packets
-}
+
 
 // Static flag to signal alert count tracker reset on next parseAlertData() call
 // Used on V1 disconnect to ensure clean state on reconnect

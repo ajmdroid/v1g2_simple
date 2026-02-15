@@ -2015,7 +2015,7 @@ bool SettingsManager::restoreFromSD() {
         }
     };
     
-    // === WiFi/Network Settings (v2+) ===
+    // === WiFi/Network Settings ===
     // Note: AP password NOT restored from SD for security - user must re-enter after restore
     restoreBool("enableWifi", settings.enableWifi);
     if (doc["wifiMode"].is<int>()) settings.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
@@ -2179,7 +2179,7 @@ bool SettingsManager::restoreFromSD() {
         settings.lowSpeedMuteThresholdMph = clampU8(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
     }
     
-    // === Auto-Push Settings (v2+) ===
+    // === Auto-Push Settings ===
     // Only allow backup to enable auto-push (avoid stale backups disabling it)
     bool backupAutoPushEnabled = false;
     if (parseBoolVariant(doc["autoPushEnabled"], backupAutoPushEnabled) && backupAutoPushEnabled) {

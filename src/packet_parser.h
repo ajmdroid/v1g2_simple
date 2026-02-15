@@ -111,8 +111,7 @@ public:
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
     
-    // Reset priority selection state (no-op now that we trust V1's priority)
-    static void resetPriorityState();
+
     
 
     

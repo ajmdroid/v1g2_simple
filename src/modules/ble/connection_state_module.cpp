@@ -58,7 +58,6 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
             }
         } else {
             // Just disconnected - reset stale state
-            PacketParser::resetPriorityState();
             PacketParser::resetAlertCountTracker();
             parser->resetAlertAssembly();
             V1Display::resetChangeTracking();

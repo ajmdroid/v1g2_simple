@@ -68,6 +68,9 @@ src/
 │   │   ├── lockout_store.h/cpp
 │   │   ├── lockout_enforcer.h/cpp
 │   │   ├── lockout_learner.h/cpp
+│   │   ├── lockout_entry.h
+│   │   ├── lockout_band_policy.h/cpp
+│   │   ├── lockout_runtime_mute_controller.h/cpp
 │   │   ├── signal_capture_module.h/cpp
 │   │   ├── signal_observation_log.h/cpp
 │   │   └── signal_observation_sd_logger.h/cpp

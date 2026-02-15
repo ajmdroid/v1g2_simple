@@ -107,7 +107,7 @@ Quick solutions for common issues with the V1-Simple device.
 1. **Wait longer**: First fix can take 2-5 minutes (cold start)
 2. **Go outside**: GPS needs clear sky view
 3. **Check module**: Not all units have GPS installed
-4. **Reset GPS**: Settings → GPS → Reset GPS Module
+4. **Reset GPS**: Power cycle device to reset GPS module
 
 ### GPS position is wrong/drifting
 
@@ -137,22 +137,22 @@ Quick solutions for common issues with the V1-Simple device.
 **Symptoms**: Passes same false alert multiple times without lockout
 
 **Solutions**:
-1. **Check settings**: Ensure `lockoutEnabled` is true
+1. **Check settings**: Ensure `gpsLockoutMode` is not set to `off`
 2. **Check learn count**: Default requires 2 passes
-3. **Check interval**: Must pass within `lockoutLearnIntervalHours` (default 24h)
-4. **Check distance**: Must be within `lockoutMaxDistanceM` (default 50m)
-5. **Check signal**: Must be below `lockoutMaxSignalStrength` (default 6 bars)
-6. **Ka protection**: Ka band has stricter requirements if enabled
+3. **Check interval**: Must pass within `gpsLockoutLearnerLearnIntervalHours` (default 24h)
+4. **Check distance**: Must be within lockout learner radius
+5. **Check signal**: Must be below max signal threshold
+6. **Ka protection**: Ka band learning is disabled by default (`gpsLockoutKaLearningEnabled`)
 
 ### Lockouts learning too aggressively
 
 **Symptoms**: Real alerts getting locked out
 
 **Solutions**:
-1. **Increase learn count**: Change from 2 to 3 passes required
-2. **Decrease distance**: Reduce `lockoutMaxDistanceM` to 30m
-3. **Decrease signal threshold**: Lower `lockoutMaxSignalStrength` to 4
-4. **Enable Ka protection**: Prevents Ka band from being locked out
+1. **Increase learn count**: Raise `gpsLockoutLearnerPromotionHits` from 2 to 3
+2. **Decrease radius**: Reduce `gpsLockoutLearnerRadiusE5` for tighter geo-match
+3. **Decrease frequency tolerance**: Lower `gpsLockoutLearnerFreqToleranceMHz`
+4. **Disable Ka learning**: Set `gpsLockoutKaLearningEnabled` to false
 
 ### Can't delete lockout
 

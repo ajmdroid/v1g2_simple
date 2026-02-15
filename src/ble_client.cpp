@@ -829,14 +829,6 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         }
     }
     
-    // Optional: Uncomment for BLE scan debugging
-    // static int debugCount = 0;
-    // if (debugCount < 20) {
-    //     Serial.printf("[BLE %2d] addr=%s RSSI=%3d name='%s'\n",
-    //                   debugCount++, addrStr.c_str(), rssi,
-    //                   name.length() > 0 ? name.c_str() : "(no name)");
-    // }
-
     // During OBD manual scan, collect all named devices for UI selection.
     if (!name.empty() && obdHandler.isScanActive()) {
         bleClient->enqueueObdScanResult(name.c_str(), addrStr.c_str(), rssi);
