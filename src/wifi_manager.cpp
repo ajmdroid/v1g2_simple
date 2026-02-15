@@ -2801,6 +2801,14 @@ void WiFiManager::handleDebugMetrics() {
         gpsObj["latitude"] = nullptr;
         gpsObj["longitude"] = nullptr;
     }
+    gpsObj["courseValid"] = gpsStatus.courseValid;
+    if (gpsStatus.courseValid) {
+        gpsObj["courseDeg"] = gpsStatus.courseDeg;
+        gpsObj["courseSampleTsMs"] = gpsStatus.courseSampleTsMs;
+    } else {
+        gpsObj["courseDeg"] = nullptr;
+        gpsObj["courseSampleTsMs"] = nullptr;
+    }
     if (gpsStatus.sampleValid) {
         gpsObj["speedMph"] = gpsStatus.speedMph;
         gpsObj["sampleTsMs"] = gpsStatus.sampleTsMs;
@@ -2812,6 +2820,11 @@ void WiFiManager::handleDebugMetrics() {
         gpsObj["sampleAgeMs"] = nullptr;
     } else {
         gpsObj["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+    if (gpsStatus.courseAgeMs == UINT32_MAX) {
+        gpsObj["courseAgeMs"] = nullptr;
+    } else {
+        gpsObj["courseAgeMs"] = gpsStatus.courseAgeMs;
     }
     if (gpsStatus.lastSentenceTsMs == 0) {
         gpsObj["lastSentenceTsMs"] = nullptr;
@@ -3961,6 +3974,14 @@ void WiFiManager::handleGpsStatus() {
         doc["latitude"] = nullptr;
         doc["longitude"] = nullptr;
     }
+    doc["courseValid"] = gpsStatus.courseValid;
+    if (gpsStatus.courseValid) {
+        doc["courseDeg"] = gpsStatus.courseDeg;
+        doc["courseSampleTsMs"] = gpsStatus.courseSampleTsMs;
+    } else {
+        doc["courseDeg"] = nullptr;
+        doc["courseSampleTsMs"] = nullptr;
+    }
 
     if (gpsStatus.sampleValid) {
         doc["speedMph"] = gpsStatus.speedMph;
@@ -3974,6 +3995,11 @@ void WiFiManager::handleGpsStatus() {
         doc["sampleAgeMs"] = nullptr;
     } else {
         doc["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+    if (gpsStatus.courseAgeMs == UINT32_MAX) {
+        doc["courseAgeMs"] = nullptr;
+    } else {
+        doc["courseAgeMs"] = gpsStatus.courseAgeMs;
     }
     if (gpsStatus.lastSentenceTsMs == 0) {
         doc["lastSentenceTsMs"] = nullptr;
@@ -4118,6 +4144,11 @@ void WiFiManager::handleCameraStatus() {
     doc["lastCandidatesChecked"] = runtimeStatus.lastCandidatesChecked;
     doc["lastMatches"] = runtimeStatus.lastMatches;
     doc["lastCapReached"] = runtimeStatus.lastCapReached;
+    if (std::isfinite(runtimeStatus.lastHeadingDeltaDeg)) {
+        doc["lastHeadingDeltaDeg"] = runtimeStatus.lastHeadingDeltaDeg;
+    } else {
+        doc["lastHeadingDeltaDeg"] = nullptr;
+    }
     doc["lastInternalFree"] = runtimeStatus.lastInternalFree;
     doc["lastInternalLargestBlock"] = runtimeStatus.lastInternalLargestBlock;
     doc["memoryGuardMinFree"] = runtimeStatus.memoryGuardMinFree;
@@ -5107,6 +5138,19 @@ void WiFiManager::handleGpsConfig() {
     } else {
         response["latitude"] = nullptr;
         response["longitude"] = nullptr;
+    }
+    response["courseValid"] = gpsStatus.courseValid;
+    if (gpsStatus.courseValid) {
+        response["courseDeg"] = gpsStatus.courseDeg;
+        response["courseSampleTsMs"] = gpsStatus.courseSampleTsMs;
+    } else {
+        response["courseDeg"] = nullptr;
+        response["courseSampleTsMs"] = nullptr;
+    }
+    if (gpsStatus.courseAgeMs == UINT32_MAX) {
+        response["courseAgeMs"] = nullptr;
+    } else {
+        response["courseAgeMs"] = gpsStatus.courseAgeMs;
     }
     const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     response["observationSize"] = static_cast<uint32_t>(gpsLogStats.size);

@@ -60,6 +60,9 @@ void GpsRuntimeModule::resetRuntimeState() {
     locationValid_ = false;
     latitudeDeg_ = NAN;
     longitudeDeg_ = NAN;
+    courseValid_ = false;
+    courseDeg_ = NAN;
+    courseSampleTsMs_ = 0;
     sampleTsMs_ = 0;
     moduleDetected_ = false;
     detectionTimedOut_ = false;
@@ -106,6 +109,9 @@ void GpsRuntimeModule::updateDetectionTimeout(uint32_t nowMs) {
     locationValid_ = false;
     latitudeDeg_ = NAN;
     longitudeDeg_ = NAN;
+    courseValid_ = false;
+    courseDeg_ = NAN;
+    courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
     publishObservation(nowMs);
@@ -133,6 +139,9 @@ void GpsRuntimeModule::updateFixStaleness(uint32_t nowMs) {
     locationValid_ = false;
     latitudeDeg_ = NAN;
     longitudeDeg_ = NAN;
+    courseValid_ = false;
+    courseDeg_ = NAN;
+    courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
     publishObservation(nowMs);
@@ -305,6 +314,9 @@ bool GpsRuntimeModule::parseGga(char* fields[], size_t fieldCount, uint32_t nowM
         locationValid_ = false;
         latitudeDeg_ = NAN;
         longitudeDeg_ = NAN;
+        courseValid_ = false;
+        courseDeg_ = NAN;
+        courseSampleTsMs_ = 0;
     }
     if (hasFix_) {
         lastFixTsMs_ = (nowMs == 0) ? millis() : nowMs;
@@ -326,6 +338,9 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
     if (status != 'A' && status != 'a') {
         rmcFix_ = false;
         hasFix_ = ggaFix_;
+        courseValid_ = false;
+        courseDeg_ = NAN;
+        courseSampleTsMs_ = 0;
         if (!hasFix_) {
             invalidateSpeedSample();
             locationValid_ = false;
@@ -362,6 +377,20 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
         return false;
     }
 
+    bool parsedCourseValid = false;
+    float parsedCourseDeg = NAN;
+    if (fieldCount > 8 && fields[8] && fields[8][0] != '\0') {
+        if (parseFloatStrict(fields[8], parsedCourseDeg) &&
+            std::isfinite(parsedCourseDeg) &&
+            parsedCourseDeg >= 0.0f &&
+            parsedCourseDeg <= 360.0f) {
+            if (parsedCourseDeg >= 360.0f) {
+                parsedCourseDeg = 0.0f;
+            }
+            parsedCourseValid = true;
+        }
+    }
+
     rmcFix_ = true;
     hasFix_ = true;
     sampleValid_ = true;
@@ -371,6 +400,9 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
     locationValid_ = true;
     latitudeDeg_ = parsedLatitude;
     longitudeDeg_ = parsedLongitude;
+    courseValid_ = parsedCourseValid;
+    courseDeg_ = parsedCourseValid ? parsedCourseDeg : NAN;
+    courseSampleTsMs_ = parsedCourseValid ? sampleTsMs_ : 0;
     hardwareSamples_++;
     publishObservation(sampleTsMs_);
 
@@ -525,7 +557,8 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
                                          float hdop,
                                          uint32_t timestampMs,
                                          float latitudeDeg,
-                                         float longitudeDeg) {
+                                         float longitudeDeg,
+                                         float courseDeg) {
     if (!enabled_) {
         return;
     }
@@ -555,10 +588,21 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
         latitudeDeg_ = NAN;
         longitudeDeg_ = NAN;
     }
+    if (hasFix &&
+        std::isfinite(courseDeg) &&
+        courseDeg >= 0.0f &&
+        courseDeg <= 360.0f) {
+        courseValid_ = true;
+        courseDeg_ = (courseDeg >= 360.0f) ? 0.0f : courseDeg;
+    } else {
+        courseValid_ = false;
+        courseDeg_ = NAN;
+    }
     sampleTsMs_ = (timestampMs == 0) ? millis() : timestampMs;
     if (hasFix_) {
         lastFixTsMs_ = sampleTsMs_;
     }
+    courseSampleTsMs_ = courseValid_ ? sampleTsMs_ : 0;
     injectedSamples_++;
     publishObservation(sampleTsMs_);
 }
@@ -573,6 +617,9 @@ void GpsRuntimeModule::clearSample() {
     locationValid_ = false;
     latitudeDeg_ = NAN;
     longitudeDeg_ = NAN;
+    courseValid_ = false;
+    courseDeg_ = NAN;
+    courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
     publishObservation(millis());
 }
@@ -600,6 +647,9 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     status.locationValid = locationValid_;
     status.latitudeDeg = latitudeDeg_;
     status.longitudeDeg = longitudeDeg_;
+    status.courseValid = courseValid_;
+    status.courseDeg = courseDeg_;
+    status.courseSampleTsMs = courseSampleTsMs_;
     status.sampleTsMs = sampleTsMs_;
     status.injectedSamples = injectedSamples_;
     status.moduleDetected = moduleDetected_;
@@ -623,6 +673,11 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
         status.fixAgeMs = static_cast<uint32_t>(nowMs - lastFixTsMs_);
     } else {
         status.fixAgeMs = UINT32_MAX;
+    }
+    if (courseValid_ && courseSampleTsMs_ != 0) {
+        status.courseAgeMs = static_cast<uint32_t>(nowMs - courseSampleTsMs_);
+    } else {
+        status.courseAgeMs = UINT32_MAX;
     }
 
     return status;

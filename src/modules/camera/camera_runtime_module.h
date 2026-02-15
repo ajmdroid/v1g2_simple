@@ -1,5 +1,6 @@
 #pragma once
 
+#include <math.h>
 #include <stdint.h>
 
 #include "camera_data_loader.h"
@@ -31,6 +32,7 @@ struct CameraRuntimeStatus {
     uint32_t lastCandidatesChecked = 0;
     uint32_t lastMatches = 0;
     bool lastCapReached = false;
+    float lastHeadingDeltaDeg = NAN;
     uint32_t lastInternalFree = 0;
     uint32_t lastInternalLargestBlock = 0;
     uint32_t memoryGuardMinFree = 0;
@@ -72,6 +74,7 @@ private:
     uint32_t lastCandidatesChecked_ = 0;
     uint32_t lastMatches_ = 0;
     bool lastCapReached_ = false;
+    float lastHeadingDeltaDeg_ = NAN;
     uint32_t lastInternalFree_ = 0;
     uint32_t lastInternalLargestBlock_ = 0;
     CameraRuntimeCounters counters_ = {};

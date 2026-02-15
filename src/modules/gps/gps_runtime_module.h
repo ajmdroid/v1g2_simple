@@ -12,6 +12,10 @@ struct GpsRuntimeStatus {
     bool locationValid = false;
     float latitudeDeg = NAN;
     float longitudeDeg = NAN;
+    bool courseValid = false;
+    float courseDeg = NAN;
+    uint32_t courseSampleTsMs = 0;
+    uint32_t courseAgeMs = UINT32_MAX;
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
     uint32_t fixAgeMs = UINT32_MAX;
@@ -48,7 +52,8 @@ public:
                            float hdop,
                            uint32_t timestampMs,
                            float latitudeDeg = NAN,
-                           float longitudeDeg = NAN);
+                           float longitudeDeg = NAN,
+                           float courseDeg = NAN);
     void clearSample();
 
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
@@ -98,6 +103,9 @@ private:
     bool locationValid_ = false;
     float latitudeDeg_ = NAN;
     float longitudeDeg_ = NAN;
+    bool courseValid_ = false;
+    float courseDeg_ = NAN;
+    uint32_t courseSampleTsMs_ = 0;
     uint32_t sampleTsMs_ = 0;
     uint32_t injectedSamples_ = 0;
     bool moduleDetected_ = false;

@@ -12,7 +12,9 @@ constexpr float kAlertRadiusM = 500.0f;
 constexpr float kEarthRadiusM = 6371000.0f;
 constexpr float kMinimumMatchSpeedMph = 3.0f;
 constexpr uint32_t kMaximumGpsSampleAgeMs = 2000;
+constexpr uint32_t kMaximumGpsCourseAgeMs = 2000;
 constexpr uint32_t kCooldownMs = 30000;
+constexpr float kHeadingEntryMaxDeltaDeg = 35.0f;
 constexpr float kPi = 3.14159265358979323846f;
 
 float degToRad(float value) {
@@ -30,6 +32,52 @@ float haversineMeters(float latA, float lonA, float latB, float lonB) {
                     std::cos(phi1) * std::cos(phi2) * sinHalfLambda * sinHalfLambda;
     const float c = 2.0f * std::atan2(std::sqrt(a), std::sqrt(std::max(0.0f, 1.0f - a)));
     return kEarthRadiusM * c;
+}
+
+float normalizeHeadingDeg(float headingDeg) {
+    if (!std::isfinite(headingDeg)) {
+        return NAN;
+    }
+    float normalized = std::fmod(headingDeg, 360.0f);
+    if (normalized < 0.0f) {
+        normalized += 360.0f;
+    }
+    return normalized;
+}
+
+float headingDeltaDeg(float headingA, float headingB) {
+    const float a = normalizeHeadingDeg(headingA);
+    const float b = normalizeHeadingDeg(headingB);
+    if (!std::isfinite(a) || !std::isfinite(b)) {
+        return NAN;
+    }
+    float delta = std::fabs(a - b);
+    if (delta > 180.0f) {
+        delta = 360.0f - delta;
+    }
+    return delta;
+}
+
+float bearingDeg(float latA, float lonA, float latB, float lonB) {
+    if (!std::isfinite(latA) || !std::isfinite(lonA) ||
+        !std::isfinite(latB) || !std::isfinite(lonB)) {
+        return NAN;
+    }
+    const float phi1 = degToRad(latA);
+    const float phi2 = degToRad(latB);
+    const float lambda1 = degToRad(lonA);
+    const float lambda2 = degToRad(lonB);
+    const float deltaLambda = lambda2 - lambda1;
+
+    const float y = std::sin(deltaLambda) * std::cos(phi2);
+    const float x = std::cos(phi1) * std::sin(phi2) -
+                    std::sin(phi1) * std::cos(phi2) * std::cos(deltaLambda);
+    if (!std::isfinite(x) || !std::isfinite(y) ||
+        (std::fabs(x) < 1e-6f && std::fabs(y) < 1e-6f)) {
+        return NAN;
+    }
+    const float bearingRad = std::atan2(y, x);
+    return normalizeHeadingDeg(bearingRad * (180.0f / kPi));
 }
 
 const CameraCellSpan* findCellSpan(const CameraCellSpan* spans, uint32_t spanCount, uint32_t cellKey) {
@@ -61,7 +109,46 @@ bool isGpsEligibleForCameraMatch(const GpsRuntimeStatus& gpsStatus) {
     if (gpsStatus.sampleAgeMs == UINT32_MAX || gpsStatus.sampleAgeMs > kMaximumGpsSampleAgeMs) {
         return false;
     }
+    if (!gpsStatus.courseValid || !std::isfinite(gpsStatus.courseDeg)) {
+        return false;
+    }
+    if (gpsStatus.courseAgeMs == UINT32_MAX || gpsStatus.courseAgeMs > kMaximumGpsCourseAgeMs) {
+        return false;
+    }
     return gpsStatus.speedMph >= kMinimumMatchSpeedMph;
+}
+
+float headingToleranceForRecord(const CameraRecord& record) {
+    if (record.toleranceDeg == 0) {
+        return kHeadingEntryMaxDeltaDeg;
+    }
+    const float fromRecord = static_cast<float>(record.toleranceDeg);
+    return std::clamp(fromRecord, 5.0f, kHeadingEntryMaxDeltaDeg);
+}
+
+bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
+                       const CameraRecord& record,
+                       float& outDeltaDeg) {
+    outDeltaDeg = NAN;
+
+    float targetHeadingDeg = NAN;
+    float headingToleranceDeg = kHeadingEntryMaxDeltaDeg;
+    if (record.bearingTenthsDeg >= 0 && record.bearingTenthsDeg < 3600) {
+        targetHeadingDeg = static_cast<float>(record.bearingTenthsDeg) * 0.1f;
+        headingToleranceDeg = headingToleranceForRecord(record);
+    } else {
+        targetHeadingDeg = bearingDeg(gpsStatus.latitudeDeg,
+                                      gpsStatus.longitudeDeg,
+                                      record.latitudeDeg,
+                                      record.longitudeDeg);
+    }
+
+    const float deltaDeg = headingDeltaDeg(gpsStatus.courseDeg, targetHeadingDeg);
+    if (!std::isfinite(deltaDeg)) {
+        return false;
+    }
+    outDeltaDeg = deltaDeg;
+    return deltaDeg <= headingToleranceDeg;
 }
 
 bool isCameraCoolingDown(const CameraEventLog& eventLog, uint32_t cameraId, uint32_t nowMs) {
@@ -100,6 +187,7 @@ void CameraRuntimeModule::begin(bool enabled) {
     lastCandidatesChecked_ = 0;
     lastMatches_ = 0;
     lastCapReached_ = false;
+    lastHeadingDeltaDeg_ = NAN;
     lastInternalFree_ = 0;
     lastInternalLargestBlock_ = 0;
     counters_ = {};
@@ -165,6 +253,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     lastCandidatesChecked_ = 0;
     lastMatches_ = 0;
     lastCapReached_ = false;
+    lastHeadingDeltaDeg_ = NAN;
     lastInternalFree_ = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     lastInternalLargestBlock_ =
         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -205,6 +294,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     uint32_t bestCameraId = 0;
     float bestDistanceM = std::numeric_limits<float>::max();
     uint8_t bestCameraType = 0;
+    float bestHeadingDeltaDeg = NAN;
 
     for (int32_t latDelta = -1; latDelta <= 1; ++latDelta) {
         for (int32_t lonDelta = -1; lonDelta <= 1; ++lonDelta) {
@@ -236,11 +326,17 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
                     continue;
                 }
 
+                float deltaDeg = NAN;
+                if (!isHeadingEligible(gpsStatus, record, deltaDeg)) {
+                    continue;
+                }
+
                 matchesThisTick++;
                 if (distanceM < bestDistanceM) {
                     bestDistanceM = distanceM;
                     bestCameraId = idx + 1u;
                     bestCameraType = record.type;
+                    bestHeadingDeltaDeg = deltaDeg;
                 }
             }
         }
@@ -254,6 +350,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     lastCandidatesChecked_ = visitedCandidates;
     lastMatches_ = matchesThisTick;
     lastCapReached_ = capReached;
+    lastHeadingDeltaDeg_ = bestHeadingDeltaDeg;
     if (capReached) {
         counters_.cameraBudgetExceeded++;
     }
@@ -286,6 +383,7 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.lastCandidatesChecked = lastCandidatesChecked_;
     out.lastMatches = lastMatches_;
     out.lastCapReached = lastCapReached_;
+    out.lastHeadingDeltaDeg = lastHeadingDeltaDeg_;
     out.lastInternalFree = lastInternalFree_;
     out.lastInternalLargestBlock = lastInternalLargestBlock_;
     out.memoryGuardMinFree = kMemoryGuardMinFreeInternal;

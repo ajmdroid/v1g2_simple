@@ -39,12 +39,43 @@ void test_valid_rmc_updates_speed_and_fix() {
     TEST_ASSERT_FLOAT_WITHIN(0.02f, 11.50779f, status.speedMph);
     TEST_ASSERT_FLOAT_WITHIN(0.0002f, 48.1173f, status.latitudeDeg);
     TEST_ASSERT_FLOAT_WITHIN(0.0002f, 11.516667f, status.longitudeDeg);
+    TEST_ASSERT_TRUE(status.courseValid);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 84.4f, status.courseDeg);
+    TEST_ASSERT_EQUAL_UINT32(1000, status.courseSampleTsMs);
+    TEST_ASSERT_EQUAL_UINT32(0, status.courseAgeMs);
 
     float speedMph = 0.0f;
     uint32_t tsMs = 0;
     TEST_ASSERT_TRUE(gpsRuntimeModule.getFreshSpeed(2500, speedMph, tsMs));
     TEST_ASSERT_FLOAT_WITHIN(0.02f, 11.50779f, speedMph);
     TEST_ASSERT_EQUAL_UINT32(1000, tsMs);
+}
+
+void test_valid_rmc_with_missing_course_marks_course_invalid() {
+    const bool accepted = gpsRuntimeModule.injectNmeaSentenceForTest(
+        "$GPRMC,123519,A,4807.038,N,01131.000,E,010.0,,230394,003.1,W*49", 2200);
+    TEST_ASSERT_TRUE(accepted);
+
+    GpsRuntimeStatus status = gpsRuntimeModule.snapshot(2200);
+    TEST_ASSERT_TRUE(status.sampleValid);
+    TEST_ASSERT_TRUE(status.hasFix);
+    TEST_ASSERT_FALSE(status.courseValid);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, status.courseAgeMs);
+}
+
+void test_scaffold_sample_accepts_optional_course() {
+    gpsRuntimeModule.setScaffoldSample(25.0f,
+                                       true,
+                                       7,
+                                       0.8f,
+                                       3000,
+                                       37.25f,
+                                       -122.01f,
+                                       123.5f);
+    const GpsRuntimeStatus status = gpsRuntimeModule.snapshot(3000);
+    TEST_ASSERT_TRUE(status.courseValid);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 123.5f, status.courseDeg);
+    TEST_ASSERT_EQUAL_UINT32(3000, status.courseSampleTsMs);
 }
 
 void test_valid_gga_sets_quality_without_speed_sample() {
@@ -134,6 +165,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_valid_rmc_updates_speed_and_fix);
     RUN_TEST(test_valid_gga_sets_quality_without_speed_sample);
+    RUN_TEST(test_valid_rmc_with_missing_course_marks_course_invalid);
+    RUN_TEST(test_scaffold_sample_accepts_optional_course);
     RUN_TEST(test_bad_checksum_is_rejected_and_counted);
     RUN_TEST(test_fix_loss_invalidates_speed_sample);
     RUN_TEST(test_invalid_coordinate_is_rejected);
