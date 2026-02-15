@@ -103,6 +103,7 @@
 				<li><a href="/cameras" class="hover:text-primary">Cameras</a></li>
 				<li><a href="/integrations" class="hover:text-primary">Integrations</a></li>
 				<li><a href="/settings" class="hover:text-primary">Settings</a></li>
+				<li><a href="/dev" class="hover:text-warning text-warning">Dev</a></li>
 			</ul>
 		</div>
 		<div class="navbar-end">
