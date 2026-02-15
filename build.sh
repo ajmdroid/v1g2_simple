@@ -191,8 +191,16 @@ if [ "$SKIP_WEB" = false ]; then
         CAMERA_AUDIO_COPIED=0
 
         if compgen -G "tools/freq_audio/mulaw/*.mul" > /dev/null; then
-            cp tools/freq_audio/mulaw/*.mul data/audio/
-            FREQ_AUDIO_COPIED=$(ls -1 tools/freq_audio/mulaw/*.mul 2>/dev/null | wc -l | tr -d ' ')
+            # ghz_*.mul clips are legacy duplicates; runtime now uses tens_XX for GHz tokens.
+            for src in tools/freq_audio/mulaw/*.mul; do
+                [ -e "$src" ] || continue
+                base="$(basename "$src")"
+                case "$base" in
+                    ghz_*.mul) continue ;;
+                esac
+                cp "$src" data/audio/
+                FREQ_AUDIO_COPIED=$((FREQ_AUDIO_COPIED + 1))
+            done
         fi
 
         if compgen -G "tools/camera_audio/cam_*.mul" > /dev/null; then

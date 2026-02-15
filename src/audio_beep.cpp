@@ -974,10 +974,10 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     
     // 2-4. Frequency clips (if mode includes frequency)
     if (mode == VOICE_MODE_FREQ_ONLY || mode == VOICE_MODE_BAND_FREQ) {
-        // GHz clip
+        // GHz token reuses two-digit number clips (e.g., "thirty four")
         int ghz = getGHz(band, freqMHz);
         if (ghz > 0) {
-            snprintf(params.filePaths[params.numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+            snprintf(params.filePaths[params.numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, ghz);
         }
         
         // Hundreds digit of MHz (first digit after decimal point)
@@ -1280,10 +1280,10 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
         snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, bandFile);
     }
     
-    // 2-4. Frequency clips
+    // 2-4. Frequency clips (GHz token reuses two-digit number clips)
     int ghz = getGHz(band, freqMHz);
     if (ghz > 0) {
-        snprintf(params.filePaths[params.numClips++], 48, "%s/ghz_%d.mul", AUDIO_PATH, ghz);
+        snprintf(params.filePaths[params.numClips++], 48, "%s/tens_%02d.mul", AUDIO_PATH, ghz);
     }
     int mhz = freqMHz % 1000;
     int hundredsDigit = mhz / 100;

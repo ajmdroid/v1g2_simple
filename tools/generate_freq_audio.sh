@@ -37,14 +37,8 @@ generate "dir_ahead" "ahead"
 generate "dir_behind" "behind"
 generate "dir_side" "side"
 
-# GHz integers (spoken naturally)
-echo "--- GHz ---"
-generate "ghz_10" "ten"
-generate "ghz_24" "twenty four"
-generate "ghz_33" "thirty three"
-generate "ghz_34" "thirty four"
-generate "ghz_35" "thirty five"
-generate "ghz_36" "thirty six"
+# GHz integer tokens now reuse tens_XX clips at runtime.
+# Keep generation focused on canonical number clips only.
 
 # Hundreds digit (first digit of MHz like 7 in 749)
 echo "--- Hundreds Digit ---"

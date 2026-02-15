@@ -736,7 +736,7 @@ Pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*
 | Directions | 3 | `dir_ahead.mul`, `dir_behind.mul`, `dir_side.mul` |
 | Digits | 10 | `digit_0.mul` through `digit_9.mul` |
 | Number words | 100 | `tens_00.mul` through `tens_99.mul` |
-| GHz prefixes | 3 | `ghz_10.mul`, `ghz_24.mul`, `ghz_34.mul` (X, K, Ka bands) |
+| GHz prefixes | 0 dedicated | Reuses `tens_10.mul`, `tens_24.mul`, `tens_33.mul`, `tens_34.mul`, `tens_35.mul`, `tens_36.mul` |
 | Bogey count | 1 | `bogeys.mul` - spoken "bogeys" for multi-alert announcements |
 | Special | 1 | `vol0_warning.mul` - "Warning, volume zero" |
 
