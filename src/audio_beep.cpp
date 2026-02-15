@@ -553,6 +553,7 @@ void play_vol0_beep() {
     
     if (audio_playing) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -566,6 +567,7 @@ void play_alert_voice(AlertBand band, AlertDirection direction) {
     
     if (audio_playing) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -684,6 +686,7 @@ void play_test_voice() {
     
     if (audio_playing) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -923,6 +926,7 @@ void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direc
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -1027,6 +1031,7 @@ void play_band_only(AlertBand band) {
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -1062,6 +1067,7 @@ void play_camera_ahead_voice(uint8_t cameraTypeRaw) {
 
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping camera voice");
+        PERF_INC(audioPlayBusy);
         return;
     }
 
@@ -1103,6 +1109,7 @@ void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -1168,6 +1175,7 @@ void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t 
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -1241,6 +1249,7 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
     
     if (audio_playing.load()) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
