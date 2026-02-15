@@ -104,18 +104,6 @@ Implementation notes:
 
 ---
 
-## Retired Code Policy
-
-`_disabled/` is reference-only historical code:
-
-- Not compiled into runtime firmware.
-- Not a dependency target for new implementations.
-- Safe to consult for regression triage or behavior comparisons.
-
-If a retired implementation is no longer useful as a comparison baseline, remove it in a dedicated cleanup PR.
-
----
-
 ## Logging Strategy
 
 The codebase uses two active logging mechanisms:

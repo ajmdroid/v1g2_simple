@@ -148,8 +148,6 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 
-Note: `_disabled/` remains reference-only historical code and is not part of runtime builds.
-
 ## Key Design Rules
 
 1. **Modules receive dependencies via begin()** - dependency injection for testability
