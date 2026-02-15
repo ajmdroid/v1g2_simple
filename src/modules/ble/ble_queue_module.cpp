@@ -131,6 +131,7 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
 
     if (length > 0 && length <= sizeof(BLEDataPacket::data)) {
         PERF_INC(rxPackets);
+        PERF_ADD(rxBytes, length);
         BLEDataPacket pkt;
         memcpy(pkt.data, data, length);
         pkt.length = length;

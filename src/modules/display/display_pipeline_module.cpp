@@ -90,6 +90,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     }
 
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
+        PERF_INC(displaySkips);
         return;
     }
     lastDisplayDraw = nowMs;
@@ -275,6 +276,7 @@ void DisplayPipelineModule::recordPerfTiming(const char* label, unsigned long st
     
     // Always record to perf metrics for scorecard attribution
     perfRecordDisplayRenderUs(dur);
+    PERF_INC(displayUpdates);
     
     if (!PERF_TIMING_LOGS) return;
     perfTimingAccum += dur;
