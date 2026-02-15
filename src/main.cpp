@@ -978,15 +978,24 @@ void loop() {
     const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
                                                           : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
     const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
+    // OBD BLE-critical suppression only matters when WiFi AP is actually on.
+    // When WiFi is off, the OBD handler already stops the V1 scan before
+    // connecting (connectToDevice) — piggybacking on WiFi priority mode is
+    // redundant and causes harmful flapping (stop/restart proxy advertising
+    // on every OBD retry cycle, confusing log spam about "WiFi priority"
+    // when WiFi is completely off).
+    const bool wifiApOn = wifiManager.isSetupModeActive();
     const bool obdServiceEnabled = settingsManager.get().obdEnabled;
     const OBDState obdState = obdHandler.getState();
     const bool obdBleCritical =
+        wifiApOn &&
         obdServiceEnabled &&
         (obdHandler.isScanActive() ||
          obdState == OBDState::CONNECTING ||
          obdState == OBDState::INITIALIZING);
     // Keep BLE background suppression active through OBD scan/connect/init so
-    // proxy advertising or scan resumes do not interrupt OBD pairing flow.
+    // proxy advertising or scan resumes do not interrupt OBD pairing flow
+    // (only relevant when WiFi AP is on and could cause radio contention).
     const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
     const bool holdActive = (now - wifiPriorityLastTransitionMs) < WIFI_PRIORITY_MIN_HOLD_MS;
     if (wifiPriority != wifiPriorityCurrent && !holdActive) {
