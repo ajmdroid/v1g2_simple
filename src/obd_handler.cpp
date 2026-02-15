@@ -235,6 +235,11 @@ void OBDHandler::tryAutoConnect() {
         return;
     }
 
+    // V1 must be connected before OBD touches the BLE radio.
+    if (!isLinkReady()) {
+        return;
+    }
+
     // If we're in DISCONNECTED with active cooldown/backoff, reset it.
     // This path is triggered by V1 connecting (car turned on), which is
     // a strong signal that the OBD adapter should be reachable now.
@@ -719,6 +724,10 @@ bool OBDHandler::runStateMachine() {
     switch (state) {
         case OBDState::IDLE:
         {
+            // V1 must be connected and settled before OBD touches the radio.
+            if (!isLinkReady()) {
+                return false;
+            }
             // Attempt auto-connect to a remembered device when idle.
             const uint32_t now = millis();
             if (now - lastAutoConnectAttemptMs >= AUTO_CONNECT_RETRY_MS) {
@@ -803,6 +812,13 @@ bool OBDHandler::runStateMachine() {
 void OBDHandler::handleConnecting() {
     if (!hasTargetDevice) {
         state = OBDState::FAILED;
+        return;
+    }
+
+    // Abort if V1 dropped while we were queued — protect V1 priority.
+    if (!isLinkReady()) {
+        Serial.println("[OBD] Connect deferred: V1 not connected");
+        state = OBDState::IDLE;
         return;
     }
 
