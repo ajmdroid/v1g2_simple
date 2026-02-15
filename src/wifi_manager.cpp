@@ -4420,6 +4420,30 @@ void WiFiManager::handleCameraDemoClear() {
     server.send(200, "application/json", "{\"success\":true,\"active\":false}");
 }
 
+// Shared helper: append signal-observation log stats + SD-logger stats to a JSON doc.
+static void appendSignalObsStats(JsonDocument& doc,
+                                 const SignalObservationLogStats& stats,
+                                 const SignalObservationSdStats& sdStats,
+                                 const String& sdPath) {
+    doc["published"] = stats.published;
+    doc["drops"] = stats.drops;
+    doc["size"] = static_cast<uint32_t>(stats.size);
+    doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
+    JsonObject sdObj = doc["sd"].to<JsonObject>();
+    sdObj["enabled"] = sdStats.enabled;
+    if (sdStats.enabled) {
+        sdObj["path"] = sdPath;
+    } else {
+        sdObj["path"] = nullptr;
+    }
+    sdObj["enqueued"] = sdStats.enqueued;
+    sdObj["queueDrops"] = sdStats.queueDrops;
+    sdObj["deduped"] = sdStats.deduped;
+    sdObj["written"] = sdStats.written;
+    sdObj["writeFail"] = sdStats.writeFail;
+    sdObj["rotations"] = sdStats.rotations;
+}
+
 void WiFiManager::handleLockoutSummary() {
     if (!checkRateLimit()) return;
     markUiActivity();
@@ -4430,24 +4454,8 @@ void WiFiManager::handleLockoutSummary() {
 
     JsonDocument doc;
     doc["success"] = true;
-    doc["published"] = stats.published;
-    doc["drops"] = stats.drops;
-    doc["size"] = static_cast<uint32_t>(stats.size);
-    doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
-    const SignalObservationSdStats sdStats = signalObservationSdLogger.stats();
-    JsonObject sdObj = doc["sd"].to<JsonObject>();
-    sdObj["enabled"] = sdStats.enabled;
-    if (sdStats.enabled) {
-        sdObj["path"] = signalObservationSdLogger.csvPath();
-    } else {
-        sdObj["path"] = nullptr;
-    }
-    sdObj["enqueued"] = sdStats.enqueued;
-    sdObj["queueDrops"] = sdStats.queueDrops;
-    sdObj["deduped"] = sdStats.deduped;
-    sdObj["written"] = sdStats.written;
-    sdObj["writeFail"] = sdStats.writeFail;
-    sdObj["rotations"] = sdStats.rotations;
+    appendSignalObsStats(doc, stats, signalObservationSdLogger.stats(),
+                         signalObservationSdLogger.csvPath());
 
     if (latestCount == 1) {
         const SignalObservation& sample = latest[0];
@@ -4503,24 +4511,8 @@ void WiFiManager::handleLockoutEvents() {
     JsonDocument doc;
     doc["success"] = true;
     doc["count"] = static_cast<uint32_t>(count);
-    doc["published"] = stats.published;
-    doc["drops"] = stats.drops;
-    doc["size"] = static_cast<uint32_t>(stats.size);
-    doc["capacity"] = static_cast<uint32_t>(SignalObservationLog::kCapacity);
-    const SignalObservationSdStats sdStats = signalObservationSdLogger.stats();
-    JsonObject sdObj = doc["sd"].to<JsonObject>();
-    sdObj["enabled"] = sdStats.enabled;
-    if (sdStats.enabled) {
-        sdObj["path"] = signalObservationSdLogger.csvPath();
-    } else {
-        sdObj["path"] = nullptr;
-    }
-    sdObj["enqueued"] = sdStats.enqueued;
-    sdObj["queueDrops"] = sdStats.queueDrops;
-    sdObj["deduped"] = sdStats.deduped;
-    sdObj["written"] = sdStats.written;
-    sdObj["writeFail"] = sdStats.writeFail;
-    sdObj["rotations"] = sdStats.rotations;
+    appendSignalObsStats(doc, stats, signalObservationSdLogger.stats(),
+                         signalObservationSdLogger.csvPath());
 
     JsonArray events = doc["events"].to<JsonArray>();
     for (size_t i = 0; i < count; ++i) {
