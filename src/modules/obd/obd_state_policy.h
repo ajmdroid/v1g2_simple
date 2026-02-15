@@ -73,3 +73,63 @@ inline DisconnectedDecision evaluateDisconnected(bool hasTargetDevice,
 }
 
 }  // namespace ObdStatePolicy
+
+// ─── OBD connect-gating policy (pure functions, no BLE/RTOS deps) ───
+// These mirror the runtime guards in obd_handler.cpp so the decisions
+// can be verified in native tests without hardware.
+
+namespace ObdConnectPolicy {
+
+// OBD state enum values (mirrors OBDState for policy use).
+enum class State : uint8_t {
+    IDLE, SCANNING, CONNECTING, INITIALIZING, READY, POLLING, DISCONNECTED, FAILED
+};
+
+// Should the IDLE state attempt auto-connect?
+// Returns true only when V1 is connected and retry interval has elapsed.
+inline bool shouldIdleAutoConnect(bool linkReady,
+                                  uint32_t elapsedSinceLastAttemptMs,
+                                  uint32_t autoConnectRetryMs,
+                                  bool hasAutoConnectTarget) {
+    if (!linkReady) return false;
+    if (elapsedSinceLastAttemptMs < autoConnectRetryMs) return false;
+    return hasAutoConnectTarget;
+}
+
+// Should handleConnecting() proceed or defer?
+// Returns true when it is safe to start a BLE connect attempt.
+inline bool shouldProceedWithConnect(bool linkReady, bool hasTargetDevice) {
+    if (!hasTargetDevice) return false;
+    return linkReady;
+}
+
+// Should tryAutoConnect() proceed?
+// Returns false for states that are already busy, or when V1 is not connected.
+inline bool shouldTryAutoConnect(State currentState, bool linkReady) {
+    switch (currentState) {
+        case State::CONNECTING:
+        case State::INITIALIZING:
+        case State::READY:
+        case State::POLLING:
+        case State::SCANNING:
+            return false;
+        default:
+            break;
+    }
+    return linkReady;
+}
+
+// Should the main loop activate WiFi-priority BLE suppression for OBD?
+// Only relevant when WiFi AP is actually on.
+inline bool shouldActivateWifiPriorityForObd(bool wifiApOn,
+                                             bool obdEnabled,
+                                             bool obdScanActive,
+                                             State obdState) {
+    if (!wifiApOn) return false;
+    if (!obdEnabled) return false;
+    return obdScanActive ||
+           obdState == State::CONNECTING ||
+           obdState == State::INITIALIZING;
+}
+
+}  // namespace ObdConnectPolicy
