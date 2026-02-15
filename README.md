@@ -37,19 +37,9 @@ cd v1g2_simple
 
 The script auto-detects your OS. First build takes 2-5 minutes to download libraries.
 
-**Windows users:** If `./build.sh` fails, use manual commands:
-```bash
-cd interface && npm install && npm run build && npm run deploy && cd ..
-pio run -e waveshare-349-windows -t uploadfs
-pio run -e waveshare-349-windows -t upload
-```
-
-**Mac/Linux manual commands:**
-```bash
-cd interface && npm install && npm run build && npm run deploy && cd ..
-pio run -e waveshare-349 -t uploadfs
-pio run -e waveshare-349 -t upload
-```
+For manual PlatformIO command variants and OS-specific troubleshooting:
+- Windows setup: [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
+- Full command reference: [docs/MANUAL.md](docs/MANUAL.md)
 
 ---
 

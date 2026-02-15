@@ -141,12 +141,7 @@ Description: USB Serial Device (COM4)
    ./build.sh --all --upload-port COM6
    ```
    
-   **Manual commands (without build.sh):** If the build script has issues, you can run PlatformIO directly:
-   ```bash
-   export PATH="$PATH:$HOME/.platformio/penv/Scripts"
-   pio run -e waveshare-349-windows -t upload
-   pio run -e waveshare-349-windows -t uploadfs
-   ```
+   **Manual command fallback:** Use the canonical command matrix in [docs/MANUAL.md](MANUAL.md) under **Build Commands** (Windows uses `waveshare-349-windows`).
    
    What this does:
    - Builds the web UI (reuses `interface/node_modules`, rebuilds, gzips assets, deploys to `data/`).
@@ -161,29 +156,11 @@ Description: USB Serial Device (COM4)
 3. Leave the monitor open to confirm boot logs; press `Ctrl+C` to exit when done.
 
 ## 7) Manual Commands (if you prefer PlatformIO buttons)
-**Note:** On Windows, use the `waveshare-349-windows` environment. The `waveshare-349` environment is for Mac/Linux.
+Use the command reference in [docs/MANUAL.md](MANUAL.md) under **Build Commands**.
 
-- Build only (firmware):
-  ```bash
-  pio run -e waveshare-349-windows
-  ```
-- Upload firmware only:
-  ```bash
-  pio run -e waveshare-349-windows -t upload
-  ```
-- Upload filesystem (after `npm run build && npm run deploy`):
-  ```bash
-  pio run -e waveshare-349-windows -t uploadfs
-  ```
-- Upload to specific port (if you have multiple devices):
-  ```bash
-  pio run -e waveshare-349-windows -t upload --upload-port COM6
-  pio run -e waveshare-349-windows -t uploadfs --upload-port COM6
-  ```
-- Serial monitor:
-  ```bash
-  pio device monitor -b 115200
-  ```
+Windows notes:
+- Use the `waveshare-349-windows` environment for PlatformIO commands.
+- Add `--upload-port COMx` when multiple USB serial devices are connected.
 
 ## 8) First-Boot Verification
 1. After flashing, the display should boot and show the idle “SCAN” animation.
@@ -218,21 +195,17 @@ Settings are stored in NVS (non-volatile storage) and persist across firmware up
 # Use PlatformIO's Python (has all dependencies):
 "$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
 
-# Then re-upload firmware and filesystem (from a PlatformIO terminal):
-export PATH="$PATH:$HOME/.platformio/penv/Scripts"
-pio run -e waveshare-349-windows -t upload
-pio run -e waveshare-349-windows -t uploadfs
+# Then rebuild and reflash:
+./build.sh --all
 ```
 
 **Note:** Replace `COM4` with your actual port (use `pio device list` to find it). After erase, the device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
 ## 12) Why Windows Uses a Different Environment
 
-Both the Mac/Linux (`waveshare-349`) and Windows (`waveshare-349-windows`) environments now use the same pioarduino platform (ESP-IDF 5.x based). The only difference is partition size:
+`waveshare-349-windows` is kept as a Windows-friendly target name and workflow alias.
 
-- **waveshare-349:** 16MB flash partitions
-- **waveshare-349-windows:** 8MB flash partitions (for hardware compatibility)
-
-**Flash size note:** The Waveshare ESP32-S3-Touch-LCD-3.49 is advertised as 16MB flash, but esptool detects some units as 8MB. The Windows build uses 8MB partitions to ensure compatibility with all units.
-
-Both environments produce identical firmware. Use whichever matches your hardware's flash size.
+Current behavior:
+- Both `waveshare-349` and `waveshare-349-windows` use the same platform/toolchain family.
+- Build flags and partition table are aligned, so outputs are functionally equivalent.
+- On Windows, prefer `waveshare-349-windows` for consistency with this guide.

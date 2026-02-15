@@ -1506,6 +1506,9 @@ v1g2_simple/
 
 ### Build Commands
 
+This section is the canonical command reference. Other docs link here instead
+of repeating full command blocks.
+
 **Primary build script** (`./build.sh`):
 
 ```bash
