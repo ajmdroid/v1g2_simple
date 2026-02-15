@@ -441,7 +441,7 @@ private:
     // When STA is connected, limit idle proxy advertising windows to reduce radio churn.
     unsigned long proxyAdvertisingWindowStartMs = 0;
     unsigned long proxyAdvertisingRetryAtMs = 0;
-    static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 30000;
+    static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 60000;
     static constexpr unsigned long PROXY_ADVERTISING_RETRY_MS = 120000;
     
     // Write verification state
