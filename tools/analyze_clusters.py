@@ -74,5 +74,7 @@ Cluster #{cid}:
 
 
 if __name__ == "__main__":
-    logfile = sys.argv[1] if len(sys.argv) > 1 else "test/fixtures/drive_session.log"
-    analyze_clusters(logfile)
+    if len(sys.argv) < 2:
+        print("Usage: analyze_clusters.py <logfile>")
+        sys.exit(1)
+    analyze_clusters(sys.argv[1])
