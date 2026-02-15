@@ -110,10 +110,10 @@ void test_mode_off_skips_evaluation() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
     enforcer.begin(&settingsManager, &testIndex);
 
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_FALSE(r.evaluated);
@@ -126,7 +126,7 @@ void test_mode_off_skips_evaluation() {
 // ================================================================
 
 void test_no_gps_fix_skips_evaluation() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
     GpsRuntimeStatus gps = makeGps(0, 0, false);
@@ -142,7 +142,7 @@ void test_no_gps_fix_skips_evaluation() {
 // ================================================================
 
 void test_no_gps_location_skips_evaluation() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
     GpsRuntimeStatus gps;
@@ -162,10 +162,10 @@ void test_no_gps_location_skips_evaluation() {
 // ================================================================
 
 void test_no_alerts_evaluates_no_match() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     // parser has no alerts (default)
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -179,10 +179,10 @@ void test_no_alerts_evaluates_no_match() {
 // ================================================================
 
 void test_shadow_mode_match() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -205,10 +205,10 @@ void test_advisory_mode_match() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
     enforcer.begin(&settingsManager, &testIndex);
 
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.shouldMute);
@@ -227,11 +227,11 @@ void test_enforce_mode_mutates() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     testStore.clearDirty();
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.shouldMute);
@@ -249,7 +249,7 @@ void test_enforce_mode_mutates() {
 // ================================================================
 
 void test_no_match_outside_zone() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x04, 24148, 1350));
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148, 1350));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
     // Location far away from the lockout zone
@@ -266,10 +266,10 @@ void test_no_match_outside_zone() {
 // ================================================================
 
 void test_no_match_wrong_band() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x04, 24148));  // K-band only
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148));  // K-band only
     parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 0, 34700, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -278,10 +278,10 @@ void test_no_match_wrong_band() {
 
 void test_unsupported_band_never_mutes() {
     // Mixed K+Ka entry is sanitized to K by lockout policy.
-    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x06, 34700));
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x06, 34700));
     parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 0, 34700, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -291,10 +291,10 @@ void test_unsupported_band_never_mutes() {
 
 void test_ka_band_mutes_when_policy_enabled() {
     lockoutSetKaLearningEnabled(true);
-    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x02, 34700));
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x02, 34700));
     parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 0, 34700, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -307,10 +307,10 @@ void test_ka_band_mutes_when_policy_enabled() {
 // ================================================================
 
 void test_no_match_wrong_freq() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f, 0x04, 24148, 1350));
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148, 1350));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24300, true, true)});
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
     TEST_ASSERT_TRUE(r.evaluated);
@@ -322,9 +322,9 @@ void test_no_match_wrong_freq() {
 // ================================================================
 
 void test_stats_accumulate() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     enforcer.process(1000, 1700000000000LL, parser, gps);
     enforcer.process(2000, 1700000001000LL, parser, gps);
@@ -340,7 +340,7 @@ void test_stats_accumulate() {
 
 void test_empty_index_no_match() {
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
 
@@ -354,11 +354,11 @@ void test_empty_index_no_match() {
 // ================================================================
 
 void test_lastResult_reflects_latest() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
 
     // First call: match
-    GpsRuntimeStatus gps1 = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps1 = makeGps(10.12345f, -20.54321f);
     enforcer.process(1000, 1700000000000LL, parser, gps1);
     TEST_ASSERT_TRUE(enforcer.lastResult().shouldMute);
 
@@ -373,9 +373,9 @@ void test_lastResult_reflects_latest() {
 // ================================================================
 
 void test_epoch_zero_still_evaluates() {
-    testIndex.add(makeEntry(37.36277f, -79.23221f));
+    testIndex.add(makeEntry(10.12345f, -20.54321f));
     parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     // epoch = 0 means time not synced yet — should still evaluate,
     // but recordHit will get epochMs=0 (index handles this gracefully).
@@ -394,7 +394,7 @@ void test_enforce_clean_pass_demotes_nearby() {
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
     // Add a learned entry with low confidence.
-    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 1;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     testIndex.add(e);
@@ -402,7 +402,7 @@ void test_enforce_clean_pass_demotes_nearby() {
     testStore.clearDirty();
     parser.reset();  // No alerts → clean-pass opportunity.
 
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     // First call with epoch > 0 triggers clean pass recording.
     LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
 
@@ -420,13 +420,13 @@ void test_enforce_clean_pass_rate_limited() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 10;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     testIndex.add(e);
 
     parser.reset();  // No alerts.
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     // First call: epoch 1700000100000 → should trigger clean pass.
     enforcer.process(1000, 1700000100000LL, parser, gps);
@@ -451,13 +451,13 @@ void test_enforce_clean_pass_policy_interval_and_threshold() {
     settingsManager.settings.gpsLockoutManualDemotionMissCount = 0;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 50;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     testIndex.add(e);
 
     parser.reset();
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     // Counted miss #1
     enforcer.process(1000, 1700000000000LL, parser, gps);
@@ -489,13 +489,13 @@ void test_enforce_manual_demotion_policy_opt_in() {
     settingsManager.settings.gpsLockoutManualDemotionMissCount = 10;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 1;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
     testIndex.add(e);
 
     parser.reset();
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
     for (int i = 0; i < 9; ++i) {
         enforcer.process(static_cast<uint32_t>(1000 + i * 31000),
@@ -523,13 +523,13 @@ void test_shadow_no_clean_pass() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    LockoutEntry e = makeEntry(37.36277f, -79.23221f);
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 5;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     testIndex.add(e);
 
     parser.reset();
-    GpsRuntimeStatus gps = makeGps(37.36277f, -79.23221f);
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
     enforcer.process(1000, 1700000100000LL, parser, gps);
 
     // SHADOW mode should not record clean passes.

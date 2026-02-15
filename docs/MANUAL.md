@@ -1600,7 +1600,7 @@ No automated tests exist. Manual testing procedure:
 **Runtime metrics smoke check (API + CSV):**
 
 ```bash
-python tools/smoke_metrics_runtime.py --base-url http://192.168.160.212 --profile power_safe
+python tools/smoke_metrics_runtime.py --base-url http://192.168.35.5 --profile power_safe
 ```
 
 - Uses `/api/debug/metrics` to verify target counters increment.

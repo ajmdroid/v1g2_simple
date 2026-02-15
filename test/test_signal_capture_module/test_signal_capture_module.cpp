@@ -30,8 +30,8 @@ static GpsRuntimeStatus makeGps() {
     GpsRuntimeStatus gps;
     gps.hasFix = true;
     gps.locationValid = true;
-    gps.latitudeDeg = 37.36277f;
-    gps.longitudeDeg = -79.23221f;
+    gps.latitudeDeg = 10.12345f;
+    gps.longitudeDeg = -20.54321f;
     gps.satellites = 7;
     gps.hdop = 1.3f;
     gps.fixAgeMs = 250;

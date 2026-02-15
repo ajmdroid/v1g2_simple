@@ -51,8 +51,8 @@ static SignalObservation makeObs(int32_t latE5, int32_t lonE5,
     return o;
 }
 
-static constexpr int32_t LAT = 3736277;   // ~37.36277°
-static constexpr int32_t LON = -7923221;  // ~-79.23221°
+static constexpr int32_t LAT = 1012345;   // ~10.12345°
+static constexpr int32_t LON = -2054321;  // ~-20.54321°
 static constexpr uint8_t K_BAND = (1 << 2);  // BAND_K bitmask = 0x04
 static constexpr uint8_t X_BAND = (1 << 3);  // BAND_X bitmask = 0x08
 static constexpr uint8_t KA_BAND = (1 << 1); // BAND_KA bitmask = 0x02

@@ -254,5 +254,5 @@ def analyze_log(log_file):
 
 
 if __name__ == '__main__':
-    log_file = sys.argv[1] if len(sys.argv) > 1 else "/Users/ajmedford/v1g2_simple/test/fixtures/drive_session.log"
+    log_file = sys.argv[1] if len(sys.argv) > 1 else "test/fixtures/drive_session.log"
     analyze_log(log_file)

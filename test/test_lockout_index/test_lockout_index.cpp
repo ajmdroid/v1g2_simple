@@ -43,7 +43,7 @@ static LockoutEntry makeKBandEntry(int32_t latE5, int32_t lonE5,
 // ================================================================
 
 void test_clear_resets_all_slots() {
-    idx.add(makeKBandEntry(3736277, -7923221));
+    idx.add(makeKBandEntry(1012345, -2054321));
     idx.add(makeKBandEntry(3736280, -7923225));
     TEST_ASSERT_EQUAL(2, idx.activeCount());
 
@@ -52,13 +52,13 @@ void test_clear_resets_all_slots() {
 }
 
 void test_add_returns_slot_index() {
-    int slot = idx.add(makeKBandEntry(3736277, -7923221));
+    int slot = idx.add(makeKBandEntry(1012345, -2054321));
     TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
     TEST_ASSERT_EQUAL(1, idx.activeCount());
 }
 
 void test_add_rejects_unsupported_band_only() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.bandMask = 0x02;  // Ka only
     int slot = idx.add(e);
     TEST_ASSERT_EQUAL(-1, slot);
@@ -66,7 +66,7 @@ void test_add_rejects_unsupported_band_only() {
 }
 
 void test_add_sanitizes_mixed_band_mask() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.bandMask = 0x06;  // K + Ka
     int slot = idx.add(e);
     TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
@@ -100,7 +100,7 @@ void test_add_returns_neg1_when_full() {
 }
 
 void test_remove_marks_inactive() {
-    int slot = idx.add(makeKBandEntry(3736277, -7923221));
+    int slot = idx.add(makeKBandEntry(1012345, -2054321));
     TEST_ASSERT_TRUE(idx.at(slot)->isActive());
 
     bool ok = idx.remove(slot);
@@ -119,62 +119,62 @@ void test_remove_out_of_range_returns_false() {
 // ================================================================
 
 void test_evaluate_matches_inside_radius() {
-    idx.add(makeKBandEntry(3736277, -7923221, 24148, 1350));
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
     // Exactly at center.
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x04, 24148);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24148);
     TEST_ASSERT_TRUE(d.shouldMute);
     TEST_ASSERT_EQUAL(0, d.matchIndex);
     TEST_ASSERT_EQUAL(100, d.confidence);
 }
 
 void test_evaluate_matches_near_edge_of_radius() {
-    idx.add(makeKBandEntry(3736277, -7923221, 24148, 1350));
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
     // ~1300 E5 units away (within 1350 radius).
-    LockoutDecision d = idx.evaluate(3736277 + 900, -7923221 + 900, 0x04, 24148);
+    LockoutDecision d = idx.evaluate(1012345 + 900, -2054321 + 900, 0x04, 24148);
     // 900^2 + 900^2 = 1620000, 1350^2 = 1822500 → inside
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
 void test_evaluate_no_match_outside_radius() {
-    idx.add(makeKBandEntry(3736277, -7923221, 24148, 1350));
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
     // ~1400 E5 units away (outside 1350 radius).
-    LockoutDecision d = idx.evaluate(3736277 + 1000, -7923221 + 1000, 0x04, 24148);
+    LockoutDecision d = idx.evaluate(1012345 + 1000, -2054321 + 1000, 0x04, 24148);
     // 1000^2 + 1000^2 = 2000000, 1350^2 = 1822500 → outside
     TEST_ASSERT_FALSE(d.shouldMute);
     TEST_ASSERT_EQUAL(-1, d.matchIndex);
 }
 
 void test_evaluate_no_match_wrong_band() {
-    idx.add(makeKBandEntry(3736277, -7923221));
+    idx.add(makeKBandEntry(1012345, -2054321));
 
     // Ka band (0x02) vs K-band entry (0x04).
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x02, 24148);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x02, 24148);
     TEST_ASSERT_FALSE(d.shouldMute);
 }
 
 void test_evaluate_no_match_wrong_freq() {
-    idx.add(makeKBandEntry(3736277, -7923221, 24148, 1350));
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
     // 24200 MHz is 52 MHz away — well outside ±10 MHz tolerance.
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x04, 24200);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24200);
     TEST_ASSERT_FALSE(d.shouldMute);
 }
 
 void test_evaluate_matches_freq_within_tolerance() {
-    idx.add(makeKBandEntry(3736277, -7923221, 24148, 1350));
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
     // 24155 MHz is 7 MHz away — within ±10 MHz tolerance.
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x04, 24155);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24155);
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
 void test_evaluate_band_only_lockout_no_freq_filter() {
     LockoutEntry e;
-    e.latE5      = 3736277;
-    e.lonE5      = -7923221;
+    e.latE5      = 1012345;
+    e.lonE5      = -2054321;
     e.radiusE5   = 1350;
     e.bandMask   = 0x04;  // K
     e.freqMHz    = 0;     // No frequency filter
@@ -184,12 +184,12 @@ void test_evaluate_band_only_lockout_no_freq_filter() {
     idx.add(e);
 
     // Should match any K-band frequency.
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x04, 35000);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 35000);
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
 void test_evaluate_empty_index_no_match() {
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x04, 24148);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24148);
     TEST_ASSERT_FALSE(d.shouldMute);
     TEST_ASSERT_EQUAL(-1, d.matchIndex);
 }
@@ -199,32 +199,32 @@ void test_evaluate_empty_index_no_match() {
 // ================================================================
 
 void test_evaluate_multi_band_entry() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.bandMask = 0x04 | 0x08;  // K + X
     idx.add(e);
 
     // K match
-    LockoutDecision dk = idx.evaluate(3736277, -7923221, 0x04, 24148);
+    LockoutDecision dk = idx.evaluate(1012345, -2054321, 0x04, 24148);
     TEST_ASSERT_TRUE(dk.shouldMute);
 
     // X match
-    LockoutDecision dx = idx.evaluate(3736277, -7923221, 0x08, 24148);
+    LockoutDecision dx = idx.evaluate(1012345, -2054321, 0x08, 24148);
     TEST_ASSERT_TRUE(dx.shouldMute);
 
     // Ka no match
-    LockoutDecision dka = idx.evaluate(3736277, -7923221, 0x02, 24148);
+    LockoutDecision dka = idx.evaluate(1012345, -2054321, 0x02, 24148);
     TEST_ASSERT_FALSE(dka.shouldMute);
 }
 
 void test_evaluate_ka_matches_when_policy_enabled() {
     lockoutSetKaLearningEnabled(true);
 
-    LockoutEntry e = makeKBandEntry(3736277, -7923221, 34700);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 34700);
     e.bandMask = 0x02;  // Ka
     int slot = idx.add(e);
     TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
 
-    LockoutDecision d = idx.evaluate(3736277, -7923221, 0x02, 34700);
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x02, 34700);
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
@@ -253,7 +253,7 @@ void test_findMatch_returns_neg1_when_no_match() {
 // ================================================================
 
 void test_recordHit_increments_confidence() {
-    int slot = idx.add(makeKBandEntry(3736277, -7923221));
+    int slot = idx.add(makeKBandEntry(1012345, -2054321));
     TEST_ASSERT_EQUAL(100, idx.at(slot)->confidence);
 
     uint8_t c = idx.recordHit(slot, 1700000120000LL);
@@ -262,7 +262,7 @@ void test_recordHit_increments_confidence() {
 }
 
 void test_recordHit_caps_at_255() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 254;
     int slot = idx.add(e);
 
@@ -274,7 +274,7 @@ void test_recordHit_caps_at_255() {
 }
 
 void test_recordCleanPass_decrements_confidence() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 3;
     int slot = idx.add(e);
 
@@ -284,7 +284,7 @@ void test_recordCleanPass_decrements_confidence() {
 }
 
 void test_recordCleanPass_auto_removes_learned_at_zero() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 1;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     int slot = idx.add(e);
@@ -296,7 +296,7 @@ void test_recordCleanPass_auto_removes_learned_at_zero() {
 }
 
 void test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 1;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
     int slot = idx.add(e);
@@ -309,7 +309,7 @@ void test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active() {
 void test_recordCleanPass_removes_plain_active_at_zero() {
     // Entry is active but has neither MANUAL nor LEARNED flag.
     // Should still be removed at confidence 0 (all non-manual are pruned).
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 1;
     e.flags = LockoutEntry::FLAG_ACTIVE;  // No MANUAL, no LEARNED
     int slot = idx.add(e);
@@ -321,7 +321,7 @@ void test_recordCleanPass_removes_plain_active_at_zero() {
 }
 
 void test_recordHit_resets_miss_tracking() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.missCount = 4;
     e.lastCountedMissMs = 1700000000000LL;
     int slot = idx.add(e);
@@ -332,7 +332,7 @@ void test_recordHit_resets_miss_tracking() {
 }
 
 void test_recordCleanPassWithPolicy_threshold_demotes_after_count() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 80;
     int slot = idx.add(e);
 
@@ -356,7 +356,7 @@ void test_recordCleanPassWithPolicy_threshold_demotes_after_count() {
 }
 
 void test_recordCleanPassWithPolicy_interval_gate() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     int slot = idx.add(e);
     const uint32_t oneHourMs = 3600000UL;
 
@@ -386,7 +386,7 @@ void test_recordCleanPassWithPolicy_interval_gate() {
 // ================================================================
 
 void test_entry_stores_real_epoch_timestamps() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.firstSeenMs = 1739000000000LL;  // ~Feb 2025
     e.lastSeenMs  = 1739000060000LL;
     e.lastPassMs  = 0;
@@ -414,7 +414,7 @@ void test_at_nullptr_out_of_range() {
 }
 
 void test_mutableAt_allows_modification() {
-    int slot = idx.add(makeKBandEntry(3736277, -7923221));
+    int slot = idx.add(makeKBandEntry(1012345, -2054321));
     LockoutEntry* e = idx.mutableAt(slot);
     TEST_ASSERT_NOT_NULL(e);
 
@@ -446,7 +446,7 @@ void test_flag_setters_and_getters() {
 }
 
 void test_entry_clear_resets_all_fields() {
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.clear();
 
     TEST_ASSERT_EQUAL(0, e.latE5);
@@ -468,18 +468,18 @@ void test_entry_clear_resets_all_fields() {
 // ================================================================
 
 void test_addOrUpdate_creates_when_no_match() {
-    int slot = idx.addOrUpdate(makeKBandEntry(3736277, -7923221));
+    int slot = idx.addOrUpdate(makeKBandEntry(1012345, -2054321));
     TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
     TEST_ASSERT_EQUAL(1, idx.activeCount());
 }
 
 void test_addOrUpdate_merges_when_match() {
-    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e1 = makeKBandEntry(1012345, -2054321);
     e1.confidence = 50;
     idx.addOrUpdate(e1);
 
     // Same location+band+freq → should merge, not create a second entry.
-    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e2 = makeKBandEntry(1012345, -2054321);
     e2.confidence = 80;
     int slot = idx.addOrUpdate(e2);
 
@@ -489,12 +489,12 @@ void test_addOrUpdate_merges_when_match() {
 }
 
 void test_addOrUpdate_keeps_earliest_firstSeen() {
-    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e1 = makeKBandEntry(1012345, -2054321);
     e1.firstSeenMs = 2000000000000LL;
     e1.lastSeenMs  = 2000000000000LL;
     idx.addOrUpdate(e1);
 
-    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e2 = makeKBandEntry(1012345, -2054321);
     e2.firstSeenMs = 1000000000000LL;  // Earlier.
     e2.lastSeenMs  = 3000000000000LL;
     int slot = idx.addOrUpdate(e2);
@@ -503,11 +503,11 @@ void test_addOrUpdate_keeps_earliest_firstSeen() {
 }
 
 void test_addOrUpdate_keeps_latest_lastSeen() {
-    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e1 = makeKBandEntry(1012345, -2054321);
     e1.lastSeenMs = 3000000000000LL;
     idx.addOrUpdate(e1);
 
-    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e2 = makeKBandEntry(1012345, -2054321);
     e2.lastSeenMs = 1000000000000LL;  // Older — should NOT overwrite.
     int slot = idx.addOrUpdate(e2);
 
@@ -515,11 +515,11 @@ void test_addOrUpdate_keeps_latest_lastSeen() {
 }
 
 void test_addOrUpdate_merges_flags() {
-    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e1 = makeKBandEntry(1012345, -2054321);
     e1.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     idx.addOrUpdate(e1);
 
-    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e2 = makeKBandEntry(1012345, -2054321);
     e2.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
     int slot = idx.addOrUpdate(e2);
 
@@ -529,7 +529,7 @@ void test_addOrUpdate_merges_flags() {
 
 void test_addOrUpdate_no_duplicate() {
     // Add 3 entries at the same location — only 1 should survive.
-    LockoutEntry e = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 10;
     idx.addOrUpdate(e);
     e.confidence = 20;
@@ -545,12 +545,12 @@ void test_addOrUpdate_no_duplicate() {
 }
 
 void test_addOrUpdate_resets_miss_tracking_on_merge() {
-    LockoutEntry e1 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e1 = makeKBandEntry(1012345, -2054321);
     e1.missCount = 5;
     e1.lastCountedMissMs = 1700000000000LL;
     idx.addOrUpdate(e1);
 
-    LockoutEntry e2 = makeKBandEntry(3736277, -7923221);
+    LockoutEntry e2 = makeKBandEntry(1012345, -2054321);
     e2.confidence = 150;
     idx.addOrUpdate(e2);
 
@@ -565,11 +565,11 @@ void test_addOrUpdate_resets_miss_tracking_on_merge() {
 // ================================================================
 
 void test_findNearby_returns_entries_within_radius() {
-    LockoutEntry eK = makeKBandEntry(3736277, -7923221);
+    LockoutEntry eK = makeKBandEntry(1012345, -2054321);
     eK.bandMask = 0x04;
     eK.freqMHz = 24148;
     // Add an X entry at the SAME location, different band.
-    LockoutEntry eX = makeKBandEntry(3736277, -7923221);
+    LockoutEntry eX = makeKBandEntry(1012345, -2054321);
     eX.bandMask = 0x08;
     eX.freqMHz = 10525;
 
@@ -577,19 +577,19 @@ void test_findNearby_returns_entries_within_radius() {
     idx.add(eX);
 
     int16_t nearby[8];
-    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    size_t count = idx.findNearby(1012345, -2054321, nearby, 8);
     TEST_ASSERT_EQUAL(2, count);
     TEST_ASSERT_EQUAL(0, nearby[0]);
     TEST_ASSERT_EQUAL(1, nearby[1]);
 }
 
 void test_findNearby_excludes_distant_entries() {
-    idx.add(makeKBandEntry(3736277, -7923221));
+    idx.add(makeKBandEntry(1012345, -2054321));
     // Add another entry far away.
     idx.add(makeKBandEntry(4000000, -8000000));
 
     int16_t nearby[8];
-    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    size_t count = idx.findNearby(1012345, -2054321, nearby, 8);
     TEST_ASSERT_EQUAL(1, count);
     TEST_ASSERT_EQUAL(0, nearby[0]);
 }
@@ -597,17 +597,17 @@ void test_findNearby_excludes_distant_entries() {
 void test_findNearby_respects_outCap() {
     // Add 5 entries at the same location.
     for (int i = 0; i < 5; ++i) {
-        idx.add(makeKBandEntry(3736277, -7923221));
+        idx.add(makeKBandEntry(1012345, -2054321));
     }
 
     int16_t nearby[3];
-    size_t count = idx.findNearby(3736277, -7923221, nearby, 3);
+    size_t count = idx.findNearby(1012345, -2054321, nearby, 3);
     TEST_ASSERT_EQUAL(3, count);
 }
 
 void test_findNearby_empty_returns_zero() {
     int16_t nearby[8];
-    size_t count = idx.findNearby(3736277, -7923221, nearby, 8);
+    size_t count = idx.findNearby(1012345, -2054321, nearby, 8);
     TEST_ASSERT_EQUAL(0, count);
 }
 

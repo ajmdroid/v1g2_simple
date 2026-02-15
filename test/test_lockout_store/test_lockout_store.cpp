@@ -31,8 +31,8 @@ void setUp() {
 void tearDown() {}
 
 // --- Helper: make a typical K-band lockout entry ---
-static LockoutEntry makeEntry(int32_t latE5      = 3736277,
-                              int32_t lonE5      = -7923221,
+static LockoutEntry makeEntry(int32_t latE5      = 1012345,
+                              int32_t lonE5      = -2054321,
                               uint16_t freqMHz   = 24148,
                               uint8_t  bandMask  = 0x04,      // BAND_K
                               uint8_t  confidence = 100,
@@ -83,8 +83,8 @@ void test_toJson_single_entry() {
     TEST_ASSERT_EQUAL(1, store.stats().entriesSaved);
 
     JsonObject z = zones[0];
-    TEST_ASSERT_EQUAL(3736277, z["lat"].as<int32_t>());
-    TEST_ASSERT_EQUAL(-7923221, z["lon"].as<int32_t>());
+    TEST_ASSERT_EQUAL(1012345, z["lat"].as<int32_t>());
+    TEST_ASSERT_EQUAL(-2054321, z["lon"].as<int32_t>());
     TEST_ASSERT_EQUAL(1350, z["rad"].as<uint16_t>());
     TEST_ASSERT_EQUAL(0x04, z["band"].as<uint8_t>());
     TEST_ASSERT_EQUAL(24148, z["freq"].as<uint16_t>());
@@ -129,7 +129,7 @@ void test_toJson_skips_unsupported_band_entries() {
 
 void test_toJson_keeps_ka_entries_when_policy_enabled() {
     lockoutSetKaLearningEnabled(true);
-    int slot = testIndex.add(makeEntry(3736277, -7923221, 34700, 0x02));
+    int slot = testIndex.add(makeEntry(1012345, -2054321, 34700, 0x02));
     TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
 
     JsonDocument doc;
@@ -178,8 +178,8 @@ void test_fromJson_valid_single_entry() {
     doc["_version"] = 1;
     JsonArray zones = doc["zones"].to<JsonArray>();
     JsonObject z = zones.add<JsonObject>();
-    z["lat"]   = 3736277;
-    z["lon"]   = -7923221;
+    z["lat"]   = 1012345;
+    z["lon"]   = -2054321;
     z["rad"]   = 1350;
     z["band"]  = 4;
     z["freq"]  = 24148;
@@ -200,8 +200,8 @@ void test_fromJson_valid_single_entry() {
 
     const LockoutEntry* e = testIndex.at(0);
     TEST_ASSERT_NOT_NULL(e);
-    TEST_ASSERT_EQUAL(3736277, e->latE5);
-    TEST_ASSERT_EQUAL(-7923221, e->lonE5);
+    TEST_ASSERT_EQUAL(1012345, e->latE5);
+    TEST_ASSERT_EQUAL(-2054321, e->lonE5);
     TEST_ASSERT_EQUAL(1350, e->radiusE5);
     TEST_ASSERT_EQUAL(4, e->bandMask);
     TEST_ASSERT_EQUAL(24148, e->freqMHz);
