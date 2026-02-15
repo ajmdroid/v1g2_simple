@@ -221,6 +221,8 @@ This design is now fixed for M2 unless profiling shows a hard regression.
 - Budget breach response: auto-throttle and counter increments.
 
 Targets are provisional until hardware profiling confirms them.
+System-wide non-camera perf/reliability SLO gates are tracked in
+`docs/PERF_SLOS.md` and scored with `tools/score_perf_csv.py`.
 
 ## API Rollout (Phased)
 

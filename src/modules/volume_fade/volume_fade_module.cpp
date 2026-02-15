@@ -15,7 +15,8 @@ VolumeFadeModule::VolumeFadeModule()
     , seenCount(0)
     , pendingRestoreVolume(0xFF)
     , pendingRestoreMuteVolume(0)
-    , pendingRestoreSetMs(0) {
+    , pendingRestoreSetMs(0)
+    , lastRestoreAttemptMs(0) {
     memset(seenFreqs, 0, sizeof(seenFreqs));
 }
 
@@ -51,6 +52,13 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         const bool shouldRestore =
             (originalVolume != 0xFF) && (fadeActive || ctx.currentVolume != originalVolume);
         if (shouldRestore) {
+            const bool retryWindowOpen =
+                (lastRestoreAttemptMs == 0) ||
+                ((ctx.now - lastRestoreAttemptMs) >= RESTORE_RETRY_MIN_INTERVAL_MS);
+            if (!retryWindowOpen) {
+                return action;
+            }
+            lastRestoreAttemptMs = ctx.now;
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
@@ -87,6 +95,13 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     // Alert muted or suppressed -> restore if we had faded, retry until confirmed
     if (ctx.alertMuted || ctx.alertSuppressed) {
         if (fadeActive && originalVolume != 0xFF) {
+            const bool retryWindowOpen =
+                (lastRestoreAttemptMs == 0) ||
+                ((ctx.now - lastRestoreAttemptMs) >= RESTORE_RETRY_MIN_INTERVAL_MS);
+            if (!retryWindowOpen) {
+                return action;
+            }
+            lastRestoreAttemptMs = ctx.now;
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
@@ -217,6 +232,7 @@ void VolumeFadeModule::resetSessionState() {
     fadeActive = false;
     commandSent = false;
     restoreLogEmitted = false;
+    lastRestoreAttemptMs = 0;
     seenCount = 0;
     memset(seenFreqs, 0, sizeof(seenFreqs));
 }
@@ -226,4 +242,5 @@ void VolumeFadeModule::reset() {
     pendingRestoreVolume = 0xFF;
     pendingRestoreMuteVolume = 0;
     pendingRestoreSetMs = 0;
+    lastRestoreAttemptMs = 0;
 }

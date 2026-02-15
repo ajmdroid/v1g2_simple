@@ -98,7 +98,9 @@ private:
     uint8_t pendingRestoreVolume;
     uint8_t pendingRestoreMuteVolume;
     unsigned long pendingRestoreSetMs;
+    unsigned long lastRestoreAttemptMs;
     static constexpr unsigned long PENDING_RESTORE_WINDOW_MS = 1500;
+    static constexpr unsigned long RESTORE_RETRY_MIN_INTERVAL_MS = 75;
 
     void resetSessionState();
 };

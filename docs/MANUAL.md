@@ -1577,6 +1577,7 @@ npm run deploy                            # Copy build/ to data/
 | `scripts/pio-check.sh` | Run clang-tidy static analysis |
 | `tools/perf_test.sh` | Performance testing |
 | `tools/smoke_metrics_runtime.py` | Runtime perf counter smoke checks (API + CSV reflection) |
+| `tools/score_perf_csv.py` | Score `/perf/perf_boot_*.csv` against hard/advisory SLOs |
 
 **Source:** [build.sh](build.sh), [scripts/](scripts/)
 
