@@ -397,9 +397,13 @@ void onV1Connected() {
     }
 
     // Attempt OBD auto-connect shortly after V1 stabilizes.
-    // This runs regardless of autoPush — V1 connecting is the "car on" signal.
-    obdAutoConnectPending = true;
-    obdAutoConnectAtMs = millis() + 1500;
+    // This runs regardless of autoPush when OBD service is enabled.
+    if (s.obdEnabled) {
+        obdAutoConnectPending = true;
+        obdAutoConnectAtMs = millis() + 1500;
+    } else {
+        obdAutoConnectPending = false;
+    }
     
     if (!s.autoPushEnabled) {
         AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
@@ -974,11 +978,13 @@ void loop() {
     const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
                                                           : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
     const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
+    const bool obdServiceEnabled = settingsManager.get().obdEnabled;
     const OBDState obdState = obdHandler.getState();
     const bool obdBleCritical =
-        obdHandler.isScanActive() ||
-        obdState == OBDState::CONNECTING ||
-        obdState == OBDState::INITIALIZING;
+        obdServiceEnabled &&
+        (obdHandler.isScanActive() ||
+         obdState == OBDState::CONNECTING ||
+         obdState == OBDState::INITIALIZING);
     // Keep BLE background suppression active through OBD scan/connect/init so
     // proxy advertising or scan resumes do not interrupt OBD pairing flow.
     const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
@@ -999,16 +1005,27 @@ void loop() {
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
 
-    if (obdAutoConnectPending && now >= obdAutoConnectAtMs) {
+    static bool obdRuntimeDisabledLatched = false;
+    if (!obdServiceEnabled) {
         obdAutoConnectPending = false;
-        obdHandler.tryAutoConnect();
-    }
+        if (!obdRuntimeDisabledLatched) {
+            obdHandler.stopScan();
+            obdHandler.disconnect();
+            obdRuntimeDisabledLatched = true;
+        }
+    } else {
+        obdRuntimeDisabledLatched = false;
+        if (obdAutoConnectPending && now >= obdAutoConnectAtMs) {
+            obdAutoConnectPending = false;
+            obdHandler.tryAutoConnect();
+        }
 
-    if (obdHandler.update()) {
-        OBDData obdData = obdHandler.getData();
-        speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
+        if (obdHandler.update()) {
+            OBDData obdData = obdHandler.getData();
+            speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
+        }
     }
-    speedSourceSelector.setObdConnected(obdHandler.isConnected());
+    speedSourceSelector.setObdConnected(obdServiceEnabled && obdHandler.isConnected());
 
     gpsRuntimeModule.update(now);
 

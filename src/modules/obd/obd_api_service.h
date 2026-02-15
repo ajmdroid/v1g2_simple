@@ -18,6 +18,13 @@ struct ConnectRequest {
     bool autoConnect = false;
 };
 
+struct ConfigRequest {
+    bool hasEnabled = false;
+    bool enabled = false;
+    bool hasVwDataEnabled = false;
+    bool vwDataEnabled = false;
+};
+
 void sendStatus(WebServer& server,
                 OBDHandler& obdHandler,
                 V1BLEClient& bleClient,
@@ -35,10 +42,11 @@ void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler);
 void handleForget(WebServer& server, OBDHandler& obdHandler);
 
 bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
-bool parseVwDataEnabledRequest(WebServer& server,
-                               bool fallback,
-                               bool& enabledOut,
-                               String& errorMessage);
+bool parseConfigRequest(WebServer& server,
+                        bool enabledFallback,
+                        bool vwDataEnabledFallback,
+                        ConfigRequest& requestOut,
+                        String& errorMessage);
 bool parseRememberedAutoConnectRequest(WebServer& server,
                                        String& addressOut,
                                        bool& enabledOut,

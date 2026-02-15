@@ -37,6 +37,20 @@ void sendError(WebServer& server, int statusCode, const char* message) {
     sendJsonDocument(server, statusCode, doc);
 }
 
+bool parseBoolLikeValue(const String& raw, bool& out) {
+    String value = raw;
+    value.toLowerCase();
+    if (value == "1" || value == "true" || value == "on") {
+        out = true;
+        return true;
+    }
+    if (value == "0" || value == "false" || value == "off") {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 void sendStatus(WebServer& server,
@@ -55,6 +69,7 @@ void sendStatus(WebServer& server,
                               (dataAgeMs <= kObdFreshDataMaxAgeMs);
 
     doc["state"] = obdHandler.getStateString();
+    doc["enabled"] = settings.obdEnabled;
     doc["connected"] = obdHandler.isConnected();
     doc["scanning"] = obdHandler.isScanActive();
     doc["deviceName"] = obdHandler.getConnectedDeviceName();
@@ -194,22 +209,36 @@ void handleDisconnect(WebServer& server, OBDHandler& obdHandler) {
 }
 
 void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager) {
-    bool enabled = settingsManager.get().obdVwDataEnabled;
+    const bool currentEnabled = settingsManager.get().obdEnabled;
+    const bool currentVwDataEnabled = settingsManager.get().obdVwDataEnabled;
+    ConfigRequest request;
     String errorMessage;
-    if (!parseVwDataEnabledRequest(server,
-                                   settingsManager.get().obdVwDataEnabled,
-                                   enabled,
-                                   errorMessage)) {
+    if (!parseConfigRequest(server,
+                            currentEnabled,
+                            currentVwDataEnabled,
+                            request,
+                            errorMessage)) {
         sendError(server, 400, errorMessage.c_str());
         return;
     }
 
-    settingsManager.setObdVwDataEnabled(enabled);
-    obdHandler.setVwDataEnabled(enabled);
+    if (request.hasEnabled) {
+        settingsManager.setObdEnabled(request.enabled);
+        if (!request.enabled) {
+            obdHandler.stopScan();
+            obdHandler.disconnect();
+        }
+    }
+
+    if (request.hasVwDataEnabled) {
+        settingsManager.setObdVwDataEnabled(request.vwDataEnabled);
+        obdHandler.setVwDataEnabled(request.vwDataEnabled);
+    }
 
     JsonDocument doc;
     doc["success"] = true;
-    doc["vwDataEnabled"] = enabled;
+    doc["enabled"] = settingsManager.get().obdEnabled;
+    doc["vwDataEnabled"] = settingsManager.get().obdVwDataEnabled;
     sendJsonDocument(server, 200, doc);
 }
 
@@ -288,35 +317,69 @@ bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMe
     return true;
 }
 
-bool parseVwDataEnabledRequest(WebServer& server,
-                               bool fallback,
-                               bool& enabledOut,
-                               String& errorMessage) {
+bool parseConfigRequest(WebServer& server,
+                        bool enabledFallback,
+                        bool vwDataEnabledFallback,
+                        ConfigRequest& requestOut,
+                        String& errorMessage) {
     errorMessage = "";
-    enabledOut = fallback;
-    bool hasValue = false;
+    ConfigRequest parsed;
+    parsed.enabled = enabledFallback;
+    parsed.vwDataEnabled = vwDataEnabledFallback;
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
-        if (error || !doc["vwDataEnabled"].is<bool>()) {
+        if (error) {
             errorMessage = "Invalid payload";
             return false;
         }
-        enabledOut = doc["vwDataEnabled"].as<bool>();
-        hasValue = true;
-    } else if (server.hasArg("vwDataEnabled")) {
-        String value = server.arg("vwDataEnabled");
-        value.toLowerCase();
-        enabledOut = (value == "1" || value == "true" || value == "on");
-        hasValue = true;
+
+        if (!doc["enabled"].isNull()) {
+            if (!doc["enabled"].is<bool>()) {
+                errorMessage = "Invalid payload";
+                return false;
+            }
+            parsed.hasEnabled = true;
+            parsed.enabled = doc["enabled"].as<bool>();
+        }
+
+        if (!doc["vwDataEnabled"].isNull()) {
+            if (!doc["vwDataEnabled"].is<bool>()) {
+                errorMessage = "Invalid payload";
+                return false;
+            }
+            parsed.hasVwDataEnabled = true;
+            parsed.vwDataEnabled = doc["vwDataEnabled"].as<bool>();
+        }
+    } else {
+        if (server.hasArg("enabled")) {
+            bool parsedValue = false;
+            if (!parseBoolLikeValue(server.arg("enabled"), parsedValue)) {
+                errorMessage = "Invalid enabled";
+                return false;
+            }
+            parsed.hasEnabled = true;
+            parsed.enabled = parsedValue;
+        }
+
+        if (server.hasArg("vwDataEnabled")) {
+            bool parsedValue = false;
+            if (!parseBoolLikeValue(server.arg("vwDataEnabled"), parsedValue)) {
+                errorMessage = "Invalid vwDataEnabled";
+                return false;
+            }
+            parsed.hasVwDataEnabled = true;
+            parsed.vwDataEnabled = parsedValue;
+        }
     }
 
-    if (!hasValue) {
-        errorMessage = "Missing vwDataEnabled";
+    if (!parsed.hasEnabled && !parsed.hasVwDataEnabled) {
+        errorMessage = "Missing enabled or vwDataEnabled";
         return false;
     }
 
+    requestOut = parsed;
     return true;
 }
 

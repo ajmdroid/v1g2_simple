@@ -1667,6 +1667,7 @@ void WiFiManager::handleSettingsApi() {
     doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
+    doc["obdEnabled"] = settings.obdEnabled;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["cameraEnabled"] = settings.cameraEnabled;
@@ -1733,6 +1734,14 @@ void WiFiManager::handleSettingsSave() {
         mutableSettings.obdVwDataEnabled =
             (server.arg("obdVwDataEnabled") == "true" || server.arg("obdVwDataEnabled") == "1");
         obdHandler.setVwDataEnabled(mutableSettings.obdVwDataEnabled);
+    }
+    if (server.hasArg("obdEnabled")) {
+        mutableSettings.obdEnabled =
+            (server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1");
+        if (!mutableSettings.obdEnabled) {
+            obdHandler.stopScan();
+            obdHandler.disconnect();
+        }
     }
     if (server.hasArg("gpsEnabled")) {
         mutableSettings.gpsEnabled =
@@ -2498,6 +2507,13 @@ void WiFiManager::handleDisplayColorsSave() {
 
     // Development/runtime toggles
     if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
+    if (server.hasArg("obdEnabled")) {
+        s.obdEnabled = argBool("obdEnabled", s.obdEnabled);
+        if (!s.obdEnabled) {
+            obdHandler.stopScan();
+            obdHandler.disconnect();
+        }
+    }
     if (server.hasArg("gpsEnabled")) {
         s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
         gpsRuntimeModule.setEnabled(s.gpsEnabled);
@@ -2710,6 +2726,7 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["speedVolumeBoost"] = s.speedVolumeBoost;
     doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
+    doc["obdEnabled"] = s.obdEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["cameraEnabled"] = s.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
@@ -3307,6 +3324,7 @@ void WiFiManager::handleSettingsBackup() {
     // BLE settings
     doc["proxyBLE"] = s.proxyBLE;
     doc["proxyName"] = s.proxyName;
+    doc["obdEnabled"] = s.obdEnabled;
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["cameraEnabled"] = s.cameraEnabled;
@@ -3499,6 +3517,7 @@ void WiFiManager::handleSettingsRestore() {
     // BLE settings
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
+    if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
     if (doc["cameraEnabled"].is<bool>()) s.cameraEnabled = doc["cameraEnabled"];
@@ -3707,6 +3726,10 @@ void WiFiManager::handleSettingsRestore() {
     // Save to flash
     settingsManager.save();
 
+    if (!settingsManager.get().obdEnabled) {
+        obdHandler.stopScan();
+        obdHandler.disconnect();
+    }
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
@@ -3920,6 +3943,10 @@ void WiFiManager::handleObdStatus() {
 void WiFiManager::handleObdScan() {
     if (!checkRateLimit()) return;
     markUiActivity();
+    if (!settingsManager.get().obdEnabled) {
+        server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+        return;
+    }
     ObdApiService::handleScan(server, obdHandler, bleClient);
 }
 
@@ -3944,6 +3971,10 @@ void WiFiManager::handleObdDevicesClear() {
 void WiFiManager::handleObdConnect() {
     if (!checkRateLimit()) return;
     markUiActivity();
+    if (!settingsManager.get().obdEnabled) {
+        server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+        return;
+    }
     ObdApiService::handleConnect(server, obdHandler, bleClient);
 }
 

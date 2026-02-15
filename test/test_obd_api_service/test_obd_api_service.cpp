@@ -122,6 +122,23 @@ void test_handle_config_applies_vw_data_enabled() {
     TEST_ASSERT_TRUE(responseContains(server, "\"vwDataEnabled\":false"));
 }
 
+void test_handle_config_disables_obd_service_runtime() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    SettingsManager settingsManagerLocal;
+    settingsManagerLocal.settings.obdEnabled = true;
+    obdHandler.setConnected(true);
+    obdHandler.setScanActive(true);
+    server.setArg("enabled", "off");
+
+    ObdApiService::handleConfig(server, obdHandler, settingsManagerLocal);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_FALSE(settingsManagerLocal.settings.obdEnabled);
+    TEST_ASSERT_EQUAL_INT(1, obdHandler.stopScanCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdHandler.disconnectCalls);
+    TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":false"));
+}
+
 void test_handle_remembered_autoconnect_updates_flag() {
     WebServer server(80);
     OBDHandler obdHandler;
@@ -174,11 +191,13 @@ void test_send_status_reports_core_obd_fields() {
     obdHandler.setRememberedDevices(remembered);
 
     V1Settings settings;
+    settings.obdEnabled = true;
     settings.obdVwDataEnabled = true;
 
     ObdApiService::sendStatus(server, obdHandler, bleClient, settings);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"state\":\"POLLING\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"sampleAgeMs\":100"));
     TEST_ASSERT_TRUE(responseContains(server, "\"rememberedCount\":2"));
     TEST_ASSERT_TRUE(responseContains(server, "\"autoConnectCount\":1"));
@@ -216,6 +235,7 @@ int main() {
     RUN_TEST(test_handle_connect_queues_request);
     RUN_TEST(test_handle_connect_reports_queue_failure);
     RUN_TEST(test_handle_config_applies_vw_data_enabled);
+    RUN_TEST(test_handle_config_disables_obd_service_runtime);
     RUN_TEST(test_handle_remembered_autoconnect_updates_flag);
     RUN_TEST(test_handle_forget_reports_missing_address);
     RUN_TEST(test_send_status_reports_core_obd_fields);

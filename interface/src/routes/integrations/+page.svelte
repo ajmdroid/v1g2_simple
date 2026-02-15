@@ -10,6 +10,7 @@
 	let statusFetchInFlight = false;
 	let gpsStatusFetchInFlight = false;
 	let nearbyFetchInFlight = false;
+	let savingObdEnabled = $state(false);
 	let savingVwData = $state(false);
 	let savingGpsEnabled = $state(false);
 
@@ -17,6 +18,7 @@
 	const SCAN_POLL_INTERVAL_MS = 1500;
 
 	let status = $state({
+		enabled: true,
 		state: 'IDLE',
 		connected: false,
 		scanning: false,
@@ -181,6 +183,10 @@
 	}
 
 	async function startScan() {
+		if (!status.enabled) {
+			setMsg('error', 'Enable OBD service first.');
+			return;
+		}
 		if (!status.v1Connected) {
 			setMsg('error', 'Connect V1 first, then run OBD scan.');
 			return;
@@ -334,6 +340,49 @@
 		}
 	}
 
+	async function toggleObdEnabled(enabled) {
+		if (savingObdEnabled) return;
+		const previousEnabled = !!status.enabled;
+		status = { ...status, enabled };
+		savingObdEnabled = true;
+
+		try {
+			const res = await fetch('/api/obd/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled })
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || 'Failed to update OBD service');
+				status = { ...status, enabled: previousEnabled };
+				return;
+			}
+
+			const nextEnabled = data.enabled === undefined ? enabled : !!data.enabled;
+			const nextVwDataEnabled =
+				data.vwDataEnabled === undefined ? !!status.vwDataEnabled : !!data.vwDataEnabled;
+			status = {
+				...status,
+				enabled: nextEnabled,
+				vwDataEnabled: nextVwDataEnabled,
+				connected: nextEnabled ? status.connected : false,
+				scanning: nextEnabled ? status.scanning : false
+			};
+			if (!nextEnabled) {
+				scanning = false;
+				stopScanPoll();
+			}
+			setMsg('success', `OBD service ${nextEnabled ? 'enabled' : 'disabled'}`);
+			await fetchStatus();
+		} catch (e) {
+			status = { ...status, enabled: previousEnabled };
+			setMsg('error', 'Failed to update OBD service');
+		} finally {
+			savingObdEnabled = false;
+		}
+	}
+
 	async function toggleVwData(enabled) {
 		if (savingVwData) return;
 		const previous = !!status.vwDataEnabled;
@@ -459,37 +508,58 @@
 		</div>
 	</div>
 
-	<div class="card bg-base-200 shadow">
-		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h2 class="card-title">Current Status</h2>
-					<p class="text-sm text-base-content/70">
-						{#if status.connected}
-							Connected to {status.deviceName || status.deviceAddress}
+		<div class="card bg-base-200 shadow">
+			<div class="card-body gap-3">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<h2 class="card-title">Current Status</h2>
+						<p class="text-sm text-base-content/70">
+							{#if !status.enabled}
+								OBD service disabled
+							{:else if status.connected}
+								Connected to {status.deviceName || status.deviceAddress}
+							{:else}
+								Not connected
+							{/if}
+						</p>
+					</div>
+					<div class="flex gap-2">
+						<button class="btn btn-outline btn-sm" onclick={refreshAll}>Refresh</button>
+						<button class="btn btn-warning btn-sm" onclick={disconnectObd} disabled={!status.connected}>Disconnect</button>
+					</div>
+				</div>
+				<div class="form-control">
+					<label class="label cursor-pointer justify-start gap-3 py-0">
+						<input
+							type="checkbox"
+							class="toggle toggle-sm toggle-primary"
+							checked={!!status.enabled}
+							onchange={(e) => toggleObdEnabled(e.currentTarget.checked)}
+							disabled={savingObdEnabled}
+						/>
+						<span class="label-text">OBD service</span>
+					</label>
+					<div class="text-xs text-base-content/60">
+						{#if status.enabled}
+							Scan/connect and auto-connect are active.
 						{:else}
-							Not connected
+							Service is off. Scan/connect are blocked.
 						{/if}
-					</p>
+					</div>
 				</div>
-				<div class="flex gap-2">
-					<button class="btn btn-outline btn-sm" onclick={refreshAll}>Refresh</button>
-					<button class="btn btn-warning btn-sm" onclick={disconnectObd} disabled={!status.connected}>Disconnect</button>
+				<div class="form-control">
+					<label class="label cursor-pointer justify-start gap-3 py-0">
+						<input
+							type="checkbox"
+							class="toggle toggle-sm toggle-primary"
+							checked={!!status.vwDataEnabled}
+							onchange={(e) => toggleVwData(e.currentTarget.checked)}
+							disabled={savingVwData || !status.enabled}
+						/>
+						<span class="label-text">VW data</span>
+					</label>
+					<div class="text-xs text-base-content/60">Enable VW-specific PIDs (oil temp)</div>
 				</div>
-			</div>
-			<div class="form-control">
-				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<input
-						type="checkbox"
-						class="toggle toggle-sm toggle-primary"
-						checked={!!status.vwDataEnabled}
-						onchange={(e) => toggleVwData(e.currentTarget.checked)}
-						disabled={savingVwData}
-					/>
-					<span class="label-text">VW data</span>
-				</label>
-				<div class="text-xs text-base-content/60">Enable VW-specific PIDs (oil temp)</div>
-			</div>
 
 				<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
 					<div class="stat py-3 px-4">
@@ -524,65 +594,65 @@
 						<div class="stat-desc">Auto-connect: {status.autoConnectCount}</div>
 					</div>
 				</div>
-		</div>
-	</div>
-
-	<div class="card bg-base-200 shadow">
-		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h2 class="card-title">Nearby Devices</h2>
-					<p class="text-sm text-base-content/70">Scan runs only when you start it.</p>
-				</div>
-				<div class="flex gap-2">
-					{#if scanning}
-						<button class="btn btn-warning btn-sm" onclick={stopScan}>Stop Scan</button>
-					{:else}
-						<button class="btn btn-primary btn-sm" onclick={startScan} disabled={!status.v1Connected}>Scan Nearby</button>
-					{/if}
-					<button class="btn btn-ghost btn-sm" onclick={clearNearby} disabled={nearby.length === 0}>Clear</button>
-				</div>
 			</div>
-
-			{#if scanning}
-				<div class="alert alert-info py-2">
-					<span class="loading loading-spinner loading-sm"></span>
-					<span>Scanning...</span>
-				</div>
-			{/if}
-
-			{#if loading}
-				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
-			{:else if nearby.length === 0}
-				<div class="text-sm text-base-content/70">No devices found yet.</div>
-			{:else}
-				<div class="overflow-x-auto">
-					<table class="table table-sm">
-						<thead>
-							<tr>
-								<th>Name</th>
-								<th>Address</th>
-								<th>RSSI</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each nearby as device}
-								<tr>
-									<td class="font-medium">{device.name || 'Unnamed'}</td>
-									<td class="font-mono text-xs">{device.address}</td>
-									<td>{device.rssi}</td>
-									<td>
-										<button class="btn btn-primary btn-xs" onclick={() => openConnectModal(device)}>Connect</button>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
 		</div>
-	</div>
+
+		<div class="card bg-base-200 shadow">
+			<div class="card-body gap-3">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<h2 class="card-title">Nearby Devices</h2>
+						<p class="text-sm text-base-content/70">Scan runs only when you start it.</p>
+					</div>
+					<div class="flex gap-2">
+						{#if scanning}
+							<button class="btn btn-warning btn-sm" onclick={stopScan}>Stop Scan</button>
+						{:else}
+							<button class="btn btn-primary btn-sm" onclick={startScan} disabled={!status.enabled || !status.v1Connected}>Scan Nearby</button>
+						{/if}
+						<button class="btn btn-ghost btn-sm" onclick={clearNearby} disabled={nearby.length === 0}>Clear</button>
+					</div>
+				</div>
+
+				{#if scanning}
+					<div class="alert alert-info py-2">
+						<span class="loading loading-spinner loading-sm"></span>
+						<span>Scanning...</span>
+					</div>
+				{/if}
+
+				{#if loading}
+					<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+				{:else if nearby.length === 0}
+					<div class="text-sm text-base-content/70">No devices found yet.</div>
+				{:else}
+					<div class="overflow-x-auto">
+						<table class="table table-sm">
+							<thead>
+								<tr>
+									<th>Name</th>
+									<th>Address</th>
+									<th>RSSI</th>
+									<th></th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each nearby as device}
+									<tr>
+										<td class="font-medium">{device.name || 'Unnamed'}</td>
+										<td class="font-mono text-xs">{device.address}</td>
+										<td>{device.rssi}</td>
+										<td>
+											<button class="btn btn-primary btn-xs" onclick={() => openConnectModal(device)} disabled={!status.enabled}>Connect</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</div>
+		</div>
 
 	<div class="card bg-base-200 shadow">
 		<div class="card-body gap-3">
@@ -623,7 +693,7 @@
 										/>
 									</td>
 									<td class="space-x-1">
-										<button class="btn btn-outline btn-xs" onclick={() => connectRememberedDevice(device)}>Connect</button>
+										<button class="btn btn-outline btn-xs" onclick={() => connectRememberedDevice(device)} disabled={!status.enabled}>Connect</button>
 										<button class="btn btn-error btn-outline btn-xs" onclick={() => forgetRememberedDevice(device)}>Forget</button>
 									</td>
 								</tr>

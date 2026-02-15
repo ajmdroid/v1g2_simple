@@ -130,6 +130,7 @@ public:
     // Convenience helpers used by some tests
     uint8_t getBrightness() const { return settings.brightness; }
     void setBrightness(uint8_t b) { settings.brightness = b; }
+    void setObdEnabled(bool enabled) { settings.obdEnabled = enabled; }
     void setObdVwDataEnabled(bool enabled) { settings.obdVwDataEnabled = enabled; }
 
     bool isDisplayOn() const { return settings.displayOn; }

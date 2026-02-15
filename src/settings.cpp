@@ -406,7 +406,7 @@ SettingsManager settingsManager;
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
 static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-static const int SETTINGS_VERSION = 3;  // Increment when changing persisted settings schema
+static const int SETTINGS_VERSION = 4;  // Increment when changing persisted settings schema
 static const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 // NVS recovery: clear unused namespace when NVS is full
@@ -659,6 +659,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("wifiClSSID", settings.wifiClientSSID);
     written += prefs.putBool("proxyBLE", settings.proxyBLE);
     written += prefs.putString("proxyName", settings.proxyName);
+    written += prefs.putBool("obdEn", settings.obdEnabled);
     written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("gpsEn", settings.gpsEnabled);
     written += prefs.putBool("camEn", settings.cameraEnabled);
@@ -947,6 +948,7 @@ void SettingsManager::load() {
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
+    settings.obdEnabled = preferences.getBool("obdEn", true);
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
     settings.cameraEnabled = preferences.getBool("camEn", true);
@@ -1281,6 +1283,14 @@ void SettingsManager::setProxyBLE(bool enabled) {
 
 void SettingsManager::setProxyName(const String& name) {
     settings.proxyName = sanitizeProxyNameValue(name);
+    save();
+}
+
+void SettingsManager::setObdEnabled(bool enabled) {
+    if (settings.obdEnabled == enabled) {
+        return;
+    }
+    settings.obdEnabled = enabled;
     save();
 }
 
@@ -1791,6 +1801,7 @@ void SettingsManager::backupToSD() {
     doc["wifiClientSSID"] = settings.wifiClientSSID;
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
+    doc["obdEnabled"] = settings.obdEnabled;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["cameraEnabled"] = settings.cameraEnabled;
@@ -2013,6 +2024,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
     restoreBool("proxyBLE", settings.proxyBLE);
     if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
+    restoreBool("obdEnabled", settings.obdEnabled);
     restoreBool("obdVwDataEnabled", settings.obdVwDataEnabled);
     restoreBool("gpsEnabled", settings.gpsEnabled);
     restoreBool("cameraEnabled", settings.cameraEnabled);

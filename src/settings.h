@@ -175,6 +175,7 @@ struct V1Settings {
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
     String proxyName;       // BLE device name when proxying
+    bool obdEnabled;        // Enable OBD integration service runtime
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
     bool cameraEnabled;     // Enable camera runtime module (gated by gpsEnabled)
@@ -319,6 +320,7 @@ struct V1Settings {
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
+        obdEnabled(true),       // OBD integration enabled by default
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
         cameraEnabled(true),    // Camera defaults on when GPS is enabled
@@ -447,6 +449,7 @@ public:
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
+    void setObdEnabled(bool enabled);
     void setObdVwDataEnabled(bool enabled);
     void setGpsEnabled(bool enabled);
     void setCameraEnabled(bool enabled);
