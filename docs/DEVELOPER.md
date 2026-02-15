@@ -120,6 +120,15 @@ If a retired implementation is no longer useful as a comparison baseline, remove
 
 The codebase uses two active logging mechanisms:
 
+### Conventions (Apply Incrementally)
+
+For new or touched code:
+- Use stable uppercase prefixes: `[AREA]` (example: `[BLE]`, `[WIFI]`, `[PERF]`).
+- Include level keywords (`ERROR`, `WARN`) for failure paths when applicable.
+- Keep subsystem prefix spellings consistent; do not introduce alternates.
+- For compatibility routes/paths, log when legacy behavior is exercised.
+- In hot paths, keep logs debug-gated; keep actionable failures always visible.
+
 ### Serial/SerialLog (Direct Output)
 Use for:
 - **Critical errors** that must always be visible
