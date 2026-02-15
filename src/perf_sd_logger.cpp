@@ -13,9 +13,9 @@
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
-static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 5;
+static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 6;
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,obdMax_us,gpsMax_us,cameraMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,obdState,obdConnected,obdScanActive,obdHasValidData,obdSampleAgeMs,obdSpeedMph_x10,obdConnFailures,obdPollFailStreak,obdNotifyDrops,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,speedVolBoosts,speedVolRestores,speedVolFadeTakeovers,speedVolNoHeadroom,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,cameraEnabled,cameraIndexLoaded,cameraLastCapReached,cameraLoaderInProgress,cameraTicks,cameraTickSkipsOverload,cameraTickSkipsNonCore,cameraTickSkipsMemGuard,cameraCandidatesChecked,cameraMatches,cameraAlertsStarted,cameraBudgetExceeded,cameraLoadFailures,cameraLoadSkipsMemGuard,cameraIndexSwapCount,cameraIndexSwapFailures,cameraLastTick_us,cameraMaxTick_us,cameraLastLoadMs,cameraMaxLoadMs,cameraLastSortMs,cameraLastSpanMs,cameraLastInternalFree,cameraLastInternalBlock,cameraLoaderReadyVersion\n";
+    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,obdMax_us,gpsMax_us,cameraMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,obdState,obdConnected,obdScanActive,obdHasValidData,obdSampleAgeMs,obdSpeedMph_x10,obdConnFailures,obdPollFailStreak,obdNotifyDrops,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,speedVolBoosts,speedVolRestores,speedVolFadeTakeovers,speedVolNoHeadroom,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,cameraEnabled,cameraIndexLoaded,cameraLastCapReached,cameraLoaderInProgress,cameraTicks,cameraTickSkipsOverload,cameraTickSkipsNonCore,cameraTickSkipsMemGuard,cameraCandidatesChecked,cameraMatches,cameraAlertsStarted,cameraBudgetExceeded,cameraLoadFailures,cameraLoadSkipsMemGuard,cameraIndexSwapCount,cameraIndexSwapFailures,cameraLastTick_us,cameraMaxTick_us,cameraLastLoadMs,cameraMaxLoadMs,cameraLastSortMs,cameraLastSpanMs,cameraLastInternalFree,cameraLastInternalBlock,cameraLoaderReadyVersion,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,sigObsQueueDrops,sigObsWriteFail,minLargestBlock,fsMax_us,sdMax_us,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 32;
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
@@ -236,11 +236,11 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    char line[1600];
+    char line[2200];
     int n = snprintf(
         line,
         sizeof(line),
-        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%ld,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%u,%u,%u,%ld,%u,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
+        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%ld,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%u,%u,%u,%ld,%u,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
         static_cast<unsigned long>(snapshot.millisTs),
         static_cast<unsigned int>(snapshot.timeValid),
         static_cast<unsigned int>(snapshot.timeSource),
@@ -361,7 +361,32 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         static_cast<unsigned long>(snapshot.cameraLastSpanMs),
         static_cast<unsigned long>(snapshot.cameraLastInternalFree),
         static_cast<unsigned long>(snapshot.cameraLastInternalBlock),
-        static_cast<unsigned long>(snapshot.cameraLoaderReadyVersion));
+        static_cast<unsigned long>(snapshot.cameraLoaderReadyVersion),
+        static_cast<unsigned long>(snapshot.rxBytes),
+        static_cast<unsigned long>(snapshot.oversizeDrops),
+        static_cast<unsigned long>(snapshot.queueHighWater),
+        static_cast<unsigned long>(snapshot.bleMutexSkip),
+        static_cast<unsigned long>(snapshot.bleMutexTimeout),
+        static_cast<unsigned long>(snapshot.cmdPaceNotYet),
+        static_cast<unsigned long>(snapshot.bleDiscTaskCreateFail),
+        static_cast<unsigned long>(snapshot.displayUpdates),
+        static_cast<unsigned long>(snapshot.displaySkips),
+        static_cast<unsigned long>(snapshot.wifiConnectDeferred),
+        static_cast<unsigned long>(snapshot.pushNowRetries),
+        static_cast<unsigned long>(snapshot.pushNowFailures),
+        static_cast<unsigned long>(snapshot.audioPlayCount),
+        static_cast<unsigned long>(snapshot.audioPlayBusy),
+        static_cast<unsigned long>(snapshot.audioTaskFail),
+        static_cast<unsigned long>(snapshot.sigObsQueueDrops),
+        static_cast<unsigned long>(snapshot.sigObsWriteFail),
+        static_cast<unsigned long>(snapshot.minLargestBlock),
+        static_cast<unsigned long>(snapshot.fsMaxUs),
+        static_cast<unsigned long>(snapshot.sdMaxUs),
+        static_cast<unsigned long>(snapshot.flushMaxUs),
+        static_cast<unsigned long>(snapshot.bleConnectMaxUs),
+        static_cast<unsigned long>(snapshot.bleDiscoveryMaxUs),
+        static_cast<unsigned long>(snapshot.bleSubscribeMaxUs),
+        static_cast<unsigned long>(snapshot.dispPipeMaxUs));
 
     if (n <= 0 || n >= static_cast<int>(sizeof(line))) {
         f.close();

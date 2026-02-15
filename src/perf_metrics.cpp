@@ -247,6 +247,33 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.cameraLastInternalBlock = cameraStatus.lastInternalLargestBlock;
     snapshot.cameraLoaderReadyVersion = cameraStatus.loader.readyVersion;
 
+    snapshot.rxBytes = perfCounters.rxBytes.load(std::memory_order_relaxed);
+    snapshot.oversizeDrops = perfCounters.oversizeDrops.load(std::memory_order_relaxed);
+    snapshot.queueHighWater = perfCounters.queueHighWater.load(std::memory_order_relaxed);
+    snapshot.bleMutexSkip = perfCounters.bleMutexSkip.load(std::memory_order_relaxed);
+    snapshot.bleMutexTimeout = perfCounters.bleMutexTimeout.load(std::memory_order_relaxed);
+    snapshot.cmdPaceNotYet = perfCounters.cmdPaceNotYet.load(std::memory_order_relaxed);
+    snapshot.bleDiscTaskCreateFail = perfCounters.bleDiscTaskCreateFail.load(std::memory_order_relaxed);
+    snapshot.displayUpdates = perfCounters.displayUpdates.load(std::memory_order_relaxed);
+    snapshot.displaySkips = perfCounters.displaySkips.load(std::memory_order_relaxed);
+    snapshot.wifiConnectDeferred = perfCounters.wifiConnectDeferred.load(std::memory_order_relaxed);
+    snapshot.pushNowRetries = perfCounters.pushNowRetries.load(std::memory_order_relaxed);
+    snapshot.pushNowFailures = perfCounters.pushNowFailures.load(std::memory_order_relaxed);
+    snapshot.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
+    snapshot.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
+    snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
+    snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
+    snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
+    snapshot.minLargestBlock =
+        (perfExtended.minLargestBlock == UINT32_MAX) ? 0 : perfExtended.minLargestBlock;
+    snapshot.fsMaxUs = perfExtended.fsMaxUs;
+    snapshot.sdMaxUs = perfExtended.sdMaxUs;
+    snapshot.flushMaxUs = perfExtended.flushMaxUs;
+    snapshot.bleConnectMaxUs = perfExtended.bleConnectMaxUs;
+    snapshot.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
+    snapshot.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
+    snapshot.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
+
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
     perfExtended.bleDrainMaxUs = 0;

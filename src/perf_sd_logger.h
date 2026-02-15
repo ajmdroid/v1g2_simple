@@ -136,6 +136,33 @@ struct PerfSdSnapshot {
     uint32_t cameraLastInternalFree;  // Last camera tick internal free bytes
     uint32_t cameraLastInternalBlock; // Last camera tick largest internal block
     uint32_t cameraLoaderReadyVersion; // Last published loader version
+
+    // CSV schema v6 additions (kept at tail for backwards column stability)
+    uint32_t rxBytes;
+    uint32_t oversizeDrops;
+    uint32_t queueHighWater;
+    uint32_t bleMutexSkip;
+    uint32_t bleMutexTimeout;
+    uint32_t cmdPaceNotYet;
+    uint32_t bleDiscTaskCreateFail;
+    uint32_t displayUpdates;
+    uint32_t displaySkips;
+    uint32_t wifiConnectDeferred;
+    uint32_t pushNowRetries;
+    uint32_t pushNowFailures;
+    uint32_t audioPlayCount;
+    uint32_t audioPlayBusy;
+    uint32_t audioTaskFail;
+    uint32_t sigObsQueueDrops;
+    uint32_t sigObsWriteFail;
+    uint32_t minLargestBlock;
+    uint32_t fsMaxUs;
+    uint32_t sdMaxUs;
+    uint32_t flushMaxUs;
+    uint32_t bleConnectMaxUs;
+    uint32_t bleDiscoveryMaxUs;
+    uint32_t bleSubscribeMaxUs;
+    uint32_t dispPipeMaxUs;
 };
 
 class PerfSdLogger {
