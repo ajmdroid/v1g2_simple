@@ -35,27 +35,19 @@ echo -e "${GREEN}✅ Web files deployed${NC}"
 
 cd "$ROOT_DIR"
 
-# Step 3: Build Mac/Linux firmware
+# Step 3: Build firmware
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
 pio run -e waveshare-349
-echo -e "${GREEN}✅ Mac/Linux firmware built${NC}"
+echo -e "${GREEN}✅ Firmware built${NC}"
 
-# Step 4: Build Windows firmware
-echo -e "${YELLOW}🏗️  Building firmware (waveshare-349-windows)...${NC}"
-pio run -e waveshare-349-windows
-echo -e "${GREEN}✅ Windows firmware built${NC}"
-
-# Step 5: Size report
+# Step 4: Size report
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║               Build Size Report                    ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo ""
-echo "Mac/Linux (waveshare-349):"
+echo "waveshare-349:"
 pio run -e waveshare-349 -t size 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
-echo ""
-echo "Windows (waveshare-349-windows):"
-pio run -e waveshare-349-windows -t size 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
 
 # Calculate elapsed time
 END_TIME=$(date +%s)

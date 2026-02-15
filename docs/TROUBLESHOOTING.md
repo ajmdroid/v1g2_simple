@@ -314,8 +314,6 @@ pio run -t erase -e waveshare-349
 ./build.sh --all
 ```
 
-**Windows**: Use `pio run -t erase -e waveshare-349-windows` before `./build.sh --all`
-
 **After reset**:
 - WiFi: `V1-Simple` / `setupv1g2`
 - All settings return to defaults

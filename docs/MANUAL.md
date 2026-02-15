@@ -86,13 +86,8 @@ cd v1g2_simple
 cd interface && npm install && npm run build && npm run deploy && cd ..
 
 # Build and upload firmware + filesystem
-# Mac/Linux:
 pio run -e waveshare-349 -t uploadfs
 pio run -e waveshare-349 -t upload
-
-# Windows:
-pio run -e waveshare-349-windows -t uploadfs
-pio run -e waveshare-349-windows -t upload
 
 # Monitor serial output
 pio device monitor -b 115200
@@ -134,7 +129,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | Storage | LittleFS (internal), SD card (optional) |
 | Battery | Optional LiPo via TCA9554 power management |
 
-**Note:** Some units ship with 8MB flash. The Windows build uses `default_8MB.csv` partitions.
+**Note:** Some units ship with 8MB flash. All environments use the same `partitions_v1.csv` partition table.
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [include/config.h](include/config.h#L1-L20), [src/battery_manager.h](src/battery_manager.h#L1-L30)
 
@@ -1239,11 +1234,10 @@ Auto-push sends these V1 ESP commands:
 
 ### PlatformIO Environments
 
-Two environments available (both use the same pioarduino platform):
-- `waveshare-349` - Mac/Linux (16MB flash)
-- `waveshare-349-windows` - Windows (8MB flash for compatibility with some hardware variants)
+One firmware environment is used on all platforms (Mac, Linux, Windows):
+- `waveshare-349` — Waveshare ESP32-S3-Touch-LCD-3.49 (16MB flash)
 
-Both environments use identical toolchain and libraries. The only difference is flash partition size.
+A separate `native` environment runs unit tests on the host machine.
 
 ```ini
 [env:waveshare-349]
@@ -1265,20 +1259,14 @@ lib_deps =
     bblanchon/ArduinoJson@7.4.2
     https://github.com/takkaO/OpenFontRender.git
 
-board_build.partitions = default_16MB.csv
+board_build.partitions = partitions_v1.csv
 board_build.filesystem = littlefs
-
-[env:waveshare-349-windows]
-# Same as waveshare-349, but with 8MB partitions for some hardware variants
-platform = https://github.com/pioarduino/platform-espressif32/releases/download/53.03.11/platform-espressif32.zip
-# ... identical build_flags and lib_deps ...
-board_build.partitions = default_8MB.csv
 ```
 
-**Windows users:** Use `--env waveshare-349-windows` with all PlatformIO commands.
+**Windows users:** Use the same `waveshare-349` environment — no separate Windows env is needed.
 See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
 
-**Source:** [platformio.ini](platformio.ini#L1-L100)
+**Source:** [platformio.ini](platformio.ini#L1-L80)
 
 ### Compile-Time Flags
 
@@ -1358,12 +1346,10 @@ Settings are stored in NVS (non-volatile storage) and persist across firmware up
 # Mac/Linux:
 ~/.platformio/packages/tool-esptoolpy/esptool.py --port /dev/cu.usbmodem* erase_flash
 
-# Then re-upload everything (Windows - add PATH first):
-export PATH="$PATH:$HOME/.platformio/penv/Scripts"
-pio run -e waveshare-349-windows -t upload
-pio run -e waveshare-349-windows -t uploadfs
+# Then re-upload everything:
+./build.sh --all
 
-# Mac/Linux:
+# Or manually:
 pio run -e waveshare-349 -t upload
 pio run -e waveshare-349 -t uploadfs
 ```
@@ -1525,17 +1511,10 @@ of repeating full command blocks.
 **Manual PlatformIO commands:**
 
 ```bash
-# Mac/Linux:
 pio run -e waveshare-349                  # Build firmware only
 pio run -e waveshare-349 -t upload        # Upload firmware
 pio run -e waveshare-349 -t uploadfs      # Upload web filesystem
-
-# Windows (use waveshare-349-windows environment):
-pio run -e waveshare-349-windows                  # Build firmware only
-pio run -e waveshare-349-windows -t upload        # Upload firmware
-pio run -e waveshare-349-windows -t uploadfs      # Upload web filesystem
-
-pio device monitor -b 115200              # Serial monitor (same for all)
+pio device monitor -b 115200              # Serial monitor
 ```
 
 **Web interface development:**

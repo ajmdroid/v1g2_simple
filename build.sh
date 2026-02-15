@@ -30,8 +30,7 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] ||
         echo "   Run: pip install platformio"
         exit 1
     fi
-    DEFAULT_ENV="waveshare-349-windows"
-    echo -e "${BLUE}🪟 Detected Windows - using waveshare-349-windows${NC}"
+    echo -e "${BLUE}🪟 Detected Windows${NC}"
 else
     IS_WINDOWS=false
     if command -v pio &> /dev/null; then
@@ -41,8 +40,8 @@ else
         echo "   Install PlatformIO CLI or use VS Code PlatformIO extension terminal."
         exit 1
     fi
-    DEFAULT_ENV="waveshare-349"
 fi
+DEFAULT_ENV="waveshare-349"
 
 # Parse arguments
 CLEAN=false
@@ -106,7 +105,6 @@ while [[ $# -gt 0 ]]; do
             echo "  -s, --skip-web     Skip web interface build"
             echo "  -t, --test         Run unit tests before upload (native environment)"
             echo "  -e, --env ENV      PlatformIO environment (default: waveshare-349)"
-            echo "                     Windows users: use --env waveshare-349-windows"
             echo "  --upload-port PORT COM port for upload (e.g., COM6)"
             echo "  -h, --help         Show this help"
             echo ""
@@ -117,7 +115,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -f              # Build and upload filesystem only"
             echo "  $0 -s -u           # Skip web build, just build and upload firmware"
             echo "  $0 --all --test    # Build, test, upload everything"
-            echo "  $0 --all --env waveshare-349-windows  # Windows build"
+            echo "  $0 --all --env waveshare-349    # Explicit env"
             exit 0
             ;;
         *)

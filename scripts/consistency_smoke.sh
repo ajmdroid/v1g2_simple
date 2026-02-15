@@ -15,7 +15,6 @@ if ! command -v pio >/dev/null 2>&1; then
 fi
 
 run_step pio run -e waveshare-349
-run_step pio run -e waveshare-349-windows
 run_step pio test -e native \
   -f test_ble_client \
   -f test_packet_parser \

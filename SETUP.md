@@ -65,18 +65,13 @@ cd v1g2_simple
 - In VS Code, open the `v1g2_simple` folder.
 - Open the PlatformIO sidebar (alien head icon).
 - Select your environment:
-  - `waveshare-349` (Mac/Linux)
-  - `waveshare-349-windows` (Windows)
+  - `waveshare-349` (all platforms)
 - Click **Build** (checkmark icon) to compile.
 - Click **Upload** (right arrow icon) to flash the firmware.
 
 **Or use the terminal:**
 ```sh
-# Mac/Linux:
 pio run -e waveshare-349 --target upload
-
-# Windows:
-pio run -e waveshare-349-windows --target upload
 ```
 
 **Windows users:** See [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for detailed Windows setup instructions.

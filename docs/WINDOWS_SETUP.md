@@ -134,14 +134,14 @@ Description: USB Serial Device (COM4)
    ./build.sh --all
    ```
    
-   **Note:** The script auto-detects Windows and uses the correct environment (`waveshare-349-windows`) and PlatformIO path automatically. No `--env` flag needed!
+   **Note:** The script auto-detects Windows and uses the correct PlatformIO path automatically. All platforms use the same `waveshare-349` environment.
    
    **If you have multiple USB devices connected**, specify the COM port:
    ```bash
    ./build.sh --all --upload-port COM6
    ```
    
-   **Manual command fallback:** Use the canonical command matrix in [docs/MANUAL.md](MANUAL.md) under **Build Commands** (Windows uses `waveshare-349-windows`).
+   **Manual command fallback:** Use the canonical command matrix in [docs/MANUAL.md](MANUAL.md) under **Build Commands**.
    
    What this does:
    - Builds the web UI (reuses `interface/node_modules`, rebuilds, gzips assets, deploys to `data/`).
@@ -159,7 +159,7 @@ Description: USB Serial Device (COM4)
 Use the command reference in [docs/MANUAL.md](MANUAL.md) under **Build Commands**.
 
 Windows notes:
-- Use the `waveshare-349-windows` environment for PlatformIO commands.
+- All platforms use the same `waveshare-349` environment for PlatformIO commands.
 - Add `--upload-port COMx` when multiple USB serial devices are connected.
 
 ## 8) First-Boot Verification
@@ -182,7 +182,7 @@ Windows notes:
 - Web UI change only: `./build.sh -f -m` (skips full firmware rebuild)
 - Clean build: `./build.sh --clean --all`
 
-**Note:** The script auto-detects Windows—no need for `--env waveshare-349-windows`.
+**Note:** The script auto-detects Windows—no separate environment flag needed.
 
 You now have a repeatable Windows workflow: Git Bash for scripts, PlatformIO CLI for flashing, and Node 18+ for the web UI.
 
@@ -201,11 +201,8 @@ Settings are stored in NVS (non-volatile storage) and persist across firmware up
 
 **Note:** Replace `COM4` with your actual port (use `pio device list` to find it). After erase, the device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
-## 12) Why Windows Uses a Different Environment
+## 12) Single Environment for All Platforms
 
-`waveshare-349-windows` is kept as a Windows-friendly target name and workflow alias.
-
-Current behavior:
-- Both `waveshare-349` and `waveshare-349-windows` use the same platform/toolchain family.
-- Build flags and partition table are aligned, so outputs are functionally equivalent.
-- On Windows, prefer `waveshare-349-windows` for consistency with this guide.
+As of v4.0.0, all platforms (Mac, Linux, Windows) use the single `waveshare-349` environment.
+There is no separate Windows environment—build flags, partitions, and libraries are identical across platforms.
+`build.sh` auto-detects Windows only for PlatformIO path resolution.
