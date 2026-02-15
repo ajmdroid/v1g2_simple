@@ -285,6 +285,13 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.cameraMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
+    perfExtended.fsMaxUs = 0;
+    perfExtended.sdMaxUs = 0;
+    perfExtended.flushMaxUs = 0;
+    perfExtended.bleConnectMaxUs = 0;
+    perfExtended.bleDiscoveryMaxUs = 0;
+    perfExtended.bleSubscribeMaxUs = 0;
+    perfExtended.minLargestBlock = UINT32_MAX;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 } // namespace
