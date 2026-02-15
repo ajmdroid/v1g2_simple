@@ -438,6 +438,11 @@ private:
     // Tuned lower to reduce post-connect latency while preserving radio settle margin
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
     static constexpr unsigned long PROXY_STABILIZE_MS = 100;
+    // When STA is connected, limit idle proxy advertising windows to reduce radio churn.
+    unsigned long proxyAdvertisingWindowStartMs = 0;
+    unsigned long proxyAdvertisingRetryAtMs = 0;
+    static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 30000;
+    static constexpr unsigned long PROXY_ADVERTISING_RETRY_MS = 120000;
     
     // Write verification state
     bool verifyPending = false;

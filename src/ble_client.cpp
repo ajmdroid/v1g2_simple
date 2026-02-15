@@ -970,6 +970,9 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
             NimBLEDevice::stopAdvertising();
             // No delay here - callback must return quickly
         }
+        instancePtr->proxyAdvertisingStartMs = 0;
+        instancePtr->proxyAdvertisingWindowStartMs = 0;
+        instancePtr->proxyAdvertisingRetryAtMs = 0;
         
         if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
             instancePtr->connected = false;
@@ -2040,6 +2043,39 @@ void V1BLEClient::process() {
             startProxyAdvertising();
         }
     }
+
+    // Throttle idle proxy advertising while STA is connected:
+    // advertise for a bounded window, then pause before retrying.
+    if (isConnected() && proxyEnabled && proxyServerInitialized && !wifiPriorityMode) {
+        const bool staConnected = (WiFi.status() == WL_CONNECTED);
+        const bool proxyConnected = proxyClientConnected.load();
+        NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+        const bool advertising = pAdv && pAdv->isAdvertising();
+
+        if (proxyConnected) {
+            proxyAdvertisingWindowStartMs = 0;
+            proxyAdvertisingRetryAtMs = 0;
+        } else if (staConnected) {
+            const unsigned long nowMs = millis();
+            if (advertising) {
+                if (proxyAdvertisingWindowStartMs == 0) {
+                    proxyAdvertisingWindowStartMs = nowMs;
+                } else if ((nowMs - proxyAdvertisingWindowStartMs) >= PROXY_ADVERTISING_WINDOW_MS) {
+                    NimBLEDevice::stopAdvertising();
+                    proxyAdvertisingWindowStartMs = 0;
+                    proxyAdvertisingRetryAtMs = nowMs + PROXY_ADVERTISING_RETRY_MS;
+                    Serial.println("[BLE] Proxy idle window elapsed; pausing advertising");
+                }
+            } else if (proxyAdvertisingRetryAtMs != 0 && nowMs >= proxyAdvertisingRetryAtMs) {
+                proxyAdvertisingRetryAtMs = 0;
+                proxyAdvertisingStartMs = nowMs + 200;
+                Serial.println("[BLE] Proxy retry window opened; resuming advertising");
+            }
+        } else {
+            proxyAdvertisingWindowStartMs = 0;
+            proxyAdvertisingRetryAtMs = 0;
+        }
+    }
     
     unsigned long now = millis();
     NimBLEScan* pScan = NimBLEDevice::getScan();
@@ -2293,6 +2329,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         
         // Cancel any pending deferred advertising start
         proxyAdvertisingStartMs = 0;
+        proxyAdvertisingWindowStartMs = 0;
         
         // Note: We keep existing V1 connection if already connected
         // to avoid disrupting active radar detection
@@ -2305,6 +2342,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
             if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
             proxyAdvertisingStartMs = millis() + 500;
+            proxyAdvertisingWindowStartMs = 0;
         }
         
         // Resume scanning if disconnected
@@ -2331,6 +2369,8 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
     
     if (bleClient) {
         bleClient->proxyClientConnected = true;
+        bleClient->proxyAdvertisingWindowStartMs = 0;
+        bleClient->proxyAdvertisingRetryAtMs = 0;
     }
 }
 
@@ -2341,9 +2381,10 @@ void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimB
     }
     if (bleClient) {
         bleClient->proxyClientConnected = false;
-        // Resume advertising if V1 is still connected
-        if (bleClient->connected) {
-            NimBLEDevice::startAdvertising();
+        bleClient->proxyAdvertisingWindowStartMs = 0;
+        // Resume advertising if V1 is still connected and WiFi-priority suppression is off.
+        if (bleClient->connected && !bleClient->wifiPriorityMode) {
+            bleClient->startProxyAdvertising();
         }
     }
 }
@@ -2535,19 +2576,29 @@ void V1BLEClient::startProxyAdvertising() {
         Serial.println("Cannot start advertising - proxy server not initialized");
         return;
     }
+
+    if (wifiPriorityMode) {
+        return;
+    }
     
     // Don't restart if client already connected
     if (pServer->getConnectedCount() > 0) {
         Serial.println("Proxy client already connected, not restarting advertising");
+        proxyAdvertisingWindowStartMs = 0;
+        proxyAdvertisingRetryAtMs = 0;
         return;
     }
     
     // Start advertising if not already (simple approach, no task needed)
     if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
         if (NimBLEDevice::startAdvertising()) {
+            proxyAdvertisingWindowStartMs = millis();
             Serial.println("Proxy advertising started");
         }
     } else {
+        if (proxyAdvertisingWindowStartMs == 0) {
+            proxyAdvertisingWindowStartMs = millis();
+        }
         Serial.println("Proxy already advertising");
     }
 }
