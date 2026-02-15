@@ -59,6 +59,10 @@ public:
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
     GpsRuntimeStatus snapshot(uint32_t nowMs) const;
 
+    // Parse RMC UTC time + date into Unix epoch milliseconds.
+    // Public static for testability.
+    static bool parseRmcDateTime(const char* timeField, const char* dateField, int64_t& epochMsOut);
+
 #ifdef UNIT_TEST
     // Native-test hook for parser coverage without UART hardware.
     bool injectNmeaSentenceForTest(const char* nmeaSentence, uint32_t nowMs);
@@ -74,6 +78,7 @@ private:
     static constexpr size_t NMEA_LINE_MAX = 128;
     static constexpr uint16_t MAX_BYTES_PER_UPDATE = 512;
     static constexpr float KNOTS_TO_MPH = 1.150779f;
+    static constexpr uint32_t GPS_TIME_UPDATE_INTERVAL_MS = 60000;
 
     void resetRuntimeState();
     void invalidateSpeedSample();
@@ -93,6 +98,7 @@ private:
     static bool parseChecksum(const char* checksumText, uint8_t& out);
     static size_t splitCsv(char* payload, char* fields[], size_t maxFields);
     static bool sentenceTypeEquals(const char* type, const char* suffix);
+    void tryUpdateGpsTime(const char* timeField, const char* dateField, uint32_t nowMs);
 
     bool enabled_ = false;
     bool sampleValid_ = false;
@@ -123,6 +129,7 @@ private:
     uint32_t parseFailures_ = 0;
     uint32_t checksumFailures_ = 0;
     uint32_t bufferOverruns_ = 0;
+    uint32_t lastGpsTimeUpdateMs_ = 0;
     bool sentenceActive_ = false;
     size_t sentenceLen_ = 0;
     char sentenceBuf_[NMEA_LINE_MAX] = {};

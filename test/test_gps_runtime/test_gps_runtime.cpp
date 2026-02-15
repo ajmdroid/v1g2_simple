@@ -149,6 +149,56 @@ void test_stale_fix_is_cleared() {
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, status.fixAgeMs);
 }
 
+void test_parseRmcDateTime_valid_date() {
+    // 2026-02-15 12:35:19.00 UTC
+    int64_t epochMs = 0;
+    TEST_ASSERT_TRUE(GpsRuntimeModule::parseRmcDateTime("123519.00", "150226", epochMs));
+    // 2026-02-15 12:35:19 UTC = 1771158919 seconds since epoch
+    TEST_ASSERT_TRUE(epochMs >= 1771158919000LL - 1000LL);
+    TEST_ASSERT_TRUE(epochMs <= 1771158919000LL + 1000LL);
+}
+
+void test_parseRmcDateTime_known_epoch() {
+    // 2024-01-01 00:00:00 UTC = 1704067200 seconds since epoch
+    int64_t epochMs = 0;
+    TEST_ASSERT_TRUE(GpsRuntimeModule::parseRmcDateTime("000000", "010124", epochMs));
+    TEST_ASSERT_TRUE(epochMs == 1704067200000LL);
+}
+
+void test_parseRmcDateTime_fractional_seconds() {
+    int64_t epochMs = 0;
+    TEST_ASSERT_TRUE(GpsRuntimeModule::parseRmcDateTime("000000.50", "010124", epochMs));
+    TEST_ASSERT_TRUE(epochMs == 1704067200500LL);
+}
+
+void test_parseRmcDateTime_rejects_bad_date() {
+    int64_t epochMs = 0;
+    // Month 13 is invalid
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "011324", epochMs));
+    // Empty fields
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("", "010124", epochMs));
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "", epochMs));
+    // Short date
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "0101", epochMs));
+}
+
+void test_gps_time_injection_rate_limited() {
+    // First valid RMC should succeed and mark time update.
+    const bool first = gpsRuntimeModule.injectNmeaSentenceForTest(
+        "$GPRMC,123519,A,4807.038,N,01131.000,E,010.0,084.4,150226,003.1,W*62", 1000);
+    TEST_ASSERT_TRUE(first);
+
+    // Second RMC 10s later — still within 60s rate limit.
+    const bool second = gpsRuntimeModule.injectNmeaSentenceForTest(
+        "$GPRMC,123529,A,4807.038,N,01131.000,E,010.0,084.4,150226,003.1,W*61", 11000);
+    TEST_ASSERT_TRUE(second);
+
+    // Third RMC 61s after the first — should trigger time update again.
+    const bool third = gpsRuntimeModule.injectNmeaSentenceForTest(
+        "$GPRMC,124119,A,4807.038,N,01131.000,E,010.0,084.4,150226,003.1,W*61", 62000);
+    TEST_ASSERT_TRUE(third);
+}
+
 void test_overlong_sentence_is_rejected() {
     char longSentence[160];
     for (size_t i = 0; i < sizeof(longSentence) - 1; ++i) {
@@ -173,5 +223,10 @@ int main() {
     RUN_TEST(test_detection_timeout_disables_runtime_polling);
     RUN_TEST(test_stale_fix_is_cleared);
     RUN_TEST(test_overlong_sentence_is_rejected);
+    RUN_TEST(test_parseRmcDateTime_valid_date);
+    RUN_TEST(test_parseRmcDateTime_known_epoch);
+    RUN_TEST(test_parseRmcDateTime_fractional_seconds);
+    RUN_TEST(test_parseRmcDateTime_rejects_bad_date);
+    RUN_TEST(test_gps_time_injection_rate_limited);
     return UNITY_END();
 }

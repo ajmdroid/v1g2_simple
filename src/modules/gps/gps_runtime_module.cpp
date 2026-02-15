@@ -1,6 +1,9 @@
 #include "gps_runtime_module.h"
 #include "gps_observation_log.h"
 #include "modules/speed/speed_source_selector.h"
+#if !defined(UNIT_TEST)
+#include "time_service.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -80,6 +83,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     parseFailures_ = 0;
     checksumFailures_ = 0;
     bufferOverruns_ = 0;
+    lastGpsTimeUpdateMs_ = 0;
     sentenceActive_ = false;
     sentenceLen_ = 0;
     sentenceBuf_[0] = '\0';
@@ -407,7 +411,114 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
     hardwareSamples_++;
     publishObservation(sampleTsMs_);
 
+    // Inject GPS UTC time into system clock (rate-limited).
+    if (fieldCount > 9 && fields[1] && fields[1][0] != '\0' &&
+        fields[9] && fields[9][0] != '\0') {
+        tryUpdateGpsTime(fields[1], fields[9], (nowMs == 0) ? millis() : nowMs);
+    }
+
     return true;
+}
+
+bool GpsRuntimeModule::parseRmcDateTime(const char* timeField,
+                                        const char* dateField,
+                                        int64_t& epochMsOut) {
+    if (!timeField || !dateField) {
+        return false;
+    }
+
+    // Time field: hhmmss or hhmmss.ss (fractional optional).
+    const size_t timeLen = std::strlen(timeField);
+    if (timeLen < 6) {
+        return false;
+    }
+    for (size_t i = 0; i < 6; ++i) {
+        if (timeField[i] < '0' || timeField[i] > '9') {
+            return false;
+        }
+    }
+    const int hh = (timeField[0] - '0') * 10 + (timeField[1] - '0');
+    const int mi = (timeField[2] - '0') * 10 + (timeField[3] - '0');
+    const int ss = (timeField[4] - '0') * 10 + (timeField[5] - '0');
+    if (hh > 23 || mi > 59 || ss > 60) {
+        return false;
+    }
+
+    int fracMs = 0;
+    if (timeLen > 6 && timeField[6] == '.') {
+        int digits = 0;
+        int frac = 0;
+        for (size_t i = 7; i < timeLen && digits < 3; ++i) {
+            if (timeField[i] < '0' || timeField[i] > '9') {
+                break;
+            }
+            frac = frac * 10 + (timeField[i] - '0');
+            digits++;
+        }
+        while (digits < 3) {
+            frac *= 10;
+            digits++;
+        }
+        fracMs = frac;
+    }
+
+    // Date field: ddmmyy (exactly 6 digits).
+    const size_t dateLen = std::strlen(dateField);
+    if (dateLen != 6) {
+        return false;
+    }
+    for (size_t i = 0; i < 6; ++i) {
+        if (dateField[i] < '0' || dateField[i] > '9') {
+            return false;
+        }
+    }
+    const int dd = (dateField[0] - '0') * 10 + (dateField[1] - '0');
+    const int mo = (dateField[2] - '0') * 10 + (dateField[3] - '0');
+    const int yy = (dateField[4] - '0') * 10 + (dateField[5] - '0');
+    if (dd < 1 || dd > 31 || mo < 1 || mo > 12) {
+        return false;
+    }
+    const int year = 2000 + yy;
+
+    // Civil days from epoch (Howard Hinnant algorithm).
+    int y = year;
+    int m = mo;
+    y -= (m <= 2) ? 1 : 0;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + dd - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const int64_t days = static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
+
+    const int64_t epochMs = (days * 86400LL + hh * 3600LL + mi * 60LL + ss) * 1000LL + fracMs;
+
+    // Sanity: must be after ~2023-11 and before 2100.
+    if (epochMs < 1700000000000LL || epochMs > 4102444800000LL) {
+        return false;
+    }
+
+    epochMsOut = epochMs;
+    return true;
+}
+
+void GpsRuntimeModule::tryUpdateGpsTime(const char* timeField,
+                                        const char* dateField,
+                                        uint32_t nowMs) {
+    if (lastGpsTimeUpdateMs_ != 0 &&
+        static_cast<uint32_t>(nowMs - lastGpsTimeUpdateMs_) < GPS_TIME_UPDATE_INTERVAL_MS) {
+        return;
+    }
+
+    int64_t epochMs = 0;
+    if (!parseRmcDateTime(timeField, dateField, epochMs)) {
+        return;
+    }
+
+#if !defined(UNIT_TEST)
+    const int32_t tz = timeService.timeValid() ? timeService.tzOffsetMinutes() : 0;
+    timeService.setEpochBaseMs(epochMs, tz, TimeService::SOURCE_GPS);
+#endif
+    lastGpsTimeUpdateMs_ = nowMs;
 }
 
 bool GpsRuntimeModule::parseNmeaCoordinate(const char* coordText,
