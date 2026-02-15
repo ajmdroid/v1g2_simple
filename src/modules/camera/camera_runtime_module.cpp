@@ -15,6 +15,10 @@ constexpr uint32_t kMaximumGpsSampleAgeMs = 2000;
 constexpr uint32_t kMaximumGpsCourseAgeMs = 2000;
 constexpr uint32_t kCooldownMs = 30000;
 constexpr float kHeadingEntryMaxDeltaDeg = 35.0f;
+constexpr float kHeadingClearDeltaDeg = 55.0f;
+constexpr uint8_t kHeadingClearConsecutiveTicks = 2;
+constexpr float kPassDistanceM = 30.0f;
+constexpr uint8_t kSuppressionExitTicksRequired = 2;
 constexpr float kPi = 3.14159265358979323846f;
 
 float degToRad(float value) {
@@ -130,12 +134,9 @@ bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
                        const CameraRecord& record,
                        float& outDeltaDeg) {
     outDeltaDeg = NAN;
-
     float targetHeadingDeg = NAN;
-    float headingToleranceDeg = kHeadingEntryMaxDeltaDeg;
     if (record.bearingTenthsDeg >= 0 && record.bearingTenthsDeg < 3600) {
         targetHeadingDeg = static_cast<float>(record.bearingTenthsDeg) * 0.1f;
-        headingToleranceDeg = headingToleranceForRecord(record);
     } else {
         targetHeadingDeg = bearingDeg(gpsStatus.latitudeDeg,
                                       gpsStatus.longitudeDeg,
@@ -148,7 +149,7 @@ bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
         return false;
     }
     outDeltaDeg = deltaDeg;
-    return deltaDeg <= headingToleranceDeg;
+    return true;
 }
 
 bool isCameraCoolingDown(const CameraEventLog& eventLog, uint32_t cameraId, uint32_t nowMs) {
@@ -190,6 +191,12 @@ void CameraRuntimeModule::begin(bool enabled) {
     lastHeadingDeltaDeg_ = NAN;
     lastInternalFree_ = 0;
     lastInternalLargestBlock_ = 0;
+    lifecycleState_ = CameraLifecycleState::IDLE;
+    lastClearReason_ = CameraClearReason::NONE;
+    activeAlert_ = {};
+    suppressedCameraId_ = 0;
+    turnAwayConsecutiveTicks_ = 0;
+    suppressionExitTicks_ = 0;
     counters_ = {};
     index_.clear();
     eventLog_.reset();
@@ -203,6 +210,14 @@ void CameraRuntimeModule::begin(bool enabled) {
 void CameraRuntimeModule::setEnabled(bool enabled) {
     const bool wasEnabled = enabled_;
     enabled_ = enabled;
+    if (!enabled_) {
+        lifecycleState_ = CameraLifecycleState::IDLE;
+        lastClearReason_ = CameraClearReason::NONE;
+        activeAlert_ = {};
+        suppressedCameraId_ = 0;
+        turnAwayConsecutiveTicks_ = 0;
+        suppressionExitTicks_ = 0;
+    }
     if (enabled_ && !wasEnabled && !index_.isLoaded()) {
         dataLoader_.requestReload();
     }
@@ -216,6 +231,78 @@ bool CameraRuntimeModule::tryLoadDefault(uint32_t nowMs) {
 
 void CameraRuntimeModule::requestReload() {
     dataLoader_.requestReload();
+}
+
+void CameraRuntimeModule::notifySignalPreempted(uint32_t nowMs) {
+    if (lifecycleState_ == CameraLifecycleState::ACTIVE && activeAlert_.active) {
+        clearActiveAlert(CameraClearReason::PREEMPTED_BY_SIGNAL, nowMs, true);
+        lifecycleState_ = CameraLifecycleState::PREEMPTED;
+    }
+}
+
+void CameraRuntimeModule::clearActiveAlert(CameraClearReason reason,
+                                           uint32_t nowMs,
+                                           bool suppressSamePass) {
+    if (activeAlert_.active && suppressSamePass) {
+        suppressedCameraId_ = activeAlert_.cameraId;
+        suppressionExitTicks_ = 0;
+        lifecycleState_ = CameraLifecycleState::SUPPRESSED_UNTIL_EXIT;
+    } else if (!activeAlert_.active && suppressSamePass && suppressedCameraId_ != 0) {
+        lifecycleState_ = CameraLifecycleState::SUPPRESSED_UNTIL_EXIT;
+    } else if (!suppressSamePass) {
+        suppressedCameraId_ = 0;
+        suppressionExitTicks_ = 0;
+        lifecycleState_ = CameraLifecycleState::IDLE;
+    } else if (!activeAlert_.active) {
+        lifecycleState_ = CameraLifecycleState::IDLE;
+    }
+
+    activeAlert_.active = false;
+    activeAlert_.cameraId = 0;
+    activeAlert_.type = 0;
+    activeAlert_.distanceM = 0;
+    activeAlert_.headingDeltaDeg = NAN;
+    activeAlert_.startTsMs = 0;
+    activeAlert_.lastUpdateTsMs = nowMs;
+    turnAwayConsecutiveTicks_ = 0;
+    lastClearReason_ = reason;
+}
+
+void CameraRuntimeModule::startActiveAlert(uint32_t nowMs,
+                                           uint32_t cameraId,
+                                           uint8_t cameraType,
+                                           uint16_t distanceM,
+                                           float headingDeltaDeg) {
+    activeAlert_.active = true;
+    activeAlert_.cameraId = cameraId;
+    activeAlert_.type = cameraType;
+    activeAlert_.distanceM = distanceM;
+    activeAlert_.headingDeltaDeg = headingDeltaDeg;
+    activeAlert_.startTsMs = nowMs;
+    activeAlert_.lastUpdateTsMs = nowMs;
+    lifecycleState_ = CameraLifecycleState::ACTIVE;
+    turnAwayConsecutiveTicks_ = 0;
+    lastClearReason_ = CameraClearReason::NONE;
+}
+
+bool CameraRuntimeModule::shouldLiftSuppression(bool sawSuppressedThisTick) {
+    if (suppressedCameraId_ == 0) {
+        suppressionExitTicks_ = 0;
+        return true;
+    }
+    if (sawSuppressedThisTick) {
+        suppressionExitTicks_ = 0;
+        return false;
+    }
+    if (suppressionExitTicks_ < UINT8_MAX) {
+        suppressionExitTicks_++;
+    }
+    if (suppressionExitTicks_ < kSuppressionExitTicksRequired) {
+        return false;
+    }
+    suppressionExitTicks_ = 0;
+    suppressedCameraId_ = 0;
+    return true;
 }
 
 void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool overloadThisLoop) {
@@ -265,12 +352,22 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     }
 
     if (!index_.isLoaded()) {
+        if (activeAlert_.active) {
+            clearActiveAlert(CameraClearReason::ELIGIBILITY_INVALID, nowMs, true);
+        }
         finalizeTickTiming();
         return;
     }
 
+    if (lifecycleState_ == CameraLifecycleState::PREEMPTED) {
+        lifecycleState_ = CameraLifecycleState::SUPPRESSED_UNTIL_EXIT;
+    }
+
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     if (!isGpsEligibleForCameraMatch(gpsStatus)) {
+        if (activeAlert_.active) {
+            clearActiveAlert(CameraClearReason::ELIGIBILITY_INVALID, nowMs, true);
+        }
         finalizeTickTiming();
         return;
     }
@@ -279,6 +376,9 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     const CameraCellSpan* spans = index_.spans();
     const uint32_t spanCount = index_.bucketCount();
     if (!records || !spans || spanCount == 0) {
+        if (activeAlert_.active) {
+            clearActiveAlert(CameraClearReason::ELIGIBILITY_INVALID, nowMs, true);
+        }
         finalizeTickTiming();
         return;
     }
@@ -295,6 +395,10 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     float bestDistanceM = std::numeric_limits<float>::max();
     uint8_t bestCameraType = 0;
     float bestHeadingDeltaDeg = NAN;
+    bool sawSuppressedThisTick = false;
+    bool activeCameraSeen = false;
+    float activeCameraDistanceM = std::numeric_limits<float>::max();
+    float activeCameraHeadingDeltaDeg = NAN;
 
     for (int32_t latDelta = -1; latDelta <= 1; ++latDelta) {
         for (int32_t lonDelta = -1; lonDelta <= 1; ++lonDelta) {
@@ -317,6 +421,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
                 }
 
                 visitedCandidates++;
+                const uint32_t cameraId = idx + 1u;
                 const CameraRecord& record = records[idx];
                 const float distanceM = haversineMeters(gpsStatus.latitudeDeg,
                                                         gpsStatus.longitudeDeg,
@@ -325,16 +430,27 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
                 if (!std::isfinite(distanceM) || distanceM > kAlertRadiusM) {
                     continue;
                 }
+                if (suppressedCameraId_ != 0 && cameraId == suppressedCameraId_) {
+                    sawSuppressedThisTick = true;
+                }
 
                 float deltaDeg = NAN;
                 if (!isHeadingEligible(gpsStatus, record, deltaDeg)) {
+                    continue;
+                }
+                if (activeAlert_.active && cameraId == activeAlert_.cameraId) {
+                    activeCameraSeen = true;
+                    activeCameraDistanceM = distanceM;
+                    activeCameraHeadingDeltaDeg = deltaDeg;
+                }
+                if (deltaDeg > headingToleranceForRecord(record)) {
                     continue;
                 }
 
                 matchesThisTick++;
                 if (distanceM < bestDistanceM) {
                     bestDistanceM = distanceM;
-                    bestCameraId = idx + 1u;
+                    bestCameraId = cameraId;
                     bestCameraType = record.type;
                     bestHeadingDeltaDeg = deltaDeg;
                 }
@@ -355,9 +471,54 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
         counters_.cameraBudgetExceeded++;
     }
 
-    if (bestCameraId == 0 || isCameraCoolingDown(eventLog_, bestCameraId, nowMs)) {
+    if ((lifecycleState_ == CameraLifecycleState::SUPPRESSED_UNTIL_EXIT ||
+         lifecycleState_ == CameraLifecycleState::PREEMPTED) &&
+        shouldLiftSuppression(sawSuppressedThisTick)) {
+        lifecycleState_ = CameraLifecycleState::IDLE;
+    }
+
+    if (activeAlert_.active) {
+        if (!activeCameraSeen) {
+            const CameraClearReason reason = (bestCameraId != 0)
+                                                 ? CameraClearReason::REPLACED_BY_NEW_MATCH
+                                                 : CameraClearReason::ELIGIBILITY_INVALID;
+            clearActiveAlert(reason, nowMs, true);
+        } else {
+            activeAlert_.distanceM = toDistanceMeters(activeCameraDistanceM);
+            activeAlert_.headingDeltaDeg = activeCameraHeadingDeltaDeg;
+            activeAlert_.lastUpdateTsMs = nowMs;
+            if (activeCameraDistanceM <= kPassDistanceM) {
+                clearActiveAlert(CameraClearReason::PASS_DISTANCE, nowMs, true);
+            } else if (std::isfinite(activeCameraHeadingDeltaDeg) &&
+                       activeCameraHeadingDeltaDeg >= kHeadingClearDeltaDeg) {
+                if (turnAwayConsecutiveTicks_ < UINT8_MAX) {
+                    turnAwayConsecutiveTicks_++;
+                }
+                if (turnAwayConsecutiveTicks_ >= kHeadingClearConsecutiveTicks) {
+                    clearActiveAlert(CameraClearReason::TURN_AWAY, nowMs, true);
+                }
+            } else {
+                turnAwayConsecutiveTicks_ = 0;
+            }
+        }
+    }
+
+    if (bestCameraId == 0 || activeAlert_.active) {
         finalizeTickTiming();
         return;
+    }
+    if (suppressedCameraId_ != 0 && bestCameraId == suppressedCameraId_) {
+        finalizeTickTiming();
+        return;
+    }
+    if (isCameraCoolingDown(eventLog_, bestCameraId, nowMs)) {
+        finalizeTickTiming();
+        return;
+    }
+
+    if (suppressedCameraId_ != 0 && bestCameraId != suppressedCameraId_) {
+        suppressedCameraId_ = 0;
+        suppressionExitTicks_ = 0;
     }
 
     CameraEvent event;
@@ -366,6 +527,7 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
     event.distanceM = toDistanceMeters(bestDistanceM);
     event.type = bestCameraType;
     event.synthetic = false;
+    startActiveAlert(nowMs, bestCameraId, bestCameraType, event.distanceM, bestHeadingDeltaDeg);
     if (eventLog_.publish(event)) {
         counters_.cameraAlertsStarted++;
     }
@@ -388,6 +550,10 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.lastInternalLargestBlock = lastInternalLargestBlock_;
     out.memoryGuardMinFree = kMemoryGuardMinFreeInternal;
     out.memoryGuardMinLargestBlock = kMemoryGuardMinLargestBlock;
+    out.lifecycleState = lifecycleState_;
+    out.lastClearReason = lastClearReason_;
+    out.suppressedCameraId = suppressedCameraId_;
+    out.activeAlert = activeAlert_;
     out.counters = counters_;
     out.loader = dataLoader_.status();
     out.counters.cameraLoadFailures = out.loader.loadFailures;

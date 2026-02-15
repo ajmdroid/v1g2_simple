@@ -4133,6 +4133,27 @@ void WiFiManager::handleCameraStatus() {
     // Runs from wifiManager.process() in loop(); direct eventLog snapshot reads are loop-context safe.
     const CameraEventLogStats eventStats = cameraRuntimeModule.eventLog().stats();
 
+    auto lifecycleName = [](CameraLifecycleState state) -> const char* {
+        switch (state) {
+            case CameraLifecycleState::IDLE: return "IDLE";
+            case CameraLifecycleState::ACTIVE: return "ACTIVE";
+            case CameraLifecycleState::PREEMPTED: return "PREEMPTED";
+            case CameraLifecycleState::SUPPRESSED_UNTIL_EXIT: return "SUPPRESSED_UNTIL_EXIT";
+            default: return "UNKNOWN";
+        }
+    };
+    auto clearReasonName = [](CameraClearReason reason) -> const char* {
+        switch (reason) {
+            case CameraClearReason::NONE: return "NONE";
+            case CameraClearReason::PASS_DISTANCE: return "PASS_DISTANCE";
+            case CameraClearReason::TURN_AWAY: return "TURN_AWAY";
+            case CameraClearReason::ELIGIBILITY_INVALID: return "ELIGIBILITY_INVALID";
+            case CameraClearReason::PREEMPTED_BY_SIGNAL: return "PREEMPTED_BY_SIGNAL";
+            case CameraClearReason::REPLACED_BY_NEW_MATCH: return "REPLACED_BY_NEW_MATCH";
+            default: return "UNKNOWN";
+        }
+    };
+
     JsonDocument doc;
     doc["success"] = true;
     doc["enabled"] = runtimeStatus.enabled;
@@ -4149,10 +4170,28 @@ void WiFiManager::handleCameraStatus() {
     } else {
         doc["lastHeadingDeltaDeg"] = nullptr;
     }
+    doc["lifecycleState"] = lifecycleName(runtimeStatus.lifecycleState);
+    doc["lifecycleStateRaw"] = static_cast<uint8_t>(runtimeStatus.lifecycleState);
+    doc["lastClearReason"] = clearReasonName(runtimeStatus.lastClearReason);
+    doc["lastClearReasonRaw"] = static_cast<uint8_t>(runtimeStatus.lastClearReason);
+    doc["suppressedCameraId"] = runtimeStatus.suppressedCameraId;
     doc["lastInternalFree"] = runtimeStatus.lastInternalFree;
     doc["lastInternalLargestBlock"] = runtimeStatus.lastInternalLargestBlock;
     doc["memoryGuardMinFree"] = runtimeStatus.memoryGuardMinFree;
     doc["memoryGuardMinLargestBlock"] = runtimeStatus.memoryGuardMinLargestBlock;
+
+    JsonObject activeObj = doc["activeAlert"].to<JsonObject>();
+    activeObj["active"] = runtimeStatus.activeAlert.active;
+    activeObj["cameraId"] = runtimeStatus.activeAlert.cameraId;
+    activeObj["type"] = runtimeStatus.activeAlert.type;
+    activeObj["distanceM"] = runtimeStatus.activeAlert.distanceM;
+    if (std::isfinite(runtimeStatus.activeAlert.headingDeltaDeg)) {
+        activeObj["headingDeltaDeg"] = runtimeStatus.activeAlert.headingDeltaDeg;
+    } else {
+        activeObj["headingDeltaDeg"] = nullptr;
+    }
+    activeObj["startTsMs"] = runtimeStatus.activeAlert.startTsMs;
+    activeObj["lastUpdateTsMs"] = runtimeStatus.activeAlert.lastUpdateTsMs;
 
     JsonObject counters = doc["counters"].to<JsonObject>();
     counters["cameraTicks"] = runtimeStatus.counters.cameraTicks;

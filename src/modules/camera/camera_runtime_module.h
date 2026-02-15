@@ -22,6 +22,32 @@ struct CameraRuntimeCounters {
     uint32_t cameraIndexSwapFailures = 0;
 };
 
+enum class CameraLifecycleState : uint8_t {
+    IDLE = 0,
+    ACTIVE = 1,
+    PREEMPTED = 2,
+    SUPPRESSED_UNTIL_EXIT = 3,
+};
+
+enum class CameraClearReason : uint8_t {
+    NONE = 0,
+    PASS_DISTANCE = 1,
+    TURN_AWAY = 2,
+    ELIGIBILITY_INVALID = 3,
+    PREEMPTED_BY_SIGNAL = 4,
+    REPLACED_BY_NEW_MATCH = 5,
+};
+
+struct CameraActiveAlertStatus {
+    bool active = false;
+    uint32_t cameraId = 0;
+    uint8_t type = 0;
+    uint16_t distanceM = 0;
+    float headingDeltaDeg = NAN;
+    uint32_t startTsMs = 0;
+    uint32_t lastUpdateTsMs = 0;
+};
+
 struct CameraRuntimeStatus {
     bool enabled = false;
     bool indexLoaded = false;
@@ -37,6 +63,10 @@ struct CameraRuntimeStatus {
     uint32_t lastInternalLargestBlock = 0;
     uint32_t memoryGuardMinFree = 0;
     uint32_t memoryGuardMinLargestBlock = 0;
+    CameraLifecycleState lifecycleState = CameraLifecycleState::IDLE;
+    CameraClearReason lastClearReason = CameraClearReason::NONE;
+    uint32_t suppressedCameraId = 0;
+    CameraActiveAlertStatus activeAlert;
     CameraRuntimeCounters counters;
     CameraDataLoaderStatus loader;
 };
@@ -58,6 +88,7 @@ public:
     // Compatibility helper for existing scaffolding/tests.
     bool tryLoadDefault(uint32_t nowMs);
     void requestReload();
+    void notifySignalPreempted(uint32_t nowMs);
 
     CameraRuntimeStatus snapshot() const;
 
@@ -66,6 +97,14 @@ public:
     const CameraEventLog& eventLog() const { return eventLog_; }
 
 private:
+    void clearActiveAlert(CameraClearReason reason, uint32_t nowMs, bool suppressSamePass);
+    void startActiveAlert(uint32_t nowMs,
+                          uint32_t cameraId,
+                          uint8_t cameraType,
+                          uint16_t distanceM,
+                          float headingDeltaDeg);
+    bool shouldLiftSuppression(bool sawSuppressedThisTick);
+
     bool enabled_ = false;
     uint32_t tickIntervalMs_ = DEFAULT_TICK_INTERVAL_MS;
     uint32_t lastTickMs_ = 0;
@@ -77,6 +116,12 @@ private:
     float lastHeadingDeltaDeg_ = NAN;
     uint32_t lastInternalFree_ = 0;
     uint32_t lastInternalLargestBlock_ = 0;
+    CameraLifecycleState lifecycleState_ = CameraLifecycleState::IDLE;
+    CameraClearReason lastClearReason_ = CameraClearReason::NONE;
+    CameraActiveAlertStatus activeAlert_ = {};
+    uint32_t suppressedCameraId_ = 0;
+    uint8_t turnAwayConsecutiveTicks_ = 0;
+    uint8_t suppressionExitTicks_ = 0;
     CameraRuntimeCounters counters_ = {};
     CameraIndex index_;
     CameraEventLog eventLog_;
