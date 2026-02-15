@@ -83,7 +83,10 @@ public:
     bool isEnabled() const { return enabled_; }
 
     // Main-loop low-priority hook.
-    void process(uint32_t nowMs, bool skipNonCoreThisLoop, bool overloadThisLoop);
+    void process(uint32_t nowMs,
+                 bool skipNonCoreThisLoop,
+                 bool overloadThisLoop,
+                 bool signalPriorityActive = false);
 
     // Compatibility helper for existing scaffolding/tests.
     bool tryLoadDefault(uint32_t nowMs);

@@ -1122,7 +1122,8 @@ void loop() {
     autoPushModule.process();
 
     // Camera runtime is strictly low-priority and self-gated on overload/non-core.
-    cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop);
+    // Live V1 alerts always preempt camera lifecycle/rendering.
+    cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, parser.hasAlerts());
 
     if (!skipNonCoreThisLoop) {
         // Process WiFi/web server

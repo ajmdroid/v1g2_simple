@@ -1,5 +1,6 @@
 #include "display_pipeline_module.h"
 #include "audio_beep.h"  // play_frequency_voice, play_direction_only, play_threat_escalation
+#include "modules/camera/camera_runtime_module.h"
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
@@ -100,6 +101,10 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         int alertCount = parser->getAlertCount();
         const auto& currentAlerts = parser->getAllAlerts();
 
+        // Live V1 alerts own the screen/audio path and preempt camera UX.
+        lastCameraVoiceStartTsMs = 0;
+        lastCameraVoiceCameraId = 0;
+
         *displayMode = DisplayMode::LIVE;
 
         VoiceContext voiceCtx;
@@ -171,6 +176,9 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
 
         if (persistSec > 0 && alertPersistence->getPersistedAlert().isValid) {
+            // Persisted V1 alert remains higher priority than camera UX.
+            lastCameraVoiceStartTsMs = 0;
+            lastCameraVoiceCameraId = 0;
             alertPersistence->startPersistence(nowMs);
 
             unsigned long persistMs = persistSec * 1000UL;
@@ -196,13 +204,40 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             }
         } else {
             alertPersistence->clearPersistence();
-            if (debug) debug->notifyRenderState(true);
-            unsigned long startUs = micros();
-            display->update(state);
-            unsigned long endUs = micros();
-            if (debug) debug->notifyRenderState(false);
-            recordDisplayTiming("display.resting", startUs, endUs);
-            recordPerfTiming("display.resting", startUs, endUs);
+            const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
+            const bool showCameraBanner =
+                cameraStatus.enabled && cameraStatus.activeAlert.active && cameraStatus.activeAlert.type != 0;
+
+            if (showCameraBanner) {
+                const bool shouldAnnounceCamera =
+                    !state.muted &&
+                    cameraStatus.activeAlert.startTsMs != 0 &&
+                    (cameraStatus.activeAlert.startTsMs != lastCameraVoiceStartTsMs ||
+                     cameraStatus.activeAlert.cameraId != lastCameraVoiceCameraId);
+                if (shouldAnnounceCamera) {
+                    play_camera_ahead_voice(cameraStatus.activeAlert.type);
+                }
+                lastCameraVoiceStartTsMs = cameraStatus.activeAlert.startTsMs;
+                lastCameraVoiceCameraId = cameraStatus.activeAlert.cameraId;
+
+                if (debug) debug->notifyRenderState(true);
+                unsigned long startUs = micros();
+                display->updateCameraAlert(cameraStatus.activeAlert.type, state.muted);
+                unsigned long endUs = micros();
+                if (debug) debug->notifyRenderState(false);
+                recordDisplayTiming("display.camera", startUs, endUs);
+                recordPerfTiming("display.camera", startUs, endUs);
+            } else {
+                lastCameraVoiceStartTsMs = 0;
+                lastCameraVoiceCameraId = 0;
+                if (debug) debug->notifyRenderState(true);
+                unsigned long startUs = micros();
+                display->update(state);
+                unsigned long endUs = micros();
+                if (debug) debug->notifyRenderState(false);
+                recordDisplayTiming("display.resting", startUs, endUs);
+                recordPerfTiming("display.resting", startUs, endUs);
+            }
         }
     }
 }

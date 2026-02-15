@@ -337,6 +337,21 @@ SegMetrics segMetrics(float scale) {
     };
 }
 
+const char* cameraTokenForType(uint8_t cameraType) {
+    switch (cameraType) {
+        case 1:  // redlight
+            return "REDL";
+        case 2:  // speed
+            return "SPEED";
+        case 3:  // redlight + speed
+            return "RSPD";
+        case 4:  // alpr
+            return "ALPR";
+        default:
+            return "CAM";
+    }
+}
+
 constexpr int TOP_COUNTER_FONT_SIZE = 60;
 constexpr int TOP_COUNTER_FIELD_X = 16;
 constexpr int TOP_COUNTER_FIELD_Y = 6;
@@ -2519,8 +2534,9 @@ void V1Display::update(const DisplayState& state) {
     // Check if RSSI needs periodic refresh (every 2 seconds)
     bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
     
-    // Check if transitioning from Live mode (alerts) to Resting mode
+    // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
+    bool leavingCameraMode = (currentScreen == ScreenMode::Camera);
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -2528,6 +2544,7 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
+        leavingCameraMode || // Force full redraw when camera banner clears
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     
@@ -2810,6 +2827,43 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 #if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
 #endif
+}
+
+void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
+    persistedMode = false;
+
+    // Camera banner occupies the same primary zone as resting/live content.
+    g_multiAlertMode = true;
+    multiAlertMode = false;
+    wasInMultiAlertMode = false;
+
+    if (currentScreen != ScreenMode::Camera) {
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Resting,
+            millis());
+    }
+    currentScreen = ScreenMode::Camera;
+
+    drawBaseFrame();
+    drawTopCounter('~', muted, false);
+    drawBandIndicators(0, muted);
+    drawVerticalSignalBars(0, 0, BAND_KA, muted);
+    drawCameraToken(cameraTokenForType(cameraType), muted);
+    drawDirectionArrow(DIR_FRONT, muted, 0);
+    drawStatusBar();
+    drawMuteIcon(false);
+    drawLockoutIndicator();
+    drawProfileIndicator(currentProfileSlot);
+
+    AlertData emptyPriority;
+    drawSecondaryAlertCards(nullptr, 0, emptyPriority, muted);
+
+#if defined(DISPLAY_WAVESHARE_349)
+    DISPLAY_FLUSH();
+#endif
+
+    lastState = DisplayState();
 }
 
 // Multi-alert update: draws priority alert with secondary alert cards below
@@ -4406,6 +4460,39 @@ void V1Display::drawVolumeZeroWarning() {
         tft->setCursor(textX, textY);
         tft->print(warningStr);
     }
+}
+
+void V1Display::drawCameraToken(const char* token, bool muted) {
+    if (!token || token[0] == '\0') {
+        token = "CAM";
+    }
+
+    const V1Settings& s = settingsManager.get();
+#if defined(DISPLAY_WAVESHARE_349)
+    const float scale = 2.3f;
+#else
+    const float scale = 1.7f;
+#endif
+    SegMetrics m = segMetrics(scale);
+    const int muteIconBottom = 33;
+    const int effectiveHeight = getEffectiveScreenHeight();
+    const int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
+
+    const int leftMargin = 120;
+    const int rightMargin = 200;
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    int width = measureSevenSegmentText(token, scale);
+    if (width <= 0) {
+        width = maxWidth;
+    }
+    int x = leftMargin + (maxWidth - width) / 2;
+    if (x < leftMargin) {
+        x = leftMargin;
+    }
+
+    const uint16_t textColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandKa;
+    FILL_RECT(leftMargin, y - 4, maxWidth, m.digitH + 8, PALETTE_BG);
+    draw14SegmentText(token, x, y, scale, textColor, PALETTE_BG);
 }
 
 // Router: calls appropriate frequency draw method based on display style setting

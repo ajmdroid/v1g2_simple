@@ -79,10 +79,10 @@ void setGpsSample(float latitudeDeg, float longitudeDeg, float courseDeg, uint32
                                        courseDeg);
 }
 
-void processCameraTick(uint32_t nowMs) {
+void processCameraTick(uint32_t nowMs, bool signalPriorityActive = false) {
     mockMillis = nowMs;
     mockMicros = static_cast<unsigned long>(nowMs) * 1000UL;
-    cameraRuntimeModule.process(nowMs, false, false);
+    cameraRuntimeModule.process(nowMs, false, false, signalPriorityActive);
 }
 }  // namespace
 
@@ -202,7 +202,7 @@ void test_preempt_suppresses_same_pass_until_exit_then_allows_reentry() {
     setGpsSample(0.0f, 0.0f, 90.0f, 1000);
     processCameraTick(1000);
 
-    cameraRuntimeModule.notifySignalPreempted(1010);
+    processCameraTick(1010, true);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(CameraLifecycleState::PREEMPTED),
                             static_cast<uint8_t>(cameraRuntimeModule.snapshot().lifecycleState));
 
@@ -227,11 +227,31 @@ void test_preempt_suppresses_same_pass_until_exit_then_allows_reentry() {
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(cameraRuntimeModule.eventLog().copyRecent(recent, 8)));
 }
 
+void test_signal_priority_blocks_new_camera_start_until_cleared() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+
+    processCameraTick(1000, true);
+    CameraRuntimeStatus blocked = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_FALSE(blocked.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(CameraLifecycleState::IDLE),
+                            static_cast<uint8_t>(blocked.lifecycleState));
+
+    CameraEvent recent[CameraEventLog::kCapacity] = {};
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(cameraRuntimeModule.eventLog().copyRecent(recent, 8)));
+
+    processCameraTick(1300, false);
+    CameraRuntimeStatus started = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(started.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT32(1, started.activeAlert.cameraId);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_forward_only_start_requires_heading_alignment);
     RUN_TEST(test_lifecycle_clears_on_pass_distance_and_lifts_after_exit);
     RUN_TEST(test_lifecycle_clears_on_turn_away_after_two_ticks);
     RUN_TEST(test_preempt_suppresses_same_pass_until_exit_then_allows_reentry);
+    RUN_TEST(test_signal_priority_blocks_new_camera_start_until_cleared);
     return UNITY_END();
 }

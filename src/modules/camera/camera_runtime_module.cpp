@@ -305,7 +305,10 @@ bool CameraRuntimeModule::shouldLiftSuppression(bool sawSuppressedThisTick) {
     return true;
 }
 
-void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool overloadThisLoop) {
+void CameraRuntimeModule::process(uint32_t nowMs,
+                                  bool skipNonCoreThisLoop,
+                                  bool overloadThisLoop,
+                                  bool signalPriorityActive) {
     if (dataLoader_.consumeReady(index_)) {
         counters_.cameraIndexSwapCount++;
     }
@@ -321,6 +324,11 @@ void CameraRuntimeModule::process(uint32_t nowMs, bool skipNonCoreThisLoop, bool
 
     if (overloadThisLoop) {
         counters_.cameraTickSkipsOverload++;
+        return;
+    }
+
+    if (signalPriorityActive) {
+        notifySignalPreempted(nowMs);
         return;
     }
 
