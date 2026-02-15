@@ -27,7 +27,7 @@ Quick solutions for common issues with the V1-Simple device.
 **Solutions**:
 1. **Power cycle the device** - Press and hold power button for 5 seconds
 2. **WiFi is off by default** - Long-press BOOT button (~4s) to toggle WiFi AP on/off
-   - Or enable `enableWifiAtBoot` in settings via USB serial
+   - Optional: set `enableWifiAtBoot=true` in `/settings` if you need AP on every boot
 3. **Move closer** - ESP32 WiFi range is limited to ~30 feet
 4. **Check for interference** - Other 2.4GHz devices may interfere
 
@@ -174,30 +174,32 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Enable feature**: Settings → `cameraAlertsEnabled` = true
-2. **Load database**: Upload camera CSV or sync from OSM
+2. **Load datasets on SD**: Ensure `alpr.bin`, `speed_cam.bin`, or `redlight_cam.bin` exist on SD card
 3. **Check GPS**: Camera alerts require GPS fix
 4. **Check distance**: Default alert distance is 500m
 5. **Check audio**: Enable `cameraAudioEnabled` for sound
-6. **Run test alert**: From Web UI → Integrations → Test Camera Alerts to verify display/voice; type defaults to Red Light (`type=0`).
+6. **Verify runtime**: Check `/api/cameras/catalog` and `/api/cameras/status` for counts and loader state
+7. **Run test alert**: From Web UI → Integrations → Test Camera Alerts to verify display/voice; type defaults to Red Light (`type=0`).
 
-### OSM sync fails
+### Camera dataset missing or empty
 
-**Symptoms**: "Sync failed" or no cameras loaded
+**Symptoms**: No cameras loaded, or camera count shows 0
 
 **Solutions**:
-1. **Connect to WiFi**: OSM sync requires internet via WiFi client
-2. **Check WiFi status**: Ensure connected to external network
-3. **Try smaller radius**: Large areas may timeout
-4. **Check coordinates**: Ensure lat/lon are in valid range
+1. **Check SD mount**: Boot logs should show SD/perf logger enabled
+2. **Check filenames**: Use exact names `alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`
+3. **Check file integrity**: Re-copy datasets if counts look wrong or stale
+4. **Confirm with API**: `/api/cameras/catalog` should report file presence and counts
 
 ### False camera alerts
 
 **Symptoms**: Alert where no camera exists
 
 **Solutions**:
-1. **Database outdated**: Re-sync from OSM for latest data
-2. **Camera removed**: Physical camera may have been removed
+1. **Dataset drift**: Replace camera datasets with newer versions
+2. **Map mismatch**: Physical camera may have been removed/relocated
 3. **Adjust distance**: Reduce `cameraAlertDistanceM` to 300m
+4. **Inspect events**: Review `/api/cameras/events` to verify trigger type/distance
 
 ---
 
@@ -269,6 +271,7 @@ Quick solutions for common issues with the V1-Simple device.
 2. **Close unused pages**: Each page polls for updates
 3. **Check distance**: Poor WiFi signal causes slow response
 4. **Limit live diagnostics**: Disable `/dev` auto-refresh metrics when not actively debugging
+5. **Score perf CSV**: Run `python3 tools/score_perf_csv.py <perf_csv> --profile drive_wifi_off` and compare to `docs/PERF_SLOS.md`
 
 ### Device restarting/crashing
 
@@ -308,9 +311,10 @@ Quick solutions for common issues with the V1-Simple device.
 **Method 2 - Via USB Serial**:
 ```bash
 pio run -t erase -e waveshare-349
-pio run -t uploadfs -e waveshare-349
-pio run -t upload -e waveshare-349
+./build.sh --all
 ```
+
+**Windows**: Use `pio run -t erase -e waveshare-349-windows` before `./build.sh --all`
 
 **After reset**:
 - WiFi: `V1-Simple` / `setupv1g2`
@@ -341,4 +345,4 @@ Use built-in diagnostics:
 
 ---
 
-*Last updated: 2024*
+*Last updated: 2026-02-15*
