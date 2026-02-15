@@ -260,8 +260,6 @@ public:
     static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
 
 private:
-    uint32_t countJsonLines(const char* path);
-    
     fs::FS* fs;
     bool ready;
     bool usingSDMMC;

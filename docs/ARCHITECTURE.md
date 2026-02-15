@@ -148,7 +148,7 @@ We're taking a more incremental approach than originally planned - extracting st
 **Structure (February 2026):**
 ```
 src/
-├── main.cpp                         (~986 lines - orchestration only)
+├── main.cpp                         (~1290 lines - orchestration + integration control flow)
 ├── modules/
 │   ├── alert_persistence/           Alert on-screen persistence + state resets
 │   │   ├── alert_persistence_module.h
@@ -168,20 +168,33 @@ src/
 │   │   ├── display_pipeline_module.h/cpp
 │   │   ├── display_preview_module.h/cpp
 │   │   └── display_restore_module.h/cpp
-│   ├── lockout/                     Auto-lockout maintenance
-│   │   ├── auto_lockout_maintenance_module.h
-│   │   └── auto_lockout_maintenance_module.cpp
-│   ├── obd/                         OBD auto-connect state machine
-│   │   ├── obd_auto_connector_module.h
-│   │   └── obd_auto_connector_module.cpp
+│   ├── gps/                         GPS runtime + observations + lockout safety
+│   │   ├── gps_runtime_module.h/cpp
+│   │   ├── gps_observation_log.h/cpp
+│   │   └── gps_lockout_safety.h/cpp
+│   ├── lockout/                     Lockout index/store/enforcer/learner runtime stack
+│   │   ├── lockout_index.h/cpp
+│   │   ├── lockout_store.h/cpp
+│   │   ├── lockout_enforcer.h/cpp
+│   │   ├── lockout_learner.h/cpp
+│   │   ├── signal_capture_module.h/cpp
+│   │   ├── signal_observation_log.h/cpp
+│   │   └── signal_observation_sd_logger.h/cpp
+│   ├── obd/                         OBD API + state policy
+│   │   ├── obd_api_service.h/cpp
+│   │   └── obd_state_policy.h
 │   ├── perf/                        Debug macros
 │   │   └── debug_macros.h
 │   ├── power/                       Battery/power management
 │   │   ├── power_module.h
 │   │   └── power_module.cpp
+│   ├── speed/                       OBD-only speed source selection policy
+│   │   ├── speed_source_selector.h/cpp
 │   ├── speed_volume/                Highway speed volume boost
 │   │   ├── speed_volume_module.h
 │   │   └── speed_volume_module.cpp
+│   ├── system/                      Event bus for loop-local module coordination
+│   │   └── system_event_bus.h
 │   ├── touch/                       Touch UI + tap gestures
 │   │   ├── touch_ui_module.h/cpp
 │   │   └── tap_gesture_module.h/cpp
@@ -213,8 +226,11 @@ src/
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **AutoPushModule** | Pushes V1 profiles on connect |
 | **CameraRuntimeModule + CameraDataLoader** | Camera matching lifecycle + background database loading/swap |
-| **ObdAutoConnector** | OBD auto-connect after V1 connects |
-| **AutoLockoutMaintenance** | Periodic lockout zone maintenance |
+| **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
+| **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
+| **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only policy) |
+| **ObdApiService + ObdStatePolicy** | OBD API contract and reconnect/backoff policy logic |
+| **SystemEventBus** | Bounded loop-local event channel for cross-module coordination |
 | **WifiOrchestrator** | WiFi/web server lifecycle |
 
 ### Migration Process
@@ -226,7 +242,7 @@ Each step follows a strict protocol:
 4. Build and test on hardware
 5. Commit only after verification
 
-See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
+Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.md).
 
 ## Success Metrics
 
@@ -236,10 +252,12 @@ See [REFACTOR_LOG.md](REFACTOR_LOG.md) for detailed step-by-step progress.
 - Change risk: HIGH (adjacent code interactions)
 
 ### After (February 2026):
-- main.cpp: ~986 lines (orchestration only)
-- 15 module directories in src/modules/
+- main.cpp: ~1290 lines (orchestration + integration control flow)
+- 17 module directories in src/modules/
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
+
+Note: `_disabled/` remains reference-only historical code and is not part of runtime builds.
 
 ## Key Design Rules
 

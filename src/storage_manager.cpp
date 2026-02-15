@@ -78,23 +78,6 @@ String StorageManager::statusText() const {
     return "LittleFS (internal)";
 }
 
-uint32_t StorageManager::countJsonLines(const char* path) {
-    if (!fs) return 0;
-    
-    File file = fs->open(path, "r");
-    if (!file) return 0;
-    
-    uint32_t count = 0;
-    while (file.available()) {
-        String line = file.readStringUntil('\n');
-        if (line.length() > 2 && line.indexOf('{') >= 0) {
-            count++;
-        }
-    }
-    file.close();
-    return count;
-}
-
 bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
     // Ensure parent directory exists (prevents VFS fopen failures)
     if (path && path[0] == '/') {

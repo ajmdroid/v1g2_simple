@@ -77,9 +77,42 @@ void setup() {
 
 The ESP32 has a single shared radio for WiFi and BLE. Rules:
 
-- BLE scan duty cycle ≤ 50%
-- OBD connection delayed 12s after V1 connects
-- WiFi scans are non-blocking but interfere with BLE
+- BLE scan duty cycle is currently tuned to 75% (`interval=160`, `window=120`) for reliable V1 discovery on ESP32-S3
+- OBD auto-connect is deferred by 1.5s after V1 connect to avoid competing with initial V1 stabilization
+- WiFi scans are non-blocking but still contend with BLE airtime
+
+---
+
+## Runtime Priority Contract
+
+Main-loop execution follows this priority order:
+
+1. V1 connectivity
+2. BLE ingest/drain
+3. Display updates
+4. Audio alerts (best-effort)
+5. Metrics collection
+6. WiFi / Web UI (off by default)
+7. Logging / persistence (best-effort)
+
+Implementation notes:
+
+- Core BLE + display paths are kept non-blocking in steady state.
+- Tier-7 persistence in `loop()` is intentionally bounded by dirty flags and coarse rate limits.
+- SD writes use `SDTryLock` on Core 1 (skip/defer on contention); LittleFS fallback writes are synchronous but bounded and infrequent.
+- BLE recovery paths include short settle delays in failure handling (`hardResetBLEClient`) due to NimBLE state-transition constraints.
+
+---
+
+## Retired Code Policy
+
+`_disabled/` is reference-only historical code:
+
+- Not compiled into runtime firmware.
+- Not a dependency target for new implementations.
+- Safe to consult for regression triage or behavior comparisons.
+
+If a retired implementation is no longer useful as a comparison baseline, remove it in a dedicated cleanup PR.
 
 ---
 
