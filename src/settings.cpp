@@ -14,6 +14,7 @@
  */
 
 #include "settings.h"
+#include "settings_sanitize.h"
 #include "storage_manager.h"
 #include "v1_profiles.h"
 #include <ArduinoJson.h>
@@ -40,26 +41,6 @@ static const char* const SETTINGS_BACKUP_CANDIDATES[] = {
     "/v1settings_backup.json"
 };
 
-static uint8_t clampU8(int value, int minVal, int maxVal) {
-    return static_cast<uint8_t>(std::max(minVal, std::min(value, maxVal)));
-}
-
-static uint8_t clampSlotVolumeValue(int value) {
-    // 0xFF means "no change"; otherwise valid range is 0..9.
-    if (value == 0xFF) {
-        return 0xFF;
-    }
-    return clampU8(value, 0, 9);
-}
-
-static uint8_t clampApTimeoutValue(int value) {
-    // 0 means always-on, otherwise enforce 5..60 minutes.
-    if (value == 0) {
-        return 0;
-    }
-    return clampU8(value, 5, 60);
-}
-
 static WiFiModeSetting clampWifiModeValue(int raw) {
     int clamped = std::max(static_cast<int>(V1_WIFI_OFF),
                            std::min(raw, static_cast<int>(V1_WIFI_APSTA)));
@@ -72,41 +53,7 @@ static VoiceAlertMode clampVoiceAlertModeValue(int raw) {
     return static_cast<VoiceAlertMode>(clamped);
 }
 
-static V1Mode normalizeV1ModeValue(int raw) {
-    switch (raw) {
-        case V1_MODE_UNKNOWN:
-        case V1_MODE_ALL_BOGEYS:
-        case V1_MODE_LOGIC:
-        case V1_MODE_ADVANCED_LOGIC:
-            return static_cast<V1Mode>(raw);
-        default:
-            return V1_MODE_UNKNOWN;
-    }
-}
-
-static constexpr size_t MAX_WIFI_SSID_LEN = 32;
-static constexpr size_t MAX_AP_PASSWORD_LEN = 63;
-static constexpr size_t MIN_AP_PASSWORD_LEN = 8;
-static constexpr size_t MAX_PROXY_NAME_LEN = 32;
-static constexpr size_t MAX_SLOT_NAME_LEN = 20;
-static constexpr size_t MAX_PROFILE_NAME_LEN = 64;
-static constexpr size_t MAX_PROFILE_DESCRIPTION_LEN = 160;
 static constexpr size_t MAX_V1_ADDRESS_LEN = 32;
-
-static String clampStringLength(const String& value, size_t maxLen) {
-    if (value.length() <= maxLen) {
-        return value;
-    }
-    return value.substring(0, maxLen);
-}
-
-static String sanitizeApSsidValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_WIFI_SSID_LEN);
-    if (value.length() == 0) {
-        return "V1-Simple";
-    }
-    return value;
-}
 
 static String sanitizeApPasswordValue(const String& raw) {
     String value = clampStringLength(raw, MAX_AP_PASSWORD_LEN);
@@ -114,32 +61,6 @@ static String sanitizeApPasswordValue(const String& raw) {
         return "setupv1g2";
     }
     return value;
-}
-
-static String sanitizeWifiClientSsidValue(const String& raw) {
-    return clampStringLength(raw, MAX_WIFI_SSID_LEN);
-}
-
-static String sanitizeProxyNameValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_PROXY_NAME_LEN);
-    if (value.length() == 0) {
-        return "V1-Proxy";
-    }
-    return value;
-}
-
-static String sanitizeSlotNameValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_SLOT_NAME_LEN);
-    value.toUpperCase();
-    return value;
-}
-
-static String sanitizeProfileNameValue(const String& raw) {
-    return clampStringLength(raw, MAX_PROFILE_NAME_LEN);
-}
-
-static String sanitizeProfileDescriptionValue(const String& raw) {
-    return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
 }
 
 static String sanitizeLastV1AddressValue(const String& raw) {

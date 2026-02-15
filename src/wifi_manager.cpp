@@ -7,6 +7,7 @@
 #include "wifi_manager.h"
 #include "perf_metrics.h"
 #include "settings.h"
+#include "settings_sanitize.h"
 #include "display.h"
 #include "storage_manager.h"
 #include "debug_logger.h"
@@ -121,89 +122,15 @@ static bool parseUint64Strict(const String& input, uint64_t& out) {
 }
 
 static uint8_t clampU8Value(int value, int minVal, int maxVal) {
-    return static_cast<uint8_t>(std::max(minVal, std::min(value, maxVal)));
+    return clampU8(value, minVal, maxVal);
 }
 
 static uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
-static uint8_t clampSlotVolumeValue(int value) {
-    if (value == 0xFF) {
-        return 0xFF;
-    }
-    return clampU8Value(value, 0, 9);
-}
-
 static bool computeCameraRuntimeEnabled(const V1Settings& settings) {
     return settings.gpsEnabled && settings.cameraEnabled;
-}
-
-static uint8_t clampApTimeoutValue(int value) {
-    if (value == 0) {
-        return 0;
-    }
-    return clampU8Value(value, 5, 60);
-}
-
-static V1Mode normalizeV1ModeValue(int raw) {
-    switch (raw) {
-        case V1_MODE_UNKNOWN:
-        case V1_MODE_ALL_BOGEYS:
-        case V1_MODE_LOGIC:
-        case V1_MODE_ADVANCED_LOGIC:
-            return static_cast<V1Mode>(raw);
-        default:
-            return V1_MODE_UNKNOWN;
-    }
-}
-
-static constexpr size_t MAX_WIFI_SSID_LEN = 32;
-static constexpr size_t MAX_AP_PASSWORD_LEN = 63;
-static constexpr size_t MAX_PROXY_NAME_LEN = 32;
-static constexpr size_t MAX_SLOT_NAME_LEN = 20;
-static constexpr size_t MAX_PROFILE_NAME_LEN = 64;
-static constexpr size_t MAX_PROFILE_DESCRIPTION_LEN = 160;
-
-static String clampStringLength(const String& value, size_t maxLen) {
-    if (value.length() <= maxLen) {
-        return value;
-    }
-    return value.substring(0, maxLen);
-}
-
-static String sanitizeApSsidValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_WIFI_SSID_LEN);
-    if (value.length() == 0) {
-        return "V1-Simple";
-    }
-    return value;
-}
-
-static String sanitizeWifiClientSsidValue(const String& raw) {
-    return clampStringLength(raw, MAX_WIFI_SSID_LEN);
-}
-
-static String sanitizeProxyNameValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_PROXY_NAME_LEN);
-    if (value.length() == 0) {
-        return "V1-Proxy";
-    }
-    return value;
-}
-
-static String sanitizeSlotNameValue(const String& raw) {
-    String value = clampStringLength(raw, MAX_SLOT_NAME_LEN);
-    value.toUpperCase();
-    return value;
-}
-
-static String sanitizeProfileNameValue(const String& raw) {
-    return clampStringLength(raw, MAX_PROFILE_NAME_LEN);
-}
-
-static String sanitizeProfileDescriptionValue(const String& raw) {
-    return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
 }
 
 static String fileNameFromPath(const String& path) {
