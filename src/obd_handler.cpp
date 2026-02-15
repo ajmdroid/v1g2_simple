@@ -240,6 +240,12 @@ void OBDHandler::tryAutoConnect() {
         return;
     }
 
+    if (autoConnectSuppressedAdapterOff) {
+        Serial.println("[OBD] tryAutoConnect: re-arming auto-connect after adapter-off suppression");
+        autoConnectSuppressedAdapterOff = false;
+        lastAutoConnectAttemptMs = 0;
+    }
+
     // If we're in DISCONNECTED with active cooldown/backoff, reset it.
     // This path is triggered by V1 connecting (car turned on), which is
     // a strong signal that the OBD adapter should be reachable now.
@@ -730,22 +736,26 @@ bool OBDHandler::runStateMachine() {
             }
             // Attempt auto-connect to a remembered device when idle.
             const uint32_t now = millis();
-            if (now - lastAutoConnectAttemptMs >= AUTO_CONNECT_RETRY_MS) {
+            OBDRememberedDevice target;
+            const bool hasAutoConnectTarget = findAutoConnectTarget(target);
+            if (ObdConnectPolicy::shouldIdleAutoConnect(
+                    true,
+                    now - lastAutoConnectAttemptMs,
+                    AUTO_CONNECT_RETRY_MS,
+                    hasAutoConnectTarget,
+                    autoConnectSuppressedAdapterOff)) {
                 lastAutoConnectAttemptMs = now;
-                OBDRememberedDevice target;
-                if (findAutoConnectTarget(target)) {
-                    targetAddress = NimBLEAddress(std::string(target.address.c_str()), BLE_ADDR_PUBLIC);
-                    targetDeviceName = target.name.length() ? target.name : target.address;
-                    targetPin = target.pin;
-                    targetIsObdLink = isObdLinkName(std::string(targetDeviceName.c_str()));
-                    hasTargetDevice = true;
-                    rememberTargetOnConnect = true;
-                    targetAutoConnect = true;
-                    connectionFailures = 0;
-                    state = OBDState::CONNECTING;
-                    Serial.printf("[OBD] Auto-connect queued: %s (%s)\n",
-                                  targetDeviceName.c_str(), target.address.c_str());
-                }
+                targetAddress = NimBLEAddress(std::string(target.address.c_str()), BLE_ADDR_PUBLIC);
+                targetDeviceName = target.name.length() ? target.name : target.address;
+                targetPin = target.pin;
+                targetIsObdLink = isObdLinkName(std::string(targetDeviceName.c_str()));
+                hasTargetDevice = true;
+                rememberTargetOnConnect = true;
+                targetAutoConnect = true;
+                connectionFailures = 0;
+                state = OBDState::CONNECTING;
+                Serial.printf("[OBD] Auto-connect queued: %s (%s)\n",
+                              targetDeviceName.c_str(), target.address.c_str());
             }
             return false;
         }

@@ -90,8 +90,10 @@ enum class State : uint8_t {
 inline bool shouldIdleAutoConnect(bool linkReady,
                                   uint32_t elapsedSinceLastAttemptMs,
                                   uint32_t autoConnectRetryMs,
-                                  bool hasAutoConnectTarget) {
+                                  bool hasAutoConnectTarget,
+                                  bool autoConnectSuppressed) {
     if (!linkReady) return false;
+    if (autoConnectSuppressed) return false;
     if (elapsedSinceLastAttemptMs < autoConnectRetryMs) return false;
     return hasAutoConnectTarget;
 }

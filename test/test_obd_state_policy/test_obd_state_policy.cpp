@@ -119,20 +119,24 @@ using namespace ObdConnectPolicy;
 // --- shouldIdleAutoConnect ---
 
 void test_idle_autoconnect_blocked_when_link_not_ready() {
-    TEST_ASSERT_FALSE(shouldIdleAutoConnect(false, 10000, 5000, true));
+    TEST_ASSERT_FALSE(shouldIdleAutoConnect(false, 10000, 5000, true, false));
 }
 
 void test_idle_autoconnect_blocked_before_retry_interval() {
-    TEST_ASSERT_FALSE(shouldIdleAutoConnect(true, 4999, 5000, true));
+    TEST_ASSERT_FALSE(shouldIdleAutoConnect(true, 4999, 5000, true, false));
 }
 
 void test_idle_autoconnect_blocked_when_no_target() {
-    TEST_ASSERT_FALSE(shouldIdleAutoConnect(true, 10000, 5000, false));
+    TEST_ASSERT_FALSE(shouldIdleAutoConnect(true, 10000, 5000, false, false));
+}
+
+void test_idle_autoconnect_blocked_when_suppressed() {
+    TEST_ASSERT_FALSE(shouldIdleAutoConnect(true, 10000, 5000, true, true));
 }
 
 void test_idle_autoconnect_allowed_when_all_conditions_met() {
-    TEST_ASSERT_TRUE(shouldIdleAutoConnect(true, 5000, 5000, true));
-    TEST_ASSERT_TRUE(shouldIdleAutoConnect(true, 99999, 5000, true));
+    TEST_ASSERT_TRUE(shouldIdleAutoConnect(true, 5000, 5000, true, false));
+    TEST_ASSERT_TRUE(shouldIdleAutoConnect(true, 99999, 5000, true, false));
 }
 
 // --- shouldProceedWithConnect ---
@@ -219,6 +223,7 @@ int main() {
     RUN_TEST(test_idle_autoconnect_blocked_when_link_not_ready);
     RUN_TEST(test_idle_autoconnect_blocked_before_retry_interval);
     RUN_TEST(test_idle_autoconnect_blocked_when_no_target);
+    RUN_TEST(test_idle_autoconnect_blocked_when_suppressed);
     RUN_TEST(test_idle_autoconnect_allowed_when_all_conditions_met);
 
     // ObdConnectPolicy – proceed with connect

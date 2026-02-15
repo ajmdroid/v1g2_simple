@@ -208,6 +208,11 @@ private:
     uint8_t connectionFailures = 0;
     uint8_t consecutivePollFailures = 0;
     uint8_t reconnectCycleCount = 0;
+    // After repeated "not advertising" failures, stop background auto-connect
+    // until a stronger signal arrives (manual connect or V1 reconnect trigger).
+    bool autoConnectSuppressedAdapterOff = false;
+    // Last connect attempt failed because no OBDLink CX advertising was seen.
+    bool lastConnectFailureNoAdvertising = false;
     std::atomic<bool> vwDataEnabled{true};
 
     TaskHandle_t obdTaskHandle = nullptr;
