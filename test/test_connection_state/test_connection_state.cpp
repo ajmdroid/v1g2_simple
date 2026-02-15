@@ -65,7 +65,6 @@ struct ConnectionStateLogic {
             if (isConnected) {
                 displayPtr->showResting();
             } else {
-                PacketParser::resetPriorityState();
                 PacketParser::resetAlertCountTracker();
                 parserPtr->resetAlertAssembly();
                 V1Display::resetChangeTracking();
@@ -132,7 +131,6 @@ void test_disconnect_transition_shows_scanning() {
     display.reset();
     powerModule.reset();
     parser.reset();
-    PacketParser::resetPriorityStateCalls = 0;
     PacketParser::resetAlertCountTrackerCalls = 0;
     V1Display::resetChangeTrackingCalls = 0;
     
@@ -147,7 +145,6 @@ void test_disconnect_transition_shows_scanning() {
     TEST_ASSERT_FALSE(powerModule.lastConnectionState);
     
     // Parser state should be reset
-    TEST_ASSERT_EQUAL(1, PacketParser::resetPriorityStateCalls);
     TEST_ASSERT_EQUAL(1, PacketParser::resetAlertCountTrackerCalls);
     TEST_ASSERT_EQUAL(1, parser.resetAlertAssemblyCalls);
     TEST_ASSERT_EQUAL(1, V1Display::resetChangeTrackingCalls);
@@ -307,7 +304,6 @@ void setUp() {
     parser.reset();
     powerModule.reset();
     bleQueueModule.reset();
-    PacketParser::resetPriorityStateCalls = 0;
     PacketParser::resetAlertCountTrackerCalls = 0;
     V1Display::resetChangeTrackingCalls = 0;
     connectionState.reset();

@@ -85,7 +85,6 @@ public:
     bool hasAlertsFlag = false;
     
     // Static call tracking
-    static int resetPriorityStateCalls;
     static int resetAlertCountTrackerCalls;
     
     void reset() {
@@ -93,7 +92,6 @@ public:
         alerts.clear();
         priorityAlert = AlertData();
         hasAlertsFlag = false;
-        resetPriorityStateCalls = 0;
         resetAlertCountTrackerCalls = 0;
         resetAlertAssemblyCalls = 0;
     }
@@ -130,11 +128,9 @@ public:
     int resetAlertAssemblyCalls = 0;
     void resetAlertAssembly() { resetAlertAssemblyCalls++; }
     
-    static void resetPriorityState() { resetPriorityStateCalls++; }
     static void resetAlertCountTracker() { resetAlertCountTrackerCalls++; }
 };
 
 // Static member definitions
-inline int PacketParser::resetPriorityStateCalls = 0;
 inline int PacketParser::resetAlertCountTrackerCalls = 0;
 #endif // PACKET_PARSER_H
