@@ -23,7 +23,7 @@
 static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 static const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
 static const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-static const int SD_BACKUP_VERSION = 6;  // Increment when adding new fields to backup
+static const int SD_BACKUP_VERSION = 7;  // Increment when adding new fields to backup
 static const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 static const char* SETTINGS_NS_A = "v1settingsA";
 static const char* SETTINGS_NS_B = "v1settingsB";
@@ -291,7 +291,7 @@ SettingsManager settingsManager;
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
 static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-static const int SETTINGS_VERSION = 2;  // Increment when changing password encoding
+static const int SETTINGS_VERSION = 3;  // Increment when changing persisted settings schema
 static const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 // NVS recovery: clear unused namespace when NVS is full
@@ -589,6 +589,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
+    written += prefs.putUShort("colorCamT", settings.colorCameraToken);
+    written += prefs.putUShort("colorCamA", settings.colorCameraArrow);
+    written += prefs.putUShort("colorLockL", settings.colorLockout);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -869,6 +872,9 @@ void SettingsManager::load() {
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
     settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
+    settings.colorCameraToken = preferences.getUShort("colorCamT", 0xF800);     // Red for camera token text
+    settings.colorCameraArrow = preferences.getUShort("colorCamA", 0xF800);     // Red for camera forward arrow
+    settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -1679,6 +1685,9 @@ void SettingsManager::backupToSD() {
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
+    doc["colorCameraToken"] = settings.colorCameraToken;
+    doc["colorCameraArrow"] = settings.colorCameraArrow;
+    doc["colorLockout"] = settings.colorLockout;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -1958,6 +1967,9 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorCameraToken"].is<int>()) settings.colorCameraToken = doc["colorCameraToken"];
+    if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
+    if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
     if (doc["freqUseBandColor"].is<bool>()) settings.freqUseBandColor = doc["freqUseBandColor"];
     
     // === UI Toggles ===

@@ -30,6 +30,9 @@
 		volumeMute: 0xFFE0, // Yellow (mute volume)
 		rssiV1: 0x07E0,  // Green (V1 RSSI label)
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
+		cameraToken: 0xF800, // Red (camera token text)
+		cameraArrow: 0xF800, // Red (camera forward arrow)
+		lockout: 0x07E0, // Green (lockout badge "L")
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -273,6 +276,9 @@
 			params.append('volumeMute', colors.volumeMute);
 			params.append('rssiV1', colors.rssiV1);
 			params.append('rssiProxy', colors.rssiProxy);
+			params.append('cameraToken', colors.cameraToken);
+			params.append('cameraArrow', colors.cameraArrow);
+			params.append('lockout', colors.lockout);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -349,6 +355,9 @@
 					volumeMute: 0xFFE0,
 					rssiV1: 0x07E0,
 					rssiProxy: 0x001F,
+					cameraToken: 0xF800,
+					cameraArrow: 0xF800,
+					lockout: 0x07E0,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -875,6 +884,94 @@
 								class="text-2xl font-bold"
 								style="color: {rgb565ToHex(colors.arrowRear)}"
 							>▼</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Camera & Lockout -->
+		<div class="card bg-base-200">
+			<div class="card-body p-4">
+				<h2 class="card-title text-lg">Camera & Lockout</h2>
+				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, and lockout badge color</p>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<div class="form-control">
+						<label class="label" for="camera-token-color">
+							<span class="label-text">Camera Token</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="camera-token-color"
+								type="button"
+								aria-label="Camera token color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.cameraToken)}"
+								onclick={() => openPicker('cameraToken', 'Camera Token')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.cameraToken)}
+								onchange={(e) => handleHexInput('cameraToken', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.cameraToken)}"
+							>ALPR</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="camera-arrow-color">
+							<span class="label-text">Camera Arrow</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="camera-arrow-color"
+								type="button"
+								aria-label="Camera arrow color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.cameraArrow)}"
+								onclick={() => openPicker('cameraArrow', 'Camera Arrow')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.cameraArrow)}
+								onchange={(e) => handleHexInput('cameraArrow', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-2xl font-bold font-mono"
+								style="color: {rgb565ToHex(colors.cameraArrow)}"
+							>^</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="lockout-color">
+							<span class="label-text">Lockout L Badge</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="lockout-color"
+								type="button"
+								aria-label="Lockout badge color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.lockout)}"
+								onclick={() => openPicker('lockout', 'Lockout Badge')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.lockout)}
+								onchange={(e) => handleHexInput('lockout', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-xl font-bold font-mono"
+								style="color: {rgb565ToHex(colors.lockout)}"
+							>L</span>
 						</div>
 					</div>
 				</div>

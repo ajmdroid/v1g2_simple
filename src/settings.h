@@ -224,6 +224,9 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
+    uint16_t colorCameraToken;   // Camera token text color
+    uint16_t colorCameraArrow;   // Camera forward arrow color
+    uint16_t colorLockout;       // Lockout "L" badge color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -361,6 +364,9 @@ struct V1Settings {
         colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
+        colorCameraToken(0xF800), // Red camera token (matches existing camera default)
+        colorCameraArrow(0xF800), // Red camera arrow (matches existing front arrow default)
+        colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default

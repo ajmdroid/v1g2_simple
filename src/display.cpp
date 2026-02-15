@@ -1452,9 +1452,10 @@ void V1Display::drawLockoutIndicator() {
     const int sz = 26;
 
     if (lockoutIndicatorShown_) {
-        // Draw a rounded-rect badge with "L" in green.
-        const uint16_t fillColor  = 0x0320;  // Dark green fill
-        const uint16_t textColor  = TFT_GREEN;
+        // Draw a rounded-rect badge with configurable lockout color.
+        const V1Settings& s = settingsManager.get();
+        const uint16_t textColor = s.colorLockout;
+        const uint16_t fillColor = dimColor(textColor, 45);
         FILL_ROUND_RECT(x, y, sz, sz, 5, fillColor);
         DRAW_ROUND_RECT(x, y, sz, sz, 5, textColor);
         GFX_setTextDatum(MC_DATUM);
@@ -2850,7 +2851,8 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     drawBandIndicators(0, muted);
     drawVerticalSignalBars(0, 0, BAND_KA, muted);
     drawCameraToken(cameraTokenForType(cameraType), muted);
-    drawDirectionArrow(DIR_FRONT, muted, 0);
+    const V1Settings& s = settingsManager.get();
+    drawDirectionArrow(DIR_FRONT, muted, 0, s.colorCameraArrow);
     drawStatusBar();
     drawMuteIcon(false);
     drawLockoutIndicator();
@@ -4468,7 +4470,7 @@ void V1Display::drawCameraToken(const char* token, bool muted) {
     }
 
     const V1Settings& s = settingsManager.get();
-    const uint16_t textColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandKa;
+    const uint16_t textColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorCameraToken;
 
 #if defined(DISPLAY_WAVESHARE_349)
     const int leftMargin = 135;
@@ -4573,12 +4575,15 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
 
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
-void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits) {
+void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits, uint16_t frontColorOverride) {
     // Cache to avoid redrawing unchanged arrows
     static bool lastShowFront = false;
     static bool lastShowSide = false;
     static bool lastShowRear = false;
     static bool lastMuted = false;
+    static uint16_t lastFrontCol = 0;
+    static uint16_t lastSideCol = 0;
+    static uint16_t lastRearCol = 0;
     static bool cacheValid = false;
     
     // Check for forced invalidation (after screen clear)
@@ -4655,6 +4660,9 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     const V1Settings& s = settingsManager.get();
     // Get individual arrow colors (use muted color if muted)
     uint16_t frontCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowFront;
+    if (!muted && frontColorOverride != 0) {
+        frontCol = frontColorOverride;
+    }
     uint16_t sideCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowSide;
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
@@ -4664,7 +4672,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
                       (showFront != lastShowFront) || 
                       (showSide != lastShowSide) || 
                       (showRear != lastShowRear) ||
-                      (muted != lastMuted);
+                      (muted != lastMuted) ||
+                      (frontCol != lastFrontCol) ||
+                      (sideCol != lastSideCol) ||
+                      (rearCol != lastRearCol);
     
     // If nothing changed, skip redraw entirely
     if (!anyChanged) {
@@ -4777,6 +4788,9 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits)
     lastShowSide = showSide;
     lastShowRear = showRear;
     lastMuted = muted;
+    lastFrontCol = frontCol;
+    lastSideCol = sideCol;
+    lastRearCol = rearCol;
     cacheValid = true;
 }
 

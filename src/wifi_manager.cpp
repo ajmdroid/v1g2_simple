@@ -2452,6 +2452,9 @@ void WiFiManager::handleDisplayColorsSave() {
     if (server.hasArg("volumeMute")) s.colorVolumeMute = server.arg("volumeMute").toInt();
     if (server.hasArg("rssiV1")) s.colorRssiV1 = server.arg("rssiV1").toInt();
     if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
+    if (server.hasArg("cameraToken")) s.colorCameraToken = server.arg("cameraToken").toInt();
+    if (server.hasArg("cameraArrow")) s.colorCameraArrow = server.arg("cameraArrow").toInt();
+    if (server.hasArg("lockout")) s.colorLockout = server.arg("lockout").toInt();
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) s.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor);
@@ -2602,6 +2605,9 @@ void WiFiManager::handleDisplayColorsReset() {
     s.colorVolumeMute = 0xFFE0;
     s.colorRssiV1 = 0x07E0;
     s.colorRssiProxy = 0x001F;
+    s.colorCameraToken = 0xF800;
+    s.colorCameraArrow = 0xF800;
+    s.colorLockout = 0x07E0;
     s.freqUseBandColor = false;
 
     settingsManager.save();
@@ -2643,6 +2649,9 @@ void WiFiManager::handleDisplayColorsApi() {
     doc["volumeMute"] = s.colorVolumeMute;
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
+    doc["cameraToken"] = s.colorCameraToken;
+    doc["cameraArrow"] = s.colorCameraArrow;
+    doc["lockout"] = s.colorLockout;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
