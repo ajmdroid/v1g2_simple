@@ -37,6 +37,7 @@ void GpsRuntimeModule::setEnabled(bool enabled) {
     } else {
         pinMode(GPS_EN_PIN, OUTPUT);
         digitalWrite(GPS_EN_PIN, LOW);
+        Serial2.setRxBufferSize(1024);  // 256 default too small for typical GPS output rate
         Serial2.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
     }
 #endif
