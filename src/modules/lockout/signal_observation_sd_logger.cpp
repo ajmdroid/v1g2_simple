@@ -1,6 +1,7 @@
 #include "signal_observation_sd_logger.h"
 
 #include "../../storage_manager.h"
+#include "../../perf_metrics.h"
 
 #include <FS.h>
 #include <algorithm>
@@ -12,8 +13,7 @@ constexpr const char* LOCKOUT_CSV_PATH_FALLBACK = "/lockout/lockout_candidates.c
 constexpr const char* LOCKOUT_CSV_HEADER =
     "tsMs,bandRaw,frequencyMHz,strength,hasFix,fixAgeMs,satellites,hdopX10,locationValid,latitudeE5,longitudeE5\n";
 constexpr UBaseType_t LOCKOUT_SD_QUEUE_DEPTH = 64;
-constexpr uint32_t LOCKOUT_SD_WRITER_STACK_SIZE = 6144;
-constexpr UBaseType_t LOCKOUT_SD_WRITER_PRIORITY = 1;
+constexpr uint32_t LOCKOUT_SD_WRITER_STACK_SIZE = 6144;constexpr UBaseType_t LOCKOUT_SD_WRITER_PRIORITY = 1;
 constexpr uint32_t LOCKOUT_SD_DEDUPE_MIN_REPEAT_MS = 15000;
 constexpr uint16_t LOCKOUT_SD_FREQ_TOL_MHZ = 5;
 constexpr uint8_t LOCKOUT_SD_STRENGTH_TOL = 1;
@@ -87,6 +87,7 @@ bool SignalObservationSdLogger::enqueue(const SignalObservation& observation) {
     }
     if (xQueueSend(queue_, &observation, 0) != pdTRUE) {
         queueDrops_.fetch_add(1, std::memory_order_relaxed);
+        PERF_INC(sigObsQueueDrops);
         return false;
     }
     enqueued_.fetch_add(1, std::memory_order_relaxed);
@@ -255,29 +256,35 @@ bool SignalObservationSdLogger::appendObservation(const SignalObservation& obser
         return true;
     }
 
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+    // Helper lambda: increment both local writeFail_ and central perf counter
+    auto recordWriteFail = [this]() {
         writeFail_.fetch_add(1, std::memory_order_relaxed);
+        PERF_INC(sigObsWriteFail);
+    };
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        recordWriteFail();
         return false;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
 
     StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
     if (!lock) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
 
     if (!ensureLockoutDir(*fs)) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
     if (!rotateIfNeeded(*fs)) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
 
@@ -290,12 +297,12 @@ bool SignalObservationSdLogger::appendObservation(const SignalObservation& obser
         }
     }
     if (!file) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
 
     if (!ensureCsvHeader(file)) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         file.close();
         return false;
     }
@@ -317,7 +324,7 @@ bool SignalObservationSdLogger::appendObservation(const SignalObservation& obser
         static_cast<long>(observation.latitudeE5),
         static_cast<long>(observation.longitudeE5));
     if (n <= 0 || n >= static_cast<int>(sizeof(line))) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         file.close();
         return false;
     }
@@ -326,7 +333,7 @@ bool SignalObservationSdLogger::appendObservation(const SignalObservation& obser
     const size_t lineWritten = file.write(reinterpret_cast<const uint8_t*>(line), lineLen);
     file.close();
     if (lineWritten != lineLen) {
-        writeFail_.fetch_add(1, std::memory_order_relaxed);
+        recordWriteFail();
         return false;
     }
 

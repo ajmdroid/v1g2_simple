@@ -678,6 +678,8 @@ String perfMetricsToJson() {
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
+    doc["sigObsQueueDrops"] = perfCounters.sigObsQueueDrops.load();
+    doc["sigObsWriteFail"] = perfCounters.sigObsWriteFail.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;

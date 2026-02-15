@@ -137,6 +137,10 @@ struct PerfCounters {
     std::atomic<uint32_t> audioPlayCount{0};         // Audio play tasks successfully started
     std::atomic<uint32_t> audioPlayBusy{0};          // Audio plays rejected (already playing)
     std::atomic<uint32_t> audioTaskFail{0};          // Audio task creation failures
+
+    // Lockout signal observation SD logger
+    std::atomic<uint32_t> sigObsQueueDrops{0};      // Signal observation SD queue full drops
+    std::atomic<uint32_t> sigObsWriteFail{0};       // Signal observation SD write failures
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -202,6 +206,8 @@ struct PerfCounters {
         audioPlayCount.store(0, std::memory_order_relaxed);
         audioPlayBusy.store(0, std::memory_order_relaxed);
         audioTaskFail.store(0, std::memory_order_relaxed);
+        sigObsQueueDrops.store(0, std::memory_order_relaxed);
+        sigObsWriteFail.store(0, std::memory_order_relaxed);
     }
 };
 
