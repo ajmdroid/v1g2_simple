@@ -42,10 +42,13 @@ code_review.txt
 
 # Archived docs (keep local, don't track)
 docs/ARCHIVE.md
+docs/CAMERA_ALERTS_PLAN.md
 docs/CODEBASE_REVIEW.md
 docs/GPS_ALERT_LOGGING.md
+docs/LOGGING_CONVENTION.md
 docs/M10-25Q_TESTING.md
 docs/MODULE_DETECTION.md
+docs/PERF_SLOS.md
 docs/SD_BACKUP.md
 docs/SD_BACKUP_IMPLEMENTATION.md
 
