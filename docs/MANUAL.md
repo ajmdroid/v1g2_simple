@@ -9,36 +9,15 @@
 
 ---
 
-## Recent Changes (v4.0.0-dev)
+## Release Notes
 
-### v4.0.0-dev - GPS Lockouts & Stability
-- **GPS Lockout Zones:** Create manual lockout zones that auto-mute specific bands when in range. Supports band-specific muting (X/K/Ka/Laser). Configure via `/gps` page.
-- **Auto-Lockout Learning:** System learns frequent false alert locations and auto-creates lockout zones after repeated hits.
-- **Perf CSV Logging:** SD-backed performance snapshots under `/perf/perf_boot_<id>.csv` for post-mortem analysis.
-- **Photo Radar Band Color:** Dedicated color for Photo Radar ('P') alerts. Configure via `/colors` page.
-- **Settings Backup to SD:** Automatic SD backup of settings on save; auto-restore on boot if NVS is default/corrupt.
-- **Display Latency Tracking:** Optional display latency metrics for performance debugging.
-- **BLE Heartbeat Indicator:** Visual indicator shows V1 connection health.
+Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
-### v2.4.4 - OBD & Volume Features
-- **OBD-II Integration:** Connect to ELM327 Bluetooth LE adapters for vehicle speed. More accurate than GPS in tunnels/cities. Supports common adapters (OBDII, Vgate, iCar, KONNWEI, Veepeak, etc.). Configure via `/gps` page.
-- **Speed-Based Volume Boost:** Automatically increase V1 alert volume when traveling above configurable speed threshold (uses OBD or GPS). Louder alerts at highway speeds where road noise is higher. Configure via `/audio` page.
-- **Volume Fade:** Automatically reduce V1 alert volume after initial announcement. Smart new-frequency detection restores volume for genuinely new threats while staying faded for priority shuffling between known signals. V1 mute always honored. Configure via `/audio` page.
-
-### v2.3.4 - UI Improvements
-- **Settings Backup & Restore:** Export all display settings (colors, slots, voice config) and V1 profiles to JSON and restore from backup via web UI (`/settings` page).
-- **Volume Indicator Centered:** Volume indicator now vertically centered between bogey counter and BLE icon for better visual balance.
-- **Display Style Refinement:** Modern style now uses Classic 7-segment for bogey counter (supports laser '=' flag) while keeping Montserrat Bold for frequency display.
-- **Laser Display Fix:** Laser '=' symbol now displays correctly in Modern mode (previously hidden).
-
-### Previous Changes (v2.0.x)
-
-- **Volume Indicator:** V1 main volume (0-9) is now shown below the bogey counter. If volume is set to 0 and the phone app disconnects, a "VOL 0 WARNING" message appears after 15s (for 10s) to alert the user.
-- **VOL 0 Warning:** If V1's main volume is zero and the phone app disconnects, a warning is shown after 15s delay for 10s duration. This is to prevent missed audio alerts. (See Display States)
-- **Band/Arrow Blinking:** Band indicators and arrows now blink in sync with V1 hardware, using V1's image1/image2 flash bits. Blink rate is ~100ms (5Hz). Local timers removed; V1 is source of truth for blinking.
-- **Signal Bar Decay Reset:** Signal bar decay statics are now reset on V1 disconnect to prevent stale bar display after reconnect.
-- **Alert Chunk Assembly Reset:** If the expected alert count changes mid-transmission, chunk assembly is reset to avoid stale or mixed alert data.
-- **Arrow Display Behavior:** Arrows are never shown in the resting display (only when a valid frequency is present). Fixes bug where arrows could appear without an alert.
+Current train (`v4.0.0-dev`) highlights:
+- GPS lockout runtime stack (enforcer + learner + store/index) and `/gps` configuration controls.
+- Camera runtime/index/loader path with bounded cadence and diagnostics endpoints.
+- SD-backed perf CSV snapshots (`/perf/perf_boot_<id>.csv`) and runtime metrics correlation.
+- Settings backup/restore hardening and display/runtime stability fixes.
 
 
 ---
@@ -208,11 +187,8 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `packet_parser.cpp` | ~453 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~63 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~150 | AXS15231B I2C touch polling |
-| `gps_handler.cpp` | ~200 | GPS fix acquisition via Adafruit PA1616S or TinyGPSPlus |
 | `obd_handler.cpp` | ~600 | OBD-II via ELM327 BLE adapter (vehicle speed) |
-| `lockout_manager.cpp` | ~300 | Manual geofence lockout zones |
-| `auto_lockout_manager.cpp` | ~500 | Automatic false alert learning with spatial/temporal clustering |
-| `event_ring.cpp` | ~160 | Debug event logging (ArduinoJson) |
+| `src/modules/` | evolving | Runtime modules for GPS, lockout, camera, display pipeline, voice, power, etc. |
 | `perf_metrics.cpp` | ~156 | Latency tracking (ArduinoJson) |
 
 ### Data Flow

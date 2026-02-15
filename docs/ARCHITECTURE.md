@@ -21,123 +21,14 @@ Modules talk through small, well-defined APIs. Changes inside a module don't lea
 ### 4. Testable Boundaries
 Each module can be tested independently with mocks.
 
-## Proposed Module Structure
+## Historical Context
 
-```
-src/
-├── main.cpp                    (150-250 lines: orchestration only)
-│
-├── subsystems/
-│   ├── ble_subsystem/
-│   │   ├── ble_subsystem.h     → BLESubsystem class
-│   │   ├── ble_subsystem.cpp   → Connection, V1 protocol, alert parsing
-│   │   └── v1_protocol.cpp     → V1 packet handling (extracted from packet_parser)
-│   │
-│   ├── gps_subsystem/
-│   │   ├── gps_subsystem.h     → GPSSubsystem class
-│   │   ├── gps_subsystem.cpp   → GPS state, heading, speed smoothing
-│   │   └── camera_query.cpp    → Camera distance/bearing calculations
-│   │
-│   ├── display_subsystem/
-│   │   ├── display_subsystem.h → DisplaySubsystem class
-│   │   ├── display_subsystem.cpp → Orchestrates rendering
-│   │   ├── alert_renderer.cpp  → Alert display logic
-│   │   └── status_renderer.cpp → Icons, battery, GPS status
-│   │
-│   └── audio_subsystem/
-│       ├── audio_subsystem.h   → AudioSubsystem class
-│       └── audio_subsystem.cpp → Alert audio, muting, volume
-│
-├── features/                   (Higher-level features using subsystems)
-│   ├── lockout/
-│   │   ├── lockout_manager.h/cpp       (existing)
-│   │   └── auto_lockout_manager.h/cpp  (existing)
-│   │
-│   └── camera_alerts/
-│       ├── camera_runtime_module.h/cpp (existing)
-│       ├── camera_index.h/cpp          (existing)
-│       ├── camera_data_loader.h/cpp    (existing)
-│       └── camera_event_log.h/cpp      (existing)
-│
-├── api/                        (Web API - clear boundary)
-│   ├── settings_api.h/cpp      → ALL settings endpoints + serialization
-│   ├── gps_api.h/cpp           → GPS/lockout data endpoints
-│   └── system_api.h/cpp        → Device info, logs, backup/restore
-│
-├── core/                       (Shared utilities)
-│   ├── settings.h/cpp          (existing - just storage)
-│   ├── storage_manager.h/cpp   (existing)
-│   ├── debug_logger.h/cpp      (existing)
-│   └── perf_metrics.h/cpp      (existing)
-│
-└── drivers/                    (Hardware interfaces)
-    ├── display.h/cpp           (existing - low level only)
-    ├── gps_handler.h/cpp       (existing - UART/parsing only)
-    ├── audio_beep.h/cpp        (existing)
-    └── touch_handler.h/cpp     (existing)
-```
+An earlier full subsystem-rewrite proposal existed here; it is now historical and
+not the active architecture. The implementation moved to incremental module
+migration under `src/modules/` to reduce risk while preserving behavior.
 
-## Module Responsibilities
-
-### BLESubsystem
-**Owns:** V1 connection, ESP32 proxy, alert parsing, packet processing  
-**Interface:**
-```cpp
-void update();                          // Called each loop
-bool isConnected();
-bool hasNewAlert();
-AlertData getLatestAlert();
-V1Settings getV1Settings();
-```
-**Touches:** Only BLE, packet parsing code. Never directly touches display/audio.
-
-### GPSSubsystem  
-**Owns:** GPS state, position, speed, heading, camera database queries  
-**Interface:**
-```cpp
-void update();
-bool isReady();                        // 15s sustained fix
-float getSpeed();
-float getHeading();
-GPSPosition getPosition();
-std::vector<Camera> queryCameras(float radius);
-```
-**Touches:** Only GPS, camera DB. Main loop asks for data, doesn't pull it.
-
-### DisplaySubsystem
-**Owns:** All rendering decisions, dimming, demo mode  
-**Interface:**
-```cpp
-void update();
-void showAlert(AlertData alert, float speed);
-void showStatus();
-void showDemo();
-void setBrightness(uint8_t level);
-```
-**Touches:** Only display driver. Never directly reads BLE/GPS.
-
-### AudioSubsystem
-**Owns:** Alert audio, voice, muting, volume fade  
-**Interface:**
-```cpp
-void update();
-void playAlert(AlertData alert, float speed);
-void playVoice(const char* text);
-void setVolume(uint8_t level);
-```
-**Touches:** Only audio driver. Gets alert data passed in.
-
-### SettingsAPI
-**Owns:** ALL settings HTTP endpoints, JSON serialization  
-**Interface:**
-```cpp
-void registerEndpoints(WebServer& server);
-// Internally handles:
-//   GET  /api/settings  → serializeAllSettings()
-//   POST /api/displaycolors → handleColorsSave()
-//   etc.
-```
-**Why unified:** Adding a setting means editing ONE file, not 5.
+Use the structure and responsibilities in the "Current Approach: Incremental
+Module Migration" section below as the source of truth.
 
 ## Migration Strategy (Updated January 2026)
 
