@@ -16,6 +16,7 @@ OBDHandler obdHandler;
 
 static OBDHandler* s_obdInstance = nullptr;
 static std::atomic<uint32_t> s_activePinCode{1234};
+static std::atomic<bool> s_obdDisconnectPending{false};
 
 static bool isAllZeroAddress(const NimBLEAddress& address) {
     const uint8_t* raw = address.getVal();
@@ -71,8 +72,27 @@ public:
     }
 
     void onDisconnect(NimBLEClient* pClient, int reason) override {
-        (void)pClient;
-        (void)reason;
+        Serial.printf("[OBD] BLE disconnected (reason=%d)\n", reason);
+        // Signal the OBD task via an atomic flag.  The task's next
+        // runStateMachine() iteration will pick this up and transition
+        // to DISCONNECTED.  We avoid touching any private members from
+        // this NimBLE host-task callback.
+        s_obdDisconnectPending.store(true, std::memory_order_release);
+    }
+
+    // Accept connection parameter updates requested by the OBDLink CX.
+    // The CX is a battery-saving peripheral and may request wider intervals
+    // (e.g. 30-100 ms) after the initial connection.  Rejecting these causes
+    // the adapter to disconnect.
+    bool onConnParamsUpdateRequest(NimBLEClient* pClient,
+                                   const ble_gap_upd_params* params) override {
+        if (!params) return true;
+
+        Serial.printf("[OBD] Accepting conn param update request: int=%u-%u lat=%u to=%u\n",
+                      (unsigned)params->itvl_min, (unsigned)params->itvl_max,
+                      (unsigned)params->latency, (unsigned)params->supervision_timeout);
+        // Return true to accept the peripheral's requested parameters as-is.
+        return true;
     }
 };
 
@@ -669,6 +689,29 @@ float OBDHandler::getSpeedMph() const {
 }
 
 bool OBDHandler::runStateMachine() {
+    // Check for asynchronous disconnect signalled from the NimBLE callback.
+    if (s_obdDisconnectPending.exchange(false, std::memory_order_acq_rel)) {
+        if (state == OBDState::READY ||
+            state == OBDState::POLLING ||
+            state == OBDState::INITIALIZING ||
+            state == OBDState::CONNECTING) {
+            Serial.println("[OBD] Async disconnect detected - transitioning to DISCONNECTED");
+            {
+                ObdLock lock(obdMutex, pdMS_TO_TICKS(20));
+                if (lock.ok()) {
+                    lastData.valid = false;
+                }
+            }
+            pNUSService = nullptr;
+            pRXChar = nullptr;
+            pTXChar = nullptr;
+            consecutivePollFailures = 0;
+            state = OBDState::DISCONNECTED;
+            lastPollMs = millis();
+            return false;
+        }
+    }
+
     if (scanActive && (millis() - scanStartMs) > 35000) {
         onScanComplete();
     }
@@ -766,6 +809,14 @@ void OBDHandler::handleConnecting() {
     Serial.printf("[OBD] Connecting to %s...\n", targetDeviceName.c_str());
 
     if (connectToDevice() && discoverServices()) {
+        // Log negotiated connection parameters for diagnostics.
+        if (pOBDClient && pOBDClient->isConnected()) {
+            NimBLEConnInfo ci = pOBDClient->getConnInfo();
+            Serial.printf("[OBD] Negotiated conn params: interval=%.1fms latency=%u timeout=%ums\n",
+                          ci.getConnInterval() * 1.25f,
+                          (unsigned)ci.getConnLatency(),
+                          (unsigned)(ci.getConnTimeout() * 10));
+        }
         connectionFailures = 0;
         reconnectCycleCount = 0;
         state = OBDState::INITIALIZING;
@@ -888,7 +939,11 @@ bool OBDHandler::connectToDevice() {
             return false;
         }
         pOBDClient->setClientCallbacks(&obdSecurityCallbacks);
-        pOBDClient->setConnectionParams(12, 12, 0, 500);
+        // Connection parameters: 24-48 (30-60 ms interval) gives the OBDLink CX
+        // room to negotiate.  The CX is a power-saving peripheral and rejects or
+        // immediately disconnects when forced to a fixed 15 ms interval.
+        // Latency 0, supervision timeout 400 (4 s) matches V1 client config.
+        pOBDClient->setConnectionParams(24, 48, 0, 400);
         // NimBLE timeout is configured on the client, not via connect() args.
         pOBDClient->setConnectTimeout(10000);
     }
@@ -977,7 +1032,8 @@ bool OBDHandler::connectToDevice() {
                         continue;
                     }
 
-                    vTaskDelay(pdMS_TO_TICKS(250));
+                    // Allow time for security handshake + conn-param negotiation.
+                    vTaskDelay(pdMS_TO_TICKS(500));
                     if (pOBDClient->isConnected()) {
                         if (!connectedPeerLooksLikeObd()) {
                             Serial.printf("[OBD] Bonded peer rejected (missing OBD UART): %s\n",
@@ -1076,7 +1132,8 @@ bool OBDHandler::connectToDevice() {
                 continue;
             }
 
-            vTaskDelay(pdMS_TO_TICKS(250));
+            // Allow time for security handshake + conn-param negotiation.
+            vTaskDelay(pdMS_TO_TICKS(500));
             if (pOBDClient->isConnected()) {
                 if (!connectedPeerLooksLikeObd()) {
                     Serial.printf("[OBD] Connected peer rejected (%s, addrType=%u): missing OBD UART\n",
@@ -1185,8 +1242,13 @@ bool OBDHandler::connectedPeerLooksLikeObd() {
 
     // GATT table may not be populated yet after a bonded reconnect.
     // discoverAttributes() is idempotent and returns cached results
-    // if already discovered.
-    pOBDClient->discoverAttributes();
+    // if already discovered.  Skip the call if services are already
+    // cached to avoid hammering the freshly-connected CX.
+    if (!pOBDClient->getService(NUS_SERVICE_UUID) &&
+        !pOBDClient->getService("FFF0") &&
+        !pOBDClient->getService("FFE0")) {
+        pOBDClient->discoverAttributes();
+    }
 
     // Check all service UUIDs that discoverServices() accepts.
     NimBLERemoteService* service = pOBDClient->getService(NUS_SERVICE_UUID);
@@ -1223,6 +1285,15 @@ bool OBDHandler::connectedPeerLooksLikeObd() {
 
 bool OBDHandler::discoverServices() {
     if (!pOBDClient || !pOBDClient->isConnected()) {
+        return false;
+    }
+
+    // Allow the link to stabilize after connect/pairing before hammering GATT.
+    // The CX needs time to finish conn-param negotiation.
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    if (!pOBDClient->isConnected()) {
+        Serial.println("[OBD] Connection lost before service discovery");
         return false;
     }
 
@@ -1267,6 +1338,16 @@ bool OBDHandler::discoverServices() {
 
 bool OBDHandler::initializeAdapter() {
     String response;
+
+    // Let the UART link stabilize after service discovery + notification
+    // subscribe.  Sending AT commands too quickly can lose the first command
+    // or cause the CX to drop the connection.
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    if (!pOBDClient || !pOBDClient->isConnected()) {
+        Serial.println("[OBD] Connection lost before adapter init");
+        return false;
+    }
 
     auto probeMode01 = [&](const char* label, uint32_t timeoutMs, int attempts) {
         for (int i = 0; i < attempts; i++) {
@@ -1915,7 +1996,8 @@ bool OBDHandler::connectViaAdvertisedDevice(const char* profileLabel, bool using
         return false;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(250));
+    // Allow time for security handshake + conn-param negotiation.
+    vTaskDelay(pdMS_TO_TICKS(500));
     if (pOBDClient->isConnected()) {
         if (!connectedPeerLooksLikeObd()) {
             Serial.printf("[OBD] Advertised peer rejected (%s): missing OBD UART\n",
