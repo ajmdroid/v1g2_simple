@@ -132,6 +132,11 @@ struct PerfCounters {
     std::atomic<uint32_t> powerAutoPowerTimerExpire{0}; // Auto power-off timer expired
     std::atomic<uint32_t> powerCriticalWarn{0};      // Critical-battery warning shown
     std::atomic<uint32_t> powerCriticalShutdown{0};  // Critical-battery shutdown triggered
+
+    // Audio
+    std::atomic<uint32_t> audioPlayCount{0};         // Audio play tasks successfully started
+    std::atomic<uint32_t> audioPlayBusy{0};          // Audio plays rejected (already playing)
+    std::atomic<uint32_t> audioTaskFail{0};          // Audio task creation failures
     
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
@@ -194,6 +199,9 @@ struct PerfCounters {
         powerAutoPowerTimerExpire.store(0, std::memory_order_relaxed);
         powerCriticalWarn.store(0, std::memory_order_relaxed);
         powerCriticalShutdown.store(0, std::memory_order_relaxed);
+        audioPlayCount.store(0, std::memory_order_relaxed);
+        audioPlayBusy.store(0, std::memory_order_relaxed);
+        audioTaskFail.store(0, std::memory_order_relaxed);
     }
 };
 

@@ -10,6 +10,7 @@
 #include "audio_beep.h"
 #include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
 #include "debug_logger.h"     // For Audio logging category
+#include "perf_metrics.h"     // For audio play/fail counters
 #include <Arduino.h>
 #include <Wire.h>
 #include "driver/i2s_std.h"   // New I2S standard driver (requires ESP-IDF 5.x)
@@ -516,6 +517,7 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     // Atomic exchange: if already true, return; otherwise set to true
     if (audio_playing.exchange(true)) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return;
     }
     
@@ -538,7 +540,10 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     
     if (result != pdPASS) {
         Serial.println("[AUDIO] ERROR: Failed to create audio task!");
+        PERF_INC(audioTaskFail);
         audio_playing = false;
+    } else {
+        PERF_INC(audioPlayCount);
     }
 }
 
@@ -771,6 +776,7 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
     // Atomic exchange: if already true, abort; otherwise set to true
     if (audio_playing.exchange(true)) {
         AUDIO_LOGLN("[AUDIO] Already playing, skipping");
+        PERF_INC(audioPlayBusy);
         return false;
     }
     
@@ -796,9 +802,11 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
     
     if (audioTaskHandle == NULL) {
         Serial.println("[AUDIO] ERROR: Failed to create SD audio task!");
+        PERF_INC(audioTaskFail);
         audio_playing = false;
         return false;
     }
+    PERF_INC(audioPlayCount);
     return true;
 }
 

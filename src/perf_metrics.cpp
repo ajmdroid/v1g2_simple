@@ -675,6 +675,9 @@ String perfMetricsToJson() {
     doc["powerAutoPowerTimerExpire"] = perfCounters.powerAutoPowerTimerExpire.load();
     doc["powerCriticalWarn"] = perfCounters.powerCriticalWarn.load();
     doc["powerCriticalShutdown"] = perfCounters.powerCriticalShutdown.load();
+    doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
+    doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
+    doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
