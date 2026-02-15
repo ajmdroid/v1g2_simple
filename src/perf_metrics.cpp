@@ -140,6 +140,10 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
+    snapshot.obdMaxUs = perfExtended.obdMaxUs;
+    snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
+    snapshot.cameraMaxUs = perfExtended.cameraMaxUs;
+    snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
     snapshot.uiToScanCount = perfExtended.uiToScanCount;
     snapshot.uiToRestCount = perfExtended.uiToRestCount;
@@ -249,6 +253,10 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.dispPipeMaxUs = 0;
     perfExtended.bleProcessMaxUs = 0;
     perfExtended.touchMaxUs = 0;
+    perfExtended.obdMaxUs = 0;
+    perfExtended.gpsMaxUs = 0;
+    perfExtended.cameraMaxUs = 0;
+    perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
@@ -358,6 +366,30 @@ void perfRecordDispPipeUs(uint32_t us) {
 void perfRecordTouchUs(uint32_t us) {
     if (us > perfExtended.touchMaxUs) {
         perfExtended.touchMaxUs = us;
+    }
+}
+
+void perfRecordObdUs(uint32_t us) {
+    if (us > perfExtended.obdMaxUs) {
+        perfExtended.obdMaxUs = us;
+    }
+}
+
+void perfRecordGpsUs(uint32_t us) {
+    if (us > perfExtended.gpsMaxUs) {
+        perfExtended.gpsMaxUs = us;
+    }
+}
+
+void perfRecordCameraUs(uint32_t us) {
+    if (us > perfExtended.cameraMaxUs) {
+        perfExtended.cameraMaxUs = us;
+    }
+}
+
+void perfRecordLockoutUs(uint32_t us) {
+    if (us > perfExtended.lockoutMaxUs) {
+        perfExtended.lockoutMaxUs = us;
     }
 }
 
@@ -474,6 +506,10 @@ uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
 uint32_t perfGetTouchMaxUs() { return perfExtended.touchMaxUs; }
+uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
+uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
+uint32_t perfGetCameraMaxUs() { return perfExtended.cameraMaxUs; }
+uint32_t perfGetLockoutMaxUs() { return perfExtended.lockoutMaxUs; }
 
 void perfExtendedResetWindow() {
     perfExtended.reset();

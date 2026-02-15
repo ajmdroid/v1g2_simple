@@ -1020,14 +1020,18 @@ void loop() {
             obdHandler.tryAutoConnect();
         }
 
+        uint32_t obdStartUs = PERF_TIMESTAMP_US();
         if (obdHandler.update()) {
             OBDData obdData = obdHandler.getData();
             speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
         }
+        perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
     }
     speedSourceSelector.setObdConnected(obdServiceEnabled && obdHandler.isConnected());
 
+    uint32_t gpsStartUs = PERF_TIMESTAMP_US();
     gpsRuntimeModule.update(now);
+    perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
 
     SpeedSelection speedSelection;
     if (speedSourceSelector.select(now, speedSelection)) {
@@ -1054,8 +1058,10 @@ void loop() {
     if (parsedReady && !bootSplashHoldActive) {
         const uint32_t nowMs = millis();
         const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+        uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
         signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
         lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
+        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
 
         // Feed lockout decision into display indicator before rendering.
         const auto& lockRes = lockoutEnforcer.lastResult();
@@ -1156,7 +1162,9 @@ void loop() {
 
     // Camera runtime is strictly low-priority and self-gated on overload/non-core.
     // Live V1 alerts always preempt camera lifecycle/rendering.
+    uint32_t cameraStartUs = PERF_TIMESTAMP_US();
     cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, parser.hasAlerts());
+    perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
     if (!skipNonCoreThisLoop) {
         // Process WiFi/web server

@@ -36,7 +36,11 @@ struct PerfSdSnapshot {
     uint32_t dmaLargestMin;   // Min MALLOC_CAP_DMA largest block since session start
     uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
-    uint32_t wifiMaxUs;       // Window max wifiManager.process() duration
+    uint32_t obdMaxUs;         // Window max obdHandler.update() duration
+    uint32_t gpsMaxUs;         // Window max gpsRuntimeModule.update() duration
+    uint32_t cameraMaxUs;      // Window max cameraRuntimeModule.process() duration
+    uint32_t lockoutMaxUs;     // Window max lockoutEnforcer.process() + signalCapture duration
+    uint32_t wifiMaxUs;        // Window max wifiManager.process() duration
     uint32_t uiToScanCount;   // Screen transitions to scanning
     uint32_t uiToRestCount;   // Screen transitions to resting
     uint32_t uiScanToRestCount;   // Scanning -> resting transitions

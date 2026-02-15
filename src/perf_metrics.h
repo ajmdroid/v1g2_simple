@@ -264,6 +264,10 @@ struct PerfExtendedMetrics {
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
+    uint32_t obdMaxUs = 0;             // obdHandler.update() duration
+    uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
+    uint32_t cameraMaxUs = 0;          // cameraRuntimeModule.process() duration
+    uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
     uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
     uint32_t uiToRestCount = 0;       // Screen transitions -> Resting
     uint32_t uiScanToRestCount = 0;   // Scanning -> Resting transitions
@@ -306,6 +310,10 @@ struct PerfExtendedMetrics {
         bleProcessMaxUs = 0;
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
+        obdMaxUs = 0;
+        gpsMaxUs = 0;
+        cameraMaxUs = 0;
+        lockoutMaxUs = 0;
         uiToScanCount = 0;
         uiToRestCount = 0;
         uiScanToRestCount = 0;
@@ -348,6 +356,10 @@ void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
+void perfRecordObdUs(uint32_t us);
+void perfRecordGpsUs(uint32_t us);
+void perfRecordCameraUs(uint32_t us);
+void perfRecordLockoutUs(uint32_t us);
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
@@ -373,6 +385,10 @@ uint32_t perfGetBleSubscribeMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
 uint32_t perfGetTouchMaxUs();
+uint32_t perfGetObdMaxUs();
+uint32_t perfGetGpsMaxUs();
+uint32_t perfGetCameraMaxUs();
+uint32_t perfGetLockoutMaxUs();
 void perfExtendedResetWindow();
 
 // ============================================================================
