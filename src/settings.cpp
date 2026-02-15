@@ -874,6 +874,8 @@ bool SettingsManager::checkAndRestoreFromSD() {
         Serial.println("[Settings] Checking for SD backup restore...");
         if (restoreFromSD()) {
             Serial.println("[Settings] Restored settings from SD backup!");
+            // Immediately re-emit backup in current schema after a successful restore.
+            backupToSD();
             return true;
         }
     }
