@@ -6,6 +6,9 @@
 #include "display.h"
 #include "settings.h"
 #include "time_service.h"
+#include "storage_manager.h"
+#include "modules/lockout/lockout_store.h"
+#include "modules/lockout/lockout_learner.h"
 #include <Wire.h>
 #ifdef WINDOWS_BUILD
 // ESP32 Arduino 2.x compatible headers
@@ -547,7 +550,36 @@ bool BatteryManager::powerOff() {
     Serial.println("[Battery] Saving settings...");
     settingsManager.save();
     
-    // Step 1b: Persist current time to NVS (fallback if deep sleep battery dies)
+    // Step 1b: Flush dirty lockout zones and learner candidates to storage
+    if (storageManager.isReady()) {
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs) {
+            if (lockoutStore.isDirty()) {
+                JsonDocument doc;
+                lockoutStore.toJson(doc);
+                if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_zones.json", doc)) {
+                    lockoutStore.clearDirty();
+                    Serial.printf("[Battery] Flushed %lu lockout zones\n",
+                                  static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
+                } else {
+                    Serial.println("[Battery] Lockout zone flush failed");
+                }
+            }
+            if (lockoutLearner.isDirty()) {
+                JsonDocument doc;
+                lockoutLearner.toJson(doc);
+                if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_pending.json", doc)) {
+                    lockoutLearner.clearDirty();
+                    Serial.printf("[Battery] Flushed %u pending candidates\n",
+                                  static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
+                } else {
+                    Serial.println("[Battery] Learner candidate flush failed");
+                }
+            }
+        }
+    }
+
+    // Step 1c: Persist current time to NVS (fallback if deep sleep battery dies)
     Serial.println("[Battery] Persisting time to NVS...");
     timeService.persistCurrentTime();
     
