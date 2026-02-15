@@ -10,6 +10,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 ## Table of Contents
 
 - [Status & Info](#status--info)
+- [System Utilities](#system-utilities)
 - [Settings](#settings)
 - [V1 Profiles](#v1-profiles)
 - [Auto-Push](#auto-push)
@@ -20,7 +21,6 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Camera Alerts](#camera-alerts)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
-- [Audio](#audio)
 
 ---
 
@@ -74,6 +74,37 @@ Health check endpoint.
 
 ---
 
+## System Utilities
+
+### POST /api/time/set
+
+Set trusted device time from client/AP context.
+
+**Request (JSON preferred):**
+```json
+{
+  "unixMs": 1739650000000,
+  "tzOffsetMin": -300,
+  "source": "client"
+}
+```
+
+**Compatibility keys accepted:** `epochMs`, `clientEpochMs`, `tzOffsetMinutes`.
+
+### POST /api/profile/push
+
+Queue profile push to connected V1 using active slot/profile state.
+
+**Response (example):**
+```json
+{
+  "ok": true,
+  "message": "Profile push queued - check display for progress"
+}
+```
+
+---
+
 ## Settings
 
 ### GET /api/settings
@@ -88,24 +119,20 @@ Get all device settings.
   "isDefaultPassword": true,
   "proxy_ble": false,
   "proxy_name": "",
+  "obdEnabled": false,
+  "obdVwDataEnabled": false,
+  "gpsEnabled": false,
+  "cameraEnabled": true,
+  "gpsLockoutMode": 3,
+  "gpsLockoutModeName": "enforce",
+  "gpsLockoutCoreGuardEnabled": true,
+  "gpsLockoutMaxQueueDrops": 0,
+  "gpsLockoutMaxPerfDrops": 0,
+  "gpsLockoutMaxEventBusDrops": 0,
+  "gpsLockoutKaLearningEnabled": false,
   "displayStyle": 0,
   "autoPowerOffMinutes": 0,
-  "gpsEnabled": false,
-  "obdEnabled": false,
-  "lockoutEnabled": true,
-  "lockoutKaProtection": true,
-  "lockoutDirectionalUnlearn": true,
-  "lockoutFreqToleranceMHz": 8,
-  "lockoutLearnCount": 3,
-  "lockoutUnlearnCount": 5,
-  "lockoutManualDeleteCount": 25,
-  "lockoutLearnIntervalHours": 4,
-  "lockoutUnlearnIntervalHours": 4,
-  "lockoutMaxSignalStrength": 0,
-  "lockoutMaxDistanceM": 600,
-  "cameraAlertsEnabled": true,
-  "cameraAudioEnabled": true,
-  "cameraAlertDistanceM": 500,
+  "apTimeoutMinutes": 0,
   "enableWifiAtBoot": false
 }
 ```
@@ -117,12 +144,20 @@ Get all device settings.
 | `isDefaultPassword` | boolean | - | `true` if using factory default password |
 | `proxy_ble` | boolean | - | Enable BLE proxy mode |
 | `proxy_name` | string | 0-32 chars | Custom device name for proxy |
+| `obdEnabled` | boolean | - | Enable OBD integration |
+| `obdVwDataEnabled` | boolean | - | Enable VW-specific OBD decoding |
+| `gpsEnabled` | boolean | - | Enable GPS runtime |
+| `cameraEnabled` | boolean | - | Enable camera alert runtime (effective state also requires GPS enabled) |
+| `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
+| `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
+| `gpsLockoutMaxQueueDrops` | int | 0-65535 | Queue-drop threshold for core guard |
+| `gpsLockoutMaxPerfDrops` | int | 0-65535 | Perf-drop threshold for core guard |
+| `gpsLockoutMaxEventBusDrops` | int | 0-65535 | Event-bus-drop threshold for core guard |
+| `gpsLockoutKaLearningEnabled` | boolean | - | Allow Ka learning in lockout learner |
 | `displayStyle` | int | 0-3 | Display theme (0=Classic, 1=Modern, 2=Hemi, 3=Serpentine) |
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
-| `lockoutEnabled` | boolean | - | Enable auto-lockout |
-| `lockoutFreqToleranceMHz` | int | 1-50 | Frequency matching tolerance |
-| `cameraAlertDistanceM` | int | 100-2000 | Camera alert distance in meters |
+| `enableWifiAtBoot` | boolean | - | Boot with AP enabled instead of BOOT long-press |
 
 ### POST /api/settings
 
@@ -130,7 +165,7 @@ Update device settings. Send only fields you want to change.
 
 **Request (form data):**
 ```
-ap_ssid=MyV1&ap_password=newpassword123&lockoutEnabled=true
+ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&cameraEnabled=true&gpsLockoutMode=3
 ```
 
 **Response:** `Settings saved` (text/plain)
@@ -348,9 +383,28 @@ Get recent lockout candidate observations (newest first).
 - SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
 - Legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work with `X-API-Deprecated`.
 
-**Current scope:**
-- Lockout APIs are read-only in this build (`/api/lockouts/summary`, `/api/lockouts/events`).
-- CRUD/import/export endpoints are not exposed by the active firmware routes.
+### GET /api/lockouts/zones
+
+Get active zones + pending learner candidates.
+
+**Query Parameters:**
+- `activeLimit` (optional): `1..200` (default `64`)
+- `pendingLimit` (optional): `1..64` (default `64`)
+
+### POST /api/lockouts/zones/delete
+
+Delete a learned zone by slot index.
+
+**Request (JSON or form):**
+```json
+{
+  "slot": 3
+}
+```
+
+**Notes:**
+- Only learned zones are deletable.
+- Singular compatibility shims also exist: `/api/lockout/zones`, `/api/lockout/zones/delete`.
 
 ---
 
@@ -411,6 +465,22 @@ Forget saved OBD device.
 
 Clear discovered devices list.
 
+### POST /api/obd/disconnect
+
+Disconnect current OBD session.
+
+### POST /api/obd/config
+
+Update OBD behavior/settings.
+
+### GET /api/obd/remembered
+
+Get remembered OBD device info.
+
+### POST /api/obd/remembered/autoconnect
+
+Enable/disable auto-connect for remembered OBD device.
+
 ---
 
 ## GPS
@@ -423,23 +493,36 @@ Get GPS module status and current position.
 ```json
 {
   "enabled": true,
-  "fix": true,
-  "fixType": "3D",
-  "lat": 37.7749,
-  "lon": -122.4194,
-  "altitude": 15.5,
-  "speed": 45.5,
-  "heading": 180,
-  "satellites": 12,
-  "hdop": 1.2,
-  "moduleType": "M10",
-  "lastUpdate": "2024-01-15T10:30:00Z"
+  "runtimeEnabled": true,
+  "mode": "runtime",
+  "sampleValid": true,
+  "hasFix": true,
+  "satellites": 8,
+  "hdop": 1.4,
+  "locationValid": true,
+  "latitude": 10.1234,
+  "longitude": -20.5432,
+  "courseValid": true,
+  "courseDeg": 181.4,
+  "speedMph": 42.7,
+  "lockout": {
+    "mode": "enforce",
+    "coreGuardEnabled": true,
+    "coreGuardTripped": false
+  }
 }
 ```
 
-### POST /api/gps/reset
+### GET /api/gps/observations
 
-Reset GPS module (cold start).
+Get recent GPS observation ring samples.
+
+**Query Parameters:**
+- `limit` (optional): `1..32` (default `16`)
+
+### POST /api/gps/config
+
+Update GPS/lockout runtime config and optional scaffold samples.
 
 ---
 
@@ -747,6 +830,10 @@ Enable/disable runtime perf debug reporting.
 enable=true
 ```
 
+### GET /api/debug/panic
+
+Get last-reset crash snapshot and optional `/panic.txt` content.
+
 ### GET /api/debug/perf-files
 
 List SD-backed perf CSV files under `/perf`.
@@ -788,26 +875,6 @@ Download one perf CSV file.
 Delete one perf CSV file.
 
 **Request (form data):** `name=perf_boot_8.csv`
-
----
-
-## Audio
-
-### GET /api/audio/profiles
-
-Get audio alert profiles.
-
-### POST /api/audio/profile
-
-Set audio alert profile.
-
-**Request (form data):** `profile=beeps` or `profile=voice`
-
-### POST /api/audio/test
-
-Play a test sound.
-
-**Request (form data):** `sound=alert`
 
 ---
 
@@ -861,4 +928,4 @@ Check firmware version via:
 
 ---
 
-*Last updated: 2024*
+*Last updated: February 2026*
