@@ -510,6 +510,9 @@ bool OBDHandler::connectToAddress(const String& address,
         targetAutoConnect = autoConnect;
         scanActive = false;
         connectionFailures = 0;
+        reconnectCycleCount = 0;
+        autoConnectSuppressedAdapterOff = false;
+        lastConnectFailureNoAdvertising = false;
         state = OBDState::CONNECTING;
     }
 
@@ -853,6 +856,20 @@ void OBDHandler::handleConnecting() {
     Serial.printf("[OBD] Connect failed (%u/%u)\n",
                   (unsigned)connectionFailures,
                   (unsigned)MAX_CONNECTION_FAILURES);
+
+    if (lastConnectFailureNoAdvertising &&
+        connectionFailures >= MAX_CONNECTION_FAILURES) {
+        Serial.println("[OBD] Auto-connect suppressed: adapter not advertising after max attempts");
+        autoConnectSuppressedAdapterOff = true;
+        disconnect();
+        hasTargetDevice = false;
+        connectionFailures = 0;
+        reconnectCycleCount = 0;
+        consecutivePollFailures = 0;
+        state = OBDState::IDLE;
+        return;
+    }
+
     disconnect();
     state = OBDState::DISCONNECTED;
     lastPollMs = millis();
@@ -944,6 +961,8 @@ void OBDHandler::handlePolling() {
 }
 
 bool OBDHandler::connectToDevice() {
+    lastConnectFailureNoAdvertising = false;
+
     // BLE controllers generally cannot sustain scan+connect reliably.
     // Guard here as well for auto-connect and retry paths.
     NimBLEScan* pScan = NimBLEDevice::getScan();
@@ -1005,6 +1024,7 @@ bool OBDHandler::connectToDevice() {
             pPreScan->clearResults();
 
             if (!cxAdvertising) {
+                lastConnectFailureNoAdvertising = true;
                 Serial.println("[OBD] No OBDLink CX advertising - adapter may be off");
                 return false;
             }

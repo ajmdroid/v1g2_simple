@@ -66,6 +66,7 @@
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/speed/speed_source_selector.h"
+#include "modules/wifi/wifi_boot_policy.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
@@ -108,6 +109,8 @@ static bool scanScreenDwellActive = false;
 static bool lastBleConnectedForScanDwell = false;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
+static unsigned long v1ConnectedAtMs = 0;
+static bool wifiAutoStartDone = false;
 
 // Display preview driver (color + camera demos)
 DisplayPreviewModule displayPreviewModule;
@@ -383,6 +386,7 @@ static WifiOrchestrator& getWifiOrchestrator() {
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
+    v1ConnectedAtMs = millis();
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     const AutoPushSlot& slot = settingsManager.getSlot(activeSlotIndex);
@@ -584,7 +588,43 @@ void setup() {
 
     // Initialize display preview driver
     displayPreviewModule.begin(&display);
-    
+
+#ifndef REPLAY_MODE
+    // ── BLE init + scan start ────────────────────────────────────────
+    // Moved BEFORE storage/SD mount so the scan overlaps all remaining
+    // setup work.  BLE depends only on NVS (step 2) and settings (step 6),
+    // both of which are already initialized.
+    {
+        const V1Settings& blePreInitSettings = settingsManager.get();
+        logBootCheckpoint("ble_preinit_begin");
+        const unsigned long blePreInitStartMs = millis();
+        if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
+            SerialLog.println("BLE pre-initialization failed!");
+            fatalBootError("BLE pre-init failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
+        logBootStage("ble_preinit");
+
+        // Start scan early so discovery overlaps remaining setup work.
+        // Connection state-machine work still waits for bootReady gate later in setup().
+        bleClient.onDataReceived(onV1Data);
+        bleClient.onV1Connected(onV1Connected);
+        logBootCheckpoint("ble_callbacks_registered");
+        const V1Settings& bleScanSettings = settingsManager.get();
+        SerialLog.printf("Starting BLE scan for V1 early (proxy: %s, name: %s)\n",
+                         bleScanSettings.proxyBLE ? "enabled" : "disabled",
+                         bleScanSettings.proxyName.c_str());
+        logBootCheckpoint("ble_scan_begin");
+        const unsigned long bleScanStartMs = millis();
+        if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
+            SerialLog.println("BLE scan failed to start!");
+            fatalBootError("BLE scan failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
+    }
+#endif
+
+    // ── Storage / SD mount (scan is running in background) ──────────
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
 
     // Mount storage (SD if available, else LittleFS) for profiles and settings
@@ -664,36 +704,6 @@ void setup() {
         }
     }
     logBootStage("storage");
-
-#ifndef REPLAY_MODE
-    // Initialize BLE stack early (no scan yet) once settings/storage are ready.
-    const V1Settings& blePreInitSettings = settingsManager.get();
-    logBootCheckpoint("ble_preinit_begin");
-    const unsigned long blePreInitStartMs = millis();
-    if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
-        SerialLog.println("BLE pre-initialization failed!");
-        fatalBootError("BLE pre-init failed", true);
-    }
-    SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
-    logBootStage("ble_preinit");
-
-    // Start scan early so discovery overlaps remaining setup work.
-    // Connection state-machine work still waits for bootReady gate later in setup().
-    bleClient.onDataReceived(onV1Data);
-    bleClient.onV1Connected(onV1Connected);
-    logBootCheckpoint("ble_callbacks_registered");
-    const V1Settings& bleScanSettings = settingsManager.get();
-    SerialLog.printf("Starting BLE scan for V1 early (proxy: %s, name: %s)\n",
-                     bleScanSettings.proxyBLE ? "enabled" : "disabled",
-                     bleScanSettings.proxyName.c_str());
-    logBootCheckpoint("ble_scan_begin");
-    const unsigned long bleScanStartMs = millis();
-    if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
-        SerialLog.println("BLE scan failed to start!");
-        fatalBootError("BLE scan failed", true);
-    }
-    SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
-#endif
 
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
@@ -850,20 +860,26 @@ void setup() {
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
-    logBootStage("core_pipeline");
 
 #ifndef REPLAY_MODE
+    // Absorb BLE scan-stop settle cost in setup rather than first loop iteration.
+    // If V1 was found during scan overlap, this processes the SCAN_STOPPING settle
+    // (~200 ms on cold boot).  If V1 wasn't found yet, this is a ~microsecond no-op.
+    {
+        const unsigned long absorbStartMs = millis();
+        bleClient.process();
+        SerialLog.printf("[BootTiming] ble_absorb_ms=%lu\n", millis() - absorbStartMs);
+    }
     SerialLog.println("BLE scan already active from early setup path");
-    logBootStage("ble_start");
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
+    logBootStage("core_pipeline");
     
-    // Auto-start WiFi if enabled in dev settings
+    // WiFi auto-start is deferred to loop() with a V1 settle gate.
+    // See WifiBootPolicy::shouldAutoStartWifi() for the gating logic.
     if (settingsManager.get().enableWifiAtBoot) {
-        SerialLog.println("[WiFi] Auto-start enabled - starting AP now...");
-        getWifiOrchestrator().startWifi();
-        SerialLog.println("Setup complete - BLE scanning, WiFi auto-started");
+        SerialLog.println("[WiFi] Auto-start enabled — will defer until V1 settles or 30 s timeout");
     } else {
         SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
     }
@@ -1181,11 +1197,37 @@ void loop() {
     cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, parser.hasAlerts());
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
+    // ── WiFi deferred auto-start gate ────────────────────────────────
+    // Replaces the old setup()-time startWifi() call.  WiFi waits for
+    // BLE to connect + settle, or a 30 s boot timeout, whichever first.
+    if (!wifiAutoStartDone && settingsManager.get().enableWifiAtBoot) {
+        constexpr uint32_t WIFI_SETTLE_MS  = 3000;
+        constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
+        const uint32_t msSinceV1 = (v1ConnectedAtMs > 0) ? (now - v1ConnectedAtMs) : 0;
+        const bool canDma = wifiManager.canStartSetupMode(nullptr, nullptr);
+        if (WifiBootPolicy::shouldAutoStartWifi(
+                true, false, bleClient.isConnected(),
+                msSinceV1, WIFI_SETTLE_MS,
+                now, WIFI_BOOT_TIMEOUT_MS, canDma)) {
+            SerialLog.printf("[WiFi] Deferred auto-start at %lu ms (v1Connect=%lu ms ago)\n",
+                             now, msSinceV1);
+            getWifiOrchestrator().startWifi();
+            wifiAutoStartDone = true;
+        }
+    }
+
     if (!skipNonCoreThisLoop) {
-        // Process WiFi/web server
-        uint32_t wifiStartUs = PERF_TIMESTAMP_US();
-        wifiManager.process();
-        perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+        // Process WiFi/web server — gated to prevent stray work in wifi-off profiles.
+        const bool shouldProcess = WifiBootPolicy::shouldProcessWifi(
+            wifiManager.isSetupModeActive(),
+            wifiManager.isConnected(),
+            settingsManager.get().enableWifiAtBoot,
+            wifiAutoStartDone);
+        if (shouldProcess) {
+            uint32_t wifiStartUs = PERF_TIMESTAMP_US();
+            wifiManager.process();
+            perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+        }
     }
     
     perfRecordLoopJitterUs(micros() - loopStartUs);
