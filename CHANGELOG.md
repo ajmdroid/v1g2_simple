@@ -7,15 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [4.0.0-dev] - 2026-02-13
+## [4.0.0-dev] - 2026-02-15
 
 ### Added
 
-**Enterprise Quality Initiative**
-- **Unit Test Framework**: 40+ automated tests using Unity test framework
-  - Haversine distance calculations (10 tests)
-  - V1 packet parser (30 tests)
-  - Run via `pio test -e native`
+**Quality + Runtime Hardening**
+- Expanded native unit-test coverage across lockout, camera, display, OBD, and parser modules (`pio test -e native`).
+- Lockout runtime stack fully integrated (capture, learner, enforcer, store/index, zone APIs).
+- Camera runtime/index/loader/event-log path active with bounded cadence and status/event APIs.
 
 - **Security Warning**: Default password warning banner in web UI
   - Shows on all pages when using factory default password
@@ -24,18 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **WiFi Client Mode**
 - Connect to external WiFi networks for internet access
-- Enables OSM camera sync and future OTA updates
 - Maintains AP mode for device access while connected
-
-**OpenStreetMap Camera Sync**
-- Download speed cameras from OSM via Overpass API
-- Configurable search radius (up to 100km)
-- Requires WiFi client connection to internet
 
 ### Changed
 - **CI/CD**: Build now runs unit tests before firmware compilation
 - **Input Validation**: Added proxy_name length limit (32 chars)
 - **API**: Added `isDefaultPassword` flag to `/api/settings` response
+- **Docs**: API routes/docs aligned to active firmware handlers; stale/internal references removed.
 
 ### Fixed
 - All previously documented bugs verified as already fixed in codebase
@@ -55,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Custom display themes and colors
 - Camera alert database support
 - SD card backup functionality
-- Debug logging to LittleFS
+- Runtime diagnostics and perf counters
 
 ### Technical
 - ESP32-S3 on Waveshare 3.49" display
@@ -71,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Version | Date | Highlights |
 |---------|------|------------|
 | 4.0.0-dev | 2026 | Development pre-release with API/runtime refactors |
-| 3.0.7 | 2024 | Quality baseline, all critical bugs fixed |
+| 3.0.7 | 2026 | Quality baseline before 4.x refactors |
 | 3.0.x | 2024 | Camera alerts, OBD integration |
 | 2.x.x | 2024 | Auto-lockout, profiles |
 | 1.x.x | 2023 | Initial release, basic V1 display |
@@ -87,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Recommended post-upgrade actions:
 1. Change default WiFi password if not already done
 2. Review new security warning banner
-3. Try WiFi client mode for OSM camera sync
+3. Re-validate any tooling/scripts that call REST endpoints against `docs/API.md`
 
 ### From 2.x.x to 3.x.x
 
@@ -108,20 +102,16 @@ Recommended post-upgrade actions:
 pio test -e native
 
 # Run specific test
-pio test -e native -f test_haversine
+pio test -e native -f test_packet_parser
 ```
 
 ### Building Firmware
 ```bash
-# Build only
+# Build + flash firmware/filesystem
+./build.sh --all
+
+# Build firmware only
 pio run -e waveshare-349
-
-# Build and upload
-pio run -t upload -e waveshare-349
-
-# Build web interface first
-cd interface && npm run build && cd ..
-cp -r interface/build/* data/
 ```
 
 ### CI Status
