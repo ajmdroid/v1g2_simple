@@ -212,6 +212,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             if (showCameraBanner) {
                 const bool shouldAnnounceCamera =
                     !state.muted &&
+                    !ble->isProxyClientConnected() &&
                     cameraStatus.activeAlert.startTsMs != 0 &&
                     (cameraStatus.activeAlert.startTsMs != lastCameraVoiceStartTsMs ||
                      cameraStatus.activeAlert.cameraId != lastCameraVoiceCameraId);

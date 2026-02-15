@@ -44,10 +44,21 @@ void SpeedVolumeModule::begin(SettingsManager* sett) {
 void SpeedVolumeModule::process(unsigned long nowMs) {
     if (!settings || !ble || !parser) return;
 
+    DisplayState state = parser->getDisplayState();
+
+    // Proxy-connected sessions let the phone app own volume behavior.
+    if (ble->isProxyClientConnected()) {
+        if (boostActive && originalVolume != 0xFF && state.mainVolume != originalVolume) {
+            ble->setVolume(originalVolume, state.muteVolume);
+            SPEED_VOL_PERF_INC(speedVolRestores);
+        }
+        reset();
+        return;
+    }
+
     SpeedVolumeContext ctx;
     ctx.bleConnected = ble->isConnected();
     ctx.fadeTakingControl = volumeFade ? volumeFade->isTracking() : false;
-    DisplayState state = parser->getDisplayState();
     ctx.currentVolume = state.mainVolume;
     ctx.currentMuteVolume = state.muteVolume;
     ctx.speedMph = voice ? voice->getCurrentSpeedMph(nowMs) : 0.0f;

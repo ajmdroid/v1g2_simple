@@ -1058,21 +1058,21 @@ void loop() {
     if (parsedReady && !bootSplashHoldActive) {
         const uint32_t nowMs = millis();
         const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+        const bool proxyClientConnected = bleClient.isProxyClientConnected();
+        bool lockoutPrioritySuppressed = false;
+        static LockoutRuntimeMuteState lockoutMuteState;
+
         uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
         signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
-        lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
-        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
+        if (!proxyClientConnected) {
+            lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
 
-        // Feed lockout decision into display indicator before rendering.
-        const auto& lockRes = lockoutEnforcer.lastResult();
-        display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
+            // Feed lockout decision into display indicator before rendering.
+            const auto& lockRes = lockoutEnforcer.lastResult();
+            display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
 
-        bool lockoutPrioritySuppressed = false;
-
-        // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
-        // Rate-limited: only send once per lockout-match cycle (not every frame).
-        {
-            static LockoutRuntimeMuteState lockoutMuteState;
+            // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
+            // Rate-limited: only send once per lockout-match cycle (not every frame).
             const V1Settings& lockoutSettings = settingsManager.get();
             const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
                 lockoutSettings.gpsLockoutCoreGuardEnabled,
@@ -1101,7 +1101,13 @@ void loop() {
             if (muteDecision.logGuardBlocked) {
                 Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
             }
+        } else {
+            // Proxy-connected sessions are display-first:
+            // keep learner capture active, but disable runtime lockout enforcement.
+            display.setLockoutIndicator(false);
+            lockoutMuteState = LockoutRuntimeMuteState{};
         }
+        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
 
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {

@@ -1,6 +1,10 @@
 #include <unity.h>
 
 #include "../mocks/settings.h"
+#include "../mocks/ble_client.h"
+#include "../mocks/packet_parser.h"
+#include "../mocks/modules/voice/voice_module.h"
+#include "../mocks/modules/volume_fade/volume_fade_module.h"
 #include "../../src/modules/speed_volume/speed_volume_module.h"
 #include "../../src/modules/speed_volume/speed_volume_module.cpp"  // pull implementation for UNIT_TEST
 
@@ -9,6 +13,10 @@ SerialClass Serial;
 #endif
 SettingsManager settingsManager;
 static SpeedVolumeModule speedModule;
+static V1BLEClient bleClient;
+static PacketParser parser;
+static VoiceModule voiceModule;
+static VolumeFadeModule volumeFadeModule;
 
 static SpeedVolumeContext makeCtx(float speedMph, uint8_t vol, uint8_t muteVol,
                                   bool ble = true, bool fadeTaking = false, unsigned long now = 0) {
@@ -26,6 +34,10 @@ void setUp() {
     settingsManager = SettingsManager();
     speedModule = SpeedVolumeModule();
     speedModule.begin(&settingsManager);
+    bleClient.reset();
+    parser.reset();
+    voiceModule.resetMock();
+    volumeFadeModule.reset();
 }
 
 void test_disabled_returns_none() {
@@ -82,11 +94,39 @@ void test_fade_blocks_boost() {
     TEST_ASSERT_FALSE(speedModule.isBoostActive());
 }
 
+void test_proxy_connected_disables_speed_volume_and_restores_once() {
+    settingsManager.settings.speedVolumeEnabled = true;
+    settingsManager.settings.speedVolumeThresholdMph = 60;
+    settingsManager.settings.speedVolumeBoost = 2;
+    speedModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
+
+    // Build active boost state (5 -> 7) using pure decision path.
+    auto boosted = speedModule.process(makeCtx(70, 5, 2, true, false, 2500));
+    TEST_ASSERT_EQUAL(SpeedVolumeAction::Type::BOOST, boosted.type);
+    TEST_ASSERT_TRUE(speedModule.isBoostActive());
+
+    // Simulate V1 currently at boosted volume, then proxy connects.
+    parser.setMainVolume(7);
+    parser.setMuteVolume(2);
+    bleClient.setProxyConnected(true);
+
+    speedModule.process(3000);
+    TEST_ASSERT_FALSE(speedModule.isBoostActive());
+    TEST_ASSERT_EQUAL_INT(1, bleClient.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(5, bleClient.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, bleClient.lastMuteVolume);
+
+    // Should not repeat restore while proxy remains connected.
+    speedModule.process(5000);
+    TEST_ASSERT_EQUAL_INT(1, bleClient.setVolumeCalls);
+}
+
 void runAllTests() {
     RUN_TEST(test_disabled_returns_none);
     RUN_TEST(test_boost_then_restore);
     RUN_TEST(test_clamps_to_max_volume);
     RUN_TEST(test_fade_blocks_boost);
+    RUN_TEST(test_proxy_connected_disables_speed_volume_and_restores_once);
 }
 
 #ifdef ARDUINO
