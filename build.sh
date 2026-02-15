@@ -34,7 +34,13 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] ||
     echo -e "${BLUE}🪟 Detected Windows - using waveshare-349-windows${NC}"
 else
     IS_WINDOWS=false
-    PIO_CMD="pio"
+    if command -v pio &> /dev/null; then
+        PIO_CMD="pio"
+    else
+        echo -e "${RED}❌ PlatformIO not found in PATH.${NC}"
+        echo "   Install PlatformIO CLI or use VS Code PlatformIO extension terminal."
+        exit 1
+    fi
     DEFAULT_ENV="waveshare-349"
 fi
 
@@ -312,9 +318,10 @@ if [ "$MONITOR" = true ]; then
     sleep 1
     # Remap upload port to monitor port and strip upload-only flags
     MONITOR_ARGS="$PIO_ARGS"
-    if echo "$MONITOR_ARGS" | grep -q -- "--upload-port"; then
-        PORT_VAL=$(echo "$MONITOR_ARGS" | sed -n 's/.*--upload-port[[:space:]]\+([^[:space:]]\+).*/\1/p')
-        MONITOR_ARGS=$(echo "$MONITOR_ARGS" | sed 's/--upload-port[[:space:]]\+[^[:space:]]\+//g')
+    if [[ "$MONITOR_ARGS" =~ --upload-port[[:space:]]+([^[:space:]]+) ]]; then
+        PORT_VAL="${BASH_REMATCH[1]}"
+        MONITOR_ARGS="${MONITOR_ARGS/--upload-port $PORT_VAL/}"
+        MONITOR_ARGS="$(echo "$MONITOR_ARGS" | xargs)"
         MONITOR_ARGS="$MONITOR_ARGS --port $PORT_VAL"
     fi
     "$PIO_CMD" device monitor $MONITOR_ARGS
