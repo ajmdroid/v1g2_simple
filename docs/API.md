@@ -547,6 +547,19 @@ Get recent camera lifecycle events from the bounded in-memory event log.
 }
 ```
 
+### POST /api/cameras/demo
+
+Trigger on-device camera display preview mode (for UI/demo validation).
+
+**Request (form data):**
+- `type` (optional): `0=cycle all`, `1=redlight`, `2=speed`, `3=red+speed`, `4=alpr`
+- `muted` (optional): `1|true|on` for muted palette (single-type mode only)
+- `durationMs` (optional): bounded `500..15000`
+
+### POST /api/cameras/demo/clear
+
+Cancel any active display preview (camera or color demo) and restore normal ownership.
+
 `/api/cameras/reload`, `/api/cameras/upload`, `/api/cameras/test`, and `/api/cameras/sync-osm` are not active in the current firmware.
 
 ---

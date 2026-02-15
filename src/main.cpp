@@ -109,19 +109,35 @@ static bool lastBleConnectedForScanDwell = false;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
 
-// Color preview driver (demo band cycle)
+// Display preview driver (color + camera demos)
 DisplayPreviewModule displayPreviewModule;
 
 void requestColorPreviewHold(uint32_t durationMs) {
     displayPreviewModule.requestHold(durationMs);
 }
 
-bool isColorPreviewRunning() {
+void requestCameraPreviewCycleHold(uint32_t durationMs) {
+    displayPreviewModule.requestCameraCycle(durationMs);
+}
+
+void requestCameraPreviewSingleHold(uint8_t cameraType, uint32_t durationMs, bool muted) {
+    displayPreviewModule.requestCameraSingle(cameraType, durationMs, muted);
+}
+
+bool isDisplayPreviewRunning() {
     return displayPreviewModule.isRunning();
 }
 
-void cancelColorPreview() {
+bool isColorPreviewRunning() {
+    return isDisplayPreviewRunning();
+}
+
+void cancelDisplayPreview() {
     displayPreviewModule.cancel();
+}
+
+void cancelColorPreview() {
+    cancelDisplayPreview();
 }
 
 static const char* resetReasonToString(esp_reset_reason_t reason) {

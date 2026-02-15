@@ -23,6 +23,8 @@ public:
 
     // Start/stop preview
     void requestHold(uint32_t durationMs);
+    void requestCameraCycle(uint32_t durationMs);
+    void requestCameraSingle(uint8_t cameraType, uint32_t durationMs, bool muted = false);
     void cancel();
 
     // State queries
@@ -34,12 +36,24 @@ public:
     void update();
 
 private:
+    enum class PreviewMode : uint8_t {
+        ALERT = 0,
+        CAMERA_CYCLE = 1,
+        CAMERA_SINGLE = 2,
+    };
+
     struct ColorPreviewStep {
         unsigned long offsetMs;
         Band band;
         uint8_t bars;
         Direction dir;
         uint32_t freqMHz;
+        bool muted;
+    };
+
+    struct CameraPreviewStep {
+        unsigned long offsetMs;
+        uint8_t type;
         bool muted;
     };
 
@@ -51,13 +65,25 @@ private:
         {4000, BAND_KA,   5, DIR_FRONT, 34700, true}  // Muted Ka
     };
     static constexpr int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
+    static constexpr CameraPreviewStep CAMERA_STEPS[] = {
+        {0,    1, false},  // Red Light
+        {1200, 2, false},  // Speed
+        {2400, 3, false},  // Red+Speed
+        {3600, 4, false},  // ALPR
+    };
+    static constexpr int CAMERA_STEP_COUNT = sizeof(CAMERA_STEPS) / sizeof(CAMERA_STEPS[0]);
+    static constexpr uint8_t CAMERA_TYPE_MIN = 1;
+    static constexpr uint8_t CAMERA_TYPE_MAX = 4;
     static constexpr uint32_t PREVIEW_TAIL_MS = 600;  // Extra time after last step to keep frame visible
 
     V1Display* display = nullptr;
 
+    PreviewMode previewMode = PreviewMode::ALERT;
     bool previewActive = false;
     bool previewEnded = false;
     unsigned long previewStartMs = 0;
     unsigned long previewDurationMs = 0;
     int previewStep = 0;
+    uint8_t singleCameraType = CAMERA_TYPE_MIN;
+    bool singleCameraMuted = false;
 };

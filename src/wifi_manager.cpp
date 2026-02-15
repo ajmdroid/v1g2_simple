@@ -47,9 +47,13 @@
 // External BLE client for V1 commands
 extern V1BLEClient bleClient;
 extern SystemEventBus systemEventBus;
-// Preview hold helper to keep color demo visible briefly
+// Preview helpers for display demo flows (color + camera).
 extern void requestColorPreviewHold(uint32_t durationMs);
+extern void requestCameraPreviewCycleHold(uint32_t durationMs);
+extern void requestCameraPreviewSingleHold(uint8_t cameraType, uint32_t durationMs, bool muted);
+extern bool isDisplayPreviewRunning();
 extern bool isColorPreviewRunning();
+extern void cancelDisplayPreview();
 extern void cancelColorPreview();
 
 // Enable to dump LittleFS root on WiFi start (debug only); keep false for release
@@ -880,6 +884,8 @@ void WiFiManager::setupWebServer() {
     server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
     server.on("/api/cameras/catalog", HTTP_GET, [this]() { handleCameraCatalog(); });
     server.on("/api/cameras/events", HTTP_GET, [this]() { handleCameraEvents(); });
+    server.on("/api/cameras/demo", HTTP_POST, [this]() { handleCameraDemo(); });
+    server.on("/api/cameras/demo/clear", HTTP_POST, [this]() { handleCameraDemoClear(); });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
     server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
@@ -4358,6 +4364,64 @@ void WiFiManager::handleCameraEvents() {
     String response;
     serializeJson(doc, response);
     server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraDemo() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    uint8_t type = 0;
+    if (server.hasArg("type")) {
+        type = clampU8Value(server.arg("type").toInt(), 0, 4);
+    }
+
+    bool muted = false;
+    if (server.hasArg("muted")) {
+        String mutedArg = server.arg("muted");
+        muted = mutedArg == "1" || mutedArg.equalsIgnoreCase("true") || mutedArg.equalsIgnoreCase("on");
+    }
+
+    uint16_t durationMs = 0;
+    if (server.hasArg("durationMs")) {
+        durationMs = clampU16Value(server.arg("durationMs").toInt(), 500, 15000);
+    }
+
+    // Demo requests always own preview mode; clear any active preview first.
+    if (isDisplayPreviewRunning()) {
+        cancelDisplayPreview();
+    }
+
+    if (type == 0) {
+        if (durationMs == 0) {
+            durationMs = 5400;
+        }
+        requestCameraPreviewCycleHold(durationMs);
+    } else {
+        if (durationMs == 0) {
+            durationMs = 2200;
+        }
+        requestCameraPreviewSingleHold(type, durationMs, muted);
+    }
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["active"] = true;
+    doc["mode"] = "camera";
+    doc["type"] = type;
+    doc["muted"] = muted;
+    doc["durationMs"] = durationMs;
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+void WiFiManager::handleCameraDemoClear() {
+    if (!checkRateLimit()) return;
+    markUiActivity();
+
+    cancelDisplayPreview();
+    server.send(200, "application/json", "{\"success\":true,\"active\":false}");
 }
 
 void WiFiManager::handleLockoutSummary() {

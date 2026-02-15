@@ -258,6 +258,8 @@ private:
     void handleCameraStatus();
     void handleCameraCatalog();
     void handleCameraEvents();
+    void handleCameraDemo();
+    void handleCameraDemoClear();
     void handleLockoutZones();
     void handleLockoutEvents();
     void handleLockoutSummary();

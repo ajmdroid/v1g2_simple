@@ -15,6 +15,7 @@
 	let catalogError = $state('');
 	let eventsError = $state('');
 	let configError = $state('');
+	let demoError = $state('');
 	let pollHandle = null;
 
 	let status = $state({
@@ -87,6 +88,9 @@
 		gpsEnabled: false,
 		cameraEnabled: true
 	});
+	let demoInFlight = $state(false);
+	let demoMode = $state('cycle');
+	let demoMuted = $state(false);
 
 	onMount(async () => {
 		await refreshAll();
@@ -275,6 +279,67 @@
 			configSaveInFlight = false;
 		}
 	}
+
+	function selectedDemoType() {
+		switch (demoMode) {
+			case 'redlight':
+				return 1;
+			case 'speed':
+				return 2;
+			case 'both':
+				return 3;
+			case 'alpr':
+				return 4;
+			default:
+				return 0;
+		}
+	}
+
+	async function runCameraDemo() {
+		if (demoInFlight) return;
+		demoInFlight = true;
+		demoError = '';
+		try {
+			const payload = new URLSearchParams();
+			const type = selectedDemoType();
+			payload.set('type', String(type));
+			if (type !== 0 && demoMuted) {
+				payload.set('muted', '1');
+			}
+			const res = await fetch('/api/cameras/demo', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: payload.toString()
+			});
+			if (!res.ok) {
+				demoError = 'Failed to start camera display demo.';
+				return;
+			}
+			await fetchCameraStatus(true);
+		} catch (e) {
+			demoError = 'Failed to start camera display demo.';
+		} finally {
+			demoInFlight = false;
+		}
+	}
+
+	async function clearCameraDemo() {
+		if (demoInFlight) return;
+		demoInFlight = true;
+		demoError = '';
+		try {
+			const res = await fetch('/api/cameras/demo/clear', { method: 'POST' });
+			if (!res.ok) {
+				demoError = 'Failed to clear camera display demo.';
+				return;
+			}
+			await fetchCameraStatus(true);
+		} catch (e) {
+			demoError = 'Failed to clear camera display demo.';
+		} finally {
+			demoInFlight = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
@@ -305,6 +370,9 @@
 	{#if configError}
 		<div class="alert alert-warning" role="alert"><span>{configError}</span></div>
 	{/if}
+	{#if demoError}
+		<div class="alert alert-warning" role="alert"><span>{demoError}</span></div>
+	{/if}
 
 	<div class="card bg-base-200 shadow">
 		<div class="card-body gap-3">
@@ -319,8 +387,8 @@
 					{status.indexLoaded ? 'Index Loaded' : 'Index Empty'}
 				</div>
 			</div>
-			<div class="bg-base-100 rounded-lg p-3 space-y-2">
-				<label class="label cursor-pointer justify-start gap-3">
+				<div class="bg-base-100 rounded-lg p-3 space-y-2">
+					<label class="label cursor-pointer justify-start gap-3">
 					<input
 						type="checkbox"
 						class="toggle toggle-primary"
@@ -340,12 +408,37 @@
 						</div>
 					</div>
 				</label>
-				{#if !runtimeConfig.gpsEnabled}
-					<div class="text-xs text-warning">
-						GPS is disabled. Camera matching remains inactive until GPS is re-enabled.
+					{#if !runtimeConfig.gpsEnabled}
+						<div class="text-xs text-warning">
+							GPS is disabled. Camera matching remains inactive until GPS is re-enabled.
+						</div>
+					{/if}
+					<div class="border-t border-base-300 pt-3 mt-3 space-y-2">
+						<div class="text-sm font-medium">Display Demo</div>
+						<div class="text-xs text-base-content/70">
+							Preview camera screen tokens on device without needing live GPS/camera matches.
+						</div>
+						<div class="flex flex-wrap items-center gap-2">
+							<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
+								<option value="cycle">Cycle All Types</option>
+								<option value="redlight">Red Light</option>
+								<option value="speed">Speed</option>
+								<option value="both">Red+Speed</option>
+								<option value="alpr">ALPR</option>
+							</select>
+							<label class="label cursor-pointer gap-2 py-0">
+								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={demoMuted} disabled={demoInFlight || demoMode === 'cycle'} />
+								<span class="label-text text-xs">Muted palette</span>
+							</label>
+							<button class="btn btn-outline btn-sm" onclick={runCameraDemo} disabled={demoInFlight}>
+								{demoInFlight ? 'Starting...' : 'Run Demo'}
+							</button>
+							<button class="btn btn-ghost btn-sm" onclick={clearCameraDemo} disabled={demoInFlight}>
+								Clear Demo
+							</button>
+						</div>
 					</div>
-				{/if}
-			</div>
+				</div>
 			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Runtime</div>
