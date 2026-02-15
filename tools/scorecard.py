@@ -3,7 +3,7 @@
 V1G2 Simple Stability Scorecard
 
 Evaluates NDJSON debug logs against the Base Stable standard defined in
-docs/stability_standard.md.
+this file's threshold constants.
 
 Usage:
     python tools/scorecard.py test/fixtures/debug_base_stable.log
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 
 # =============================================================================
-# Stability Standard Thresholds (from docs/stability_standard.md)
+# Stability Standard Thresholds (maintained in this file)
 # =============================================================================
 
 # Steady-state is defined as millis >= this value
