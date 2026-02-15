@@ -14,7 +14,20 @@ echo "📦 Building web interface..."
 cd interface
 npm ci --silent 2>/dev/null || npm install --silent
 npm run build
+npm run deploy
 cd ..
+
+# Restore audio assets after deploy clears data/
+echo "🔊 Staging audio assets for LittleFS..."
+mkdir -p data/audio
+if ls tools/freq_audio/mulaw/*.mul 1>/dev/null 2>&1; then
+  cp tools/freq_audio/mulaw/*.mul data/audio/
+fi
+if ls tools/camera_audio/cam_*.mul 1>/dev/null 2>&1; then
+  cp tools/camera_audio/cam_*.mul data/audio/
+fi
+AUDIO_COUNT=$(ls -1 data/audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
+echo "✅ Staged $AUDIO_COUNT audio clips"
 
 # Build firmware
 echo "🔧 Building firmware..."

@@ -303,11 +303,11 @@ Global flags set by `drawBaseFrame()` on full screen clear:
 
 Single owner per frame prevents redraw conflicts and flicker. Ownership is decided in `main.cpp` and enforced by tests in `test_display_ownership.cpp`.
 
-- **Main display**: `displayPreviewModule` owns when preview is active; otherwise `display.update(...)` owns when V1 has alerts; otherwise `cameraAlertModule.updateMainDisplay()` may draw cameras; if neither, scanning/resting screens render via `display.update(state)`.
-- **Camera cards**: Only `cameraAlertModule.updateCardStateForV1()` writes camera cards, and only when V1 has alerts (cards are secondary to V1 data).
-- **Voice**: `voiceModule.process()` drives V1 alert speech; `cameraAlertModule.startTest()` plays camera voice once per test and when a new primary camera enters range (if `cameraAudioEnabled`).
+- **Main display**: `displayPreviewModule` owns while preview is active; otherwise `displayPipelineModule.handleParsed()` owns rendering. Live/persisted V1 states take priority, and camera banners render only via `display.updateCameraAlert(...)` when camera runtime reports an active alert and no V1 alert path is active.
+- **Camera cards**: No standalone camera card writer is active; camera UX currently uses the existing primary frequency/arrow region only.
+- **Voice**: `voiceModule.process()` drives V1 speech actions. Camera voice is a one-shot call to `play_camera_ahead_voice(...)` from `displayPipelineModule` when a new camera lifecycle start is observed and audio is not muted.
 - **Flush discipline**: Modules never call `display.flush()` directly; `display.update()` and preview paths flush once per frame. Tests enforce ≤1 flush per frame.
-- **End flags**: Preview/test end flags (`displayPreviewModule.consumeEnded()`, `cameraAlertModule.consumeTestEnded()`) are consumed once then cleared; callers must force a redraw with current state after consumption.
+- **End flags**: Preview end flags (`displayPreviewModule.consumeEnded()`) are consumed once then cleared; callers force a redraw with current state after consumption.
 - **Change detection**: All display writers must early-exit when unchanged and avoid setting any `force*Redraw` flag per frame (except `drawBaseFrame()`).
 
 Keep new display features aligned with this map and add ownership tests when introducing new display writers.
@@ -316,13 +316,13 @@ Keep new display features aligned with this map and add ownership tests when int
 
 ## Camera Module
 
-**Location**: `src/modules/camera/camera_alert_module.{h,cpp}`
+**Location**: `src/modules/camera/`
 
-- **Role**: Owns camera alert discovery, distance sorting, and display/voice orchestration so main.cpp stays thin.
-- **Lifecycle hooks**: Call `begin(display, settingsManager, cameraManager, gpsHandler)` in `setup()`. Invoke `process()` once per `loop()` to refresh caches and background loads.
-- **Display integration**: Use `updateCardStateForV1()` when V1-connected card owners are decided, and `updateMainDisplay()` when V1 is disconnected or cameras should own the main area. Functions are change-detected to avoid redraw spam.
-- **Test/demo**: `startTest(CameraType)` kicks off camera test mode; `consumeTestEnded()` clears the ended flag after the UI reacts so endings are processed once.
-- **Dependencies**: Requires GPS fix for real alerts; respects display cache semantics (no direct flushes) and defers voice prompts to the voice module.
+- **Runtime entrypoint**: `camera_runtime_module.{h,cpp}` exposes `begin(...)`, `setEnabled(...)`, `process(...)`, and `snapshot()` for main-loop integration.
+- **Index/data path**: `camera_index.{h,cpp}` holds immutable camera records + spans; `camera_data_loader.{h,cpp}` performs FreeRTOS-task loading/build/swap.
+- **Event log**: `camera_event_log.{h,cpp}` provides bounded diagnostics snapshots used by `/api/cameras/events`.
+- **Display/audio integration**: Camera modules do not draw directly; display/audio consume `cameraRuntimeModule.snapshot()` in `display_pipeline_module.cpp`.
+- **Dependencies**: Matching is gated by GPS runtime snapshot validity, loop overload guards, and signal-priority preemption.
 
 ## BLE Architecture
 

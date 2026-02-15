@@ -54,7 +54,10 @@ src/
 │   │   └── auto_lockout_manager.h/cpp  (existing)
 │   │
 │   └── camera_alerts/
-│       └── camera_manager.h/cpp        (existing)
+│       ├── camera_runtime_module.h/cpp (existing)
+│       ├── camera_index.h/cpp          (existing)
+│       ├── camera_data_loader.h/cpp    (existing)
+│       └── camera_event_log.h/cpp      (existing)
 │
 ├── api/                        (Web API - clear boundary)
 │   ├── settings_api.h/cpp      → ALL settings endpoints + serialization
@@ -156,10 +159,11 @@ src/
 │   ├── ble/                         BLE data queue + connection state
 │   │   ├── ble_queue_module.h/cpp
 │   │   └── connection_state_module.h/cpp
-│   ├── camera/                      Camera alert module + background DB loading
-│   │   ├── camera_alert_module.h/cpp
-│   │   ├── camera_load_coordinator_module.h
-│   │   └── camera_load_coordinator_module.cpp
+│   ├── camera/                      Camera runtime + index + background DB loading
+│   │   ├── camera_runtime_module.h/cpp
+│   │   ├── camera_index.h/cpp
+│   │   ├── camera_data_loader.h/cpp
+│   │   └── camera_event_log.h/cpp
 │   ├── display/                     Display pipeline + preview + restore
 │   │   ├── display_pipeline_module.h/cpp
 │   │   ├── display_preview_module.h/cpp
@@ -208,7 +212,7 @@ src/
 | **TapGestureModule** | Triple-tap mute and other gestures |
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **AutoPushModule** | Pushes V1 profiles on connect |
-| **CameraLoadCoordinator** | Background camera database loading |
+| **CameraRuntimeModule + CameraDataLoader** | Camera matching lifecycle + background database loading/swap |
 | **ObdAutoConnector** | OBD auto-connect after V1 connects |
 | **AutoLockoutMaintenance** | Periodic lockout zone maintenance |
 | **WifiOrchestrator** | WiFi/web server lifecycle |

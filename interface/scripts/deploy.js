@@ -28,6 +28,32 @@ mkdirSync(dataDir, { recursive: true });
 console.log('📁 Copying build files...');
 cpSync(buildDir, dataDir, { recursive: true });
 
+// Restore audio assets after deploy wipes data/.
+// Keep this here so both scripted and manual deploy flows stage audio consistently.
+const audioDir = join(dataDir, 'audio');
+const audioSources = [
+    {
+        dir: join(__dirname, '..', '..', 'tools', 'freq_audio', 'mulaw'),
+        filter: (name) => name.endsWith('.mul')
+    },
+    {
+        dir: join(__dirname, '..', '..', 'tools', 'camera_audio'),
+        filter: (name) => name.startsWith('cam_') && name.endsWith('.mul')
+    }
+];
+
+let copiedAudioCount = 0;
+mkdirSync(audioDir, { recursive: true });
+for (const source of audioSources) {
+    if (!existsSync(source.dir)) continue;
+    for (const file of readdirSync(source.dir)) {
+        if (!source.filter(file)) continue;
+        cpSync(join(source.dir, file), join(audioDir, file));
+        copiedAudioCount++;
+    }
+}
+console.log(`🔊 Staged ${copiedAudioCount} audio clips to data/audio`);
+
 // List deployed files with sizes
 function listFiles(dir, prefix = '') {
     const files = readdirSync(dir);

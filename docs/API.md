@@ -447,62 +447,107 @@ Reset GPS module (cold start).
 
 ### GET /api/cameras/status
 
-Get camera database status.
+Get camera runtime, loader, index, and lifecycle status.
 
 **Response:**
 ```json
 {
+  "success": true,
   "enabled": true,
-  "cameraCount": 1500,
-  "lastSync": "2024-01-15T00:00:00Z",
-  "databaseSize": 245000,
-  "osmSyncEnabled": true
+  "indexLoaded": true,
+  "tickIntervalMs": 200,
+  "lastTickMs": 123456,
+  "lastTickDurationUs": 120,
+  "maxTickDurationUs": 310,
+  "lastCandidatesChecked": 14,
+  "lastMatches": 1,
+  "lastCapReached": false,
+  "lastHeadingDeltaDeg": 8.2,
+  "lifecycleState": "ACTIVE",
+  "lastClearReason": "NONE",
+  "suppressedCameraId": 0,
+  "activeAlert": {
+    "active": true,
+    "cameraId": 12345,
+    "type": 2,
+    "distanceM": 186,
+    "headingDeltaDeg": 8.2,
+    "startTsMs": 123000,
+    "lastUpdateTsMs": 123456
+  },
+  "counters": {
+    "cameraTicks": 512,
+    "cameraTickSkipsOverload": 0,
+    "cameraTickSkipsNonCore": 0,
+    "cameraCandidatesChecked": 3240,
+    "cameraMatches": 91,
+    "cameraAlertsStarted": 17
+  },
+  "loader": {
+    "loadAttempts": 1,
+    "loadFailures": 0,
+    "taskRunning": false,
+    "loadInProgress": false,
+    "reloadPending": false,
+    "readyVersion": 1
+  },
+  "index": {
+    "cameraCount": 1330,
+    "bucketCount": 522,
+    "version": 1
+  },
+  "events": {
+    "published": 17,
+    "drops": 0,
+    "size": 17,
+    "capacity": 64
+  }
 }
 ```
 
-### POST /api/cameras/reload
+### GET /api/cameras/catalog
 
-Reload camera database from storage.
+Get camera dataset availability/count metadata from SD (`alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`).
 
-### POST /api/cameras/upload
-
-Upload a camera database CSV file.
-
-**Request:** multipart/form-data with `file` field
-
-### POST /api/cameras/test
-
-Trigger a test camera alert.
-
-**Request (query param):** `type=0|1|2|3`
-
-| type | Meaning | Voice/Display | Default |
-| --- | --- | --- | --- |
-| 0 | Red Light | REDLIGHT | ✓ (default) |
-| 1 | Speed | SPEED |  |
-| 2 | ALPR | ALPR |  |
-| 3 | Red Light + Speed | RLS |  |
-
-If omitted, `type=0` (Red Light) is used. The device cycles 1→2→3 simulated cameras over 9s and plays the corresponding voice prompt.
-
-### POST /api/cameras/sync-osm
-
-Sync cameras from OpenStreetMap (requires WiFi client connection).
-
-**Request (JSON body):**
+**Response:**
 ```json
 {
-  "lat": 37.7749,
-  "lon": -122.4194,
-  "radius": 50000
+  "success": true,
+  "storageReady": true,
+  "tsMs": 123456,
+  "datasets": {
+    "alpr": { "present": true, "valid": true, "count": 70327, "bytes": 1687848 },
+    "speed": { "present": true, "valid": true, "count": 870, "bytes": 20880 },
+    "redlight": { "present": true, "valid": true, "count": 460, "bytes": 11040 }
+  },
+  "totalCount": 71657,
+  "totalBytes": 1719768
 }
 ```
 
-| Parameter | Type | Range | Description |
-|-----------|------|-------|-------------|
-| `lat` | float | -90 to 90 | Center latitude |
-| `lon` | float | -180 to 180 | Center longitude |
-| `radius` | int | 1000-100000 | Search radius in meters (default 50km) |
+### GET /api/cameras/events
+
+Get recent camera lifecycle events from the bounded in-memory event log.
+
+**Query params:** `limit` (optional, `1..64`, default `16`)
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 2,
+  "published": 27,
+  "drops": 0,
+  "size": 2,
+  "capacity": 64,
+  "events": [
+    { "tsMs": 122000, "cameraId": 12345, "distanceM": 240, "type": 2, "synthetic": false },
+    { "tsMs": 121800, "cameraId": 12001, "distanceM": 300, "type": 1, "synthetic": false }
+  ]
+}
+```
+
+`/api/cameras/reload`, `/api/cameras/upload`, `/api/cameras/test`, and `/api/cameras/sync-osm` are not active in the current firmware.
 
 ---
 

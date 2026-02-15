@@ -1,7 +1,7 @@
 # Camera Alerts Plan (Draft)
 
-> Status: Draft v0.7 (implementation-aligned)  
-> Date: February 14, 2026  
+> Status: Draft v0.8 (implementation-aligned)  
+> Date: February 15, 2026  
 > Scope: New camera alerts built on current GPS runtime and current main loop
 
 ## Goal
@@ -16,7 +16,10 @@ Add camera alerts without destabilizing the core detector pipeline.
 - Camera UI page is active at `interface/src/routes/cameras/+page.svelte` with runtime/status/event/catalog views.
 - Persistent `cameraEnabled` setting is active and gated by GPS:
   `effectiveCameraEnabled = gpsEnabled && cameraEnabled`.
-- Camera remains log-only in M2 (no camera-specific display/audio side effects yet).
+- Forward-only camera lifecycle is active with:
+  - signal preemption by live V1 alerts,
+  - one-shot camera display token rendering,
+  - one-shot `"<type> ahead"` voice on camera alert start.
 
 ## Hard Constraints
 
@@ -39,7 +42,7 @@ Add camera alerts without destabilizing the core detector pipeline.
 4. Active GPS APIs exist in `src/wifi_manager.cpp`:
    `/api/gps/status` and `/api/gps/observations`.
 5. Active camera runtime hook exists in `src/main.cpp`:
-   `cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop)`.
+   `cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, parser.hasAlerts())`.
 6. Active camera APIs exist in `src/wifi_manager.cpp`:
    `/api/cameras/status`, `/api/cameras/events`, `/api/cameras/catalog`.
 7. Loader task and atomic ready-buffer swap are active in
@@ -163,8 +166,8 @@ Dataset staging for rollout:
 2. Use coarse buckets/grid to narrow candidates.
 3. Enforce hard raw scan cap per tick (`<=128` records visited before
    distance filter); stop span walk once cap is reached.
-4. M2 runs distance-only matching; M4 must switch to heading-corridor
-   forward-only matching once heading/course support is available.
+4. M2 started distance-only matching; current implementation uses
+   heading-corridor forward-only matching for camera alert starts.
 5. Cooldown state is bounded: reuse event ring as cooldown cache (no full
    per-camera cooldown table).
 6. Avoid dynamic map allocation for cooldown state at full dataset scale.
@@ -345,9 +348,9 @@ Also expose loader/tick timing and memory telemetry:
 
 1. `M1` (complete): scaffolding + no-op hook + counters.
 2. `M2` (implemented): binary load + immutable index + read-only API.
-3. `M3` (pending): silent (log-only) trigger mode hardening + heading/course plumbing in GPS snapshot.
-4. `M4`: controlled audio/display integration (minimal one-shot contract above).
-5. `M5`: optional controlled reload endpoint.
+3. `M3` (implemented): lifecycle hardening + heading/course plumbing in GPS snapshot.
+4. `M4` (implemented baseline): controlled one-shot display/audio integration with signal preemption.
+5. `M5` (pending): optional controlled reload endpoint.
 
 Advancement requires hardware perf check at each milestone.
 
@@ -359,7 +362,7 @@ forward-only M4 camera UX without violating core-priority constraints.
 ### Stage 0: Spec Lock (Docs + API Contract Only)
 
 1. Freeze camera display token set for limited 7-seg rendering:
-   - `ALPR`, `SPEd`, `REDL` (or equivalent fixed set).
+   - `ALPR`, `SPEED`, `REDL` (or equivalent fixed set).
 2. Freeze arrow source:
    - camera uses existing V1 front-arrow renderer path only (`DIR_FRONT`).
 3. Freeze one-and-done lifecycle semantics:
