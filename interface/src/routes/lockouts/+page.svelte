@@ -655,9 +655,16 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
 			});
-			const data = await res.json().catch(() => ({}));
+			let data = {};
+			const contentType = res.headers.get('content-type') || '';
+			if (contentType.includes('application/json')) {
+				data = await res.json().catch(() => ({}));
+			} else {
+				const text = await res.text().catch(() => '');
+				if (text) data = { message: text };
+			}
 			if (!res.ok) {
-				setMsg('error', data.message || 'Failed to update lockout settings');
+				setMsg('error', data.message || data.error || `Failed to update lockout settings (${res.status})`);
 				return;
 			}
 			lockoutConfig.learnerPromotionHits = learnerPromotionHits;
@@ -672,7 +679,10 @@
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
 		} catch (e) {
-			setMsg('error', 'Failed to update lockout settings');
+			setMsg(
+				'error',
+				e?.message ? `Failed to update lockout settings (${e.message})` : 'Failed to update lockout settings'
+			);
 		} finally {
 			savingLockoutConfig = false;
 		}

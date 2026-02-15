@@ -406,7 +406,13 @@ bool WiFiManager::checkRateLimit() {
     rateLimitRequestCount++;
     
     if (rateLimitRequestCount > RATE_LIMIT_MAX_REQUESTS) {
-        server.send(429, "text/plain", "Too Many Requests");
+        unsigned long retryAfterSec = 1;
+        if (now >= rateLimitWindowStart && (now - rateLimitWindowStart) < RATE_LIMIT_WINDOW_MS) {
+            retryAfterSec = ((RATE_LIMIT_WINDOW_MS - (now - rateLimitWindowStart)) + 999) / 1000;
+        }
+        server.sendHeader("Retry-After", String(retryAfterSec));
+        server.send(429, "application/json",
+                    "{\"success\":false,\"message\":\"Too many requests\"}");
         return false;
     }
     
@@ -975,6 +981,25 @@ void WiFiManager::process() {
                           (unsigned long)(now - lowDmaSinceMs),
                           (unsigned long)freeInternal,
                           (unsigned long)largestInternal);
+
+            // In AP+STA mode, drop STA first to preserve local AP/UI control while
+            // still shedding WiFi memory pressure quickly.
+            if (apStaMode) {
+                Serial.println("[WiFi] ACTION: dropping STA due to sustained low SRAM (keeping AP online)");
+                WiFi.disconnect(false);
+                WiFi.mode(WIFI_AP);
+                wifiClientState = WIFI_CLIENT_DISCONNECTED;
+                wifiConnectPhase = WifiConnectPhase::IDLE;
+                wifiConnectPhaseStartMs = 0;
+                wifiConnectStartMs = 0;
+                pendingConnectSSID = "";
+                pendingConnectPassword = "";
+                lowDmaCooldownUntilMs = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
+                lowDmaSinceMs = 0;
+                debugLogger.notifyWifiTransition(true);
+                return;
+            }
+
             stopSetupMode(false, "low_dma");  // Graceful shutdown to free memory
             return;
         }
@@ -1341,6 +1366,10 @@ void WiFiManager::checkWifiClientStatus() {
         
         case WIFI_CLIENT_DISCONNECTED:
         case WIFI_CLIENT_FAILED: {
+            if (lowDmaCooldownRemainingMs() > 0) {
+                break;
+            }
+
             // Defer background STA reconnect attempts during early boot until V1 is
             // connected. This protects BLE acquisition from AP+STA mode churn.
             bool v1Connected = isV1Connected ? isV1Connected() : bleClient.isConnected();
