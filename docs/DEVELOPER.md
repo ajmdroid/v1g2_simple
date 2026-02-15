@@ -334,7 +334,7 @@ Global flags set by `drawBaseFrame()` on full screen clear:
 
 ## Display Ownership Map
 
-Single owner per frame prevents redraw conflicts and flicker. Ownership is decided in `main.cpp` and enforced by tests in `test_display_ownership.cpp`.
+Single owner per frame prevents redraw conflicts and flicker. Ownership is decided in `main.cpp` and validated by the display test suite (`test/test_display/`).
 
 - **Main display**: `displayPreviewModule` owns while preview is active; otherwise `displayPipelineModule.handleParsed()` owns rendering. Live/persisted V1 states take priority, and camera banners render only via `display.updateCameraAlert(...)` when camera runtime reports an active alert and no V1 alert path is active.
 - **Camera cards**: No standalone camera card writer is active; camera UX currently uses the existing primary frequency/arrow region only.
@@ -492,7 +492,7 @@ void V1Display::updateSomething(bool active) {
 pio test -e native
 
 # Run specific test suite
-pio test -e native -f test_haversine
+pio test -e native -f test_display
 pio test -e native -f test_packet_parser
 ```
 
@@ -500,7 +500,7 @@ pio test -e native -f test_packet_parser
 
 ## Error Codes
 
-See [docs/API.md](API.md#error-codes-reference) for the complete error code reference.
+See [docs/API.md](API.md) for API error behavior and status-code conventions.
 
 Quick reference:
 - 100-199: BLE errors
