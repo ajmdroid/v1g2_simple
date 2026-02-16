@@ -108,7 +108,10 @@ bool TouchUiModule::handleSliderTouch(unsigned long nowMs) {
         if (newLevel > 255) newLevel = 255;
         if (newLevel != brightnessAdjustValue) {
             brightnessAdjustValue = newLevel;
-            display->updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+            if ((nowMs - lastSliderRedrawMs) >= SLIDER_REDRAW_MIN_MS) {
+                display->updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                lastSliderRedrawMs = nowMs;
+            }
         }
     } else if (activeSlider == 1) {
         int newVolume = 100 - (((touchX - sliderX) * 100) / sliderWidth);
@@ -117,7 +120,10 @@ bool TouchUiModule::handleSliderTouch(unsigned long nowMs) {
         if (newVolume != volumeAdjustValue) {
             volumeAdjustValue = newVolume;
             audio_set_volume(volumeAdjustValue);
-            display->updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+            if ((nowMs - lastSliderRedrawMs) >= SLIDER_REDRAW_MIN_MS) {
+                display->updateSettingsSliders(brightnessAdjustValue, volumeAdjustValue, activeSlider);
+                lastSliderRedrawMs = nowMs;
+            }
             lastVolumeChangeMs = nowMs;
         }
     }

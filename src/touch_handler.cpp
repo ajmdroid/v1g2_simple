@@ -41,6 +41,7 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     // Initialize I2C with specified pins
     Wire.begin(sda, scl);
     Wire.setClock(400000);  // 400kHz I2C speed
+    Wire.setTimeOut(5);     // 5ms I2C transaction cap (prevents bus-hang stalls)
     
     delay(30);   // Conservative I2C/touch controller settle
     
@@ -94,15 +95,21 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     
     Wire.beginTransmission(i2cAddr);
     Wire.write(AXS_TOUCH_READ_CMD, sizeof(AXS_TOUCH_READ_CMD));
+    uint32_t i2cStart = micros();
     uint8_t err = Wire.endTransmission(false);  // Keep connection open for read
     
     if (err != 0) {
+        uint32_t elapsed = micros() - i2cStart;
+        if (elapsed > i2cMaxUs) i2cMaxUs = elapsed;
+        i2cStallCount++;
         return false;
     }
     
     // Read 32 bytes of touch data
     uint8_t buff[32] = {0};
     Wire.requestFrom(i2cAddr, (uint8_t)32);
+    uint32_t i2cElapsed = micros() - i2cStart;
+    if (i2cElapsed > i2cMaxUs) i2cMaxUs = i2cElapsed;
     for (int i = 0; i < 32 && Wire.available(); i++) {
         buff[i] = Wire.read();
     }

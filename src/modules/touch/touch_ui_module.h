@@ -47,6 +47,7 @@ private:
     uint8_t volumeAdjustValue = 75;
     int activeSlider = 0;
     unsigned long lastVolumeChangeMs = 0;
+    unsigned long lastSliderRedrawMs = 0;
 
     unsigned long bootPressStart = 0;
     bool bootWasPressed = false;
@@ -55,4 +56,5 @@ private:
     static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;
     static constexpr unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;
     static constexpr unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;
+    static constexpr unsigned long SLIDER_REDRAW_MIN_MS = 50;  // Cap slider redraw rate (~20 Hz)
 };

@@ -59,7 +59,17 @@ private:
     unsigned long lastReleaseTime;      // When finger was last released
     unsigned long touchDebounceMs;
     unsigned long releaseDebounceMs;    // Time finger must be lifted before new tap
-    
+
+    // I2C stall tracking
+    uint32_t i2cStallCount = 0;          // Transactions that returned error
+    uint32_t i2cMaxUs = 0;               // Longest I2C transaction observed
+
+public:
+    uint32_t getI2cStallCount() const { return i2cStallCount; }
+    uint32_t getI2cMaxUs() const { return i2cMaxUs; }
+    void resetI2cStats() { i2cStallCount = 0; i2cMaxUs = 0; }
+
+private:
     // I2C communication
     uint8_t readRegister(uint8_t reg);
 };
