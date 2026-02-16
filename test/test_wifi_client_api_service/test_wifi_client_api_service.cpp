@@ -394,6 +394,132 @@ void test_handle_enable_false_disables_sta_mode() {
     TEST_ASSERT_EQUAL_INT(1, rt.setApModeCalls);
 }
 
+void test_handle_api_status_marks_ui_activity_and_delegates() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.enabled = true;
+    rt.stateName = "connected";
+    rt.connected = false;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"state\":\"connected\""));
+}
+
+void test_handle_api_scan_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiScan(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.startScanCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_connect_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{\"ssid\":\"GarageWiFi\",\"password\":\"secret\"}");
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiConnect(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
+void test_handle_api_disconnect_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiDisconnect(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
+void test_handle_api_forget_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiForget(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.clearCredentialsCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
+void test_handle_api_enable_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{\"enabled\":false}");
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    WifiClientApiService::handleApiEnable(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_parse_connect_request_missing_body);
@@ -416,5 +542,11 @@ int main() {
     RUN_TEST(test_handle_enable_true_with_saved_credentials_starts_connect);
     RUN_TEST(test_handle_enable_true_without_saved_credentials_sets_disconnected_state);
     RUN_TEST(test_handle_enable_false_disables_sta_mode);
+    RUN_TEST(test_handle_api_status_marks_ui_activity_and_delegates);
+    RUN_TEST(test_handle_api_scan_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_connect_delegates_when_allowed);
+    RUN_TEST(test_handle_api_disconnect_delegates_when_allowed);
+    RUN_TEST(test_handle_api_forget_delegates_when_allowed);
+    RUN_TEST(test_handle_api_enable_delegates_when_allowed);
     return UNITY_END();
 }

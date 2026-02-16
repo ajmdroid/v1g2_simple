@@ -1224,33 +1224,45 @@ void WiFiManager::setupWebServer() {
         };
     };
     server.on("/api/wifi/status", HTTP_GET, [this, makeWifiClientRuntime]() {
-        markUiActivity();
-        WifiClientApiService::handleStatus(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiStatus(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { markUiActivity(); });
     });
     server.on("/api/wifi/scan", HTTP_POST, [this, makeWifiClientRuntime]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        WifiClientApiService::handleScan(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiScan(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/wifi/connect", HTTP_POST, [this, makeWifiClientRuntime]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        WifiClientApiService::handleConnect(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiConnect(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/wifi/disconnect", HTTP_POST, [this, makeWifiClientRuntime]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        WifiClientApiService::handleDisconnect(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiDisconnect(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/wifi/forget", HTTP_POST, [this, makeWifiClientRuntime]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        WifiClientApiService::handleForget(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiForget(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/wifi/enable", HTTP_POST, [this, makeWifiClientRuntime]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        WifiClientApiService::handleEnable(server, makeWifiClientRuntime());
+        WifiClientApiService::handleApiEnable(
+            server,
+            makeWifiClientRuntime(),
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
 
     // OBD integration API routes

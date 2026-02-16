@@ -82,4 +82,68 @@ void handleDisconnect(WebServer& server, const Runtime& runtime);
 void handleForget(WebServer& server, const Runtime& runtime);
 void handleEnable(WebServer& server, const Runtime& runtime);
 
+inline void handleApiStatus(WebServer& server,
+                            const Runtime& runtime,
+                            const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleStatus(server, runtime);
+}
+
+inline void handleApiScan(WebServer& server,
+                          const Runtime& runtime,
+                          const std::function<bool()>& checkRateLimit,
+                          const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleScan(server, runtime);
+}
+
+inline void handleApiConnect(WebServer& server,
+                             const Runtime& runtime,
+                             const std::function<bool()>& checkRateLimit,
+                             const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleConnect(server, runtime);
+}
+
+inline void handleApiDisconnect(WebServer& server,
+                                const Runtime& runtime,
+                                const std::function<bool()>& checkRateLimit,
+                                const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDisconnect(server, runtime);
+}
+
+inline void handleApiForget(WebServer& server,
+                            const Runtime& runtime,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleForget(server, runtime);
+}
+
+inline void handleApiEnable(WebServer& server,
+                            const Runtime& runtime,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleEnable(server, runtime);
+}
+
 }  // namespace WifiClientApiService

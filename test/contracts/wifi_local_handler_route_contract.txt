@@ -8,7 +8,7 @@ route=HTTP_GET /api/status rate_limit=1 ui_activity=0 obd_enabled_gate=0 handler
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleCurrentSettings
 route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfileGet
 route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfilesList
-route=HTTP_GET /api/wifi/status rate_limit=0 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleStatus
+route=HTTP_GET /api/wifi/status rate_limit=0 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiStatus
 route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleActivate
 route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handlePushNow
 route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleSlotSave
@@ -23,8 +23,8 @@ route=HTTP_POST /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 ha
 route=HTTP_POST /api/v1/profile/delete rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfileDelete
 route=HTTP_POST /api/v1/pull rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleSettingsPull
 route=HTTP_POST /api/v1/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleSettingsPush
-route=HTTP_POST /api/wifi/connect rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleConnect
-route=HTTP_POST /api/wifi/disconnect rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleDisconnect
-route=HTTP_POST /api/wifi/enable rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleEnable
-route=HTTP_POST /api/wifi/forget rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleForget
-route=HTTP_POST /api/wifi/scan rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleScan
+route=HTTP_POST /api/wifi/connect rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiConnect
+route=HTTP_POST /api/wifi/disconnect rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiDisconnect
+route=HTTP_POST /api/wifi/enable rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiEnable
+route=HTTP_POST /api/wifi/forget rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiForget
+route=HTTP_POST /api/wifi/scan rate_limit=1 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiScan
