@@ -19,9 +19,40 @@ struct FakeRuntime {
     WifiAutoPushApiService::SlotsSnapshot snapshot;
     bool statusAvailable = false;
     String statusJson = "{}";
+    uint8_t slotVolumes[3] = {4, 5, 6};
+    uint8_t slotMuteVolumes[3] = {1, 2, 3};
+    int activeSlot = 1;
+    bool autoPushEnabled = false;
+    WifiAutoPushApiService::PushNowQueueResult queueResult =
+        WifiAutoPushApiService::PushNowQueueResult::QUEUED;
+    WifiAutoPushApiService::PushNowRequest lastPushRequest;
 
     int loadSlotsCalls = 0;
     int loadStatusCalls = 0;
+    int setSlotNameCalls = 0;
+    int setSlotColorCalls = 0;
+    int setSlotVolumesCalls = 0;
+    int setSlotDarkModeCalls = 0;
+    int setSlotMuteToZeroCalls = 0;
+    int setSlotAlertPersistCalls = 0;
+    int setSlotPriorityArrowOnlyCalls = 0;
+    int setSlotProfileAndModeCalls = 0;
+    int drawProfileIndicatorCalls = 0;
+    int setActiveSlotCalls = 0;
+    int setAutoPushEnabledCalls = 0;
+    int queuePushNowCalls = 0;
+
+    int lastSlotIndex = -1;
+    String lastSlotName;
+    uint16_t lastSlotColor = 0;
+    uint8_t lastSlotVolume = 0;
+    uint8_t lastSlotMuteVolume = 0;
+    bool lastDarkMode = false;
+    bool lastMuteToZero = false;
+    uint8_t lastAlertPersist = 0;
+    bool lastPriorityArrowOnly = false;
+    String lastProfile;
+    int lastMode = 0;
 };
 
 static WifiAutoPushApiService::Runtime makeRuntime(FakeRuntime& rt) {
@@ -37,6 +68,76 @@ static WifiAutoPushApiService::Runtime makeRuntime(FakeRuntime& rt) {
             }
             outJson = rt.statusJson;
             return true;
+        },
+        [&rt](int slot, const String& name) {
+            rt.setSlotNameCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastSlotName = name;
+        },
+        [&rt](int slot, uint16_t color) {
+            rt.setSlotColorCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastSlotColor = color;
+        },
+        [&rt](int slot) {
+            return rt.slotVolumes[slot];
+        },
+        [&rt](int slot) {
+            return rt.slotMuteVolumes[slot];
+        },
+        [&rt](int slot, uint8_t volume, uint8_t muteVolume) {
+            rt.setSlotVolumesCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastSlotVolume = volume;
+            rt.lastSlotMuteVolume = muteVolume;
+            rt.slotVolumes[slot] = volume;
+            rt.slotMuteVolumes[slot] = muteVolume;
+        },
+        [&rt](int slot, bool darkMode) {
+            rt.setSlotDarkModeCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastDarkMode = darkMode;
+        },
+        [&rt](int slot, bool muteToZero) {
+            rt.setSlotMuteToZeroCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastMuteToZero = muteToZero;
+        },
+        [&rt](int slot, uint8_t alertPersist) {
+            rt.setSlotAlertPersistCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastAlertPersist = alertPersist;
+        },
+        [&rt](int slot, bool priorityArrowOnly) {
+            rt.setSlotPriorityArrowOnlyCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastPriorityArrowOnly = priorityArrowOnly;
+        },
+        [&rt](int slot, const String& profile, int mode) {
+            rt.setSlotProfileAndModeCalls++;
+            rt.lastSlotIndex = slot;
+            rt.lastProfile = profile;
+            rt.lastMode = mode;
+        },
+        [&rt]() {
+            return rt.activeSlot;
+        },
+        [&rt](int slot) {
+            rt.drawProfileIndicatorCalls++;
+            rt.lastSlotIndex = slot;
+        },
+        [&rt](int slot) {
+            rt.setActiveSlotCalls++;
+            rt.activeSlot = slot;
+        },
+        [&rt](bool enabled) {
+            rt.setAutoPushEnabledCalls++;
+            rt.autoPushEnabled = enabled;
+        },
+        [&rt](const WifiAutoPushApiService::PushNowRequest& request) {
+            rt.queuePushNowCalls++;
+            rt.lastPushRequest = request;
+            return rt.queueResult;
         },
     };
 }
@@ -135,11 +236,265 @@ void test_status_returns_json_when_available() {
     TEST_ASSERT_EQUAL_INT(1, rt.loadStatusCalls);
 }
 
+void test_slot_save_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "0");
+    server.setArg("profile", "Road");
+    server.setArg("mode", "1");
+
+    WifiAutoPushApiService::handleSlotSave(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(0, rt.setSlotProfileAndModeCalls);
+}
+
+void test_slot_save_missing_params_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "0");
+
+    WifiAutoPushApiService::handleSlotSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing parameters\""));
+}
+
+void test_slot_save_invalid_slot_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "3");
+    server.setArg("profile", "Road");
+    server.setArg("mode", "1");
+
+    WifiAutoPushApiService::handleSlotSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
+}
+
+void test_slot_save_success_updates_slot_runtime() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.activeSlot = 2;
+    server.setArg("slot", "2");
+    server.setArg("profile", "Road");
+    server.setArg("mode", "4");
+    server.setArg("name", "Weekend");
+    server.setArg("color", "1234");
+    server.setArg("volume", "8");
+    server.setArg("muteVol", "1");
+    server.setArg("darkMode", "true");
+    server.setArg("muteToZero", "true");
+    server.setArg("alertPersist", "9");
+    server.setArg("priorityArrowOnly", "true");
+
+    WifiAutoPushApiService::handleSlotSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotNameCalls);
+    TEST_ASSERT_EQUAL_STRING("Weekend", rt.lastSlotName.c_str());
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotColorCalls);
+    TEST_ASSERT_EQUAL_UINT16(1234, rt.lastSlotColor);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotVolumesCalls);
+    TEST_ASSERT_EQUAL_UINT8(8, rt.lastSlotVolume);
+    TEST_ASSERT_EQUAL_UINT8(1, rt.lastSlotMuteVolume);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotDarkModeCalls);
+    TEST_ASSERT_TRUE(rt.lastDarkMode);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotMuteToZeroCalls);
+    TEST_ASSERT_TRUE(rt.lastMuteToZero);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotAlertPersistCalls);
+    TEST_ASSERT_EQUAL_UINT8(5, rt.lastAlertPersist);  // Clamped 0-5.
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotPriorityArrowOnlyCalls);
+    TEST_ASSERT_TRUE(rt.lastPriorityArrowOnly);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSlotProfileAndModeCalls);
+    TEST_ASSERT_EQUAL_STRING("Road", rt.lastProfile.c_str());
+    TEST_ASSERT_EQUAL_INT(4, rt.lastMode);
+    TEST_ASSERT_EQUAL_INT(1, rt.drawProfileIndicatorCalls);
+}
+
+void test_activate_missing_slot_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiAutoPushApiService::handleActivate(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing slot parameter\""));
+}
+
+void test_activate_invalid_slot_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "-1");
+
+    WifiAutoPushApiService::handleActivate(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
+}
+
+void test_activate_success_defaults_enable_true() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "1");
+
+    WifiAutoPushApiService::handleActivate(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.setActiveSlotCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.activeSlot);
+    TEST_ASSERT_EQUAL_INT(1, rt.setAutoPushEnabledCalls);
+    TEST_ASSERT_TRUE(rt.autoPushEnabled);
+}
+
+void test_activate_success_enable_false() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "0");
+    server.setArg("enable", "false");
+
+    WifiAutoPushApiService::handleActivate(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_FALSE(rt.autoPushEnabled);
+}
+
+void test_push_now_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "1");
+
+    WifiAutoPushApiService::handlePushNow(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(0, rt.queuePushNowCalls);
+}
+
+void test_push_now_missing_slot_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiAutoPushApiService::handlePushNow(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing slot parameter\""));
+}
+
+void test_push_now_invalid_slot_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "9");
+
+    WifiAutoPushApiService::handlePushNow(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
+}
+
+void test_push_now_maps_runtime_error_states() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("slot", "0");
+
+    rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
+    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
+
+    rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
+    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push already in progress\""));
+
+    rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
+    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"No profile configured for this slot\""));
+
+    rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
+    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Failed to load profile\""));
+}
+
+void test_push_now_success_with_profile_override() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::QUEUED;
+    server.setArg("slot", "2");
+    server.setArg("profile", "Weekend");
+    server.setArg("mode", "3");
+
+    WifiAutoPushApiService::handlePushNow(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"queued\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.queuePushNowCalls);
+    TEST_ASSERT_EQUAL_INT(2, rt.lastPushRequest.slot);
+    TEST_ASSERT_TRUE(rt.lastPushRequest.hasProfileOverride);
+    TEST_ASSERT_EQUAL_STRING("Weekend", rt.lastPushRequest.profileName.c_str());
+    TEST_ASSERT_TRUE(rt.lastPushRequest.hasModeOverride);
+    TEST_ASSERT_EQUAL_INT(3, rt.lastPushRequest.mode);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_slots_serializes_expected_payload);
     RUN_TEST(test_status_returns_500_when_unavailable);
     RUN_TEST(test_status_returns_500_when_callback_missing);
     RUN_TEST(test_status_returns_json_when_available);
+    RUN_TEST(test_slot_save_rate_limited_short_circuits);
+    RUN_TEST(test_slot_save_missing_params_returns_400);
+    RUN_TEST(test_slot_save_invalid_slot_returns_400);
+    RUN_TEST(test_slot_save_success_updates_slot_runtime);
+    RUN_TEST(test_activate_missing_slot_returns_400);
+    RUN_TEST(test_activate_invalid_slot_returns_400);
+    RUN_TEST(test_activate_success_defaults_enable_true);
+    RUN_TEST(test_activate_success_enable_false);
+    RUN_TEST(test_push_now_rate_limited_short_circuits);
+    RUN_TEST(test_push_now_missing_slot_returns_400);
+    RUN_TEST(test_push_now_invalid_slot_returns_400);
+    RUN_TEST(test_push_now_maps_runtime_error_states);
+    RUN_TEST(test_push_now_success_with_profile_override);
     return UNITY_END();
 }
