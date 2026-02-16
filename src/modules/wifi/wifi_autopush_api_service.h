@@ -62,46 +62,20 @@ struct Runtime {
     std::function<PushNowQueueResult(const PushNowRequest&)> queuePushNow;
 };
 
-void handleSlots(WebServer& server, const Runtime& runtime);
+void handleApiSlots(WebServer& server, const Runtime& runtime);
 
-void handleStatus(WebServer& server, const Runtime& runtime);
+void handleApiStatus(WebServer& server, const Runtime& runtime);
 
-void handleSlotSave(WebServer& server,
-                    const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit);
+void handleApiSlotSave(WebServer& server,
+                       const Runtime& runtime,
+                       const std::function<bool()>& checkRateLimit);
 
-void handleActivate(WebServer& server,
-                    const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit);
+void handleApiActivate(WebServer& server,
+                       const Runtime& runtime,
+                       const std::function<bool()>& checkRateLimit);
 
-void handlePushNow(WebServer& server,
-                   const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit);
-
-inline void handleApiSlots(WebServer& server, const Runtime& runtime) {
-    handleSlots(server, runtime);
-}
-
-inline void handleApiStatus(WebServer& server, const Runtime& runtime) {
-    handleStatus(server, runtime);
-}
-
-inline void handleApiSlotSave(WebServer& server,
-                              const Runtime& runtime,
-                              const std::function<bool()>& checkRateLimit) {
-    handleSlotSave(server, runtime, checkRateLimit);
-}
-
-inline void handleApiActivate(WebServer& server,
-                              const Runtime& runtime,
-                              const std::function<bool()>& checkRateLimit) {
-    handleActivate(server, runtime, checkRateLimit);
-}
-
-inline void handleApiPushNow(WebServer& server,
-                             const Runtime& runtime,
-                             const std::function<bool()>& checkRateLimit) {
-    handlePushNow(server, runtime, checkRateLimit);
-}
+void handleApiPushNow(WebServer& server,
+                      const Runtime& runtime,
+                      const std::function<bool()>& checkRateLimit);
 
 }  // namespace WifiAutoPushApiService

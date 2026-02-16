@@ -25,7 +25,7 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
-void handleSlots(WebServer& server, const Runtime& runtime) {
+void handleApiSlots(WebServer& server, const Runtime& runtime) {
     SlotsSnapshot snapshot;
     if (runtime.loadSlotsSnapshot) {
         runtime.loadSlotsSnapshot(snapshot);
@@ -53,7 +53,7 @@ void handleSlots(WebServer& server, const Runtime& runtime) {
     sendJsonDocument(server, 200, doc);
 }
 
-void handleStatus(WebServer& server, const Runtime& runtime) {
+void handleApiStatus(WebServer& server, const Runtime& runtime) {
     String json;
     if (runtime.loadPushStatusJson && runtime.loadPushStatusJson(json)) {
         server.send(200, "application/json", json);
@@ -62,9 +62,9 @@ void handleStatus(WebServer& server, const Runtime& runtime) {
     server.send(500, "application/json", "{\"error\":\"Push status not available\"}");
 }
 
-void handleSlotSave(WebServer& server,
-                    const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit) {
+void handleApiSlotSave(WebServer& server,
+                       const Runtime& runtime,
+                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("slot") || !server.hasArg("profile") || !server.hasArg("mode")) {
@@ -137,9 +137,9 @@ void handleSlotSave(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handleActivate(WebServer& server,
-                    const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit) {
+void handleApiActivate(WebServer& server,
+                       const Runtime& runtime,
+                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("slot")) {
@@ -165,9 +165,9 @@ void handleActivate(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handlePushNow(WebServer& server,
-                   const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit) {
+void handleApiPushNow(WebServer& server,
+                      const Runtime& runtime,
+                      const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("slot")) {
