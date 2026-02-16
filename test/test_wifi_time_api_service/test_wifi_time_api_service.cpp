@@ -64,11 +64,12 @@ void test_time_set_rejects_unsupported_source() {
     server.setArg("plain", "{\"unixMs\":1700000000001,\"source\":\"gps\"}");
 
     int invalidateCalls = 0;
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        [&invalidateCalls]() { invalidateCalls++; });
+        [&invalidateCalls]() { invalidateCalls++; },
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Unsupported source\""));
@@ -81,11 +82,12 @@ void test_time_set_rejects_missing_unix_ms() {
     FakeTimeRuntime rt;
     server.setArg("plain", "{\"tzOffsetMin\":-300}");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing or invalid unixMs\""));
@@ -97,11 +99,12 @@ void test_time_set_rejects_unix_ms_out_of_range() {
     FakeTimeRuntime rt;
     server.setArg("plain", "{\"unixMs\":1600000000000}");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"unixMs out of range\""));
@@ -117,11 +120,12 @@ void test_time_set_applies_valid_payload_and_clamps_tz() {
     server.setArg("plain", "{\"unixMs\":1700000000001,\"tzOffsetMin\":9999}");
 
     int invalidateCalls = 0;
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        [&invalidateCalls]() { invalidateCalls++; });
+        [&invalidateCalls]() { invalidateCalls++; },
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.setCalls);
@@ -139,11 +143,12 @@ void test_time_set_uses_epoch_ms_compatibility_key() {
     FakeTimeRuntime rt;
     server.setArg("plain", "{\"epochMs\":\"1700000000456\",\"tzOffsetMinutes\":-120}");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.setCalls);
@@ -157,11 +162,12 @@ void test_time_set_uses_query_fallback_keys() {
     server.setArg("clientEpochMs", "1700000000999");
     server.setArg("tzOffsetMinutes", "60");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.setCalls);
@@ -179,11 +185,12 @@ void test_time_set_near_noop_client_sync_skips_write_and_invalidate() {
     server.setArg("plain", "{\"unixMs\":1700000003000,\"tzOffsetMin\":-300}");
 
     int invalidateCalls = 0;
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        [&invalidateCalls]() { invalidateCalls++; });
+        [&invalidateCalls]() { invalidateCalls++; },
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.setCalls);
@@ -200,11 +207,12 @@ void test_time_set_non_noop_writes_and_invalidates() {
     server.setArg("plain", "{\"unixMs\":1700000010005,\"tzOffsetMin\":-300}");
 
     int invalidateCalls = 0;
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        [&invalidateCalls]() { invalidateCalls++; });
+        [&invalidateCalls]() { invalidateCalls++; },
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.setCalls);
@@ -223,11 +231,12 @@ void test_time_set_response_includes_backward_compatible_fields() {
     rt.ageMs = 888;
     server.setArg("plain", "{\"unixMs\":1700000100000,\"tzOffsetMin\":120}");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"timeValid\":true"));
@@ -244,11 +253,12 @@ void test_time_set_query_source_overrides_json_source() {
     server.setArg("plain", "{\"unixMs\":1700000000001,\"source\":\"client\"}");
     server.setArg("source", "manual");
 
-    WifiTimeApiService::handleTimeSet(
+    WifiTimeApiService::handleApiTimeSet(
         server,
         makeRuntime(rt),
         1,
-        []() {});
+        []() {},
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Unsupported source\""));

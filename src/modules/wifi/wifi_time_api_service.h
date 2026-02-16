@@ -18,11 +18,6 @@ struct TimeRuntime {
     std::function<uint32_t()> epochAgeMsOr0;
 };
 
-void handleTimeSet(WebServer& server,
-                   const TimeRuntime& runtime,
-                   uint8_t clientSource,
-                   const std::function<void()>& invalidateStatusCache);
-
 void handleApiTimeSet(WebServer& server,
                       const TimeRuntime& runtime,
                       uint8_t clientSource,

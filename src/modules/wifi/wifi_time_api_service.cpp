@@ -40,10 +40,10 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
-void handleTimeSet(WebServer& server,
-                   const TimeRuntime& runtime,
-                   uint8_t clientSource,
-                   const std::function<void()>& invalidateStatusCache) {
+static void handleTimeSetImpl(WebServer& server,
+                              const TimeRuntime& runtime,
+                              uint8_t clientSource,
+                              const std::function<void()>& invalidateStatusCache) {
     uint64_t unixMs = 0;
     int32_t tzOffsetMin = 0;
     bool haveUnixMs = false;
@@ -174,7 +174,7 @@ void handleApiTimeSet(WebServer& server,
                       const std::function<void()>& invalidateStatusCache,
                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
-    handleTimeSet(server, runtime, clientSource, invalidateStatusCache);
+    handleTimeSetImpl(server, runtime, clientSource, invalidateStatusCache);
 }
 
 }  // namespace WifiTimeApiService
