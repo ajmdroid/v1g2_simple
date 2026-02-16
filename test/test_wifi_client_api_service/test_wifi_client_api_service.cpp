@@ -23,6 +23,69 @@ void setUp() {
 
 void tearDown() {}
 
+struct FakeRuntime {
+    bool enabled = false;
+    String savedSsid;
+    const char* stateName = "disabled";
+    bool scanRunning = false;
+    bool connected = false;
+    WifiClientApiService::ConnectedNetworkPayload connectedNetwork;
+
+    bool scanInProgress = false;
+    bool hasCompletedResults = false;
+    std::vector<WifiClientApiService::ScannedNetworkPayload> scannedNetworks;
+    bool startScanReturn = false;
+
+    bool connectReturn = true;
+    int connectCalls = 0;
+    String lastConnectSsid;
+    String lastConnectPassword;
+
+    int disconnectCalls = 0;
+    int clearCredentialsCalls = 0;
+    int setEnabledCalls = 0;
+    bool lastSetEnabled = false;
+    String savedPassword;
+    int setStateDisabledCalls = 0;
+    int setStateDisconnectedCalls = 0;
+    int setApModeCalls = 0;
+    int startScanCalls = 0;
+};
+
+static WifiClientApiService::Runtime makeRuntime(FakeRuntime& rt) {
+    return WifiClientApiService::Runtime{
+        [&rt]() { return rt.enabled; },
+        [&rt]() { return rt.savedSsid; },
+        [&rt]() { return rt.stateName; },
+        [&rt]() { return rt.scanRunning; },
+        [&rt]() { return rt.connected; },
+        [&rt]() { return rt.connectedNetwork; },
+        [&rt]() { return rt.scanInProgress; },
+        [&rt]() { return rt.hasCompletedResults; },
+        [&rt]() { return rt.scannedNetworks; },
+        [&rt]() {
+            rt.startScanCalls++;
+            return rt.startScanReturn;
+        },
+        [&rt](const String& ssid, const String& password) {
+            rt.connectCalls++;
+            rt.lastConnectSsid = ssid;
+            rt.lastConnectPassword = password;
+            return rt.connectReturn;
+        },
+        [&rt]() { rt.disconnectCalls++; },
+        [&rt]() { rt.clearCredentialsCalls++; },
+        [&rt](bool enabled) {
+            rt.setEnabledCalls++;
+            rt.lastSetEnabled = enabled;
+        },
+        [&rt]() { return rt.savedPassword; },
+        [&rt]() { rt.setStateDisabledCalls++; },
+        [&rt]() { rt.setStateDisconnectedCalls++; },
+        [&rt]() { rt.setApModeCalls++; },
+    };
+}
+
 void test_parse_connect_request_missing_body() {
     WebServer server(80);
     String ssid;
@@ -163,6 +226,174 @@ void test_send_enable_parse_error_uses_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
 }
 
+void test_handle_status_connected_uses_runtime_payload() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.enabled = true;
+    rt.savedSsid = "SavedNet";
+    rt.stateName = "connected";
+    rt.scanRunning = false;
+    rt.connected = true;
+    rt.connectedNetwork.ssid = "LiveNet";
+    rt.connectedNetwork.ip = "192.168.4.10";
+    rt.connectedNetwork.rssi = -55;
+
+    WifiClientApiService::handleStatus(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"savedSSID\":\"SavedNet\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"state\":\"connected\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"connectedSSID\":\"LiveNet\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"ip\":\"192.168.4.10\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"rssi\":-55"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"scanRunning\":false"));
+}
+
+void test_handle_scan_in_progress_returns_scanning_true() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.scanRunning = true;
+    rt.scanInProgress = true;
+
+    WifiClientApiService::handleScan(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":true"));
+    TEST_ASSERT_EQUAL_INT(0, rt.startScanCalls);
+}
+
+void test_handle_scan_completed_returns_networks() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.scanRunning = true;
+    rt.scanInProgress = false;
+    rt.hasCompletedResults = true;
+
+    WifiClientApiService::ScannedNetworkPayload net;
+    net.ssid = "Garage";
+    net.rssi = -48;
+    net.secure = true;
+    rt.scannedNetworks.push_back(net);
+
+    WifiClientApiService::handleScan(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"Garage\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"secure\":true"));
+    TEST_ASSERT_EQUAL_INT(0, rt.startScanCalls);
+}
+
+void test_handle_scan_starts_new_scan_when_no_results() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.scanRunning = false;
+    rt.scanInProgress = false;
+    rt.hasCompletedResults = false;
+    rt.startScanReturn = true;
+
+    WifiClientApiService::handleScan(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.startScanCalls);
+}
+
+void test_handle_connect_parse_error_returns_400() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{bad");
+
+    WifiClientApiService::handleConnect(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Invalid JSON\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
+}
+
+void test_handle_connect_starts_connection() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{\"ssid\":\"GarageWiFi\",\"password\":\"secret\"}");
+
+    WifiClientApiService::handleConnect(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Connecting...\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("GarageWiFi", rt.lastConnectSsid.c_str());
+    TEST_ASSERT_EQUAL_STRING("secret", rt.lastConnectPassword.c_str());
+}
+
+void test_handle_forget_clears_credentials_and_disables_sta() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiClientApiService::handleForget(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"WiFi credentials forgotten\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.clearCredentialsCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisabledCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setApModeCalls);
+}
+
+void test_handle_enable_true_with_saved_credentials_starts_connect() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.savedSsid = "HomeNet";
+    rt.savedPassword = "pw123";
+    server.setArg("plain", "{\"enabled\":true}");
+
+    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("HomeNet", rt.lastConnectSsid.c_str());
+    TEST_ASSERT_EQUAL_STRING("pw123", rt.lastConnectPassword.c_str());
+    TEST_ASSERT_EQUAL_INT(0, rt.setStateDisconnectedCalls);
+}
+
+void test_handle_enable_true_without_saved_credentials_sets_disconnected_state() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.savedSsid = "";
+    server.setArg("plain", "{\"enabled\":true}");
+
+    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisconnectedCalls);
+}
+
+void test_handle_enable_false_disables_sta_mode() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{\"enabled\":false}");
+
+    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client disabled\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_FALSE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisabledCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setApModeCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_parse_connect_request_missing_body);
@@ -175,5 +406,15 @@ int main() {
     RUN_TEST(test_parse_enable_request_requires_boolean_field);
     RUN_TEST(test_parse_enable_request_accepts_boolean_field);
     RUN_TEST(test_send_enable_parse_error_uses_expected_payload);
+    RUN_TEST(test_handle_status_connected_uses_runtime_payload);
+    RUN_TEST(test_handle_scan_in_progress_returns_scanning_true);
+    RUN_TEST(test_handle_scan_completed_returns_networks);
+    RUN_TEST(test_handle_scan_starts_new_scan_when_no_results);
+    RUN_TEST(test_handle_connect_parse_error_returns_400);
+    RUN_TEST(test_handle_connect_starts_connection);
+    RUN_TEST(test_handle_forget_clears_credentials_and_disables_sta);
+    RUN_TEST(test_handle_enable_true_with_saved_credentials_starts_connect);
+    RUN_TEST(test_handle_enable_true_without_saved_credentials_sets_disconnected_state);
+    RUN_TEST(test_handle_enable_false_disables_sta_mode);
     return UNITY_END();
 }

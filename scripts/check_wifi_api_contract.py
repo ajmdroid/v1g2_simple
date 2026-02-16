@@ -68,6 +68,12 @@ LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_POST /api/displaycolors/reset",
     "HTTP_POST /api/displaycolors/preview",
     "HTTP_POST /api/displaycolors/clear",
+    "HTTP_GET /api/wifi/status",
+    "HTTP_POST /api/wifi/scan",
+    "HTTP_POST /api/wifi/connect",
+    "HTTP_POST /api/wifi/disconnect",
+    "HTTP_POST /api/wifi/forget",
+    "HTTP_POST /api/wifi/enable",
 )
 
 ROUTE_SIGNATURE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')

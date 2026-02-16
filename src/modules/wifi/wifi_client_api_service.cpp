@@ -140,4 +140,147 @@ void sendForgotten(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
 }
 
+void handleStatus(WebServer& server, const Runtime& runtime) {
+    if (!runtime.isEnabled || !runtime.getSavedSsid || !runtime.getStateName ||
+        !runtime.isScanRunning || !runtime.isConnected) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    StatusPayload payload;
+    payload.enabled = runtime.isEnabled();
+    payload.savedSsid = runtime.getSavedSsid();
+    payload.state = runtime.getStateName();
+    payload.scanRunning = runtime.isScanRunning();
+
+    if (runtime.isConnected() && runtime.getConnectedNetwork) {
+        const ConnectedNetworkPayload connected = runtime.getConnectedNetwork();
+        payload.includeConnectedFields = true;
+        payload.connectedSsid = connected.ssid;
+        payload.ip = connected.ip;
+        payload.rssi = connected.rssi;
+    }
+
+    sendStatus(server, payload);
+}
+
+void handleScan(WebServer& server, const Runtime& runtime) {
+    if (!runtime.isScanRunning || !runtime.isScanInProgress ||
+        !runtime.hasCompletedScanResults || !runtime.getScannedNetworks ||
+        !runtime.startScan) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    Serial.println("[HTTP] POST /api/wifi/scan");
+
+    if (runtime.isScanRunning() && runtime.isScanInProgress()) {
+        sendScanInProgress(server);
+        return;
+    }
+
+    if (runtime.hasCompletedScanResults()) {
+        sendScanResults(server, runtime.getScannedNetworks());
+        return;
+    }
+
+    if (runtime.startScan()) {
+        sendScanInProgress(server);
+        return;
+    }
+
+    sendScanStartFailed(server);
+}
+
+void handleConnect(WebServer& server, const Runtime& runtime) {
+    if (!runtime.connectToNetwork) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    Serial.println("[HTTP] POST /api/wifi/connect");
+
+    String ssid;
+    String password;
+    const char* errorMessage = nullptr;
+    if (!parseConnectRequest(server, ssid, password, errorMessage)) {
+        sendConnectParseError(server, errorMessage);
+        return;
+    }
+
+    if (runtime.connectToNetwork(ssid, password)) {
+        sendConnectStarted(server);
+        return;
+    }
+
+    sendConnectStartFailed(server);
+}
+
+void handleDisconnect(WebServer& server, const Runtime& runtime) {
+    if (!runtime.disconnectFromNetwork) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    Serial.println("[HTTP] POST /api/wifi/disconnect");
+
+    runtime.disconnectFromNetwork();
+    sendDisconnected(server);
+}
+
+void handleForget(WebServer& server, const Runtime& runtime) {
+    if (!runtime.disconnectFromNetwork || !runtime.clearCredentials ||
+        !runtime.setStateDisabled || !runtime.setApMode) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    Serial.println("[HTTP] POST /api/wifi/forget");
+
+    runtime.disconnectFromNetwork();
+    runtime.clearCredentials();
+    runtime.setStateDisabled();
+    runtime.setApMode();
+
+    sendForgotten(server);
+}
+
+void handleEnable(WebServer& server, const Runtime& runtime) {
+    if (!runtime.setWifiClientEnabled || !runtime.getSavedSsid ||
+        !runtime.getSavedPassword || !runtime.connectToNetwork ||
+        !runtime.setStateDisconnected || !runtime.disconnectFromNetwork ||
+        !runtime.setStateDisabled || !runtime.setApMode) {
+        server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
+        return;
+    }
+
+    bool enable = false;
+    if (!parseEnableRequest(server, enable)) {
+        sendEnableParseError(server);
+        return;
+    }
+
+    Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
+
+    const String savedSsid = runtime.getSavedSsid();
+    if (enable) {
+        runtime.setWifiClientEnabled(true);
+
+        if (savedSsid.length() > 0) {
+            runtime.connectToNetwork(savedSsid, runtime.getSavedPassword());
+        } else {
+            runtime.setStateDisconnected();
+        }
+
+        sendEnableResult(server, true);
+        return;
+    }
+
+    runtime.disconnectFromNetwork();
+    runtime.setWifiClientEnabled(false);
+    runtime.setStateDisabled();
+    runtime.setApMode();
+    sendEnableResult(server, false);
+}
+
 }  // namespace WifiClientApiService

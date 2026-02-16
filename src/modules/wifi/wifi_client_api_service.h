@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <functional>
 #include <vector>
 
 namespace WifiClientApiService {
@@ -21,6 +22,35 @@ struct ScannedNetworkPayload {
     String ssid;
     int32_t rssi = 0;
     bool secure = true;
+};
+
+struct ConnectedNetworkPayload {
+    String ssid;
+    String ip;
+    int32_t rssi = 0;
+};
+
+struct Runtime {
+    std::function<bool()> isEnabled;
+    std::function<String()> getSavedSsid;
+    std::function<const char*()> getStateName;
+    std::function<bool()> isScanRunning;
+    std::function<bool()> isConnected;
+    std::function<ConnectedNetworkPayload()> getConnectedNetwork;
+
+    std::function<bool()> isScanInProgress;
+    std::function<bool()> hasCompletedScanResults;
+    std::function<std::vector<ScannedNetworkPayload>()> getScannedNetworks;
+    std::function<bool()> startScan;
+
+    std::function<bool(const String&, const String&)> connectToNetwork;
+    std::function<void()> disconnectFromNetwork;
+    std::function<void()> clearCredentials;
+    std::function<void(bool)> setWifiClientEnabled;
+    std::function<String()> getSavedPassword;
+    std::function<void()> setStateDisabled;
+    std::function<void()> setStateDisconnected;
+    std::function<void()> setApMode;
 };
 
 void sendStatus(WebServer& server, const StatusPayload& payload);
@@ -44,5 +74,12 @@ void sendEnableResult(WebServer& server, bool enabled);
 
 void sendDisconnected(WebServer& server);
 void sendForgotten(WebServer& server);
+
+void handleStatus(WebServer& server, const Runtime& runtime);
+void handleScan(WebServer& server, const Runtime& runtime);
+void handleConnect(WebServer& server, const Runtime& runtime);
+void handleDisconnect(WebServer& server, const Runtime& runtime);
+void handleForget(WebServer& server, const Runtime& runtime);
+void handleEnable(WebServer& server, const Runtime& runtime);
 
 }  // namespace WifiClientApiService

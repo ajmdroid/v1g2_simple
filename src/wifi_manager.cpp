@@ -1181,148 +1181,76 @@ void WiFiManager::setupWebServer() {
     });
     
     // WiFi client (STA) API routes - connect to external network
-    server.on("/api/wifi/status", HTTP_GET, [this]() {
+    auto makeWifiClientRuntime = [this]() {
+        return WifiClientApiService::Runtime{
+            [this]() { return settingsManager.get().wifiClientEnabled; },
+            [this]() { return settingsManager.get().wifiClientSSID; },
+            [this]() { return wifiClientStateApiName(wifiClientState); },
+            [this]() { return wifiScanRunning; },
+            [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
+            []() {
+                WifiClientApiService::ConnectedNetworkPayload payload;
+                payload.ssid = WiFi.SSID();
+                payload.ip = WiFi.localIP().toString();
+                payload.rssi = WiFi.RSSI();
+                return payload;
+            },
+            []() { return WiFi.scanComplete() == WIFI_SCAN_RUNNING; },
+            []() { return WiFi.scanComplete() > 0; },
+            [this]() {
+                std::vector<ScannedNetwork> networks = this->getScannedNetworks();
+                std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
+                payloads.reserve(networks.size());
+                for (const auto& net : networks) {
+                    WifiClientApiService::ScannedNetworkPayload payload;
+                    payload.ssid = net.ssid;
+                    payload.rssi = net.rssi;
+                    payload.secure = !net.isOpen();
+                    payloads.push_back(payload);
+                }
+                return payloads;
+            },
+            [this]() { return startWifiScan(); },
+            [this](const String& ssid, const String& password) {
+                return connectToNetwork(ssid, password);
+            },
+            [this]() { disconnectFromNetwork(); },
+            [this]() { settingsManager.clearWifiClientCredentials(); },
+            [this](bool enabled) { settingsManager.setWifiClientEnabled(enabled); },
+            [this]() { return settingsManager.getWifiClientPassword(); },
+            [this]() { wifiClientState = WIFI_CLIENT_DISABLED; },
+            [this]() { wifiClientState = WIFI_CLIENT_DISCONNECTED; },
+            []() { WiFi.mode(WIFI_AP); },
+        };
+    };
+    server.on("/api/wifi/status", HTTP_GET, [this, makeWifiClientRuntime]() {
         markUiActivity();
-
-        const V1Settings& settings = settingsManager.get();
-        WifiClientApiService::StatusPayload payload;
-        payload.enabled = settings.wifiClientEnabled;
-        payload.savedSsid = settings.wifiClientSSID;
-        payload.state = wifiClientStateApiName(wifiClientState);
-        payload.scanRunning = wifiScanRunning;
-
-        if (wifiClientState == WIFI_CLIENT_CONNECTED) {
-            payload.includeConnectedFields = true;
-            payload.connectedSsid = WiFi.SSID();
-            payload.ip = WiFi.localIP().toString();
-            payload.rssi = WiFi.RSSI();
-        }
-
-        WifiClientApiService::sendStatus(server, payload);
+        WifiClientApiService::handleStatus(server, makeWifiClientRuntime());
     });
-    server.on("/api/wifi/scan", HTTP_POST, [this]() {
+    server.on("/api/wifi/scan", HTTP_POST, [this, makeWifiClientRuntime]() {
         if (!checkRateLimit()) return;
         markUiActivity();
-
-        Serial.println("[HTTP] POST /api/wifi/scan");
-
-        // Check if scan is already running - return current results
-        if (wifiScanRunning) {
-            int16_t scanResult = WiFi.scanComplete();
-            if (scanResult == WIFI_SCAN_RUNNING) {
-                WifiClientApiService::sendScanInProgress(server);
-                return;
-            }
-        }
-
-        // Check if we have results from a completed scan
-        int16_t scanResult = WiFi.scanComplete();
-        if (scanResult > 0) {
-            // Return results
-            std::vector<ScannedNetwork> networks = getScannedNetworks();
-            std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
-            payloads.reserve(networks.size());
-            for (const auto& net : networks) {
-                WifiClientApiService::ScannedNetworkPayload payload;
-                payload.ssid = net.ssid;
-                payload.rssi = net.rssi;
-                payload.secure = !net.isOpen();
-                payloads.push_back(payload);
-            }
-            WifiClientApiService::sendScanResults(server, payloads);
-            return;
-        }
-
-        // Start a new scan
-        if (startWifiScan()) {
-            WifiClientApiService::sendScanInProgress(server);
-        } else {
-            WifiClientApiService::sendScanStartFailed(server);
-        }
+        WifiClientApiService::handleScan(server, makeWifiClientRuntime());
     });
-    server.on("/api/wifi/connect", HTTP_POST, [this]() {
+    server.on("/api/wifi/connect", HTTP_POST, [this, makeWifiClientRuntime]() {
         if (!checkRateLimit()) return;
         markUiActivity();
-
-        Serial.println("[HTTP] POST /api/wifi/connect");
-
-        String ssid;
-        String password;
-        const char* errorMessage = nullptr;
-        if (!WifiClientApiService::parseConnectRequest(server, ssid, password, errorMessage)) {
-            WifiClientApiService::sendConnectParseError(server, errorMessage);
-            return;
-        }
-
-        // Note: Password can be empty for open networks
-        if (connectToNetwork(ssid, password)) {
-            WifiClientApiService::sendConnectStarted(server);
-        } else {
-            WifiClientApiService::sendConnectStartFailed(server);
-        }
+        WifiClientApiService::handleConnect(server, makeWifiClientRuntime());
     });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
+    server.on("/api/wifi/disconnect", HTTP_POST, [this, makeWifiClientRuntime]() {
         if (!checkRateLimit()) return;
         markUiActivity();
-
-        Serial.println("[HTTP] POST /api/wifi/disconnect");
-
-        disconnectFromNetwork();
-        WifiClientApiService::sendDisconnected(server);
+        WifiClientApiService::handleDisconnect(server, makeWifiClientRuntime());
     });
-    server.on("/api/wifi/forget", HTTP_POST, [this]() {
+    server.on("/api/wifi/forget", HTTP_POST, [this, makeWifiClientRuntime]() {
         if (!checkRateLimit()) return;
         markUiActivity();
-
-        Serial.println("[HTTP] POST /api/wifi/forget");
-
-        // Disconnect if connected
-        disconnectFromNetwork();
-
-        // Clear saved credentials
-        settingsManager.clearWifiClientCredentials();
-
-        // Switch back to AP-only mode
-        wifiClientState = WIFI_CLIENT_DISABLED;
-        WiFi.mode(WIFI_AP);
-
-        WifiClientApiService::sendForgotten(server);
+        WifiClientApiService::handleForget(server, makeWifiClientRuntime());
     });
-    server.on("/api/wifi/enable", HTTP_POST, [this]() {
+    server.on("/api/wifi/enable", HTTP_POST, [this, makeWifiClientRuntime]() {
         if (!checkRateLimit()) return;
         markUiActivity();
-
-        bool enable = false;
-        if (!WifiClientApiService::parseEnableRequest(server, enable)) {
-            WifiClientApiService::sendEnableParseError(server);
-            return;
-        }
-
-        Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
-
-        const V1Settings& settings = settingsManager.get();
-
-        if (enable) {
-            // Enable WiFi client mode
-            settingsManager.setWifiClientEnabled(true);
-
-            // If we have saved credentials, try to connect
-            if (settings.wifiClientSSID.length() > 0) {
-                String savedPassword = settingsManager.getWifiClientPassword();
-                connectToNetwork(settings.wifiClientSSID, savedPassword);
-            } else {
-                wifiClientState = WIFI_CLIENT_DISCONNECTED;
-            }
-            WifiClientApiService::sendEnableResult(server, true);
-            return;
-        }
-
-        // Disable WiFi client mode
-        disconnectFromNetwork();
-        settingsManager.setWifiClientEnabled(false);
-        wifiClientState = WIFI_CLIENT_DISABLED;
-        WiFi.mode(WIFI_AP);
-        WifiClientApiService::sendEnableResult(server, false);
+        WifiClientApiService::handleEnable(server, makeWifiClientRuntime());
     });
 
     // OBD integration API routes
