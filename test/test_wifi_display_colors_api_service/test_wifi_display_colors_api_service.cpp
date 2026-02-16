@@ -111,7 +111,7 @@ void test_get_returns_500_when_runtime_missing() {
     WebServer server(80);
     WifiDisplayColorsApiService::Runtime runtime{};
 
-    WifiDisplayColorsApiService::handleGet(server, runtime);
+    WifiDisplayColorsApiService::handleApiGet(server, runtime);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Settings unavailable\""));
@@ -128,7 +128,7 @@ void test_get_serializes_color_payload() {
     rt.settings.cameraEnabled = false;
     rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
 
-    WifiDisplayColorsApiService::handleGet(server, makeRuntime(rt));
+    WifiDisplayColorsApiService::handleApiGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"bogey\":123"));
@@ -144,7 +144,7 @@ void test_save_rate_limited_short_circuits() {
     FakeRuntime rt;
     server.setArg("brightness", "100");
 
-    WifiDisplayColorsApiService::handleSave(
+    WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -171,7 +171,7 @@ void test_save_updates_settings_and_calls_side_effects() {
     server.setArg("cameraEnabled", "true");
     server.setArg("gpsLockoutMode", "enforce");
 
-    WifiDisplayColorsApiService::handleSave(
+    WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -212,7 +212,7 @@ void test_save_skip_preview_does_not_trigger_demo() {
     server.setArg("skipPreview", "true");
     server.setArg("brightness", "50");
 
-    WifiDisplayColorsApiService::handleSave(
+    WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -234,7 +234,7 @@ void test_save_clamps_numeric_ranges() {
     server.setArg("lowSpeedMuteThresholdMph", "0");
     server.setArg("gpsLockoutMaxQueueDrops", "70000");
 
-    WifiDisplayColorsApiService::handleSave(
+    WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -254,7 +254,7 @@ void test_reset_rate_limited_short_circuits() {
     FakeRuntime rt;
     rt.settings.colorBogey = 123;
 
-    WifiDisplayColorsApiService::handleReset(
+    WifiDisplayColorsApiService::handleApiReset(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -270,7 +270,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     rt.settings.colorBogey = 1;
     rt.settings.freqUseBandColor = true;
 
-    WifiDisplayColorsApiService::handleReset(
+    WifiDisplayColorsApiService::handleApiReset(
         server,
         makeRuntime(rt),
         []() { return true; });

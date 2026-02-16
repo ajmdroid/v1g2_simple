@@ -1113,16 +1113,16 @@ void WiFiManager::setupWebServer() {
         WifiPortalApiService::handleRedirectToRoot(server);
     });
     server.on("/api/displaycolors", HTTP_GET, [this, makeDisplayColorsRuntime]() {
-        WifiDisplayColorsApiService::handleGet(server, makeDisplayColorsRuntime());
+        WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
     });
     server.on("/api/displaycolors", HTTP_POST, [this, makeDisplayColorsRuntime, rateLimitCallback]() {
-        WifiDisplayColorsApiService::handleSave(
+        WifiDisplayColorsApiService::handleApiSave(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
     server.on("/api/displaycolors/reset", HTTP_POST, [this, makeDisplayColorsRuntime, rateLimitCallback]() {
-        WifiDisplayColorsApiService::handleReset(
+        WifiDisplayColorsApiService::handleApiReset(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);

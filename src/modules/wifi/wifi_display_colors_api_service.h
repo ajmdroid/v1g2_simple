@@ -39,6 +39,22 @@ void handleReset(WebServer& server,
 void handlePreview(WebServer& server, const Runtime& runtime);
 void handleClear(WebServer& server, const Runtime& runtime);
 
+inline void handleApiGet(WebServer& server, const Runtime& runtime) {
+    handleGet(server, runtime);
+}
+
+inline void handleApiSave(WebServer& server,
+                          const Runtime& runtime,
+                          const std::function<bool()>& checkRateLimit) {
+    handleSave(server, runtime, checkRateLimit);
+}
+
+inline void handleApiReset(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit) {
+    handleReset(server, runtime, checkRateLimit);
+}
+
 inline void handleApiPreview(WebServer& server,
                              const Runtime& runtime,
                              const std::function<bool()>& checkRateLimit) {
