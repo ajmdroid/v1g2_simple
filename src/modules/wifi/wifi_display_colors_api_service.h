@@ -36,9 +36,6 @@ void handleApiReset(WebServer& server,
                     const Runtime& runtime,
                     const std::function<bool()>& checkRateLimit);
 
-void handlePreview(WebServer& server, const Runtime& runtime);
-void handleClear(WebServer& server, const Runtime& runtime);
-
 void handleApiPreview(WebServer& server,
                       const Runtime& runtime,
                       const std::function<bool()>& checkRateLimit);

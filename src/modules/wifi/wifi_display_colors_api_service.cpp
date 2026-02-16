@@ -308,7 +308,7 @@ void handleApiReset(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handlePreview(WebServer& server, const Runtime& runtime) {
+static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     const bool previewRunning =
         runtime.isColorPreviewRunning && runtime.isColorPreviewRunning();
 
@@ -336,10 +336,10 @@ void handleApiPreview(WebServer& server,
                       const Runtime& runtime,
                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
-    handlePreview(server, runtime);
+    handlePreviewImpl(server, runtime);
 }
 
-void handleClear(WebServer& server, const Runtime& runtime) {
+static void handleClearImpl(WebServer& server, const Runtime& runtime) {
     Serial.println("[HTTP] POST /api/displaycolors/clear - cancelling preview");
     if (runtime.cancelColorPreview) {
         runtime.cancelColorPreview();
@@ -352,7 +352,7 @@ void handleApiClear(WebServer& server,
                     const Runtime& runtime,
                     const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
-    handleClear(server, runtime);
+    handleClearImpl(server, runtime);
 }
 
 void handleApiGet(WebServer& server, const Runtime& runtime) {

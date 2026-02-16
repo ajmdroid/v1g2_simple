@@ -323,7 +323,7 @@ void test_preview_toggles_off_when_running() {
     FakeRuntime rt;
     rt.isColorPreviewRunning = true;
 
-    WifiDisplayColorsApiService::handlePreview(server, makeRuntime(rt));
+    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -338,7 +338,7 @@ void test_preview_starts_when_not_running() {
     FakeRuntime rt;
     rt.isColorPreviewRunning = false;
 
-    WifiDisplayColorsApiService::handlePreview(server, makeRuntime(rt));
+    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -381,7 +381,7 @@ void test_clear_cancels_preview_and_returns_inactive() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiDisplayColorsApiService::handleClear(server, makeRuntime(rt));
+    WifiDisplayColorsApiService::handleApiClear(server, makeRuntime(rt), nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
