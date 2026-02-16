@@ -61,9 +61,9 @@ void handleProfilePush(WebServer& server,
     sendJsonDocument(server, queued ? 200 : 500, doc);
 }
 
-void handleDarkMode(WebServer& server,
-                    const std::function<bool(const char*, bool)>& sendV1Command,
-                    const std::function<bool()>& checkRateLimit) {
+void handleApiDarkMode(WebServer& server,
+                       const std::function<bool(const char*, bool)>& sendV1Command,
+                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("state")) {
@@ -87,9 +87,9 @@ void handleDarkMode(WebServer& server,
     sendJsonDocument(server, 200, doc);
 }
 
-void handleMute(WebServer& server,
-                const std::function<bool(const char*, bool)>& sendV1Command,
-                const std::function<bool()>& checkRateLimit) {
+void handleApiMute(WebServer& server,
+                   const std::function<bool(const char*, bool)>& sendV1Command,
+                   const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("state")) {
