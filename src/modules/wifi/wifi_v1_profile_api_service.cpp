@@ -25,7 +25,7 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
-void handleProfilesList(WebServer& server, const Runtime& runtime) {
+void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
     std::vector<String> profileNames;
     if (runtime.listProfileNames) {
         profileNames = runtime.listProfileNames();
@@ -49,7 +49,7 @@ void handleProfilesList(WebServer& server, const Runtime& runtime) {
     sendJsonDocument(server, 200, doc);
 }
 
-void handleProfileGet(WebServer& server, const Runtime& runtime) {
+void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
     if (!server.hasArg("name")) {
         server.send(400, "application/json", "{\"error\":\"Missing profile name\"}");
         return;
@@ -65,9 +65,9 @@ void handleProfileGet(WebServer& server, const Runtime& runtime) {
     server.send(200, "application/json", profileJson);
 }
 
-void handleProfileSave(WebServer& server,
-                       const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit) {
+void handleApiProfileSave(WebServer& server,
+                          const Runtime& runtime,
+                          const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("plain")) {
@@ -136,9 +136,9 @@ void handleProfileSave(WebServer& server,
     }
 }
 
-void handleProfileDelete(WebServer& server,
-                         const Runtime& runtime,
-                         const std::function<bool()>& checkRateLimit) {
+void handleApiProfileDelete(WebServer& server,
+                            const Runtime& runtime,
+                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("plain")) {
@@ -179,7 +179,7 @@ void handleProfileDelete(WebServer& server,
     }
 }
 
-void handleCurrentSettings(WebServer& server, const Runtime& runtime) {
+void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
     JsonDocument doc;
     doc["connected"] = runtime.v1Connected ? runtime.v1Connected() : false;
 
@@ -201,9 +201,9 @@ void handleCurrentSettings(WebServer& server, const Runtime& runtime) {
     sendJsonDocument(server, 200, doc);
 }
 
-void handleSettingsPull(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit) {
+void handleApiSettingsPull(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.v1Connected || !runtime.v1Connected()) {
@@ -223,9 +223,9 @@ void handleSettingsPull(WebServer& server,
     }
 }
 
-void handleSettingsPush(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit) {
+void handleApiSettingsPush(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.v1Connected || !runtime.v1Connected()) {

@@ -36,62 +36,63 @@ struct Runtime {
     std::function<void()> backupToSd;
 };
 
-void handleProfilesList(WebServer& server, const Runtime& runtime);
+void handleApiProfilesList(WebServer& server, const Runtime& runtime);
 
-void handleProfileGet(WebServer& server, const Runtime& runtime);
+void handleApiProfileGet(WebServer& server, const Runtime& runtime);
 
-void handleProfileSave(WebServer& server,
-                       const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit);
+void handleApiProfileSave(WebServer& server,
+                          const Runtime& runtime,
+                          const std::function<bool()>& checkRateLimit);
 
-void handleProfileDelete(WebServer& server,
-                         const Runtime& runtime,
-                         const std::function<bool()>& checkRateLimit);
+void handleApiProfileDelete(WebServer& server,
+                            const Runtime& runtime,
+                            const std::function<bool()>& checkRateLimit);
 
-void handleCurrentSettings(WebServer& server, const Runtime& runtime);
+void handleApiCurrentSettings(WebServer& server, const Runtime& runtime);
 
-void handleSettingsPull(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit);
+void handleApiSettingsPull(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit);
 
-void handleSettingsPush(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit);
+void handleApiSettingsPush(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit);
 
-inline void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
-    handleProfilesList(server, runtime);
+// Backward-compatible aliases for non-Api symbol names.
+inline void handleProfilesList(WebServer& server, const Runtime& runtime) {
+    handleApiProfilesList(server, runtime);
 }
 
-inline void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
-    handleProfileGet(server, runtime);
+inline void handleProfileGet(WebServer& server, const Runtime& runtime) {
+    handleApiProfileGet(server, runtime);
 }
 
-inline void handleApiProfileSave(WebServer& server,
-                                 const Runtime& runtime,
-                                 const std::function<bool()>& checkRateLimit) {
-    handleProfileSave(server, runtime, checkRateLimit);
+inline void handleProfileSave(WebServer& server,
+                              const Runtime& runtime,
+                              const std::function<bool()>& checkRateLimit) {
+    handleApiProfileSave(server, runtime, checkRateLimit);
 }
 
-inline void handleApiProfileDelete(WebServer& server,
-                                   const Runtime& runtime,
-                                   const std::function<bool()>& checkRateLimit) {
-    handleProfileDelete(server, runtime, checkRateLimit);
+inline void handleProfileDelete(WebServer& server,
+                                const Runtime& runtime,
+                                const std::function<bool()>& checkRateLimit) {
+    handleApiProfileDelete(server, runtime, checkRateLimit);
 }
 
-inline void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
-    handleCurrentSettings(server, runtime);
+inline void handleCurrentSettings(WebServer& server, const Runtime& runtime) {
+    handleApiCurrentSettings(server, runtime);
 }
 
-inline void handleApiSettingsPull(WebServer& server,
-                                  const Runtime& runtime,
-                                  const std::function<bool()>& checkRateLimit) {
-    handleSettingsPull(server, runtime, checkRateLimit);
+inline void handleSettingsPull(WebServer& server,
+                               const Runtime& runtime,
+                               const std::function<bool()>& checkRateLimit) {
+    handleApiSettingsPull(server, runtime, checkRateLimit);
 }
 
-inline void handleApiSettingsPush(WebServer& server,
-                                  const Runtime& runtime,
-                                  const std::function<bool()>& checkRateLimit) {
-    handleSettingsPush(server, runtime, checkRateLimit);
+inline void handleSettingsPush(WebServer& server,
+                               const Runtime& runtime,
+                               const std::function<bool()>& checkRateLimit) {
+    handleApiSettingsPush(server, runtime, checkRateLimit);
 }
 
 }  // namespace WifiV1ProfileApiService
