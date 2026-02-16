@@ -684,7 +684,7 @@ void WiFiManager::setupWebServer() {
     
     // Legacy status endpoint
     server.on("/status", HTTP_GET, [this, makeStatusRuntime]() {
-        WifiStatusApiService::handleLegacyStatus(
+        WifiStatusApiService::handleApiLegacyStatus(
             server,
             makeStatusRuntime(),
             cachedStatusJson,
@@ -709,7 +709,7 @@ void WiFiManager::setupWebServer() {
             "Use /api/settings");
     });
     server.on("/settings", HTTP_POST, [this, makeSettingsRuntime]() {
-        WifiSettingsApiService::handleLegacySettingsSave(
+        WifiSettingsApiService::handleApiLegacySettingsSave(
             server,
             makeSettingsRuntime(),
             [this]() { return checkRateLimit(); },

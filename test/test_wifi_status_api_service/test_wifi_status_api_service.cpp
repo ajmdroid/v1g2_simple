@@ -296,7 +296,7 @@ void test_handle_legacy_status_delegates_without_rate_limit() {
     String cache;
     unsigned long cacheTime = 0;
 
-    WifiStatusApiService::handleLegacyStatus(
+    WifiStatusApiService::handleApiLegacyStatus(
         server,
         makeRuntime(rt),
         cache,

@@ -185,7 +185,7 @@ void test_legacy_settings_save_rate_limited_short_circuits_on_route_guard() {
     int deprecatedHeaderCalls = 0;
     int legacyWarnCalls = 0;
 
-    WifiSettingsApiService::handleLegacySettingsSave(
+    WifiSettingsApiService::handleApiLegacySettingsSave(
         server,
         makeRuntime(rt),
         [&rateLimitCalls]() {
@@ -210,7 +210,7 @@ void test_legacy_settings_save_preserves_double_rate_limit_behavior() {
     int deprecatedHeaderCalls = 0;
     int legacyWarnCalls = 0;
 
-    WifiSettingsApiService::handleLegacySettingsSave(
+    WifiSettingsApiService::handleApiLegacySettingsSave(
         server,
         makeRuntime(rt),
         [&rateLimitCalls]() {
