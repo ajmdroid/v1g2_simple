@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Check WiFi API route/policy contracts for extracted ApiService handlers.
+"""Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
 This script enforces two invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
-2) Handler policy contract for ApiService shim handlers stays stable
+2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
 
 Use --update to rewrite expected contract snapshots from current source.
@@ -34,14 +34,16 @@ ROUTE_PREFIXES = (
     "/api/lockout/",
 )
 
-ROUTE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
-HANDLER_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
+ROUTE_SIGNATURE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
+ROUTE_LAMBDA_START_RE = re.compile(
+    r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[this\]\(\)\s*\{'
+)
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
 
 
 @dataclass(frozen=True)
-class HandlerPolicy:
-    name: str
+class RoutePolicy:
+    route: str
     rate_limit: int
     ui_activity: int
     obd_enabled_gate: int
@@ -50,7 +52,7 @@ class HandlerPolicy:
     def to_line(self) -> str:
         delegate_blob = ",".join(self.delegates)
         return (
-            f"handler={self.name} "
+            f"route={self.route} "
             f"rate_limit={self.rate_limit} "
             f"ui_activity={self.ui_activity} "
             f"obd_enabled_gate={self.obd_enabled_gate} "
@@ -66,7 +68,7 @@ def read_source() -> str:
 
 def extract_routes(source: str) -> List[str]:
     rows: List[str] = []
-    for path, method in ROUTE_RE.findall(source):
+    for path, method in ROUTE_SIGNATURE_RE.findall(source):
         if path.startswith(ROUTE_PREFIXES):
             rows.append(f"{method} {path}")
     # Keep deterministic ordering independent of registration line moves.
@@ -83,24 +85,29 @@ def find_matching_brace(source: str, open_brace_index: int) -> int:
             depth -= 1
             if depth == 0:
                 return idx
-    raise ValueError("Unbalanced braces while parsing handler body")
+    raise ValueError("Unbalanced braces while parsing route lambda body")
 
 
-def extract_handler_bodies(source: str) -> Dict[str, str]:
-    handlers: Dict[str, str] = {}
-    for match in HANDLER_START_RE.finditer(source):
-        handler_name = match.group(1)
-        open_idx = source.find("{", match.start())
+def extract_route_lambda_bodies(source: str) -> Dict[str, str]:
+    routes: Dict[str, str] = {}
+    for match in ROUTE_LAMBDA_START_RE.finditer(source):
+        path = match.group(1)
+        method = match.group(2)
+        if not path.startswith(ROUTE_PREFIXES):
+            continue
+
+        route = f"{method} {path}"
+        open_idx = match.end() - 1
         close_idx = find_matching_brace(source, open_idx)
-        handlers[handler_name] = source[open_idx + 1 : close_idx]
-    return handlers
+        routes[route] = source[open_idx + 1 : close_idx]
+    return routes
 
 
-def extract_policy_contract(source: str) -> List[HandlerPolicy]:
-    handlers = extract_handler_bodies(source)
-    out: List[HandlerPolicy] = []
+def extract_policy_contract(source: str) -> List[RoutePolicy]:
+    routes = extract_route_lambda_bodies(source)
+    out: List[RoutePolicy] = []
 
-    for handler_name, body in handlers.items():
+    for route, body in routes.items():
         delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
         if not delegates:
             continue
@@ -112,8 +119,8 @@ def extract_policy_contract(source: str) -> List[HandlerPolicy]:
         )
 
         out.append(
-            HandlerPolicy(
-                name=handler_name,
+            RoutePolicy(
+                route=route,
                 rate_limit=has_rate,
                 ui_activity=has_ui,
                 obd_enabled_gate=has_obd_gate,
@@ -121,7 +128,7 @@ def extract_policy_contract(source: str) -> List[HandlerPolicy]:
             )
         )
 
-    out.sort(key=lambda p: p.name)
+    out.sort(key=lambda p: p.route)
     return out
 
 
@@ -186,7 +193,7 @@ def main() -> int:
         )
         write_lines(
             POLICY_CONTRACT_FILE,
-            "# WiFi API handler policy contract (ApiService shim handlers)",
+            "# WiFi API route policy contract (ApiService endpoint lambdas)",
             policy_lines,
         )
         print(f"Updated {ROUTE_CONTRACT_FILE}")
