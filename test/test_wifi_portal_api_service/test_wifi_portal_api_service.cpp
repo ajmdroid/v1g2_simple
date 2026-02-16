@@ -93,7 +93,7 @@ void test_fwlink_redirects_to_settings() {
 void test_redirect_to_root_sets_location_and_message() {
     WebServer server(80);
 
-    WifiPortalApiService::handleRedirectToRoot(server);
+    WifiPortalApiService::handleApiRedirectToRoot(server);
 
     TEST_ASSERT_EQUAL_STRING("/", server.sentHeader("Location").c_str());
     TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
@@ -104,7 +104,7 @@ void test_redirect_to_root_sets_location_and_message() {
 void test_deprecated_redirect_sets_deprecation_header_and_redirect() {
     WebServer server(80);
 
-    WifiPortalApiService::handleDeprecatedRedirectToRoot(
+    WifiPortalApiService::handleApiDeprecatedRedirectToRoot(
         server,
         "Use /api/settings");
 

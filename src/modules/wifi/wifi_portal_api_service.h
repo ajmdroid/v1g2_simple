@@ -55,4 +55,13 @@ inline void handleApiNcsiTxt(WebServer& server) {
     handleNcsiTxt(server);
 }
 
+inline void handleApiRedirectToRoot(WebServer& server) {
+    handleRedirectToRoot(server);
+}
+
+inline void handleApiDeprecatedRedirectToRoot(WebServer& server,
+                                              const char* deprecationHint) {
+    handleDeprecatedRedirectToRoot(server, deprecationHint);
+}
+
 }  // namespace WifiPortalApiService

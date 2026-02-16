@@ -521,7 +521,7 @@ void WiFiManager::setupWebServer() {
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
     server.on("/ui", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleRedirectToRoot(server);
+        WifiPortalApiService::handleApiRedirectToRoot(server);
     });
     
     // Serve static assets from _app directory
@@ -704,7 +704,7 @@ void WiFiManager::setupWebServer() {
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
     server.on("/settings", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleDeprecatedRedirectToRoot(
+        WifiPortalApiService::handleApiDeprecatedRedirectToRoot(
             server,
             "Use /api/settings");
     });
@@ -762,7 +762,7 @@ void WiFiManager::setupWebServer() {
     
     // V1 Settings/Profiles routes
     server.on("/v1settings", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleRedirectToRoot(server);
+        WifiPortalApiService::handleApiRedirectToRoot(server);
     });
     auto makeV1ProfileRuntime = [this]() {
         return WifiV1ProfileApiService::Runtime{
@@ -1035,7 +1035,7 @@ void WiFiManager::setupWebServer() {
         };
     };
     server.on("/autopush", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleRedirectToRoot(server);
+        WifiPortalApiService::handleApiRedirectToRoot(server);
     });
     server.on("/api/autopush/slots", HTTP_GET, [this, makeAutoPushRuntime]() {
         WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
@@ -1110,7 +1110,7 @@ void WiFiManager::setupWebServer() {
         };
     };
     server.on("/displaycolors", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleRedirectToRoot(server);
+        WifiPortalApiService::handleApiRedirectToRoot(server);
     });
     server.on("/api/displaycolors", HTTP_GET, [this, makeDisplayColorsRuntime]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
