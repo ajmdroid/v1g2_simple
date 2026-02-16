@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "../../src/modules/gps/gps_api_service.h"
+#include "../../src/modules/gps/gps_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
 SerialClass Serial;
