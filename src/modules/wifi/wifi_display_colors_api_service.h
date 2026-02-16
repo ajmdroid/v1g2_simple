@@ -39,18 +39,12 @@ void handleApiReset(WebServer& server,
 void handlePreview(WebServer& server, const Runtime& runtime);
 void handleClear(WebServer& server, const Runtime& runtime);
 
-inline void handleApiPreview(WebServer& server,
-                             const Runtime& runtime,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handlePreview(server, runtime);
-}
+void handleApiPreview(WebServer& server,
+                      const Runtime& runtime,
+                      const std::function<bool()>& checkRateLimit);
 
-inline void handleApiClear(WebServer& server,
-                           const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleClear(server, runtime);
-}
+void handleApiClear(WebServer& server,
+                    const Runtime& runtime,
+                    const std::function<bool()>& checkRateLimit);
 
 }  // namespace WifiDisplayColorsApiService
