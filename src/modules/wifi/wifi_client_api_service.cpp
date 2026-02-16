@@ -24,7 +24,7 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
-void sendStatus(WebServer& server, const StatusPayload& payload) {
+static void sendStatus(WebServer& server, const StatusPayload& payload) {
     JsonDocument doc;
     doc["enabled"] = payload.enabled;
     doc["savedSSID"] = payload.savedSsid;
@@ -40,12 +40,12 @@ void sendStatus(WebServer& server, const StatusPayload& payload) {
     sendJsonDocument(server, 200, doc);
 }
 
-void sendScanInProgress(WebServer& server) {
+static void sendScanInProgress(WebServer& server) {
     server.send(200, "application/json", "{\"scanning\":true,\"networks\":[]}");
 }
 
-void sendScanResults(WebServer& server,
-                     const std::vector<ScannedNetworkPayload>& networks) {
+static void sendScanResults(WebServer& server,
+                            const std::vector<ScannedNetworkPayload>& networks) {
     JsonDocument doc;
     doc["scanning"] = false;
     JsonArray arr = doc["networks"].to<JsonArray>();
@@ -60,14 +60,14 @@ void sendScanResults(WebServer& server,
     sendJsonDocument(server, 200, doc);
 }
 
-void sendScanStartFailed(WebServer& server) {
+static void sendScanStartFailed(WebServer& server) {
     server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start scan\"}");
 }
 
-bool parseConnectRequest(WebServer& server,
-                         String& ssidOut,
-                         String& passwordOut,
-                         const char*& errorMessageOut) {
+static bool parseConnectRequest(WebServer& server,
+                                String& ssidOut,
+                                String& passwordOut,
+                                const char*& errorMessageOut) {
     ssidOut = "";
     passwordOut = "";
     errorMessageOut = nullptr;
@@ -94,22 +94,22 @@ bool parseConnectRequest(WebServer& server,
     return true;
 }
 
-void sendConnectParseError(WebServer& server, const char* message) {
+static void sendConnectParseError(WebServer& server, const char* message) {
     JsonDocument doc;
     doc["success"] = false;
     doc["message"] = message ? message : "Invalid request";
     sendJsonDocument(server, 400, doc);
 }
 
-void sendConnectStarted(WebServer& server) {
+static void sendConnectStarted(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting...\"}");
 }
 
-void sendConnectStartFailed(WebServer& server) {
+static void sendConnectStartFailed(WebServer& server) {
     server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start connection\"}");
 }
 
-bool parseEnableRequest(WebServer& server, bool& enabledOut) {
+static bool parseEnableRequest(WebServer& server, bool& enabledOut) {
     enabledOut = false;
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, server.arg("plain").c_str());
@@ -120,11 +120,11 @@ bool parseEnableRequest(WebServer& server, bool& enabledOut) {
     return true;
 }
 
-void sendEnableParseError(WebServer& server) {
+static void sendEnableParseError(WebServer& server) {
     server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing enabled field\"}");
 }
 
-void sendEnableResult(WebServer& server, bool enabled) {
+static void sendEnableResult(WebServer& server, bool enabled) {
     if (enabled) {
         server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client enabled\"}");
         return;
@@ -132,11 +132,11 @@ void sendEnableResult(WebServer& server, bool enabled) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client disabled\"}");
 }
 
-void sendDisconnected(WebServer& server) {
+static void sendDisconnected(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Disconnected\"}");
 }
 
-void sendForgotten(WebServer& server) {
+static void sendForgotten(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
 }
 
