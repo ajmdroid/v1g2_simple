@@ -1157,29 +1157,33 @@ void WiFiManager::setupWebServer() {
     
     // Debug API routes (performance metrics)
     server.on("/api/debug/metrics", HTTP_GET, [this]() {
-        DebugApiService::sendMetrics(server);
+        DebugApiService::handleApiMetrics(server);
     });
     server.on("/api/debug/panic", HTTP_GET, [this]() {
-        DebugApiService::sendPanic(server);
+        DebugApiService::handleApiPanic(server);
     });
     server.on("/api/debug/enable", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        DebugApiService::handleDebugEnable(server);
+        DebugApiService::handleApiDebugEnable(
+            server,
+            [this]() { return checkRateLimit(); });
     });
     server.on("/api/debug/perf-files", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        DebugApiService::sendPerfFilesList(server);
+        DebugApiService::handleApiPerfFilesList(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        DebugApiService::handlePerfFileDownload(server);
+        DebugApiService::handleApiPerfFilesDownload(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        DebugApiService::handlePerfFileDelete(server);
+        DebugApiService::handleApiPerfFilesDelete(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     
     // WiFi client (STA) API routes - connect to external network
