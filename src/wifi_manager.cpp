@@ -728,6 +728,15 @@ void WiFiManager::setupWebServer() {
                 json = v1ProfileManager.profileToJson(profile);
                 return true;
             },
+            [](const String& name, uint8_t outBytes[6], bool& displayOn) {
+                V1Profile profile;
+                if (!v1ProfileManager.loadProfile(name, profile)) {
+                    return false;
+                }
+                memcpy(outBytes, profile.settings.bytes, 6);
+                displayOn = profile.displayOn;
+                return true;
+            },
             [](const JsonObject& settingsObj, uint8_t outBytes[6]) {
                 V1UserSettings settings;
                 if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
@@ -754,6 +763,11 @@ void WiFiManager::setupWebServer() {
                 return true;
             },
             [](const String& name) { return v1ProfileManager.deleteProfile(name); },
+            []() { return bleClient.requestUserBytes(); },
+            [](const uint8_t inBytes[6]) {
+                return bleClient.writeUserBytesVerified(inBytes, 3) == V1BLEClient::VERIFY_OK;
+            },
+            [](bool displayOn) { bleClient.setDisplayOn(displayOn); },
             []() { return v1ProfileManager.hasCurrentSettings(); },
             []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
             []() { return bleClient.isConnected(); },
@@ -779,8 +793,18 @@ void WiFiManager::setupWebServer() {
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/v1/pull", HTTP_POST, [this]() { handleV1SettingsPull(); });
-    server.on("/api/v1/push", HTTP_POST, [this]() { handleV1SettingsPush(); });
+    server.on("/api/v1/pull", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+        WifiV1ProfileApiService::handleSettingsPull(
+            server,
+            makeV1ProfileRuntime(),
+            rateLimitCallback);
+    });
+    server.on("/api/v1/push", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+        WifiV1ProfileApiService::handleSettingsPush(
+            server,
+            makeV1ProfileRuntime(),
+            rateLimitCallback);
+    });
     server.on("/api/v1/current", HTTP_GET, [this, makeV1ProfileRuntime]() {
         WifiV1ProfileApiService::handleCurrentSettings(server, makeV1ProfileRuntime());
     });
@@ -1834,111 +1858,6 @@ void WiFiManager::handleSettingsSave() {
     settingsManager.save();
     
     server.send(200, "application/json", "{\"success\":true}");
-}
-
-void WiFiManager::handleV1SettingsPull() {
-    if (!checkRateLimit()) return;
-    
-    if (!bleClient.isConnected()) {
-        server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
-        return;
-    }
-    
-    // Request user bytes from V1
-    if (bleClient.requestUserBytes()) {
-        // Response will come async via BLE callback
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Request sent. Check current settings.\"}");
-    } else {
-        server.send(500, "application/json", "{\"error\":\"Failed to send request\"}");
-    }
-}
-
-void WiFiManager::handleV1SettingsPush() {
-    if (!checkRateLimit()) return;
-    
-    if (!bleClient.isConnected()) {
-        server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
-        return;
-    }
-    
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
-        return;
-    }
-    
-    String body = server.arg("plain");
-    Serial.printf("[V1Settings] Push request: %s\n", body.c_str());
-    if (body.length() > 4096) {
-        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
-        return;
-    }
-    
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body);
-    
-    if (err) {
-        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-        return;
-    }
-    
-    uint8_t bytes[6];
-    bool displayOn = true;
-    
-    // Check if pushing a profile by name
-    String profileName = doc["name"] | "";
-    if (!profileName.isEmpty()) {
-        // Load profile from database
-        V1Profile profile;
-        if (!v1ProfileManager.loadProfile(profileName, profile)) {
-            server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
-            return;
-        }
-        memcpy(bytes, profile.settings.bytes, 6);
-        displayOn = profile.displayOn;
-        Serial.printf("[V1Settings] Pushing profile '%s': %02X %02X %02X %02X %02X %02X\n",
-            profileName.c_str(), bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
-    } 
-    // Check for bytes array
-    else if (doc["bytes"].is<JsonArray>()) {
-        JsonArray bytesArray = doc["bytes"];
-        if (bytesArray.size() != 6) {
-            server.send(400, "application/json", "{\"error\":\"Invalid bytes array\"}");
-            return;
-        }
-        for (int i = 0; i < 6; i++) {
-            bytes[i] = bytesArray[i].as<uint8_t>();
-        }
-        displayOn = doc["displayOn"] | true;
-        Serial.println("[V1Settings] Using raw bytes from request");
-    } 
-    // Parse from individual settings
-    else {
-        V1UserSettings settings;
-        JsonObject settingsObj = doc["settings"].as<JsonObject>();
-        if (settingsObj.isNull()) {
-            settingsObj = doc.as<JsonObject>();
-        }
-        if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
-            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
-            return;
-        }
-        memcpy(bytes, settings.bytes, 6);
-        displayOn = doc["displayOn"] | true;
-        Serial.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
-    }
-    
-    // Perform write with retry
-    V1BLEClient::WriteVerifyResult result = bleClient.writeUserBytesVerified(bytes, 3);
-    
-    if (result == V1BLEClient::VERIFY_OK) {
-        Serial.println("[V1Settings] Push sent successfully");
-        bleClient.setDisplayOn(displayOn);
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings sent to V1\"}");
-    } else {
-        Serial.println("[V1Settings] Push FAILED - write command rejected");
-        server.send(500, "application/json", "{\"error\":\"Write command failed - check V1 connection\"}");
-    }
 }
 
 void WiFiManager::handleNotFound() {

@@ -201,4 +201,124 @@ void handleCurrentSettings(WebServer& server, const Runtime& runtime) {
     sendJsonDocument(server, 200, doc);
 }
 
+void handleSettingsPull(WebServer& server,
+                        const Runtime& runtime,
+                        const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+
+    if (!runtime.v1Connected || !runtime.v1Connected()) {
+        server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
+        return;
+    }
+
+    bool requested = false;
+    if (runtime.requestUserBytes) {
+        requested = runtime.requestUserBytes();
+    }
+    if (requested) {
+        // Response will come async via BLE callback
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Request sent. Check current settings.\"}");
+    } else {
+        server.send(500, "application/json", "{\"error\":\"Failed to send request\"}");
+    }
+}
+
+void handleSettingsPush(WebServer& server,
+                        const Runtime& runtime,
+                        const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+
+    if (!runtime.v1Connected || !runtime.v1Connected()) {
+        server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
+        return;
+    }
+
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
+        return;
+    }
+
+    String body = server.arg("plain");
+    Serial.printf("[V1Settings] Push request: %s\n", body.c_str());
+    if (body.length() > 4096) {
+        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, body.c_str());
+    if (err) {
+        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    uint8_t bytes[6];
+    bool displayOn = true;
+
+    // Check if pushing a profile by name
+    String profileName = doc["name"] | "";
+    if (!profileName.isEmpty()) {
+        if (!runtime.loadProfileSettings ||
+            !runtime.loadProfileSettings(profileName, bytes, displayOn)) {
+            server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
+            return;
+        }
+        Serial.printf("[V1Settings] Pushing profile '%s': %02X %02X %02X %02X %02X %02X\n",
+                      profileName.c_str(),
+                      bytes[0],
+                      bytes[1],
+                      bytes[2],
+                      bytes[3],
+                      bytes[4],
+                      bytes[5]);
+    }
+    // Check for bytes array
+    else if (doc["bytes"].is<JsonArray>()) {
+        JsonArray bytesArray = doc["bytes"];
+        if (bytesArray.size() != 6) {
+            server.send(400, "application/json", "{\"error\":\"Invalid bytes array\"}");
+            return;
+        }
+        for (int i = 0; i < 6; i++) {
+            bytes[i] = bytesArray[i].as<uint8_t>();
+        }
+        displayOn = doc["displayOn"] | true;
+        Serial.println("[V1Settings] Using raw bytes from request");
+    }
+    // Parse from individual settings
+    else {
+        JsonObject settingsObj = doc["settings"].as<JsonObject>();
+        if (settingsObj.isNull()) {
+            settingsObj = doc.as<JsonObject>();
+        }
+        if (!runtime.parseSettingsJson || !runtime.parseSettingsJson(settingsObj, bytes)) {
+            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
+            return;
+        }
+        displayOn = doc["displayOn"] | true;
+        Serial.printf("[V1Settings] Built bytes from settings: %02X %02X %02X %02X %02X %02X\n",
+                      bytes[0],
+                      bytes[1],
+                      bytes[2],
+                      bytes[3],
+                      bytes[4],
+                      bytes[5]);
+    }
+
+    bool writeOk = false;
+    if (runtime.writeUserBytes) {
+        writeOk = runtime.writeUserBytes(bytes);
+    }
+    if (writeOk) {
+        Serial.println("[V1Settings] Push sent successfully");
+        if (runtime.setDisplayOn) {
+            runtime.setDisplayOn(displayOn);
+        }
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings sent to V1\"}");
+    } else {
+        Serial.println("[V1Settings] Push FAILED - write command rejected");
+        server.send(500, "application/json", "{\"error\":\"Write command failed - check V1 connection\"}");
+    }
+}
+
 }  // namespace WifiV1ProfileApiService

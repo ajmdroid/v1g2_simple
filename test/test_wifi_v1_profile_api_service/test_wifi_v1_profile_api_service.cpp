@@ -86,6 +86,7 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt](const String& name, String& profileJson) {
             return fakeLoadJson(rt, name, profileJson);
         },
+        [](const String&, uint8_t[6], bool&) { return false; },
         [&rt](const JsonObject& settingsObj, uint8_t outBytes[6]) {
             rt.parseSettingsCalls++;
             if (!rt.parseSettingsOk) {
@@ -117,6 +118,9 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.deleteCalls++;
             return rt.deleteResult;
         },
+        []() { return false; },
+        [](const uint8_t[6]) { return false; },
+        [](bool) {},
         [&rt]() { return rt.hasCurrent; },
         [&rt]() { return rt.currentSettingsJson; },
         [&rt]() { return rt.connected; },
