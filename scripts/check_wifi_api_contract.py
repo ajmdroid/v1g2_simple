@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
-This script enforces four invariants in src/wifi_manager.cpp:
+This script enforces five invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
 3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
    that point callers to /api/lockouts/* and mirror canonical route policy.
 4) WiFiManager handle* methods do not become thin ApiService shims again.
+5) ApiService delegates remain bound only in setupWebServer() route registration.
 
 Use --update to rewrite expected contract snapshots from current source.
 """
@@ -15,6 +16,7 @@ Use --update to rewrite expected contract snapshots from current source.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import re
 import sys
 from dataclasses import dataclass
@@ -48,6 +50,7 @@ ROUTE_LAMBDA_START_RE = re.compile(
     r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[this\]\(\)\s*\{'
 )
 HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
+METHOD_START_RE = re.compile(r"void\s+WiFiManager::([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{")
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
 DEPRECATED_HEADER_RE = re.compile(
     r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
@@ -136,6 +139,17 @@ def extract_handle_method_bodies(source: str) -> Dict[str, str]:
     return handlers
 
 
+def extract_method_body(source: str, method_name: str) -> str:
+    for match in METHOD_START_RE.finditer(source):
+        name = match.group(1)
+        if name != method_name:
+            continue
+        open_idx = match.end() - 1
+        close_idx = find_matching_brace(source, open_idx)
+        return source[open_idx + 1 : close_idx]
+    return ""
+
+
 def extract_policy_contract(source: str) -> List[RoutePolicy]:
     routes = extract_route_lambda_bodies(source)
     out: List[RoutePolicy] = []
@@ -197,6 +211,24 @@ def extract_shim_absence_contract(source: str) -> List[str]:
         out.append(f"handler={handler} delegates={','.join(delegates)}")
 
     return sorted(out)
+
+
+def find_delegate_placement_errors(source: str) -> List[str]:
+    setup_body = extract_method_body(source, "setupWebServer")
+    if not setup_body:
+        return ["missing setupWebServer() definition"]
+
+    all_delegates = Counter(DELEGATE_RE.findall(source))
+    setup_delegates = Counter(DELEGATE_RE.findall(setup_body))
+
+    extras = all_delegates - setup_delegates
+    if not extras:
+        return []
+
+    errors: List[str] = []
+    for delegate, count in sorted(extras.items()):
+        errors.append(f"delegate outside setupWebServer: {delegate} x{count}")
+    return errors
 
 
 def extract_legacy_header_map(legacy_lines: List[str]) -> Dict[str, Tuple[int, str]]:
@@ -374,12 +406,19 @@ def main() -> int:
             print(f"  - {error}")
         ok = False
 
+    delegate_placement_errors = find_delegate_placement_errors(source)
+    if delegate_placement_errors:
+        print("[contract] delegate-placement mismatch")
+        for error in delegate_placement_errors:
+            print(f"  - {error}")
+        ok = False
+
     if not ok:
         print("\nRun with --update only when intentionally changing contract.")
         return 1
 
     print(
-        "[contract] route, policy, legacy lockout, shim-absence, and lockout parity contracts match"
+        "[contract] route, policy, legacy lockout, shim-absence, lockout parity, and delegate placement contracts match"
     )
     return 0
 
