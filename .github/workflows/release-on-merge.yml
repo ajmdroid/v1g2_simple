@@ -132,7 +132,7 @@ jobs:
             0x8000 release/partitions.bin \
             0xe000 release/boot_app0.bin \
             0x10000 release/firmware.bin \
-            0xc90000 release/littlefs.bin
+            0xca0000 release/littlefs.bin
           
           # Optionally include camera databases if present
           if compgen -G "camera_data/*.bin" > /dev/null; then
