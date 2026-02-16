@@ -709,13 +709,12 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/plain", "Redirecting to /");
     });
     server.on("/settings", HTTP_POST, [this, makeSettingsRuntime]() {
-        if (!checkRateLimit()) return;
-        Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings");
-        server.sendHeader("X-API-Deprecated", "Use /api/settings");
-        WifiSettingsApiService::handleSettingsSave(
+        WifiSettingsApiService::handleLegacySettingsSave(
             server,
             makeSettingsRuntime(),
-            [this]() { return checkRateLimit(); });
+            [this]() { return checkRateLimit(); },
+            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/settings"); },
+            []() { Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings"); });
     });  // Legacy compat
     server.on("/darkmode", HTTP_POST, [this]() {
         WifiControlApiService::handleDarkMode(

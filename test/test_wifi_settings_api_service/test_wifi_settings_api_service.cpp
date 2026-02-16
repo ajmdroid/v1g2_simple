@@ -178,6 +178,57 @@ void test_settings_save_rate_limited_short_circuits() {
     TEST_ASSERT_EQUAL_INT(0, rt.updateBrightnessCalls);
 }
 
+void test_legacy_settings_save_rate_limited_short_circuits_on_route_guard() {
+    WebServer server(80);
+    FakeRuntime rt;
+    int rateLimitCalls = 0;
+    int deprecatedHeaderCalls = 0;
+    int legacyWarnCalls = 0;
+
+    WifiSettingsApiService::handleLegacySettingsSave(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        },
+        [&deprecatedHeaderCalls]() { deprecatedHeaderCalls++; },
+        [&legacyWarnCalls]() { legacyWarnCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, deprecatedHeaderCalls);
+    TEST_ASSERT_EQUAL_INT(0, legacyWarnCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_legacy_settings_save_preserves_double_rate_limit_behavior() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("brightness", "11");
+    int rateLimitCalls = 0;
+    int deprecatedHeaderCalls = 0;
+    int legacyWarnCalls = 0;
+
+    WifiSettingsApiService::handleLegacySettingsSave(
+        server,
+        makeRuntime(rt),
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&deprecatedHeaderCalls]() { deprecatedHeaderCalls++; },
+        [&legacyWarnCalls]() { legacyWarnCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(2, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, deprecatedHeaderCalls);
+    TEST_ASSERT_EQUAL_INT(1, legacyWarnCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.updateBrightnessCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+}
+
 void test_settings_save_rejects_invalid_ap_credentials() {
     WebServer server(80);
     FakeRuntime rt;
@@ -275,6 +326,8 @@ int main() {
     RUN_TEST(test_settings_get_serializes_expected_payload);
     RUN_TEST(test_settings_get_returns_500_without_runtime);
     RUN_TEST(test_settings_save_rate_limited_short_circuits);
+    RUN_TEST(test_legacy_settings_save_rate_limited_short_circuits_on_route_guard);
+    RUN_TEST(test_legacy_settings_save_preserves_double_rate_limit_behavior);
     RUN_TEST(test_settings_save_rejects_invalid_ap_credentials);
     RUN_TEST(test_settings_save_uses_existing_password_placeholder);
     RUN_TEST(test_settings_save_updates_runtime_dependencies);

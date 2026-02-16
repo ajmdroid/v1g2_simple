@@ -32,4 +32,10 @@ void handleSettingsSave(WebServer& server,
                         const Runtime& runtime,
                         const std::function<bool()>& checkRateLimit);
 
+void handleLegacySettingsSave(WebServer& server,
+                              const Runtime& runtime,
+                              const std::function<bool()>& checkRateLimit,
+                              const std::function<void()>& sendDeprecatedHeader,
+                              const std::function<void()>& logLegacyUsage);
+
 }  // namespace WifiSettingsApiService
