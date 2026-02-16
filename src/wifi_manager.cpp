@@ -31,6 +31,7 @@
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
+#include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
@@ -605,6 +606,54 @@ void WiFiManager::setupWebServer() {
             []() { return millis(); });
     };
 
+    auto makeSettingsRuntime = [this]() {
+        return WifiSettingsApiService::Runtime{
+            [this]() -> const V1Settings& {
+                return settingsManager.get();
+            },
+            [this]() -> V1Settings& {
+                return settingsManager.mutableSettings();
+            },
+            [this](const String& ssid, const String& password) {
+                settingsManager.updateAPCredentials(ssid, password);
+            },
+            [this](uint8_t brightness) {
+                settingsManager.updateBrightness(brightness);
+            },
+            [this](DisplayStyle style) {
+                settingsManager.updateDisplayStyle(style);
+            },
+            [this]() {
+                display.forceNextRedraw();
+            },
+            [this](bool enabled) {
+                obdHandler.setVwDataEnabled(enabled);
+            },
+            [this]() {
+                obdHandler.stopScan();
+            },
+            [this]() {
+                obdHandler.disconnect();
+            },
+            [this](bool enabled) {
+                gpsRuntimeModule.setEnabled(enabled);
+            },
+            [this](bool enabled) {
+                speedSourceSelector.setGpsEnabled(enabled);
+            },
+            [this](bool enabled) {
+                cameraRuntimeModule.setEnabled(enabled);
+            },
+            [this](bool enabled) {
+                lockoutSetKaLearningEnabled(enabled);
+            },
+            [this]() {
+                settingsManager.save();
+            },
+        };
+    };
+    auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
+
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, sendStatusResponse]() {
         if (!checkRateLimit()) return;
@@ -641,8 +690,15 @@ void WiFiManager::setupWebServer() {
     
     // Legacy status endpoint
     server.on("/status", HTTP_GET, [this, sendStatusResponse]() { sendStatusResponse(); });
-    server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
-    server.on("/api/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Consistent API endpoint
+    server.on("/api/settings", HTTP_GET, [this, makeSettingsRuntime]() {
+        WifiSettingsApiService::handleSettingsGet(server, makeSettingsRuntime());
+    });  // JSON settings for new UI
+    server.on("/api/settings", HTTP_POST, [this, makeSettingsRuntime, settingsRateLimitCallback]() {
+        WifiSettingsApiService::handleSettingsSave(
+            server,
+            makeSettingsRuntime(),
+            settingsRateLimitCallback);
+    });  // Consistent API endpoint
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
     server.on("/settings", HTTP_GET, [this]() { 
@@ -650,10 +706,14 @@ void WiFiManager::setupWebServer() {
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/settings", HTTP_POST, [this]() {
+    server.on("/settings", HTTP_POST, [this, makeSettingsRuntime]() {
+        if (!checkRateLimit()) return;
         Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings");
         server.sendHeader("X-API-Deprecated", "Use /api/settings");
-        handleSettingsSave();
+        WifiSettingsApiService::handleSettingsSave(
+            server,
+            makeSettingsRuntime(),
+            [this]() { return checkRateLimit(); });
     });  // Legacy compat
     server.on("/darkmode", HTTP_POST, [this]() {
         WifiControlApiService::handleDarkMode(
@@ -1893,159 +1953,6 @@ void WiFiManager::checkWifiClientStatus() {
 }
 
 // ==================== API Endpoints ====================
-
-void WiFiManager::handleSettingsApi() {
-    const V1Settings& settings = settingsManager.get();
-    
-    JsonDocument doc;
-    doc["ap_ssid"] = settings.apSSID;
-    doc["ap_password"] = "********";  // Don't send actual password
-    doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
-    doc["proxy_ble"] = settings.proxyBLE;
-    doc["proxy_name"] = settings.proxyName;
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
-    doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["cameraEnabled"] = settings.cameraEnabled;
-    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
-    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
-    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
-    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
-    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    doc["displayStyle"] = static_cast<int>(settings.displayStyle);
-    doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
-    doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
-    
-    // Development settings
-    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleSettingsSave() {
-    if (!checkRateLimit()) return;
-    
-    Serial.println("=== handleSettingsSave() called ===");
-    V1Settings& mutableSettings = settingsManager.mutableSettings();
-    const V1Settings& currentSettings = mutableSettings;
-
-    if (server.hasArg("ap_ssid")) {
-        String apSsid = clampStringLength(server.arg("ap_ssid"), MAX_WIFI_SSID_LEN);
-        String apPass = server.arg("ap_password");
-        if (apPass.length() > MAX_AP_PASSWORD_LEN && apPass != "********") {
-            apPass = apPass.substring(0, MAX_AP_PASSWORD_LEN);
-        }
-        
-        // If password is placeholder, keep existing password
-        if (apPass == "********") {
-            apPass = currentSettings.apPassword;
-        }
-        
-        if (apSsid.length() == 0 || apPass.length() < 8) {
-            server.send(400, "application/json", "{\"error\":\"AP SSID required and password must be at least 8 characters\"}");
-            return;
-        }
-        settingsManager.updateAPCredentials(apSsid, apPass);
-    }
-    
-    if (server.hasArg("brightness")) {
-        int brightness = server.arg("brightness").toInt();
-        brightness = std::max(0, std::min(brightness, 255));
-        settingsManager.updateBrightness((uint8_t)brightness);
-    }
-
-    // BLE proxy settings
-    if (server.hasArg("proxy_ble")) {
-        bool proxyEnabled = server.arg("proxy_ble") == "true" || server.arg("proxy_ble") == "1";
-        mutableSettings.proxyBLE = proxyEnabled;
-    }
-    if (server.hasArg("proxy_name")) {
-        mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
-    }
-    if (server.hasArg("obdVwDataEnabled")) {
-        mutableSettings.obdVwDataEnabled =
-            (server.arg("obdVwDataEnabled") == "true" || server.arg("obdVwDataEnabled") == "1");
-        obdHandler.setVwDataEnabled(mutableSettings.obdVwDataEnabled);
-    }
-    if (server.hasArg("obdEnabled")) {
-        mutableSettings.obdEnabled =
-            (server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1");
-        if (!mutableSettings.obdEnabled) {
-            obdHandler.stopScan();
-            obdHandler.disconnect();
-        }
-    }
-    if (server.hasArg("gpsEnabled")) {
-        mutableSettings.gpsEnabled =
-            (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
-        gpsRuntimeModule.setEnabled(mutableSettings.gpsEnabled);
-        speedSourceSelector.setGpsEnabled(mutableSettings.gpsEnabled);
-    }
-    if (server.hasArg("cameraEnabled")) {
-        mutableSettings.cameraEnabled =
-            (server.arg("cameraEnabled") == "true" || server.arg("cameraEnabled") == "1");
-    }
-    if (server.hasArg("gpsEnabled") || server.hasArg("cameraEnabled")) {
-        cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(mutableSettings));
-    }
-    if (server.hasArg("gpsLockoutMode")) {
-        mutableSettings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"),
-                                                                       mutableSettings.gpsLockoutMode);
-    }
-    if (server.hasArg("gpsLockoutCoreGuardEnabled")) {
-        mutableSettings.gpsLockoutCoreGuardEnabled =
-            (server.arg("gpsLockoutCoreGuardEnabled") == "true" ||
-             server.arg("gpsLockoutCoreGuardEnabled") == "1");
-    }
-    if (server.hasArg("gpsLockoutMaxQueueDrops")) {
-        mutableSettings.gpsLockoutMaxQueueDrops =
-            clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxPerfDrops")) {
-        mutableSettings.gpsLockoutMaxPerfDrops =
-            clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
-        mutableSettings.gpsLockoutMaxEventBusDrops =
-            clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutKaLearningEnabled")) {
-        mutableSettings.gpsLockoutKaLearningEnabled =
-            (server.arg("gpsLockoutKaLearningEnabled") == "true" ||
-             server.arg("gpsLockoutKaLearningEnabled") == "1");
-        lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
-    }
-    if (server.hasArg("autoPowerOffMinutes")) {
-        int minutes = server.arg("autoPowerOffMinutes").toInt();
-        minutes = std::max(0, std::min(minutes, 60));  // Clamp 0-60 minutes
-        mutableSettings.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
-    }
-    if (server.hasArg("apTimeoutMinutes")) {
-        int minutes = server.arg("apTimeoutMinutes").toInt();
-        // Clamp: 0=always on, or 5-60 minutes
-        if (minutes != 0) {
-            minutes = std::max(5, std::min(minutes, 60));
-        }
-        mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
-    }
-
-    // Display style setting
-    if (server.hasArg("displayStyle")) {
-        DisplayStyle style = normalizeDisplayStyle(server.arg("displayStyle").toInt());
-        settingsManager.updateDisplayStyle(style);
-        display.forceNextRedraw();  // Force display update to show new font style
-    }
-
-    // All changes are queued in the settingsManager instance. Now, save them all at once.
-    Serial.println("--- Calling settingsManager.save() ---");
-    settingsManager.save();
-    
-    server.send(200, "application/json", "{\"success\":true}");
-}
 
 void WiFiManager::handleNotFound() {
     String uri = server.uri();

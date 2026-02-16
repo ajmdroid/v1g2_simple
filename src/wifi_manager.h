@@ -202,10 +202,6 @@ private:
     void processWifiClientConnectPhase();
     void processPendingPushNow();
     
-    // Web handlers
-    void handleSettingsApi();
-    void handleSettingsSave();
-    
     // API endpoints
     void handleDisplayColorsApi();
     void handleDisplayColorsSave();

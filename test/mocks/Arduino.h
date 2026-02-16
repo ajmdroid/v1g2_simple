@@ -46,6 +46,21 @@ public:
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     }
 
+    void toUpperCase() {
+        std::transform(data_.begin(),
+                       data_.end(),
+                       data_.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    }
+
+    String substring(size_t from, size_t to) const {
+        if (from >= data_.size() || to <= from) {
+            return String("");
+        }
+        size_t count = std::min(to, data_.size()) - from;
+        return String(data_.substr(from, count));
+    }
+
     bool equalsIgnoreCase(const String& other) const {
         if (data_.size() != other.data_.size()) {
             return false;
