@@ -1,0 +1,23 @@
+#include "backup_api_service.h"
+
+namespace BackupApiService {
+
+void handleApiBackup(WebServer& server,
+                     const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendBackup(server);
+}
+
+void handleApiRestore(WebServer& server,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleRestore(server);
+}
+
+}  // namespace BackupApiService

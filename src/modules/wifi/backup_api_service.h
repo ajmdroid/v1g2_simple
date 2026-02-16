@@ -14,23 +14,12 @@ void sendBackup(WebServer& server);
 void handleRestore(WebServer& server);
 
 /// GET /api/settings/backup wrapper with route-level UI activity callback.
-inline void handleApiBackup(WebServer& server,
-                            const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    sendBackup(server);
-}
+void handleApiBackup(WebServer& server,
+                     const std::function<void()>& markUiActivity);
 
 /// POST /api/settings/restore wrapper with route-level policy callbacks.
-inline void handleApiRestore(WebServer& server,
-                             const std::function<bool()>& checkRateLimit,
-                             const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    handleRestore(server);
-}
+void handleApiRestore(WebServer& server,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity);
 
 }  // namespace BackupApiService
