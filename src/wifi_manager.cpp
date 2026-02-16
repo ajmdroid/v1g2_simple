@@ -33,6 +33,7 @@
 #include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_time_api_service.h"
+#include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
@@ -810,15 +811,68 @@ void WiFiManager::setupWebServer() {
     });
     
     // Auto-Push routes
+    auto makeAutoPushRuntime = [this]() {
+        return WifiAutoPushApiService::Runtime{
+            [this](WifiAutoPushApiService::SlotsSnapshot& snapshot) {
+                const V1Settings& s = settingsManager.get();
+                snapshot.enabled = s.autoPushEnabled;
+                snapshot.activeSlot = s.activeSlot;
+
+                snapshot.slots[0].name = s.slot0Name;
+                snapshot.slots[0].profile = s.slot0_default.profileName;
+                snapshot.slots[0].mode = s.slot0_default.mode;
+                snapshot.slots[0].color = s.slot0Color;
+                snapshot.slots[0].volume = s.slot0Volume;
+                snapshot.slots[0].muteVolume = s.slot0MuteVolume;
+                snapshot.slots[0].darkMode = s.slot0DarkMode;
+                snapshot.slots[0].muteToZero = s.slot0MuteToZero;
+                snapshot.slots[0].alertPersist = s.slot0AlertPersist;
+                snapshot.slots[0].priorityArrowOnly = s.slot0PriorityArrow;
+
+                snapshot.slots[1].name = s.slot1Name;
+                snapshot.slots[1].profile = s.slot1_highway.profileName;
+                snapshot.slots[1].mode = s.slot1_highway.mode;
+                snapshot.slots[1].color = s.slot1Color;
+                snapshot.slots[1].volume = s.slot1Volume;
+                snapshot.slots[1].muteVolume = s.slot1MuteVolume;
+                snapshot.slots[1].darkMode = s.slot1DarkMode;
+                snapshot.slots[1].muteToZero = s.slot1MuteToZero;
+                snapshot.slots[1].alertPersist = s.slot1AlertPersist;
+                snapshot.slots[1].priorityArrowOnly = s.slot1PriorityArrow;
+
+                snapshot.slots[2].name = s.slot2Name;
+                snapshot.slots[2].profile = s.slot2_comfort.profileName;
+                snapshot.slots[2].mode = s.slot2_comfort.mode;
+                snapshot.slots[2].color = s.slot2Color;
+                snapshot.slots[2].volume = s.slot2Volume;
+                snapshot.slots[2].muteVolume = s.slot2MuteVolume;
+                snapshot.slots[2].darkMode = s.slot2DarkMode;
+                snapshot.slots[2].muteToZero = s.slot2MuteToZero;
+                snapshot.slots[2].alertPersist = s.slot2AlertPersist;
+                snapshot.slots[2].priorityArrowOnly = s.slot2PriorityArrow;
+            },
+            [this](String& json) {
+                if (!getPushStatusJson) {
+                    return false;
+                }
+                json = getPushStatusJson();
+                return true;
+            },
+        };
+    };
     server.on("/autopush", HTTP_GET, [this]() { 
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/api/autopush/slots", HTTP_GET, [this]() { handleAutoPushSlotsApi(); });
+    server.on("/api/autopush/slots", HTTP_GET, [this, makeAutoPushRuntime]() {
+        WifiAutoPushApiService::handleSlots(server, makeAutoPushRuntime());
+    });
     server.on("/api/autopush/slot", HTTP_POST, [this]() { handleAutoPushSlotSave(); });
     server.on("/api/autopush/activate", HTTP_POST, [this]() { handleAutoPushActivate(); });
     server.on("/api/autopush/push", HTTP_POST, [this]() { handleAutoPushPushNow(); });
-    server.on("/api/autopush/status", HTTP_GET, [this]() { handleAutoPushStatus(); });
+    server.on("/api/autopush/status", HTTP_GET, [this, makeAutoPushRuntime]() {
+        WifiAutoPushApiService::handleStatus(server, makeAutoPushRuntime());
+    });
     
     // Display Colors routes
     server.on("/displaycolors", HTTP_GET, [this]() { 
@@ -1900,59 +1954,6 @@ bool WiFiManager::serveLittleFSFile(const char* path, const char* contentType) {
 
 // ============= Auto-Push Handlers =============
 
-void WiFiManager::handleAutoPushSlotsApi() {
-    const V1Settings& s = settingsManager.get();
-    
-    JsonDocument doc;
-    doc["enabled"] = s.autoPushEnabled;
-    doc["activeSlot"] = s.activeSlot;
-    
-    JsonArray slots = doc["slots"].to<JsonArray>();
-    
-    // Slot 0
-    JsonObject slot0 = slots.add<JsonObject>();
-    slot0["name"] = s.slot0Name;
-    slot0["profile"] = s.slot0_default.profileName;
-    slot0["mode"] = s.slot0_default.mode;
-    slot0["color"] = s.slot0Color;
-    slot0["volume"] = s.slot0Volume;
-    slot0["muteVolume"] = s.slot0MuteVolume;
-    slot0["darkMode"] = s.slot0DarkMode;
-    slot0["muteToZero"] = s.slot0MuteToZero;
-    slot0["alertPersist"] = s.slot0AlertPersist;
-    slot0["priorityArrowOnly"] = s.slot0PriorityArrow;
-    
-    // Slot 1
-    JsonObject slot1 = slots.add<JsonObject>();
-    slot1["name"] = s.slot1Name;
-    slot1["profile"] = s.slot1_highway.profileName;
-    slot1["mode"] = s.slot1_highway.mode;
-    slot1["color"] = s.slot1Color;
-    slot1["volume"] = s.slot1Volume;
-    slot1["muteVolume"] = s.slot1MuteVolume;
-    slot1["darkMode"] = s.slot1DarkMode;
-    slot1["muteToZero"] = s.slot1MuteToZero;
-    slot1["alertPersist"] = s.slot1AlertPersist;
-    slot1["priorityArrowOnly"] = s.slot1PriorityArrow;
-    
-    // Slot 2
-    JsonObject slot2 = slots.add<JsonObject>();
-    slot2["name"] = s.slot2Name;
-    slot2["profile"] = s.slot2_comfort.profileName;
-    slot2["mode"] = s.slot2_comfort.mode;
-    slot2["color"] = s.slot2Color;
-    slot2["volume"] = s.slot2Volume;
-    slot2["muteVolume"] = s.slot2MuteVolume;
-    slot2["darkMode"] = s.slot2DarkMode;
-    slot2["muteToZero"] = s.slot2MuteToZero;
-    slot2["alertPersist"] = s.slot2AlertPersist;
-    slot2["priorityArrowOnly"] = s.slot2PriorityArrow;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
 void WiFiManager::handleAutoPushSlotSave() {
     if (!checkRateLimit()) return;
     
@@ -2155,16 +2156,6 @@ void WiFiManager::handleAutoPushPushNow() {
                   pushNowState.applyVolume ? "set" : "skip");
 
     server.send(200, "application/json", "{\"success\":true,\"queued\":true}");
-}
-
-void WiFiManager::handleAutoPushStatus() {
-    // Return push executor status via callback
-    if (getPushStatusJson) {
-        String json = getPushStatusJson();
-        server.send(200, "application/json", json);
-    } else {
-        server.send(500, "application/json", "{\"error\":\"Push status not available\"}");
-    }
 }
 
 // ============= Display Colors Handlers =============

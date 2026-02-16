@@ -1,7 +1,7 @@
 # WiFi API local-handler route contract (remaining non-ApiService route families)
 
-route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushSlotsApi delegates=
-route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushStatus delegates=
+route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleSlots
+route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleStatus
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleDisplayColorsApi delegates=
 route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleSettingsApi delegates=
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleCurrentSettings

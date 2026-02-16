@@ -207,11 +207,9 @@ private:
     void handleSettingsSave();
     
     // API endpoints
-    void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
     void handleAutoPushPushNow();
-    void handleAutoPushStatus();
     void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
