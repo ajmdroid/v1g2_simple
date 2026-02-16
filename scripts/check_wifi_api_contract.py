@@ -6,7 +6,7 @@ This script enforces four invariants in src/wifi_manager.cpp:
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
 3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
-   that point callers to /api/lockouts/*.
+   that point callers to /api/lockouts/* and mirror canonical route policy.
 4) WiFiManager handle* methods do not become thin ApiService shims again.
 
 Use --update to rewrite expected contract snapshots from current source.
@@ -51,6 +51,16 @@ HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
 DEPRECATED_HEADER_RE = re.compile(
     r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
+)
+LEGACY_LINE_RE = re.compile(
+    r"^route=(HTTP_[A-Z]+)\s+(\S+)\s+deprecated_header=(\d+)\s+deprecated_target=(\S*)$"
+)
+
+LEGACY_LOCKOUT_PARITY_ROUTES: Tuple[Tuple[str, str], ...] = (
+    ("HTTP_GET /api/lockouts/zones", "HTTP_GET /api/lockout/zones"),
+    ("HTTP_GET /api/lockouts/summary", "HTTP_GET /api/lockout/summary"),
+    ("HTTP_GET /api/lockouts/events", "HTTP_GET /api/lockout/events"),
+    ("HTTP_POST /api/lockouts/zones/delete", "HTTP_POST /api/lockout/zones/delete"),
 )
 
 
@@ -189,6 +199,72 @@ def extract_shim_absence_contract(source: str) -> List[str]:
     return sorted(out)
 
 
+def extract_legacy_header_map(legacy_lines: List[str]) -> Dict[str, Tuple[int, str]]:
+    out: Dict[str, Tuple[int, str]] = {}
+    for line in legacy_lines:
+        match = LEGACY_LINE_RE.match(line)
+        if not match:
+            continue
+        method = match.group(1)
+        path = match.group(2)
+        has_header = int(match.group(3))
+        target = match.group(4)
+        out[f"{method} {path}"] = (has_header, target)
+    return out
+
+
+def validate_legacy_lockout_parity(
+    policies: List[RoutePolicy], legacy_lines: List[str]
+) -> List[str]:
+    policy_map = {p.route: p for p in policies}
+    header_map = extract_legacy_header_map(legacy_lines)
+    errors: List[str] = []
+
+    for canonical_route, legacy_route in LEGACY_LOCKOUT_PARITY_ROUTES:
+        canonical = policy_map.get(canonical_route)
+        legacy = policy_map.get(legacy_route)
+
+        if canonical is None:
+            errors.append(f"missing canonical route policy: {canonical_route}")
+            continue
+        if legacy is None:
+            errors.append(f"missing legacy route policy: {legacy_route}")
+            continue
+
+        if canonical.rate_limit != legacy.rate_limit:
+            errors.append(
+                f"rate_limit mismatch {legacy_route} ({legacy.rate_limit}) != "
+                f"{canonical_route} ({canonical.rate_limit})"
+            )
+        if canonical.ui_activity != legacy.ui_activity:
+            errors.append(
+                f"ui_activity mismatch {legacy_route} ({legacy.ui_activity}) != "
+                f"{canonical_route} ({canonical.ui_activity})"
+            )
+        if canonical.obd_enabled_gate != legacy.obd_enabled_gate:
+            errors.append(
+                f"obd_enabled_gate mismatch {legacy_route} ({legacy.obd_enabled_gate}) != "
+                f"{canonical_route} ({canonical.obd_enabled_gate})"
+            )
+        if canonical.delegates != legacy.delegates:
+            errors.append(
+                f"delegate mismatch {legacy_route} ({','.join(legacy.delegates)}) != "
+                f"{canonical_route} ({','.join(canonical.delegates)})"
+            )
+
+        expected_target = canonical_route.split(" ", 1)[1]
+        has_header, target = header_map.get(legacy_route, (0, ""))
+        if has_header != 1:
+            errors.append(f"missing deprecation header on {legacy_route}")
+        if target != expected_target:
+            errors.append(
+                f"bad deprecation target on {legacy_route}: "
+                f"expected {expected_target}, got {target or '<empty>'}"
+            )
+
+    return errors
+
+
 def read_expected_lines(path: Path) -> List[str]:
     if not path.exists():
         return []
@@ -291,12 +367,19 @@ def main() -> int:
         print_diff(expected_shim_absence, shim_absence_lines, "shim-absence")
         ok = False
 
+    legacy_parity_errors = validate_legacy_lockout_parity(policies, legacy_lockout_lines)
+    if legacy_parity_errors:
+        print("[contract] legacy-lockout-parity mismatch")
+        for error in legacy_parity_errors:
+            print(f"  - {error}")
+        ok = False
+
     if not ok:
         print("\nRun with --update only when intentionally changing contract.")
         return 1
 
     print(
-        "[contract] route, policy, legacy lockout, and shim-absence contracts match"
+        "[contract] route, policy, legacy lockout, shim-absence, and lockout parity contracts match"
     )
     return 0
 
