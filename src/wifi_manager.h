@@ -203,9 +203,6 @@ private:
     void processPendingPushNow();
     
     // API endpoints
-    void handleDisplayColorsApi();
-    void handleDisplayColorsSave();
-    void handleDisplayColorsReset();
     void handleNotFound();
     
     // LittleFS file serving (new UI)
