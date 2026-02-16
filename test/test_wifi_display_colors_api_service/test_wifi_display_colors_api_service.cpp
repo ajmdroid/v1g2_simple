@@ -287,6 +287,37 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
 
+void test_api_preview_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiDisplayColorsApiService::handleApiPreview(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.requestColorPreviewHoldCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
+}
+
+void test_api_preview_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiDisplayColorsApiService::handleApiPreview(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"active\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
+}
+
 void test_preview_toggles_off_when_running() {
     WebServer server(80);
     FakeRuntime rt;
@@ -318,6 +349,34 @@ void test_preview_starts_when_not_running() {
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
 
+void test_api_clear_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiDisplayColorsApiService::handleApiClear(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
+}
+
+void test_api_clear_delegates_when_allowed() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiDisplayColorsApiService::handleApiClear(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"active\":false"));
+    TEST_ASSERT_EQUAL_INT(1, rt.cancelColorPreviewCalls);
+}
+
 void test_clear_cancels_preview_and_returns_inactive() {
     WebServer server(80);
     FakeRuntime rt;
@@ -340,8 +399,12 @@ int main() {
     RUN_TEST(test_save_clamps_numeric_ranges);
     RUN_TEST(test_reset_rate_limited_short_circuits);
     RUN_TEST(test_reset_restores_defaults_and_triggers_preview);
+    RUN_TEST(test_api_preview_rate_limited_short_circuits);
+    RUN_TEST(test_api_preview_delegates_when_allowed);
     RUN_TEST(test_preview_toggles_off_when_running);
     RUN_TEST(test_preview_starts_when_not_running);
+    RUN_TEST(test_api_clear_rate_limited_short_circuits);
+    RUN_TEST(test_api_clear_delegates_when_allowed);
     RUN_TEST(test_clear_cancels_preview_and_returns_inactive);
     return UNITY_END();
 }
