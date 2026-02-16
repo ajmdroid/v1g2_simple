@@ -95,7 +95,7 @@ void setUp() {
 
 void tearDown() {}
 
-void test_send_status_builds_core_payload() {
+void test_handle_status_builds_core_payload() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.setupModeActive = true;
@@ -153,7 +153,7 @@ void test_send_status_builds_core_payload() {
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
 }
 
-void test_send_status_merges_legacy_status_and_alert_json() {
+void test_handle_status_merges_legacy_status_and_alert_json() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.v1Connected = true;
@@ -179,7 +179,7 @@ void test_send_status_merges_legacy_status_and_alert_json() {
     TEST_ASSERT_TRUE(responseContains(server, "\"alert\":{\"band\":\"Ka\"}"));
 }
 
-void test_send_status_cache_hit_reuses_cached_payload() {
+void test_handle_status_cache_hit_reuses_cached_payload() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.apSsid = "InitialAP";
@@ -218,7 +218,7 @@ void test_send_status_cache_hit_reuses_cached_payload() {
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
 }
 
-void test_send_status_cache_expiry_rebuilds_payload() {
+void test_handle_status_cache_expiry_rebuilds_payload() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.apSsid = "InitialAP";
@@ -317,10 +317,10 @@ void test_handle_legacy_status_delegates_without_rate_limit() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_send_status_builds_core_payload);
-    RUN_TEST(test_send_status_merges_legacy_status_and_alert_json);
-    RUN_TEST(test_send_status_cache_hit_reuses_cached_payload);
-    RUN_TEST(test_send_status_cache_expiry_rebuilds_payload);
+    RUN_TEST(test_handle_status_builds_core_payload);
+    RUN_TEST(test_handle_status_merges_legacy_status_and_alert_json);
+    RUN_TEST(test_handle_status_cache_hit_reuses_cached_payload);
+    RUN_TEST(test_handle_status_cache_expiry_rebuilds_payload);
     RUN_TEST(test_handle_api_status_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_status_delegates_when_allowed);
     RUN_TEST(test_handle_legacy_status_delegates_without_rate_limit);
