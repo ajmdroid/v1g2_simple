@@ -226,6 +226,181 @@ void test_send_status_uses_single_data_snapshot_for_validity() {
     TEST_ASSERT_TRUE(responseContains(server, "\"hasValidData\":false"));
 }
 
+void test_handle_api_status_rate_limited_short_circuits() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    V1Settings settings;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    ObdApiService::handleApiStatus(
+        server,
+        obdHandler,
+        bleClient,
+        settings,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_status_delegates_when_allowed() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    V1Settings settings;
+    settings.obdEnabled = true;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    ObdApiService::handleApiStatus(
+        server,
+        obdHandler,
+        bleClient,
+        settings,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
+void test_handle_api_scan_respects_obd_enabled_gate() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+    int obdGateCalls = 0;
+
+    ObdApiService::handleApiScan(
+        server,
+        obdHandler,
+        bleClient,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        [&obdGateCalls, &server]() {
+            obdGateCalls++;
+            server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdGateCalls);
+    TEST_ASSERT_EQUAL_INT(0, obdHandler.startScanCalls);
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "OBD service disabled"));
+}
+
+void test_handle_api_scan_delegates_when_enabled() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+    int obdGateCalls = 0;
+
+    ObdApiService::handleApiScan(
+        server,
+        obdHandler,
+        bleClient,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        [&obdGateCalls]() {
+            obdGateCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdGateCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdHandler.startScanCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
+void test_handle_api_connect_respects_obd_enabled_gate() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+    server.setArg("address", "11:22:33");
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+    int obdGateCalls = 0;
+
+    ObdApiService::handleApiConnect(
+        server,
+        obdHandler,
+        bleClient,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        [&obdGateCalls, &server]() {
+            obdGateCalls++;
+            server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdGateCalls);
+    TEST_ASSERT_EQUAL_INT(0, obdHandler.connectCalls);
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "OBD service disabled"));
+}
+
+void test_handle_api_connect_delegates_when_enabled() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+    server.setArg("address", "11:22:33");
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+    int obdGateCalls = 0;
+
+    ObdApiService::handleApiConnect(
+        server,
+        obdHandler,
+        bleClient,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        [&obdGateCalls]() {
+            obdGateCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdGateCalls);
+    TEST_ASSERT_EQUAL_INT(1, obdHandler.connectCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_parse_connect_request_from_query_args);
@@ -240,5 +415,11 @@ int main() {
     RUN_TEST(test_handle_forget_reports_missing_address);
     RUN_TEST(test_send_status_reports_core_obd_fields);
     RUN_TEST(test_send_status_uses_single_data_snapshot_for_validity);
+    RUN_TEST(test_handle_api_status_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_status_delegates_when_allowed);
+    RUN_TEST(test_handle_api_scan_respects_obd_enabled_gate);
+    RUN_TEST(test_handle_api_scan_delegates_when_enabled);
+    RUN_TEST(test_handle_api_connect_respects_obd_enabled_gate);
+    RUN_TEST(test_handle_api_connect_delegates_when_enabled);
     return UNITY_END();
 }
