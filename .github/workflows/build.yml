@@ -180,7 +180,7 @@ jobs:
         echo "  0x0000 bootloader.bin \\" >> $GITHUB_STEP_SUMMARY
         echo "  0x8000 partitions.bin \\" >> $GITHUB_STEP_SUMMARY
         echo "  0x10000 firmware.bin \\" >> $GITHUB_STEP_SUMMARY
-        echo "  0x3D0000 littlefs.bin" >> $GITHUB_STEP_SUMMARY
+        echo "  0xca0000 littlefs.bin" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Or use PlatformIO:" >> $GITHUB_STEP_SUMMARY
