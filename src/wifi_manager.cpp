@@ -1096,6 +1096,12 @@ void WiFiManager::setupWebServer() {
             [](uint32_t durationMs) {
                 requestColorPreviewHold(durationMs);
             },
+            []() {
+                return isColorPreviewRunning();
+            },
+            []() {
+                cancelColorPreview();
+            },
             [this]() {
                 settingsManager.save();
             },
@@ -1120,26 +1126,13 @@ void WiFiManager::setupWebServer() {
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
+    server.on("/api/displaycolors/preview", HTTP_POST, [this, makeDisplayColorsRuntime]() { 
         if (!checkRateLimit()) return;
-        if (isColorPreviewRunning()) {
-            Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
-            cancelColorPreview();
-            // main.cpp loop handles display restore based on V1 connection state
-            server.send(200, "application/json", "{\"success\":true,\"active\":false}");
-        } else {
-            Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
-            display.showDemo();
-            requestColorPreviewHold(5500);
-            server.send(200, "application/json", "{\"success\":true,\"active\":true}");
-        }
+        WifiDisplayColorsApiService::handlePreview(server, makeDisplayColorsRuntime());
     });
-    server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
+    server.on("/api/displaycolors/clear", HTTP_POST, [this, makeDisplayColorsRuntime]() { 
         if (!checkRateLimit()) return;
-        Serial.println("[HTTP] POST /api/displaycolors/clear - cancelling preview");
-        cancelColorPreview();
-        // main.cpp loop handles display restore based on V1 connection state
-        server.send(200, "application/json", "{\"success\":true,\"active\":false}");
+        WifiDisplayColorsApiService::handleClear(server, makeDisplayColorsRuntime());
     });
     
     // Settings backup/restore API routes

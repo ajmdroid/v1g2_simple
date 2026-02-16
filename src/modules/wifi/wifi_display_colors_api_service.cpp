@@ -308,6 +308,39 @@ void handleReset(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
+void handlePreview(WebServer& server, const Runtime& runtime) {
+    const bool previewRunning =
+        runtime.isColorPreviewRunning && runtime.isColorPreviewRunning();
+
+    if (previewRunning) {
+        Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
+        if (runtime.cancelColorPreview) {
+            runtime.cancelColorPreview();
+        }
+        // main.cpp loop handles display restore based on V1 connection state
+        server.send(200, "application/json", "{\"success\":true,\"active\":false}");
+        return;
+    }
+
+    Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
+    if (runtime.showDisplayDemo) {
+        runtime.showDisplayDemo();
+    }
+    if (runtime.requestColorPreviewHoldMs) {
+        runtime.requestColorPreviewHoldMs(5500);
+    }
+    server.send(200, "application/json", "{\"success\":true,\"active\":true}");
+}
+
+void handleClear(WebServer& server, const Runtime& runtime) {
+    Serial.println("[HTTP] POST /api/displaycolors/clear - cancelling preview");
+    if (runtime.cancelColorPreview) {
+        runtime.cancelColorPreview();
+    }
+    // main.cpp loop handles display restore based on V1 connection state
+    server.send(200, "application/json", "{\"success\":true,\"active\":false}");
+}
+
 void handleGet(WebServer& server, const Runtime& runtime) {
     if (!runtime.getSettings) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");

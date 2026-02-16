@@ -21,6 +21,8 @@ struct Runtime {
     std::function<void(uint8_t)> setAudioVolume;
     std::function<void()> showDisplayDemo;
     std::function<void(uint32_t)> requestColorPreviewHoldMs;
+    std::function<bool()> isColorPreviewRunning;
+    std::function<void()> cancelColorPreview;
     std::function<void()> saveSettings;
 };
 
@@ -33,5 +35,8 @@ void handleSave(WebServer& server,
 void handleReset(WebServer& server,
                  const Runtime& runtime,
                  const std::function<bool()>& checkRateLimit);
+
+void handlePreview(WebServer& server, const Runtime& runtime);
+void handleClear(WebServer& server, const Runtime& runtime);
 
 }  // namespace WifiDisplayColorsApiService

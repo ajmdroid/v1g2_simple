@@ -42,6 +42,8 @@ struct FakeRuntime {
     int showDisplayDemoCalls = 0;
     int requestColorPreviewHoldCalls = 0;
     uint32_t lastPreviewHoldMs = 0;
+    bool isColorPreviewRunning = false;
+    int cancelColorPreviewCalls = 0;
     int saveSettingsCalls = 0;
 };
 
@@ -85,6 +87,12 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt](uint32_t holdMs) {
             rt.requestColorPreviewHoldCalls++;
             rt.lastPreviewHoldMs = holdMs;
+        },
+        [&rt]() {
+            return rt.isColorPreviewRunning;
+        },
+        [&rt]() {
+            rt.cancelColorPreviewCalls++;
         },
         [&rt]() {
             rt.saveSettingsCalls++;
@@ -279,6 +287,49 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
 
+void test_preview_toggles_off_when_running() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.isColorPreviewRunning = true;
+
+    WifiDisplayColorsApiService::handlePreview(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"active\":false"));
+    TEST_ASSERT_EQUAL_INT(1, rt.cancelColorPreviewCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.requestColorPreviewHoldCalls);
+}
+
+void test_preview_starts_when_not_running() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.isColorPreviewRunning = false;
+
+    WifiDisplayColorsApiService::handlePreview(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"active\":true"));
+    TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
+    TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
+}
+
+void test_clear_cancels_preview_and_returns_inactive() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiDisplayColorsApiService::handleClear(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"active\":false"));
+    TEST_ASSERT_EQUAL_INT(1, rt.cancelColorPreviewCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_get_returns_500_when_runtime_missing);
@@ -289,5 +340,8 @@ int main() {
     RUN_TEST(test_save_clamps_numeric_ranges);
     RUN_TEST(test_reset_rate_limited_short_circuits);
     RUN_TEST(test_reset_restores_defaults_and_triggers_preview);
+    RUN_TEST(test_preview_toggles_off_when_running);
+    RUN_TEST(test_preview_starts_when_not_running);
+    RUN_TEST(test_clear_cancels_preview_and_returns_inactive);
     return UNITY_END();
 }
