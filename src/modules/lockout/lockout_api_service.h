@@ -40,7 +40,11 @@ inline void handleApiSummary(WebServer& server,
                              SignalObservationLog& signalObservationLog,
                              SignalObservationSdLogger& signalObservationSdLogger,
                              const std::function<bool()>& checkRateLimit,
-                             const std::function<void()>& markUiActivity) {
+                             const std::function<void()>& markUiActivity,
+                             const std::function<void()>& sendDeprecatedHeader = {}) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
     if (checkRateLimit && !checkRateLimit()) return;
     if (markUiActivity) {
         markUiActivity();
@@ -53,7 +57,11 @@ inline void handleApiEvents(WebServer& server,
                             SignalObservationLog& signalObservationLog,
                             SignalObservationSdLogger& signalObservationSdLogger,
                             const std::function<bool()>& checkRateLimit,
-                            const std::function<void()>& markUiActivity) {
+                            const std::function<void()>& markUiActivity,
+                            const std::function<void()>& sendDeprecatedHeader = {}) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
     if (checkRateLimit && !checkRateLimit()) return;
     if (markUiActivity) {
         markUiActivity();
@@ -67,7 +75,11 @@ inline void handleApiZones(WebServer& server,
                            LockoutLearner& lockoutLearner,
                            SettingsManager& settingsManager,
                            const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity) {
+                           const std::function<void()>& markUiActivity,
+                           const std::function<void()>& sendDeprecatedHeader = {}) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
     if (checkRateLimit && !checkRateLimit()) return;
     if (markUiActivity) {
         markUiActivity();
@@ -80,7 +92,11 @@ inline void handleApiZoneDelete(WebServer& server,
                                 LockoutIndex& lockoutIndex,
                                 LockoutStore& lockoutStore,
                                 const std::function<bool()>& checkRateLimit,
-                                const std::function<void()>& markUiActivity) {
+                                const std::function<void()>& markUiActivity,
+                                const std::function<void()>& sendDeprecatedHeader = {}) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
     if (checkRateLimit && !checkRateLimit()) return;
     if (markUiActivity) {
         markUiActivity();

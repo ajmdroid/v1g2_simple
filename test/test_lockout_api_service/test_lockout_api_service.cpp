@@ -23,6 +23,7 @@ int sendSummaryCalls = 0;
 int sendEventsCalls = 0;
 int sendZonesCalls = 0;
 int handleZoneDeleteCalls = 0;
+int deprecatedHeaderCalls = 0;
 
 bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
@@ -71,6 +72,7 @@ void setUp() {
     sendEventsCalls = 0;
     sendZonesCalls = 0;
     handleZoneDeleteCalls = 0;
+    deprecatedHeaderCalls = 0;
 }
 
 void tearDown() {}
@@ -196,6 +198,59 @@ void test_handle_api_zone_delete_delegates_when_allowed() {
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-delete\""));
 }
 
+void test_handle_api_summary_sends_deprecated_header_when_rate_limited() {
+    WebServer server(80);
+    SignalObservationLog signalLog;
+    SignalObservationSdLogger sdLogger;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    LockoutApiService::handleApiSummary(
+        server,
+        signalLog,
+        sdLogger,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        []() { deprecatedHeaderCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, deprecatedHeaderCalls);
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(0, sendSummaryCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_zones_with_deprecated_header_delegates_when_allowed() {
+    WebServer server(80);
+    LockoutIndex index;
+    LockoutLearner learner;
+    SettingsManager settings;
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    LockoutApiService::handleApiZones(
+        server,
+        index,
+        learner,
+        settings,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; },
+        []() { deprecatedHeaderCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, deprecatedHeaderCalls);
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, sendZonesCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"lockout-zones\""));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_api_summary_rate_limited_short_circuits);
@@ -203,5 +258,7 @@ int main() {
     RUN_TEST(test_handle_api_events_delegates_when_allowed);
     RUN_TEST(test_handle_api_zones_delegates_when_allowed);
     RUN_TEST(test_handle_api_zone_delete_delegates_when_allowed);
+    RUN_TEST(test_handle_api_summary_sends_deprecated_header_when_rate_limited);
+    RUN_TEST(test_handle_api_zones_with_deprecated_header_delegates_when_allowed);
     return UNITY_END();
 }

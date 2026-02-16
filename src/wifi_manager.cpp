@@ -1467,41 +1467,41 @@ void WiFiManager::setupWebServer() {
             [this]() { markUiActivity(); });
     });
     server.on("/api/lockout/zones", HTTP_GET, [this]() {
-        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones");
         LockoutApiService::handleApiZones(
             server,
             lockoutIndex,
             lockoutLearner,
             settingsManager,
             [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            [this]() { markUiActivity(); },
+            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones"); });
     });
     server.on("/api/lockout/summary", HTTP_GET, [this]() {
-        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary");
         LockoutApiService::handleApiSummary(
             server,
             signalObservationLog,
             signalObservationSdLogger,
             [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            [this]() { markUiActivity(); },
+            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary"); });
     });
     server.on("/api/lockout/events", HTTP_GET, [this]() {
-        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events");
         LockoutApiService::handleApiEvents(
             server,
             signalObservationLog,
             signalObservationSdLogger,
             [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            [this]() { markUiActivity(); },
+            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events"); });
     });
     server.on("/api/lockout/zones/delete", HTTP_POST, [this]() {
-        server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete");
         LockoutApiService::handleApiZoneDelete(
             server,
             lockoutIndex,
             lockoutStore,
             [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            [this]() { markUiActivity(); },
+            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete"); });
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
