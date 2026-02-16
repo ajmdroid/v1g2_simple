@@ -1,0 +1,70 @@
+#include "lockout_api_service.h"
+
+namespace LockoutApiService {
+
+void handleApiSummary(WebServer& server,
+                      SignalObservationLog& signalObservationLog,
+                      SignalObservationSdLogger& signalObservationSdLogger,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity,
+                      const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendSummary(server, signalObservationLog, signalObservationSdLogger);
+}
+
+void handleApiEvents(WebServer& server,
+                     SignalObservationLog& signalObservationLog,
+                     SignalObservationSdLogger& signalObservationSdLogger,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity,
+                     const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendEvents(server, signalObservationLog, signalObservationSdLogger);
+}
+
+void handleApiZones(WebServer& server,
+                    LockoutIndex& lockoutIndex,
+                    LockoutLearner& lockoutLearner,
+                    SettingsManager& settingsManager,
+                    const std::function<bool()>& checkRateLimit,
+                    const std::function<void()>& markUiActivity,
+                    const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+}
+
+void handleApiZoneDelete(WebServer& server,
+                         LockoutIndex& lockoutIndex,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity,
+                         const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleZoneDelete(server, lockoutIndex, lockoutStore);
+}
+
+}  // namespace LockoutApiService
