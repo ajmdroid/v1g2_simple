@@ -140,7 +140,7 @@ void sendForgotten(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
 }
 
-void handleStatus(WebServer& server, const Runtime& runtime) {
+static void handleStatusImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.isEnabled || !runtime.getSavedSsid || !runtime.getStateName ||
         !runtime.isScanRunning || !runtime.isConnected) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
@@ -164,7 +164,7 @@ void handleStatus(WebServer& server, const Runtime& runtime) {
     sendStatus(server, payload);
 }
 
-void handleScan(WebServer& server, const Runtime& runtime) {
+static void handleScanImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.isScanRunning || !runtime.isScanInProgress ||
         !runtime.hasCompletedScanResults || !runtime.getScannedNetworks ||
         !runtime.startScan) {
@@ -192,7 +192,7 @@ void handleScan(WebServer& server, const Runtime& runtime) {
     sendScanStartFailed(server);
 }
 
-void handleConnect(WebServer& server, const Runtime& runtime) {
+static void handleConnectImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.connectToNetwork) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
         return;
@@ -216,7 +216,7 @@ void handleConnect(WebServer& server, const Runtime& runtime) {
     sendConnectStartFailed(server);
 }
 
-void handleDisconnect(WebServer& server, const Runtime& runtime) {
+static void handleDisconnectImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.disconnectFromNetwork) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
         return;
@@ -228,7 +228,7 @@ void handleDisconnect(WebServer& server, const Runtime& runtime) {
     sendDisconnected(server);
 }
 
-void handleForget(WebServer& server, const Runtime& runtime) {
+static void handleForgetImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.disconnectFromNetwork || !runtime.clearCredentials ||
         !runtime.setStateDisabled || !runtime.setApMode) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
@@ -245,7 +245,7 @@ void handleForget(WebServer& server, const Runtime& runtime) {
     sendForgotten(server);
 }
 
-void handleEnable(WebServer& server, const Runtime& runtime) {
+static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.setWifiClientEnabled || !runtime.getSavedSsid ||
         !runtime.getSavedPassword || !runtime.connectToNetwork ||
         !runtime.setStateDisconnected || !runtime.disconnectFromNetwork ||
@@ -289,7 +289,7 @@ void handleApiStatus(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleStatus(server, runtime);
+    handleStatusImpl(server, runtime);
 }
 
 void handleApiScan(WebServer& server,
@@ -300,7 +300,7 @@ void handleApiScan(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleScan(server, runtime);
+    handleScanImpl(server, runtime);
 }
 
 void handleApiConnect(WebServer& server,
@@ -311,7 +311,7 @@ void handleApiConnect(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleConnect(server, runtime);
+    handleConnectImpl(server, runtime);
 }
 
 void handleApiDisconnect(WebServer& server,
@@ -322,7 +322,7 @@ void handleApiDisconnect(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleDisconnect(server, runtime);
+    handleDisconnectImpl(server, runtime);
 }
 
 void handleApiForget(WebServer& server,
@@ -333,7 +333,7 @@ void handleApiForget(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleForget(server, runtime);
+    handleForgetImpl(server, runtime);
 }
 
 void handleApiEnable(WebServer& server,
@@ -344,7 +344,7 @@ void handleApiEnable(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    handleEnable(server, runtime);
+    handleEnableImpl(server, runtime);
 }
 
 }  // namespace WifiClientApiService

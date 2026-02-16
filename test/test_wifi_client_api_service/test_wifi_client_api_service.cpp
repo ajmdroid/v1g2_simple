@@ -238,7 +238,7 @@ void test_handle_status_connected_uses_runtime_payload() {
     rt.connectedNetwork.ip = "192.168.4.10";
     rt.connectedNetwork.rssi = -55;
 
-    WifiClientApiService::handleStatus(server, makeRuntime(rt));
+    WifiClientApiService::handleApiStatus(server, makeRuntime(rt), nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
@@ -256,7 +256,7 @@ void test_handle_scan_in_progress_returns_scanning_true() {
     rt.scanRunning = true;
     rt.scanInProgress = true;
 
-    WifiClientApiService::handleScan(server, makeRuntime(rt));
+    WifiClientApiService::handleApiScan(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":true"));
@@ -276,7 +276,7 @@ void test_handle_scan_completed_returns_networks() {
     net.secure = true;
     rt.scannedNetworks.push_back(net);
 
-    WifiClientApiService::handleScan(server, makeRuntime(rt));
+    WifiClientApiService::handleApiScan(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":false"));
@@ -293,7 +293,7 @@ void test_handle_scan_starts_new_scan_when_no_results() {
     rt.hasCompletedResults = false;
     rt.startScanReturn = true;
 
-    WifiClientApiService::handleScan(server, makeRuntime(rt));
+    WifiClientApiService::handleApiScan(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":true"));
@@ -305,7 +305,7 @@ void test_handle_connect_parse_error_returns_400() {
     FakeRuntime rt;
     server.setArg("plain", "{bad");
 
-    WifiClientApiService::handleConnect(server, makeRuntime(rt));
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
@@ -318,7 +318,7 @@ void test_handle_connect_starts_connection() {
     FakeRuntime rt;
     server.setArg("plain", "{\"ssid\":\"GarageWiFi\",\"password\":\"secret\"}");
 
-    WifiClientApiService::handleConnect(server, makeRuntime(rt));
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -332,7 +332,7 @@ void test_handle_forget_clears_credentials_and_disables_sta() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiClientApiService::handleForget(server, makeRuntime(rt));
+    WifiClientApiService::handleApiForget(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -350,7 +350,7 @@ void test_handle_enable_true_with_saved_credentials_starts_connect() {
     rt.savedPassword = "pw123";
     server.setArg("plain", "{\"enabled\":true}");
 
-    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
@@ -368,7 +368,7 @@ void test_handle_enable_true_without_saved_credentials_sets_disconnected_state()
     rt.savedSsid = "";
     server.setArg("plain", "{\"enabled\":true}");
 
-    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
@@ -383,7 +383,7 @@ void test_handle_enable_false_disables_sta_mode() {
     FakeRuntime rt;
     server.setArg("plain", "{\"enabled\":false}");
 
-    WifiClientApiService::handleEnable(server, makeRuntime(rt));
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client disabled\""));
