@@ -178,8 +178,8 @@ private:
     // the expensive BLE connect.  Lighter on the radio than cycling
     // through full connect/disconnect state-machine retries.
     static constexpr uint8_t SCAN_GATE_ATTEMPTS = 5;
-    static constexpr uint32_t SCAN_GATE_DURATION_MS = 2000;
-    static constexpr uint32_t SCAN_GATE_PAUSE_MS = 500;
+    static constexpr uint32_t SCAN_GATE_DURATION_MS = 3000;
+    static constexpr uint32_t SCAN_GATE_PAUSE_MS = 1000;
     static constexpr size_t MAX_REMEMBERED_DEVICES = 8;
 
     OBDData lastData{};
