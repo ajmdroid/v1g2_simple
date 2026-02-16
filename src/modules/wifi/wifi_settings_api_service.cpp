@@ -37,7 +37,7 @@ bool computeCameraRuntimeEnabled(const V1Settings& settings) {
 
 }  // namespace
 
-void handleSettingsGet(WebServer& server, const Runtime& runtime) {
+void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     if (!runtime.getSettings) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
@@ -72,9 +72,9 @@ void handleSettingsGet(WebServer& server, const Runtime& runtime) {
     sendJsonDocument(server, 200, doc);
 }
 
-void handleSettingsSave(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit) {
+void handleApiSettingsSave(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.getMutableSettings) {
@@ -245,7 +245,7 @@ void handleApiLegacySettingsSave(WebServer& server,
     }
 
     // Preserve legacy behavior: route-level guard + delegate-level guard.
-    handleSettingsSave(server, runtime, checkRateLimit);
+    handleApiSettingsSave(server, runtime, checkRateLimit);
 }
 
 }  // namespace WifiSettingsApiService

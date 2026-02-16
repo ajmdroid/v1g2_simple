@@ -26,21 +26,11 @@ struct Runtime {
     std::function<void()> save;
 };
 
-void handleSettingsGet(WebServer& server, const Runtime& runtime);
+void handleApiSettingsGet(WebServer& server, const Runtime& runtime);
 
-void handleSettingsSave(WebServer& server,
-                        const Runtime& runtime,
-                        const std::function<bool()>& checkRateLimit);
-
-inline void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
-    handleSettingsGet(server, runtime);
-}
-
-inline void handleApiSettingsSave(WebServer& server,
-                                  const Runtime& runtime,
-                                  const std::function<bool()>& checkRateLimit) {
-    handleSettingsSave(server, runtime, checkRateLimit);
-}
+void handleApiSettingsSave(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit);
 
 void handleApiLegacySettingsSave(WebServer& server,
                                  const Runtime& runtime,
