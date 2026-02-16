@@ -188,7 +188,7 @@ void test_slots_serializes_expected_payload() {
     rt.snapshot.slots[2].alertPersist = 0;
     rt.snapshot.slots[2].priorityArrowOnly = false;
 
-    WifiAutoPushApiService::handleSlots(server, makeRuntime(rt));
+    WifiAutoPushApiService::handleApiSlots(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
@@ -205,7 +205,7 @@ void test_status_returns_500_when_unavailable() {
     FakeRuntime rt;
     rt.statusAvailable = false;
 
-    WifiAutoPushApiService::handleStatus(server, makeRuntime(rt));
+    WifiAutoPushApiService::handleApiStatus(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push status not available\""));
@@ -216,7 +216,7 @@ void test_status_returns_500_when_callback_missing() {
     WebServer server(80);
     WifiAutoPushApiService::Runtime runtime{};
 
-    WifiAutoPushApiService::handleStatus(server, runtime);
+    WifiAutoPushApiService::handleApiStatus(server, runtime);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push status not available\""));
@@ -228,7 +228,7 @@ void test_status_returns_json_when_available() {
     rt.statusAvailable = true;
     rt.statusJson = "{\"ok\":true,\"queueDepth\":1}";
 
-    WifiAutoPushApiService::handleStatus(server, makeRuntime(rt));
+    WifiAutoPushApiService::handleApiStatus(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
@@ -243,7 +243,7 @@ void test_slot_save_rate_limited_short_circuits() {
     server.setArg("profile", "Road");
     server.setArg("mode", "1");
 
-    WifiAutoPushApiService::handleSlotSave(
+    WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -257,7 +257,7 @@ void test_slot_save_missing_params_returns_400() {
     FakeRuntime rt;
     server.setArg("slot", "0");
 
-    WifiAutoPushApiService::handleSlotSave(
+    WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -273,7 +273,7 @@ void test_slot_save_invalid_slot_returns_400() {
     server.setArg("profile", "Road");
     server.setArg("mode", "1");
 
-    WifiAutoPushApiService::handleSlotSave(
+    WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -298,7 +298,7 @@ void test_slot_save_success_updates_slot_runtime() {
     server.setArg("alertPersist", "9");
     server.setArg("priorityArrowOnly", "true");
 
-    WifiAutoPushApiService::handleSlotSave(
+    WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -330,7 +330,7 @@ void test_activate_missing_slot_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiAutoPushApiService::handleActivate(
+    WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -344,7 +344,7 @@ void test_activate_invalid_slot_returns_400() {
     FakeRuntime rt;
     server.setArg("slot", "-1");
 
-    WifiAutoPushApiService::handleActivate(
+    WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -358,7 +358,7 @@ void test_activate_success_defaults_enable_true() {
     FakeRuntime rt;
     server.setArg("slot", "1");
 
-    WifiAutoPushApiService::handleActivate(
+    WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -377,7 +377,7 @@ void test_activate_success_enable_false() {
     server.setArg("slot", "0");
     server.setArg("enable", "false");
 
-    WifiAutoPushApiService::handleActivate(
+    WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -391,7 +391,7 @@ void test_push_now_rate_limited_short_circuits() {
     FakeRuntime rt;
     server.setArg("slot", "1");
 
-    WifiAutoPushApiService::handlePushNow(
+    WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -404,7 +404,7 @@ void test_push_now_missing_slot_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiAutoPushApiService::handlePushNow(
+    WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -418,7 +418,7 @@ void test_push_now_invalid_slot_returns_400() {
     FakeRuntime rt;
     server.setArg("slot", "9");
 
-    WifiAutoPushApiService::handlePushNow(
+    WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -433,22 +433,22 @@ void test_push_now_maps_runtime_error_states() {
     server.setArg("slot", "0");
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
-    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
-    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
     TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push already in progress\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
-    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"No profile configured for this slot\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
-    WifiAutoPushApiService::handlePushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Failed to load profile\""));
 }
@@ -461,7 +461,7 @@ void test_push_now_success_with_profile_override() {
     server.setArg("profile", "Weekend");
     server.setArg("mode", "3");
 
-    WifiAutoPushApiService::handlePushNow(
+    WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
         []() { return true; });

@@ -1,7 +1,7 @@
 # WiFi API local-handler route contract (remaining non-ApiService route families)
 
-route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleSlots
-route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleStatus
+route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiSlots
+route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiStatus
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleGet
 route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiSettingsApiService::handleSettingsGet
 route=HTTP_GET /api/status rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiStatusApiService::handleApiStatus
@@ -9,9 +9,9 @@ route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 han
 route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileGet
 route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfilesList
 route=HTTP_GET /api/wifi/status rate_limit=0 ui_activity=1 obd_enabled_gate=0 handlers= delegates=WifiClientApiService::handleApiStatus
-route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleActivate
-route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handlePushNow
-route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleSlotSave
+route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiActivate
+route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiPushNow
+route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiSlotSave
 route=HTTP_POST /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleSave
 route=HTTP_POST /api/displaycolors/clear rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiClear
 route=HTTP_POST /api/displaycolors/preview rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiPreview

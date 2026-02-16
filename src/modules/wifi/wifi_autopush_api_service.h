@@ -78,4 +78,30 @@ void handlePushNow(WebServer& server,
                    const Runtime& runtime,
                    const std::function<bool()>& checkRateLimit);
 
+inline void handleApiSlots(WebServer& server, const Runtime& runtime) {
+    handleSlots(server, runtime);
+}
+
+inline void handleApiStatus(WebServer& server, const Runtime& runtime) {
+    handleStatus(server, runtime);
+}
+
+inline void handleApiSlotSave(WebServer& server,
+                              const Runtime& runtime,
+                              const std::function<bool()>& checkRateLimit) {
+    handleSlotSave(server, runtime, checkRateLimit);
+}
+
+inline void handleApiActivate(WebServer& server,
+                              const Runtime& runtime,
+                              const std::function<bool()>& checkRateLimit) {
+    handleActivate(server, runtime, checkRateLimit);
+}
+
+inline void handleApiPushNow(WebServer& server,
+                             const Runtime& runtime,
+                             const std::function<bool()>& checkRateLimit) {
+    handlePushNow(server, runtime, checkRateLimit);
+}
+
 }  // namespace WifiAutoPushApiService

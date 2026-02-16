@@ -1038,28 +1038,28 @@ void WiFiManager::setupWebServer() {
         WifiPortalApiService::handleRedirectToRoot(server);
     });
     server.on("/api/autopush/slots", HTTP_GET, [this, makeAutoPushRuntime]() {
-        WifiAutoPushApiService::handleSlots(server, makeAutoPushRuntime());
+        WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
     });
     server.on("/api/autopush/slot", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
-        WifiAutoPushApiService::handleSlotSave(
+        WifiAutoPushApiService::handleApiSlotSave(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
     server.on("/api/autopush/activate", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
-        WifiAutoPushApiService::handleActivate(
+        WifiAutoPushApiService::handleApiActivate(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
     server.on("/api/autopush/push", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
-        WifiAutoPushApiService::handlePushNow(
+        WifiAutoPushApiService::handleApiPushNow(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
     server.on("/api/autopush/status", HTTP_GET, [this, makeAutoPushRuntime]() {
-        WifiAutoPushApiService::handleStatus(server, makeAutoPushRuntime());
+        WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
     });
     
     // Display Colors routes
