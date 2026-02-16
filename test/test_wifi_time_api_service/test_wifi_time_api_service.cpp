@@ -255,6 +255,52 @@ void test_time_set_query_source_overrides_json_source() {
     TEST_ASSERT_EQUAL_INT(0, rt.setCalls);
 }
 
+void test_api_time_set_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeTimeRuntime rt;
+    server.setArg("plain", "{\"unixMs\":1700000000001}");
+    int invalidateCalls = 0;
+    int rateLimitCalls = 0;
+
+    WifiTimeApiService::handleApiTimeSet(
+        server,
+        makeRuntime(rt),
+        1,
+        [&invalidateCalls]() { invalidateCalls++; },
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.setCalls);
+    TEST_ASSERT_EQUAL_INT(0, invalidateCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_api_time_set_delegates_when_allowed() {
+    WebServer server(80);
+    FakeTimeRuntime rt;
+    server.setArg("plain", "{\"unixMs\":1700000001234,\"tzOffsetMin\":-60}");
+    int invalidateCalls = 0;
+    int rateLimitCalls = 0;
+
+    WifiTimeApiService::handleApiTimeSet(
+        server,
+        makeRuntime(rt),
+        1,
+        [&invalidateCalls]() { invalidateCalls++; },
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setCalls);
+    TEST_ASSERT_EQUAL_INT(1, invalidateCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_time_set_rejects_unsupported_source);
@@ -267,5 +313,7 @@ int main() {
     RUN_TEST(test_time_set_non_noop_writes_and_invalidates);
     RUN_TEST(test_time_set_response_includes_backward_compatible_fields);
     RUN_TEST(test_time_set_query_source_overrides_json_source);
+    RUN_TEST(test_api_time_set_rate_limited_short_circuits);
+    RUN_TEST(test_api_time_set_delegates_when_allowed);
     return UNITY_END();
 }

@@ -23,4 +23,10 @@ void handleTimeSet(WebServer& server,
                    uint8_t clientSource,
                    const std::function<void()>& invalidateStatusCache);
 
+void handleApiTimeSet(WebServer& server,
+                      const TimeRuntime& runtime,
+                      uint8_t clientSource,
+                      const std::function<void()>& invalidateStatusCache,
+                      const std::function<bool()>& checkRateLimit);
+
 }  // namespace WifiTimeApiService

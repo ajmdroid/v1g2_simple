@@ -24,6 +24,15 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
+void handleApiProfilePush(WebServer& server,
+                          bool v1Connected,
+                          const std::function<bool()>& requestProfilePush,
+                          const std::function<bool()>& checkRateLimit) {
+    // Preserve existing route behavior: route-level guard + delegate-level guard.
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleProfilePush(server, v1Connected, requestProfilePush, checkRateLimit);
+}
+
 void handleProfilePush(WebServer& server,
                        bool v1Connected,
                        const std::function<bool()>& requestProfilePush,

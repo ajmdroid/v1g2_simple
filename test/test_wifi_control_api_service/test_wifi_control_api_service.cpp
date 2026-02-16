@@ -85,6 +85,46 @@ void test_profile_push_rate_limited_short_circuits() {
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
+void test_api_profile_push_rate_limited_short_circuits_on_route_guard() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+    int callbackCalls = 0;
+
+    WifiControlApiService::handleApiProfilePush(
+        server,
+        true,
+        [&callbackCalls]() {
+            callbackCalls++;
+            return true;
+        },
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, callbackCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_api_profile_push_preserves_double_rate_limit_behavior() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    WifiControlApiService::handleApiProfilePush(
+        server,
+        false,
+        []() { return true; },
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(2, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
+}
+
 void test_dark_mode_missing_state_param() {
     WebServer server(80);
 
@@ -193,6 +233,8 @@ int main() {
     RUN_TEST(test_profile_push_reports_missing_callback);
     RUN_TEST(test_profile_push_reports_queued);
     RUN_TEST(test_profile_push_rate_limited_short_circuits);
+    RUN_TEST(test_api_profile_push_rate_limited_short_circuits_on_route_guard);
+    RUN_TEST(test_api_profile_push_preserves_double_rate_limit_behavior);
     RUN_TEST(test_dark_mode_missing_state_param);
     RUN_TEST(test_dark_mode_inverts_display_command);
     RUN_TEST(test_mute_missing_state_param);

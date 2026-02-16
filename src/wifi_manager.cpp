@@ -640,6 +640,20 @@ void WiFiManager::setupWebServer() {
         };
     };
     auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
+    auto makeTimeRuntime = [this]() {
+        return WifiTimeApiService::TimeRuntime{
+            [this]() { return timeService.timeValid(); },
+            [this]() { return timeService.nowEpochMsOr0(); },
+            [this]() { return timeService.tzOffsetMinutes(); },
+            [this]() { return timeService.timeSource(); },
+            [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
+                timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
+            },
+            [this]() { return timeService.timeConfidence(); },
+            [this]() { return timeService.nowMonoMs(); },
+            [this]() { return timeService.epochAgeMsOr0(); },
+        };
+    };
 
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, makeStatusRuntime]() {
@@ -653,32 +667,19 @@ void WiFiManager::setupWebServer() {
             [this]() { return checkRateLimit(); });
     });
     server.on("/api/profile/push", HTTP_POST, [this]() { 
-        if (!checkRateLimit()) return;
-        WifiControlApiService::handleProfilePush(
+        WifiControlApiService::handleApiProfilePush(
             server,
             bleClient.isConnected(),
             requestProfilePush,
             [this]() { return checkRateLimit(); }); 
     });
-    server.on("/api/time/set", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        WifiTimeApiService::TimeRuntime runtime{
-            [this]() { return timeService.timeValid(); },
-            [this]() { return timeService.nowEpochMsOr0(); },
-            [this]() { return timeService.tzOffsetMinutes(); },
-            [this]() { return timeService.timeSource(); },
-            [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
-                timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
-            },
-            [this]() { return timeService.timeConfidence(); },
-            [this]() { return timeService.nowMonoMs(); },
-            [this]() { return timeService.epochAgeMsOr0(); },
-        };
-        WifiTimeApiService::handleTimeSet(
+    server.on("/api/time/set", HTTP_POST, [this, makeTimeRuntime]() {
+        WifiTimeApiService::handleApiTimeSet(
             server,
-            runtime,
+            makeTimeRuntime(),
             TimeService::SOURCE_CLIENT_AP,
-            [this]() { lastStatusJsonTime = 0; });
+            [this]() { lastStatusJsonTime = 0; },
+            [this]() { return checkRateLimit(); });
     });
     
     // Legacy status endpoint

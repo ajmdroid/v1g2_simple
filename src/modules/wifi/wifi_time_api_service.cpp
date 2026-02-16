@@ -168,4 +168,13 @@ void handleTimeSet(WebServer& server,
     sendJsonDocument(server, 200, response);
 }
 
+void handleApiTimeSet(WebServer& server,
+                      const TimeRuntime& runtime,
+                      uint8_t clientSource,
+                      const std::function<void()>& invalidateStatusCache,
+                      const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleTimeSet(server, runtime, clientSource, invalidateStatusCache);
+}
+
 }  // namespace WifiTimeApiService

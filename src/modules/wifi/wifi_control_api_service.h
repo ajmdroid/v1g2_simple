@@ -7,6 +7,11 @@
 
 namespace WifiControlApiService {
 
+void handleApiProfilePush(WebServer& server,
+                          bool v1Connected,
+                          const std::function<bool()>& requestProfilePush,
+                          const std::function<bool()>& checkRateLimit);
+
 void handleProfilePush(WebServer& server,
                        bool v1Connected,
                        const std::function<bool()>& requestProfilePush,
