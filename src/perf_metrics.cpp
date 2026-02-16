@@ -273,6 +273,10 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
     snapshot.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
     snapshot.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
+    snapshot.lockoutSaveMaxUs = perfExtended.lockoutSaveMaxUs;
+    snapshot.learnerSaveMaxUs = perfExtended.learnerSaveMaxUs;
+    snapshot.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
+    snapshot.perfReportMaxUs = perfExtended.perfReportMaxUs;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -291,6 +295,10 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.bleConnectMaxUs = 0;
     perfExtended.bleDiscoveryMaxUs = 0;
     perfExtended.bleSubscribeMaxUs = 0;
+    perfExtended.lockoutSaveMaxUs = 0;
+    perfExtended.learnerSaveMaxUs = 0;
+    perfExtended.timeSaveMaxUs = 0;
+    perfExtended.perfReportMaxUs = 0;
     perfExtended.minLargestBlock = UINT32_MAX;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
@@ -424,6 +432,30 @@ void perfRecordCameraUs(uint32_t us) {
 void perfRecordLockoutUs(uint32_t us) {
     if (us > perfExtended.lockoutMaxUs) {
         perfExtended.lockoutMaxUs = us;
+    }
+}
+
+void perfRecordLockoutSaveUs(uint32_t us) {
+    if (us > perfExtended.lockoutSaveMaxUs) {
+        perfExtended.lockoutSaveMaxUs = us;
+    }
+}
+
+void perfRecordLearnerSaveUs(uint32_t us) {
+    if (us > perfExtended.learnerSaveMaxUs) {
+        perfExtended.learnerSaveMaxUs = us;
+    }
+}
+
+void perfRecordTimeSaveUs(uint32_t us) {
+    if (us > perfExtended.timeSaveMaxUs) {
+        perfExtended.timeSaveMaxUs = us;
+    }
+}
+
+void perfRecordPerfReportUs(uint32_t us) {
+    if (us > perfExtended.perfReportMaxUs) {
+        perfExtended.perfReportMaxUs = us;
     }
 }
 

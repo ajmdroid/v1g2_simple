@@ -163,6 +163,10 @@ struct PerfSdSnapshot {
     uint32_t bleDiscoveryMaxUs;
     uint32_t bleSubscribeMaxUs;
     uint32_t dispPipeMaxUs;
+    uint32_t lockoutSaveMaxUs;   // Window max lockout zone JSON+SD write
+    uint32_t learnerSaveMaxUs;   // Window max learner pending JSON+SD write
+    uint32_t timeSaveMaxUs;      // Window max timeService.periodicSave NVS write
+    uint32_t perfReportMaxUs;    // Window max perfMetricsCheckReport snapshot+enqueue
 };
 
 class PerfSdLogger {

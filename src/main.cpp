@@ -1276,17 +1276,26 @@ void loop() {
     }
     
     // Periodic perf metrics report (stability diagnostics)
-    perfMetricsCheckReport();
+    {
+        uint32_t perfReportStartUs = PERF_TIMESTAMP_US();
+        perfMetricsCheckReport();
+        perfRecordPerfReportUs(PERF_TIMESTAMP_US() - perfReportStartUs);
+    }
 
     // Periodic time persistence (every 5 min) — ensures NVS has a recent epoch
     // for restoration after deep sleep battery death or hard power loss.
-    timeService.periodicSave(now);
+    {
+        uint32_t timeSaveStartUs = PERF_TIMESTAMP_US();
+        timeService.periodicSave(now);
+        perfRecordTimeSaveUs(PERF_TIMESTAMP_US() - timeSaveStartUs);
+    }
 
     // Lockout learner: ingest observations, manage candidates, promote (Tier 7)
     lockoutLearner.process(now, timeService.nowEpochMsOr0());
 
     // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
     {
+        uint32_t lockoutSaveStartUs = PERF_TIMESTAMP_US();
         static uint32_t lastLockoutSaveMs = 0;
         static uint32_t lastLockoutSaveAttemptMs = 0;
         static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
@@ -1330,9 +1339,11 @@ void loop() {
                 Serial.println("[Lockout] Save failed");
             }
         }
+        perfRecordLockoutSaveUs(PERF_TIMESTAMP_US() - lockoutSaveStartUs);
     }
     // Learner pending candidates: periodic best-effort save (Tier 7).
     {
+        uint32_t learnerSaveStartUs = PERF_TIMESTAMP_US();
         static uint32_t lastLearnerSaveMs = 0;
         static uint32_t lastLearnerSaveAttemptMs = 0;
         static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
@@ -1371,6 +1382,7 @@ void loop() {
                 Serial.println("[Learner] Pending save failed");
             }
         }
+        perfRecordLearnerSaveUs(PERF_TIMESTAMP_US() - learnerSaveStartUs);
     }
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz

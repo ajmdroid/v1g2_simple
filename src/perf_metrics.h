@@ -282,6 +282,10 @@ struct PerfExtendedMetrics {
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t cameraMaxUs = 0;          // cameraRuntimeModule.process() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
+    uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
+    uint32_t learnerSaveMaxUs = 0;     // learner pending JSON serialize + SD write
+    uint32_t timeSaveMaxUs = 0;        // timeService.periodicSave NVS write
+    uint32_t perfReportMaxUs = 0;      // perfMetricsCheckReport snapshot + enqueue
     uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
     uint32_t uiToRestCount = 0;       // Screen transitions -> Resting
     uint32_t uiScanToRestCount = 0;   // Scanning -> Resting transitions
@@ -328,6 +332,10 @@ struct PerfExtendedMetrics {
         gpsMaxUs = 0;
         cameraMaxUs = 0;
         lockoutMaxUs = 0;
+        lockoutSaveMaxUs = 0;
+        learnerSaveMaxUs = 0;
+        timeSaveMaxUs = 0;
+        perfReportMaxUs = 0;
         uiToScanCount = 0;
         uiToRestCount = 0;
         uiScanToRestCount = 0;
@@ -374,6 +382,10 @@ void perfRecordObdUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
 void perfRecordCameraUs(uint32_t us);
 void perfRecordLockoutUs(uint32_t us);
+void perfRecordLockoutSaveUs(uint32_t us);
+void perfRecordLearnerSaveUs(uint32_t us);
+void perfRecordTimeSaveUs(uint32_t us);
+void perfRecordPerfReportUs(uint32_t us);
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
