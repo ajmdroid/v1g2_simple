@@ -15,6 +15,11 @@ void handleGenerate204(WebServer& server,
 void handleGen204(WebServer& server,
                   const std::function<void()>& markUiActivity);
 
+void handleHotspotDetect(WebServer& server,
+                         const std::function<void()>& markUiActivity);
+
+void handleFwlink(WebServer& server);
+
 void handleNcsiTxt(WebServer& server);
 
 }  // namespace WifiPortalApiService

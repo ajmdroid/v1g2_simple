@@ -749,16 +749,13 @@ void WiFiManager::setupWebServer() {
     });
     // iOS/macOS captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [this]() {
-        markUiActivity();
-        Serial.println("[HTTP] GET /hotspot-detect.html");
-        server.sendHeader("Location", "/settings", true);
-        server.send(302, "text/html", "");
+        WifiPortalApiService::handleHotspotDetect(
+            server,
+            [this]() { markUiActivity(); });
     });
     // Windows captive portal variants
     server.on("/fwlink", HTTP_GET, [this]() {
-        Serial.println("[HTTP] GET /fwlink");
-        server.sendHeader("Location", "/settings", true);
-        server.send(302, "text/html", "");
+        WifiPortalApiService::handleFwlink(server);
     });
     server.on("/ncsi.txt", HTTP_GET, [this]() {
         WifiPortalApiService::handleNcsiTxt(server);

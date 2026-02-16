@@ -64,6 +64,32 @@ void test_gen_204_marks_ui_activity_and_returns_empty_204() {
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
 }
 
+void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
+    WebServer server(80);
+    int uiActivityCalls = 0;
+
+    WifiPortalApiService::handleHotspotDetect(
+        server,
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_STRING("/settings", server.sentHeader("Location").c_str());
+    TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_STRING("text/html", server.lastContentType.c_str());
+    TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+}
+
+void test_fwlink_redirects_to_settings() {
+    WebServer server(80);
+
+    WifiPortalApiService::handleFwlink(server);
+
+    TEST_ASSERT_EQUAL_STRING("/settings", server.sentHeader("Location").c_str());
+    TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_STRING("text/html", server.lastContentType.c_str());
+    TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+}
+
 void test_ncsi_returns_expected_body() {
     WebServer server(80);
 
@@ -79,6 +105,8 @@ int main() {
     RUN_TEST(test_ping_marks_ui_activity_and_returns_ok);
     RUN_TEST(test_generate_204_marks_ui_activity_and_returns_empty_204);
     RUN_TEST(test_gen_204_marks_ui_activity_and_returns_empty_204);
+    RUN_TEST(test_hotspot_detect_marks_ui_activity_and_redirects_to_settings);
+    RUN_TEST(test_fwlink_redirects_to_settings);
     RUN_TEST(test_ncsi_returns_expected_body);
     return UNITY_END();
 }

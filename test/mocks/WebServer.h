@@ -33,6 +33,36 @@ public:
         args_.clear();
     }
 
+    bool hasHeader(const String& name) const {
+        return requestHeaders_.find(name.c_str()) != requestHeaders_.end();
+    }
+
+    String header(const String& name) const {
+        auto it = requestHeaders_.find(name.c_str());
+        if (it == requestHeaders_.end()) {
+            return "";
+        }
+        return it->second.c_str();
+    }
+
+    void setHeader(const String& name, const String& value) {
+        requestHeaders_[name.c_str()] = value.c_str();
+    }
+
+    void collectHeaders(const char* const* /*headerKeys*/, size_t /*count*/) {}
+
+    void sendHeader(const String& name, const String& value, bool /*first*/ = false) {
+        responseHeaders_[name.c_str()] = value.c_str();
+    }
+
+    String sentHeader(const String& name) const {
+        auto it = responseHeaders_.find(name.c_str());
+        if (it == responseHeaders_.end()) {
+            return "";
+        }
+        return it->second.c_str();
+    }
+
     void send(int code, const char* contentType, const String& body) {
         lastStatusCode = code;
         lastContentType = contentType ? contentType : "";
@@ -51,4 +81,6 @@ public:
 
 private:
     std::unordered_map<std::string, std::string> args_;
+    std::unordered_map<std::string, std::string> requestHeaders_;
+    std::unordered_map<std::string, std::string> responseHeaders_;
 };
