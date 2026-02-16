@@ -230,11 +230,11 @@ void handleSettingsSave(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handleLegacySettingsSave(WebServer& server,
-                              const Runtime& runtime,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& sendDeprecatedHeader,
-                              const std::function<void()>& logLegacyUsage) {
+void handleApiLegacySettingsSave(WebServer& server,
+                                 const Runtime& runtime,
+                                 const std::function<bool()>& checkRateLimit,
+                                 const std::function<void()>& sendDeprecatedHeader,
+                                 const std::function<void()>& logLegacyUsage) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (logLegacyUsage) {

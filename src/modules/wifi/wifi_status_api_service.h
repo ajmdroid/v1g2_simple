@@ -55,25 +55,11 @@ void handleApiStatus(WebServer& server,
                      const std::function<unsigned long()>& millisFn,
                      const std::function<bool()>& checkRateLimit);
 
-void handleLegacyStatus(WebServer& server,
-                        const StatusRuntime& runtime,
-                        String& cachedStatusJson,
-                        unsigned long& lastStatusJsonTime,
-                        unsigned long cacheTtlMs,
-                        const std::function<unsigned long()>& millisFn);
-
-inline void handleApiLegacyStatus(WebServer& server,
-                                  const StatusRuntime& runtime,
-                                  String& cachedStatusJson,
-                                  unsigned long& lastStatusJsonTime,
-                                  unsigned long cacheTtlMs,
-                                  const std::function<unsigned long()>& millisFn) {
-    handleLegacyStatus(server,
-                       runtime,
-                       cachedStatusJson,
-                       lastStatusJsonTime,
-                       cacheTtlMs,
-                       millisFn);
-}
+void handleApiLegacyStatus(WebServer& server,
+                           const StatusRuntime& runtime,
+                           String& cachedStatusJson,
+                           unsigned long& lastStatusJsonTime,
+                           unsigned long cacheTtlMs,
+                           const std::function<unsigned long()>& millisFn);
 
 }  // namespace WifiStatusApiService

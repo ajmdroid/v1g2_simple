@@ -122,12 +122,12 @@ void handleApiStatus(WebServer& server,
         millisFn);
 }
 
-void handleLegacyStatus(WebServer& server,
-                        const StatusRuntime& runtime,
-                        String& cachedStatusJson,
-                        unsigned long& lastStatusJsonTime,
-                        unsigned long cacheTtlMs,
-                        const std::function<unsigned long()>& millisFn) {
+void handleApiLegacyStatus(WebServer& server,
+                           const StatusRuntime& runtime,
+                           String& cachedStatusJson,
+                           unsigned long& lastStatusJsonTime,
+                           unsigned long cacheTtlMs,
+                           const std::function<unsigned long()>& millisFn) {
     sendStatus(
         server,
         runtime,

@@ -42,19 +42,10 @@ inline void handleApiSettingsSave(WebServer& server,
     handleSettingsSave(server, runtime, checkRateLimit);
 }
 
-void handleLegacySettingsSave(WebServer& server,
-                              const Runtime& runtime,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& sendDeprecatedHeader,
-                              const std::function<void()>& logLegacyUsage);
-
-inline void handleApiLegacySettingsSave(WebServer& server,
-                                        const Runtime& runtime,
-                                        const std::function<bool()>& checkRateLimit,
-                                        const std::function<void()>& sendDeprecatedHeader,
-                                        const std::function<void()>& logLegacyUsage) {
-    handleLegacySettingsSave(
-        server, runtime, checkRateLimit, sendDeprecatedHeader, logLegacyUsage);
-}
+void handleApiLegacySettingsSave(WebServer& server,
+                                 const Runtime& runtime,
+                                 const std::function<bool()>& checkRateLimit,
+                                 const std::function<void()>& sendDeprecatedHeader,
+                                 const std::function<void()>& logLegacyUsage);
 
 }  // namespace WifiSettingsApiService
