@@ -173,6 +173,13 @@ private:
     static constexpr uint32_t MAX_RETRY_DELAY_MS = 30000;
     static constexpr uint8_t MAX_CONSECUTIVE_POLL_FAILURES = 10;
     static constexpr uint32_t MAX_RECONNECT_COOLDOWN_MS = 300000; // 5 min
+
+    // Scan-gate: for auto-connect, scan repeatedly before attempting
+    // the expensive BLE connect.  Lighter on the radio than cycling
+    // through full connect/disconnect state-machine retries.
+    static constexpr uint8_t SCAN_GATE_ATTEMPTS = 5;
+    static constexpr uint32_t SCAN_GATE_DURATION_MS = 2000;
+    static constexpr uint32_t SCAN_GATE_PAUSE_MS = 500;
     static constexpr size_t MAX_REMEMBERED_DEVICES = 8;
 
     OBDData lastData{};
@@ -231,7 +238,7 @@ private:
     void handlePolling();
 
     // BLE operations
-    bool connectToDevice();
+    bool connectToDevice(bool skipPreScan = false);
     bool connectedPeerLooksLikeObd();
     bool discoverServices();
     bool initializeAdapter();

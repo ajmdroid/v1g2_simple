@@ -837,7 +837,72 @@ void OBDHandler::handleConnecting() {
 
     Serial.printf("[OBD] Connecting to %s...\n", targetDeviceName.c_str());
 
-    if (connectToDevice() && discoverServices()) {
+    // ── Scan-gate (auto-connect only) ──────────────────────────────
+    // Scan for the CX up to SCAN_GATE_ATTEMPTS times with short pauses.
+    // If advertising is found, proceed to connect.  If not, suppress
+    // immediately — much lighter on the radio than cycling through full
+    // connect/disconnect state-machine retries with exponential backoff.
+    bool skipPreScan = false;
+    if (targetAutoConnect && targetIsObdLink) {
+        NimBLEScan* pScan = NimBLEDevice::getScan();
+        bool cxFound = false;
+        if (pScan) {
+            for (uint8_t i = 0; i < SCAN_GATE_ATTEMPTS; i++) {
+                // Protect V1 priority — abort if link dropped mid-gate.
+                if (!isLinkReady()) {
+                    Serial.println("[OBD] Scan-gate aborted: V1 disconnected");
+                    state = OBDState::IDLE;
+                    return;
+                }
+
+                Serial.printf("[OBD] Scan-gate (%u/%u)...\n",
+                              (unsigned)(i + 1), (unsigned)SCAN_GATE_ATTEMPTS);
+
+                pScan->setDuplicateFilter(true);
+                pScan->setMaxResults(20);
+                pScan->setActiveScan(true);
+                NimBLEScanResults results =
+                    pScan->getResults(SCAN_GATE_DURATION_MS, false);
+
+                for (int j = 0; j < results.getCount(); j++) {
+                    const NimBLEAdvertisedDevice* dev = results.getDevice(j);
+                    if (dev && isObdLinkName(dev->getName())) {
+                        cxFound = true;
+                        break;
+                    }
+                }
+
+                pScan->setMaxResults(0);
+                pScan->setActiveScan(true);
+                pScan->clearResults();
+
+                if (cxFound) {
+                    Serial.println("[OBD] Scan-gate: OBDLink CX advertising, proceeding to connect");
+                    break;
+                }
+
+                // Brief pause between scans to let other BLE events drain.
+                if (i < SCAN_GATE_ATTEMPTS - 1) {
+                    vTaskDelay(pdMS_TO_TICKS(SCAN_GATE_PAUSE_MS));
+                }
+            }
+        }
+
+        if (!cxFound) {
+            Serial.println("[OBD] Auto-connect suppressed: OBDLink CX not advertising");
+            autoConnectSuppressedAdapterOff = true;
+            hasTargetDevice = false;
+            connectionFailures = 0;
+            reconnectCycleCount = 0;
+            consecutivePollFailures = 0;
+            state = OBDState::IDLE;
+            return;
+        }
+
+        skipPreScan = true; // Scan-gate already confirmed advertising.
+    }
+
+    if (connectToDevice(skipPreScan) && discoverServices()) {
         // Log negotiated connection parameters for diagnostics.
         if (pOBDClient && pOBDClient->isConnected()) {
             NimBLEConnInfo ci = pOBDClient->getConnInfo();
@@ -857,7 +922,10 @@ void OBDHandler::handleConnecting() {
                   (unsigned)connectionFailures,
                   (unsigned)MAX_CONNECTION_FAILURES);
 
-    if (lastConnectFailureNoAdvertising &&
+    // For manual connects the pre-scan inside connectToDevice() still
+    // tracks lastConnectFailureNoAdvertising — honour it here.
+    if (!targetAutoConnect &&
+        lastConnectFailureNoAdvertising &&
         connectionFailures >= MAX_CONNECTION_FAILURES) {
         Serial.println("[OBD] Auto-connect suppressed: adapter not advertising after max attempts");
         autoConnectSuppressedAdapterOff = true;
@@ -960,7 +1028,7 @@ void OBDHandler::handlePolling() {
     }
 }
 
-bool OBDHandler::connectToDevice() {
+bool OBDHandler::connectToDevice(bool skipPreScan) {
     lastConnectFailureNoAdvertising = false;
 
     // BLE controllers generally cannot sustain scan+connect reliably.
@@ -1002,7 +1070,8 @@ bool OBDHandler::connectToDevice() {
     // Quick pre-scan: is any OBDLink CX advertising?
     // If not, the adapter is likely powered off — bail immediately
     // to avoid dozens of expensive BLE connection attempts.
-    {
+    // Skipped when the caller already verified via scan-gate.
+    if (!skipPreScan) {
         NimBLEScan* pPreScan = NimBLEDevice::getScan();
         if (pPreScan) {
             pPreScan->setDuplicateFilter(true);
