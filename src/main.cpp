@@ -65,6 +65,7 @@
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
+#include "modules/lockout/lockout_pre_quiet_controller.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/perf/debug_macros.h"
@@ -1086,6 +1087,7 @@ void loop() {
         const bool proxyClientConnected = bleClient.isProxyClientConnected();
         bool lockoutPrioritySuppressed = false;
         static LockoutRuntimeMuteState lockoutMuteState;
+        static PreQuietState preQuietState;
 
         uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
         signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
@@ -1126,11 +1128,46 @@ void loop() {
             if (muteDecision.logGuardBlocked) {
                 Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
             }
+
+            // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
+            // findNearby is position-only, O(N) ~50 μs — same scan the enforcer uses.
+            {
+                const DisplayState& pqState = parser.getDisplayState();
+                size_t nearbyCount = 0;
+                if (gpsStatus.locationValid &&
+                    std::isfinite(gpsStatus.latitudeDeg) &&
+                    std::isfinite(gpsStatus.longitudeDeg)) {
+                    const int32_t latE5 = static_cast<int32_t>(lroundf(gpsStatus.latitudeDeg * 100000.0f));
+                    const int32_t lonE5 = static_cast<int32_t>(lroundf(gpsStatus.longitudeDeg * 100000.0f));
+                    int16_t nearbyBuf[16];
+                    nearbyCount = lockoutIndex.findNearby(latE5, lonE5, nearbyBuf, 16);
+                }
+                const PreQuietDecision pqDecision = evaluatePreQuiet(
+                    lockoutSettings.gpsLockoutPreQuiet,
+                    enforceMode,
+                    bleClient.isConnected(),
+                    parser.hasAlerts(),
+                    lockRes.evaluated,
+                    lockRes.shouldMute,
+                    nearbyCount,
+                    pqState.mainVolume,
+                    pqState.muteVolume,
+                    nowMs,
+                    preQuietState);
+                if (pqDecision.action == PreQuietDecision::DROP_VOLUME) {
+                    bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
+                    Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
+                } else if (pqDecision.action == PreQuietDecision::RESTORE_VOLUME) {
+                    bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
+                    Serial.println("[Lockout] PRE-QUIET: volume restored");
+                }
+            }
         } else {
             // Proxy-connected sessions are display-first:
             // keep learner capture active, but disable runtime lockout enforcement.
             display.setLockoutIndicator(false);
             lockoutMuteState = LockoutRuntimeMuteState{};
+            preQuietState = PreQuietState{};
         }
         perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
 

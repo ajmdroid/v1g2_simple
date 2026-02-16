@@ -265,6 +265,8 @@ void handleConfig(WebServer& server,
     uint8_t manualDemotionMissCount = currentSettings.gpsLockoutManualDemotionMissCount;
     bool hasKaLearningEnabled = false;
     bool kaLearningEnabled = currentSettings.gpsLockoutKaLearningEnabled;
+    bool hasPreQuiet = false;
+    bool preQuiet = currentSettings.gpsLockoutPreQuiet;
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
@@ -388,6 +390,13 @@ void handleConfig(WebServer& server,
         } else if (body["gpsLockoutKaLearningEnabled"].is<bool>()) {
             kaLearningEnabled = body["gpsLockoutKaLearningEnabled"].as<bool>();
             hasKaLearningEnabled = true;
+        }
+        if (body["lockoutPreQuiet"].is<bool>()) {
+            preQuiet = body["lockoutPreQuiet"].as<bool>();
+            hasPreQuiet = true;
+        } else if (body["gpsLockoutPreQuiet"].is<bool>()) {
+            preQuiet = body["gpsLockoutPreQuiet"].as<bool>();
+            hasPreQuiet = true;
         }
         if (body["speedMph"].is<float>() || body["speedMph"].is<double>() || body["speedMph"].is<int>()) {
             scaffoldSpeedMph = body["speedMph"].as<float>();
@@ -549,6 +558,18 @@ void handleConfig(WebServer& server,
         kaLearningEnabled = (value == "1" || value == "true" || value == "on");
         hasKaLearningEnabled = true;
     }
+    if (!hasPreQuiet && server.hasArg("lockoutPreQuiet")) {
+        String value = server.arg("lockoutPreQuiet");
+        value.toLowerCase();
+        preQuiet = (value == "1" || value == "true" || value == "on");
+        hasPreQuiet = true;
+    }
+    if (!hasPreQuiet && server.hasArg("gpsLockoutPreQuiet")) {
+        String value = server.arg("gpsLockoutPreQuiet");
+        value.toLowerCase();
+        preQuiet = (value == "1" || value == "true" || value == "on");
+        hasPreQuiet = true;
+    }
 
     if (!hasEnabled) {
         bool hasLockoutUpdate = hasLockoutMode || hasCoreGuardEnabled ||
@@ -556,7 +577,8 @@ void handleConfig(WebServer& server,
                                 hasLearnerPromotionHits || hasLearnerRadiusE5 ||
                                 hasLearnerFreqToleranceMHz || hasLearnerLearnIntervalHours ||
                                 hasLearnerUnlearnIntervalHours || hasLearnerUnlearnCount ||
-                                hasManualDemotionMissCount || hasKaLearningEnabled;
+                                hasManualDemotionMissCount || hasKaLearningEnabled ||
+                                hasPreQuiet;
         if (!hasLockoutUpdate) {
             server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}");
             return;
@@ -660,6 +682,11 @@ void handleConfig(WebServer& server,
         mutableSettings.gpsLockoutKaLearningEnabled = kaLearningEnabled;
         lockoutSettingsChanged = true;
     }
+    if (hasPreQuiet &&
+        mutableSettings.gpsLockoutPreQuiet != preQuiet) {
+        mutableSettings.gpsLockoutPreQuiet = preQuiet;
+        lockoutSettingsChanged = true;
+    }
     if (hasKaLearningEnabled) {
         lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
     }
@@ -718,6 +745,7 @@ void handleConfig(WebServer& server,
     response["lockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["lockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
     response["lockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    response["lockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     response["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
     response["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
     response["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
@@ -726,6 +754,7 @@ void handleConfig(WebServer& server,
     response["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
     response["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    response["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;
     response["locationValid"] = gpsStatus.locationValid;

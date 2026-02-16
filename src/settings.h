@@ -192,6 +192,7 @@ struct V1Settings {
     uint8_t gpsLockoutLearnerUnlearnCount;         // Misses to auto-remove learned lockouts (0=legacy)
     uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
     bool gpsLockoutKaLearningEnabled;              // Allow Ka lockout learning/enforcement (default: false)
+    bool gpsLockoutPreQuiet;                          // Pre-drop to muted volume in lockout zones (default: false)
     
     // Display settings
     bool turnOffDisplay;
@@ -337,6 +338,7 @@ struct V1Settings {
         gpsLockoutLearnerUnlearnCount(LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT),
         gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
         gpsLockoutKaLearningEnabled(false),
+        gpsLockoutPreQuiet(false),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment

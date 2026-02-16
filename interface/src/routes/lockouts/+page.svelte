@@ -120,7 +120,8 @@
 		learnerUnlearnIntervalHours: 0,
 		learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
 		manualDemotionMissCount: 0,
-		kaLearningEnabled: false
+		kaLearningEnabled: false,
+		preQuiet: false
 	});
 	let lockoutZonesStats = $state({
 		activeCount: 0,
@@ -329,6 +330,14 @@
 					: typeof data?.gpsLockoutKaLearningEnabled === 'boolean'
 						? data.gpsLockoutKaLearningEnabled
 						: false;
+		const preQuiet =
+			typeof lockout.preQuiet === 'boolean'
+				? lockout.preQuiet
+				: typeof data?.lockoutPreQuiet === 'boolean'
+					? data.lockoutPreQuiet
+					: typeof data?.gpsLockoutPreQuiet === 'boolean'
+						? data.gpsLockoutPreQuiet
+						: false;
 		lockoutConfig = {
 			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
@@ -342,7 +351,8 @@
 			learnerUnlearnIntervalHours: clampIntervalHours(learnerUnlearnIntervalHours),
 			learnerUnlearnCount: clampUnlearnCount(learnerUnlearnCount),
 			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount),
-			kaLearningEnabled: !!kaLearningEnabled
+			kaLearningEnabled: !!kaLearningEnabled,
+			preQuiet: !!preQuiet
 		};
 		lockoutConfigInitialized = true;
 	}
@@ -648,7 +658,8 @@
 				lockoutLearnerUnlearnIntervalHours: learnerUnlearnIntervalHours,
 				lockoutLearnerUnlearnCount: learnerUnlearnCount,
 				lockoutManualDemotionMissCount: manualDemotionMissCount,
-				lockoutKaLearningEnabled: kaLearningEnabled
+				lockoutKaLearningEnabled: kaLearningEnabled,
+				lockoutPreQuiet: !!lockoutConfig.preQuiet
 			};
 			const res = await fetch('/api/gps/config', {
 				method: 'POST',
@@ -675,6 +686,7 @@
 			lockoutConfig.learnerUnlearnCount = learnerUnlearnCount;
 			lockoutConfig.manualDemotionMissCount = manualDemotionMissCount;
 			lockoutConfig.kaLearningEnabled = kaLearningEnabled;
+			lockoutConfig.preQuiet = !!lockoutConfig.preQuiet;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
@@ -832,6 +844,24 @@
 						}}
 					/>
 				</label>
+				{#if lockoutConfig.modeRaw === 3}
+				<label class="label cursor-pointer justify-start gap-3 py-0">
+					<div>
+						<span class="label-text text-sm">Pre-quiet in lockout zones</span>
+						<p class="text-xs text-base-content/60">Drop V1 volume to mute-volume when entering a lockout zone. Restores instantly on real alerts.</p>
+					</div>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary toggle-sm"
+						checked={!!lockoutConfig.preQuiet}
+						disabled={!advancedUnlocked}
+						onchange={(e) => {
+							lockoutConfig.preQuiet = e.currentTarget.checked;
+							markLockoutDirty();
+						}}
+					/>
+				</label>
+				{/if}
 				<label class="form-control">
 					<span class="label-text text-sm">Max queue drops (0 = strictest)</span>
 					<input
