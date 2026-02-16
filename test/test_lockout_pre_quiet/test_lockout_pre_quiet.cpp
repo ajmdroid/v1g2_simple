@@ -47,9 +47,9 @@ void test_non_enforce_mode_returns_none() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. BLE disconnected → always NONE (and restores if active)
+// 3. BLE disconnected → NONE (can't send commands), state preserved
 // ---------------------------------------------------------------------------
-void test_ble_disconnected_restores_if_active() {
+void test_ble_disconnected_preserves_state() {
     PreQuietState state;
     state.preQuietActive = true;
     state.savedMainVolume = 6;
@@ -59,10 +59,9 @@ void test_ble_disconnected_restores_if_active() {
         true, true, /*bleConnected=*/false,
         false, false, false,
         3, 6, 0, T0, state);
-    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
-    TEST_ASSERT_EQUAL(6, d.volume);
-    TEST_ASSERT_EQUAL(0, d.muteVolume);
-    TEST_ASSERT_FALSE(state.preQuietActive);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
+    TEST_ASSERT_TRUE(state.preQuietActive);  // State preserved
+    TEST_ASSERT_EQUAL(6, state.savedMainVolume);
 }
 
 // ---------------------------------------------------------------------------
@@ -248,11 +247,55 @@ void test_feature_disabled_while_active_restores() {
     TEST_ASSERT_FALSE(state.preQuietActive);
 }
 
+// ---------------------------------------------------------------------------
+// 12. BLE reconnect after disconnect resumes correctly
+// ---------------------------------------------------------------------------
+void test_ble_reconnect_resumes() {
+    PreQuietState state;
+    state.preQuietActive = true;
+    state.savedMainVolume = 6;
+    state.savedMuteVolume = 0;
+
+    // BLE drops — NONE, state preserved.
+    auto d1 = evaluatePreQuiet(
+        true, true, false,
+        false, false, false,
+        3, 0, 0, T0, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
+    TEST_ASSERT_TRUE(state.preQuietActive);
+
+    // BLE back, still in zone, no alert — already quiet, NONE.
+    auto d2 = evaluatePreQuiet(
+        true, true, true,
+        false, false, false,
+        3, 0, 0, T0 + 100, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
+    TEST_ASSERT_TRUE(state.preQuietActive);
+}
+
+// ---------------------------------------------------------------------------
+// 13. Feature disabled while BLE down — clears state, no BLE command
+// ---------------------------------------------------------------------------
+void test_feature_disabled_while_ble_down_clears_state() {
+    PreQuietState state;
+    state.preQuietActive = true;
+    state.savedMainVolume = 6;
+    state.savedMuteVolume = 0;
+
+    // BLE down, feature disabled — can't restore but must clear state.
+    auto d = evaluatePreQuiet(
+        false, true, false,
+        false, false, false,
+        3, 0, 0, T0, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);  // Can't send BLE
+    TEST_ASSERT_FALSE(state.preQuietActive);  // State cleared
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_feature_disabled_returns_none);
     RUN_TEST(test_non_enforce_mode_returns_none);
-    RUN_TEST(test_ble_disconnected_restores_if_active);
+    RUN_TEST(test_ble_disconnected_preserves_state);
     RUN_TEST(test_entry_debounce_waits);
     RUN_TEST(test_entry_drops_volume_after_debounce);
     RUN_TEST(test_already_quiet_in_zone_no_repeat);
@@ -261,5 +304,7 @@ int main() {
     RUN_TEST(test_exit_debounce_restores_after_wait);
     RUN_TEST(test_reentry_after_restore_cycles);
     RUN_TEST(test_feature_disabled_while_active_restores);
+    RUN_TEST(test_ble_reconnect_resumes);
+    RUN_TEST(test_feature_disabled_while_ble_down_clears_state);
     return UNITY_END();
 }

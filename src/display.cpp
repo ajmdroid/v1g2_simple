@@ -1417,6 +1417,10 @@ void V1Display::setLockoutIndicator(bool show) {
     lockoutIndicatorShown_ = show;
 }
 
+void V1Display::setPreQuietActive(bool active) {
+    preQuietActive_ = active;
+}
+
 void V1Display::drawLockoutIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     static bool lastShown = false;
@@ -2543,7 +2547,7 @@ void V1Display::update(const DisplayState& state) {
     bool volumeWarningActive = false;
     bool shouldStartVolWarningTimer = false;
     
-    if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged) {
+    if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged && !preQuietActive_) {
         if (volumeZeroDetectedMs == 0) {
             // Need to start the timer - force full redraw to reach timer-start code
             shouldStartVolWarningTimer = true;
@@ -2649,7 +2653,7 @@ void V1Display::update(const DisplayState& state) {
     bool showVolumeWarning = false;
     bool proxyConnected = bleClient.isProxyClientConnected();
     
-    if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected) {
+    if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected && !preQuietActive_) {
         if (!volumeZeroWarningAcknowledged) {
             if (volumeZeroDetectedMs == 0) {
                 // First time detecting volume=0, start the delay timer

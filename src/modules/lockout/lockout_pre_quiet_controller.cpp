@@ -23,16 +23,24 @@ PreQuietDecision evaluatePreQuiet(
 
     PreQuietDecision decision;
 
-    // --- Gate: feature must be on, enforce mode, BLE up ---
-    if (!featureEnabled || !enforceMode || !bleConnected) {
+    // --- Gate: feature must be on and enforce mode ---
+    if (!featureEnabled || !enforceMode) {
         if (state.preQuietActive) {
-            // Restore volume before disabling.
-            decision.action = PreQuietDecision::RESTORE_VOLUME;
-            decision.volume = state.savedMainVolume;
-            decision.muteVolume = state.savedMuteVolume;
+            // Setting/mode changed — restore volume (only if BLE can deliver).
+            if (bleConnected) {
+                decision.action = PreQuietDecision::RESTORE_VOLUME;
+                decision.volume = state.savedMainVolume;
+                decision.muteVolume = state.savedMuteVolume;
+            }
             state = PreQuietState{};
         }
         return decision;
+    }
+
+    // BLE down — can't send commands.  Keep state so we resume correctly
+    // when BLE reconnects.  The V1 retains whatever volume it has.
+    if (!bleConnected) {
+        return decision;  // NONE — nothing we can do right now
     }
 
     const bool inZone = nearbyZoneCount > 0;

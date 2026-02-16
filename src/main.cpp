@@ -1161,11 +1161,13 @@ void loop() {
                     bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
                     Serial.println("[Lockout] PRE-QUIET: volume restored");
                 }
+                display.setPreQuietActive(preQuietState.preQuietActive);
             }
         } else {
             // Proxy-connected sessions are display-first:
             // keep learner capture active, but disable runtime lockout enforcement.
             display.setLockoutIndicator(false);
+            display.setPreQuietActive(false);
             lockoutMuteState = LockoutRuntimeMuteState{};
             preQuietState = PreQuietState{};
         }

@@ -110,6 +110,10 @@ public:
     // Call from main.cpp after enforcer runs, before display pipeline.
     void setLockoutIndicator(bool show);
 
+    // Pre-quiet active flag — suppresses VOL 0 warning when volume was
+    // intentionally dropped by the lockout pre-quiet feature.
+    void setPreQuietActive(bool active);
+
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData = true);
@@ -198,6 +202,7 @@ private:
     int16_t frequencyDirtyW = 0;
     int16_t frequencyDirtyH = 0;
     bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
+    bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
