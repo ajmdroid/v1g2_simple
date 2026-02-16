@@ -31,17 +31,17 @@ struct ConfigRequest {
     bool vwDataEnabled = false;
 };
 
-bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
-bool parseConfigRequest(WebServer& server,
-                        bool enabledFallback,
-                        bool vwDataEnabledFallback,
-                        ConfigRequest& requestOut,
-                        String& errorMessage);
-bool parseRememberedAutoConnectRequest(WebServer& server,
-                                       String& addressOut,
-                                       bool& enabledOut,
-                                       String& errorMessage);
-bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage);
+static bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
+static bool parseConfigRequest(WebServer& server,
+                               bool enabledFallback,
+                               bool vwDataEnabledFallback,
+                               ConfigRequest& requestOut,
+                               String& errorMessage);
+static bool parseRememberedAutoConnectRequest(WebServer& server,
+                                              String& addressOut,
+                                              bool& enabledOut,
+                                              String& errorMessage);
+static bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage);
 
 namespace {
 
@@ -302,7 +302,7 @@ void handleForget(WebServer& server, OBDHandler& obdHandler) {
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage) {
+static bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage) {
     errorMessage = "";
 
     ConnectRequest request;
@@ -344,11 +344,11 @@ bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMe
     return true;
 }
 
-bool parseConfigRequest(WebServer& server,
-                        bool enabledFallback,
-                        bool vwDataEnabledFallback,
-                        ConfigRequest& requestOut,
-                        String& errorMessage) {
+static bool parseConfigRequest(WebServer& server,
+                               bool enabledFallback,
+                               bool vwDataEnabledFallback,
+                               ConfigRequest& requestOut,
+                               String& errorMessage) {
     errorMessage = "";
     ConfigRequest parsed;
     parsed.enabled = enabledFallback;
@@ -410,10 +410,10 @@ bool parseConfigRequest(WebServer& server,
     return true;
 }
 
-bool parseRememberedAutoConnectRequest(WebServer& server,
-                                       String& addressOut,
-                                       bool& enabledOut,
-                                       String& errorMessage) {
+static bool parseRememberedAutoConnectRequest(WebServer& server,
+                                              String& addressOut,
+                                              bool& enabledOut,
+                                              String& errorMessage) {
     errorMessage = "";
     addressOut = "";
     enabledOut = false;
@@ -435,7 +435,7 @@ bool parseRememberedAutoConnectRequest(WebServer& server,
     return true;
 }
 
-bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage) {
+static bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage) {
     errorMessage = "";
     addressOut = "";
 
