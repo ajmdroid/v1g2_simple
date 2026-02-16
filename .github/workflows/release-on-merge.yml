@@ -91,7 +91,7 @@ jobs:
         if: steps.check.outputs.should_release == 'true'
         run: |
           sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
-          sed -i 's/^\\*\\*Version:\\*\\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
+          sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
       
       # ========== BUILD ==========
       - name: Build web interface
@@ -142,26 +142,24 @@ jobs:
             echo "No camera_data/*.bin found; skipping camera DB assets."
           fi
           
-          # Update manifest with version
-          sed -i "s|\"version\": \".*\"|\"version\": \"${{ steps.version.outputs.tag }}\"|" docs/install/manifest.json
           cp docs/install/manifest.json release/
       
       # ========== COMMIT & TAG ==========
       - name: Configure Git
-        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        if: steps.check.outputs.should_release == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       
       - name: Commit version bump
-        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        if: steps.check.outputs.should_release == 'true'
         run: |
-          git add include/config.h docs/install/manifest.json docs/MANUAL.md
+          git add docs/install/manifest.json docs/MANUAL.md
           git diff --staged --quiet || git commit -m "chore(release): bump version to ${{ steps.version.outputs.version }}"
           git push origin main
       
       - name: Create tag
-        if: steps.check.outputs.should_release == 'true' && inputs.skip_version_bump != true
+        if: steps.check.outputs.should_release == 'true'
         run: |
           git tag -f ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }} --force
