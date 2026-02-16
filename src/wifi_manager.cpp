@@ -31,6 +31,7 @@
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
+#include "modules/wifi/wifi_time_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/signal_observation_log.h"
@@ -112,20 +113,6 @@ static void dumpLittleFSRoot() {
     }
     
     root.close();
-}
-
-static bool parseUint64Strict(const String& input, uint64_t& out) {
-    if (input.length() == 0) {
-        return false;
-    }
-    char* end = nullptr;
-    const char* raw = input.c_str();
-    unsigned long long v = strtoull(raw, &end, 10);
-    if (end == raw || *end != '\0') {
-        return false;
-    }
-    out = static_cast<uint64_t>(v);
-    return true;
 }
 
 static uint8_t clampU8Value(int value, int minVal, int maxVal) {
@@ -592,7 +579,23 @@ void WiFiManager::setupWebServer() {
     });
     server.on("/api/time/set", HTTP_POST, [this]() {
         if (!checkRateLimit()) return;
-        handleTimeSet();
+        WifiTimeApiService::TimeRuntime runtime{
+            [this]() { return timeService.timeValid(); },
+            [this]() { return timeService.nowEpochMsOr0(); },
+            [this]() { return timeService.tzOffsetMinutes(); },
+            [this]() { return timeService.timeSource(); },
+            [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
+                timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
+            },
+            [this]() { return timeService.timeConfidence(); },
+            [this]() { return timeService.nowMonoMs(); },
+            [this]() { return timeService.epochAgeMsOr0(); },
+        };
+        WifiTimeApiService::handleTimeSet(
+            server,
+            runtime,
+            TimeService::SOURCE_CLIENT_AP,
+            [this]() { lastStatusJsonTime = 0; });
     });
     
     // Legacy status endpoint
@@ -1643,131 +1646,6 @@ void WiFiManager::handleStatus() {
 }
 
 // ==================== API Endpoints ====================
-
-void WiFiManager::handleTimeSet() {
-    uint64_t unixMs = 0;
-    int32_t tzOffsetMin = 0;
-    bool haveUnixMs = false;
-    bool sourceIsClient = true;
-
-    // Preferred JSON: {"unixMs": <ms>, "tzOffsetMin": <minutes>, "source":"client"}
-    if (server.hasArg("plain") && server.arg("plain").length() > 0) {
-        JsonDocument doc;
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (!err) {
-            if (doc["source"].is<const char*>()) {
-                String source = doc["source"].as<String>();
-                source.toLowerCase();
-                sourceIsClient = (source.length() == 0 || source == "client");
-            }
-
-            if (doc["unixMs"].is<const char*>()) {
-                haveUnixMs = parseUint64Strict(doc["unixMs"].as<String>(), unixMs);
-            } else if (doc["unixMs"].is<uint64_t>()) {
-                unixMs = doc["unixMs"].as<uint64_t>();
-                haveUnixMs = true;
-            } else if (doc["epochMs"].is<const char*>()) {
-                // Compatibility key
-                haveUnixMs = parseUint64Strict(doc["epochMs"].as<String>(), unixMs);
-            } else if (doc["epochMs"].is<uint64_t>()) {
-                unixMs = doc["epochMs"].as<uint64_t>();
-                haveUnixMs = true;
-            } else if (doc["clientEpochMs"].is<const char*>()) {
-                // Compatibility key
-                haveUnixMs = parseUint64Strict(doc["clientEpochMs"].as<String>(), unixMs);
-            } else if (doc["clientEpochMs"].is<uint64_t>()) {
-                unixMs = doc["clientEpochMs"].as<uint64_t>();
-                haveUnixMs = true;
-            }
-
-            if (doc["tzOffsetMin"].is<int32_t>()) {
-                tzOffsetMin = doc["tzOffsetMin"].as<int32_t>();
-            } else if (doc["tzOffsetMinutes"].is<int32_t>()) {
-                // Compatibility key
-                tzOffsetMin = doc["tzOffsetMinutes"].as<int32_t>();
-            }
-        }
-    }
-
-    // Compatibility fallback: form/query args
-    if (!haveUnixMs) {
-        if (server.hasArg("unixMs")) {
-            haveUnixMs = parseUint64Strict(server.arg("unixMs"), unixMs);
-        } else if (server.hasArg("epochMs")) {
-            haveUnixMs = parseUint64Strict(server.arg("epochMs"), unixMs);
-        } else if (server.hasArg("clientEpochMs")) {
-            haveUnixMs = parseUint64Strict(server.arg("clientEpochMs"), unixMs);
-        }
-    }
-    if (server.hasArg("tzOffsetMin")) {
-        tzOffsetMin = server.arg("tzOffsetMin").toInt();
-    } else if (server.hasArg("tzOffsetMinutes")) {
-        tzOffsetMin = server.arg("tzOffsetMinutes").toInt();
-    }
-    if (server.hasArg("source")) {
-        String source = server.arg("source");
-        source.toLowerCase();
-        sourceIsClient = (source.length() == 0 || source == "client");
-    }
-
-    if (!sourceIsClient) {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Unsupported source\"}");
-        return;
-    }
-
-    if (!haveUnixMs) {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing or invalid unixMs\"}");
-        return;
-    }
-
-    // Sanity range: >= ~2023-11 and <= 2100
-    static constexpr uint64_t MIN_VALID_UNIX_MS = 1700000000000ULL;
-    static constexpr uint64_t MAX_VALID_UNIX_MS = 4102444800000ULL;
-    if (unixMs < MIN_VALID_UNIX_MS || unixMs > MAX_VALID_UNIX_MS) {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"unixMs out of range\"}");
-        return;
-    }
-
-    if (tzOffsetMin < -840) tzOffsetMin = -840;
-    if (tzOffsetMin > 840) tzOffsetMin = 840;
-
-    const int64_t requestedEpochMs = static_cast<int64_t>(unixMs);
-    const bool hasExistingTime = timeService.timeValid();
-    const int64_t existingEpochMs = hasExistingTime ? timeService.nowEpochMsOr0() : 0;
-    const int32_t existingTzOffsetMin = timeService.tzOffsetMinutes();
-    const uint8_t existingSource = timeService.timeSource();
-    static constexpr int64_t TIME_SET_NOOP_DELTA_MS = 2000LL;
-    const bool nearNoopClientSync = hasExistingTime
-        && existingSource == TimeService::SOURCE_CLIENT_AP
-        && existingTzOffsetMin == tzOffsetMin
-        && llabs(requestedEpochMs - existingEpochMs) <= TIME_SET_NOOP_DELTA_MS;
-
-    if (!nearNoopClientSync) {
-        timeService.setEpochBaseMs(
-            requestedEpochMs,
-            tzOffsetMin,
-            TimeService::SOURCE_CLIENT_AP);
-        lastStatusJsonTime = 0;  // Invalidate cached /api/status response.
-    }
-
-    JsonDocument response;
-    response["ok"] = true;
-    response["timeValid"] = timeService.timeValid();
-    response["timeSource"] = timeService.timeSource();
-    response["timeConfidence"] = timeService.timeConfidence();
-    response["epochMs"] = timeService.nowEpochMsOr0();
-    response["tzOffsetMin"] = timeService.tzOffsetMinutes();
-
-    // Backward-compatible fields
-    response["success"] = true;
-    response["monoMs"] = timeService.nowMonoMs();
-    response["epochAgeMs"] = timeService.epochAgeMsOr0();
-    response["tzOffsetMinutes"] = timeService.tzOffsetMinutes();
-
-    String json;
-    serializeJson(response, json);
-    server.send(200, "application/json", json);
-}
 
 void WiFiManager::handleSettingsApi() {
     const V1Settings& settings = settingsManager.get();

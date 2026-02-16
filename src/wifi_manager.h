@@ -215,7 +215,6 @@ private:
     void handleV1CurrentSettings();
     
     // API endpoints
-    void handleTimeSet();             // POST /api/time/set - set trusted epoch base
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();
     void handleAutoPushActivate();
