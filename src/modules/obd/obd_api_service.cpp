@@ -80,10 +80,10 @@ bool parseBoolLikeValue(const String& raw, bool& out) {
 
 }  // namespace
 
-void sendStatus(WebServer& server,
-                OBDHandler& obdHandler,
-                V1BLEClient& bleClient,
-                const V1Settings& settings) {
+static void sendStatus(WebServer& server,
+                       OBDHandler& obdHandler,
+                       V1BLEClient& bleClient,
+                       const V1Settings& settings) {
     JsonDocument doc;
     OBDData data = obdHandler.getData();
     static constexpr uint32_t kObdFreshDataMaxAgeMs = 3000;
@@ -144,6 +144,19 @@ void sendStatus(WebServer& server,
     doc["autoConnectCount"] = autoCount;
 
     sendJsonDocument(server, 200, doc);
+}
+
+void handleApiStatus(WebServer& server,
+                     OBDHandler& obdHandler,
+                     V1BLEClient& bleClient,
+                     const V1Settings& settings,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendStatus(server, obdHandler, bleClient, settings);
 }
 
 void sendDevices(WebServer& server, OBDHandler& obdHandler) {
