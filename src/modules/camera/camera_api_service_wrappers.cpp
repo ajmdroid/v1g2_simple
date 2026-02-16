@@ -2,6 +2,19 @@
 
 namespace CameraApiService {
 
+void sendStatus(WebServer& server,
+                CameraRuntimeModule& cameraRuntimeModule);
+
+void sendCatalog(WebServer& server,
+                 StorageManager& storageManager);
+
+void sendEvents(WebServer& server,
+                CameraRuntimeModule& cameraRuntimeModule);
+
+void handleDemo(WebServer& server);
+
+void handleDemoClear(WebServer& server);
+
 void handleApiStatus(WebServer& server,
                      CameraRuntimeModule& cameraRuntimeModule,
                      const std::function<bool()>& checkRateLimit,
