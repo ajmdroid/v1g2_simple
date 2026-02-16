@@ -1358,29 +1358,37 @@ void WiFiManager::setupWebServer() {
             [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/status", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        CameraApiService::sendStatus(server, cameraRuntimeModule);
+        CameraApiService::handleApiStatus(
+            server,
+            cameraRuntimeModule,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/catalog", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        CameraApiService::sendCatalog(server, storageManager);
+        CameraApiService::handleApiCatalog(
+            server,
+            storageManager,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/events", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        CameraApiService::sendEvents(server, cameraRuntimeModule);
+        CameraApiService::handleApiEvents(
+            server,
+            cameraRuntimeModule,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/demo", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        CameraApiService::handleDemo(server);
+        CameraApiService::handleApiDemo(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/demo/clear", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        CameraApiService::handleDemoClear(server);
+        CameraApiService::handleApiDemoClear(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() {
         if (!checkRateLimit()) return;

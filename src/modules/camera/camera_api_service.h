@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
+#include <functional>
+
 class CameraRuntimeModule;
 class StorageManager;
 
@@ -25,5 +27,63 @@ void handleDemo(WebServer& server);
 
 /// POST /api/cameras/demo/clear — cancel active display preview.
 void handleDemoClear(WebServer& server);
+
+/// GET /api/cameras/status wrapper with route-level policy callbacks.
+inline void handleApiStatus(WebServer& server,
+                            CameraRuntimeModule& cameraRuntimeModule,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendStatus(server, cameraRuntimeModule);
+}
+
+/// GET /api/cameras/catalog wrapper with route-level policy callbacks.
+inline void handleApiCatalog(WebServer& server,
+                             StorageManager& storageManager,
+                             const std::function<bool()>& checkRateLimit,
+                             const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendCatalog(server, storageManager);
+}
+
+/// GET /api/cameras/events wrapper with route-level policy callbacks.
+inline void handleApiEvents(WebServer& server,
+                            CameraRuntimeModule& cameraRuntimeModule,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendEvents(server, cameraRuntimeModule);
+}
+
+/// POST /api/cameras/demo wrapper with route-level policy callbacks.
+inline void handleApiDemo(WebServer& server,
+                          const std::function<bool()>& checkRateLimit,
+                          const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDemo(server);
+}
+
+/// POST /api/cameras/demo/clear wrapper with route-level policy callbacks.
+inline void handleApiDemoClear(WebServer& server,
+                               const std::function<bool()>& checkRateLimit,
+                               const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDemoClear(server);
+}
 
 }  // namespace CameraApiService
