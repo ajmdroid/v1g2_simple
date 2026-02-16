@@ -15,14 +15,12 @@ T callOr(const std::function<T()>& fn, const T& fallback) {
     return fn ? fn() : fallback;
 }
 
-}  // namespace
-
-static void sendStatus(WebServer& server,
-                       const StatusRuntime& runtime,
-                       String& cachedStatusJson,
-                       unsigned long& lastStatusJsonTime,
-                       unsigned long cacheTtlMs,
-                       const std::function<unsigned long()>& millisFn) {
+void sendStatus(WebServer& server,
+                const StatusRuntime& runtime,
+                String& cachedStatusJson,
+                unsigned long& lastStatusJsonTime,
+                unsigned long cacheTtlMs,
+                const std::function<unsigned long()>& millisFn) {
     const unsigned long now = millisFn ? millisFn() : millis();
     const bool cacheValid = (now - lastStatusJsonTime) < cacheTtlMs;
 
@@ -101,6 +99,8 @@ static void sendStatus(WebServer& server,
 
     server.send(200, "application/json", cachedStatusJson);
 }
+
+}  // namespace
 
 void handleApiStatus(WebServer& server,
                      const StatusRuntime& runtime,

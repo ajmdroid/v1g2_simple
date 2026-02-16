@@ -124,13 +124,14 @@ void test_send_status_builds_core_payload() {
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"setup_mode\":true"));
@@ -163,13 +164,14 @@ void test_send_status_merges_legacy_status_and_alert_json() {
     unsigned long cacheTime = 0;
     unsigned long now = 2000;
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"foo\":123"));
@@ -186,13 +188,14 @@ void test_send_status_cache_hit_reuses_cached_payload() {
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     const String firstBody = server.lastBody;
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
@@ -201,13 +204,14 @@ void test_send_status_cache_hit_reuses_cached_payload() {
     rt.apSsid = "ChangedAP";
     now = 1200;  // within 500ms TTL
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     TEST_ASSERT_EQUAL_STRING(firstBody.c_str(), server.lastBody.c_str());
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
@@ -223,13 +227,14 @@ void test_send_status_cache_expiry_rebuilds_payload() {
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
@@ -237,13 +242,14 @@ void test_send_status_cache_expiry_rebuilds_payload() {
     rt.apSsid = "ChangedAP";
     now = 2000;  // past 500ms TTL
 
-    WifiStatusApiService::sendStatus(
+    WifiStatusApiService::handleApiStatus(
         server,
         makeRuntime(rt),
         cache,
         cacheTime,
         500,
-        [&now]() { return now; });
+        [&now]() { return now; },
+        []() { return true; });
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"ChangedAP\""));
     TEST_ASSERT_EQUAL_INT(2, rt.setupModeActiveCalls);
