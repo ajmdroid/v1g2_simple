@@ -74,6 +74,11 @@ jobs:
           pip install platformio esptool
           cd interface && npm ci
       
+      # ========== TEST (gate release on passing tests) ==========
+      - name: Run unit tests
+        if: steps.check.outputs.should_release == 'true'
+        run: pio test -e native
+      
       # ========== VERSION ==========
       - name: Get version from config.h
         if: steps.check.outputs.should_release == 'true'
