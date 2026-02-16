@@ -36,9 +36,9 @@ bool computeCameraRuntimeEnabled(const V1Settings& settings) {
 
 }  // namespace
 
-void handleSave(WebServer& server,
-                const Runtime& runtime,
-                const std::function<bool()>& checkRateLimit) {
+void handleApiSave(WebServer& server,
+                   const Runtime& runtime,
+                   const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.getMutableSettings) {
@@ -249,9 +249,9 @@ void handleSave(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handleReset(WebServer& server,
-                 const Runtime& runtime,
-                 const std::function<bool()>& checkRateLimit) {
+void handleApiReset(WebServer& server,
+                    const Runtime& runtime,
+                    const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.getMutableSettings) {
@@ -341,7 +341,7 @@ void handleClear(WebServer& server, const Runtime& runtime) {
     server.send(200, "application/json", "{\"success\":true,\"active\":false}");
 }
 
-void handleGet(WebServer& server, const Runtime& runtime) {
+void handleApiGet(WebServer& server, const Runtime& runtime) {
     if (!runtime.getSettings) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
