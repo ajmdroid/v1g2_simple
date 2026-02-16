@@ -707,46 +707,163 @@ void WiFiManager::setupWebServer() {
     server.on("/api/wifi/enable", HTTP_POST, [this]() { handleWifiClientEnable(); });
 
     // OBD integration API routes
-    server.on("/api/obd/status", HTTP_GET, [this]() { handleObdStatus(); });
-    server.on("/api/obd/scan", HTTP_POST, [this]() { handleObdScan(); });
-    server.on("/api/obd/scan/stop", HTTP_POST, [this]() { handleObdScanStop(); });
-    server.on("/api/obd/devices", HTTP_GET, [this]() { handleObdDevices(); });
-    server.on("/api/obd/devices/clear", HTTP_POST, [this]() { handleObdDevicesClear(); });
-    server.on("/api/obd/connect", HTTP_POST, [this]() { handleObdConnect(); });
-    server.on("/api/obd/disconnect", HTTP_POST, [this]() { handleObdDisconnect(); });
-    server.on("/api/obd/config", HTTP_POST, [this]() { handleObdConfig(); });
-    server.on("/api/obd/remembered", HTTP_GET, [this]() { handleObdRemembered(); });
-    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() { handleObdRememberedAutoConnect(); });
-    server.on("/api/obd/forget", HTTP_POST, [this]() { handleObdForget(); });
+    server.on("/api/obd/status", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::sendStatus(server, obdHandler, bleClient, settingsManager.get());
+    });
+    server.on("/api/obd/scan", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        if (!settingsManager.get().obdEnabled) {
+            server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+            return;
+        }
+        ObdApiService::handleScan(server, obdHandler, bleClient);
+    });
+    server.on("/api/obd/scan/stop", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleScanStop(server, obdHandler);
+    });
+    server.on("/api/obd/devices", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::sendDevices(server, obdHandler);
+    });
+    server.on("/api/obd/devices/clear", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleDevicesClear(server, obdHandler);
+    });
+    server.on("/api/obd/connect", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        if (!settingsManager.get().obdEnabled) {
+            server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
+            return;
+        }
+        ObdApiService::handleConnect(server, obdHandler, bleClient);
+    });
+    server.on("/api/obd/disconnect", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleDisconnect(server, obdHandler);
+    });
+    server.on("/api/obd/config", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleConfig(server, obdHandler, settingsManager);
+    });
+    server.on("/api/obd/remembered", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::sendRemembered(server, obdHandler);
+    });
+    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleRememberedAutoConnect(server, obdHandler);
+    });
+    server.on("/api/obd/forget", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        ObdApiService::handleForget(server, obdHandler);
+    });
 
     // GPS scaffold API routes
-    server.on("/api/gps/status", HTTP_GET, [this]() { handleGpsStatus(); });
-    server.on("/api/gps/observations", HTTP_GET, [this]() { handleGpsObservations(); });
-    server.on("/api/gps/config", HTTP_POST, [this]() { handleGpsConfig(); });
-    server.on("/api/cameras/status", HTTP_GET, [this]() { handleCameraStatus(); });
-    server.on("/api/cameras/catalog", HTTP_GET, [this]() { handleCameraCatalog(); });
-    server.on("/api/cameras/events", HTTP_GET, [this]() { handleCameraEvents(); });
-    server.on("/api/cameras/demo", HTTP_POST, [this]() { handleCameraDemo(); });
-    server.on("/api/cameras/demo/clear", HTTP_POST, [this]() { handleCameraDemoClear(); });
-    server.on("/api/lockouts/zones", HTTP_GET, [this]() { handleLockoutZones(); });
-    server.on("/api/lockouts/summary", HTTP_GET, [this]() { handleLockoutSummary(); });
-    server.on("/api/lockouts/events", HTTP_GET, [this]() { handleLockoutEvents(); });
-    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() { handleLockoutZoneDelete(); });
+    server.on("/api/gps/status", HTTP_GET, [this]() {
+        markUiActivity();
+        GpsApiService::sendStatus(server, gpsRuntimeModule, speedSourceSelector,
+                                  settingsManager, gpsObservationLog, lockoutLearner,
+                                  perfCounters, systemEventBus);
+    });
+    server.on("/api/gps/observations", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        GpsApiService::sendObservations(server, gpsObservationLog);
+    });
+    server.on("/api/gps/config", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        GpsApiService::handleConfig(server, settingsManager, gpsRuntimeModule,
+                                    speedSourceSelector, lockoutLearner,
+                                    gpsObservationLog, perfCounters, systemEventBus);
+    });
+    server.on("/api/cameras/status", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        CameraApiService::sendStatus(server, cameraRuntimeModule);
+    });
+    server.on("/api/cameras/catalog", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        CameraApiService::sendCatalog(server, storageManager);
+    });
+    server.on("/api/cameras/events", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        CameraApiService::sendEvents(server, cameraRuntimeModule);
+    });
+    server.on("/api/cameras/demo", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        CameraApiService::handleDemo(server);
+    });
+    server.on("/api/cameras/demo/clear", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        CameraApiService::handleDemoClear(server);
+    });
+    server.on("/api/lockouts/zones", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendZones(server, lockoutIndex, lockoutLearner,
+                                     settingsManager);
+    });
+    server.on("/api/lockouts/summary", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendSummary(server, signalObservationLog,
+                                       signalObservationSdLogger);
+    });
+    server.on("/api/lockouts/events", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendEvents(server, signalObservationLog,
+                                      signalObservationSdLogger);
+    });
+    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::handleZoneDelete(server, lockoutIndex, lockoutStore);
+    });
     server.on("/api/lockout/zones", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones");
-        handleLockoutZones();
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendZones(server, lockoutIndex, lockoutLearner,
+                                     settingsManager);
     });
     server.on("/api/lockout/summary", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary");
-        handleLockoutSummary();
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendSummary(server, signalObservationLog,
+                                       signalObservationSdLogger);
     });
     server.on("/api/lockout/events", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events");
-        handleLockoutEvents();
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::sendEvents(server, signalObservationLog,
+                                      signalObservationSdLogger);
     });
     server.on("/api/lockout/zones/delete", HTTP_POST, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete");
-        handleLockoutZoneDelete();
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        LockoutApiService::handleZoneDelete(server, lockoutIndex, lockoutStore);
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
