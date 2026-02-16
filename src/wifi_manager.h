@@ -227,14 +227,6 @@ private:
     void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
-    void handleDebugMetrics();
-    void handleDebugPanic();
-    void handleDebugEnable();
-    void handleDebugPerfFilesList();
-    void handleDebugPerfFileDownload();
-    void handleDebugPerfFileDelete();
-    void handleSettingsBackup();
-    void handleSettingsRestore();
     void handleWifiClientStatus();
     void handleWifiClientScan();
     void handleWifiClientConnect();

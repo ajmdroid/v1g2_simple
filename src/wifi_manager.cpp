@@ -687,16 +687,42 @@ void WiFiManager::setupWebServer() {
     });
     
     // Settings backup/restore API routes
-    server.on("/api/settings/backup", HTTP_GET, [this]() { handleSettingsBackup(); });
-    server.on("/api/settings/restore", HTTP_POST, [this]() { handleSettingsRestore(); });
+    server.on("/api/settings/backup", HTTP_GET, [this]() {
+        markUiActivity();
+        BackupApiService::sendBackup(server);
+    });
+    server.on("/api/settings/restore", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        BackupApiService::handleRestore(server);
+    });
     
     // Debug API routes (performance metrics)
-    server.on("/api/debug/metrics", HTTP_GET, [this]() { handleDebugMetrics(); });
-    server.on("/api/debug/panic", HTTP_GET, [this]() { handleDebugPanic(); });
-    server.on("/api/debug/enable", HTTP_POST, [this]() { handleDebugEnable(); });
-    server.on("/api/debug/perf-files", HTTP_GET, [this]() { handleDebugPerfFilesList(); });
-    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() { handleDebugPerfFileDownload(); });
-    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() { handleDebugPerfFileDelete(); });
+    server.on("/api/debug/metrics", HTTP_GET, [this]() {
+        DebugApiService::sendMetrics(server);
+    });
+    server.on("/api/debug/panic", HTTP_GET, [this]() {
+        DebugApiService::sendPanic(server);
+    });
+    server.on("/api/debug/enable", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        DebugApiService::handleDebugEnable(server);
+    });
+    server.on("/api/debug/perf-files", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        DebugApiService::sendPerfFilesList(server);
+    });
+    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        DebugApiService::handlePerfFileDownload(server);
+    });
+    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+        DebugApiService::handlePerfFileDelete(server);
+    });
     
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
@@ -2693,52 +2719,6 @@ void WiFiManager::handleDisplayColorsApi() {
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
-}
-
-// ============= Debug API Handlers =============
-
-void WiFiManager::handleDebugMetrics() {
-    DebugApiService::sendMetrics(server);
-}
-
-void WiFiManager::handleDebugEnable() {
-    if (!checkRateLimit()) return;
-    DebugApiService::handleDebugEnable(server);
-}
-
-void WiFiManager::handleDebugPanic() {
-    DebugApiService::sendPanic(server);
-}
-
-void WiFiManager::handleDebugPerfFilesList() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    DebugApiService::sendPerfFilesList(server);
-}
-
-void WiFiManager::handleDebugPerfFileDownload() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    DebugApiService::handlePerfFileDownload(server);
-}
-
-void WiFiManager::handleDebugPerfFileDelete() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    DebugApiService::handlePerfFileDelete(server);
-}
-
-// ============= Settings Backup/Restore API Handlers =============
-
-void WiFiManager::handleSettingsBackup() {
-    markUiActivity();
-    BackupApiService::sendBackup(server);
-}
-
-void WiFiManager::handleSettingsRestore() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    BackupApiService::handleRestore(server);
 }
 
 // ==================== WiFi Client (STA) API Handlers ====================

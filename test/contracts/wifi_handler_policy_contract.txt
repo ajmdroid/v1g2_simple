@@ -1,10 +1,2 @@
 # WiFi API handler policy contract (ApiService shim handlers)
 
-handler=handleDebugEnable rate_limit=1 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleDebugEnable
-handler=handleDebugMetrics rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::sendMetrics
-handler=handleDebugPanic rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::sendPanic
-handler=handleDebugPerfFileDelete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handlePerfFileDelete
-handler=handleDebugPerfFileDownload rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handlePerfFileDownload
-handler=handleDebugPerfFilesList rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::sendPerfFilesList
-handler=handleSettingsBackup rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::sendBackup
-handler=handleSettingsRestore rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::handleRestore
