@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
-This script enforces three invariants in src/wifi_manager.cpp:
+This script enforces four invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
 3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
    that point callers to /api/lockouts/*.
+4) WiFiManager handle* methods do not become thin ApiService shims again.
 
 Use --update to rewrite expected contract snapshots from current source.
 """
@@ -27,6 +28,9 @@ POLICY_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_handler_policy_contra
 LEGACY_LOCKOUT_CONTRACT_FILE = (
     ROOT / "test" / "contracts" / "wifi_legacy_lockout_contract.txt"
 )
+SHIM_ABSENCE_CONTRACT_FILE = (
+    ROOT / "test" / "contracts" / "wifi_shim_absence_contract.txt"
+)
 
 ROUTE_PREFIXES = (
     "/api/settings/backup",
@@ -43,6 +47,7 @@ ROUTE_SIGNATURE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
 ROUTE_LAMBDA_START_RE = re.compile(
     r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[this\]\(\)\s*\{'
 )
+HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
 DEPRECATED_HEADER_RE = re.compile(
     r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
@@ -111,6 +116,16 @@ def extract_route_lambda_bodies(source: str) -> Dict[str, str]:
     return routes
 
 
+def extract_handle_method_bodies(source: str) -> Dict[str, str]:
+    handlers: Dict[str, str] = {}
+    for match in HANDLE_METHOD_START_RE.finditer(source):
+        handler = match.group(1)
+        open_idx = match.end() - 1
+        close_idx = find_matching_brace(source, open_idx)
+        handlers[handler] = source[open_idx + 1 : close_idx]
+    return handlers
+
+
 def extract_policy_contract(source: str) -> List[RoutePolicy]:
     routes = extract_route_lambda_bodies(source)
     out: List[RoutePolicy] = []
@@ -157,6 +172,19 @@ def extract_legacy_lockout_contract(source: str) -> List[str]:
             f"deprecated_header={has_header} "
             f"deprecated_target={target}"
         )
+
+    return sorted(out)
+
+
+def extract_shim_absence_contract(source: str) -> List[str]:
+    handlers = extract_handle_method_bodies(source)
+    out: List[str] = []
+
+    for handler, body in handlers.items():
+        delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
+        if not delegates:
+            continue
+        out.append(f"handler={handler} delegates={','.join(delegates)}")
 
     return sorted(out)
 
@@ -214,6 +242,7 @@ def main() -> int:
     policies = extract_policy_contract(source)
     policy_lines = [p.to_line() for p in policies]
     legacy_lockout_lines = extract_legacy_lockout_contract(source)
+    shim_absence_lines = extract_shim_absence_contract(source)
 
     if args.update:
         write_lines(
@@ -231,14 +260,21 @@ def main() -> int:
             "# WiFi API legacy lockout compatibility contract",
             legacy_lockout_lines,
         )
+        write_lines(
+            SHIM_ABSENCE_CONTRACT_FILE,
+            "# WiFi API shim absence contract (handle* methods must not delegate to ApiService)",
+            shim_absence_lines,
+        )
         print(f"Updated {ROUTE_CONTRACT_FILE}")
         print(f"Updated {POLICY_CONTRACT_FILE}")
         print(f"Updated {LEGACY_LOCKOUT_CONTRACT_FILE}")
+        print(f"Updated {SHIM_ABSENCE_CONTRACT_FILE}")
         return 0
 
     expected_routes = read_expected_lines(ROUTE_CONTRACT_FILE)
     expected_policy = read_expected_lines(POLICY_CONTRACT_FILE)
     expected_legacy_lockout = read_expected_lines(LEGACY_LOCKOUT_CONTRACT_FILE)
+    expected_shim_absence = read_expected_lines(SHIM_ABSENCE_CONTRACT_FILE)
 
     ok = True
 
@@ -251,12 +287,17 @@ def main() -> int:
     if expected_legacy_lockout != legacy_lockout_lines:
         print_diff(expected_legacy_lockout, legacy_lockout_lines, "legacy-lockout")
         ok = False
+    if expected_shim_absence != shim_absence_lines:
+        print_diff(expected_shim_absence, shim_absence_lines, "shim-absence")
+        ok = False
 
     if not ok:
         print("\nRun with --update only when intentionally changing contract.")
         return 1
 
-    print("[contract] route, policy, and legacy lockout contracts match")
+    print(
+        "[contract] route, policy, legacy lockout, and shim-absence contracts match"
+    )
     return 0
 
 
