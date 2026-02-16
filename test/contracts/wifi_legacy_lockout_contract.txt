@@ -1,0 +1,6 @@
+# WiFi API legacy lockout compatibility contract
+
+route=HTTP_GET /api/lockout/events deprecated_header=1 deprecated_target=/api/lockouts/events
+route=HTTP_GET /api/lockout/summary deprecated_header=1 deprecated_target=/api/lockouts/summary
+route=HTTP_GET /api/lockout/zones deprecated_header=1 deprecated_target=/api/lockouts/zones
+route=HTTP_POST /api/lockout/zones/delete deprecated_header=1 deprecated_target=/api/lockouts/zones/delete

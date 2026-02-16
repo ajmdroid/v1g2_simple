@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
-This script enforces two invariants in src/wifi_manager.cpp:
+This script enforces three invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
+3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
+   that point callers to /api/lockouts/*.
 
 Use --update to rewrite expected contract snapshots from current source.
 """
@@ -22,6 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC_FILE = ROOT / "src" / "wifi_manager.cpp"
 ROUTE_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_route_contract.txt"
 POLICY_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_handler_policy_contract.txt"
+LEGACY_LOCKOUT_CONTRACT_FILE = (
+    ROOT / "test" / "contracts" / "wifi_legacy_lockout_contract.txt"
+)
 
 ROUTE_PREFIXES = (
     "/api/settings/backup",
@@ -39,6 +44,9 @@ ROUTE_LAMBDA_START_RE = re.compile(
     r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[this\]\(\)\s*\{'
 )
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
+DEPRECATED_HEADER_RE = re.compile(
+    r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
+)
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,27 @@ def extract_policy_contract(source: str) -> List[RoutePolicy]:
     return out
 
 
+def extract_legacy_lockout_contract(source: str) -> List[str]:
+    routes = extract_route_lambda_bodies(source)
+    out: List[str] = []
+
+    for route, body in routes.items():
+        _method, path = route.split(" ", 1)
+        if not path.startswith("/api/lockout/"):
+            continue
+
+        header = DEPRECATED_HEADER_RE.search(body)
+        has_header = int(header is not None)
+        target = header.group(1) if header else ""
+        out.append(
+            f"route={route} "
+            f"deprecated_header={has_header} "
+            f"deprecated_target={target}"
+        )
+
+    return sorted(out)
+
+
 def read_expected_lines(path: Path) -> List[str]:
     if not path.exists():
         return []
@@ -184,6 +213,7 @@ def main() -> int:
     routes = extract_routes(source)
     policies = extract_policy_contract(source)
     policy_lines = [p.to_line() for p in policies]
+    legacy_lockout_lines = extract_legacy_lockout_contract(source)
 
     if args.update:
         write_lines(
@@ -196,12 +226,19 @@ def main() -> int:
             "# WiFi API route policy contract (ApiService endpoint lambdas)",
             policy_lines,
         )
+        write_lines(
+            LEGACY_LOCKOUT_CONTRACT_FILE,
+            "# WiFi API legacy lockout compatibility contract",
+            legacy_lockout_lines,
+        )
         print(f"Updated {ROUTE_CONTRACT_FILE}")
         print(f"Updated {POLICY_CONTRACT_FILE}")
+        print(f"Updated {LEGACY_LOCKOUT_CONTRACT_FILE}")
         return 0
 
     expected_routes = read_expected_lines(ROUTE_CONTRACT_FILE)
     expected_policy = read_expected_lines(POLICY_CONTRACT_FILE)
+    expected_legacy_lockout = read_expected_lines(LEGACY_LOCKOUT_CONTRACT_FILE)
 
     ok = True
 
@@ -211,12 +248,15 @@ def main() -> int:
     if expected_policy != policy_lines:
         print_diff(expected_policy, policy_lines, "policy")
         ok = False
+    if expected_legacy_lockout != legacy_lockout_lines:
+        print_diff(expected_legacy_lockout, legacy_lockout_lines, "legacy-lockout")
+        ok = False
 
     if not ok:
         print("\nRun with --update only when intentionally changing contract.")
         return 1
 
-    print("[contract] route and policy contracts match")
+    print("[contract] route, policy, and legacy lockout contracts match")
     return 0
 
 
