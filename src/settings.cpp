@@ -540,16 +540,90 @@ static void clearWifiClientSecretFromSD() {
     }
 }
 
+static int namespaceHealthScore(const char* ns) {
+    if (!ns || ns[0] == '\0') {
+        return -1;
+    }
+
+    Preferences prefs;
+    if (!prefs.begin(ns, true)) {
+        return -1;
+    }
+
+    const int nvsMarker = prefs.getInt("nvsValid", 0);
+    const int settingsVer = prefs.getInt("settingsVer", 0);
+    int score = 0;
+
+    // Validity marker is the strongest signal that a namespace is current.
+    if (nvsMarker > 0) score += 1000;
+    if (settingsVer > 0) score += settingsVer * 10;
+
+    static constexpr const char* kCriticalKeys[] = {
+        "gpsEn",
+        "camEn",
+        "proxyBLE",
+        "proxyName",
+        "brightness",
+        "dispStyle",
+        "autoPush",
+        "gpsLkMode"
+    };
+    for (const char* key : kCriticalKeys) {
+        if (prefs.isKey(key)) {
+            score += 5;
+        }
+    }
+
+    prefs.end();
+    return score;
+}
+
+static bool isKnownSettingsNamespace(const String& ns) {
+    return ns == SETTINGS_NS_A || ns == SETTINGS_NS_B || ns == SETTINGS_NS_LEGACY;
+}
+
 String SettingsManager::getActiveNamespace() {
+    String active = "";
     Preferences meta;
     if (meta.begin(SETTINGS_NS_META, true)) {
-        String active = meta.getString("active", "");
+        active = meta.getString("active", "");
         meta.end();
-        if (active.length() > 0) {
+        if (active.length() > 0 && isKnownSettingsNamespace(active)) {
             return active;
         }
     }
-    return String(SETTINGS_NS_LEGACY);
+
+    // Meta missing/corrupt: recover by selecting the healthiest settings namespace.
+    const int scoreA = namespaceHealthScore(SETTINGS_NS_A);
+    const int scoreB = namespaceHealthScore(SETTINGS_NS_B);
+    const int scoreLegacy = namespaceHealthScore(SETTINGS_NS_LEGACY);
+
+    String recovered = SETTINGS_NS_LEGACY;
+    int bestScore = scoreLegacy;
+    if (scoreA > bestScore) {
+        recovered = SETTINGS_NS_A;
+        bestScore = scoreA;
+    }
+    if (scoreB > bestScore) {
+        recovered = SETTINGS_NS_B;
+        bestScore = scoreB;
+    }
+
+    if (!isKnownSettingsNamespace(active) && active.length() > 0) {
+        Serial.printf("[Settings] WARN: Unknown active namespace '%s', recovering\n", active.c_str());
+    }
+
+    if ((recovered == SETTINGS_NS_A || recovered == SETTINGS_NS_B) && recovered != active) {
+        Preferences repairMeta;
+        if (repairMeta.begin(SETTINGS_NS_META, false)) {
+            if (repairMeta.putString("active", recovered) > 0) {
+                Serial.printf("[Settings] Recovered active namespace to %s\n", recovered.c_str());
+            }
+            repairMeta.end();
+        }
+    }
+
+    return recovered;
 }
 
 String SettingsManager::getStagingNamespace(const String& activeNamespace) {
@@ -719,7 +793,13 @@ bool SettingsManager::persistSettingsAtomically() {
     Preferences meta;
     if (!meta.begin(SETTINGS_NS_META, false)) {
         Serial.println("[Settings] ERROR: Failed to open settings meta namespace");
-        return false;
+        Serial.printf("[Settings] WARN: Falling back to in-place write on %s\n", activeNs.c_str());
+        if (!writeSettingsToNamespace(activeNs.c_str())) {
+            Serial.println("[Settings] ERROR: In-place fallback write failed");
+            return false;
+        }
+        Serial.printf("[Settings] Fallback write succeeded in %s\n", activeNs.c_str());
+        return true;
     }
 
     bool committed = meta.putString("active", stagingNs) > 0;
@@ -727,7 +807,13 @@ bool SettingsManager::persistSettingsAtomically() {
 
     if (!committed) {
         Serial.println("[Settings] ERROR: Failed to update active settings namespace");
-        return false;
+        Serial.printf("[Settings] WARN: Falling back to in-place write on %s\n", activeNs.c_str());
+        if (!writeSettingsToNamespace(activeNs.c_str())) {
+            Serial.println("[Settings] ERROR: In-place fallback write failed");
+            return false;
+        }
+        Serial.printf("[Settings] Fallback write succeeded in %s\n", activeNs.c_str());
+        return true;
     }
 
     Serial.printf("[Settings] Active namespace advanced from %s to %s\n", activeNs.c_str(), stagingNs.c_str());
@@ -1656,7 +1742,8 @@ bool SettingsManager::checkNeedsRestore() {
         "proxyName",
         "brightness",
         "dispStyle",
-        "autoPush"
+        "autoPush",
+        "gpsLkMode"
     };
     for (const char* key : kCriticalKeys) {
         if (!checkPrefs.isKey(key)) {
@@ -1679,7 +1766,7 @@ bool SettingsManager::checkNeedsRestore() {
         return true;
     }
 
-    if (missingCriticalKey && settingsVer >= 2) {
+    if (missingCriticalKey && (settingsVer >= 2 || nvsMarker == 0)) {
         Serial.println("[Settings] NVS appears partial/corrupt (critical keys missing)");
         return true;
     }
