@@ -2,6 +2,23 @@
 
 namespace LockoutApiService {
 
+void sendSummary(WebServer& server,
+                 SignalObservationLog& signalObservationLog,
+                 SignalObservationSdLogger& signalObservationSdLogger);
+
+void sendEvents(WebServer& server,
+                SignalObservationLog& signalObservationLog,
+                SignalObservationSdLogger& signalObservationSdLogger);
+
+void sendZones(WebServer& server,
+               LockoutIndex& lockoutIndex,
+               LockoutLearner& lockoutLearner,
+               SettingsManager& settingsManager);
+
+void handleZoneDelete(WebServer& server,
+                      LockoutIndex& lockoutIndex,
+                      LockoutStore& lockoutStore);
+
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
