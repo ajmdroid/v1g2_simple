@@ -11,39 +11,41 @@ pio test -e native
 # Run with verbose output
 pio test -e native -v
 
-# Run specific test file
-pio test -e native --filter test_haversine
+# Run specific test suites
 pio test -e native --filter test_display
+pio test -e native --filter test_packet_parser
+pio test -e native --filter test_drive_scenario
 ```
 
 ## Test Structure
 
 ```
 test/
+├── fixtures/            # Real-world logs, packet captures, and replay data
 ├── mocks/               # Mock headers for ESP32/Arduino types
 │   ├── Arduino.h        # Basic Arduino types
 │   ├── display_driver.h # Display/graphics mocks
 │   ├── settings.h       # Settings manager mock
 │   ├── external_deps.h  # BLE/GPS/Battery manager mocks
 │   └── freertos/        # FreeRTOS stubs
-├── test_haversine/      # GPS distance calculation tests
-├── test_packet_parser/  # V1 protocol parsing tests
+├── test_alert_persistence/
 ├── test_display/        # Display system torture tests
+├── test_drive_scenario/ # Replay-driven integration tests
+├── test_packet_parser/  # V1 protocol parsing tests
+├── test_wifi_manager/
+├── ...                  # Additional test_* suites
 └── README.md
 ```
 
-## Coverage Targets
+## Current Baseline (Verified 2026-02-16)
 
-| Module | Tests | Status |
-|--------|-------|--------|
-| haversine distance | 10 | ✅ PASS |
-| packet parser | 30 | ✅ PASS |
-| display system | 65 | ✅ PASS |
-| lockout manager | 32 | ✅ PASS |
-| auto-lockout manager | 27 | ✅ PASS |
-| settings manager | 15 | ✅ PASS |
-| event ring | 15 | ✅ PASS |
-| **Total** | **194** | **✅ ALL PASS** |
+| Metric | Value |
+|--------|-------|
+| Environment | `native` |
+| Test suites | 32 |
+| Test cases | 563 |
+| Result | ✅ 563 passed |
+| Command | `pio test -e native` |
 
 ## Display Torture Test Categories
 
