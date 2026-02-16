@@ -2,6 +2,27 @@
 
 namespace GpsApiService {
 
+void sendStatus(WebServer& server,
+                GpsRuntimeModule& gpsRuntimeModule,
+                SpeedSourceSelector& speedSourceSelector,
+                SettingsManager& settingsManager,
+                GpsObservationLog& gpsObservationLog,
+                LockoutLearner& lockoutLearner,
+                PerfCounters& perfCounters,
+                SystemEventBus& systemEventBus);
+
+void sendObservations(WebServer& server,
+                      GpsObservationLog& gpsObservationLog);
+
+void handleConfig(WebServer& server,
+                  SettingsManager& settingsManager,
+                  GpsRuntimeModule& gpsRuntimeModule,
+                  SpeedSourceSelector& speedSourceSelector,
+                  LockoutLearner& lockoutLearner,
+                  GpsObservationLog& gpsObservationLog,
+                  PerfCounters& perfCounters,
+                  SystemEventBus& systemEventBus);
+
 void handleApiStatus(WebServer& server,
                      GpsRuntimeModule& gpsRuntimeModule,
                      SpeedSourceSelector& speedSourceSelector,
