@@ -561,7 +561,7 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    auto sendStatusResponse = [this]() {
+    auto makeStatusRuntime = [this]() {
         WifiStatusApiService::StatusRuntime runtime{
             [this]() { return setupModeState == SETUP_MODE_AP_ON; },
             [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
@@ -590,13 +590,7 @@ void WiFiManager::setupWebServer() {
             getStatusJson,
             getAlertJson,
         };
-        WifiStatusApiService::sendStatus(
-            server,
-            runtime,
-            cachedStatusJson,
-            lastStatusJsonTime,
-            STATUS_CACHE_TTL_MS,
-            []() { return millis(); });
+        return runtime;
     };
 
     auto makeSettingsRuntime = [this]() {
@@ -648,9 +642,15 @@ void WiFiManager::setupWebServer() {
     auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
 
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this, sendStatusResponse]() {
-        if (!checkRateLimit()) return;
-        sendStatusResponse();
+    server.on("/api/status", HTTP_GET, [this, makeStatusRuntime]() {
+        WifiStatusApiService::handleApiStatus(
+            server,
+            makeStatusRuntime(),
+            cachedStatusJson,
+            lastStatusJsonTime,
+            STATUS_CACHE_TTL_MS,
+            []() { return millis(); },
+            [this]() { return checkRateLimit(); });
     });
     server.on("/api/profile/push", HTTP_POST, [this]() { 
         if (!checkRateLimit()) return;
@@ -682,7 +682,15 @@ void WiFiManager::setupWebServer() {
     });
     
     // Legacy status endpoint
-    server.on("/status", HTTP_GET, [this, sendStatusResponse]() { sendStatusResponse(); });
+    server.on("/status", HTTP_GET, [this, makeStatusRuntime]() {
+        WifiStatusApiService::handleLegacyStatus(
+            server,
+            makeStatusRuntime(),
+            cachedStatusJson,
+            lastStatusJsonTime,
+            STATUS_CACHE_TTL_MS,
+            []() { return millis(); });
+    });
     server.on("/api/settings", HTTP_GET, [this, makeSettingsRuntime]() {
         WifiSettingsApiService::handleSettingsGet(server, makeSettingsRuntime());
     });  // JSON settings for new UI

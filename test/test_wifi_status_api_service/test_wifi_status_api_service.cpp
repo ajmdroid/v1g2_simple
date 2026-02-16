@@ -249,11 +249,74 @@ void test_send_status_cache_expiry_rebuilds_payload() {
     TEST_ASSERT_EQUAL_INT(2, rt.setupModeActiveCalls);
 }
 
+void test_handle_api_status_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    String cache;
+    unsigned long cacheTime = 0;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 1000UL; },
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(0, rt.setupModeActiveCalls);
+}
+
+void test_handle_api_status_delegates_when_allowed() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    rt.apSsid = "StatusApiAP";
+    String cache;
+    unsigned long cacheTime = 0;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 2000UL; },
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"StatusApiAP\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+}
+
+void test_handle_legacy_status_delegates_without_rate_limit() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    rt.apSsid = "LegacyAP";
+    String cache;
+    unsigned long cacheTime = 0;
+
+    WifiStatusApiService::handleLegacyStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 3000UL; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"LegacyAP\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_send_status_builds_core_payload);
     RUN_TEST(test_send_status_merges_legacy_status_and_alert_json);
     RUN_TEST(test_send_status_cache_hit_reuses_cached_payload);
     RUN_TEST(test_send_status_cache_expiry_rebuilds_payload);
+    RUN_TEST(test_handle_api_status_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_status_delegates_when_allowed);
+    RUN_TEST(test_handle_legacy_status_delegates_without_rate_limit);
     return UNITY_END();
 }

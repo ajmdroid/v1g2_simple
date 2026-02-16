@@ -102,4 +102,39 @@ void sendStatus(WebServer& server,
     server.send(200, "application/json", cachedStatusJson);
 }
 
+void handleApiStatus(WebServer& server,
+                     const StatusRuntime& runtime,
+                     String& cachedStatusJson,
+                     unsigned long& lastStatusJsonTime,
+                     unsigned long cacheTtlMs,
+                     const std::function<unsigned long()>& millisFn,
+                     const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) {
+        return;
+    }
+
+    sendStatus(
+        server,
+        runtime,
+        cachedStatusJson,
+        lastStatusJsonTime,
+        cacheTtlMs,
+        millisFn);
+}
+
+void handleLegacyStatus(WebServer& server,
+                        const StatusRuntime& runtime,
+                        String& cachedStatusJson,
+                        unsigned long& lastStatusJsonTime,
+                        unsigned long cacheTtlMs,
+                        const std::function<unsigned long()>& millisFn) {
+    sendStatus(
+        server,
+        runtime,
+        cachedStatusJson,
+        lastStatusJsonTime,
+        cacheTtlMs,
+        millisFn);
+}
+
 }  // namespace WifiStatusApiService
