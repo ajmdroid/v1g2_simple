@@ -1,8 +1,8 @@
 #pragma once
 
-#include <Arduino.h>
 #include <WebServer.h>
 
+#include <cstdint>
 #include <functional>
 
 namespace WifiTimeApiService {
