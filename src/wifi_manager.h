@@ -227,12 +227,6 @@ private:
     void handleDisplayColorsApi();
     void handleDisplayColorsSave();
     void handleDisplayColorsReset();
-    void handleWifiClientStatus();
-    void handleWifiClientScan();
-    void handleWifiClientConnect();
-    void handleWifiClientDisconnect();
-    void handleWifiClientForget();
-    void handleWifiClientEnable();
     void handleNotFound();
     
     // LittleFS file serving (new UI)

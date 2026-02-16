@@ -29,6 +29,7 @@
 #include "modules/lockout/lockout_learner.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
+#include "modules/wifi/wifi_client_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/signal_observation_log.h"
@@ -140,6 +141,17 @@ static bool computeCameraRuntimeEnabled(const V1Settings& settings) {
 
 static bool shouldUseApSta(const V1Settings& settings) {
     return settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0;
+}
+
+static const char* wifiClientStateApiName(WifiClientState state) {
+    switch (state) {
+        case WIFI_CLIENT_DISABLED: return "disabled";
+        case WIFI_CLIENT_DISCONNECTED: return "disconnected";
+        case WIFI_CLIENT_CONNECTING: return "connecting";
+        case WIFI_CLIENT_CONNECTED: return "connected";
+        case WIFI_CLIENT_FAILED: return "failed";
+        default: return "unknown";
+    }
 }
 
 static void getWifiStartThresholds(bool apStaMode, uint32_t& minFree, uint32_t& minBlock) {
@@ -725,12 +737,149 @@ void WiFiManager::setupWebServer() {
     });
     
     // WiFi client (STA) API routes - connect to external network
-    server.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiClientStatus(); });
-    server.on("/api/wifi/scan", HTTP_POST, [this]() { handleWifiClientScan(); });
-    server.on("/api/wifi/connect", HTTP_POST, [this]() { handleWifiClientConnect(); });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this]() { handleWifiClientDisconnect(); });
-    server.on("/api/wifi/forget", HTTP_POST, [this]() { handleWifiClientForget(); });
-    server.on("/api/wifi/enable", HTTP_POST, [this]() { handleWifiClientEnable(); });
+    server.on("/api/wifi/status", HTTP_GET, [this]() {
+        markUiActivity();
+
+        const V1Settings& settings = settingsManager.get();
+        WifiClientApiService::StatusPayload payload;
+        payload.enabled = settings.wifiClientEnabled;
+        payload.savedSsid = settings.wifiClientSSID;
+        payload.state = wifiClientStateApiName(wifiClientState);
+        payload.scanRunning = wifiScanRunning;
+
+        if (wifiClientState == WIFI_CLIENT_CONNECTED) {
+            payload.includeConnectedFields = true;
+            payload.connectedSsid = WiFi.SSID();
+            payload.ip = WiFi.localIP().toString();
+            payload.rssi = WiFi.RSSI();
+        }
+
+        WifiClientApiService::sendStatus(server, payload);
+    });
+    server.on("/api/wifi/scan", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+
+        Serial.println("[HTTP] POST /api/wifi/scan");
+
+        // Check if scan is already running - return current results
+        if (wifiScanRunning) {
+            int16_t scanResult = WiFi.scanComplete();
+            if (scanResult == WIFI_SCAN_RUNNING) {
+                WifiClientApiService::sendScanInProgress(server);
+                return;
+            }
+        }
+
+        // Check if we have results from a completed scan
+        int16_t scanResult = WiFi.scanComplete();
+        if (scanResult > 0) {
+            // Return results
+            std::vector<ScannedNetwork> networks = getScannedNetworks();
+            std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
+            payloads.reserve(networks.size());
+            for (const auto& net : networks) {
+                WifiClientApiService::ScannedNetworkPayload payload;
+                payload.ssid = net.ssid;
+                payload.rssi = net.rssi;
+                payload.secure = !net.isOpen();
+                payloads.push_back(payload);
+            }
+            WifiClientApiService::sendScanResults(server, payloads);
+            return;
+        }
+
+        // Start a new scan
+        if (startWifiScan()) {
+            WifiClientApiService::sendScanInProgress(server);
+        } else {
+            WifiClientApiService::sendScanStartFailed(server);
+        }
+    });
+    server.on("/api/wifi/connect", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+
+        Serial.println("[HTTP] POST /api/wifi/connect");
+
+        String ssid;
+        String password;
+        const char* errorMessage = nullptr;
+        if (!WifiClientApiService::parseConnectRequest(server, ssid, password, errorMessage)) {
+            WifiClientApiService::sendConnectParseError(server, errorMessage);
+            return;
+        }
+
+        // Note: Password can be empty for open networks
+        if (connectToNetwork(ssid, password)) {
+            WifiClientApiService::sendConnectStarted(server);
+        } else {
+            WifiClientApiService::sendConnectStartFailed(server);
+        }
+    });
+    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+
+        Serial.println("[HTTP] POST /api/wifi/disconnect");
+
+        disconnectFromNetwork();
+        WifiClientApiService::sendDisconnected(server);
+    });
+    server.on("/api/wifi/forget", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+
+        Serial.println("[HTTP] POST /api/wifi/forget");
+
+        // Disconnect if connected
+        disconnectFromNetwork();
+
+        // Clear saved credentials
+        settingsManager.clearWifiClientCredentials();
+
+        // Switch back to AP-only mode
+        wifiClientState = WIFI_CLIENT_DISABLED;
+        WiFi.mode(WIFI_AP);
+
+        WifiClientApiService::sendForgotten(server);
+    });
+    server.on("/api/wifi/enable", HTTP_POST, [this]() {
+        if (!checkRateLimit()) return;
+        markUiActivity();
+
+        bool enable = false;
+        if (!WifiClientApiService::parseEnableRequest(server, enable)) {
+            WifiClientApiService::sendEnableParseError(server);
+            return;
+        }
+
+        Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
+
+        const V1Settings& settings = settingsManager.get();
+
+        if (enable) {
+            // Enable WiFi client mode
+            settingsManager.setWifiClientEnabled(true);
+
+            // If we have saved credentials, try to connect
+            if (settings.wifiClientSSID.length() > 0) {
+                String savedPassword = settingsManager.getWifiClientPassword();
+                connectToNetwork(settings.wifiClientSSID, savedPassword);
+            } else {
+                wifiClientState = WIFI_CLIENT_DISCONNECTED;
+            }
+            WifiClientApiService::sendEnableResult(server, true);
+            return;
+        }
+
+        // Disable WiFi client mode
+        disconnectFromNetwork();
+        settingsManager.setWifiClientEnabled(false);
+        wifiClientState = WIFI_CLIENT_DISABLED;
+        WiFi.mode(WIFI_AP);
+        WifiClientApiService::sendEnableResult(server, false);
+    });
 
     // OBD integration API routes
     server.on("/api/obd/status", HTTP_GET, [this]() {
@@ -2719,189 +2868,4 @@ void WiFiManager::handleDisplayColorsApi() {
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
-}
-
-// ==================== WiFi Client (STA) API Handlers ====================
-
-void WiFiManager::handleWifiClientStatus() {
-    markUiActivity();
-    
-    const V1Settings& settings = settingsManager.get();
-    
-    JsonDocument doc;
-    doc["enabled"] = settings.wifiClientEnabled;
-    doc["savedSSID"] = settings.wifiClientSSID;
-    
-    // Map state to string
-    const char* stateStr = "unknown";
-    switch (wifiClientState) {
-        case WIFI_CLIENT_DISABLED: stateStr = "disabled"; break;
-        case WIFI_CLIENT_DISCONNECTED: stateStr = "disconnected"; break;
-        case WIFI_CLIENT_CONNECTING: stateStr = "connecting"; break;
-        case WIFI_CLIENT_CONNECTED: stateStr = "connected"; break;
-        case WIFI_CLIENT_FAILED: stateStr = "failed"; break;
-    }
-    doc["state"] = stateStr;
-    
-    if (wifiClientState == WIFI_CLIENT_CONNECTED) {
-        doc["connectedSSID"] = WiFi.SSID();
-        doc["ip"] = WiFi.localIP().toString();
-        doc["rssi"] = WiFi.RSSI();
-    }
-    
-    doc["scanRunning"] = wifiScanRunning;
-    
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
-}
-
-void WiFiManager::handleWifiClientScan() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    Serial.println("[HTTP] POST /api/wifi/scan");
-    
-    // Check if scan is already running - return current results
-    if (wifiScanRunning) {
-        int16_t scanResult = WiFi.scanComplete();
-        if (scanResult == WIFI_SCAN_RUNNING) {
-            server.send(200, "application/json", "{\"scanning\":true,\"networks\":[]}");
-            return;
-        }
-    }
-    
-    // Check if we have results from a completed scan
-    int16_t scanResult = WiFi.scanComplete();
-    if (scanResult > 0) {
-        // Return results
-        std::vector<ScannedNetwork> networks = getScannedNetworks();
-        
-        JsonDocument doc;
-        doc["scanning"] = false;
-        JsonArray arr = doc["networks"].to<JsonArray>();
-        
-        for (const auto& net : networks) {
-            JsonObject obj = arr.add<JsonObject>();
-            obj["ssid"] = net.ssid;
-            obj["rssi"] = net.rssi;
-            obj["secure"] = !net.isOpen();
-        }
-        
-        String response;
-        serializeJson(doc, response);
-        server.send(200, "application/json", response);
-        return;
-    }
-    
-    // Start a new scan
-    if (startWifiScan()) {
-        server.send(200, "application/json", "{\"scanning\":true,\"networks\":[]}");
-    } else {
-        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start scan\"}");
-    }
-}
-
-void WiFiManager::handleWifiClientConnect() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    Serial.println("[HTTP] POST /api/wifi/connect");
-    
-    // Parse JSON body
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing request body\"}");
-        return;
-    }
-    
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, server.arg("plain"));
-    if (error) {
-        server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
-        return;
-    }
-    
-    String ssid = doc["ssid"] | "";
-    String password = doc["password"] | "";
-    
-    if (ssid.length() == 0) {
-        server.send(400, "application/json", "{\"success\":false,\"message\":\"SSID required\"}");
-        return;
-    }
-    
-    // Note: Password can be empty for open networks
-    if (connectToNetwork(ssid, password)) {
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"Connecting...\"}");
-    } else {
-        server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to start connection\"}");
-    }
-}
-
-void WiFiManager::handleWifiClientDisconnect() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    Serial.println("[HTTP] POST /api/wifi/disconnect");
-    
-    disconnectFromNetwork();
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"Disconnected\"}");
-}
-
-void WiFiManager::handleWifiClientForget() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    Serial.println("[HTTP] POST /api/wifi/forget");
-    
-    // Disconnect if connected
-    disconnectFromNetwork();
-    
-    // Clear saved credentials
-    settingsManager.clearWifiClientCredentials();
-    
-    // Switch back to AP-only mode
-    wifiClientState = WIFI_CLIENT_DISABLED;
-    WiFi.mode(WIFI_AP);
-    
-    server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
-}
-
-void WiFiManager::handleWifiClientEnable() {
-    if (!checkRateLimit()) return;
-    markUiActivity();
-    
-    // Parse JSON body for enable state
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    
-    if (err || !doc["enabled"].is<bool>()) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing enabled field\"}");
-        return;
-    }
-    
-    bool enable = doc["enabled"];
-    Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
-    
-    const V1Settings& settings = settingsManager.get();
-    
-    if (enable) {
-        // Enable WiFi client mode
-        settingsManager.setWifiClientEnabled(true);
-        
-        // If we have saved credentials, try to connect
-        if (settings.wifiClientSSID.length() > 0) {
-            String savedPassword = settingsManager.getWifiClientPassword();
-            connectToNetwork(settings.wifiClientSSID, savedPassword);
-        } else {
-            wifiClientState = WIFI_CLIENT_DISCONNECTED;
-        }
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client enabled\"}");
-    } else {
-        // Disable WiFi client mode
-        disconnectFromNetwork();
-        settingsManager.setWifiClientEnabled(false);
-        wifiClientState = WIFI_CLIENT_DISABLED;
-        WiFi.mode(WIFI_AP);
-        server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client disabled\"}");
-    }
 }
