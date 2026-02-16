@@ -32,6 +32,7 @@
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
+#include "modules/wifi/wifi_portal_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_time_api_service.h"
@@ -731,20 +732,20 @@ void WiFiManager::setupWebServer() {
     
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
-        markUiActivity();
-        Serial.println("[HTTP] GET /ping");
-        server.send(200, "text/plain", "OK");
+        WifiPortalApiService::handlePing(
+            server,
+            [this]() { markUiActivity(); });
     });
     // Android/ChromeOS captive portal probes
     server.on("/generate_204", HTTP_GET, [this]() {
-        markUiActivity();
-        Serial.println("[HTTP] GET /generate_204");
-        server.send(204, "text/plain", "");
+        WifiPortalApiService::handleGenerate204(
+            server,
+            [this]() { markUiActivity(); });
     });
     server.on("/gen_204", HTTP_GET, [this]() {
-        markUiActivity();
-        Serial.println("[HTTP] GET /gen_204");
-        server.send(204, "text/plain", "");
+        WifiPortalApiService::handleGen204(
+            server,
+            [this]() { markUiActivity(); });
     });
     // iOS/macOS captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [this]() {
@@ -760,8 +761,7 @@ void WiFiManager::setupWebServer() {
         server.send(302, "text/html", "");
     });
     server.on("/ncsi.txt", HTTP_GET, [this]() {
-        Serial.println("[HTTP] GET /ncsi.txt");
-        server.send(200, "text/plain", "Microsoft NCSI");
+        WifiPortalApiService::handleNcsiTxt(server);
     });
     
     // V1 Settings/Profiles routes
