@@ -1326,22 +1326,36 @@ void WiFiManager::setupWebServer() {
 
     // GPS scaffold API routes
     server.on("/api/gps/status", HTTP_GET, [this]() {
-        markUiActivity();
-        GpsApiService::sendStatus(server, gpsRuntimeModule, speedSourceSelector,
-                                  settingsManager, gpsObservationLog, lockoutLearner,
-                                  perfCounters, systemEventBus);
+        GpsApiService::handleApiStatus(
+            server,
+            gpsRuntimeModule,
+            speedSourceSelector,
+            settingsManager,
+            gpsObservationLog,
+            lockoutLearner,
+            perfCounters,
+            systemEventBus,
+            [this]() { markUiActivity(); });
     });
     server.on("/api/gps/observations", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        GpsApiService::sendObservations(server, gpsObservationLog);
+        GpsApiService::handleApiObservations(
+            server,
+            gpsObservationLog,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/gps/config", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        GpsApiService::handleConfig(server, settingsManager, gpsRuntimeModule,
-                                    speedSourceSelector, lockoutLearner,
-                                    gpsObservationLog, perfCounters, systemEventBus);
+        GpsApiService::handleApiConfig(
+            server,
+            settingsManager,
+            gpsRuntimeModule,
+            speedSourceSelector,
+            lockoutLearner,
+            gpsObservationLog,
+            perfCounters,
+            systemEventBus,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/cameras/status", HTTP_GET, [this]() {
         if (!checkRateLimit()) return;
