@@ -141,7 +141,7 @@ void test_profiles_list_includes_loaded_profiles() {
     rt.listNames = {"A", "B"};
     rt.storedProfiles.push_back({"A", "desc-a", true, "{\"name\":\"A\"}"});
 
-    WifiV1ProfileApiService::handleProfilesList(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiProfilesList(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"profiles\":[{\"name\":\"A\""));
@@ -154,7 +154,7 @@ void test_profile_get_missing_name_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiV1ProfileApiService::handleProfileGet(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiProfileGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing profile name\""));
@@ -165,7 +165,7 @@ void test_profile_get_not_found_returns_404() {
     FakeRuntime rt;
     server.setArg("name", "missing");
 
-    WifiV1ProfileApiService::handleProfileGet(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiProfileGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Profile not found\""));
@@ -177,7 +177,7 @@ void test_profile_get_success_returns_profile_json() {
     rt.storedProfiles.push_back({"Commute", "", false, "{\"name\":\"Commute\",\"displayOn\":false}"});
     server.setArg("name", "Commute");
 
-    WifiV1ProfileApiService::handleProfileGet(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiProfileGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"name\":\"Commute\""));
@@ -189,7 +189,7 @@ void test_profile_save_rate_limited_short_circuits() {
     FakeRuntime rt;
     server.setArg("plain", "{\"name\":\"X\",\"settings\":{\"byte0\":4}}");
 
-    WifiV1ProfileApiService::handleProfileSave(
+    WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -203,7 +203,7 @@ void test_profile_save_invalid_json_returns_400() {
     FakeRuntime rt;
     server.setArg("plain", "{bad json");
 
-    WifiV1ProfileApiService::handleProfileSave(
+    WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -218,7 +218,7 @@ void test_profile_save_invalid_settings_returns_400() {
     rt.parseSettingsOk = false;
     server.setArg("plain", "{\"name\":\"X\",\"settings\":{\"byte0\":4}}");
 
-    WifiV1ProfileApiService::handleProfileSave(
+    WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -233,7 +233,7 @@ void test_profile_save_success_calls_save_and_backup() {
     FakeRuntime rt;
     server.setArg("plain", "{\"name\":\"RoadTrip\",\"description\":\"desc\",\"displayOn\":false,\"settings\":{\"byte0\":7}}");
 
-    WifiV1ProfileApiService::handleProfileSave(
+    WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -255,7 +255,7 @@ void test_profile_save_failure_returns_500_with_error() {
     rt.saveError = "disk full";
     server.setArg("plain", "{\"name\":\"RoadTrip\",\"settings\":{\"byte0\":3}}");
 
-    WifiV1ProfileApiService::handleProfileSave(
+    WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -271,7 +271,7 @@ void test_profile_delete_success_calls_backup() {
     rt.deleteResult = true;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
-    WifiV1ProfileApiService::handleProfileDelete(
+    WifiV1ProfileApiService::handleApiProfileDelete(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -288,7 +288,7 @@ void test_profile_delete_not_found_returns_404() {
     rt.deleteResult = false;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
-    WifiV1ProfileApiService::handleProfileDelete(
+    WifiV1ProfileApiService::handleApiProfileDelete(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -304,7 +304,7 @@ void test_current_settings_unavailable() {
     rt.connected = true;
     rt.hasCurrent = false;
 
-    WifiV1ProfileApiService::handleCurrentSettings(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiCurrentSettings(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"connected\":true"));
@@ -318,13 +318,38 @@ void test_current_settings_available_embeds_settings_json() {
     rt.hasCurrent = true;
     rt.currentSettingsJson = "{\"xBand\":true,\"bytes\":[1,2,3,4,5,6]}";
 
-    WifiV1ProfileApiService::handleCurrentSettings(server, makeRuntime(rt));
+    WifiV1ProfileApiService::handleApiCurrentSettings(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"connected\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"available\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"settings\":{\"xBand\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"bytes\":[1,2,3,4,5,6]"));
+}
+
+void test_api_settings_pull_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiV1ProfileApiService::handleApiSettingsPull(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_api_settings_push_rate_limited_short_circuits() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("plain", "{\"name\":\"RoadTrip\"}");
+
+    WifiV1ProfileApiService::handleApiSettingsPush(
+        server,
+        makeRuntime(rt),
+        []() { return false; });
+
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 int main() {
@@ -342,5 +367,7 @@ int main() {
     RUN_TEST(test_profile_delete_not_found_returns_404);
     RUN_TEST(test_current_settings_unavailable);
     RUN_TEST(test_current_settings_available_embeds_settings_json);
+    RUN_TEST(test_api_settings_pull_rate_limited_short_circuits);
+    RUN_TEST(test_api_settings_push_rate_limited_short_circuits);
     return UNITY_END();
 }

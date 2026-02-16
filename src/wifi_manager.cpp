@@ -833,37 +833,37 @@ void WiFiManager::setupWebServer() {
     };
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
     server.on("/api/v1/profiles", HTTP_GET, [this, makeV1ProfileRuntime]() {
-        WifiV1ProfileApiService::handleProfilesList(server, makeV1ProfileRuntime());
+        WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
     });
     server.on("/api/v1/profile", HTTP_GET, [this, makeV1ProfileRuntime]() {
-        WifiV1ProfileApiService::handleProfileGet(server, makeV1ProfileRuntime());
+        WifiV1ProfileApiService::handleApiProfileGet(server, makeV1ProfileRuntime());
     });
     server.on("/api/v1/profile", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
-        WifiV1ProfileApiService::handleProfileSave(
+        WifiV1ProfileApiService::handleApiProfileSave(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
     server.on("/api/v1/profile/delete", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
-        WifiV1ProfileApiService::handleProfileDelete(
+        WifiV1ProfileApiService::handleApiProfileDelete(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
     server.on("/api/v1/pull", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
-        WifiV1ProfileApiService::handleSettingsPull(
+        WifiV1ProfileApiService::handleApiSettingsPull(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
     server.on("/api/v1/push", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
-        WifiV1ProfileApiService::handleSettingsPush(
+        WifiV1ProfileApiService::handleApiSettingsPush(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
     server.on("/api/v1/current", HTTP_GET, [this, makeV1ProfileRuntime]() {
-        WifiV1ProfileApiService::handleCurrentSettings(server, makeV1ProfileRuntime());
+        WifiV1ProfileApiService::handleApiCurrentSettings(server, makeV1ProfileRuntime());
     });
     
     // Auto-Push routes

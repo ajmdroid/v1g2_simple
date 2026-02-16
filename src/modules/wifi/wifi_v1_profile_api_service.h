@@ -58,4 +58,40 @@ void handleSettingsPush(WebServer& server,
                         const Runtime& runtime,
                         const std::function<bool()>& checkRateLimit);
 
+inline void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
+    handleProfilesList(server, runtime);
+}
+
+inline void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
+    handleProfileGet(server, runtime);
+}
+
+inline void handleApiProfileSave(WebServer& server,
+                                 const Runtime& runtime,
+                                 const std::function<bool()>& checkRateLimit) {
+    handleProfileSave(server, runtime, checkRateLimit);
+}
+
+inline void handleApiProfileDelete(WebServer& server,
+                                   const Runtime& runtime,
+                                   const std::function<bool()>& checkRateLimit) {
+    handleProfileDelete(server, runtime, checkRateLimit);
+}
+
+inline void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
+    handleCurrentSettings(server, runtime);
+}
+
+inline void handleApiSettingsPull(WebServer& server,
+                                  const Runtime& runtime,
+                                  const std::function<bool()>& checkRateLimit) {
+    handleSettingsPull(server, runtime, checkRateLimit);
+}
+
+inline void handleApiSettingsPush(WebServer& server,
+                                  const Runtime& runtime,
+                                  const std::function<bool()>& checkRateLimit) {
+    handleSettingsPush(server, runtime, checkRateLimit);
+}
+
 }  // namespace WifiV1ProfileApiService
