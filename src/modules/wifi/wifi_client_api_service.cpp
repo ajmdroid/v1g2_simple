@@ -22,8 +22,6 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 #endif
 }
 
-}  // namespace
-
 static void sendStatus(WebServer& server, const StatusPayload& payload) {
     JsonDocument doc;
     doc["enabled"] = payload.enabled;
@@ -139,6 +137,8 @@ static void sendDisconnected(WebServer& server) {
 static void sendForgotten(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi credentials forgotten\"}");
 }
+
+}  // namespace
 
 static void handleStatusImpl(WebServer& server, const Runtime& runtime) {
     if (!runtime.isEnabled || !runtime.getSavedSsid || !runtime.getStateName ||

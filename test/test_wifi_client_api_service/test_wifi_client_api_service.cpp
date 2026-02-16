@@ -88,66 +88,71 @@ static WifiClientApiService::Runtime makeRuntime(FakeRuntime& rt) {
 
 void test_parse_connect_request_missing_body() {
     WebServer server(80);
-    String ssid;
-    String password;
-    const char* errorMessage = nullptr;
+    FakeRuntime rt;
 
-    TEST_ASSERT_FALSE(WifiClientApiService::parseConnectRequest(
-        server, ssid, password, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("Missing request body", errorMessage);
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Missing request body\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
 void test_parse_connect_request_invalid_json() {
     WebServer server(80);
+    FakeRuntime rt;
     server.setArg("plain", "{bad");
-    String ssid;
-    String password;
-    const char* errorMessage = nullptr;
 
-    TEST_ASSERT_FALSE(WifiClientApiService::parseConnectRequest(
-        server, ssid, password, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("Invalid JSON", errorMessage);
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Invalid JSON\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
 void test_parse_connect_request_missing_ssid() {
     WebServer server(80);
+    FakeRuntime rt;
     server.setArg("plain", "{\"password\":\"pw\"}");
-    String ssid;
-    String password;
-    const char* errorMessage = nullptr;
 
-    TEST_ASSERT_FALSE(WifiClientApiService::parseConnectRequest(
-        server, ssid, password, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("SSID required", errorMessage);
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"SSID required\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
 void test_parse_connect_request_success() {
     WebServer server(80);
+    FakeRuntime rt;
     server.setArg("plain", "{\"ssid\":\"GarageWiFi\",\"password\":\"secret\"}");
-    String ssid;
-    String password;
-    const char* errorMessage = nullptr;
 
-    TEST_ASSERT_TRUE(WifiClientApiService::parseConnectRequest(
-        server, ssid, password, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("GarageWiFi", ssid.c_str());
-    TEST_ASSERT_EQUAL_STRING("secret", password.c_str());
-    TEST_ASSERT_NULL(errorMessage);
+    WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Connecting...\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("GarageWiFi", rt.lastConnectSsid.c_str());
+    TEST_ASSERT_EQUAL_STRING("secret", rt.lastConnectPassword.c_str());
 }
 
 void test_send_status_connected_includes_network_fields() {
     WebServer server(80);
-    WifiClientApiService::StatusPayload payload;
-    payload.enabled = true;
-    payload.savedSsid = "SavedNet";
-    payload.state = "connected";
-    payload.scanRunning = false;
-    payload.includeConnectedFields = true;
-    payload.connectedSsid = "LiveNet";
-    payload.ip = "192.168.1.42";
-    payload.rssi = -61;
+    FakeRuntime rt;
+    rt.enabled = true;
+    rt.savedSsid = "SavedNet";
+    rt.stateName = "connected";
+    rt.scanRunning = false;
+    rt.connected = true;
+    rt.connectedNetwork.ssid = "LiveNet";
+    rt.connectedNetwork.ip = "192.168.1.42";
+    rt.connectedNetwork.rssi = -61;
 
-    WifiClientApiService::sendStatus(server, payload);
+    WifiClientApiService::handleApiStatus(server, makeRuntime(rt), nullptr);
+
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"savedSSID\":\"SavedNet\""));
@@ -160,14 +165,15 @@ void test_send_status_connected_includes_network_fields() {
 
 void test_send_status_disconnected_omits_connected_fields() {
     WebServer server(80);
-    WifiClientApiService::StatusPayload payload;
-    payload.enabled = false;
-    payload.savedSsid = "";
-    payload.state = "disabled";
-    payload.scanRunning = true;
-    payload.includeConnectedFields = false;
+    FakeRuntime rt;
+    rt.enabled = false;
+    rt.savedSsid = "";
+    rt.stateName = "disabled";
+    rt.scanRunning = true;
+    rt.connected = false;
 
-    WifiClientApiService::sendStatus(server, payload);
+    WifiClientApiService::handleApiStatus(server, makeRuntime(rt), nullptr);
+
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"state\":\"disabled\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"scanRunning\":true"));
@@ -177,21 +183,25 @@ void test_send_status_disconnected_omits_connected_fields() {
 
 void test_send_scan_results_includes_networks() {
     WebServer server(80);
-    std::vector<WifiClientApiService::ScannedNetworkPayload> networks;
+    FakeRuntime rt;
+    rt.scanRunning = true;
+    rt.scanInProgress = false;
+    rt.hasCompletedResults = true;
 
     WifiClientApiService::ScannedNetworkPayload first;
     first.ssid = "OpenNet";
     first.rssi = -42;
     first.secure = false;
-    networks.push_back(first);
+    rt.scannedNetworks.push_back(first);
 
     WifiClientApiService::ScannedNetworkPayload second;
     second.ssid = "SecureNet";
     second.rssi = -70;
     second.secure = true;
-    networks.push_back(second);
+    rt.scannedNetworks.push_back(second);
 
-    WifiClientApiService::sendScanResults(server, networks);
+    WifiClientApiService::handleApiScan(server, makeRuntime(rt), nullptr, nullptr);
+
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"scanning\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"OpenNet\""));
@@ -202,28 +212,42 @@ void test_send_scan_results_includes_networks() {
 
 void test_parse_enable_request_requires_boolean_field() {
     WebServer server(80);
+    FakeRuntime rt;
     server.setArg("plain", "{\"enabled\":\"true\"}");
-    bool enabled = false;
 
-    TEST_ASSERT_FALSE(WifiClientApiService::parseEnableRequest(server, enabled));
-}
-
-void test_parse_enable_request_accepts_boolean_field() {
-    WebServer server(80);
-    server.setArg("plain", "{\"enabled\":true}");
-    bool enabled = false;
-
-    TEST_ASSERT_TRUE(WifiClientApiService::parseEnableRequest(server, enabled));
-    TEST_ASSERT_TRUE(enabled);
-}
-
-void test_send_enable_parse_error_uses_expected_payload() {
-    WebServer server(80);
-    WifiClientApiService::sendEnableParseError(server);
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
+}
+
+void test_parse_enable_request_accepts_boolean_field() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.savedSsid = "";
+    server.setArg("plain", "{\"enabled\":true}");
+
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+}
+
+void test_send_enable_parse_error_uses_expected_payload() {
+    WebServer server(80);
+    FakeRuntime rt;
+
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
+    TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
 }
 
 void test_handle_status_connected_uses_runtime_payload() {
