@@ -2,6 +2,13 @@
 
 namespace DebugApiService {
 
+void sendMetrics(WebServer& server);
+void handleDebugEnable(WebServer& server);
+void sendPanic(WebServer& server);
+void sendPerfFilesList(WebServer& server);
+void handlePerfFileDownload(WebServer& server);
+void handlePerfFileDelete(WebServer& server);
+
 void handleApiMetrics(WebServer& server) {
     sendMetrics(server);
 }
