@@ -23,32 +23,6 @@ void setUp() {
 
 void tearDown() {}
 
-void test_parse_connect_request_from_query_args() {
-    WebServer server(80);
-    server.setArg("address", "AA:BB:CC");
-    server.setArg("name", "TestAdapter");
-    server.setArg("pin", "1234");
-    server.setArg("remember", "1");
-    server.setArg("autoConnect", "true");
-
-    ObdApiService::ConnectRequest request;
-    String errorMessage;
-    TEST_ASSERT_TRUE(ObdApiService::parseConnectRequest(server, request, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("AA:BB:CC", request.address.c_str());
-    TEST_ASSERT_EQUAL_STRING("TestAdapter", request.name.c_str());
-    TEST_ASSERT_EQUAL_STRING("1234", request.pin.c_str());
-    TEST_ASSERT_TRUE(request.remember);
-    TEST_ASSERT_TRUE(request.autoConnect);
-}
-
-void test_parse_connect_request_missing_address() {
-    WebServer server(80);
-    ObdApiService::ConnectRequest request;
-    String errorMessage;
-    TEST_ASSERT_FALSE(ObdApiService::parseConnectRequest(server, request, errorMessage));
-    TEST_ASSERT_EQUAL_STRING("Missing address", errorMessage.c_str());
-}
-
 void test_handle_scan_requires_v1_connection() {
     WebServer server(80);
     OBDHandler obdHandler;
@@ -106,6 +80,17 @@ void test_handle_connect_reports_queue_failure() {
     ObdApiService::handleConnect(server, obdHandler, bleClient);
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Failed to queue OBD connect"));
+}
+
+void test_handle_connect_requires_address() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+
+    ObdApiService::handleConnect(server, obdHandler, bleClient);
+    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "Missing address"));
 }
 
 void test_handle_config_applies_vw_data_enabled() {
@@ -404,12 +389,11 @@ void test_handle_api_connect_delegates_when_enabled() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_parse_connect_request_from_query_args);
-    RUN_TEST(test_parse_connect_request_missing_address);
     RUN_TEST(test_handle_scan_requires_v1_connection);
     RUN_TEST(test_handle_scan_starts_scan_when_connected);
     RUN_TEST(test_handle_connect_queues_request);
     RUN_TEST(test_handle_connect_reports_queue_failure);
+    RUN_TEST(test_handle_connect_requires_address);
     RUN_TEST(test_handle_config_applies_vw_data_enabled);
     RUN_TEST(test_handle_config_disables_obd_service_runtime);
     RUN_TEST(test_handle_remembered_autoconnect_updates_flag);

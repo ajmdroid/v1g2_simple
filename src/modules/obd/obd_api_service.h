@@ -12,21 +12,6 @@ class SettingsManager;
 
 namespace ObdApiService {
 
-struct ConnectRequest {
-    String address;
-    String name;
-    String pin;
-    bool remember = true;
-    bool autoConnect = false;
-};
-
-struct ConfigRequest {
-    bool hasEnabled = false;
-    bool enabled = false;
-    bool hasVwDataEnabled = false;
-    bool vwDataEnabled = false;
-};
-
 void handleApiStatus(WebServer& server,
                      OBDHandler& obdHandler,
                      V1BLEClient& bleClient,

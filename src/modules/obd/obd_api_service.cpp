@@ -16,6 +16,21 @@
 
 namespace ObdApiService {
 
+struct ConnectRequest {
+    String address;
+    String name;
+    String pin;
+    bool remember = true;
+    bool autoConnect = false;
+};
+
+struct ConfigRequest {
+    bool hasEnabled = false;
+    bool enabled = false;
+    bool hasVwDataEnabled = false;
+    bool vwDataEnabled = false;
+};
+
 bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
 bool parseConfigRequest(WebServer& server,
                         bool enabledFallback,
