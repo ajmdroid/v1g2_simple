@@ -39,7 +39,7 @@ We're taking a more incremental approach than originally planned - extracting st
 **Structure (February 2026):**
 ```
 src/
-├── main.cpp                         (~1290 lines - orchestration + integration control flow)
+├── main.cpp                         (~1380 lines - orchestration + integration control flow)
 ├── modules/
 │   ├── alert_persistence/           Alert on-screen persistence + state resets
 │   │   ├── alert_persistence_module.h
@@ -98,7 +98,8 @@ src/
 │   ├── volume_fade/                 Alert volume fade/restore
 │   │   ├── volume_fade_module.h
 │   │   └── volume_fade_module.cpp
-│   └── wifi/                        WiFi orchestration
+│   └── wifi/                        WiFi orchestration + boot policy
+│       ├── wifi_boot_policy.h
 │       ├── wifi_orchestrator_module.h
 │       └── wifi_orchestrator_module.cpp
 └── [core services: ble_client, display, settings, etc.]
@@ -146,7 +147,7 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - Change risk: HIGH (adjacent code interactions)
 
 ### After (February 2026):
-- main.cpp: ~1290 lines (orchestration + integration control flow)
+- main.cpp: ~1380 lines (orchestration + integration control flow)
 - 17 module directories in src/modules/
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
