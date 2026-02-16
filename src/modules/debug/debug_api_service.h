@@ -26,53 +26,28 @@ void handlePerfFileDownload(WebServer& server);
 void handlePerfFileDelete(WebServer& server);
 
 /// GET /api/debug/metrics wrapper for WiFiManager route delegation.
-inline void handleApiMetrics(WebServer& server) {
-    sendMetrics(server);
-}
+void handleApiMetrics(WebServer& server);
 
 /// GET /api/debug/panic wrapper for WiFiManager route delegation.
-inline void handleApiPanic(WebServer& server) {
-    sendPanic(server);
-}
+void handleApiPanic(WebServer& server);
 
 /// POST /api/debug/enable wrapper with route-level rate limiting.
-inline void handleApiDebugEnable(WebServer& server,
-                                 const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleDebugEnable(server);
-}
+void handleApiDebugEnable(WebServer& server,
+                          const std::function<bool()>& checkRateLimit);
 
 /// GET /api/debug/perf-files wrapper with route-level policy callbacks.
-inline void handleApiPerfFilesList(WebServer& server,
-                                   const std::function<bool()>& checkRateLimit,
-                                   const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    sendPerfFilesList(server);
-}
+void handleApiPerfFilesList(WebServer& server,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity);
 
 /// GET /api/debug/perf-files/download wrapper with route-level policy callbacks.
-inline void handleApiPerfFilesDownload(WebServer& server,
-                                       const std::function<bool()>& checkRateLimit,
-                                       const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    handlePerfFileDownload(server);
-}
+void handleApiPerfFilesDownload(WebServer& server,
+                                const std::function<bool()>& checkRateLimit,
+                                const std::function<void()>& markUiActivity);
 
 /// POST /api/debug/perf-files/delete wrapper with route-level policy callbacks.
-inline void handleApiPerfFilesDelete(WebServer& server,
-                                     const std::function<bool()>& checkRateLimit,
-                                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    handlePerfFileDelete(server);
-}
+void handleApiPerfFilesDelete(WebServer& server,
+                              const std::function<bool()>& checkRateLimit,
+                              const std::function<void()>& markUiActivity);
 
 }  // namespace DebugApiService
