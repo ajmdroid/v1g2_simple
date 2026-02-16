@@ -32,6 +32,16 @@ void handleSettingsSave(WebServer& server,
                         const Runtime& runtime,
                         const std::function<bool()>& checkRateLimit);
 
+inline void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
+    handleSettingsGet(server, runtime);
+}
+
+inline void handleApiSettingsSave(WebServer& server,
+                                  const Runtime& runtime,
+                                  const std::function<bool()>& checkRateLimit) {
+    handleSettingsSave(server, runtime, checkRateLimit);
+}
+
 void handleLegacySettingsSave(WebServer& server,
                               const Runtime& runtime,
                               const std::function<bool()>& checkRateLimit,

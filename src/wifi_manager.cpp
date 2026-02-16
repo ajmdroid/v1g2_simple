@@ -693,10 +693,10 @@ void WiFiManager::setupWebServer() {
             []() { return millis(); });
     });
     server.on("/api/settings", HTTP_GET, [this, makeSettingsRuntime]() {
-        WifiSettingsApiService::handleSettingsGet(server, makeSettingsRuntime());
+        WifiSettingsApiService::handleApiSettingsGet(server, makeSettingsRuntime());
     });  // JSON settings for new UI
     server.on("/api/settings", HTTP_POST, [this, makeSettingsRuntime, settingsRateLimitCallback]() {
-        WifiSettingsApiService::handleSettingsSave(
+        WifiSettingsApiService::handleApiSettingsSave(
             server,
             makeSettingsRuntime(),
             settingsRateLimitCallback);

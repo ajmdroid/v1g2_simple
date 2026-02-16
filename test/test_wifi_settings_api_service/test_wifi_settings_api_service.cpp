@@ -141,7 +141,7 @@ void test_settings_get_serializes_expected_payload() {
     rt.settings.apTimeoutMinutes = 25;
     rt.settings.enableWifiAtBoot = true;
 
-    WifiSettingsApiService::handleSettingsGet(server, makeRuntime(rt));
+    WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ap_ssid\":\"V1-Test\""));
@@ -157,7 +157,7 @@ void test_settings_get_returns_500_without_runtime() {
     WebServer server(80);
     WifiSettingsApiService::Runtime runtime{};
 
-    WifiSettingsApiService::handleSettingsGet(server, runtime);
+    WifiSettingsApiService::handleApiSettingsGet(server, runtime);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Settings unavailable\""));
@@ -168,7 +168,7 @@ void test_settings_save_rate_limited_short_circuits() {
     FakeRuntime rt;
     server.setArg("brightness", "20");
 
-    WifiSettingsApiService::handleSettingsSave(
+    WifiSettingsApiService::handleApiSettingsSave(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -235,7 +235,7 @@ void test_settings_save_rejects_invalid_ap_credentials() {
     server.setArg("ap_ssid", "MyAP");
     server.setArg("ap_password", "short");
 
-    WifiSettingsApiService::handleSettingsSave(
+    WifiSettingsApiService::handleApiSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -253,7 +253,7 @@ void test_settings_save_uses_existing_password_placeholder() {
     server.setArg("ap_ssid", "RenamedAP");
     server.setArg("ap_password", "********");
 
-    WifiSettingsApiService::handleSettingsSave(
+    WifiSettingsApiService::handleApiSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -276,7 +276,7 @@ void test_settings_save_updates_runtime_dependencies() {
     server.setArg("gpsLockoutMaxQueueDrops", "70000");
     server.setArg("gpsLockoutKaLearningEnabled", "true");
 
-    WifiSettingsApiService::handleSettingsSave(
+    WifiSettingsApiService::handleApiSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -306,7 +306,7 @@ void test_settings_save_updates_brightness_and_display_style() {
     server.setArg("brightness", "42");
     server.setArg("displayStyle", "3");
 
-    WifiSettingsApiService::handleSettingsSave(
+    WifiSettingsApiService::handleApiSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
