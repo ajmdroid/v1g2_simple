@@ -495,17 +495,11 @@ pio test -e native -f test_packet_parser
 
 ---
 
-## Error Codes
+## Error Handling
 
-See [docs/API.md](API.md) for API error behavior and status-code conventions.
-
-Quick reference:
-- 100-199: BLE errors
-- 200-299: GPS errors
-- 300-399: Storage errors
-- 400-499: WiFi errors
-- 500-599: V1 protocol errors
-- 900-999: System errors
+The API uses standard HTTP status codes (200, 400, 404, 500, 503) with
+freeform `"error":"..."` JSON bodies. See [docs/API.md](API.md) for the
+full status-code table and error response format.
 
 ---
 
