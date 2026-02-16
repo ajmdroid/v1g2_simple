@@ -40,13 +40,6 @@ struct StatusRuntime {
     std::function<String()> getAlertJson;
 };
 
-void sendStatus(WebServer& server,
-                const StatusRuntime& runtime,
-                String& cachedStatusJson,
-                unsigned long& lastStatusJsonTime,
-                unsigned long cacheTtlMs,
-                const std::function<unsigned long()>& millisFn);
-
 void handleApiStatus(WebServer& server,
                      const StatusRuntime& runtime,
                      String& cachedStatusJson,
