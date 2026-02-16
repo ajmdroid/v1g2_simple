@@ -112,7 +112,7 @@ jobs:
     
     - name: 🏗️ Build firmware (Windows)
       run: |
-        pio run -e waveshare-349-windows
+        pio run -e waveshare-349
         echo "✅ Windows firmware built successfully"
     
     - name: 📊 Check build size
@@ -122,9 +122,9 @@ jobs:
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "#### Windows (waveshare-349-windows)" >> $GITHUB_STEP_SUMMARY
+        echo "#### Windows (waveshare-349)" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        pio run -e waveshare-349-windows -t size >> $GITHUB_STEP_SUMMARY
+        pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
     
     - name: 📦 Prepare artifacts
@@ -140,11 +140,11 @@ jobs:
         fi
         
         # Windows build  
-        cp .pio/build/waveshare-349-windows/firmware.bin artifacts/windows/
-        cp .pio/build/waveshare-349-windows/bootloader.bin artifacts/windows/
-        cp .pio/build/waveshare-349-windows/partitions.bin artifacts/windows/
-        if [ -f .pio/build/waveshare-349-windows/littlefs.bin ]; then
-          cp .pio/build/waveshare-349-windows/littlefs.bin artifacts/windows/
+        cp .pio/build/waveshare-349/firmware.bin artifacts/windows/
+        cp .pio/build/waveshare-349/bootloader.bin artifacts/windows/
+        cp .pio/build/waveshare-349/partitions.bin artifacts/windows/
+        if [ -f .pio/build/waveshare-349/littlefs.bin ]; then
+          cp .pio/build/waveshare-349/littlefs.bin artifacts/windows/
         fi
         
         # Create version info
