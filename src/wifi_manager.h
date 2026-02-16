@@ -241,29 +241,6 @@ private:
     void handleWifiClientDisconnect();
     void handleWifiClientForget();
     void handleWifiClientEnable();
-    void handleObdStatus();
-    void handleObdScan();
-    void handleObdScanStop();
-    void handleObdDevices();
-    void handleObdDevicesClear();
-    void handleObdConnect();
-    void handleObdDisconnect();
-    void handleObdConfig();
-    void handleObdRemembered();
-    void handleObdRememberedAutoConnect();
-    void handleObdForget();
-    void handleGpsStatus();
-    void handleGpsObservations();
-    void handleGpsConfig();
-    void handleCameraStatus();
-    void handleCameraCatalog();
-    void handleCameraEvents();
-    void handleCameraDemo();
-    void handleCameraDemoClear();
-    void handleLockoutZones();
-    void handleLockoutEvents();
-    void handleLockoutSummary();
-    void handleLockoutZoneDelete();
     void handleNotFound();
     
     // LittleFS file serving (new UI)
