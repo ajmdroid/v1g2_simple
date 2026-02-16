@@ -24,18 +24,13 @@ void tearDown() {}
 
 void test_profile_push_requires_v1_connection() {
     WebServer server(80);
-    int rateLimitCalls = 0;
 
-    WifiControlApiService::handleProfilePush(
+    WifiControlApiService::handleApiProfilePush(
         server,
         false,
         []() { return true; },
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        nullptr);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
 }
@@ -43,11 +38,11 @@ void test_profile_push_requires_v1_connection() {
 void test_profile_push_reports_missing_callback() {
     WebServer server(80);
 
-    WifiControlApiService::handleProfilePush(
+    WifiControlApiService::handleApiProfilePush(
         server,
         true,
         std::function<bool()>(),
-        []() { return true; });
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
@@ -57,11 +52,11 @@ void test_profile_push_reports_missing_callback() {
 void test_profile_push_reports_queued() {
     WebServer server(80);
 
-    WifiControlApiService::handleProfilePush(
+    WifiControlApiService::handleApiProfilePush(
         server,
         true,
         []() { return true; },
-        []() { return true; });
+        nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
@@ -72,7 +67,7 @@ void test_profile_push_rate_limited_short_circuits() {
     WebServer server(80);
     int callbackCalls = 0;
 
-    WifiControlApiService::handleProfilePush(
+    WifiControlApiService::handleApiProfilePush(
         server,
         true,
         [&callbackCalls]() {

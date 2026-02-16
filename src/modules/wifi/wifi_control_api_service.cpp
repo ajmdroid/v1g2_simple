@@ -24,19 +24,10 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
 
 }  // namespace
 
-void handleApiProfilePush(WebServer& server,
-                          bool v1Connected,
-                          const std::function<bool()>& requestProfilePush,
-                          const std::function<bool()>& checkRateLimit) {
-    // Preserve existing route behavior: route-level guard + delegate-level guard.
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleProfilePush(server, v1Connected, requestProfilePush, checkRateLimit);
-}
-
-void handleProfilePush(WebServer& server,
-                       bool v1Connected,
-                       const std::function<bool()>& requestProfilePush,
-                       const std::function<bool()>& checkRateLimit) {
+static void handleProfilePushImpl(WebServer& server,
+                                  bool v1Connected,
+                                  const std::function<bool()>& requestProfilePush,
+                                  const std::function<bool()>& checkRateLimit) {
     // Preserve existing rate-limit behavior for this route.
     if (checkRateLimit && !checkRateLimit()) return;
 
@@ -59,6 +50,15 @@ void handleProfilePush(WebServer& server,
         doc["error"] = "Push handler unavailable";
     }
     sendJsonDocument(server, queued ? 200 : 500, doc);
+}
+
+void handleApiProfilePush(WebServer& server,
+                          bool v1Connected,
+                          const std::function<bool()>& requestProfilePush,
+                          const std::function<bool()>& checkRateLimit) {
+    // Preserve existing route behavior: route-level guard + delegate-level guard.
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleProfilePushImpl(server, v1Connected, requestProfilePush, checkRateLimit);
 }
 
 void handleApiDarkMode(WebServer& server,
