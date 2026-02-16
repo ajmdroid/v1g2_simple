@@ -128,7 +128,7 @@ void test_api_profile_push_preserves_double_rate_limit_behavior() {
 void test_dark_mode_missing_state_param() {
     WebServer server(80);
 
-    WifiControlApiService::handleDarkMode(
+    WifiControlApiService::handleApiDarkMode(
         server,
         []([[maybe_unused]] const char* cmd, [[maybe_unused]] bool value) { return true; },
         []() { return true; });
@@ -143,7 +143,7 @@ void test_dark_mode_inverts_display_command() {
     String capturedCommand;
     bool capturedValue = true;
 
-    WifiControlApiService::handleDarkMode(
+    WifiControlApiService::handleApiDarkMode(
         server,
         [&capturedCommand, &capturedValue](const char* cmd, bool value) {
             capturedCommand = cmd;
@@ -162,7 +162,7 @@ void test_dark_mode_inverts_display_command() {
 void test_mute_missing_state_param() {
     WebServer server(80);
 
-    WifiControlApiService::handleMute(
+    WifiControlApiService::handleApiMute(
         server,
         []([[maybe_unused]] const char* cmd, [[maybe_unused]] bool value) { return true; },
         []() { return true; });
@@ -177,7 +177,7 @@ void test_mute_invokes_command() {
     String capturedCommand;
     bool capturedValue = false;
 
-    WifiControlApiService::handleMute(
+    WifiControlApiService::handleApiMute(
         server,
         [&capturedCommand, &capturedValue](const char* cmd, bool value) {
             capturedCommand = cmd;
@@ -198,7 +198,7 @@ void test_dark_mode_rate_limited_short_circuits() {
     server.setArg("state", "false");
     int commandCalls = 0;
 
-    WifiControlApiService::handleDarkMode(
+    WifiControlApiService::handleApiDarkMode(
         server,
         [&commandCalls]([[maybe_unused]] const char* cmd, [[maybe_unused]] bool value) {
             commandCalls++;
@@ -215,7 +215,7 @@ void test_mute_rate_limited_short_circuits() {
     server.setArg("state", "true");
     int commandCalls = 0;
 
-    WifiControlApiService::handleMute(
+    WifiControlApiService::handleApiMute(
         server,
         [&commandCalls]([[maybe_unused]] const char* cmd, [[maybe_unused]] bool value) {
             commandCalls++;

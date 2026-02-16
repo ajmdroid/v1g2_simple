@@ -717,13 +717,13 @@ void WiFiManager::setupWebServer() {
             []() { Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings"); });
     });  // Legacy compat
     server.on("/darkmode", HTTP_POST, [this]() {
-        WifiControlApiService::handleDarkMode(
+        WifiControlApiService::handleApiDarkMode(
             server,
             sendV1Command,
             [this]() { return checkRateLimit(); });
     });
     server.on("/mute", HTTP_POST, [this]() {
-        WifiControlApiService::handleMute(
+        WifiControlApiService::handleApiMute(
             server,
             sendV1Command,
             [this]() { return checkRateLimit(); });
