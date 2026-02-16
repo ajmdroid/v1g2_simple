@@ -44,6 +44,9 @@ jobs:
       run: |
         pip install --upgrade platformio
         pio --version
+
+    - name: 🔒 Check WiFi API contracts
+      run: python3 scripts/check_wifi_api_contract.py
     
     - name: 🧪 Run unit tests
       run: |

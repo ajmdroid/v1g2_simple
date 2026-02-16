@@ -1,0 +1,33 @@
+# WiFi API handler policy contract (ApiService shim handlers)
+
+handler=handleCameraCatalog rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::sendCatalog
+handler=handleCameraDemo rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleDemo
+handler=handleCameraDemoClear rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleDemoClear
+handler=handleCameraEvents rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::sendEvents
+handler=handleCameraStatus rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::sendStatus
+handler=handleDebugEnable rate_limit=1 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleDebugEnable
+handler=handleDebugMetrics rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::sendMetrics
+handler=handleDebugPanic rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::sendPanic
+handler=handleDebugPerfFileDelete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handlePerfFileDelete
+handler=handleDebugPerfFileDownload rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handlePerfFileDownload
+handler=handleDebugPerfFilesList rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::sendPerfFilesList
+handler=handleGpsConfig rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleConfig
+handler=handleGpsObservations rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::sendObservations
+handler=handleGpsStatus rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::sendStatus
+handler=handleLockoutEvents rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::sendEvents
+handler=handleLockoutSummary rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::sendSummary
+handler=handleLockoutZoneDelete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleZoneDelete
+handler=handleLockoutZones rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::sendZones
+handler=handleObdConfig rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleConfig
+handler=handleObdConnect rate_limit=1 ui_activity=1 obd_enabled_gate=1 delegates=ObdApiService::handleConnect
+handler=handleObdDevices rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::sendDevices
+handler=handleObdDevicesClear rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleDevicesClear
+handler=handleObdDisconnect rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleDisconnect
+handler=handleObdForget rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleForget
+handler=handleObdRemembered rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::sendRemembered
+handler=handleObdRememberedAutoConnect rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleRememberedAutoConnect
+handler=handleObdScan rate_limit=1 ui_activity=1 obd_enabled_gate=1 delegates=ObdApiService::handleScan
+handler=handleObdScanStop rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleScanStop
+handler=handleObdStatus rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::sendStatus
+handler=handleSettingsBackup rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::sendBackup
+handler=handleSettingsRestore rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::handleRestore

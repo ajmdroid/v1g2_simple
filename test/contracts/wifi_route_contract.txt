@@ -1,0 +1,37 @@
+# WiFi API route contract (extracted ApiService endpoints)
+
+HTTP_GET /api/cameras/catalog
+HTTP_GET /api/cameras/events
+HTTP_GET /api/cameras/status
+HTTP_GET /api/debug/metrics
+HTTP_GET /api/debug/panic
+HTTP_GET /api/debug/perf-files
+HTTP_GET /api/debug/perf-files/download
+HTTP_GET /api/gps/observations
+HTTP_GET /api/gps/status
+HTTP_GET /api/lockout/events
+HTTP_GET /api/lockout/summary
+HTTP_GET /api/lockout/zones
+HTTP_GET /api/lockouts/events
+HTTP_GET /api/lockouts/summary
+HTTP_GET /api/lockouts/zones
+HTTP_GET /api/obd/devices
+HTTP_GET /api/obd/remembered
+HTTP_GET /api/obd/status
+HTTP_GET /api/settings/backup
+HTTP_POST /api/cameras/demo
+HTTP_POST /api/cameras/demo/clear
+HTTP_POST /api/debug/enable
+HTTP_POST /api/debug/perf-files/delete
+HTTP_POST /api/gps/config
+HTTP_POST /api/lockout/zones/delete
+HTTP_POST /api/lockouts/zones/delete
+HTTP_POST /api/obd/config
+HTTP_POST /api/obd/connect
+HTTP_POST /api/obd/devices/clear
+HTTP_POST /api/obd/disconnect
+HTTP_POST /api/obd/forget
+HTTP_POST /api/obd/remembered/autoconnect
+HTTP_POST /api/obd/scan
+HTTP_POST /api/obd/scan/stop
+HTTP_POST /api/settings/restore

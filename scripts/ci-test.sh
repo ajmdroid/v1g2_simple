@@ -21,6 +21,11 @@ ROOT_DIR=$(pwd)
 # Track timing
 START_TIME=$(date +%s)
 
+# Step 0: API contract guard
+echo -e "${YELLOW}🔒 Checking WiFi API contracts...${NC}"
+python3 scripts/check_wifi_api_contract.py
+echo -e "${GREEN}✅ WiFi API contracts match${NC}"
+
 # Step 1: Build web interface
 echo -e "${YELLOW}📦 Building web interface...${NC}"
 cd interface

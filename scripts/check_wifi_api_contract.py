@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Check WiFi API route/policy contracts for extracted ApiService handlers.
+
+This script enforces two invariants in src/wifi_manager.cpp:
+1) Route contract for extracted API modules stays stable (method + path).
+2) Handler policy contract for ApiService shim handlers stays stable
+   (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
+
+Use --update to rewrite expected contract snapshots from current source.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC_FILE = ROOT / "src" / "wifi_manager.cpp"
+ROUTE_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_route_contract.txt"
+POLICY_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_handler_policy_contract.txt"
+
+ROUTE_PREFIXES = (
+    "/api/settings/backup",
+    "/api/settings/restore",
+    "/api/debug/",
+    "/api/obd/",
+    "/api/gps/",
+    "/api/cameras/",
+    "/api/lockouts/",
+    "/api/lockout/",
+)
+
+ROUTE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
+HANDLER_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
+DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
+
+
+@dataclass(frozen=True)
+class HandlerPolicy:
+    name: str
+    rate_limit: int
+    ui_activity: int
+    obd_enabled_gate: int
+    delegates: Tuple[str, ...]
+
+    def to_line(self) -> str:
+        delegate_blob = ",".join(self.delegates)
+        return (
+            f"handler={self.name} "
+            f"rate_limit={self.rate_limit} "
+            f"ui_activity={self.ui_activity} "
+            f"obd_enabled_gate={self.obd_enabled_gate} "
+            f"delegates={delegate_blob}"
+        )
+
+
+def read_source() -> str:
+    if not SRC_FILE.exists():
+        raise FileNotFoundError(f"Source file not found: {SRC_FILE}")
+    return SRC_FILE.read_text(encoding="utf-8")
+
+
+def extract_routes(source: str) -> List[str]:
+    rows: List[str] = []
+    for path, method in ROUTE_RE.findall(source):
+        if path.startswith(ROUTE_PREFIXES):
+            rows.append(f"{method} {path}")
+    # Keep deterministic ordering independent of registration line moves.
+    return sorted(set(rows))
+
+
+def find_matching_brace(source: str, open_brace_index: int) -> int:
+    depth = 0
+    for idx in range(open_brace_index, len(source)):
+        ch = source[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return idx
+    raise ValueError("Unbalanced braces while parsing handler body")
+
+
+def extract_handler_bodies(source: str) -> Dict[str, str]:
+    handlers: Dict[str, str] = {}
+    for match in HANDLER_START_RE.finditer(source):
+        handler_name = match.group(1)
+        open_idx = source.find("{", match.start())
+        close_idx = find_matching_brace(source, open_idx)
+        handlers[handler_name] = source[open_idx + 1 : close_idx]
+    return handlers
+
+
+def extract_policy_contract(source: str) -> List[HandlerPolicy]:
+    handlers = extract_handler_bodies(source)
+    out: List[HandlerPolicy] = []
+
+    for handler_name, body in handlers.items():
+        delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
+        if not delegates:
+            continue
+
+        has_rate = int("checkRateLimit(" in body)
+        has_ui = int("markUiActivity(" in body)
+        has_obd_gate = int(
+            "settingsManager.get().obdEnabled" in body and "server.send(409" in body
+        )
+
+        out.append(
+            HandlerPolicy(
+                name=handler_name,
+                rate_limit=has_rate,
+                ui_activity=has_ui,
+                obd_enabled_gate=has_obd_gate,
+                delegates=delegates,
+            )
+        )
+
+    out.sort(key=lambda p: p.name)
+    return out
+
+
+def read_expected_lines(path: Path) -> List[str]:
+    if not path.exists():
+        return []
+    lines: List[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        lines.append(line)
+    return lines
+
+
+def write_lines(path: Path, header: str, lines: List[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [header, ""]
+    payload.extend(lines)
+    payload.append("")
+    path.write_text("\n".join(payload), encoding="utf-8")
+
+
+def print_diff(expected: List[str], actual: List[str], label: str) -> None:
+    expected_set = set(expected)
+    actual_set = set(actual)
+
+    missing = sorted(expected_set - actual_set)
+    extra = sorted(actual_set - expected_set)
+
+    print(f"[contract] {label} mismatch")
+    if missing:
+        print("  missing:")
+        for row in missing:
+            print(f"    - {row}")
+    if extra:
+        print("  extra:")
+        for row in extra:
+            print(f"    + {row}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="rewrite expected contract files from current source",
+    )
+    args = parser.parse_args()
+
+    source = read_source()
+
+    routes = extract_routes(source)
+    policies = extract_policy_contract(source)
+    policy_lines = [p.to_line() for p in policies]
+
+    if args.update:
+        write_lines(
+            ROUTE_CONTRACT_FILE,
+            "# WiFi API route contract (extracted ApiService endpoints)",
+            routes,
+        )
+        write_lines(
+            POLICY_CONTRACT_FILE,
+            "# WiFi API handler policy contract (ApiService shim handlers)",
+            policy_lines,
+        )
+        print(f"Updated {ROUTE_CONTRACT_FILE}")
+        print(f"Updated {POLICY_CONTRACT_FILE}")
+        return 0
+
+    expected_routes = read_expected_lines(ROUTE_CONTRACT_FILE)
+    expected_policy = read_expected_lines(POLICY_CONTRACT_FILE)
+
+    ok = True
+
+    if expected_routes != routes:
+        print_diff(expected_routes, routes, "route")
+        ok = False
+    if expected_policy != policy_lines:
+        print_diff(expected_policy, policy_lines, "policy")
+        ok = False
+
+    if not ok:
+        print("\nRun with --update only when intentionally changing contract.")
+        return 1
+
+    print("[contract] route and policy contracts match")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
