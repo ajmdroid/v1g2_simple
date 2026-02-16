@@ -93,6 +93,26 @@ void test_handle_connect_requires_address() {
     TEST_ASSERT_TRUE(responseContains(server, "Missing address"));
 }
 
+void test_handle_connect_parses_json_payload() {
+    WebServer server(80);
+    OBDHandler obdHandler;
+    V1BLEClient bleClient;
+    bleClient.setConnected(true);
+    server.setArg("plain",
+                  "{\"address\":\"AA:BB:CC\",\"name\":\"JsonAdapter\","
+                  "\"pin\":\"9999\",\"remember\":false,\"autoConnect\":true}");
+
+    ObdApiService::handleConnect(server, obdHandler, bleClient);
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(1, obdHandler.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("AA:BB:CC", obdHandler.lastConnectAddress.c_str());
+    TEST_ASSERT_EQUAL_STRING("JsonAdapter", obdHandler.lastConnectName.c_str());
+    TEST_ASSERT_EQUAL_STRING("9999", obdHandler.lastConnectPin.c_str());
+    TEST_ASSERT_FALSE(obdHandler.lastConnectRemember);
+    TEST_ASSERT_TRUE(obdHandler.lastConnectAutoConnect);
+}
+
 void test_handle_config_applies_vw_data_enabled() {
     WebServer server(80);
     OBDHandler obdHandler;
@@ -394,6 +414,7 @@ int main() {
     RUN_TEST(test_handle_connect_queues_request);
     RUN_TEST(test_handle_connect_reports_queue_failure);
     RUN_TEST(test_handle_connect_requires_address);
+    RUN_TEST(test_handle_connect_parses_json_payload);
     RUN_TEST(test_handle_config_applies_vw_data_enabled);
     RUN_TEST(test_handle_config_disables_obd_service_runtime);
     RUN_TEST(test_handle_remembered_autoconnect_updates_flag);
