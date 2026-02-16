@@ -878,6 +878,41 @@ Delete one perf CSV file.
 
 ---
 
+## Legacy Shorthand Routes
+
+These non-prefixed routes predate the `/api/` convention. They remain for backward
+compatibility with older bookmarks and scripts.
+
+### POST /darkmode
+
+Toggle V1 display dark mode (sends display-off/on command to V1).
+
+**Request (form data):** `state=1` (dark on) or `state=0` (dark off)
+
+**Response:**
+```json
+{
+  "success": true,
+  "darkMode": true
+}
+```
+
+### POST /mute
+
+Toggle V1 mute state (sends mute-on/off command to V1).
+
+**Request (form data):** `state=1` (muted) or `state=0` (unmuted)
+
+**Response:**
+```json
+{
+  "success": true,
+  "muted": true
+}
+```
+
+---
+
 ## Error Responses
 
 All endpoints return appropriate HTTP status codes:
