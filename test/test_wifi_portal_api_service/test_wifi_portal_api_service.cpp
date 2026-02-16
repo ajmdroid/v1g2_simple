@@ -26,7 +26,7 @@ void test_ping_marks_ui_activity_and_returns_ok() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handlePing(
+    WifiPortalApiService::handleApiPing(
         server,
         [&uiActivityCalls]() { uiActivityCalls++; });
 
@@ -40,7 +40,7 @@ void test_generate_204_marks_ui_activity_and_returns_empty_204() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleGenerate204(
+    WifiPortalApiService::handleApiGenerate204(
         server,
         [&uiActivityCalls]() { uiActivityCalls++; });
 
@@ -54,7 +54,7 @@ void test_gen_204_marks_ui_activity_and_returns_empty_204() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleGen204(
+    WifiPortalApiService::handleApiGen204(
         server,
         [&uiActivityCalls]() { uiActivityCalls++; });
 
@@ -68,7 +68,7 @@ void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleHotspotDetect(
+    WifiPortalApiService::handleApiHotspotDetect(
         server,
         [&uiActivityCalls]() { uiActivityCalls++; });
 
@@ -82,7 +82,7 @@ void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
 void test_fwlink_redirects_to_settings() {
     WebServer server(80);
 
-    WifiPortalApiService::handleFwlink(server);
+    WifiPortalApiService::handleApiFwlink(server);
 
     TEST_ASSERT_EQUAL_STRING("/settings", server.sentHeader("Location").c_str());
     TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
@@ -119,7 +119,7 @@ void test_deprecated_redirect_sets_deprecation_header_and_redirect() {
 void test_ncsi_returns_expected_body() {
     WebServer server(80);
 
-    WifiPortalApiService::handleNcsiTxt(server);
+    WifiPortalApiService::handleApiNcsiTxt(server);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());

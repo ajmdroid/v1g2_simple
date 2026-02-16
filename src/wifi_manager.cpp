@@ -731,33 +731,33 @@ void WiFiManager::setupWebServer() {
     
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
-        WifiPortalApiService::handlePing(
+        WifiPortalApiService::handleApiPing(
             server,
             [this]() { markUiActivity(); });
     });
     // Android/ChromeOS captive portal probes
     server.on("/generate_204", HTTP_GET, [this]() {
-        WifiPortalApiService::handleGenerate204(
+        WifiPortalApiService::handleApiGenerate204(
             server,
             [this]() { markUiActivity(); });
     });
     server.on("/gen_204", HTTP_GET, [this]() {
-        WifiPortalApiService::handleGen204(
+        WifiPortalApiService::handleApiGen204(
             server,
             [this]() { markUiActivity(); });
     });
     // iOS/macOS captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [this]() {
-        WifiPortalApiService::handleHotspotDetect(
+        WifiPortalApiService::handleApiHotspotDetect(
             server,
             [this]() { markUiActivity(); });
     });
     // Windows captive portal variants
     server.on("/fwlink", HTTP_GET, [this]() {
-        WifiPortalApiService::handleFwlink(server);
+        WifiPortalApiService::handleApiFwlink(server);
     });
     server.on("/ncsi.txt", HTTP_GET, [this]() {
-        WifiPortalApiService::handleNcsiTxt(server);
+        WifiPortalApiService::handleApiNcsiTxt(server);
     });
     
     // V1 Settings/Profiles routes

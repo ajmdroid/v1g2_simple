@@ -27,4 +27,32 @@ void handleDeprecatedRedirectToRoot(WebServer& server,
 
 void handleNcsiTxt(WebServer& server);
 
+inline void handleApiPing(WebServer& server,
+                          const std::function<void()>& markUiActivity) {
+    handlePing(server, markUiActivity);
+}
+
+inline void handleApiGenerate204(WebServer& server,
+                                 const std::function<void()>& markUiActivity) {
+    handleGenerate204(server, markUiActivity);
+}
+
+inline void handleApiGen204(WebServer& server,
+                            const std::function<void()>& markUiActivity) {
+    handleGen204(server, markUiActivity);
+}
+
+inline void handleApiHotspotDetect(WebServer& server,
+                                   const std::function<void()>& markUiActivity) {
+    handleHotspotDetect(server, markUiActivity);
+}
+
+inline void handleApiFwlink(WebServer& server) {
+    handleFwlink(server);
+}
+
+inline void handleApiNcsiTxt(WebServer& server) {
+    handleNcsiTxt(server);
+}
+
 }  // namespace WifiPortalApiService
