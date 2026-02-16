@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
+#include <functional>
+
 class LockoutIndex;
 class LockoutStore;
 class LockoutLearner;
@@ -32,5 +34,58 @@ void sendZones(WebServer& server,
 void handleZoneDelete(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore);
+
+/// GET /api/lockout/summary wrapper with route-level policy callbacks.
+inline void handleApiSummary(WebServer& server,
+                             SignalObservationLog& signalObservationLog,
+                             SignalObservationSdLogger& signalObservationSdLogger,
+                             const std::function<bool()>& checkRateLimit,
+                             const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendSummary(server, signalObservationLog, signalObservationSdLogger);
+}
+
+/// GET /api/lockout/events wrapper with route-level policy callbacks.
+inline void handleApiEvents(WebServer& server,
+                            SignalObservationLog& signalObservationLog,
+                            SignalObservationSdLogger& signalObservationSdLogger,
+                            const std::function<bool()>& checkRateLimit,
+                            const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendEvents(server, signalObservationLog, signalObservationSdLogger);
+}
+
+/// GET /api/lockout/zones wrapper with route-level policy callbacks.
+inline void handleApiZones(WebServer& server,
+                           LockoutIndex& lockoutIndex,
+                           LockoutLearner& lockoutLearner,
+                           SettingsManager& settingsManager,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+}
+
+/// POST /api/lockout/zones/delete wrapper with route-level policy callbacks.
+inline void handleApiZoneDelete(WebServer& server,
+                                LockoutIndex& lockoutIndex,
+                                LockoutStore& lockoutStore,
+                                const std::function<bool()>& checkRateLimit,
+                                const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleZoneDelete(server, lockoutIndex, lockoutStore);
+}
 
 }  // namespace LockoutApiService

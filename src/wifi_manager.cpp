@@ -1391,54 +1391,74 @@ void WiFiManager::setupWebServer() {
             [this]() { markUiActivity(); });
     });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendZones(server, lockoutIndex, lockoutLearner,
-                                     settingsManager);
+        LockoutApiService::handleApiZones(
+            server,
+            lockoutIndex,
+            lockoutLearner,
+            settingsManager,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockouts/summary", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendSummary(server, signalObservationLog,
-                                       signalObservationSdLogger);
+        LockoutApiService::handleApiSummary(
+            server,
+            signalObservationLog,
+            signalObservationSdLogger,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockouts/events", HTTP_GET, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendEvents(server, signalObservationLog,
-                                      signalObservationSdLogger);
+        LockoutApiService::handleApiEvents(
+            server,
+            signalObservationLog,
+            signalObservationSdLogger,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::handleZoneDelete(server, lockoutIndex, lockoutStore);
+        LockoutApiService::handleApiZoneDelete(
+            server,
+            lockoutIndex,
+            lockoutStore,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockout/zones", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones");
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendZones(server, lockoutIndex, lockoutLearner,
-                                     settingsManager);
+        LockoutApiService::handleApiZones(
+            server,
+            lockoutIndex,
+            lockoutLearner,
+            settingsManager,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockout/summary", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary");
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendSummary(server, signalObservationLog,
-                                       signalObservationSdLogger);
+        LockoutApiService::handleApiSummary(
+            server,
+            signalObservationLog,
+            signalObservationSdLogger,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockout/events", HTTP_GET, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events");
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::sendEvents(server, signalObservationLog,
-                                      signalObservationSdLogger);
+        LockoutApiService::handleApiEvents(
+            server,
+            signalObservationLog,
+            signalObservationSdLogger,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     server.on("/api/lockout/zones/delete", HTTP_POST, [this]() {
         server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete");
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        LockoutApiService::handleZoneDelete(server, lockoutIndex, lockoutStore);
+        LockoutApiService::handleApiZoneDelete(
+            server,
+            lockoutIndex,
+            lockoutStore,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
