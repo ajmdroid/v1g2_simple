@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
-This script enforces five invariants in src/wifi_manager.cpp:
+This script enforces six invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
@@ -9,6 +9,7 @@ This script enforces five invariants in src/wifi_manager.cpp:
    that point callers to /api/lockouts/* and mirror canonical route policy.
 4) WiFiManager handle* methods do not become thin ApiService shims again.
 5) ApiService delegates remain bound only in setupWebServer() route registration.
+6) Remaining local WiFi route families preserve route-level policy and handler bindings.
 
 Use --update to rewrite expected contract snapshots from current source.
 """
@@ -33,6 +34,9 @@ LEGACY_LOCKOUT_CONTRACT_FILE = (
 SHIM_ABSENCE_CONTRACT_FILE = (
     ROOT / "test" / "contracts" / "wifi_shim_absence_contract.txt"
 )
+LOCAL_HANDLER_ROUTE_CONTRACT_FILE = (
+    ROOT / "test" / "contracts" / "wifi_local_handler_route_contract.txt"
+)
 
 ROUTE_PREFIXES = (
     "/api/settings/backup",
@@ -44,14 +48,36 @@ ROUTE_PREFIXES = (
     "/api/lockouts/",
     "/api/lockout/",
 )
+LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
+    "HTTP_GET /api/settings",
+    "HTTP_POST /api/settings",
+    "HTTP_GET /api/v1/profiles",
+    "HTTP_GET /api/v1/profile",
+    "HTTP_POST /api/v1/profile",
+    "HTTP_POST /api/v1/profile/delete",
+    "HTTP_POST /api/v1/pull",
+    "HTTP_POST /api/v1/push",
+    "HTTP_GET /api/v1/current",
+    "HTTP_GET /api/autopush/slots",
+    "HTTP_POST /api/autopush/slot",
+    "HTTP_POST /api/autopush/activate",
+    "HTTP_POST /api/autopush/push",
+    "HTTP_GET /api/autopush/status",
+    "HTTP_GET /api/displaycolors",
+    "HTTP_POST /api/displaycolors",
+    "HTTP_POST /api/displaycolors/reset",
+    "HTTP_POST /api/displaycolors/preview",
+    "HTTP_POST /api/displaycolors/clear",
+)
 
 ROUTE_SIGNATURE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
 ROUTE_LAMBDA_START_RE = re.compile(
-    r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[this\]\(\)\s*\{'
+    r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[[^\]]*\]\(\)\s*\{'
 )
 HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
 METHOD_START_RE = re.compile(r"void\s+WiFiManager::([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{")
 DELEGATE_RE = re.compile(r"([A-Za-z]+ApiService::[A-Za-z0-9_]+)\s*\(")
+HANDLE_CALL_RE = re.compile(r"\b(handle[A-Za-z0-9_]+)\s*\(")
 DEPRECATED_HEADER_RE = re.compile(
     r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
 )
@@ -86,6 +112,28 @@ class RoutePolicy:
         )
 
 
+@dataclass(frozen=True)
+class LocalHandlerRoutePolicy:
+    route: str
+    rate_limit: int
+    ui_activity: int
+    obd_enabled_gate: int
+    handlers: Tuple[str, ...]
+    delegates: Tuple[str, ...]
+
+    def to_line(self) -> str:
+        handler_blob = ",".join(self.handlers)
+        delegate_blob = ",".join(self.delegates)
+        return (
+            f"route={self.route} "
+            f"rate_limit={self.rate_limit} "
+            f"ui_activity={self.ui_activity} "
+            f"obd_enabled_gate={self.obd_enabled_gate} "
+            f"handlers={handler_blob} "
+            f"delegates={delegate_blob}"
+        )
+
+
 def read_source() -> str:
     if not SRC_FILE.exists():
         raise FileNotFoundError(f"Source file not found: {SRC_FILE}")
@@ -114,19 +162,24 @@ def find_matching_brace(source: str, open_brace_index: int) -> int:
     raise ValueError("Unbalanced braces while parsing route lambda body")
 
 
-def extract_route_lambda_bodies(source: str) -> Dict[str, str]:
+def extract_all_route_lambda_bodies(source: str) -> Dict[str, str]:
     routes: Dict[str, str] = {}
     for match in ROUTE_LAMBDA_START_RE.finditer(source):
-        path = match.group(1)
-        method = match.group(2)
-        if not path.startswith(ROUTE_PREFIXES):
-            continue
-
-        route = f"{method} {path}"
+        route = f"{match.group(2)} {match.group(1)}"
         open_idx = match.end() - 1
         close_idx = find_matching_brace(source, open_idx)
         routes[route] = source[open_idx + 1 : close_idx]
     return routes
+
+
+def extract_route_lambda_bodies(source: str) -> Dict[str, str]:
+    routes = extract_all_route_lambda_bodies(source)
+    out: Dict[str, str] = {}
+    for route, body in routes.items():
+        _method, path = route.split(" ", 1)
+        if path.startswith(ROUTE_PREFIXES):
+            out[route] = body
+    return out
 
 
 def extract_handle_method_bodies(source: str) -> Dict[str, str]:
@@ -211,6 +264,38 @@ def extract_shim_absence_contract(source: str) -> List[str]:
         out.append(f"handler={handler} delegates={','.join(delegates)}")
 
     return sorted(out)
+
+
+def extract_local_handler_route_contract(source: str) -> List[str]:
+    routes = extract_all_route_lambda_bodies(source)
+    out: List[LocalHandlerRoutePolicy] = []
+
+    for route in LOCAL_HANDLER_ROUTE_KEYS:
+        body = routes.get(route)
+        if body is None:
+            continue
+
+        handlers = tuple(sorted(set(HANDLE_CALL_RE.findall(body))))
+        delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
+        has_rate = int("checkRateLimit(" in body)
+        has_ui = int("markUiActivity(" in body)
+        has_obd_gate = int(
+            "settingsManager.get().obdEnabled" in body and "server.send(409" in body
+        )
+
+        out.append(
+            LocalHandlerRoutePolicy(
+                route=route,
+                rate_limit=has_rate,
+                ui_activity=has_ui,
+                obd_enabled_gate=has_obd_gate,
+                handlers=handlers,
+                delegates=delegates,
+            )
+        )
+
+    out.sort(key=lambda p: p.route)
+    return [p.to_line() for p in out]
 
 
 def find_delegate_placement_errors(source: str) -> List[str]:
@@ -351,6 +436,7 @@ def main() -> int:
     policy_lines = [p.to_line() for p in policies]
     legacy_lockout_lines = extract_legacy_lockout_contract(source)
     shim_absence_lines = extract_shim_absence_contract(source)
+    local_handler_route_lines = extract_local_handler_route_contract(source)
 
     if args.update:
         write_lines(
@@ -373,16 +459,23 @@ def main() -> int:
             "# WiFi API shim absence contract (handle* methods must not delegate to ApiService)",
             shim_absence_lines,
         )
+        write_lines(
+            LOCAL_HANDLER_ROUTE_CONTRACT_FILE,
+            "# WiFi API local-handler route contract (remaining non-ApiService route families)",
+            local_handler_route_lines,
+        )
         print(f"Updated {ROUTE_CONTRACT_FILE}")
         print(f"Updated {POLICY_CONTRACT_FILE}")
         print(f"Updated {LEGACY_LOCKOUT_CONTRACT_FILE}")
         print(f"Updated {SHIM_ABSENCE_CONTRACT_FILE}")
+        print(f"Updated {LOCAL_HANDLER_ROUTE_CONTRACT_FILE}")
         return 0
 
     expected_routes = read_expected_lines(ROUTE_CONTRACT_FILE)
     expected_policy = read_expected_lines(POLICY_CONTRACT_FILE)
     expected_legacy_lockout = read_expected_lines(LEGACY_LOCKOUT_CONTRACT_FILE)
     expected_shim_absence = read_expected_lines(SHIM_ABSENCE_CONTRACT_FILE)
+    expected_local_handler_routes = read_expected_lines(LOCAL_HANDLER_ROUTE_CONTRACT_FILE)
 
     ok = True
 
@@ -397,6 +490,9 @@ def main() -> int:
         ok = False
     if expected_shim_absence != shim_absence_lines:
         print_diff(expected_shim_absence, shim_absence_lines, "shim-absence")
+        ok = False
+    if expected_local_handler_routes != local_handler_route_lines:
+        print_diff(expected_local_handler_routes, local_handler_route_lines, "local-handler-route")
         ok = False
 
     legacy_parity_errors = validate_legacy_lockout_parity(policies, legacy_lockout_lines)
@@ -418,7 +514,8 @@ def main() -> int:
         return 1
 
     print(
-        "[contract] route, policy, legacy lockout, shim-absence, lockout parity, and delegate placement contracts match"
+        "[contract] route, policy, legacy lockout, shim-absence, local-handler-route, "
+        "lockout parity, and delegate placement contracts match"
     )
     return 0
 
