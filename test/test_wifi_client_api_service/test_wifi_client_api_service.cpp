@@ -86,7 +86,7 @@ static WifiClientApiService::Runtime makeRuntime(FakeRuntime& rt) {
     };
 }
 
-void test_parse_connect_request_missing_body() {
+void test_handle_connect_missing_body_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
 
@@ -98,7 +98,7 @@ void test_parse_connect_request_missing_body() {
     TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
-void test_parse_connect_request_invalid_json() {
+void test_handle_connect_invalid_json_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("plain", "{bad");
@@ -111,7 +111,7 @@ void test_parse_connect_request_invalid_json() {
     TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
-void test_parse_connect_request_missing_ssid() {
+void test_handle_connect_missing_ssid_returns_400() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("plain", "{\"password\":\"pw\"}");
@@ -124,7 +124,7 @@ void test_parse_connect_request_missing_ssid() {
     TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
 }
 
-void test_parse_connect_request_success() {
+void test_handle_connect_valid_payload_returns_200() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("plain", "{\"ssid\":\"GarageWiFi\",\"password\":\"secret\"}");
@@ -139,7 +139,7 @@ void test_parse_connect_request_success() {
     TEST_ASSERT_EQUAL_STRING("secret", rt.lastConnectPassword.c_str());
 }
 
-void test_send_status_connected_includes_network_fields() {
+void test_handle_status_connected_includes_network_fields() {
     WebServer server(80);
     FakeRuntime rt;
     rt.enabled = true;
@@ -163,7 +163,7 @@ void test_send_status_connected_includes_network_fields() {
     TEST_ASSERT_TRUE(responseContains(server, "\"scanRunning\":false"));
 }
 
-void test_send_status_disconnected_omits_connected_fields() {
+void test_handle_status_disconnected_omits_connected_fields() {
     WebServer server(80);
     FakeRuntime rt;
     rt.enabled = false;
@@ -181,7 +181,7 @@ void test_send_status_disconnected_omits_connected_fields() {
     TEST_ASSERT_FALSE(responseContains(server, "\"ip\""));
 }
 
-void test_send_scan_results_includes_networks() {
+void test_handle_scan_completed_includes_networks() {
     WebServer server(80);
     FakeRuntime rt;
     rt.scanRunning = true;
@@ -210,7 +210,7 @@ void test_send_scan_results_includes_networks() {
     TEST_ASSERT_TRUE(responseContains(server, "\"secure\":true"));
 }
 
-void test_parse_enable_request_requires_boolean_field() {
+void test_handle_enable_rejects_non_boolean_enabled() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("plain", "{\"enabled\":\"true\"}");
@@ -223,7 +223,7 @@ void test_parse_enable_request_requires_boolean_field() {
     TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
 }
 
-void test_parse_enable_request_accepts_boolean_field() {
+void test_handle_enable_accepts_boolean_enabled() {
     WebServer server(80);
     FakeRuntime rt;
     rt.savedSsid = "";
@@ -238,7 +238,7 @@ void test_parse_enable_request_accepts_boolean_field() {
     TEST_ASSERT_TRUE(rt.lastSetEnabled);
 }
 
-void test_send_enable_parse_error_uses_expected_payload() {
+void test_handle_enable_missing_field_uses_expected_payload() {
     WebServer server(80);
     FakeRuntime rt;
 
@@ -546,16 +546,16 @@ void test_handle_api_enable_delegates_when_allowed() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_parse_connect_request_missing_body);
-    RUN_TEST(test_parse_connect_request_invalid_json);
-    RUN_TEST(test_parse_connect_request_missing_ssid);
-    RUN_TEST(test_parse_connect_request_success);
-    RUN_TEST(test_send_status_connected_includes_network_fields);
-    RUN_TEST(test_send_status_disconnected_omits_connected_fields);
-    RUN_TEST(test_send_scan_results_includes_networks);
-    RUN_TEST(test_parse_enable_request_requires_boolean_field);
-    RUN_TEST(test_parse_enable_request_accepts_boolean_field);
-    RUN_TEST(test_send_enable_parse_error_uses_expected_payload);
+    RUN_TEST(test_handle_connect_missing_body_returns_400);
+    RUN_TEST(test_handle_connect_invalid_json_returns_400);
+    RUN_TEST(test_handle_connect_missing_ssid_returns_400);
+    RUN_TEST(test_handle_connect_valid_payload_returns_200);
+    RUN_TEST(test_handle_status_connected_includes_network_fields);
+    RUN_TEST(test_handle_status_disconnected_omits_connected_fields);
+    RUN_TEST(test_handle_scan_completed_includes_networks);
+    RUN_TEST(test_handle_enable_rejects_non_boolean_enabled);
+    RUN_TEST(test_handle_enable_accepts_boolean_enabled);
+    RUN_TEST(test_handle_enable_missing_field_uses_expected_payload);
     RUN_TEST(test_handle_status_connected_uses_runtime_payload);
     RUN_TEST(test_handle_scan_in_progress_returns_scanning_true);
     RUN_TEST(test_handle_scan_completed_returns_networks);
