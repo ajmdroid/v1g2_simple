@@ -214,7 +214,12 @@ static LockoutEnforcerResult tickPipeline(uint32_t nowMs, int64_t epochMs) {
     LockoutEnforcerResult result = enforcer.process(nowMs, epochMs, parser, gps);
 
     // 3. Camera runtime (uses GPS, independent of lockout).
-    cameraRuntimeModule.process(nowMs, false, false, parser.hasAlerts());
+    //    Mirror main.cpp: only a real priority signal preempts cameras.
+    const AlertData camPriority = parser.getPriorityAlert();
+    const bool signalPriorityActive = parser.hasAlerts() &&
+                                      camPriority.isValid &&
+                                      camPriority.band != BAND_NONE;
+    cameraRuntimeModule.process(nowMs, false, false, signalPriorityActive);
 
     return result;
 }
@@ -675,7 +680,33 @@ void test_learned_lockout_does_not_false_trigger_at_distant_location() {
 }
 
 // =============================================================================
-// SCENARIO 15: Mode OFF — nothing evaluated, no crash
+// SCENARIO 15: Weak alert does NOT suppress camera — only priority does
+// =============================================================================
+
+void test_weak_alert_does_not_suppress_camera() {
+    float cameraLon = HOME_LON + 0.0010f;
+    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);  // east-facing camera
+
+    // Drive east toward camera with a weak, non-priority alert active.
+    // AlertData::create with isPriority=false and isValid=false mimics a
+    // background K-band signal (BSM, door opener, etc.).
+    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
+    AlertData weak = AlertData::create(BAND_K, DIR_FRONT, 1, 0, K_FREQ, false, false);
+    parser.setAlerts({weak});
+    TEST_ASSERT_TRUE(parser.hasAlerts());  // alerts exist
+
+    tickPipeline(10000, EPOCH_BASE);
+
+    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
+    // Camera should still activate — weak alert must not preempt.
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(CameraLifecycleState::ACTIVE),
+        static_cast<uint8_t>(status.lifecycleState));
+    TEST_ASSERT_TRUE(status.activeAlert.active);
+}
+
+// =============================================================================
+// SCENARIO 16: Mode OFF — nothing evaluated, no crash
 // =============================================================================
 
 void test_mode_off_is_completely_inert() {
@@ -729,6 +760,7 @@ int main() {
     // Camera integration
     RUN_TEST(test_camera_activates_on_approach_heading_aligned);
     RUN_TEST(test_camera_suppressed_when_signal_priority_active);
+    RUN_TEST(test_weak_alert_does_not_suppress_camera);
 
     // Combined scenarios
     RUN_TEST(test_combined_v1_alert_camera_lockout_sequence);

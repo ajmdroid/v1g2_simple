@@ -1192,9 +1192,16 @@ void loop() {
     autoPushModule.process();
 
     // Camera runtime is strictly low-priority and self-gated on overload/non-core.
-    // Live V1 alerts always preempt camera lifecycle/rendering.
+    // Only a real priority V1 signal preempts camera lifecycle — weak/background
+    // alerts (BSM, door openers, etc.) must not suppress camera matching.
     uint32_t cameraStartUs = PERF_TIMESTAMP_US();
-    cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, parser.hasAlerts());
+    {
+        const AlertData camPriority = parser.getPriorityAlert();
+        const bool signalPriorityActive = parser.hasAlerts() &&
+                                          camPriority.isValid &&
+                                          camPriority.band != BAND_NONE;
+        cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, signalPriorityActive);
+    }
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
     // ── WiFi deferred auto-start gate ────────────────────────────────
