@@ -96,7 +96,7 @@ void test_pull_rate_limited_short_circuits() {
     rt.connected = true;
     rt.requestResult = true;
 
-    WifiV1ProfileApiService::handleSettingsPull(
+    WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -110,7 +110,7 @@ void test_pull_requires_connected_v1() {
     FakeRuntime rt;
     rt.connected = false;
 
-    WifiV1ProfileApiService::handleSettingsPull(
+    WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -125,7 +125,7 @@ void test_pull_request_failure_returns_500() {
     rt.connected = true;
     rt.requestResult = false;
 
-    WifiV1ProfileApiService::handleSettingsPull(
+    WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -141,7 +141,7 @@ void test_pull_success_returns_200() {
     rt.connected = true;
     rt.requestResult = true;
 
-    WifiV1ProfileApiService::handleSettingsPull(
+    WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -158,7 +158,7 @@ void test_push_rate_limited_short_circuits() {
     rt.connected = true;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return false; });
@@ -173,7 +173,7 @@ void test_push_requires_connected_v1() {
     rt.connected = false;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -187,7 +187,7 @@ void test_push_requires_body() {
     FakeRuntime rt;
     rt.connected = true;
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -202,7 +202,7 @@ void test_push_invalid_json_returns_400() {
     rt.connected = true;
     server.setArg("plain", "{bad json");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -218,7 +218,7 @@ void test_push_profile_name_not_found_returns_404() {
     rt.profileFound = false;
     server.setArg("plain", "{\"name\":\"Unknown\"}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -237,7 +237,7 @@ void test_push_profile_name_success_writes_and_sets_display() {
     rt.profileBytes[5] = 0x55;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -258,7 +258,7 @@ void test_push_raw_bytes_requires_six_items() {
     rt.connected = true;
     server.setArg("plain", "{\"bytes\":[1,2,3]}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -273,7 +273,7 @@ void test_push_raw_bytes_success() {
     rt.connected = true;
     server.setArg("plain", "{\"bytes\":[1,2,3,4,5,6],\"displayOn\":false}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -294,7 +294,7 @@ void test_push_settings_parse_failure_returns_400() {
     rt.parseSettingsOk = false;
     server.setArg("plain", "{\"settings\":{\"byte0\":9}}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -311,7 +311,7 @@ void test_push_settings_root_fallback_success() {
     rt.parseSettingsOk = true;
     server.setArg("plain", "{\"byte0\":9}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -333,7 +333,7 @@ void test_push_write_failure_returns_500() {
     rt.writeResult = false;
     server.setArg("plain", "{\"settings\":{\"byte0\":2},\"displayOn\":false}");
 
-    WifiV1ProfileApiService::handleSettingsPush(
+    WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
         []() { return true; });

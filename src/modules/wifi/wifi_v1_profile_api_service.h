@@ -58,41 +58,4 @@ void handleApiSettingsPush(WebServer& server,
                            const Runtime& runtime,
                            const std::function<bool()>& checkRateLimit);
 
-// Backward-compatible aliases for non-Api symbol names.
-inline void handleProfilesList(WebServer& server, const Runtime& runtime) {
-    handleApiProfilesList(server, runtime);
-}
-
-inline void handleProfileGet(WebServer& server, const Runtime& runtime) {
-    handleApiProfileGet(server, runtime);
-}
-
-inline void handleProfileSave(WebServer& server,
-                              const Runtime& runtime,
-                              const std::function<bool()>& checkRateLimit) {
-    handleApiProfileSave(server, runtime, checkRateLimit);
-}
-
-inline void handleProfileDelete(WebServer& server,
-                                const Runtime& runtime,
-                                const std::function<bool()>& checkRateLimit) {
-    handleApiProfileDelete(server, runtime, checkRateLimit);
-}
-
-inline void handleCurrentSettings(WebServer& server, const Runtime& runtime) {
-    handleApiCurrentSettings(server, runtime);
-}
-
-inline void handleSettingsPull(WebServer& server,
-                               const Runtime& runtime,
-                               const std::function<bool()>& checkRateLimit) {
-    handleApiSettingsPull(server, runtime, checkRateLimit);
-}
-
-inline void handleSettingsPush(WebServer& server,
-                               const Runtime& runtime,
-                               const std::function<bool()>& checkRateLimit) {
-    handleApiSettingsPush(server, runtime, checkRateLimit);
-}
-
 }  // namespace WifiV1ProfileApiService
