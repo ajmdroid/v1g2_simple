@@ -1146,13 +1146,15 @@ void WiFiManager::setupWebServer() {
     
     // Settings backup/restore API routes
     server.on("/api/settings/backup", HTTP_GET, [this]() {
-        markUiActivity();
-        BackupApiService::sendBackup(server);
+        BackupApiService::handleApiBackup(
+            server,
+            [this]() { markUiActivity(); });
     });
     server.on("/api/settings/restore", HTTP_POST, [this]() {
-        if (!checkRateLimit()) return;
-        markUiActivity();
-        BackupApiService::handleRestore(server);
+        BackupApiService::handleApiRestore(
+            server,
+            [this]() { return checkRateLimit(); },
+            [this]() { markUiActivity(); });
     });
     
     // Debug API routes (performance metrics)
