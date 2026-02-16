@@ -90,6 +90,32 @@ void test_fwlink_redirects_to_settings() {
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
 }
 
+void test_redirect_to_root_sets_location_and_message() {
+    WebServer server(80);
+
+    WifiPortalApiService::handleRedirectToRoot(server);
+
+    TEST_ASSERT_EQUAL_STRING("/", server.sentHeader("Location").c_str());
+    TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
+    TEST_ASSERT_TRUE(responseContains(server, "Redirecting to /"));
+}
+
+void test_deprecated_redirect_sets_deprecation_header_and_redirect() {
+    WebServer server(80);
+
+    WifiPortalApiService::handleDeprecatedRedirectToRoot(
+        server,
+        "Use /api/settings");
+
+    TEST_ASSERT_EQUAL_STRING("Use /api/settings",
+                             server.sentHeader("X-API-Deprecated").c_str());
+    TEST_ASSERT_EQUAL_STRING("/", server.sentHeader("Location").c_str());
+    TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
+    TEST_ASSERT_TRUE(responseContains(server, "Redirecting to /"));
+}
+
 void test_ncsi_returns_expected_body() {
     WebServer server(80);
 
@@ -107,6 +133,8 @@ int main() {
     RUN_TEST(test_gen_204_marks_ui_activity_and_returns_empty_204);
     RUN_TEST(test_hotspot_detect_marks_ui_activity_and_redirects_to_settings);
     RUN_TEST(test_fwlink_redirects_to_settings);
+    RUN_TEST(test_redirect_to_root_sets_location_and_message);
+    RUN_TEST(test_deprecated_redirect_sets_deprecation_header_and_redirect);
     RUN_TEST(test_ncsi_returns_expected_body);
     return UNITY_END();
 }

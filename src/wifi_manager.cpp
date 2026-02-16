@@ -521,8 +521,7 @@ void WiFiManager::setupWebServer() {
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
     server.on("/ui", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
+        WifiPortalApiService::handleRedirectToRoot(server);
     });
     
     // Serve static assets from _app directory
@@ -705,9 +704,9 @@ void WiFiManager::setupWebServer() {
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
     server.on("/settings", HTTP_GET, [this]() { 
-        server.sendHeader("X-API-Deprecated", "Use /api/settings");
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
+        WifiPortalApiService::handleDeprecatedRedirectToRoot(
+            server,
+            "Use /api/settings");
     });
     server.on("/settings", HTTP_POST, [this, makeSettingsRuntime]() {
         WifiSettingsApiService::handleLegacySettingsSave(
@@ -763,8 +762,7 @@ void WiFiManager::setupWebServer() {
     
     // V1 Settings/Profiles routes
     server.on("/v1settings", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
+        WifiPortalApiService::handleRedirectToRoot(server);
     });
     auto makeV1ProfileRuntime = [this]() {
         return WifiV1ProfileApiService::Runtime{
@@ -1037,8 +1035,7 @@ void WiFiManager::setupWebServer() {
         };
     };
     server.on("/autopush", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
+        WifiPortalApiService::handleRedirectToRoot(server);
     });
     server.on("/api/autopush/slots", HTTP_GET, [this, makeAutoPushRuntime]() {
         WifiAutoPushApiService::handleSlots(server, makeAutoPushRuntime());
@@ -1113,8 +1110,7 @@ void WiFiManager::setupWebServer() {
         };
     };
     server.on("/displaycolors", HTTP_GET, [this]() { 
-        server.sendHeader("Location", "/", true);
-        server.send(302, "text/plain", "Redirecting to /");
+        WifiPortalApiService::handleRedirectToRoot(server);
     });
     server.on("/api/displaycolors", HTTP_GET, [this, makeDisplayColorsRuntime]() {
         WifiDisplayColorsApiService::handleGet(server, makeDisplayColorsRuntime());

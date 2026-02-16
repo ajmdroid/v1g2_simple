@@ -45,6 +45,19 @@ void handleFwlink(WebServer& server) {
     server.send(302, "text/html", "");
 }
 
+void handleRedirectToRoot(WebServer& server) {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "Redirecting to /");
+}
+
+void handleDeprecatedRedirectToRoot(WebServer& server,
+                                    const char* deprecationHint) {
+    if (deprecationHint && deprecationHint[0] != '\0') {
+        server.sendHeader("X-API-Deprecated", deprecationHint);
+    }
+    handleRedirectToRoot(server);
+}
+
 void handleNcsiTxt(WebServer& server) {
     Serial.println("[HTTP] GET /ncsi.txt");
     server.send(200, "text/plain", "Microsoft NCSI");
