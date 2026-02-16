@@ -206,8 +206,6 @@ private:
     void handleStatus();
     void handleSettingsApi();
     void handleSettingsSave();
-    void handleDarkMode();
-    void handleMute();
     void handleV1ProfilesList();
     void handleV1ProfileGet();
     void handleV1ProfileSave();
@@ -217,7 +215,6 @@ private:
     void handleV1CurrentSettings();
     
     // API endpoints
-    void handleApiProfilePush();      // POST /api/profile/push - queue profile push
     void handleTimeSet();             // POST /api/time/set - set trusted epoch base
     void handleAutoPushSlotsApi();
     void handleAutoPushSlotSave();

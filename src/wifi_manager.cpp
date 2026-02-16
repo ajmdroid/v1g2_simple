@@ -30,6 +30,7 @@
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
+#include "modules/wifi/wifi_control_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/signal_observation_log.h"
@@ -583,7 +584,11 @@ void WiFiManager::setupWebServer() {
     });
     server.on("/api/profile/push", HTTP_POST, [this]() { 
         if (!checkRateLimit()) return;
-        handleApiProfilePush(); 
+        WifiControlApiService::handleProfilePush(
+            server,
+            bleClient.isConnected(),
+            requestProfilePush,
+            [this]() { return checkRateLimit(); }); 
     });
     server.on("/api/time/set", HTTP_POST, [this]() {
         if (!checkRateLimit()) return;
@@ -606,8 +611,18 @@ void WiFiManager::setupWebServer() {
         server.sendHeader("X-API-Deprecated", "Use /api/settings");
         handleSettingsSave();
     });  // Legacy compat
-    server.on("/darkmode", HTTP_POST, [this]() { handleDarkMode(); });
-    server.on("/mute", HTTP_POST, [this]() { handleMute(); });
+    server.on("/darkmode", HTTP_POST, [this]() {
+        WifiControlApiService::handleDarkMode(
+            server,
+            sendV1Command,
+            [this]() { return checkRateLimit(); });
+    });
+    server.on("/mute", HTTP_POST, [this]() {
+        WifiControlApiService::handleMute(
+            server,
+            sendV1Command,
+            [this]() { return checkRateLimit(); });
+    });
     
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
@@ -1629,38 +1644,6 @@ void WiFiManager::handleStatus() {
 
 // ==================== API Endpoints ====================
 
-void WiFiManager::handleApiProfilePush() {
-    // Queue profile push action (non-blocking)
-    // This endpoint triggers the push executor to apply active profile
-    
-    if (!checkRateLimit()) return;
-    
-    // Check if V1 is connected
-    if (!bleClient.isConnected()) {
-        server.send(503, "application/json", 
-                   "{\"error\":\"V1 not connected\"}");
-        return;
-    }
-    
-    // Invoke the registered callback to kick off the auto-push state machine
-    bool queued = false;
-    if (requestProfilePush) {
-        queued = requestProfilePush();
-    }
-    
-    JsonDocument doc;
-    doc["ok"] = queued;
-    if (queued) {
-        doc["message"] = "Profile push queued - check display for progress";
-    } else {
-        doc["error"] = "Push handler unavailable";
-    }
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(queued ? 200 : 500, "application/json", json);
-}
-
 void WiFiManager::handleTimeSet() {
     uint64_t unixMs = 0;
     int32_t tzOffsetMin = 0;
@@ -1937,59 +1920,6 @@ void WiFiManager::handleSettingsSave() {
     settingsManager.save();
     
     server.send(200, "application/json", "{\"success\":true}");
-}
-
-void WiFiManager::handleDarkMode() {
-    if (!checkRateLimit()) return;
-    
-    if (!server.hasArg("state")) {
-        server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
-        return;
-    }
-    
-    bool darkMode = server.arg("state") == "1" || server.arg("state") == "true";
-    bool success = false;
-    
-    if (sendV1Command) {
-        // Dark mode = display OFF, so invert the parameter
-        success = sendV1Command("display", !darkMode);
-    }
-    
-    Serial.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
-    
-    JsonDocument doc;
-    doc["success"] = success;
-    doc["darkMode"] = darkMode;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleMute() {
-    if (!checkRateLimit()) return;
-    
-    if (!server.hasArg("state")) {
-        server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
-        return;
-    }
-    
-    bool muted = server.arg("state") == "1" || server.arg("state") == "true";
-    bool success = false;
-    
-    if (sendV1Command) {
-        success = sendV1Command("mute", muted);
-    }
-    
-    Serial.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");
-    
-    JsonDocument doc;
-    doc["success"] = success;
-    doc["muted"] = muted;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleV1ProfilesList() {
