@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+
+#include <cstdint>
 #include <functional>
 #include <vector>
 

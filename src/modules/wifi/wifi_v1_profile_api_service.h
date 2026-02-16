@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <WebServer.h>
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 
