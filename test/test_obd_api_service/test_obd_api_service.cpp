@@ -166,7 +166,7 @@ void test_handle_forget_reports_missing_address() {
     TEST_ASSERT_TRUE(responseContains(server, "Missing address"));
 }
 
-void test_send_status_reports_core_obd_fields() {
+void test_handle_api_status_reports_core_obd_fields() {
     WebServer server(80);
     OBDHandler obdHandler;
     V1BLEClient bleClient;
@@ -200,7 +200,13 @@ void test_send_status_reports_core_obd_fields() {
     settings.obdEnabled = true;
     settings.obdVwDataEnabled = true;
 
-    ObdApiService::sendStatus(server, obdHandler, bleClient, settings);
+    ObdApiService::handleApiStatus(
+        server,
+        obdHandler,
+        bleClient,
+        settings,
+        []() { return true; },
+        []() {});
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"state\":\"POLLING\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
@@ -209,7 +215,7 @@ void test_send_status_reports_core_obd_fields() {
     TEST_ASSERT_TRUE(responseContains(server, "\"autoConnectCount\":1"));
 }
 
-void test_send_status_uses_single_data_snapshot_for_validity() {
+void test_handle_api_status_uses_single_data_snapshot_for_validity() {
     WebServer server(80);
     OBDHandler obdHandler;
     V1BLEClient bleClient;
@@ -226,7 +232,13 @@ void test_send_status_uses_single_data_snapshot_for_validity() {
     obdHandler.setData(data);
 
     V1Settings settings;
-    ObdApiService::sendStatus(server, obdHandler, bleClient, settings);
+    ObdApiService::handleApiStatus(
+        server,
+        obdHandler,
+        bleClient,
+        settings,
+        []() { return true; },
+        []() {});
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"hasValidData\":false"));
@@ -419,8 +431,8 @@ int main() {
     RUN_TEST(test_handle_config_disables_obd_service_runtime);
     RUN_TEST(test_handle_remembered_autoconnect_updates_flag);
     RUN_TEST(test_handle_forget_reports_missing_address);
-    RUN_TEST(test_send_status_reports_core_obd_fields);
-    RUN_TEST(test_send_status_uses_single_data_snapshot_for_validity);
+    RUN_TEST(test_handle_api_status_reports_core_obd_fields);
+    RUN_TEST(test_handle_api_status_uses_single_data_snapshot_for_validity);
     RUN_TEST(test_handle_api_status_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_status_delegates_when_allowed);
     RUN_TEST(test_handle_api_scan_respects_obd_enabled_gate);
