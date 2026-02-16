@@ -27,18 +27,6 @@ struct ConfigRequest {
     bool vwDataEnabled = false;
 };
 
-bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
-bool parseConfigRequest(WebServer& server,
-                        bool enabledFallback,
-                        bool vwDataEnabledFallback,
-                        ConfigRequest& requestOut,
-                        String& errorMessage);
-bool parseRememberedAutoConnectRequest(WebServer& server,
-                                       String& addressOut,
-                                       bool& enabledOut,
-                                       String& errorMessage);
-bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage);
-
 void handleApiStatus(WebServer& server,
                      OBDHandler& obdHandler,
                      V1BLEClient& bleClient,

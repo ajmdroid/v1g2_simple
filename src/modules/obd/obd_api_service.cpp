@@ -16,6 +16,18 @@
 
 namespace ObdApiService {
 
+bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage);
+bool parseConfigRequest(WebServer& server,
+                        bool enabledFallback,
+                        bool vwDataEnabledFallback,
+                        ConfigRequest& requestOut,
+                        String& errorMessage);
+bool parseRememberedAutoConnectRequest(WebServer& server,
+                                       String& addressOut,
+                                       bool& enabledOut,
+                                       String& errorMessage);
+bool parseForgetAddressRequest(WebServer& server, String& addressOut, String& errorMessage);
+
 namespace {
 
 void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
