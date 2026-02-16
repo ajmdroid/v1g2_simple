@@ -1,14 +1,4 @@
 {
-  "compilerOptions": {
-    "moduleResolution": "bundler",
-    "target": "ESNext",
-    "module": "ESNext",
-    "verbatimModuleSyntax": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "paths": {
-      "$lib/*": ["./src/lib/*"]
-    }
-  },
+  "extends": "./.svelte-kit/tsconfig.json",
   "include": ["src/**/*.js", "src/**/*.svelte"]
 }
