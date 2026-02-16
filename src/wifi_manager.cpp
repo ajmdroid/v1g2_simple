@@ -31,6 +31,7 @@
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
+#include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_time_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
@@ -564,10 +565,48 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
+    auto sendStatusResponse = [this]() {
+        WifiStatusApiService::StatusRuntime runtime{
+            [this]() { return setupModeState == SETUP_MODE_AP_ON; },
+            [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
+            []() { return WiFi.localIP().toString(); },
+            [this]() { return getAPIPAddress(); },
+            []() { return WiFi.SSID(); },
+            []() { return WiFi.RSSI(); },
+            [this]() { return settingsManager.get().wifiClientEnabled; },
+            [this]() { return settingsManager.get().wifiClientSSID; },
+            [this]() { return settingsManager.get().apSSID; },
+            []() { return millis() / 1000; },
+            []() { return ESP.getFreeHeap(); },
+            []() { return String("v1g2"); },
+            []() { return String(FIRMWARE_VERSION); },
+            [this]() { return timeService.timeValid(); },
+            [this]() { return timeService.timeSource(); },
+            [this]() { return timeService.timeConfidence(); },
+            [this]() { return timeService.tzOffsetMinutes(); },
+            [this]() { return timeService.nowEpochMsOr0(); },
+            [this]() { return timeService.epochAgeMsOr0(); },
+            [this]() { return batteryManager.getVoltageMillivolts(); },
+            [this]() { return batteryManager.getPercentage(); },
+            [this]() { return batteryManager.isOnBattery(); },
+            [this]() { return batteryManager.hasBattery(); },
+            [this]() { return bleClient.isConnected(); },
+            getStatusJson,
+            getAlertJson,
+        };
+        WifiStatusApiService::sendStatus(
+            server,
+            runtime,
+            cachedStatusJson,
+            lastStatusJsonTime,
+            STATUS_CACHE_TTL_MS,
+            []() { return millis(); });
+    };
+
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this]() { 
+    server.on("/api/status", HTTP_GET, [this, sendStatusResponse]() {
         if (!checkRateLimit()) return;
-        handleStatus(); 
+        sendStatusResponse();
     });
     server.on("/api/profile/push", HTTP_POST, [this]() { 
         if (!checkRateLimit()) return;
@@ -599,7 +638,7 @@ void WiFiManager::setupWebServer() {
     });
     
     // Legacy status endpoint
-    server.on("/status", HTTP_GET, [this]() { handleStatus(); });
+    server.on("/status", HTTP_GET, [this, sendStatusResponse]() { sendStatusResponse(); });
     server.on("/api/settings", HTTP_GET, [this]() { handleSettingsApi(); });  // JSON settings for new UI
     server.on("/api/settings", HTTP_POST, [this]() { handleSettingsSave(); });  // Consistent API endpoint
     
@@ -1569,80 +1608,6 @@ void WiFiManager::checkWifiClientStatus() {
         default:
             break;
     }
-}
-
-void WiFiManager::handleStatus() {
-    // Option 2 optimization: Cache status JSON for 500ms to avoid repeated serialization
-    unsigned long now = millis();
-    bool cacheValid = (now - lastStatusJsonTime) < STATUS_CACHE_TTL_MS;
-    
-    if (!cacheValid) {
-        // Cache expired or uninitialized - rebuild JSON
-        const V1Settings& settings = settingsManager.get();
-        
-        JsonDocument doc;
-        
-        // WiFi info (matches Svelte dashboard expectations)
-        JsonObject wifi = doc["wifi"].to<JsonObject>();
-        wifi["setup_mode"] = (setupModeState == SETUP_MODE_AP_ON);
-        wifi["ap_active"] = (setupModeState == SETUP_MODE_AP_ON);
-        wifi["sta_connected"] = (wifiClientState == WIFI_CLIENT_CONNECTED);
-        wifi["sta_ip"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.localIP().toString() : "";
-        wifi["ap_ip"] = getAPIPAddress();
-        wifi["ssid"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.SSID() : settings.apSSID;
-        wifi["rssi"] = (wifiClientState == WIFI_CLIENT_CONNECTED) ? WiFi.RSSI() : 0;
-        wifi["sta_enabled"] = settings.wifiClientEnabled;
-        wifi["sta_ssid"] = settings.wifiClientSSID;
-        
-        // Device info
-        JsonObject device = doc["device"].to<JsonObject>();
-        device["uptime"] = millis() / 1000;
-        device["heap_free"] = ESP.getFreeHeap();
-        device["hostname"] = "v1g2";
-        device["firmware_version"] = FIRMWARE_VERSION;
-
-        // Safe clock status (explicitly set from trusted source, no background sync).
-        JsonObject time = doc["time"].to<JsonObject>();
-        const bool timeValid = timeService.timeValid();
-        time["valid"] = timeValid;
-        time["source"] = timeService.timeSource();
-        time["confidence"] = timeService.timeConfidence();
-        time["tzOffsetMin"] = timeService.tzOffsetMinutes();
-        time["tzOffsetMinutes"] = timeService.tzOffsetMinutes();
-        if (timeValid) {
-            time["epochMs"] = timeService.nowEpochMsOr0();
-            time["ageMs"] = timeService.epochAgeMsOr0();
-        }
-
-        // Battery info
-        JsonObject battery = doc["battery"].to<JsonObject>();
-        battery["voltage_mv"] = batteryManager.getVoltageMillivolts();
-        battery["percentage"] = batteryManager.getPercentage();
-        battery["on_battery"] = batteryManager.isOnBattery();
-        battery["has_battery"] = batteryManager.hasBattery();
-        
-        // BLE/V1 connection state
-        doc["v1_connected"] = bleClient.isConnected();
-        
-        // Append callback data if available (legacy support)
-        if (getStatusJson) {
-            JsonDocument statusDoc;
-            deserializeJson(statusDoc, getStatusJson());
-            for (JsonPair kv : statusDoc.as<JsonObject>()) {
-                doc[kv.key()] = kv.value();
-            }
-        }
-        if (getAlertJson) {
-            JsonDocument alertDoc;
-            deserializeJson(alertDoc, getAlertJson());
-            doc["alert"] = alertDoc;
-        }
-        
-        serializeJson(doc, cachedStatusJson);
-        lastStatusJsonTime = now;
-    }
-    
-    server.send(200, "application/json", cachedStatusJson);
 }
 
 // ==================== API Endpoints ====================

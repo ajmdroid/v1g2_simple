@@ -203,7 +203,6 @@ private:
     void processPendingPushNow();
     
     // Web handlers
-    void handleStatus();
     void handleSettingsApi();
     void handleSettingsSave();
     void handleV1ProfilesList();
