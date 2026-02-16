@@ -33,6 +33,7 @@
 #include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_time_api_service.h"
+#include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/signal_observation_log.h"
@@ -706,13 +707,83 @@ void WiFiManager::setupWebServer() {
         server.sendHeader("Location", "/", true);
         server.send(302, "text/plain", "Redirecting to /");
     });
-    server.on("/api/v1/profiles", HTTP_GET, [this]() { handleV1ProfilesList(); });
-    server.on("/api/v1/profile", HTTP_GET, [this]() { handleV1ProfileGet(); });
-    server.on("/api/v1/profile", HTTP_POST, [this]() { handleV1ProfileSave(); });
-    server.on("/api/v1/profile/delete", HTTP_POST, [this]() { handleV1ProfileDelete(); });
+    auto makeV1ProfileRuntime = [this]() {
+        return WifiV1ProfileApiService::Runtime{
+            []() { return v1ProfileManager.listProfiles(); },
+            [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary) {
+                V1Profile profile;
+                if (!v1ProfileManager.loadProfile(name, profile)) {
+                    return false;
+                }
+                summary.name = profile.name;
+                summary.description = profile.description;
+                summary.displayOn = profile.displayOn;
+                return true;
+            },
+            [](const String& name, String& json) {
+                V1Profile profile;
+                if (!v1ProfileManager.loadProfile(name, profile)) {
+                    return false;
+                }
+                json = v1ProfileManager.profileToJson(profile);
+                return true;
+            },
+            [](const JsonObject& settingsObj, uint8_t outBytes[6]) {
+                V1UserSettings settings;
+                if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
+                    return false;
+                }
+                memcpy(outBytes, settings.bytes, 6);
+                return true;
+            },
+            [](const String& name,
+               const String& description,
+               bool displayOn,
+               const uint8_t inBytes[6],
+               String& error) {
+                V1Profile profile;
+                profile.name = name;
+                profile.description = description;
+                profile.displayOn = displayOn;
+                memcpy(profile.settings.bytes, inBytes, 6);
+                ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
+                if (!result.success) {
+                    error = result.error;
+                    return false;
+                }
+                return true;
+            },
+            [](const String& name) { return v1ProfileManager.deleteProfile(name); },
+            []() { return v1ProfileManager.hasCurrentSettings(); },
+            []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
+            []() { return bleClient.isConnected(); },
+            [this]() { settingsManager.backupToSD(); },
+        };
+    };
+    auto rateLimitCallback = [this]() { return checkRateLimit(); };
+    server.on("/api/v1/profiles", HTTP_GET, [this, makeV1ProfileRuntime]() {
+        WifiV1ProfileApiService::handleProfilesList(server, makeV1ProfileRuntime());
+    });
+    server.on("/api/v1/profile", HTTP_GET, [this, makeV1ProfileRuntime]() {
+        WifiV1ProfileApiService::handleProfileGet(server, makeV1ProfileRuntime());
+    });
+    server.on("/api/v1/profile", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+        WifiV1ProfileApiService::handleProfileSave(
+            server,
+            makeV1ProfileRuntime(),
+            rateLimitCallback);
+    });
+    server.on("/api/v1/profile/delete", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+        WifiV1ProfileApiService::handleProfileDelete(
+            server,
+            makeV1ProfileRuntime(),
+            rateLimitCallback);
+    });
     server.on("/api/v1/pull", HTTP_POST, [this]() { handleV1SettingsPull(); });
     server.on("/api/v1/push", HTTP_POST, [this]() { handleV1SettingsPush(); });
-    server.on("/api/v1/current", HTTP_GET, [this]() { handleV1CurrentSettings(); });
+    server.on("/api/v1/current", HTTP_GET, [this, makeV1ProfileRuntime]() {
+        WifiV1ProfileApiService::handleCurrentSettings(server, makeV1ProfileRuntime());
+    });
     
     // Auto-Push routes
     server.on("/autopush", HTTP_GET, [this]() { 
@@ -1763,165 +1834,6 @@ void WiFiManager::handleSettingsSave() {
     settingsManager.save();
     
     server.send(200, "application/json", "{\"success\":true}");
-}
-
-void WiFiManager::handleV1ProfilesList() {
-    std::vector<String> profileNames = v1ProfileManager.listProfiles();
-    Serial.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
-    
-    JsonDocument doc;
-    JsonArray array = doc["profiles"].to<JsonArray>();
-    
-    for (const String& name : profileNames) {
-        V1Profile profile;
-        if (v1ProfileManager.loadProfile(name, profile)) {
-            JsonObject obj = array.add<JsonObject>();
-            obj["name"] = profile.name;
-            obj["description"] = profile.description;
-            obj["displayOn"] = profile.displayOn;
-            Serial.printf("[V1Profiles]   - %s: %s\n", profile.name.c_str(), profile.description.c_str());
-        }
-    }
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
-}
-
-void WiFiManager::handleV1ProfileGet() {
-    if (!server.hasArg("name")) {
-        server.send(400, "application/json", "{\"error\":\"Missing profile name\"}");
-        return;
-    }
-    
-    String name = server.arg("name");
-    V1Profile profile;
-    
-    if (!v1ProfileManager.loadProfile(name, profile)) {
-        server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
-        return;
-    }
-    
-    server.send(200, "application/json", v1ProfileManager.profileToJson(profile));
-}
-
-void WiFiManager::handleV1ProfileSave() {
-    if (!checkRateLimit()) return;
-    
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
-        return;
-    }
-    
-    String body = server.arg("plain");
-    if (body.length() > 4096) {
-        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
-        return;
-    }
-    Serial.printf("[V1Settings] Save request body: %s\n", body.c_str());
-    
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body);
-    
-    if (err) {
-        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-        return;
-    }
-    
-    String name = doc["name"] | "";
-    if (name.isEmpty()) {
-        server.send(400, "application/json", "{\"error\":\"Missing profile name\"}");
-        return;
-    }
-    
-    V1Profile profile;
-    profile.name = name;
-    profile.description = doc["description"] | "";
-    profile.displayOn = doc["displayOn"] | true;  // Default to on
-    
-    // Parse settings from JSON
-    JsonObject settingsObj = doc["settings"];
-    if (!settingsObj.isNull()) {
-        if (!v1ProfileManager.jsonToSettings(settingsObj, profile.settings)) {
-            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
-            return;
-        }
-    } else {
-        // Direct settings in root
-        JsonObject rootObj = doc.as<JsonObject>();
-        if (!v1ProfileManager.jsonToSettings(rootObj, profile.settings)) {
-            server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
-            return;
-        }
-    }
-    
-    ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
-    if (result.success) {
-        settingsManager.backupToSD();
-        Serial.printf("[V1Profiles] Profile '%s' saved successfully\n", profile.name.c_str());
-        server.send(200, "application/json", "{\"success\":true}");
-    } else {
-        Serial.printf("[V1Profiles] Failed to save profile '%s': %s\n", profile.name.c_str(), result.error.c_str());
-        String errorJson = "{\"error\":\"" + result.error + "\"}";
-        server.send(500, "application/json", errorJson);
-    }
-}
-
-void WiFiManager::handleV1ProfileDelete() {
-    if (!checkRateLimit()) return;
-    
-    if (!server.hasArg("plain")) {
-        server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
-        return;
-    }
-    
-    String body = server.arg("plain");
-    if (body.length() > 2048) {
-        server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
-        return;
-    }
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, body);
-    if (err) {
-        server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-        return;
-    }
-    
-    String name = doc["name"] | "";
-    if (name.isEmpty()) {
-        server.send(400, "application/json", "{\"error\":\"Missing profile name\"}");
-        return;
-    }
-    
-    if (v1ProfileManager.deleteProfile(name)) {
-        settingsManager.backupToSD();
-        server.send(200, "application/json", "{\"success\":true}");
-    } else {
-        server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
-    }
-}
-
-void WiFiManager::handleV1CurrentSettings() {
-    JsonDocument doc;
-    doc["connected"] = bleClient.isConnected();
-    
-    if (!v1ProfileManager.hasCurrentSettings()) {
-        doc["available"] = false;
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
-        return;
-    }
-    
-    doc["available"] = true;
-    // Parse existing settings JSON and embed it
-    JsonDocument settingsDoc;
-    deserializeJson(settingsDoc, v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()));
-    doc["settings"] = settingsDoc;
-    
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
 }
 
 void WiFiManager::handleV1SettingsPull() {

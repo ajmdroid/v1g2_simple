@@ -205,13 +205,8 @@ private:
     // Web handlers
     void handleSettingsApi();
     void handleSettingsSave();
-    void handleV1ProfilesList();
-    void handleV1ProfileGet();
-    void handleV1ProfileSave();
-    void handleV1ProfileDelete();
     void handleV1SettingsPull();
     void handleV1SettingsPush();
-    void handleV1CurrentSettings();
     
     // API endpoints
     void handleAutoPushSlotsApi();

@@ -4,9 +4,9 @@ route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0
 route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushStatus delegates=
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleDisplayColorsApi delegates=
 route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleSettingsApi delegates=
-route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1CurrentSettings delegates=
-route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1ProfileGet delegates=
-route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1ProfilesList delegates=
+route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleCurrentSettings
+route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfileGet
+route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfilesList
 route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushActivate delegates=
 route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushPushNow delegates=
 route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleAutoPushSlotSave delegates=
@@ -15,7 +15,7 @@ route=HTTP_POST /api/displaycolors/clear rate_limit=1 ui_activity=0 obd_enabled_
 route=HTTP_POST /api/displaycolors/preview rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=
 route=HTTP_POST /api/displaycolors/reset rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleDisplayColorsReset delegates=
 route=HTTP_POST /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleSettingsSave delegates=
-route=HTTP_POST /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1ProfileSave delegates=
-route=HTTP_POST /api/v1/profile/delete rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1ProfileDelete delegates=
+route=HTTP_POST /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfileSave
+route=HTTP_POST /api/v1/profile/delete rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleProfileDelete
 route=HTTP_POST /api/v1/pull rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1SettingsPull delegates=
 route=HTTP_POST /api/v1/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers=handleV1SettingsPush delegates=
