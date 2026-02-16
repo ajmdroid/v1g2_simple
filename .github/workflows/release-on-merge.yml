@@ -92,6 +92,14 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
       
+      - name: Guard against tag collision
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump FIRMWARE_VERSION in config.h before merging."
+            exit 1
+          fi
+
       - name: Update other version files
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -149,25 +157,12 @@ jobs:
           
           cp docs/install/manifest.json release/
       
-      # ========== COMMIT & TAG ==========
-      - name: Configure Git
-        if: steps.check.outputs.should_release == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      
-      - name: Commit version bump
-        if: steps.check.outputs.should_release == 'true'
-        run: |
-          git add docs/install/manifest.json docs/MANUAL.md
-          git diff --staged --quiet || git commit -m "chore(release): bump version to ${{ steps.version.outputs.version }}"
-          git push origin main
-      
+      # ========== TAG ==========
       - name: Create tag
         if: steps.check.outputs.should_release == 'true'
         run: |
-          git tag -f ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }} --force
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
       
       # ========== RELEASE ==========
       - name: Create GitHub Release
@@ -206,7 +201,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Version bumped and committed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Tag created (immutable)" >> $GITHUB_STEP_SUMMARY
           echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
           echo "✅ Camera databases packaged when present" >> $GITHUB_STEP_SUMMARY
           echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY
