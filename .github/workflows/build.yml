@@ -79,6 +79,10 @@ jobs:
         npm run build
         echo "✅ Web interface built successfully"
     
+    - name: Lint web interface
+      working-directory: interface
+      run: npm run lint
+    
     - name: 📁 Deploy web files to data/ folder
       working-directory: interface
       run: |
@@ -117,6 +121,20 @@ jobs:
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Enforce firmware size budget
+      run: |
+        # App partition: 0x640000 = 6,553,600 bytes
+        # Budget: 85% = 5,570,560 bytes
+        MAX_SIZE=5570560
+        ACTUAL_SIZE=$(wc -c < .pio/build/waveshare-349/firmware.bin | tr -d ' ')
+        PCT=$(( ACTUAL_SIZE * 100 / 6553600 ))
+        echo "Firmware size: ${ACTUAL_SIZE} bytes (${PCT}% of partition, budget: ${MAX_SIZE} bytes)"
+        if [ "$ACTUAL_SIZE" -gt "$MAX_SIZE" ]; then
+          echo "::error::Firmware size ${ACTUAL_SIZE} exceeds budget ${MAX_SIZE} bytes (85% of 6,553,600 app partition)"
+          exit 1
+        fi
+        echo "✅ Firmware within size budget (${PCT}% of partition)" >> $GITHUB_STEP_SUMMARY
     
     - name: 📦 Prepare artifacts
       run: |
@@ -169,6 +187,40 @@ jobs:
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
         echo "pio run -t upload" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Static analysis (runs in parallel with test→build)
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Cache PlatformIO
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.platformio
+          .pio
+        key: ${{ runner.os }}-pio-check-${{ hashFiles('platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-check-
+    
+    - name: 🔧 Install PlatformIO
+      run: |
+        pip install --upgrade platformio
+        pio --version
+    
+    - name: 🔬 Static analysis (high-severity gate)
+      run: |
+        pio check -e waveshare-349 --fail-on-defect=high
+        echo "### ✅ Static Analysis Passed" >> $GITHUB_STEP_SUMMARY
+        echo "No high-severity defects found." >> $GITHUB_STEP_SUMMARY
 
   # Test build.sh on actual Windows
   build-windows:
