@@ -45,38 +45,9 @@ static DisplayFontManager fontMgr;
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
 // ============================================================================
-// Dirty-flag aggregate — tracks which display elements need a forced redraw
-// after a full screen clear or mode change.
+// Dirty-flag aggregate — see include/display_dirty_flags.h for struct definition
 // ============================================================================
-struct DisplayDirtyFlags {
-    bool multiAlert     = false;  // Multi-alert mode (secondary card row visible)
-    bool cards          = false;  // Force secondary-card row redraw
-    bool frequency      = false;  // Force frequency area redraw
-    bool battery        = false;  // Force battery percentage redraw
-    bool bands          = false;  // Force band indicator redraw
-    bool signalBars     = false;  // Force signal bars redraw
-    bool arrow          = false;  // Force direction arrow redraw
-    bool muteIcon       = false;  // Force mute icon redraw
-    bool topCounter     = false;  // Force top counter (bogey symbol) redraw
-    bool lockout        = false;  // Force lockout "L" badge redraw
-    bool gpsIndicator   = false;  // Force GPS indicator redraw
-    bool obdIndicator   = false;  // Force OBD indicator redraw
-    bool resetTracking  = false;  // Signal to reset change-tracking statics
-
-    /// Mark every element as needing a forced redraw (called after screen clear).
-    void setAll() {
-        frequency    = true;
-        battery      = true;
-        bands        = true;
-        signalBars   = true;
-        arrow        = true;
-        muteIcon     = true;
-        topCounter   = true;
-        lockout      = true;
-        gpsIndicator = true;
-        obdIndicator = true;
-    }
-};
+#include "../include/display_dirty_flags.h"
 
 static DisplayDirtyFlags dirty;
 
@@ -195,55 +166,17 @@ static unsigned long _dispPerfStart = 0;
 #define DISPLAY_FLUSH() ((void)0)
 #endif
 
-// Utility: dim a 565 color by a percentage (default 60%) for subtle icons
-static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
-    uint8_t r = (c >> 11) & 0x1F;
-    uint8_t g = (c >> 5) & 0x3F;
-    uint8_t b = c & 0x1F;
-    r = (r * scalePercent) / 100;
-    g = (g * scalePercent) / 100;
-    b = (b * scalePercent) / 100;
-    return (r << 11) | (g << 5) | b;
-}
+// Drawing primitives, coordinate transforms, dimColor — see include/display_draw.h
+#include "../include/display_draw.h"
 
-// Helper macro to handle pointer vs object access for tft
-// Arduino_GFX uses pointer (tft->), TFT_eSPI uses object (tft.)
+// Platform-specific state kept in display.cpp (needed by GFX_drawString)
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    #define TFT_CALL(method) tft->method
-    #define TFT_PTR tft
-    
     // Store current text datum for Arduino_GFX compatibility
     static uint8_t _gfxCurrentTextDatum = TL_DATUM;
-    
+
     // TFT_BL alias for backlight pin
     #define TFT_BL LCD_BL
-    
-#else
-    #define TFT_CALL(method) tft.method
-    #define TFT_PTR &tft
 #endif
-
-// ============================================================================
-// Coordinate transformation - rotation handles orientation
-// ============================================================================
-#define TX(vx, vy) (vx)
-#define TY(vx, vy) (vy)
-#define TW(vw, vh) (vw)
-#define TH(vw, vh) (vh)
-
-// ============================================================================
-// Drawing wrapper macros with coordinate transformation
-// ============================================================================
-#define FILL_RECT(x, y, w, h, color) TFT_CALL(fillRect)(TX(x,y), TY(x,y), TW(w,h), TH(w,h), (color))
-#define DRAW_RECT(x, y, w, h, color) TFT_CALL(drawRect)(TX(x,y), TY(x,y), TW(w,h), TH(w,h), (color))
-#define FILL_ROUND_RECT(x, y, w, h, r, color) TFT_CALL(fillRoundRect)(TX(x,y), TY(x,y), TW(w,h), TH(w,h), (r), (color))
-#define DRAW_ROUND_RECT(x, y, w, h, r, color) TFT_CALL(drawRoundRect)(TX(x,y), TY(x,y), TW(w,h), TH(w,h), (r), (color))
-#define FILL_CIRCLE(x, y, r, color) TFT_CALL(fillCircle)(TX(x,y), TY(x,y), (r), (color))
-#define DRAW_CIRCLE(x, y, r, color) TFT_CALL(drawCircle)(TX(x,y), TY(x,y), (r), (color))
-#define FILL_TRIANGLE(x0, y0, x1, y1, x2, y2, color) TFT_CALL(fillTriangle)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), TX(x2,y2), TY(x2,y2), (color))
-#define DRAW_LINE(x0, y0, x1, y1, color) TFT_CALL(drawLine)(TX(x0,y0), TY(x0,y0), TX(x1,y1), TY(x1,y1), (color))
-#define DRAW_PIXEL(x, y, color) TFT_CALL(drawPixel)(TX(x,y), TY(x,y), (color))
-#define FILL_SCREEN(color) TFT_CALL(fillScreen)(color)
 
 // Global display instance reference for access to color palette (set by V1Display)
 V1Display* g_displayInstance = nullptr;
