@@ -51,6 +51,7 @@ void handleApiObservations(WebServer& server,
 }
 #endif
 
+#ifdef UNIT_TEST
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
                   GpsRuntimeModule& gpsRuntimeModule,
@@ -83,5 +84,6 @@ void handleApiConfig(WebServer& server,
                  perfCounters,
                  systemEventBus);
 }
+#endif
 
 }  // namespace GpsApiService

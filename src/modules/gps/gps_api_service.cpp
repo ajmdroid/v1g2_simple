@@ -820,4 +820,28 @@ void handleConfig(WebServer& server,
     server.send(200, "application/json", json);
 }
 
+void handleApiConfig(WebServer& server,
+                     SettingsManager& settingsManager,
+                     GpsRuntimeModule& gpsRuntimeModule,
+                     SpeedSourceSelector& speedSourceSelector,
+                     LockoutLearner& lockoutLearner,
+                     GpsObservationLog& gpsObservationLog,
+                     PerfCounters& perfCounters,
+                     SystemEventBus& systemEventBus,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleConfig(server,
+                 settingsManager,
+                 gpsRuntimeModule,
+                 speedSourceSelector,
+                 lockoutLearner,
+                 gpsObservationLog,
+                 perfCounters,
+                 systemEventBus);
+}
+
 }  // namespace GpsApiService
