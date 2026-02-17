@@ -736,6 +736,38 @@ WifiTimeApiService::TimeRuntime WiFiManager::makeTimeRuntime() {
     };
 }
 
+WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
+    WifiStatusApiService::StatusRuntime runtime{
+        [this]() { return setupModeState == SETUP_MODE_AP_ON; },
+        [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
+        []() { return WiFi.localIP().toString(); },
+        [this]() { return getAPIPAddress(); },
+        []() { return WiFi.SSID(); },
+        []() { return WiFi.RSSI(); },
+        [this]() { return settingsManager.get().wifiClientEnabled; },
+        [this]() { return settingsManager.get().wifiClientSSID; },
+        [this]() { return settingsManager.get().apSSID; },
+        []() { return millis() / 1000; },
+        []() { return ESP.getFreeHeap(); },
+        []() { return String("v1g2"); },
+        []() { return String(FIRMWARE_VERSION); },
+        [this]() { return timeService.timeValid(); },
+        [this]() { return timeService.timeSource(); },
+        [this]() { return timeService.timeConfidence(); },
+        [this]() { return timeService.tzOffsetMinutes(); },
+        [this]() { return timeService.nowEpochMsOr0(); },
+        [this]() { return timeService.epochAgeMsOr0(); },
+        [this]() { return batteryManager.getVoltageMillivolts(); },
+        [this]() { return batteryManager.getPercentage(); },
+        [this]() { return batteryManager.isOnBattery(); },
+        [this]() { return batteryManager.hasBattery(); },
+        [this]() { return bleClient.isConnected(); },
+        getStatusJson,
+        getAlertJson,
+    };
+    return runtime;
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -791,38 +823,6 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    auto makeStatusRuntime = [this]() {
-        WifiStatusApiService::StatusRuntime runtime{
-            [this]() { return setupModeState == SETUP_MODE_AP_ON; },
-            [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
-            []() { return WiFi.localIP().toString(); },
-            [this]() { return getAPIPAddress(); },
-            []() { return WiFi.SSID(); },
-            []() { return WiFi.RSSI(); },
-            [this]() { return settingsManager.get().wifiClientEnabled; },
-            [this]() { return settingsManager.get().wifiClientSSID; },
-            [this]() { return settingsManager.get().apSSID; },
-            []() { return millis() / 1000; },
-            []() { return ESP.getFreeHeap(); },
-            []() { return String("v1g2"); },
-            []() { return String(FIRMWARE_VERSION); },
-            [this]() { return timeService.timeValid(); },
-            [this]() { return timeService.timeSource(); },
-            [this]() { return timeService.timeConfidence(); },
-            [this]() { return timeService.tzOffsetMinutes(); },
-            [this]() { return timeService.nowEpochMsOr0(); },
-            [this]() { return timeService.epochAgeMsOr0(); },
-            [this]() { return batteryManager.getVoltageMillivolts(); },
-            [this]() { return batteryManager.getPercentage(); },
-            [this]() { return batteryManager.isOnBattery(); },
-            [this]() { return batteryManager.hasBattery(); },
-            [this]() { return bleClient.isConnected(); },
-            getStatusJson,
-            getAlertJson,
-        };
-        return runtime;
-    };
-
     auto makeSettingsRuntime = [this]() {
         return WifiSettingsApiService::Runtime{
             [this]() -> const V1Settings& {
@@ -871,7 +871,7 @@ void WiFiManager::setupWebServer() {
     };
     auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this, makeStatusRuntime]() {
+    server.on("/api/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiStatus(
             server,
             makeStatusRuntime(),
@@ -898,7 +898,7 @@ void WiFiManager::setupWebServer() {
     });
     
     // Legacy status endpoint
-    server.on("/status", HTTP_GET, [this, makeStatusRuntime]() {
+    server.on("/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiLegacyStatus(
             server,
             makeStatusRuntime(),
