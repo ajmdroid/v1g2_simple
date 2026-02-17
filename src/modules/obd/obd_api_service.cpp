@@ -219,7 +219,7 @@ void handleApiRemembered(WebServer& server,
     sendRemembered(server, obdHandler);
 }
 
-void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
+static void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
     if (!bleClient.isConnected()) {
         sendError(server, 409, "Connect V1 before OBD scan");
         return;
@@ -227,6 +227,20 @@ void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClien
 
     obdHandler.startScan();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan started\"}");
+}
+
+void handleApiScan(WebServer& server,
+                   OBDHandler& obdHandler,
+                   V1BLEClient& bleClient,
+                   const std::function<bool()>& checkRateLimit,
+                   const std::function<void()>& markUiActivity,
+                   const std::function<bool()>& checkObdEnabled) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    if (checkObdEnabled && !checkObdEnabled()) return;
+    handleScan(server, obdHandler, bleClient);
 }
 
 static void handleScanStop(WebServer& server, OBDHandler& obdHandler) {
