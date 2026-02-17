@@ -53,6 +53,12 @@ jobs:
 
     - name: 🔒 Check perf CSV column contract
       run: python3 scripts/check_perf_csv_column_contract.py
+
+    - name: 🔒 Check display flush discipline contract
+      run: python3 scripts/check_display_flush_discipline_contract.py
+
+    - name: 🔒 Check SD lock discipline contract
+      run: python3 scripts/check_sd_lock_discipline_contract.py
     
     - name: 🧪 Run unit tests
       run: |
