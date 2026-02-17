@@ -199,6 +199,17 @@ void sendStatus(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiStatus(WebServer& server,
+                     CameraRuntimeModule& cameraRuntimeModule,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendStatus(server, cameraRuntimeModule);
+}
+
 void sendCatalog(WebServer& server,
                  StorageManager& storageManager) {
     JsonDocument doc;

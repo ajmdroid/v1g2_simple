@@ -2,18 +2,9 @@
 
 namespace CameraApiService {
 
+#ifdef UNIT_TEST
 void sendStatus(WebServer& server,
                 CameraRuntimeModule& cameraRuntimeModule);
-
-void sendCatalog(WebServer& server,
-                 StorageManager& storageManager);
-
-void sendEvents(WebServer& server,
-                CameraRuntimeModule& cameraRuntimeModule);
-
-void handleDemo(WebServer& server);
-
-void handleDemoClear(WebServer& server);
 
 void handleApiStatus(WebServer& server,
                      CameraRuntimeModule& cameraRuntimeModule,
@@ -25,6 +16,17 @@ void handleApiStatus(WebServer& server,
     }
     sendStatus(server, cameraRuntimeModule);
 }
+#endif
+
+void sendCatalog(WebServer& server,
+                 StorageManager& storageManager);
+
+void sendEvents(WebServer& server,
+                CameraRuntimeModule& cameraRuntimeModule);
+
+void handleDemo(WebServer& server);
+
+void handleDemoClear(WebServer& server);
 
 void handleApiCatalog(WebServer& server,
                       StorageManager& storageManager,
