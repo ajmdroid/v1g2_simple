@@ -12,6 +12,30 @@ void sendStatus(WebServer& server,
                 SystemEventBus& systemEventBus);
 
 #ifdef UNIT_TEST
+void handleApiStatus(WebServer& server,
+                     GpsRuntimeModule& gpsRuntimeModule,
+                     SpeedSourceSelector& speedSourceSelector,
+                     SettingsManager& settingsManager,
+                     GpsObservationLog& gpsObservationLog,
+                     LockoutLearner& lockoutLearner,
+                     PerfCounters& perfCounters,
+                     SystemEventBus& systemEventBus,
+                     const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendStatus(server,
+               gpsRuntimeModule,
+               speedSourceSelector,
+               settingsManager,
+               gpsObservationLog,
+               lockoutLearner,
+               perfCounters,
+               systemEventBus);
+}
+#endif
+
+#ifdef UNIT_TEST
 void sendObservations(WebServer& server,
                       GpsObservationLog& gpsObservationLog);
 
@@ -35,28 +59,6 @@ void handleConfig(WebServer& server,
                   GpsObservationLog& gpsObservationLog,
                   PerfCounters& perfCounters,
                   SystemEventBus& systemEventBus);
-
-void handleApiStatus(WebServer& server,
-                     GpsRuntimeModule& gpsRuntimeModule,
-                     SpeedSourceSelector& speedSourceSelector,
-                     SettingsManager& settingsManager,
-                     GpsObservationLog& gpsObservationLog,
-                     LockoutLearner& lockoutLearner,
-                     PerfCounters& perfCounters,
-                     SystemEventBus& systemEventBus,
-                     const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    sendStatus(server,
-               gpsRuntimeModule,
-               speedSourceSelector,
-               settingsManager,
-               gpsObservationLog,
-               lockoutLearner,
-               perfCounters,
-               systemEventBus);
-}
 
 void handleApiConfig(WebServer& server,
                      SettingsManager& settingsManager,

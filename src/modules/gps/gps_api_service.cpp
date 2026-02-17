@@ -169,6 +169,28 @@ void sendStatus(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiStatus(WebServer& server,
+                     GpsRuntimeModule& gpsRuntimeModule,
+                     SpeedSourceSelector& speedSourceSelector,
+                     SettingsManager& settingsManager,
+                     GpsObservationLog& gpsObservationLog,
+                     LockoutLearner& lockoutLearner,
+                     PerfCounters& perfCounters,
+                     SystemEventBus& systemEventBus,
+                     const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendStatus(server,
+               gpsRuntimeModule,
+               speedSourceSelector,
+               settingsManager,
+               gpsObservationLog,
+               lockoutLearner,
+               perfCounters,
+               systemEventBus);
+}
+
 void sendObservations(WebServer& server,
                       GpsObservationLog& gpsObservationLog) {
     uint16_t limit = 16;
