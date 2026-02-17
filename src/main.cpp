@@ -1164,9 +1164,11 @@ void loop() {
                     Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
                 } else if (pqDecision.action == PreQuietDecision::RESTORE_VOLUME) {
                     bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
+                    // Tell VolumeFade the real baseline so it doesn't capture stale echo.
+                    volumeFadeModule.setBaselineHint(pqDecision.volume, pqDecision.muteVolume, nowMs);
                     Serial.println("[Lockout] PRE-QUIET: volume restored");
                 }
-                display.setPreQuietActive(preQuietState.preQuietActive);
+                display.setPreQuietActive(preQuietState.phase == PreQuietPhase::DROPPED);
             }
         } else {
             // Proxy-connected sessions are display-first:

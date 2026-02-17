@@ -40,6 +40,16 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreSetMs = 0;
         }
     }
+
+    // External baseline hint expiry.
+    if (hintBaselineVolume != 0xFF) {
+        if (ctx.currentVolume == hintBaselineVolume ||
+            (ctx.now - hintSetMs) > HINT_WINDOW_MS) {
+            hintBaselineVolume = 0xFF;
+            hintBaselineMuteVolume = 0;
+            hintSetMs = 0;
+        }
+    }
     
     // If feature disabled, clear any tracking so we don't block speed boost
     if (!s.alertVolumeFadeEnabled) {
@@ -189,6 +199,13 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = 0xFF;
             pendingRestoreMuteVolume = 0;
             pendingRestoreSetMs = 0;
+        } else if (hintBaselineVolume != 0xFF && ctx.currentVolume < hintBaselineVolume) {
+            // Pre-quiet just restored but V1 hasn't echoed back yet.
+            originalVolume = hintBaselineVolume;
+            originalMuteVolume = hintBaselineMuteVolume;
+            hintBaselineVolume = 0xFF;
+            hintBaselineMuteVolume = 0;
+            hintSetMs = 0;
         } else {
             originalVolume = (ctx.speedBoostActive && ctx.speedBoostOriginalVolume != 0xFF)
                                ? ctx.speedBoostOriginalVolume
@@ -243,4 +260,13 @@ void VolumeFadeModule::reset() {
     pendingRestoreMuteVolume = 0;
     pendingRestoreSetMs = 0;
     lastRestoreAttemptMs = 0;
+    hintBaselineVolume = 0xFF;
+    hintBaselineMuteVolume = 0;
+    hintSetMs = 0;
+}
+
+void VolumeFadeModule::setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs) {
+    hintBaselineVolume = mainVol;
+    hintBaselineMuteVolume = muteVol;
+    hintSetMs = nowMs;
 }

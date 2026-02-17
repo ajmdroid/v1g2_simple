@@ -2,11 +2,19 @@
 
 #include <stdint.h>
 
+/// Three-state machine for lockout pre-quiet volume management.
+///   IDLE     → no volume override active.
+///   DROPPED  → volume proactively lowered to mute-volume in a lockout zone.
+///   DISARMED → real alert fired, volume restored; stay alert until all zones cleared.
+enum class PreQuietPhase : uint8_t {
+    IDLE = 0,
+    DROPPED,
+    DISARMED
+};
+
 /// Persistent state for the GPS lockout pre-quiet feature.
-/// Tracks whether volume has been proactively dropped and the
-/// original volume settings to restore.
 struct PreQuietState {
-    bool preQuietActive = false;        // Currently in pre-quieted state
+    PreQuietPhase phase = PreQuietPhase::IDLE;
     uint8_t savedMainVolume = 0xFF;     // Volume to restore (0xFF = not captured)
     uint8_t savedMuteVolume = 0;        // Mute volume to restore
     uint32_t enteredZoneMs = 0;         // When we first saw a nearby zone (entry debounce)
@@ -27,10 +35,16 @@ struct PreQuietDecision {
 
 /// Pure-function evaluator for lockout zone pre-quiet volume management.
 ///
-/// When GPS enters a lockout zone and no alert is active, proactively drops
-/// V1 volume to (muteVolume, muteVolume) so any false-alert beep is quiet.
-/// Restores volume immediately if a non-lockout alert fires, or after
-/// leaving the zone with debounce.
+/// "Drop once, restore on real threat, stay alert."
+///
+///   IDLE → enter lockout zone (200ms debounce) → DROP_VOLUME → DROPPED
+///   DROPPED + lockout-matched alert            → NONE (mute controller handles)
+///   DROPPED + real alert (non-lockout)         → RESTORE_VOLUME → DISARMED
+///   DROPPED + leave all zones (500ms debounce) → RESTORE_VOLUME → IDLE
+///   DISARMED + leave all zones                 → IDLE (no BLE command needed)
+///   Any phase + feature/mode/BLE disabled      → restore if DROPPED, reset
+///
+/// Max 2 BLE commands per zone visit.  No re-drop after real alert.
 ///
 /// Thread safety: designed for single-threaded access from loop().
 PreQuietDecision evaluatePreQuiet(

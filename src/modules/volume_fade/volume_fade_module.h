@@ -78,6 +78,12 @@ public:
     
     // Returns true if fade logic has captured an original volume (blocks speed boost)
     bool isTracking() const { return originalVolume != 0xFF; }
+
+    /// Inject a one-shot baseline hint from an external volume owner (e.g.
+    /// lockout pre-quiet restore).  If a new alert arrives before the V1
+    /// echoes back the true volume, VolumeFade uses this hint instead of
+    /// the stale DisplayState value.  Cleared after first use or 1.5 s.
+    void setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs);
     
 private:
     SettingsManager* settings;
@@ -101,6 +107,12 @@ private:
     unsigned long lastRestoreAttemptMs;
     static constexpr unsigned long PENDING_RESTORE_WINDOW_MS = 1500;
     static constexpr unsigned long RESTORE_RETRY_MIN_INTERVAL_MS = 75;
+
+    // External baseline hint (e.g. from lockout pre-quiet restore).
+    uint8_t hintBaselineVolume = 0xFF;     // 0xFF = no hint
+    uint8_t hintBaselineMuteVolume = 0;
+    unsigned long hintSetMs = 0;
+    static constexpr unsigned long HINT_WINDOW_MS = 1500;
 
     void resetSessionState();
 };
