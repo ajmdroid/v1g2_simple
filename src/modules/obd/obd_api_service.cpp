@@ -261,7 +261,7 @@ void handleApiDevicesClear(WebServer& server,
     handleDevicesClear(server, obdHandler);
 }
 
-void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
+static void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
     ConnectRequest request;
     String errorMessage;
     if (!parseConnectRequest(server, request, errorMessage)) {
@@ -285,6 +285,20 @@ void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleCl
     }
 
     server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD connect queued\"}");
+}
+
+void handleApiConnect(WebServer& server,
+                      OBDHandler& obdHandler,
+                      V1BLEClient& bleClient,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity,
+                      const std::function<bool()>& checkObdEnabled) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    if (checkObdEnabled && !checkObdEnabled()) return;
+    handleConnect(server, obdHandler, bleClient);
 }
 
 static void handleDisconnect(WebServer& server, OBDHandler& obdHandler) {
