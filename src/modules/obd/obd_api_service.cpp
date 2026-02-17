@@ -186,7 +186,7 @@ void handleApiDevices(WebServer& server,
     sendDevices(server, obdHandler);
 }
 
-void sendRemembered(WebServer& server, OBDHandler& obdHandler) {
+static void sendRemembered(WebServer& server, OBDHandler& obdHandler) {
     JsonDocument doc;
     JsonArray arr = doc["devices"].to<JsonArray>();
     auto remembered = obdHandler.getRememberedDevices();
@@ -206,6 +206,17 @@ void sendRemembered(WebServer& server, OBDHandler& obdHandler) {
     doc["count"] = remembered.size();
 
     sendJsonDocument(server, 200, doc);
+}
+
+void handleApiRemembered(WebServer& server,
+                         OBDHandler& obdHandler,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendRemembered(server, obdHandler);
 }
 
 void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {
