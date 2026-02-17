@@ -987,9 +987,20 @@ void V1BLEClient::process() {
         }
         
         case BLEState::CONNECTING: {
-            // Async connection initiation in progress
-            // This state is brief - we transition to CONNECTING_WAIT after initiating
-            // If we're stuck here for too long, something is wrong
+            if (nextConnectAllowedMs != 0 && now < nextConnectAllowedMs) {
+                break;
+            }
+
+            // Initiate at most one async connect attempt per loop iteration.
+            // startAsyncConnect() transitions to CONNECTING_WAIT on successful initiation.
+            if (!asyncConnectPending && !asyncConnectSuccess) {
+                startAsyncConnect();
+                if (bleState != BLEState::CONNECTING) {
+                    break;
+                }
+            }
+
+            // If we're stuck here for too long, something is wrong.
             if (connectStartMs > 0 && (now - connectStartMs) > 5000) {
                 Serial.println("[BLE] Connect initiation stuck for 5s - resetting");
                 connectInProgress = false;
@@ -1155,4 +1166,3 @@ void V1BLEClient::setWifiPriority(bool enabled) {
 }
 
 // Proxy server methods moved to ble_proxy.cpp
-

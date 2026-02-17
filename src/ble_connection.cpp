@@ -227,7 +227,8 @@ bool V1BLEClient::connectToServer() {
         return false;
     }
     
-    // Set connection guard and initiate async connect
+    // Set connection guard; CONNECTING state will initiate one async attempt
+    // per loop() pass to avoid monopolizing a single iteration.
     connectInProgress = true;
     connectStartMs = millis();
     connectAttemptNumber = 0;  // Reset for new connection sequence
@@ -235,9 +236,7 @@ bool V1BLEClient::connectToServer() {
     asyncConnectSuccess = false;
     connectPhaseStartUs = micros();  // Start timing connect phase
     setBLEState(BLEState::CONNECTING, "connectToServer");
-    
-    // Initiate first async connect attempt
-    return startAsyncConnect();
+    return true;
 }
 
 bool V1BLEClient::startAsyncConnect() {
@@ -292,16 +291,14 @@ bool V1BLEClient::startAsyncConnect() {
 
     // Ensure client is disconnected before attempting
     if (pClient->isConnected()) {
-        Serial.println("[BLE] Client thinks it's connected, disconnecting first");
+        // Never block loop() waiting for disconnect. Stage a short retry delay.
+        Serial.println("[BLE] Client thinks it's connected; staging reconnect retry");
         pClient->disconnect();
-        // Give NimBLE time to process the disconnect
-        vTaskDelay(pdMS_TO_TICKS(100));
-        // If still "connected" after delay, need a harder reset
-        if (pClient->isConnected()) {
-            Serial.println("[BLE] Client still thinks it's connected after disconnect - hard reset");
-            hardResetBLEClient();
-            return false;  // Will retry on next process() cycle
-        }
+        nextConnectAllowedMs = millis() + 100;
+        connectInProgress = false;
+        connectStartMs = 0;
+        setBLEState(BLEState::BACKOFF, "waiting stale disconnect");
+        return false;
     }
     
     // Clear async state before initiating connect
@@ -320,7 +317,7 @@ bool V1BLEClient::startAsyncConnect() {
         
         // Check if we should retry
         if (connectAttemptNumber < MAX_CONNECT_ATTEMPTS) {
-            // Will retry on next process() iteration
+            // Retry next loop pass; don't spin multiple attempts in one process() call.
             return true;  // Keep state machine going
         }
         
@@ -425,12 +422,15 @@ void V1BLEClient::processConnectingWait() {
     if (connectAttemptNumber < MAX_CONNECT_ATTEMPTS) {
         if (err == 13) {  // EBUSY - defer via backoff instead of blocking main loop
             nextConnectAllowedMs = millis() + 150;  // 150ms non-blocking deferral
+            connectInProgress = false;
+            connectStartMs = 0;
             setBLEState(BLEState::BACKOFF, "EBUSY retry");
             return;
         }
         
-        // Initiate next attempt
-        startAsyncConnect();
+        // Retry on the next loop iteration to keep each process() slice bounded.
+        nextConnectAllowedMs = millis() + 20;
+        setBLEState(BLEState::CONNECTING, "async connect retry");
         return;
     }
     
