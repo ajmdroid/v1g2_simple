@@ -16,17 +16,9 @@ void handleApiStatus(WebServer& server,
     }
     sendStatus(server, cameraRuntimeModule);
 }
-#endif
 
 void sendCatalog(WebServer& server,
                  StorageManager& storageManager);
-
-void sendEvents(WebServer& server,
-                CameraRuntimeModule& cameraRuntimeModule);
-
-void handleDemo(WebServer& server);
-
-void handleDemoClear(WebServer& server);
 
 void handleApiCatalog(WebServer& server,
                       StorageManager& storageManager,
@@ -38,6 +30,14 @@ void handleApiCatalog(WebServer& server,
     }
     sendCatalog(server, storageManager);
 }
+#endif
+
+void sendEvents(WebServer& server,
+                CameraRuntimeModule& cameraRuntimeModule);
+
+void handleDemo(WebServer& server);
+
+void handleDemoClear(WebServer& server);
 
 void handleApiEvents(WebServer& server,
                      CameraRuntimeModule& cameraRuntimeModule,

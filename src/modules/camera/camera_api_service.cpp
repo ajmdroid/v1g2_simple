@@ -288,6 +288,17 @@ void sendCatalog(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiCatalog(WebServer& server,
+                      StorageManager& storageManager,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendCatalog(server, storageManager);
+}
+
 void sendEvents(WebServer& server,
                 CameraRuntimeModule& cameraRuntimeModule) {
     uint16_t limit = 16;
