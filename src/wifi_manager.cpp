@@ -674,6 +674,53 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
     };
 }
 
+WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
+    return WifiDisplayColorsApiService::Runtime{
+        [this]() -> const V1Settings& {
+            return settingsManager.get();
+        },
+        [this]() -> V1Settings& {
+            return settingsManager.mutableSettings();
+        },
+        [this]() {
+            obdHandler.stopScan();
+        },
+        [this]() {
+            obdHandler.disconnect();
+        },
+        [this](bool enabled) {
+            gpsRuntimeModule.setEnabled(enabled);
+        },
+        [this](bool enabled) {
+            speedSourceSelector.setGpsEnabled(enabled);
+        },
+        [this](bool enabled) {
+            cameraRuntimeModule.setEnabled(enabled);
+        },
+        [this](uint8_t brightness) {
+            display.setBrightness(brightness);
+        },
+        [](uint8_t volume) {
+            audio_set_volume(volume);
+        },
+        [this]() {
+            display.showDemo();
+        },
+        [](uint32_t durationMs) {
+            requestColorPreviewHold(durationMs);
+        },
+        []() {
+            return isColorPreviewRunning();
+        },
+        []() {
+            cancelColorPreview();
+        },
+        [this]() {
+            settingsManager.save();
+        },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -1064,77 +1111,31 @@ void WiFiManager::setupWebServer() {
     });
     
     // Display Colors routes
-    auto makeDisplayColorsRuntime = [this]() {
-        return WifiDisplayColorsApiService::Runtime{
-            [this]() -> const V1Settings& {
-                return settingsManager.get();
-            },
-            [this]() -> V1Settings& {
-                return settingsManager.mutableSettings();
-            },
-            [this]() {
-                obdHandler.stopScan();
-            },
-            [this]() {
-                obdHandler.disconnect();
-            },
-            [this](bool enabled) {
-                gpsRuntimeModule.setEnabled(enabled);
-            },
-            [this](bool enabled) {
-                speedSourceSelector.setGpsEnabled(enabled);
-            },
-            [this](bool enabled) {
-                cameraRuntimeModule.setEnabled(enabled);
-            },
-            [this](uint8_t brightness) {
-                display.setBrightness(brightness);
-            },
-            [](uint8_t volume) {
-                audio_set_volume(volume);
-            },
-            [this]() {
-                display.showDemo();
-            },
-            [](uint32_t durationMs) {
-                requestColorPreviewHold(durationMs);
-            },
-            []() {
-                return isColorPreviewRunning();
-            },
-            []() {
-                cancelColorPreview();
-            },
-            [this]() {
-                settingsManager.save();
-            },
-        };
-    };
     server.on("/displaycolors", HTTP_GET, [this]() { 
         WifiPortalApiService::handleApiRedirectToRoot(server);
     });
-    server.on("/api/displaycolors", HTTP_GET, [this, makeDisplayColorsRuntime]() {
+    server.on("/api/displaycolors", HTTP_GET, [this]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
     });
-    server.on("/api/displaycolors", HTTP_POST, [this, makeDisplayColorsRuntime, rateLimitCallback]() {
+    server.on("/api/displaycolors", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiSave(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/reset", HTTP_POST, [this, makeDisplayColorsRuntime, rateLimitCallback]() {
+    server.on("/api/displaycolors/reset", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiReset(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/preview", HTTP_POST, [this, makeDisplayColorsRuntime]() { 
+    server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
         WifiDisplayColorsApiService::handleApiPreview(
             server,
             makeDisplayColorsRuntime(),
             [this]() { return checkRateLimit(); });
     });
-    server.on("/api/displaycolors/clear", HTTP_POST, [this, makeDisplayColorsRuntime]() { 
+    server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
         WifiDisplayColorsApiService::handleApiClear(
             server,
             makeDisplayColorsRuntime(),
