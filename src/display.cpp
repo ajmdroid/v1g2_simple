@@ -34,22 +34,14 @@ static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Seria
 } while(0)
 #endif
 
-// OpenFontRender for antialiased TrueType rendering
-#include "OpenFontRender.h"
-#include "../include/Segment7Font.h"         // Segment7 TTF for Classic display (JBV1 style)
-#include "../include/Serpentine.h"           // Serpentine TTF (JB's favorite)
+// Font rendering — all OpenFontRender instances and caches are owned by
+// DisplayFontManager (see display_font_manager.h).
+#include "display_font_manager.h"
 
-// Global OpenFontRender instances
-static OpenFontRender ofr;                   // For Modern style (Montserrat Bold)
-static OpenFontRender ofrSegment7;           // For Classic style (Segment7 - JBV1)
-static OpenFontRender ofrTopCounter;         // Dedicated Segment7 renderer for top counter (isolated from frequency)
-static OpenFontRender ofrHemi;               // For Hemi style (Hemi Head - retro speedometer)
-static OpenFontRender ofrSerpentine;         // For Serpentine style (JB's favorite)
-static bool ofrInitialized = false;
-static bool ofrSegment7Initialized = false;
-static bool ofrTopCounterInitialized = false;
-static bool ofrHemiInitialized = false;
-static bool ofrSerpentineInitialized = false;
+static DisplayFontManager fontMgr;
+
+// Convenience aliases so that drawing code updates stay concise.
+using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
 // Multi-alert mode tracking (used for card display, no longer shifts main content)
 static bool g_multiAlertMode = false;
@@ -167,38 +159,6 @@ static inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 
 // Global display instance reference for access to color palette (set by V1Display)
 V1Display* g_displayInstance = nullptr;
-static uint32_t gNumericCacheBytes = 8192u;
-static bool gSerpentineLoadAttempted = false;
-
-static bool ensureSerpentineFontLoaded() {
-    if (ofrSerpentineInitialized) {
-        return true;
-    }
-    if (gSerpentineLoadAttempted) {
-        return false;
-    }
-    if (!g_displayInstance) {
-        return false;
-    }
-
-    Arduino_Canvas* canvas = g_displayInstance->getCanvas();
-    if (!canvas) {
-        return false;
-    }
-
-    gSerpentineLoadAttempted = true;
-    const unsigned long loadStartMs = millis();
-    ofrSerpentine.setDrawer(*canvas);
-    ofrSerpentine.setCacheSize(1, 4, gNumericCacheBytes);
-    FT_Error err = ofrSerpentine.loadFont(Serpentine, sizeof(Serpentine));
-    ofrSerpentineInitialized = (err == 0);
-    if (ofrSerpentineInitialized) {
-        Serial.printf("[Display] Serpentine font lazy-loaded in %lu ms\n", millis() - loadStartMs);
-    } else {
-        Serial.printf("[Display] ERROR: Serpentine lazy load failed (0x%02X)\n", err);
-    }
-    return ofrSerpentineInitialized;
-}
 
 // Helper to get current color palette
 inline const ColorPalette& getColorPalette() {
@@ -216,36 +176,6 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_PERSISTED settingsManager.get().colorPersisted  // User-configurable persisted alert color
 // Helper macro: returns PALETTE_PERSISTED when in persisted mode, else PALETTE_MUTED
 #define PALETTE_MUTED_OR_PERSISTED (g_displayInstance && g_displayInstance->isPersistedMode() ? PALETTE_PERSISTED : PALETTE_MUTED)
-
-// Small fixed-size cache for OFR text widths to avoid repeated bbox calls on
-// frequently recurring frequency strings.
-struct TextWidthCacheEntry {
-    bool valid = false;
-    char text[16] = {0};
-    int width = 0;
-};
-
-template <size_t N>
-static int getCachedTextWidth(OpenFontRender& ofrRef, int fontSize, const char* text, TextWidthCacheEntry (&cache)[N], uint8_t& nextSlot) {
-    for (size_t i = 0; i < N; ++i) {
-        if (cache[i].valid && strcmp(cache[i].text, text) == 0) {
-            return cache[i].width;
-        }
-    }
-
-    ofrRef.setFontSize(fontSize);
-    FT_BBox bbox = ofrRef.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
-    int width = bbox.xMax - bbox.xMin;
-
-    TextWidthCacheEntry& dst = cache[nextSlot];
-    dst.valid = true;
-    strncpy(dst.text, text, sizeof(dst.text));
-    dst.text[sizeof(dst.text) - 1] = '\0';
-    dst.width = width;
-
-    nextSlot = static_cast<uint8_t>((nextSlot + 1) % N);
-    return width;
-}
 
 // ============================================================================
 // Cross-platform text drawing helpers
@@ -353,7 +283,7 @@ const char* cameraTokenForType(uint8_t cameraType) {
     }
 }
 
-constexpr int TOP_COUNTER_FONT_SIZE = 60;
+constexpr int TOP_COUNTER_FONT_SIZE = DisplayFontManager::TOP_COUNTER_FONT_SIZE;
 constexpr int TOP_COUNTER_FIELD_X = 16;
 constexpr int TOP_COUNTER_FIELD_Y = 6;
 constexpr int TOP_COUNTER_FIELD_W = 55;
@@ -361,88 +291,6 @@ constexpr int TOP_COUNTER_FIELD_H = TOP_COUNTER_FONT_SIZE + 8;
 constexpr int TOP_COUNTER_TEXT_Y = 8;
 constexpr int TOP_COUNTER_PAD_RIGHT = 2;
 constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
-
-constexpr int16_t TOP_COUNTER_BOUNDS_INVALID = static_cast<int16_t>(-32768);
-
-static int16_t s_topCounterXMinCache[128][2];
-static int16_t s_topCounterXMaxCache[128][2];
-static bool s_topCounterBoundsCacheReady = false;
-
-static void resetTopCounterBoundsCache() {
-    for (uint8_t c = 0; c < 128; ++c) {
-        s_topCounterXMinCache[c][0] = TOP_COUNTER_BOUNDS_INVALID;
-        s_topCounterXMinCache[c][1] = TOP_COUNTER_BOUNDS_INVALID;
-        s_topCounterXMaxCache[c][0] = TOP_COUNTER_BOUNDS_INVALID;
-        s_topCounterXMaxCache[c][1] = TOP_COUNTER_BOUNDS_INVALID;
-    }
-    s_topCounterBoundsCacheReady = false;
-}
-
-static void cacheTopCounterBounds(char symbol, bool showDot) {
-    const uint8_t idx = static_cast<uint8_t>(symbol);
-    if (idx >= 128) {
-        return;
-    }
-
-    char text[3] = {symbol, 0, 0};
-    if (showDot) {
-        text[1] = '.';
-    }
-
-    FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
-        0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
-    int xMin = static_cast<int>(bbox.xMin);
-    int xMax = static_cast<int>(bbox.xMax);
-    if (xMin < -32767) xMin = -32767;
-    if (xMin > 32767) xMin = 32767;
-    if (xMax < -32767) xMax = -32767;
-    if (xMax > 32767) xMax = 32767;
-    s_topCounterXMinCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(xMin);
-    s_topCounterXMaxCache[idx][showDot ? 1 : 0] = static_cast<int16_t>(xMax);
-}
-
-static void primeTopCounterBoundsCache() {
-    resetTopCounterBoundsCache();
-    if (!ofrTopCounterInitialized) {
-        return;
-    }
-
-    ofrTopCounter.setFontSize(TOP_COUNTER_FONT_SIZE);
-    for (uint8_t c = 32; c < 127; ++c) {
-        cacheTopCounterBounds(static_cast<char>(c), false);
-        cacheTopCounterBounds(static_cast<char>(c), true);
-    }
-    s_topCounterBoundsCacheReady = true;
-}
-
-static bool getTopCounterBounds(char symbol, bool showDot, int& xMin, int& xMax) {
-    const uint8_t idx = static_cast<uint8_t>(symbol);
-    const uint8_t dotIdx = showDot ? 1 : 0;
-
-    if (s_topCounterBoundsCacheReady && idx < 128) {
-        int16_t cachedMin = s_topCounterXMinCache[idx][dotIdx];
-        int16_t cachedMax = s_topCounterXMaxCache[idx][dotIdx];
-        if (cachedMin != TOP_COUNTER_BOUNDS_INVALID && cachedMax != TOP_COUNTER_BOUNDS_INVALID) {
-            xMin = cachedMin;
-            xMax = cachedMax;
-            return true;
-        }
-    }
-
-    if (!ofrTopCounterInitialized) {
-        return false;
-    }
-
-    char text[3] = {symbol, 0, 0};
-    if (showDot) {
-        text[1] = '.';
-    }
-    FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
-        0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, text);
-    xMin = static_cast<int>(bbox.xMin);
-    xMax = static_cast<int>(bbox.xMax);
-    return true;
-}
 
 constexpr bool DIGIT_SEGMENTS[10][7] = {
     // a, b, c, d, e, f, g
@@ -656,64 +504,28 @@ bool V1Display::begin() {
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     logDisplayStage("hw_init");
     
-    // Initialize OpenFontRender fonts with glyph caching enabled.
-    // setCacheSize(max_faces, max_sizes, max_bytes) - must be called BEFORE loadFont.
-    // Prefer larger caches when PSRAM is available; keep safe fallbacks otherwise.
-    const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
-    const uint32_t numericCacheBytes = psramOk ? 49152u : 8192u;
-    const uint32_t topCounterCacheBytes = psramOk ? 16384u : 4096u;
-    gNumericCacheBytes = numericCacheBytes;
-    gSerpentineLoadAttempted = false;
-    Serial.printf("[Display] Font cache budget: psram=%s seg7=%lu top=%lu serp=%lu\n",
-                  psramOk ? "yes" : "no",
-                  static_cast<unsigned long>(numericCacheBytes),
-                  static_cast<unsigned long>(topCounterCacheBytes),
-                  static_cast<unsigned long>(numericCacheBytes));
-    
-    ofrSegment7.setDrawer(*tft);
-    ofrSegment7.setCacheSize(1, 4, numericCacheBytes);  // Classic digits cache
-    FT_Error ftErr2 = ofrSegment7.loadFont(Segment7Font, sizeof(Segment7Font));
-    ofrSegment7Initialized = (ftErr2 == 0);
-    if (ftErr2) Serial.printf("[Display] ERROR: Segment7 font failed (0x%02X)\n", ftErr2);
-    logDisplayStage("font_segment7");
-    
-    ofrTopCounter.setDrawer(*tft);
-    ofrTopCounter.setCacheSize(1, 2, topCounterCacheBytes);  // Small dedicated cache for top counter symbols
-    FT_Error ftErrTop = ofrTopCounter.loadFont(Segment7Font, sizeof(Segment7Font));
-    ofrTopCounterInitialized = (ftErrTop == 0);
-    if (ftErrTop) Serial.printf("[Display] ERROR: TopCounter font failed (0x%02X)\n", ftErrTop);
-    primeTopCounterBoundsCache();  // Boot-time glyph bounds cache for stable right-aligned counter layout
-    if (ofrTopCounterInitialized) {
+    // Initialize all OpenFontRender instances via the font manager.
+    // Segment7 + TopCounter are loaded immediately; Serpentine is deferred.
+    fontMgr.init(tft);
+    logDisplayStage("font_init");
+
+    // Debug: dump top-counter glyph bounds for a few reference digits.
+    if (fontMgr.topCounterReady) {
         int oneMin = 0, oneMax = 0;
         int twoMin = 0, twoMax = 0;
         int eightMin = 0, eightMax = 0;
-        if (getTopCounterBounds('1', false, oneMin, oneMax) &&
-            getTopCounterBounds('2', false, twoMin, twoMax) &&
-            getTopCounterBounds('8', false, eightMin, eightMax)) {
+        if (fontMgr.getTopCounterBounds('1', false, oneMin, oneMax) &&
+            fontMgr.getTopCounterBounds('2', false, twoMin, twoMax) &&
+            fontMgr.getTopCounterBounds('8', false, eightMin, eightMax)) {
             Serial.printf("[Display] TopCounter OFR bounds @%dpx: '1'=%d..%d '2'=%d..%d '8'=%d..%d\n",
                           TOP_COUNTER_FONT_SIZE,
                           oneMin, oneMax, twoMin, twoMax, eightMin, eightMax);
         }
     }
-    logDisplayStage("font_topcounter");
-    
-    // Defer Serpentine font load until style actually uses it.
-    // This trims cold boot latency for the default Classic style.
-    ofrSerpentineInitialized = false;
-    logDisplayStage("font_serp_deferred");
 
-#ifdef CONFIG_SPIRAM_SUPPORT
-    Serial.println("[Display] OFR using PSRAM-preferring allocator (ps_malloc)");
-#else
-    Serial.println("[Display] OFR using internal heap allocator (malloc)");
-#endif
-
-    // Note: glyph warm-up is intentionally disabled at boot.
-    // Warm-up can increase memory pressure before WiFi init on some boards.
-    
     Serial.printf("[Display] OK %dx%d, fonts(seg7/top/serp)=%d/%d/%d\n",
                   SCREEN_WIDTH, SCREEN_HEIGHT,
-                  ofrSegment7Initialized, ofrTopCounterInitialized, ofrSerpentineInitialized);
+                  fontMgr.segment7Ready, fontMgr.topCounterReady, fontMgr.serpentineReady);
     
     // Load color theme from settings
     updateColorTheme();
@@ -1181,7 +993,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     FILL_RECT(TOP_COUNTER_FIELD_X, TOP_COUNTER_FIELD_Y, TOP_COUNTER_FIELD_W, TOP_COUNTER_FIELD_H, PALETTE_BG);
 
     bool drewWithOfr = false;
-    if (ofrTopCounterInitialized) {
+    if (fontMgr.topCounterReady) {
         // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
         //
         // IMPORTANT: compute bounds just-in-time on the same dedicated OFR
@@ -1189,10 +1001,10 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
         // frequency rendering and keeps cursor placement tied to current glyph
         // metrics in the same render path.
 
-        ofrTopCounter.setFontSize(TOP_COUNTER_FONT_SIZE);
+        fontMgr.topCounter.setFontSize(TOP_COUNTER_FONT_SIZE);
 
         // Compute fresh bounds for the actual glyph string we are about to draw.
-        FT_BBox bbox = ofrTopCounter.calculateBoundingBox(
+        FT_BBox bbox = fontMgr.topCounter.calculateBoundingBox(
             0, 0, TOP_COUNTER_FONT_SIZE, Align::Left, Layout::Horizontal, buf);
         int glyphXMin = static_cast<int>(bbox.xMin);
         int glyphXMax = static_cast<int>(bbox.xMax);
@@ -1222,11 +1034,11 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             uint8_t bgR = (PALETTE_BG >> 11) << 3;
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
             uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            ofrTopCounter.setBackgroundColor(bgR, bgG, bgB);
+            fontMgr.topCounter.setBackgroundColor(bgR, bgG, bgB);
             // Font size already set above (before calculateBoundingBox).
-            ofrTopCounter.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
-            ofrTopCounter.setCursor(x, y);
-            ofrTopCounter.printf("%s", buf);
+            fontMgr.topCounter.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+            fontMgr.topCounter.setCursor(x, y);
+            fontMgr.topCounter.printf("%s", buf);
             drewWithOfr = true;
         }
     }
@@ -1781,16 +1593,16 @@ void V1Display::drawBatteryIndicator() {
         FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
 
         // Draw using OpenFontRender if available; fall back to built-in font otherwise
-        if (ofrInitialized) {
+        if (fontMgr.modernReady) {
             const int fontSize = 20;  // Larger for better visibility
             uint8_t bgR = (PALETTE_BG >> 11) << 3;
             uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
             uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            ofr.setBackgroundColor(bgR, bgG, bgB);
-            ofr.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
-            ofr.setFontSize(fontSize);
+            fontMgr.modern.setBackgroundColor(bgR, bgG, bgB);
+            fontMgr.modern.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
+            fontMgr.modern.setFontSize(fontSize);
 
-            FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
+            FT_BBox bbox = fontMgr.modern.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
             int textW = bbox.xMax - bbox.xMin;
             [[maybe_unused]] int textH = bbox.yMax - bbox.yMin;
 
@@ -1798,8 +1610,8 @@ void V1Display::drawBatteryIndicator() {
             int textX = SCREEN_WIDTH - textW - 4;
             int textY = 2;  // Fixed: 2 pixels from top (OFR draws from top of glyph, not baseline)
 
-            ofr.setCursor(textX, textY);
-            ofr.printf("%s", pctStr);
+            fontMgr.modern.setCursor(textX, textY);
+            fontMgr.modern.printf("%s", pctStr);
         } else {
             // Fallback: built-in font, right-aligned near top-right
             GFX_setTextDatum(TR_DATUM);
@@ -2244,16 +2056,16 @@ void V1Display::showScanning() {
     
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
-        ensureSerpentineFontLoaded();
+        fontMgr.ensureSerpentineLoaded(tft);
     }
-    if (s.displayStyle == DISPLAY_STYLE_MODERN && ofrInitialized) {
+    if (s.displayStyle == DISPLAY_STYLE_MODERN && fontMgr.modernReady) {
         // Modern style: use Montserrat Bold via OFR
         const int fontSize = 66;
-        ofr.setFontColor(s.colorBandKa, PALETTE_BG);
-        ofr.setFontSize(fontSize);
+        fontMgr.modern.setFontColor(s.colorBandKa, PALETTE_BG);
+        fontMgr.modern.setFontSize(fontSize);
         
         const char* text = "SCAN";
-        FT_BBox bbox = ofr.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        FT_BBox bbox = fontMgr.modern.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
         int textWidth = bbox.xMax - bbox.xMin;
         int textHeight = bbox.yMax - bbox.yMin;
         
@@ -2265,16 +2077,16 @@ void V1Display::showScanning() {
         int y = getEffectiveScreenHeight() - 72;  // Match frequency positioning
         
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
-        ofr.setCursor(x, y);
-        ofr.printf("%s", text);
-    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && ofrHemiInitialized) {
+        fontMgr.modern.setCursor(x, y);
+        fontMgr.modern.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && fontMgr.hemiReady) {
         // Hemi style: use Hemi Head via OFR (retro speedometer look)
         const int fontSize = 76;  // Larger for retro impact
-        ofrHemi.setFontColor(s.colorBandKa, PALETTE_BG);
-        ofrHemi.setFontSize(fontSize);
+        fontMgr.hemi.setFontColor(s.colorBandKa, PALETTE_BG);
+        fontMgr.hemi.setFontSize(fontSize);
         
         const char* text = "SCAN";
-        FT_BBox bbox = ofrHemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        FT_BBox bbox = fontMgr.hemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
         int textWidth = bbox.xMax - bbox.xMin;
         int textHeight = bbox.yMax - bbox.yMin;
         
@@ -2285,16 +2097,16 @@ void V1Display::showScanning() {
         int y = getEffectiveScreenHeight() - 72;
         
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
-        ofrHemi.setCursor(x, y);
-        ofrHemi.printf("%s", text);
-    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+        fontMgr.hemi.setCursor(x, y);
+        fontMgr.hemi.printf("%s", text);
+    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
         // Serpentine style: JB's favorite font
         const int fontSize = 65;
-        ofrSerpentine.setFontColor(s.colorBandKa, PALETTE_BG);
-        ofrSerpentine.setFontSize(fontSize);
+        fontMgr.serpentine.setFontColor(s.colorBandKa, PALETTE_BG);
+        fontMgr.serpentine.setFontSize(fontSize);
         
         const char* text = "SCAN";
-        FT_BBox bbox = ofrSerpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
+        FT_BBox bbox = fontMgr.serpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
         int textWidth = bbox.xMax - bbox.xMin;
         int textHeight = bbox.yMax - bbox.yMin;
         
@@ -2305,9 +2117,9 @@ void V1Display::showScanning() {
         int y = getEffectiveScreenHeight() - 72;
         
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
-        ofrSerpentine.setCursor(x, y);
-        ofrSerpentine.printf("%s", text);
-    } else if (ofrSegment7Initialized) {
+        fontMgr.serpentine.setCursor(x, y);
+        fontMgr.serpentine.printf("%s", text);
+    } else if (fontMgr.segment7Ready) {
         // Classic style: use Segment7 TTF font (JBV1 style)
         const int fontSize = 65;
         const int leftMargin = 135;  // Match frequency positioning
@@ -2327,11 +2139,11 @@ void V1Display::showScanning() {
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(fontSize);
-        ofrSegment7.setFontColor((s.colorBandKa >> 11) << 3, ((s.colorBandKa >> 5) & 0x3F) << 2, (s.colorBandKa & 0x1F) << 3);
-        ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", text);
+        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
+        fontMgr.segment7.setFontSize(fontSize);
+        fontMgr.segment7.setFontColor((s.colorBandKa >> 11) << 3, ((s.colorBandKa >> 5) & 0x3F) << 2, (s.colorBandKa & 0x1F) << 3);
+        fontMgr.segment7.setCursor(x, y);
+        fontMgr.segment7.printf("%s", text);
     } else {
         // Fallback: software 14-segment display
 #if defined(DISPLAY_WAVESHARE_349)
@@ -3990,7 +3802,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         s_forceFrequencyRedraw = false;
     }
 
-    const bool usingOfr = ofrSegment7Initialized;
+    const bool usingOfr = fontMgr.segment7Ready;
     const bool hasFreq = freqMHz > 0;
 
     char textBuf[16];
@@ -4062,7 +3874,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin;
         if (band == BAND_LASER) {
-            FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+            FT_BBox bbox = fontMgr.segment7.calculateBoundingBox(
                 0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
             int textWidth = bbox.xMax - bbox.xMin;
             x = leftMargin + (maxWidth - textWidth) / 2;
@@ -4089,11 +3901,11 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(fontSize);
-        ofrSegment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
-        ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", textBuf);
+        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
+        fontMgr.segment7.setFontSize(fontSize);
+        fontMgr.segment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+        fontMgr.segment7.setCursor(x, y);
+        fontMgr.segment7.printf("%s", textBuf);
     } else {
         // Fallback to software 7-segment renderer
 #if defined(DISPLAY_WAVESHARE_349)
@@ -4148,7 +3960,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if OFR not initialized
-    if (!ofrInitialized) {
+    if (!fontMgr.modernReady) {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
@@ -4233,7 +4045,7 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
     // Only recalculate bbox if text actually changed (expensive FreeType call)
     int textW, x;
     if (textChanged || !cacheValid) {
-        textW = getCachedTextWidth(ofr, fontSize, textBuf, widthCache, widthCacheNextSlot);
+        textW = DisplayFontManager::cachedTextWidth(fontMgr.modern, fontSize, textBuf, widthCache, widthCacheNextSlot);
         x = leftMargin + (maxWidth - textW) / 2;
     } else {
         // Reuse cached position for color-only changes
@@ -4247,12 +4059,12 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
     FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
     markFrequencyDirtyRegion(clearX, clearTop, clearW, clearHeight);
 
-    ofr.setFontSize(fontSize);
-    ofr.setBackgroundColor(0, 0, 0);  // Black background
-    ofr.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    fontMgr.modern.setFontSize(fontSize);
+    fontMgr.modern.setBackgroundColor(0, 0, 0);  // Black background
+    fontMgr.modern.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
 
-    ofr.setCursor(x, freqY);
-    ofr.printf("%s", textBuf);
+    fontMgr.modern.setCursor(x, freqY);
+    fontMgr.modern.printf("%s", textBuf);
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -4269,7 +4081,7 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Hemi OFR not initialized
-    if (!ofrHemiInitialized) {
+    if (!fontMgr.hemiReady) {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
@@ -4354,7 +4166,7 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
     // Only recalculate bbox if text actually changed (expensive FreeType call)
     int textW, x;
     if (textChanged || !cacheValid) {
-        textW = getCachedTextWidth(ofrHemi, fontSize, textBuf, widthCache, widthCacheNextSlot);
+        textW = DisplayFontManager::cachedTextWidth(fontMgr.hemi, fontSize, textBuf, widthCache, widthCacheNextSlot);
         x = leftMargin + (maxWidth - textW) / 2;
     } else {
         // Reuse cached position for color-only changes
@@ -4368,12 +4180,12 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
     FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
     markFrequencyDirtyRegion(clearX, clearTop, clearW, clearHeight);
 
-    ofrHemi.setFontSize(fontSize);
-    ofrHemi.setBackgroundColor(0, 0, 0);  // Black background
-    ofrHemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    fontMgr.hemi.setFontSize(fontSize);
+    fontMgr.hemi.setBackgroundColor(0, 0, 0);  // Black background
+    fontMgr.hemi.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
 
-    ofrHemi.setCursor(x, freqY);
-    ofrHemi.printf("%s", textBuf);
+    fontMgr.hemi.setCursor(x, freqY);
+    fontMgr.hemi.printf("%s", textBuf);
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -4390,7 +4202,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     const V1Settings& s = settingsManager.get();
     
     // Fall back to Classic style if Serpentine OFR not initialized
-    if (!ofrSerpentineInitialized) {
+    if (!fontMgr.serpentineReady) {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
@@ -4477,7 +4289,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     // Only recalculate bbox if text actually changed (expensive FreeType call)
     int textW, x;
     if (textChanged || !cacheValid) {
-        textW = getCachedTextWidth(ofrSerpentine, fontSize, textBuf, widthCache, widthCacheNextSlot);
+        textW = DisplayFontManager::cachedTextWidth(fontMgr.serpentine, fontSize, textBuf, widthCache, widthCacheNextSlot);
         x = leftMargin + (maxWidth - textW) / 2;
     } else {
         // Reuse cached position for color-only changes
@@ -4491,12 +4303,12 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
     markFrequencyDirtyRegion(clearX, clearTop, clearW, clearHeight);
 
-    ofrSerpentine.setFontSize(fontSize);
-    ofrSerpentine.setBackgroundColor(0, 0, 0);  // Black background
-    ofrSerpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
+    fontMgr.serpentine.setFontSize(fontSize);
+    fontMgr.serpentine.setBackgroundColor(0, 0, 0);  // Black background
+    fontMgr.serpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
 
-    ofrSerpentine.setCursor(x, freqY);
-    ofrSerpentine.printf("%s", textBuf);
+    fontMgr.serpentine.setCursor(x, freqY);
+    fontMgr.serpentine.printf("%s", textBuf);
 
     // Update cache
     strncpy(lastText, textBuf, sizeof(lastText));
@@ -4574,13 +4386,13 @@ void V1Display::drawCameraToken(const char* token, bool muted) {
     const int effectiveHeight = getEffectiveScreenHeight();
 
     // Match the frequency readout renderer/font path (Segment7 / jbv1_2.ttf).
-    if (ofrSegment7Initialized) {
+    if (fontMgr.segment7Ready) {
         int fontSize = 75;
         int textWidth = 0;
 
         // Camera tokens can be wider than frequency values ("SPEED"), so shrink to fit the same field.
         while (fontSize >= 42) {
-            const FT_BBox bbox = ofrSegment7.calculateBoundingBox(
+            const FT_BBox bbox = fontMgr.segment7.calculateBoundingBox(
                 0, 0, fontSize, Align::Left, Layout::Horizontal, token);
             textWidth = bbox.xMax - bbox.xMin;
             if (textWidth <= (maxWidth - 10)) {
@@ -4608,11 +4420,11 @@ void V1Display::drawCameraToken(const char* token, bool muted) {
         const uint8_t bgR = (PALETTE_BG >> 11) << 3;
         const uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
         const uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        ofrSegment7.setBackgroundColor(bgR, bgG, bgB);
-        ofrSegment7.setFontSize(fontSize);
-        ofrSegment7.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
-        ofrSegment7.setCursor(x, y);
-        ofrSegment7.printf("%s", token);
+        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
+        fontMgr.segment7.setFontSize(fontSize);
+        fontMgr.segment7.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
+        fontMgr.segment7.setCursor(x, y);
+        fontMgr.segment7.printf("%s", token);
         return;
     }
 
@@ -4638,7 +4450,7 @@ void V1Display::drawCameraToken(const char* token, bool muted) {
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
-        ensureSerpentineFontLoaded();
+        fontMgr.ensureSerpentineLoaded(tft);
     }
     frequencyRenderDirty = false;
     frequencyDirtyValid = false;
@@ -4651,11 +4463,11 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
     static int lastStyleLogged = -1;
     if (s.displayStyle != lastStyleLogged) {
         Serial.printf("[Display] Style changed: %d (0=Classic, 3=Serpentine), serpInit=%d\n",
-                      s.displayStyle, ofrSerpentineInitialized);
+                      s.displayStyle, fontMgr.serpentineReady);
         lastStyleLogged = s.displayStyle;
     }
     
-    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && ofrSerpentineInitialized) {
+    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
         drawFrequencySerpentine(freqMHz, band, muted, isPhotoRadar);
     } else {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
