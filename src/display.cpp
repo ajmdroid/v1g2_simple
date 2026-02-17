@@ -71,7 +71,6 @@ static bool s_forceSignalBarsRedraw = false;
 static bool s_forceArrowRedraw = false;
 
 // Force status bar/mute icon/top counter cache invalidation - set when screen is cleared
-static bool s_forceStatusBarRedraw = false;
 static bool s_forceMuteIconRedraw = false;
 static bool s_forceTopCounterRedraw = false;
 static bool s_forceLockoutRedraw = false;
@@ -913,7 +912,6 @@ void V1Display::drawBaseFrame() {
     s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
     s_forceSignalBarsRedraw = true; // Force signal bars cache invalidation after screen clear
     s_forceArrowRedraw = true;      // Force arrow cache invalidation after screen clear
-    s_forceStatusBarRedraw = true;  // Force status bar cache invalidation after screen clear
     s_forceMuteIconRedraw = true;   // Force mute icon cache invalidation after screen clear
     s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
     s_forceLockoutRedraw = true;    // Force lockout indicator cache invalidation after screen clear
@@ -2118,9 +2116,6 @@ void V1Display::showResting(bool forceRedraw) {
         // Profile indicator
         drawProfileIndicator(profileSlot);
         
-        // Status bar indicators
-        drawStatusBar();
-
         // Reset secondary alert card state, then draw resting telemetry cards.
         AlertData emptyPriority;
         drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
@@ -2185,9 +2180,6 @@ void V1Display::showScanning() {
     TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
     
-    // Force status bar redraw for the next frame.
-    s_forceStatusBarRedraw = true;
-    
     // Draw idle state elements
     drawTopCounter('0', false, true);
     // Volume indicator not shown in scanning state (no DisplayState available)
@@ -2198,7 +2190,6 @@ void V1Display::showScanning() {
     drawLockoutIndicator();
     drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // Top status indicators
     
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
@@ -2763,7 +2754,6 @@ void V1Display::update(const DisplayState& state) {
     drawLockoutIndicator();
     drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
-    drawStatusBar();  // Top status indicators
     
     // Clear any persisted card slots when entering resting state
     AlertData emptyPriority;
@@ -2899,7 +2889,6 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     drawCameraToken(cameraTokenForType(cameraType), muted);
     const V1Settings& s = settingsManager.get();
     drawDirectionArrow(DIR_FRONT, muted, 0, s.colorCameraArrow);
-    drawStatusBar();
     drawMuteIcon(false);
     drawLockoutIndicator();
     drawGpsIndicator();
@@ -3178,7 +3167,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
     // (arrowsToShow already computed above for change detection)
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
-    drawStatusBar();  // Top status indicators (must be before mute icon)
     drawMuteIcon(state.muted);
     drawLockoutIndicator();
     drawGpsIndicator();
@@ -4932,21 +4920,6 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     lastStrength = strength;
     lastMuted = muted;
     cacheValid = true;
-}
-
-void V1Display::drawStatusBar() {
-#if defined(DISPLAY_WAVESHARE_349)
-    if (!s_forceStatusBarRedraw) {
-        return;
-    }
-    s_forceStatusBarRedraw = false;
-    
-    const int statusY = 2;           // Near top of screen
-    const int statusHeight = 18;     // Height for font size 2
-    const int statusX = 180;         // After GPS badge (ends at X≈175)
-    const int statusWidth = SCREEN_WIDTH - statusX - 200;
-    FILL_RECT(statusX, statusY, statusWidth, statusHeight, PALETTE_BG);
-#endif
 }
 
 const char* V1Display::bandToString(Band band) {

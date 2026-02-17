@@ -103,9 +103,6 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // Status bar at top of screen.
-    void drawStatusBar();
-
     // Lockout indicator — shows "L" badge when enforcer matches a zone.
     // Call from main.cpp after enforcer runs, before display pipeline.
     void setLockoutIndicator(bool show);
