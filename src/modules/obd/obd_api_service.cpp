@@ -337,7 +337,7 @@ void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& se
     sendJsonDocument(server, 200, doc);
 }
 
-void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
+static void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
     String address;
     bool enabled = false;
     String errorMessage;
@@ -352,6 +352,17 @@ void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
     }
 
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleApiRememberedAutoConnect(WebServer& server,
+                                    OBDHandler& obdHandler,
+                                    const std::function<bool()>& checkRateLimit,
+                                    const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleRememberedAutoConnect(server, obdHandler);
 }
 
 static void handleForget(WebServer& server, OBDHandler& obdHandler) {
