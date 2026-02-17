@@ -200,6 +200,53 @@ static WifiOrchestrator& getWifiOrchestrator() {
     return orchestrator;
 }
 
+static bool isWifiProcessingEnabled(const V1Settings& settings) {
+    return wifiManager.isSetupModeActive() ||
+           wifiManager.isConnected() ||
+           (settings.enableWifiAtBoot && !wifiAutoStartDone);
+}
+
+static void updateBleWifiPriority(unsigned long now, bool obdServiceEnabled) {
+    // WiFi priority mode: web UI can deprioritize BLE background work, but never
+    // at the expense of establishing/maintaining V1 connectivity.
+    // Hysteresis: different timeouts for enable vs disable prevent oscillation.
+    // Min-hold guard: once a transition fires, suppress further transitions for
+    // a minimum hold period to avoid sub-second flapping caused by HTTP request
+    // arrival racing with this check within the same loop iteration.
+    constexpr unsigned long WIFI_PRIORITY_ENABLE_TIMEOUT_MS = 3500;
+    constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 8000;
+    constexpr unsigned long WIFI_PRIORITY_MIN_HOLD_MS = 5000;
+    static unsigned long wifiPriorityLastTransitionMs = 0;
+    const bool wifiPriorityAllowed = bleClient.isConnected();
+    const bool wifiPriorityCurrent = bleClient.isWifiPriority();
+    const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
+                                                          : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
+    const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
+    // OBD BLE-critical suppression only matters when WiFi AP is actually on.
+    // When WiFi is off, the OBD handler already stops the V1 scan before
+    // connecting (connectToDevice) — piggybacking on WiFi priority mode is
+    // redundant and causes harmful flapping (stop/restart proxy advertising
+    // on every OBD retry cycle, confusing log spam about "WiFi priority"
+    // when WiFi is completely off).
+    const bool wifiApOn = wifiManager.isSetupModeActive();
+    const OBDState obdState = obdHandler.getState();
+    const bool obdBleCritical =
+        wifiApOn &&
+        obdServiceEnabled &&
+        (obdHandler.isScanActive() ||
+         obdState == OBDState::CONNECTING ||
+         obdState == OBDState::INITIALIZING);
+    // Keep BLE background suppression active through OBD scan/connect/init so
+    // proxy advertising or scan resumes do not interrupt OBD pairing flow
+    // (only relevant when WiFi AP is on and could cause radio contention).
+    const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
+    const bool holdActive = (now - wifiPriorityLastTransitionMs) < WIFI_PRIORITY_MIN_HOLD_MS;
+    if (wifiPriority != wifiPriorityCurrent && !holdActive) {
+        bleClient.setWifiPriority(wifiPriority);
+        wifiPriorityLastTransitionMs = now;
+    }
+}
+
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
@@ -776,45 +823,9 @@ void loop() {
         SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", millis());
     }
 
-    // WiFi priority mode: web UI can deprioritize BLE background work, but never
-    // at the expense of establishing/maintaining V1 connectivity.
-    // Hysteresis: different timeouts for enable vs disable prevent oscillation.
-    // Min-hold guard: once a transition fires, suppress further transitions for
-    // a minimum hold period to avoid sub-second flapping caused by HTTP request
-    // arrival racing with this check within the same loop iteration.
-    constexpr unsigned long WIFI_PRIORITY_ENABLE_TIMEOUT_MS = 3500;
-    constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 8000;
-    constexpr unsigned long WIFI_PRIORITY_MIN_HOLD_MS = 5000;
-    static unsigned long wifiPriorityLastTransitionMs = 0;
-    const bool wifiPriorityAllowed = bleClient.isConnected();
-    const bool wifiPriorityCurrent = bleClient.isWifiPriority();
-    const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
-                                                          : WIFI_PRIORITY_ENABLE_TIMEOUT_MS;
-    const bool uiActive = wifiManager.isUiActive(uiTimeoutMs);
-    // OBD BLE-critical suppression only matters when WiFi AP is actually on.
-    // When WiFi is off, the OBD handler already stops the V1 scan before
-    // connecting (connectToDevice) — piggybacking on WiFi priority mode is
-    // redundant and causes harmful flapping (stop/restart proxy advertising
-    // on every OBD retry cycle, confusing log spam about "WiFi priority"
-    // when WiFi is completely off).
-    const bool wifiApOn = wifiManager.isSetupModeActive();
-    const bool obdServiceEnabled = settingsManager.get().obdEnabled;
-    const OBDState obdState = obdHandler.getState();
-    const bool obdBleCritical =
-        wifiApOn &&
-        obdServiceEnabled &&
-        (obdHandler.isScanActive() ||
-         obdState == OBDState::CONNECTING ||
-         obdState == OBDState::INITIALIZING);
-    // Keep BLE background suppression active through OBD scan/connect/init so
-    // proxy advertising or scan resumes do not interrupt OBD pairing flow
-    // (only relevant when WiFi AP is on and could cause radio contention).
-    const bool wifiPriority = wifiPriorityAllowed && (uiActive || obdBleCritical);
-    const bool holdActive = (now - wifiPriorityLastTransitionMs) < WIFI_PRIORITY_MIN_HOLD_MS;
-    if (wifiPriority != wifiPriorityCurrent && !holdActive) {
-        bleClient.setWifiPriority(wifiPriority);
-        wifiPriorityLastTransitionMs = now;
-    }
+    const V1Settings& loopSettings = settingsManager.get();
+    const bool obdServiceEnabled = loopSettings.obdEnabled;
+    updateBleWifiPriority(now, obdServiceEnabled);
     
     // Process BLE events (includes blocking connect/discovery during reconnect)
     uint32_t bleProcessStartUs = PERF_TIMESTAMP_US();
@@ -1061,7 +1072,7 @@ void loop() {
     // ── WiFi deferred auto-start gate ────────────────────────────────
     // Replaces the old setup()-time startWifi() call.  WiFi waits for
     // BLE to connect + settle, or a 30 s boot timeout, whichever first.
-    if (!wifiAutoStartDone && settingsManager.get().enableWifiAtBoot) {
+    if (!wifiAutoStartDone && loopSettings.enableWifiAtBoot) {
         constexpr uint32_t WIFI_SETTLE_MS  = 3000;
         constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
         const uint32_t msSinceV1 = (v1ConnectedAtMs > 0) ? (now - v1ConnectedAtMs) : 0;
@@ -1077,18 +1088,12 @@ void loop() {
         }
     }
 
-    if (!skipNonCoreThisLoop) {
-        // Process WiFi/web server — gated to prevent stray work in wifi-off profiles.
-        const bool shouldProcess = WifiBootPolicy::shouldProcessWifi(
-            wifiManager.isSetupModeActive(),
-            wifiManager.isConnected(),
-            settingsManager.get().enableWifiAtBoot,
-            wifiAutoStartDone);
-        if (shouldProcess) {
-            uint32_t wifiStartUs = PERF_TIMESTAMP_US();
-            wifiManager.process();
-            perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
-        }
+    // Process WiFi/web server only when WiFi is actually enabled.
+    // Explicit gate keeps this path a near-no-op in wifi-off profiles.
+    if (!skipNonCoreThisLoop && isWifiProcessingEnabled(loopSettings)) {
+        uint32_t wifiStartUs = PERF_TIMESTAMP_US();
+        wifiManager.process();
+        perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
     }
     
     perfRecordLoopJitterUs(micros() - loopStartUs);
