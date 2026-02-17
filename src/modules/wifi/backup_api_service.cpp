@@ -35,7 +35,7 @@ bool computeCameraRuntimeEnabled(const V1Settings& settings) {
 
 namespace BackupApiService {
 
-void sendBackup(WebServer& server) {
+static void sendBackup(WebServer& server) {
     Serial.println("[HTTP] GET /api/settings/backup");
     
     const V1Settings& s = settingsManager.get();
@@ -199,6 +199,14 @@ void sendBackup(WebServer& server) {
     // Send with Content-Disposition header for download
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
     server.send(200, "application/json", json);
+}
+
+void handleApiBackup(WebServer& server,
+                     const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendBackup(server);
 }
 
 void handleRestore(WebServer& server) {
