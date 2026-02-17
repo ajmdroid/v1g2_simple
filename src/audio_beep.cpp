@@ -12,7 +12,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "driver/gpio.h"
-#include <cmath>  // For sinf
 
 // ES8311 I2C address
 #define ES8311_ADDR 0x18
