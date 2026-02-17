@@ -705,6 +705,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorCamA", settings.colorCameraArrow);
     written += prefs.putUShort("colorLockL", settings.colorLockout);
     written += prefs.putUShort("colorGps", settings.colorGps);
+    written += prefs.putUShort("colorObd", settings.colorObd);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -1025,6 +1026,7 @@ void SettingsManager::load() {
     settings.colorCameraArrow = preferences.getUShort("colorCamA", 0xF800);     // Red for camera forward arrow
     settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
     settings.colorGps = preferences.getUShort("colorGps", 0x07FF);              // Cyan GPS badge color
+    settings.colorObd = preferences.getUShort("colorObd", 0xFD20);              // Orange OBD badge color
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -1872,6 +1874,7 @@ void SettingsManager::backupToSD() {
     doc["colorCameraArrow"] = settings.colorCameraArrow;
     doc["colorLockout"] = settings.colorLockout;
     doc["colorGps"] = settings.colorGps;
+    doc["colorObd"] = settings.colorObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -2145,6 +2148,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
     if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
+    if (doc["colorObd"].is<int>()) settings.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings.freqUseBandColor);
     
     // === UI Toggles ===

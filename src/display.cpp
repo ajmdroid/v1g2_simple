@@ -75,6 +75,7 @@ static bool s_forceMuteIconRedraw = false;
 static bool s_forceTopCounterRedraw = false;
 static bool s_forceLockoutRedraw = false;
 static bool s_forceGpsIndicatorRedraw = false;
+static bool s_forceObdIndicatorRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -916,6 +917,7 @@ void V1Display::drawBaseFrame() {
     s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
     s_forceLockoutRedraw = true;    // Force lockout indicator cache invalidation after screen clear
     s_forceGpsIndicatorRedraw = true;  // Force GPS indicator cache invalidation after screen clear
+    s_forceObdIndicatorRedraw = true;  // Force OBD indicator cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -1504,6 +1506,52 @@ void V1Display::drawGpsIndicator() {
         TFT_CALL(setTextSize)(2);
         TFT_CALL(setTextColor)(textColor, fillColor);
         GFX_drawString(tft, buf, x + w / 2, y + h / 2);
+    } else {
+        FILL_RECT(x, y, w, h, PALETTE_BG);
+    }
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// OBD connected indicator ("OBD" badge, right of lockout "L")
+// ---------------------------------------------------------------------------
+
+void V1Display::setObdConnected(bool enabled, bool connected, bool hasData) {
+    obdEnabled_   = enabled;
+    obdConnected_ = connected;
+    obdHasData_   = hasData;
+}
+
+void V1Display::drawObdIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    const bool wantShow = obdEnabled_ && obdConnected_ && obdHasData_;
+
+    static bool lastShown = false;
+
+    if (!s_forceObdIndicatorRedraw && wantShow == lastShown) {
+        return;
+    }
+    s_forceObdIndicatorRedraw = false;
+    lastShown = wantShow;
+
+    // Position: right of lockout "L" (ends at X=366), before signal bars (X=440).
+    const int x = 375;
+    const int y = 5;
+    const int h = 26;
+    const int w = 52;  // Wide enough for "OBD" at textSize(2)
+
+    if (wantShow) {
+        const V1Settings& s = settingsManager.get();
+        const uint16_t textColor = s.colorObd;
+        const uint16_t fillColor = dimColor(textColor, 45);
+
+        FILL_ROUND_RECT(x, y, w, h, 5, fillColor);
+        DRAW_ROUND_RECT(x, y, w, h, 5, textColor);
+
+        GFX_setTextDatum(MC_DATUM);
+        TFT_CALL(setTextSize)(2);
+        TFT_CALL(setTextColor)(textColor, fillColor);
+        GFX_drawString(tft, "OBD", x + w / 2, y + h / 2);
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
     }
@@ -2113,6 +2161,7 @@ void V1Display::showResting(bool forceRedraw) {
         drawMuteIcon(false);
         drawLockoutIndicator();
         drawGpsIndicator();
+        drawObdIndicator();
         
         // Profile indicator
         drawProfileIndicator(profileSlot);
@@ -2190,6 +2239,7 @@ void V1Display::showScanning() {
     drawMuteIcon(false);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     
     // Draw "SCAN" in frequency area - match display style
@@ -2754,6 +2804,7 @@ void V1Display::update(const DisplayState& state) {
     drawMuteIcon(effectiveMuted);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     
     // Clear any persisted card slots when entering resting state
@@ -2893,6 +2944,7 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     drawMuteIcon(false);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
 
     AlertData emptyPriority;
@@ -3171,6 +3223,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawMuteIcon(state.muted);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     DISP_PERF_LOG("arrows+icons");
     

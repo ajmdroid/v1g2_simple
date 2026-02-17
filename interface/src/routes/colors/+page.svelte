@@ -34,6 +34,7 @@
 		cameraArrow: 0xF800, // Red (camera forward arrow)
 		lockout: 0x07E0, // Green (lockout badge "L")
 		gps: 0x07FF, // Cyan (GPS badge "G")
+		obd: 0xFD20, // Orange (OBD badge)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -281,6 +282,7 @@
 			params.append('cameraArrow', colors.cameraArrow);
 			params.append('lockout', colors.lockout);
 			params.append('gps', colors.gps);
+			params.append('obd', colors.obd);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -361,6 +363,7 @@
 					cameraArrow: 0xF800,
 					lockout: 0x07E0,
 					gps: 0x07FF,
+					obd: 0xFD20,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -893,12 +896,12 @@
 			</div>
 		</div>
 
-		<!-- Camera & Lockout & GPS -->
+		<!-- Camera, Lockout, GPS & OBD -->
 		<div class="card bg-base-200">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">Camera, Lockout & GPS</h2>
-				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, lockout badge, and GPS badge color</p>
-				<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+				<h2 class="card-title text-lg">Camera, Lockout, GPS & OBD</h2>
+				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
+				<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
 					<div class="form-control">
 						<label class="label" for="camera-token-color">
 							<span class="label-text">Camera Token</span>
@@ -1001,6 +1004,32 @@
 								class="text-xl font-bold font-mono"
 								style="color: {rgb565ToHex(colors.gps)}"
 							>G</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="obd-color">
+							<span class="label-text">OBD Badge</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="obd-color"
+								type="button"
+								aria-label="OBD badge color"
+								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								style="background-color: {rgb565ToHex(colors.obd)}"
+								onclick={() => openPicker('obd', 'OBD Badge')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.obd)}
+								onchange={(e) => handleHexInput('obd', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-lg font-bold font-mono"
+								style="color: {rgb565ToHex(colors.obd)}"
+							>OBD</span>
 						</div>
 					</div>
 				</div>

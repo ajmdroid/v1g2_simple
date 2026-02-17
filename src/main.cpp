@@ -1188,6 +1188,12 @@ void loop() {
             }
         }
 
+        // Feed OBD connection state into display indicator.
+        {
+            const bool obdEnabled = settingsManager.get().obdEnabled;
+            display.setObdConnected(obdEnabled, obdHandler.isConnected(), obdHandler.hasValidData());
+        }
+
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {

@@ -281,6 +281,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorBandL);
     TEST_ASSERT_EQUAL_UINT16(0x07E0, rt.settings.colorLockout);
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
+    TEST_ASSERT_EQUAL_UINT16(0xFD20, rt.settings.colorObd);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);
     TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
