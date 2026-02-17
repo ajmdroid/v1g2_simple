@@ -55,6 +55,7 @@ void handleApiEvents(WebServer& server,
 }
 #endif
 
+#ifdef UNIT_TEST
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
@@ -71,6 +72,7 @@ void handleApiZones(WebServer& server,
     }
     sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
 }
+#endif
 
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,

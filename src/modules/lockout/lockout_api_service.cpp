@@ -295,6 +295,23 @@ void sendZones(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiZones(WebServer& server,
+                    LockoutIndex& lockoutIndex,
+                    LockoutLearner& lockoutLearner,
+                    SettingsManager& settingsManager,
+                    const std::function<bool()>& checkRateLimit,
+                    const std::function<void()>& markUiActivity,
+                    const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+}
+
 void handleZoneDelete(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
