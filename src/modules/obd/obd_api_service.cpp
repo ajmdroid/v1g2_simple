@@ -303,7 +303,7 @@ void handleApiDisconnect(WebServer& server,
     handleDisconnect(server, obdHandler);
 }
 
-void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager) {
+static void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager) {
     const bool currentEnabled = settingsManager.get().obdEnabled;
     const bool currentVwDataEnabled = settingsManager.get().obdVwDataEnabled;
     ConfigRequest request;
@@ -335,6 +335,18 @@ void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& se
     doc["enabled"] = settingsManager.get().obdEnabled;
     doc["vwDataEnabled"] = settingsManager.get().obdVwDataEnabled;
     sendJsonDocument(server, 200, doc);
+}
+
+void handleApiConfig(WebServer& server,
+                     OBDHandler& obdHandler,
+                     SettingsManager& settingsManager,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleConfig(server, obdHandler, settingsManager);
 }
 
 static void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
