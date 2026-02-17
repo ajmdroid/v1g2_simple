@@ -1173,17 +1173,17 @@ void WiFiManager::setupWebServer() {
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/preview", HTTP_POST, [this]() { 
+    server.on("/api/displaycolors/preview", HTTP_POST, [this, rateLimitCallback]() { 
         WifiDisplayColorsApiService::handleApiPreview(
             server,
             makeDisplayColorsRuntime(),
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
-    server.on("/api/displaycolors/clear", HTTP_POST, [this]() { 
+    server.on("/api/displaycolors/clear", HTTP_POST, [this, rateLimitCallback]() { 
         WifiDisplayColorsApiService::handleApiClear(
             server,
             makeDisplayColorsRuntime(),
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
     
     // Settings backup/restore API routes
