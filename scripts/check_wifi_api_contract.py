@@ -25,7 +25,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC_FILE = ROOT / "src" / "wifi_manager.cpp"
+SRC_FILES = [
+    ROOT / "src" / "wifi_manager.cpp",
+    ROOT / "src" / "wifi_routes.cpp",
+    ROOT / "src" / "wifi_runtimes.cpp",
+    ROOT / "src" / "wifi_client.cpp",
+]
 ROUTE_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_route_contract.txt"
 POLICY_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_handler_policy_contract.txt"
 LEGACY_LOCKOUT_CONTRACT_FILE = (
@@ -151,9 +156,13 @@ class LocalHandlerRoutePolicy:
 
 
 def read_source() -> str:
-    if not SRC_FILE.exists():
-        raise FileNotFoundError(f"Source file not found: {SRC_FILE}")
-    return SRC_FILE.read_text(encoding="utf-8")
+    parts: list[str] = []
+    for src in SRC_FILES:
+        if src.exists():
+            parts.append(src.read_text(encoding="utf-8"))
+    if not parts:
+        raise FileNotFoundError(f"No source files found: {SRC_FILES}")
+    return "\n".join(parts)
 
 
 def extract_routes(source: str) -> List[str]:
