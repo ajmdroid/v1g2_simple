@@ -95,6 +95,22 @@ void sendSummary(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiSummary(WebServer& server,
+                      SignalObservationLog& signalObservationLog,
+                      SignalObservationSdLogger& signalObservationSdLogger,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity,
+                      const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendSummary(server, signalObservationLog, signalObservationSdLogger);
+}
+
 void sendEvents(WebServer& server,
                 SignalObservationLog& signalObservationLog,
                 SignalObservationSdLogger& signalObservationSdLogger) {

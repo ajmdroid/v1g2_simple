@@ -19,6 +19,7 @@ void handleZoneDelete(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore);
 
+#ifdef UNIT_TEST
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
@@ -34,6 +35,7 @@ void handleApiSummary(WebServer& server,
     }
     sendSummary(server, signalObservationLog, signalObservationSdLogger);
 }
+#endif
 
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
