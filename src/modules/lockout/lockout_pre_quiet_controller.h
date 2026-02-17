@@ -42,6 +42,7 @@ struct PreQuietDecision {
 ///   DROPPED + real alert (non-lockout)         → RESTORE_VOLUME → DISARMED
 ///   DROPPED + leave all zones (500ms debounce) → RESTORE_VOLUME → IDLE
 ///   DISARMED + leave all zones                 → IDLE (no BLE command needed)
+///   Any phase + GPS fix lost                   → hold state (like BLE disconnect)
 ///   Any phase + feature/mode/BLE disabled      → restore if DROPPED, reset
 ///
 /// Max 2 BLE commands per zone visit.  No re-drop after real alert.
@@ -51,6 +52,7 @@ PreQuietDecision evaluatePreQuiet(
     bool featureEnabled,                // gpsLockoutPreQuiet setting
     bool enforceMode,                   // gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE
     bool bleConnected,
+    bool gpsValid,                      // gpsStatus.locationValid — false = hold state
     bool hasAlert,                      // parser.hasAlerts()
     bool lockoutEvaluated,              // lockRes.evaluated
     bool lockoutShouldMute,             // lockRes.shouldMute (valid when alert + evaluated)

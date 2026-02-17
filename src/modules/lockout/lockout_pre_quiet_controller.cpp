@@ -21,6 +21,7 @@ PreQuietDecision evaluatePreQuiet(
     bool featureEnabled,
     bool enforceMode,
     bool bleConnected,
+    bool gpsValid,
     bool hasAlert,
     bool lockoutEvaluated,
     bool lockoutShouldMute,
@@ -44,6 +45,16 @@ PreQuietDecision evaluatePreQuiet(
     // BLE down — can't send commands.  Keep state so we resume correctly
     // when BLE reconnects.  The V1 retains whatever volume it has.
     if (!bleConnected) {
+        return decision;  // NONE
+    }
+
+    // GPS fix lost — nearbyZoneCount is 0 when GPS is invalid, which would
+    // falsely trigger exit debounce.  Hold whatever phase we're in until
+    // GPS recovers, same principle as BLE disconnect.
+    if (!gpsValid) {
+        if (state.phase == PreQuietPhase::DROPPED) {
+            state.leftZoneMs = 0;   // Cancel any in-progress exit debounce
+        }
         return decision;  // NONE
     }
 

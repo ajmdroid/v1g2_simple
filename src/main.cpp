@@ -1151,6 +1151,7 @@ void loop() {
                     lockoutSettings.gpsLockoutPreQuiet,
                     enforceMode,
                     bleClient.isConnected(),
+                    gpsStatus.locationValid,
                     parser.hasAlerts(),
                     lockRes.evaluated,
                     lockRes.shouldMute,

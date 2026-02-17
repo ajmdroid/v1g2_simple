@@ -721,6 +721,21 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
     };
 }
 
+WifiTimeApiService::TimeRuntime WiFiManager::makeTimeRuntime() {
+    return WifiTimeApiService::TimeRuntime{
+        [this]() { return timeService.timeValid(); },
+        [this]() { return timeService.nowEpochMsOr0(); },
+        [this]() { return timeService.tzOffsetMinutes(); },
+        [this]() { return timeService.timeSource(); },
+        [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
+            timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
+        },
+        [this]() { return timeService.timeConfidence(); },
+        [this]() { return timeService.nowMonoMs(); },
+        [this]() { return timeService.epochAgeMsOr0(); },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -855,21 +870,6 @@ void WiFiManager::setupWebServer() {
         };
     };
     auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
-    auto makeTimeRuntime = [this]() {
-        return WifiTimeApiService::TimeRuntime{
-            [this]() { return timeService.timeValid(); },
-            [this]() { return timeService.nowEpochMsOr0(); },
-            [this]() { return timeService.tzOffsetMinutes(); },
-            [this]() { return timeService.timeSource(); },
-            [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
-                timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
-            },
-            [this]() { return timeService.timeConfidence(); },
-            [this]() { return timeService.nowMonoMs(); },
-            [this]() { return timeService.epochAgeMsOr0(); },
-        };
-    };
-
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, makeStatusRuntime]() {
         WifiStatusApiService::handleApiStatus(
@@ -888,7 +888,7 @@ void WiFiManager::setupWebServer() {
             requestProfilePush,
             [this]() { return checkRateLimit(); }); 
     });
-    server.on("/api/time/set", HTTP_POST, [this, makeTimeRuntime]() {
+    server.on("/api/time/set", HTTP_POST, [this]() {
         WifiTimeApiService::handleApiTimeSet(
             server,
             makeTimeRuntime(),

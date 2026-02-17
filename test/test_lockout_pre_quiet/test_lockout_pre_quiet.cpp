@@ -35,7 +35,7 @@ static PreQuietState droppedState(uint8_t savedMain = 6, uint8_t savedMute = 0) 
 void test_feature_disabled_returns_none() {
     PreQuietState state;
     auto d = evaluatePreQuiet(
-        /*featureEnabled=*/false, true, true,
+        /*featureEnabled=*/false, true, true, true,
         false, false, false,
         3, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
@@ -48,7 +48,7 @@ void test_feature_disabled_returns_none() {
 void test_non_enforce_mode_returns_none() {
     PreQuietState state;
     auto d = evaluatePreQuiet(
-        true, /*enforceMode=*/false, true,
+        true, /*enforceMode=*/false, true, true,
         false, false, false,
         3, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
@@ -62,7 +62,7 @@ void test_ble_disconnected_preserves_state() {
     PreQuietState state = droppedState();
 
     auto d = evaluatePreQuiet(
-        true, true, /*bleConnected=*/false,
+        true, true, /*bleConnected=*/false, true,
         false, false, false,
         3, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
@@ -76,13 +76,13 @@ void test_ble_disconnected_preserves_state() {
 void test_entry_debounce_waits() {
     PreQuietState state;
 
-    auto d1 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d1 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                2, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
     TEST_ASSERT_EQUAL(T0, state.enteredZoneMs);
 
-    auto d2 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                2, 6, 0, T0 + 100, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
@@ -94,9 +94,10 @@ void test_entry_debounce_waits() {
 void test_entry_drops_volume_after_debounce() {
     PreQuietState state;
 
-    evaluatePreQuiet(true, true, true, false, false, false, 2, 6, 0, T0, state);
+    evaluatePreQuiet(true, true, true, true, false, false, false,
+                     2, 6, 0, T0, state);
 
-    auto d = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d = evaluatePreQuiet(true, true, true, true, false, false, false,
                               2, 6, 0, T0 + ENTRY_WAIT, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::DROP_VOLUME, d.action);
     TEST_ASSERT_EQUAL(0, d.volume);
@@ -111,7 +112,7 @@ void test_entry_drops_volume_after_debounce() {
 void test_dropped_in_zone_holds() {
     PreQuietState state = droppedState();
 
-    auto d = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d = evaluatePreQuiet(true, true, true, true, false, false, false,
                               2, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
@@ -123,7 +124,7 @@ void test_dropped_in_zone_holds() {
 void test_dropped_lockout_match_stays_quiet() {
     PreQuietState state = droppedState();
 
-    auto d = evaluatePreQuiet(true, true, true,
+    auto d = evaluatePreQuiet(true, true, true, true,
                               true, true, /*lockoutShouldMute=*/true,
                               2, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
@@ -136,7 +137,7 @@ void test_dropped_lockout_match_stays_quiet() {
 void test_real_alert_restores_to_disarmed() {
     PreQuietState state = droppedState();
 
-    auto d = evaluatePreQuiet(true, true, true,
+    auto d = evaluatePreQuiet(true, true, true, true,
                               true, true, /*lockoutShouldMute=*/false,
                               2, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
@@ -152,7 +153,7 @@ void test_disarmed_stays_in_zone() {
     PreQuietState state;
     state.phase = PreQuietPhase::DISARMED;
 
-    auto d = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d = evaluatePreQuiet(true, true, true, true, false, false, false,
                               2, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
@@ -165,7 +166,7 @@ void test_disarmed_leaves_zone_goes_idle() {
     PreQuietState state;
     state.phase = PreQuietPhase::DISARMED;
 
-    auto d = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d = evaluatePreQuiet(true, true, true, true, false, false, false,
                               /*nearbyZoneCount=*/0, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
@@ -178,18 +179,18 @@ void test_dropped_exit_debounce_restores() {
     PreQuietState state = droppedState();
 
     // Leave zone — start debounce.
-    auto d1 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d1 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                0, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
     // 200ms — still debouncing.
-    auto d2 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                0, 0, 0, T0 + 200, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
 
     // After debounce.
-    auto d3 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d3 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                0, 0, 0, T0 + EXIT_WAIT, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d3.action);
     TEST_ASSERT_EQUAL(6, d3.volume);
@@ -204,12 +205,14 @@ void test_disarmed_does_not_redrop_on_reentry() {
     state.phase = PreQuietPhase::DISARMED;
 
     // Leave zone → IDLE.
-    evaluatePreQuiet(true, true, true, false, false, false, 0, 6, 0, T0, state);
+    evaluatePreQuiet(true, true, true, true, false, false, false,
+                     0, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
 
     // Enter new zone → should debounce and DROP normally (re-armed from IDLE).
-    evaluatePreQuiet(true, true, true, false, false, false, 1, 6, 0, T0 + 100, state);
-    auto d = evaluatePreQuiet(true, true, true, false, false, false,
+    evaluatePreQuiet(true, true, true, true, false, false, false,
+                     1, 6, 0, T0 + 100, state);
+    auto d = evaluatePreQuiet(true, true, true, true, false, false, false,
                               1, 6, 0, T0 + 100 + ENTRY_WAIT, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::DROP_VOLUME, d.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
@@ -221,7 +224,7 @@ void test_disarmed_does_not_redrop_on_reentry() {
 void test_feature_disabled_while_dropped_restores() {
     PreQuietState state = droppedState();
 
-    auto d = evaluatePreQuiet(false, true, true, false, false, false,
+    auto d = evaluatePreQuiet(false, true, true, true, false, false, false,
                               2, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
     TEST_ASSERT_EQUAL(6, d.volume);
@@ -236,7 +239,7 @@ void test_feature_disabled_while_disarmed_no_command() {
     state.phase = PreQuietPhase::DISARMED;
     state.savedMainVolume = 6;
 
-    auto d = evaluatePreQuiet(false, true, true, false, false, false,
+    auto d = evaluatePreQuiet(false, true, true, true, false, false, false,
                               2, 6, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
@@ -249,57 +252,132 @@ void test_ble_reconnect_resumes_dropped() {
     PreQuietState state = droppedState();
 
     // BLE drops.
-    auto d1 = evaluatePreQuiet(true, true, false, false, false, false,
+    auto d1 = evaluatePreQuiet(true, true, false, true, false, false, false,
                                3, 0, 0, T0, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
     // BLE back, still in zone → hold.
-    auto d2 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                3, 0, 0, T0 + 100, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 }
 
 // ---------------------------------------------------------------------------
-// 16. Full cycle: IDLE → DROP → lockout alert → real alert → DISARMED → IDLE
+// 16. GPS fix lost while DROPPED → holds state, cancels exit debounce
+// ---------------------------------------------------------------------------
+void test_gps_lost_while_dropped_holds_state() {
+    PreQuietState state = droppedState();
+
+    // Start exit debounce (leave zone with GPS valid).
+    auto d1 = evaluatePreQuiet(true, true, true, /*gpsValid=*/true,
+                               false, false, false,
+                               0, 0, 0, T0, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
+    TEST_ASSERT_NOT_EQUAL(0, state.leftZoneMs);  // Debounce started
+
+    // GPS drops — should hold DROPPED and cancel exit debounce.
+    auto d2 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + EXIT_WAIT, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+    TEST_ASSERT_EQUAL(0, state.leftZoneMs);  // Debounce cancelled
+
+    // GPS returns, still in zone → hold.
+    auto d3 = evaluatePreQuiet(true, true, true, /*gpsValid=*/true,
+                               false, false, false,
+                               2, 0, 0, T0 + EXIT_WAIT + 100, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d3.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 17. GPS fix lost while DISARMED → holds DISARMED
+// ---------------------------------------------------------------------------
+void test_gps_lost_while_disarmed_holds_state() {
+    PreQuietState state;
+    state.phase = PreQuietPhase::DISARMED;
+
+    // GPS drops — nearbyCount=0 but gpsValid=false, should NOT clear to IDLE.
+    auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                              false, false, false,
+                              0, 6, 0, T0, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
+
+    // GPS returns, actually left zone → IDLE.
+    auto d2 = evaluatePreQuiet(true, true, true, /*gpsValid=*/true,
+                               false, false, false,
+                               0, 6, 0, T0 + 100, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 18. GPS flicker during DROPPED does not cause flip-flop
+// ---------------------------------------------------------------------------
+void test_gps_flicker_no_flipflop() {
+    PreQuietState state = droppedState();
+
+    // GPS drops repeatedly over 2 seconds — should never restore.
+    for (uint32_t t = 0; t < 2000; t += 100) {
+        auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                                  false, false, false,
+                                  0, 0, 0, T0 + t, state);
+        TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
+        TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+    }
+
+    // GPS returns, still in zone — still DROPPED
+    auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/true,
+                              false, false, false,
+                              3, 0, 0, T0 + 2000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 19. Full cycle: IDLE → DROP → lockout alert → real alert → DISARMED → IDLE
 // ---------------------------------------------------------------------------
 void test_full_lifecycle() {
     PreQuietState state;
 
     // Enter zone, debounce, DROP.
-    evaluatePreQuiet(true, true, true, false, false, false, 2, 6, 0, T0, state);
-    auto d1 = evaluatePreQuiet(true, true, true, false, false, false,
+    evaluatePreQuiet(true, true, true, true, false, false, false,
+                     2, 6, 0, T0, state);
+    auto d1 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                2, 6, 0, T0 + ENTRY_WAIT, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::DROP_VOLUME, d1.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
     // Lockout alert — NONE.
-    auto d2 = evaluatePreQuiet(true, true, true, true, true, true,
+    auto d2 = evaluatePreQuiet(true, true, true, true, true, true, true,
                                2, 0, 0, T0 + 500, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
     // Lockout alert clears, still in zone — hold DROPPED.
-    auto d3 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d3 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                2, 0, 0, T0 + 800, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d3.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
     // Real alert — RESTORE → DISARMED.
-    auto d4 = evaluatePreQuiet(true, true, true, true, true, false,
+    auto d4 = evaluatePreQuiet(true, true, true, true, true, true, false,
                                2, 0, 0, T0 + 1000, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d4.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
 
     // Still in zone — stay DISARMED, no BLE.
-    auto d5 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d5 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                2, 6, 0, T0 + 1200, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d5.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
 
     // Leave zone — IDLE.
-    auto d6 = evaluatePreQuiet(true, true, true, false, false, false,
+    auto d6 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                0, 6, 0, T0 + 2000, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d6.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
@@ -322,6 +400,9 @@ int main() {
     RUN_TEST(test_feature_disabled_while_dropped_restores);
     RUN_TEST(test_feature_disabled_while_disarmed_no_command);
     RUN_TEST(test_ble_reconnect_resumes_dropped);
+    RUN_TEST(test_gps_lost_while_dropped_holds_state);
+    RUN_TEST(test_gps_lost_while_disarmed_holds_state);
+    RUN_TEST(test_gps_flicker_no_flipflop);
     RUN_TEST(test_full_lifecycle);
     return UNITY_END();
 }
