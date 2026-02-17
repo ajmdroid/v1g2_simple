@@ -75,15 +75,10 @@ public:
     void setBrightness(uint8_t level);
     
     // Settings adjustment overlay (brightness + voice volume)
-    void showBrightnessSlider(uint8_t brightnessLevel);                    // Show slider overlay
     void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel); // Show both sliders
-    void updateBrightnessSlider(uint8_t level);                            // Update brightness slider
     void updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider);  // Update both sliders
     void hideBrightnessSlider();                                           // Hide slider and restore display
     int getActiveSliderFromTouch(int16_t touchY);                          // Returns 0=brightness, 1=volume, -1=none
-    
-    // Get canvas for direct access (testing)
-    Arduino_Canvas* getCanvas() { return tft; }
     
     // Clear screen
     void clear();
@@ -91,7 +86,7 @@ public:
     // Utility
     const char* bandToString(Band band);
     uint16_t getBandColor(Band band);
-    uint16_t getArrowColor(Direction dir);
+
     
     // Color theme helpers
     void updateColorTheme();  // Update colors from settings
@@ -145,8 +140,8 @@ private:
     
     // Drawing helpers
     void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
-    void drawBandLabel(Band band, bool muted);
-    void drawSignalBars(uint8_t bars);
+
+
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
     void drawCameraToken(const char* token, bool muted);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
@@ -174,7 +169,7 @@ private:
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     void draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     int draw14SegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
-    Band pickDominantBand(uint8_t bandMask);
+
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);

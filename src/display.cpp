@@ -540,12 +540,6 @@ void V1Display::setBrightness(uint8_t level) {
 #endif
 }
 
-// Brightness slider overlay for BOOT button adjustment
-void V1Display::showBrightnessSlider(uint8_t currentLevel) {
-    // Legacy single-slider mode - redirect to settings sliders with volume at 75 (default)
-    showSettingsSliders(currentLevel, 75);
-}
-
 // Combined settings screen with brightness and voice volume sliders
 void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
@@ -629,13 +623,6 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     
     DISPLAY_FLUSH();
 #endif
-}
-
-void V1Display::updateBrightnessSlider(uint8_t level) {
-    // Re-render the slider with new level
-    // Also apply the brightness in real-time for visual feedback
-    setBrightness(level);
-    showBrightnessSlider(level);
 }
 
 void V1Display::updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider) {
@@ -2325,23 +2312,6 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
     GFX_drawString(tft, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
 }
 
-Band V1Display::pickDominantBand(uint8_t bandMask) {
-    if (bandMask & BAND_KA) return BAND_KA;
-    if (bandMask & BAND_K) return BAND_K;
-    if (bandMask & BAND_X) return BAND_X;
-    if (bandMask & BAND_LASER) return BAND_LASER;
-    return BAND_NONE;
-}
-
-void V1Display::drawBandLabel(Band band, bool muted) {
-    const char* label = (band == BAND_NONE) ? "--" : bandToString(band);
-    GFX_setTextDatum(TL_DATUM);
-    TFT_CALL(setTextSize)(2);
-    const V1Settings& s = settingsManager.get();
-    TFT_CALL(setTextColor)(muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandKa, PALETTE_BG);  // Use Ka color for band label
-    GFX_drawString(tft, label, 10, SCREEN_HEIGHT / 2 - 26);
-}
-
 void V1Display::update(const DisplayState& state) {
     // Track if we're transitioning FROM persisted mode (need full redraw)
     bool wasPersistedMode = persistedMode;
@@ -3674,36 +3644,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     TFT_CALL(setTextSize)(1);
 }
 
-void V1Display::drawSignalBars(uint8_t bars) {
-    if (bars > MAX_SIGNAL_BARS) {
-        bars = MAX_SIGNAL_BARS;
-    }
-    
-    // Keep standard sizing/placement even in raised layout to avoid visual shifts
-    int barWidth = BAR_WIDTH;
-    int barHeight = BAR_HEIGHT;
-    int barSpacing = BAR_SPACING;
-    
-    int startX = (SCREEN_WIDTH - (MAX_SIGNAL_BARS * (barWidth + barSpacing))) / 2;
-    // Keep bars at the standard baseline (no vertical shift in multi-alert)
-    int barsY = BARS_Y;
-    
-    for (uint8_t i = 0; i < MAX_SIGNAL_BARS; i++) {
-        int x = startX + i * (barWidth + barSpacing);
-        int height = barHeight * (i + 1) / MAX_SIGNAL_BARS;
-        int y = barsY + (barHeight - height);
-        
-        if (i < bars) {
-            // Draw filled bar
-            FILL_RECT(x, y, barWidth, height, 0xF800);  // Red
-        } else {
-            // Draw empty bar outline
-            DRAW_RECT(x, y, barWidth, height, TFT_DARKGREY);
-            FILL_RECT(x + 1, y + 1, barWidth - 2, height - 2, PALETTE_BG);
-        }
-    }
-}
-
 // Classic 7-segment frequency display (original V1 style)
 // Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
@@ -4721,15 +4661,6 @@ uint16_t V1Display::getBandColor(Band band) {
     }
 }
 
-uint16_t V1Display::getArrowColor(Direction dir) {
-    const V1Settings& s = settingsManager.get();
-    switch (dir) {
-        case DIR_FRONT: return s.colorArrowFront;
-        case DIR_SIDE: return s.colorArrowSide;
-        case DIR_REAR: return s.colorArrowRear;
-        default: return TFT_DARKGREY;
-    }
-}
 void V1Display::updateColorTheme() {
     // Always use standard palette - custom colors are per-element in settings
     currentPalette = ColorThemes::STANDARD();
