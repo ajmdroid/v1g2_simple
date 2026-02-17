@@ -26,6 +26,16 @@ echo -e "${YELLOW}🔒 Checking WiFi API contracts...${NC}"
 python3 scripts/check_wifi_api_contract.py
 echo -e "${GREEN}✅ WiFi API contracts match${NC}"
 
+# Step 0b: BLE hot-path contract guard
+echo -e "${YELLOW}🔒 Checking BLE hot-path contract...${NC}"
+python3 scripts/check_ble_hot_path_contract.py
+echo -e "${GREEN}✅ BLE hot-path contract matches${NC}"
+
+# Step 0c: Perf CSV column contract guard
+echo -e "${YELLOW}🔒 Checking perf CSV column contract...${NC}"
+python3 scripts/check_perf_csv_column_contract.py
+echo -e "${GREEN}✅ Perf CSV column contract matches${NC}"
+
 # Step 1: Build web interface
 echo -e "${YELLOW}📦 Building web interface...${NC}"
 cd interface
