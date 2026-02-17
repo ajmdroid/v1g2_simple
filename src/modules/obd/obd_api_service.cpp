@@ -159,7 +159,7 @@ void handleApiStatus(WebServer& server,
     sendStatus(server, obdHandler, bleClient, settings);
 }
 
-void sendDevices(WebServer& server, OBDHandler& obdHandler) {
+static void sendDevices(WebServer& server, OBDHandler& obdHandler) {
     JsonDocument doc;
     JsonArray devices = doc["devices"].to<JsonArray>();
     auto found = obdHandler.getFoundDevices();
@@ -173,6 +173,17 @@ void sendDevices(WebServer& server, OBDHandler& obdHandler) {
     doc["count"] = found.size();
 
     sendJsonDocument(server, 200, doc);
+}
+
+void handleApiDevices(WebServer& server,
+                      OBDHandler& obdHandler,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendDevices(server, obdHandler);
 }
 
 void sendRemembered(WebServer& server, OBDHandler& obdHandler) {

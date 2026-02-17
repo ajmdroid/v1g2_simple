@@ -2,7 +2,6 @@
 
 namespace ObdApiService {
 
-void sendDevices(WebServer& server, OBDHandler& obdHandler);
 void sendRemembered(WebServer& server, OBDHandler& obdHandler);
 void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient);
 void handleScanStop(WebServer& server, OBDHandler& obdHandler);
@@ -36,17 +35,6 @@ void handleApiScanStop(WebServer& server,
         markUiActivity();
     }
     handleScanStop(server, obdHandler);
-}
-
-void handleApiDevices(WebServer& server,
-                      OBDHandler& obdHandler,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    sendDevices(server, obdHandler);
 }
 
 void handleApiDevicesClear(WebServer& server,
