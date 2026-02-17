@@ -82,13 +82,87 @@ static DisplayDirtyFlags dirty;
 // Use centralized constant from display_layout.h
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
-// Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
-static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
-static unsigned long volumeZeroWarningStartMs = 0;   // When warning display actually started
-static bool volumeZeroWarningShown = false;
-static bool volumeZeroWarningAcknowledged = false;
-static constexpr unsigned long VOLUME_ZERO_DELAY_MS = 15000;          // Wait 15 seconds before showing warning
-static constexpr unsigned long VOLUME_ZERO_WARNING_DURATION_MS = 10000;  // Show warning for 10 seconds
+// ============================================================================
+// Volume-zero warning state machine
+// Shows a flashing "VOL 0" warning when the V1 volume is 0, no app is
+// connected, and the lockout pre-quiet feature is not active.
+// ============================================================================
+struct VolumeZeroWarning {
+    unsigned long detectedMs      = 0;      // When volume=0 was first detected
+    unsigned long warningStartMs  = 0;      // When warning display actually started
+    bool          shown           = false;
+    bool          acknowledged    = false;
+
+    static constexpr unsigned long DELAY_MS    = 15000;   // Wait before showing
+    static constexpr unsigned long DURATION_MS = 10000;   // Show for this long
+
+    /// Reset all state (call when volume goes non-zero or app connects/disconnects).
+    void reset() {
+        detectedMs     = 0;
+        warningStartMs = 0;
+        shown          = false;
+        acknowledged   = false;
+    }
+
+    /// Evaluate the state machine.  Returns true when the warning should be drawn.
+    /// @param volZero          true when mainVolume == 0 && hasVolumeData
+    /// @param proxyConnected   true when BLE proxy client is connected
+    /// @param preQuietActive   true when lockout pre-quiet is suppressing the warning
+    /// @param playBeepFn       called once when the warning first appears
+    bool evaluate(bool volZero, bool proxyConnected, bool preQuietActive,
+                  void (*playBeepFn)() = nullptr) {
+        if (!volZero || proxyConnected || preQuietActive) {
+            reset();
+            return false;
+        }
+        if (acknowledged) {
+            return false;
+        }
+
+        const unsigned long now = millis();
+        if (detectedMs == 0) {
+            detectedMs = now;
+        }
+
+        if ((now - detectedMs) < DELAY_MS) {
+            return false;
+        }
+
+        if (warningStartMs == 0) {
+            warningStartMs = now;
+            shown = true;
+            if (playBeepFn) playBeepFn();
+        }
+
+        if ((now - warningStartMs) < DURATION_MS) {
+            return true;   // Warning is active — caller should draw
+        }
+
+        // Duration expired
+        acknowledged = true;
+        shown = false;
+        return false;
+    }
+
+    /// Return true when a flashing redraw is needed even on the incremental path.
+    /// Used in the resting-screen early-exit check.
+    bool needsFlashRedraw(bool volZero, bool proxyConnected, bool preQuietActive) const {
+        if (!volZero || proxyConnected || preQuietActive || acknowledged) {
+            return false;
+        }
+        if (detectedMs == 0) {
+            return true;   // Timer not started yet — force full redraw to start it
+        }
+        if ((millis() - detectedMs) >= DELAY_MS) {
+            if (warningStartMs == 0 || (millis() - warningStartMs) < DURATION_MS) {
+                return true;
+            }
+        }
+        return shown;
+    }
+};
+
+static VolumeZeroWarning volZeroWarn;
 
 // External reference to BLE client for checking proxy connection
 extern V1BLEClient bleClient;
@@ -696,10 +770,7 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
     // Detect app disconnect - was connected, now isn't
     // Reset VOL 0 warning state immediately so it can trigger again
     if (bleProxyClientConnected && !clientConnected) {
-        volumeZeroDetectedMs = 0;
-        volumeZeroWarningStartMs = 0;
-        volumeZeroWarningShown = false;
-        volumeZeroWarningAcknowledged = false;
+        volZeroWarn.reset();
     }
     
     // Check if proxy client connection changed - update RSSI display
@@ -2454,26 +2525,10 @@ void V1Display::update(const DisplayState& state) {
     bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
     bool bogeyCounterChanged = (state.bogeyCounterByte != lastRestingBogeyByte);
     
-    // Check if volume zero warning should be active (for flashing effect)
-    // Use current proxy state for accurate check
+    // Check if volume zero warning needs a flashing redraw
     bool currentProxyConnected = bleClient.isProxyClientConnected();
-    bool volumeWarningActive = false;
-    bool shouldStartVolWarningTimer = false;
-    
-    if (state.mainVolume == 0 && state.hasVolumeData && !currentProxyConnected && !volumeZeroWarningAcknowledged && !preQuietActive_) {
-        if (volumeZeroDetectedMs == 0) {
-            // Need to start the timer - force full redraw to reach timer-start code
-            shouldStartVolWarningTimer = true;
-        } else if ((millis() - volumeZeroDetectedMs) >= VOLUME_ZERO_DELAY_MS) {
-            // Warning is active if we're past the delay and within the warning duration
-            if (volumeZeroWarningStartMs == 0 || (millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
-                volumeWarningActive = true;
-            }
-        }
-    }
-    
-    // Force full redraw when warning is active, shown, or needs to start timer
-    if (volumeWarningActive || volumeZeroWarningShown || shouldStartVolWarningTimer) {
+    bool volZero = (state.mainVolume == 0 && state.hasVolumeData);
+    if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_)) {
         needsFullRedraw = true;
     }
     
@@ -2556,52 +2611,10 @@ void V1Display::update(const DisplayState& state) {
     else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
     else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
     
-    // Check if we should show volume zero warning:
-    // - Main volume is 0
-    // - No BLE proxy client (app) connected
-    // - We have volume data
-    // - Wait 15 seconds before showing (to let JBV1 connect)
-    // - Warning shown for 10 seconds after delay
-    // - Also trigger if app just disconnected with volume=0
-    bool showVolumeWarning = false;
+    // Volume-zero warning: 15s delay → 10s flashing "VOL 0" → acknowledge
     bool proxyConnected = bleClient.isProxyClientConnected();
-    
-    if (state.mainVolume == 0 && state.hasVolumeData && !proxyConnected && !preQuietActive_) {
-        if (!volumeZeroWarningAcknowledged) {
-            if (volumeZeroDetectedMs == 0) {
-                // First time detecting volume=0, start the delay timer
-                volumeZeroDetectedMs = millis();
-            }
-            
-            unsigned long elapsed = millis() - volumeZeroDetectedMs;
-            
-            // Check if delay period has passed
-            if (elapsed >= VOLUME_ZERO_DELAY_MS) {
-                if (volumeZeroWarningStartMs == 0) {
-                    // Delay passed, start the actual warning display
-                    volumeZeroWarningStartMs = millis();
-                    volumeZeroWarningShown = true;
-                    // Play beep when VOL 0 warning first appears
-                    play_vol0_beep();
-                }
-                
-                // Check if warning period has expired
-                if ((millis() - volumeZeroWarningStartMs) < VOLUME_ZERO_WARNING_DURATION_MS) {
-                    showVolumeWarning = true;
-                } else {
-                    // Warning period expired, acknowledge it
-                    volumeZeroWarningAcknowledged = true;
-                    volumeZeroWarningShown = false;
-                }
-            }
-        }
-    } else {
-        // Volume is non-zero or app connected - reset warning state
-        volumeZeroDetectedMs = 0;
-        volumeZeroWarningStartMs = 0;
-        volumeZeroWarningShown = false;
-        volumeZeroWarningAcknowledged = false;
-    }
+    bool showVolumeWarning = volZeroWarn.evaluate(
+        volZero, proxyConnected, preQuietActive_, play_vol0_beep);
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
