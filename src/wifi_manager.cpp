@@ -1035,25 +1035,25 @@ void WiFiManager::setupWebServer() {
             server,
             "Use /api/settings");
     });
-    server.on("/settings", HTTP_POST, [this]() {
+    server.on("/settings", HTTP_POST, [this, rateLimitCallback]() {
         WifiSettingsApiService::handleApiLegacySettingsSave(
             server,
             makeSettingsRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { server.sendHeader("X-API-Deprecated", "Use /api/settings"); },
             []() { Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings"); });
     });  // Legacy compat
-    server.on("/darkmode", HTTP_POST, [this]() {
+    server.on("/darkmode", HTTP_POST, [this, rateLimitCallback]() {
         WifiControlApiService::handleApiDarkMode(
             server,
             sendV1Command,
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
-    server.on("/mute", HTTP_POST, [this]() {
+    server.on("/mute", HTTP_POST, [this, rateLimitCallback]() {
         WifiControlApiService::handleApiMute(
             server,
             sendV1Command,
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
     
     // Lightweight health and captive-portal helpers
