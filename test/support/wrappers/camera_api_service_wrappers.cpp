@@ -1,4 +1,4 @@
-#include "camera_api_service.h"
+#include "../../../src/modules/camera/camera_api_service.h"
 
 namespace CameraApiService {
 

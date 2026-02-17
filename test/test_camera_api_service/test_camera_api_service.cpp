@@ -2,7 +2,7 @@
 #include <cstring>
 
 #include "../../src/modules/camera/camera_api_service.h"
-#include "../../src/modules/camera/camera_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
+#include "../support/wrappers/camera_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
 SerialClass Serial;
