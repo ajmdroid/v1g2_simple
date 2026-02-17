@@ -1,9 +1,8 @@
-#include "backup_api_service.h"
+#include "../../../src/modules/wifi/backup_api_service.h"
 
 namespace BackupApiService {
 
 // Internal implementation entrypoints defined in backup_api_service.cpp.
-#ifdef UNIT_TEST
 void sendBackup(WebServer& server);
 void handleRestore(WebServer& server);
 
@@ -24,6 +23,5 @@ void handleApiRestore(WebServer& server,
     }
     handleRestore(server);
 }
-#endif
 
 }  // namespace BackupApiService

@@ -2,7 +2,7 @@
 #include <cstring>
 
 #include "../../src/modules/wifi/backup_api_service.h"
-#include "../../src/modules/wifi/backup_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
+#include "../support/wrappers/backup_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
 SerialClass Serial;
