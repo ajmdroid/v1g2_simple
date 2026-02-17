@@ -7,6 +7,7 @@ void sendMetrics(WebServer& server);
 void sendPanic(WebServer& server);
 void handleDebugEnable(WebServer& server);
 void sendPerfFilesList(WebServer& server);
+void handlePerfFileDownload(WebServer& server);
 
 void handleApiMetrics(WebServer& server) {
     sendMetrics(server);
@@ -31,10 +32,6 @@ void handleApiPerfFilesList(WebServer& server,
     }
     sendPerfFilesList(server);
 }
-#endif
-
-void handlePerfFileDownload(WebServer& server);
-void handlePerfFileDelete(WebServer& server);
 
 void handleApiPerfFilesDownload(WebServer& server,
                                 const std::function<bool()>& checkRateLimit,
@@ -45,6 +42,9 @@ void handleApiPerfFilesDownload(WebServer& server,
     }
     handlePerfFileDownload(server);
 }
+#endif
+
+void handlePerfFileDelete(WebServer& server);
 
 void handleApiPerfFilesDelete(WebServer& server,
                               const std::function<bool()>& checkRateLimit,

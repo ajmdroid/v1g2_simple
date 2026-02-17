@@ -602,6 +602,16 @@ void handlePerfFileDownload(WebServer& server) {
     f.close();
 }
 
+void handleApiPerfFilesDownload(WebServer& server,
+                                const std::function<bool()>& checkRateLimit,
+                                const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handlePerfFileDownload(server);
+}
+
 void handlePerfFileDelete(WebServer& server) {
     if (!server.hasArg("name")) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing file name\"}");
