@@ -50,7 +50,7 @@ private:
 
     // Display throttling
     unsigned long lastDisplayDraw = 0;
-    static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 30;
+    static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 25;
 
     // Alert gap recovery
     unsigned long displayLatencySum = 0;

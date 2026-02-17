@@ -737,9 +737,9 @@ void loop() {
     audio_process_amp_timeout();
     static constexpr unsigned long AUDIO_TICK_MAX_US = 25000;
     static constexpr unsigned long OVERLOAD_LOOP_US = 25000;
-    static constexpr unsigned long FREQ_UI_MAX_MS = 100;
+    static constexpr unsigned long FREQ_UI_MAX_MS = 75;
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
-    static constexpr unsigned long CARD_UI_MAX_MS = 150;
+    static constexpr unsigned long CARD_UI_MAX_MS = 100;
     static unsigned long lastAudioTickUs = 0;
     static unsigned long lastFreqUiMs = 0;
     static unsigned long lastCardUiMs = 0;
@@ -1004,7 +1004,7 @@ void loop() {
             if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
                 perfRecordNotifyToDisplayMs(nowMs - parsedTsMs);
             }
-            // No overload guard: handleParsed's internal 30ms throttle gates
+            // No overload guard: handleParsed's internal 25ms throttle gates
             // expensive draws; fade/debounce/gap-recovery are microsecond-cheap
             // and must run every frame (BLE volume restore is tier-2 priority).
             uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();

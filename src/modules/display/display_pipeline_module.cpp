@@ -58,7 +58,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     }
 
     // Volume fade runs every frame — not gated by display draw throttle.
-    // BLE restore commands must not be delayed by 30ms draw timing.
+    // BLE restore commands must not be delayed by 25ms draw timing.
     {
         VolumeFadeContext fadeCtx;
         if (hasAlerts) {

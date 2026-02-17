@@ -283,7 +283,7 @@ Draw Functions → RAM Canvas → flush() → QSPI → AMOLED Panel
 
 - All draws write to RAM canvas (not directly to panel)
 - `flush()` transfers canvas to panel (~26ms)
-- Throttled to 20fps (50ms minimum between frames)
+- Throttled to 40fps max (25ms minimum between frames)
 
 ### Caching System
 

@@ -239,7 +239,7 @@ V1 Gen2 (BLE)
 
 | Operation | Timing | Source |
 |-----------|--------|--------|
-| Display draw minimum interval | 30ms (~33fps max) | `DISPLAY_DRAW_MIN_MS` in display_pipeline_module.h |
+| Display draw minimum interval | 25ms (~40fps max) | `DISPLAY_DRAW_MIN_MS` in display_pipeline_module.h |
 | Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h |
 | Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h |
 | Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
@@ -601,7 +601,7 @@ For band labels (Ka, K, X, LASER):
 
 ### Refresh Model
 
-1. **Throttled:** Minimum 30ms between draws (`DISPLAY_DRAW_MIN_MS`)
+1. **Throttled:** Minimum 25ms between draws (`DISPLAY_DRAW_MIN_MS`)
 2. **Canvas-buffered:** Draw to `Arduino_Canvas`, then `flush()` to panel
 3. **Partial update:** Only full-screen redraws (no dirty rectangle tracking)
 
