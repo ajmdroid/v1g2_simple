@@ -982,6 +982,7 @@ void WiFiManager::setupWebServer() {
     });
     
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
+    auto markUiActivityCallback = [this]() { markUiActivity(); };
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, rateLimitCallback]() {
         WifiStatusApiService::handleApiStatus(
@@ -1274,22 +1275,22 @@ void WiFiManager::setupWebServer() {
     });
 
     // OBD integration API routes
-    server.on("/api/obd/status", HTTP_GET, [this]() {
+    server.on("/api/obd/status", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiStatus(
             server,
             obdHandler,
             bleClient,
             settingsManager.get(),
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/scan", HTTP_POST, [this]() {
+    server.on("/api/obd/scan", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiScan(
             server,
             obdHandler,
             bleClient,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() {
                 if (!settingsManager.get().obdEnabled) {
                     server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
@@ -1298,34 +1299,34 @@ void WiFiManager::setupWebServer() {
                 return true;
             });
     });
-    server.on("/api/obd/scan/stop", HTTP_POST, [this]() {
+    server.on("/api/obd/scan/stop", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiScanStop(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/devices", HTTP_GET, [this]() {
+    server.on("/api/obd/devices", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiDevices(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/devices/clear", HTTP_POST, [this]() {
+    server.on("/api/obd/devices/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiDevicesClear(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/connect", HTTP_POST, [this]() {
+    server.on("/api/obd/connect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiConnect(
             server,
             obdHandler,
             bleClient,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() {
                 if (!settingsManager.get().obdEnabled) {
                     server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
@@ -1334,41 +1335,41 @@ void WiFiManager::setupWebServer() {
                 return true;
             });
     });
-    server.on("/api/obd/disconnect", HTTP_POST, [this]() {
+    server.on("/api/obd/disconnect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiDisconnect(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/config", HTTP_POST, [this]() {
+    server.on("/api/obd/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiConfig(
             server,
             obdHandler,
             settingsManager,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/remembered", HTTP_GET, [this]() {
+    server.on("/api/obd/remembered", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiRemembered(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this]() {
+    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiRememberedAutoConnect(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/obd/forget", HTTP_POST, [this]() {
+    server.on("/api/obd/forget", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiForget(
             server,
             obdHandler,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
 
     // GPS scaffold API routes

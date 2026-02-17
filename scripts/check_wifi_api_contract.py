@@ -48,6 +48,13 @@ ROUTE_PREFIXES = (
     "/api/lockouts/",
     "/api/lockout/",
 )
+POLICY_CALLBACK_PREFIXES = (
+    "/api/obd/",
+    "/api/gps/",
+    "/api/cameras/",
+    "/api/lockouts/",
+    "/api/lockout/",
+)
 LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/status",
     "HTTP_GET /api/settings",
@@ -217,12 +224,20 @@ def extract_policy_contract(source: str) -> List[RoutePolicy]:
     out: List[RoutePolicy] = []
 
     for route, body in routes.items():
+        _method, path = route.split(" ", 1)
         delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
         if not delegates:
             continue
 
-        has_rate = int("checkRateLimit(" in body)
-        has_ui = int("markUiActivity(" in body)
+        allow_callback_policy_detection = path.startswith(POLICY_CALLBACK_PREFIXES)
+        has_rate = int(
+            "checkRateLimit(" in body
+            or (allow_callback_policy_detection and "rateLimitCallback" in body)
+        )
+        has_ui = int(
+            "markUiActivity(" in body
+            or (allow_callback_policy_detection and "markUiActivityCallback" in body)
+        )
         has_obd_gate = int(
             "settingsManager.get().obdEnabled" in body and "server.send(409" in body
         )
