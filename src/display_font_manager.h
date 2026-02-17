@@ -50,6 +50,10 @@ struct DisplayFontManager {
     /// Serpentine is deferred until ensureSerpentineLoaded().
     void init(Arduino_Canvas* canvas);
 
+    /// Pre-render common frequency glyphs once so first live alert draws
+    /// don't stall while OpenFontRender builds glyph caches.
+    void prewarmSegment7FrequencyGlyphs();
+
     /// Lazy-load Serpentine font the first time it is requested.
     /// @param canvas  current display canvas (needed for setDrawer).
     /// @return true when the serpentine renderer is ready to use.

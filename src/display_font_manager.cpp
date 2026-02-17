@@ -54,6 +54,7 @@ void DisplayFontManager::init(Arduino_Canvas* canvas) {
     // Prime the top-counter glyph-bounds cache at boot so that
     // right-aligned counter layout is stable from the first frame.
     primeTopCounterBoundsCache();
+    prewarmSegment7FrequencyGlyphs();
 
     // --- Serpentine (deferred until first use) ---
     serpentineReady = false;
@@ -69,6 +70,41 @@ void DisplayFontManager::init(Arduino_Canvas* canvas) {
 
     Serial.printf("[FontMgr] OK fonts(seg7/top/serp)=%d/%d/%d\n",
                   segment7Ready, topCounterReady, serpentineReady);
+}
+
+void DisplayFontManager::prewarmSegment7FrequencyGlyphs() {
+    if (!segment7Ready) {
+        return;
+    }
+
+    // Warm the hot-path glyphs used by live frequency rendering so first-hit
+    // alerts (e.g., 33.8) do not pay OpenFontRender glyph build latency.
+    static constexpr int kWarmFontSize = 75;
+    static constexpr const char* kWarmupSamples[] = {
+        "33.800",
+        "35.500",
+        "34.700",
+        "24.150",
+        "10.525",
+        "88.888",
+        "--.---",
+        "LASER"
+    };
+
+    const unsigned long warmStartMs = millis();
+    segment7.setBackgroundColor(0, 0, 0);
+    segment7.setFontColor(0, 0, 0);  // Render black-on-black into canvas.
+    segment7.setFontSize(kWarmFontSize);
+
+    for (const char* sample : kWarmupSamples) {
+        // Bound-box pass and draw pass together prime both metric and glyph caches.
+        segment7.calculateBoundingBox(0, 0, kWarmFontSize, Align::Left, Layout::Horizontal, sample);
+        segment7.setCursor(2, kWarmFontSize);
+        segment7.printf("%s", sample);
+    }
+
+    Serial.printf("[FontMgr] Segment7 prewarm complete in %lu ms\n",
+                  millis() - warmStartMs);
 }
 
 bool DisplayFontManager::ensureSerpentineLoaded(Arduino_Canvas* canvas) {
