@@ -2,7 +2,7 @@
 #include <cstring>
 
 #include "../../src/modules/debug/debug_api_service.h"
-#include "../../src/modules/debug/debug_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
+#include "../support/wrappers/debug_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
 SerialClass Serial;

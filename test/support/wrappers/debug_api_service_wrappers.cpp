@@ -1,4 +1,4 @@
-#include "debug_api_service.h"
+#include "../../../src/modules/debug/debug_api_service.h"
 
 namespace DebugApiService {
 
