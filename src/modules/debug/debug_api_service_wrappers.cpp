@@ -8,6 +8,7 @@ void sendPanic(WebServer& server);
 void handleDebugEnable(WebServer& server);
 void sendPerfFilesList(WebServer& server);
 void handlePerfFileDownload(WebServer& server);
+void handlePerfFileDelete(WebServer& server);
 
 void handleApiMetrics(WebServer& server) {
     sendMetrics(server);
@@ -42,9 +43,6 @@ void handleApiPerfFilesDownload(WebServer& server,
     }
     handlePerfFileDownload(server);
 }
-#endif
-
-void handlePerfFileDelete(WebServer& server);
 
 void handleApiPerfFilesDelete(WebServer& server,
                               const std::function<bool()>& checkRateLimit,
@@ -55,5 +53,6 @@ void handleApiPerfFilesDelete(WebServer& server,
     }
     handlePerfFileDelete(server);
 }
+#endif
 
 }  // namespace DebugApiService

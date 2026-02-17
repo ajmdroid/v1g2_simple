@@ -660,4 +660,14 @@ void handlePerfFileDelete(WebServer& server) {
     server.send(ok ? 200 : 500, "application/json", json);
 }
 
+void handleApiPerfFilesDelete(WebServer& server,
+                              const std::function<bool()>& checkRateLimit,
+                              const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handlePerfFileDelete(server);
+}
+
 }  // namespace DebugApiService
