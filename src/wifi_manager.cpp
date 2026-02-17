@@ -815,6 +815,49 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
     };
 }
 
+WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
+    return WifiClientApiService::Runtime{
+        [this]() { return settingsManager.get().wifiClientEnabled; },
+        [this]() { return settingsManager.get().wifiClientSSID; },
+        [this]() { return wifiClientStateApiName(wifiClientState); },
+        [this]() { return wifiScanRunning; },
+        [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
+        []() {
+            WifiClientApiService::ConnectedNetworkPayload payload;
+            payload.ssid = WiFi.SSID();
+            payload.ip = WiFi.localIP().toString();
+            payload.rssi = WiFi.RSSI();
+            return payload;
+        },
+        []() { return WiFi.scanComplete() == WIFI_SCAN_RUNNING; },
+        []() { return WiFi.scanComplete() > 0; },
+        [this]() {
+            std::vector<ScannedNetwork> networks = this->getScannedNetworks();
+            std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
+            payloads.reserve(networks.size());
+            for (const auto& net : networks) {
+                WifiClientApiService::ScannedNetworkPayload payload;
+                payload.ssid = net.ssid;
+                payload.rssi = net.rssi;
+                payload.secure = !net.isOpen();
+                payloads.push_back(payload);
+            }
+            return payloads;
+        },
+        [this]() { return startWifiScan(); },
+        [this](const String& ssid, const String& password) {
+            return connectToNetwork(ssid, password);
+        },
+        [this]() { disconnectFromNetwork(); },
+        [this]() { settingsManager.clearWifiClientCredentials(); },
+        [this](bool enabled) { settingsManager.setWifiClientEnabled(enabled); },
+        [this]() { return settingsManager.getWifiClientPassword(); },
+        [this]() { wifiClientState = WIFI_CLIENT_DISABLED; },
+        [this]() { wifiClientState = WIFI_CLIENT_DISCONNECTED; },
+        []() { WiFi.mode(WIFI_AP); },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -1188,83 +1231,41 @@ void WiFiManager::setupWebServer() {
     });
     
     // WiFi client (STA) API routes - connect to external network
-    auto makeWifiClientRuntime = [this]() {
-        return WifiClientApiService::Runtime{
-            [this]() { return settingsManager.get().wifiClientEnabled; },
-            [this]() { return settingsManager.get().wifiClientSSID; },
-            [this]() { return wifiClientStateApiName(wifiClientState); },
-            [this]() { return wifiScanRunning; },
-            [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
-            []() {
-                WifiClientApiService::ConnectedNetworkPayload payload;
-                payload.ssid = WiFi.SSID();
-                payload.ip = WiFi.localIP().toString();
-                payload.rssi = WiFi.RSSI();
-                return payload;
-            },
-            []() { return WiFi.scanComplete() == WIFI_SCAN_RUNNING; },
-            []() { return WiFi.scanComplete() > 0; },
-            [this]() {
-                std::vector<ScannedNetwork> networks = this->getScannedNetworks();
-                std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
-                payloads.reserve(networks.size());
-                for (const auto& net : networks) {
-                    WifiClientApiService::ScannedNetworkPayload payload;
-                    payload.ssid = net.ssid;
-                    payload.rssi = net.rssi;
-                    payload.secure = !net.isOpen();
-                    payloads.push_back(payload);
-                }
-                return payloads;
-            },
-            [this]() { return startWifiScan(); },
-            [this](const String& ssid, const String& password) {
-                return connectToNetwork(ssid, password);
-            },
-            [this]() { disconnectFromNetwork(); },
-            [this]() { settingsManager.clearWifiClientCredentials(); },
-            [this](bool enabled) { settingsManager.setWifiClientEnabled(enabled); },
-            [this]() { return settingsManager.getWifiClientPassword(); },
-            [this]() { wifiClientState = WIFI_CLIENT_DISABLED; },
-            [this]() { wifiClientState = WIFI_CLIENT_DISCONNECTED; },
-            []() { WiFi.mode(WIFI_AP); },
-        };
-    };
-    server.on("/api/wifi/status", HTTP_GET, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/status", HTTP_GET, [this]() {
         WifiClientApiService::handleApiStatus(
             server,
             makeWifiClientRuntime(),
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/scan", HTTP_POST, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/scan", HTTP_POST, [this]() {
         WifiClientApiService::handleApiScan(
             server,
             makeWifiClientRuntime(),
             [this]() { return checkRateLimit(); },
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/connect", HTTP_POST, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/connect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiConnect(
             server,
             makeWifiClientRuntime(),
             [this]() { return checkRateLimit(); },
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiDisconnect(
             server,
             makeWifiClientRuntime(),
             [this]() { return checkRateLimit(); },
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/forget", HTTP_POST, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/forget", HTTP_POST, [this]() {
         WifiClientApiService::handleApiForget(
             server,
             makeWifiClientRuntime(),
             [this]() { return checkRateLimit(); },
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/enable", HTTP_POST, [this, makeWifiClientRuntime]() {
+    server.on("/api/wifi/enable", HTTP_POST, [this]() {
         WifiClientApiService::handleApiEnable(
             server,
             makeWifiClientRuntime(),
