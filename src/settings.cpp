@@ -13,41 +13,37 @@
  * encryption key management) or storing a hash instead of the actual password.
  */
 
-#include "settings.h"
-#include "settings_sanitize.h"
-#include "storage_manager.h"
-#include "v1_profiles.h"
-#include <ArduinoJson.h>
-#include <algorithm>
+#include "settings_internals.h"
 
 // SD backup file path
-static const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
-static const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
-static const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-static const int SD_BACKUP_VERSION = 7;  // Increment when adding new fields to backup
-static const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
-static const char* SETTINGS_NS_A = "v1settingsA";
-static const char* SETTINGS_NS_B = "v1settingsB";
-static const char* SETTINGS_NS_META = "v1settingsMeta";
-static const char* SETTINGS_NS_LEGACY = "v1settings";
-static const char* WIFI_CLIENT_NS = "v1wificlient";
-static const char* WIFI_CLIENT_SD_SECRET_PATH = "/v1wifi_secret.json";
-static const char* WIFI_CLIENT_SD_SECRET_TYPE = "v1wifi_secret";
-static const int WIFI_CLIENT_SD_SECRET_VERSION = 1;
-static const char* const SETTINGS_BACKUP_CANDIDATES[] = {
+const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
+const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
+const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
+const int SD_BACKUP_VERSION = 7;  // Increment when adding new fields to backup
+const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
+const char* SETTINGS_NS_A = "v1settingsA";
+const char* SETTINGS_NS_B = "v1settingsB";
+const char* SETTINGS_NS_META = "v1settingsMeta";
+const char* SETTINGS_NS_LEGACY = "v1settings";
+const char* WIFI_CLIENT_NS = "v1wificlient";
+const char* WIFI_CLIENT_SD_SECRET_PATH = "/v1wifi_secret.json";
+const char* WIFI_CLIENT_SD_SECRET_TYPE = "v1wifi_secret";
+const int WIFI_CLIENT_SD_SECRET_VERSION = 1;
+const char* const SETTINGS_BACKUP_CANDIDATES[] = {
     SETTINGS_BACKUP_PATH,
     SETTINGS_BACKUP_PREV_PATH,
     "/v1simple_settings.json",
     "/v1settings_backup.json"
 };
+const size_t SETTINGS_BACKUP_CANDIDATES_COUNT = sizeof(SETTINGS_BACKUP_CANDIDATES) / sizeof(SETTINGS_BACKUP_CANDIDATES[0]);
 
-static WiFiModeSetting clampWifiModeValue(int raw) {
+WiFiModeSetting clampWifiModeValue(int raw) {
     int clamped = std::max(static_cast<int>(V1_WIFI_OFF),
                            std::min(raw, static_cast<int>(V1_WIFI_APSTA)));
     return static_cast<WiFiModeSetting>(clamped);
 }
 
-static VoiceAlertMode clampVoiceAlertModeValue(int raw) {
+VoiceAlertMode clampVoiceAlertModeValue(int raw) {
     int clamped = std::max(static_cast<int>(VOICE_MODE_DISABLED),
                            std::min(raw, static_cast<int>(VOICE_MODE_BAND_FREQ)));
     return static_cast<VoiceAlertMode>(clamped);
@@ -55,7 +51,7 @@ static VoiceAlertMode clampVoiceAlertModeValue(int raw) {
 
 static constexpr size_t MAX_V1_ADDRESS_LEN = 32;
 
-static String sanitizeApPasswordValue(const String& raw) {
+String sanitizeApPasswordValue(const String& raw) {
     String value = clampStringLength(raw, MAX_AP_PASSWORD_LEN);
     if (value.length() < MIN_AP_PASSWORD_LEN) {
         return "setupv1g2";
@@ -63,11 +59,11 @@ static String sanitizeApPasswordValue(const String& raw) {
     return value;
 }
 
-static String sanitizeLastV1AddressValue(const String& raw) {
+String sanitizeLastV1AddressValue(const String& raw) {
     return clampStringLength(raw, MAX_V1_ADDRESS_LEN);
 }
 
-static bool isSupportedBackupType(const JsonDocument& doc) {
+bool isSupportedBackupType(const JsonDocument& doc) {
     if (!doc["_type"].is<const char*>()) {
         return true;  // Legacy backups may not include a type marker.
     }
@@ -75,7 +71,7 @@ static bool isSupportedBackupType(const JsonDocument& doc) {
     return type == "v1simple_sd_backup" || type == "v1simple_backup";
 }
 
-static bool hasBackupSignature(const JsonDocument& doc) {
+bool hasBackupSignature(const JsonDocument& doc) {
     // Require a small signature set to avoid accepting arbitrary JSON blobs.
     return doc["apSSID"].is<const char*>() ||
            doc["brightness"].is<int>() ||
@@ -83,10 +79,10 @@ static bool hasBackupSignature(const JsonDocument& doc) {
            doc["slot0Name"].is<const char*>();
 }
 
-static bool parseBackupFile(fs::FS* fs,
+bool parseBackupFile(fs::FS* fs,
                             const char* path,
                             JsonDocument& doc,
-                            bool verboseErrors = true) {
+                            bool verboseErrors) {
     if (!fs || !path || path[0] == '\0') {
         return false;
     }
@@ -136,11 +132,11 @@ static bool parseBackupFile(fs::FS* fs,
     return true;
 }
 
-static int backupDocumentVersion(const JsonDocument& doc) {
+int backupDocumentVersion(const JsonDocument& doc) {
     return doc["_version"] | doc["version"] | 1;
 }
 
-static int backupCriticalFieldScore(const JsonDocument& doc) {
+int backupCriticalFieldScore(const JsonDocument& doc) {
     int score = 0;
     if (!doc["gpsEnabled"].isNull()) score++;
     if (!doc["cameraEnabled"].isNull()) score++;
@@ -156,15 +152,15 @@ static int backupCriticalFieldScore(const JsonDocument& doc) {
     return score;
 }
 
-static int backupCandidateScore(const JsonDocument& doc) {
+int backupCandidateScore(const JsonDocument& doc) {
     // Prefer newer schema, then richer field coverage.
     return backupDocumentVersion(doc) * 100 + backupCriticalFieldScore(doc);
 }
 
-static bool loadBestBackupDocument(fs::FS* fs,
+bool loadBestBackupDocument(fs::FS* fs,
                                    JsonDocument& outDoc,
-                                   const char** outPath = nullptr,
-                                   bool verboseErrors = false) {
+                                   const char** outPath,
+                                   bool verboseErrors) {
     if (!fs) {
         return false;
     }
@@ -174,7 +170,8 @@ static bool loadBestBackupDocument(fs::FS* fs,
     String bestJson;
     JsonDocument candidateDoc;
 
-    for (const char* candidate : SETTINGS_BACKUP_CANDIDATES) {
+    for (size_t i = 0; i < SETTINGS_BACKUP_CANDIDATES_COUNT; ++i) {
+        const char* candidate = SETTINGS_BACKUP_CANDIDATES[i];
         if (!fs->exists(candidate)) {
             continue;
         }
@@ -217,7 +214,7 @@ static bool loadBestBackupDocument(fs::FS* fs,
     return true;
 }
 
-static bool parseBoolVariant(const JsonVariantConst& value, bool& out) {
+bool parseBoolVariant(const JsonVariantConst& value, bool& out) {
     if (value.isNull()) {
         return false;
     }
@@ -245,7 +242,7 @@ static bool parseBoolVariant(const JsonVariantConst& value, bool& out) {
     return false;
 }
 
-static bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
+bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
     if (!fs) {
         return false;
     }
@@ -326,13 +323,13 @@ SettingsManager settingsManager;
 
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
-static const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-static const int SETTINGS_VERSION = 4;  // Increment when changing persisted settings schema
-static const char* OBFUSCATION_HEX_PREFIX = "hex:";
+const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
+const int SETTINGS_VERSION = 4;  // Increment when changing persisted settings schema
+const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 // NVS recovery: clear unused namespace when NVS is full
 // Returns true if space was freed
-static bool attemptNvsRecovery(const char* activeNs) {
+bool attemptNvsRecovery(const char* activeNs) {
     Serial.println("[Settings] NVS space low - attempting recovery...");
     
     // Clear the inactive settings namespace to free space
@@ -364,7 +361,7 @@ static bool attemptNvsRecovery(const char* activeNs) {
 }
 
 // Obfuscate a string using XOR (same function for encode/decode)
-static String xorObfuscate(const String& input) {
+String xorObfuscate(const String& input) {
     if (input.length() == 0) return input;
     
     String output;
@@ -377,20 +374,20 @@ static String xorObfuscate(const String& input) {
     return output;
 }
 
-static char hexDigit(uint8_t nibble) {
+char hexDigit(uint8_t nibble) {
     nibble &= 0x0F;
     return (nibble < 10) ? static_cast<char>('0' + nibble)
                          : static_cast<char>('A' + (nibble - 10));
 }
 
-static int hexNibble(char c) {
+int hexNibble(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     return -1;
 }
 
-static String bytesToHex(const String& input) {
+String bytesToHex(const String& input) {
     if (input.length() == 0) return "";
     String out;
     out.reserve(input.length() * 2);
@@ -402,7 +399,7 @@ static String bytesToHex(const String& input) {
     return out;
 }
 
-static bool hexToBytes(const String& input, String& out) {
+bool hexToBytes(const String& input, String& out) {
     if ((input.length() % 2) != 0) return false;
     out = "";
     out.reserve(input.length() / 2);
@@ -416,7 +413,7 @@ static bool hexToBytes(const String& input, String& out) {
     return true;
 }
 
-static String encodeObfuscatedForStorage(const String& plainText) {
+String encodeObfuscatedForStorage(const String& plainText) {
     if (plainText.length() == 0) return "";
     String obfuscated = xorObfuscate(plainText);
     String encoded = OBFUSCATION_HEX_PREFIX;
@@ -424,7 +421,7 @@ static String encodeObfuscatedForStorage(const String& plainText) {
     return encoded;
 }
 
-static String decodeObfuscatedFromStorage(const String& stored) {
+String decodeObfuscatedFromStorage(const String& stored) {
     if (stored.length() == 0) return "";
 
     if (stored.startsWith(OBFUSCATION_HEX_PREFIX)) {
@@ -441,7 +438,7 @@ static String decodeObfuscatedFromStorage(const String& stored) {
     return xorObfuscate(stored);
 }
 
-static bool saveWifiClientSecretToSD(const String& ssid, const String& encodedPassword) {
+bool saveWifiClientSecretToSD(const String& ssid, const String& encodedPassword) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return false;
     }
@@ -476,7 +473,7 @@ static bool saveWifiClientSecretToSD(const String& ssid, const String& encodedPa
     return true;
 }
 
-static String loadWifiClientSecretFromSD(const String& expectedSsid) {
+String loadWifiClientSecretFromSD(const String& expectedSsid) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return "";
     }
@@ -520,7 +517,7 @@ static String loadWifiClientSecretFromSD(const String& expectedSsid) {
     return doc["password_obf"] | "";
 }
 
-static void clearWifiClientSecretFromSD() {
+void clearWifiClientSecretFromSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return;
     }
@@ -540,7 +537,7 @@ static void clearWifiClientSecretFromSD() {
     }
 }
 
-static int namespaceHealthScore(const char* ns) {
+int namespaceHealthScore(const char* ns) {
     if (!ns || ns[0] == '\0') {
         return -1;
     }
@@ -578,7 +575,7 @@ static int namespaceHealthScore(const char* ns) {
     return score;
 }
 
-static bool isKnownSettingsNamespace(const String& ns) {
+bool isKnownSettingsNamespace(const String& ns) {
     return ns == SETTINGS_NS_A || ns == SETTINGS_NS_B || ns == SETTINGS_NS_LEGACY;
 }
 
