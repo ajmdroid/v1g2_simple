@@ -1192,10 +1192,10 @@ void WiFiManager::setupWebServer() {
             server,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/settings/restore", HTTP_POST, [this]() {
+    server.on("/api/settings/restore", HTTP_POST, [this, rateLimitCallback]() {
         BackupApiService::handleApiRestore(
             server,
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
     
@@ -1206,27 +1206,27 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/panic", HTTP_GET, [this]() {
         DebugApiService::handleApiPanic(server);
     });
-    server.on("/api/debug/enable", HTTP_POST, [this]() {
+    server.on("/api/debug/enable", HTTP_POST, [this, rateLimitCallback]() {
         DebugApiService::handleApiDebugEnable(
             server,
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
-    server.on("/api/debug/perf-files", HTTP_GET, [this]() {
+    server.on("/api/debug/perf-files", HTTP_GET, [this, rateLimitCallback]() {
         DebugApiService::handleApiPerfFilesList(
             server,
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
+    server.on("/api/debug/perf-files/download", HTTP_GET, [this, rateLimitCallback]() {
         DebugApiService::handleApiPerfFilesDownload(
             server,
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
+    server.on("/api/debug/perf-files/delete", HTTP_POST, [this, rateLimitCallback]() {
         DebugApiService::handleApiPerfFilesDelete(
             server,
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
     

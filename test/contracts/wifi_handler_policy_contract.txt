@@ -5,8 +5,8 @@ route=HTTP_GET /api/cameras/events rate_limit=1 ui_activity=1 obd_enabled_gate=0
 route=HTTP_GET /api/cameras/status rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleApiStatus
 route=HTTP_GET /api/debug/metrics rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiMetrics
 route=HTTP_GET /api/debug/panic rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiPanic
-route=HTTP_GET /api/debug/perf-files rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesList
-route=HTTP_GET /api/debug/perf-files/download rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDownload
+route=HTTP_GET /api/debug/perf-files rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesList
+route=HTTP_GET /api/debug/perf-files/download rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDownload
 route=HTTP_GET /api/gps/observations rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleApiObservations
 route=HTTP_GET /api/gps/status rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleApiStatus
 route=HTTP_GET /api/lockout/events rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiEvents
@@ -21,8 +21,8 @@ route=HTTP_GET /api/obd/status rate_limit=1 ui_activity=1 obd_enabled_gate=0 del
 route=HTTP_GET /api/settings/backup rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::handleApiBackup
 route=HTTP_POST /api/cameras/demo rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleApiDemo
 route=HTTP_POST /api/cameras/demo/clear rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleApiDemoClear
-route=HTTP_POST /api/debug/enable rate_limit=1 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiDebugEnable
-route=HTTP_POST /api/debug/perf-files/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDelete
+route=HTTP_POST /api/debug/enable rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiDebugEnable
+route=HTTP_POST /api/debug/perf-files/delete rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDelete
 route=HTTP_POST /api/gps/config rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleApiConfig
 route=HTTP_POST /api/lockout/zones/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneDelete
 route=HTTP_POST /api/lockouts/zones/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneDelete
@@ -34,4 +34,4 @@ route=HTTP_POST /api/obd/forget rate_limit=1 ui_activity=1 obd_enabled_gate=0 de
 route=HTTP_POST /api/obd/remembered/autoconnect rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiRememberedAutoConnect
 route=HTTP_POST /api/obd/scan rate_limit=1 ui_activity=1 obd_enabled_gate=1 delegates=ObdApiService::handleApiScan
 route=HTTP_POST /api/obd/scan/stop rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiScanStop
-route=HTTP_POST /api/settings/restore rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::handleApiRestore
+route=HTTP_POST /api/settings/restore rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=BackupApiService::handleApiRestore
