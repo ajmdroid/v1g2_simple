@@ -245,9 +245,20 @@ void handleApiScanStop(WebServer& server,
     handleScanStop(server, obdHandler);
 }
 
-void handleDevicesClear(WebServer& server, OBDHandler& obdHandler) {
+static void handleDevicesClear(WebServer& server, OBDHandler& obdHandler) {
     obdHandler.clearFoundDevices();
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleApiDevicesClear(WebServer& server,
+                           OBDHandler& obdHandler,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDevicesClear(server, obdHandler);
 }
 
 void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient) {

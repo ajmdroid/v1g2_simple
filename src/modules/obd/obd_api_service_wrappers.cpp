@@ -3,7 +3,6 @@
 namespace ObdApiService {
 
 void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient);
-void handleDevicesClear(WebServer& server, OBDHandler& obdHandler);
 void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient);
 void handleDisconnect(WebServer& server, OBDHandler& obdHandler);
 void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager);
@@ -22,17 +21,6 @@ void handleApiScan(WebServer& server,
     }
     if (checkObdEnabled && !checkObdEnabled()) return;
     handleScan(server, obdHandler, bleClient);
-}
-
-void handleApiDevicesClear(WebServer& server,
-                           OBDHandler& obdHandler,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    handleDevicesClear(server, obdHandler);
 }
 
 void handleApiConnect(WebServer& server,
