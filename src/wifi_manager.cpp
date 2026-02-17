@@ -1405,38 +1405,38 @@ void WiFiManager::setupWebServer() {
             rateLimitCallback,
             markUiActivityCallback);
     });
-    server.on("/api/cameras/status", HTTP_GET, [this]() {
+    server.on("/api/cameras/status", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         CameraApiService::handleApiStatus(
             server,
             cameraRuntimeModule,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/cameras/catalog", HTTP_GET, [this]() {
+    server.on("/api/cameras/catalog", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         CameraApiService::handleApiCatalog(
             server,
             storageManager,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/cameras/events", HTTP_GET, [this]() {
+    server.on("/api/cameras/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         CameraApiService::handleApiEvents(
             server,
             cameraRuntimeModule,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/cameras/demo", HTTP_POST, [this]() {
+    server.on("/api/cameras/demo", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         CameraApiService::handleApiDemo(
             server,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/cameras/demo/clear", HTTP_POST, [this]() {
+    server.on("/api/cameras/demo/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         CameraApiService::handleApiDemoClear(
             server,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() {
         LockoutApiService::handleApiZones(
