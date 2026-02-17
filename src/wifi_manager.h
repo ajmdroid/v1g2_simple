@@ -38,6 +38,10 @@ namespace WifiClientApiService {
 struct Runtime;
 }
 
+namespace WifiV1ProfileApiService {
+struct Runtime;
+}
+
 // Setup Mode state (AP is always on, STA is optional)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -231,6 +235,7 @@ private:
     WifiStatusApiService::StatusRuntime makeStatusRuntime();
     WifiSettingsApiService::Runtime makeSettingsRuntime();
     WifiClientApiService::Runtime makeWifiClientRuntime();
+    WifiV1ProfileApiService::Runtime makeV1ProfileRuntime();
     
     // API endpoints
     void handleNotFound();

@@ -858,6 +858,74 @@ WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
     };
 }
 
+WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
+    return WifiV1ProfileApiService::Runtime{
+        []() { return v1ProfileManager.listProfiles(); },
+        [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary) {
+            V1Profile profile;
+            if (!v1ProfileManager.loadProfile(name, profile)) {
+                return false;
+            }
+            summary.name = profile.name;
+            summary.description = profile.description;
+            summary.displayOn = profile.displayOn;
+            return true;
+        },
+        [](const String& name, String& json) {
+            V1Profile profile;
+            if (!v1ProfileManager.loadProfile(name, profile)) {
+                return false;
+            }
+            json = v1ProfileManager.profileToJson(profile);
+            return true;
+        },
+        [](const String& name, uint8_t outBytes[6], bool& displayOn) {
+            V1Profile profile;
+            if (!v1ProfileManager.loadProfile(name, profile)) {
+                return false;
+            }
+            memcpy(outBytes, profile.settings.bytes, 6);
+            displayOn = profile.displayOn;
+            return true;
+        },
+        [](const JsonObject& settingsObj, uint8_t outBytes[6]) {
+            V1UserSettings settings;
+            if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
+                return false;
+            }
+            memcpy(outBytes, settings.bytes, 6);
+            return true;
+        },
+        [](const String& name,
+           const String& description,
+           bool displayOn,
+           const uint8_t inBytes[6],
+           String& error) {
+            V1Profile profile;
+            profile.name = name;
+            profile.description = description;
+            profile.displayOn = displayOn;
+            memcpy(profile.settings.bytes, inBytes, 6);
+            ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
+            if (!result.success) {
+                error = result.error;
+                return false;
+            }
+            return true;
+        },
+        [](const String& name) { return v1ProfileManager.deleteProfile(name); },
+        []() { return bleClient.requestUserBytes(); },
+        [](const uint8_t inBytes[6]) {
+            return bleClient.writeUserBytesVerified(inBytes, 3) == V1BLEClient::VERIFY_OK;
+        },
+        [](bool displayOn) { bleClient.setDisplayOn(displayOn); },
+        []() { return v1ProfileManager.hasCurrentSettings(); },
+        []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
+        []() { return bleClient.isConnected(); },
+        [this]() { settingsManager.backupToSD(); },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -1023,105 +1091,38 @@ void WiFiManager::setupWebServer() {
     server.on("/v1settings", HTTP_GET, [this]() { 
         WifiPortalApiService::handleApiRedirectToRoot(server);
     });
-    auto makeV1ProfileRuntime = [this]() {
-        return WifiV1ProfileApiService::Runtime{
-            []() { return v1ProfileManager.listProfiles(); },
-            [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary) {
-                V1Profile profile;
-                if (!v1ProfileManager.loadProfile(name, profile)) {
-                    return false;
-                }
-                summary.name = profile.name;
-                summary.description = profile.description;
-                summary.displayOn = profile.displayOn;
-                return true;
-            },
-            [](const String& name, String& json) {
-                V1Profile profile;
-                if (!v1ProfileManager.loadProfile(name, profile)) {
-                    return false;
-                }
-                json = v1ProfileManager.profileToJson(profile);
-                return true;
-            },
-            [](const String& name, uint8_t outBytes[6], bool& displayOn) {
-                V1Profile profile;
-                if (!v1ProfileManager.loadProfile(name, profile)) {
-                    return false;
-                }
-                memcpy(outBytes, profile.settings.bytes, 6);
-                displayOn = profile.displayOn;
-                return true;
-            },
-            [](const JsonObject& settingsObj, uint8_t outBytes[6]) {
-                V1UserSettings settings;
-                if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
-                    return false;
-                }
-                memcpy(outBytes, settings.bytes, 6);
-                return true;
-            },
-            [](const String& name,
-               const String& description,
-               bool displayOn,
-               const uint8_t inBytes[6],
-               String& error) {
-                V1Profile profile;
-                profile.name = name;
-                profile.description = description;
-                profile.displayOn = displayOn;
-                memcpy(profile.settings.bytes, inBytes, 6);
-                ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
-                if (!result.success) {
-                    error = result.error;
-                    return false;
-                }
-                return true;
-            },
-            [](const String& name) { return v1ProfileManager.deleteProfile(name); },
-            []() { return bleClient.requestUserBytes(); },
-            [](const uint8_t inBytes[6]) {
-                return bleClient.writeUserBytesVerified(inBytes, 3) == V1BLEClient::VERIFY_OK;
-            },
-            [](bool displayOn) { bleClient.setDisplayOn(displayOn); },
-            []() { return v1ProfileManager.hasCurrentSettings(); },
-            []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
-            []() { return bleClient.isConnected(); },
-            [this]() { settingsManager.backupToSD(); },
-        };
-    };
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
-    server.on("/api/v1/profiles", HTTP_GET, [this, makeV1ProfileRuntime]() {
+    server.on("/api/v1/profiles", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/profile", HTTP_GET, [this, makeV1ProfileRuntime]() {
+    server.on("/api/v1/profile", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfileGet(server, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/profile", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+    server.on("/api/v1/profile", HTTP_POST, [this, rateLimitCallback]() {
         WifiV1ProfileApiService::handleApiProfileSave(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/v1/profile/delete", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+    server.on("/api/v1/profile/delete", HTTP_POST, [this, rateLimitCallback]() {
         WifiV1ProfileApiService::handleApiProfileDelete(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/v1/pull", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+    server.on("/api/v1/pull", HTTP_POST, [this, rateLimitCallback]() {
         WifiV1ProfileApiService::handleApiSettingsPull(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/v1/push", HTTP_POST, [this, makeV1ProfileRuntime, rateLimitCallback]() {
+    server.on("/api/v1/push", HTTP_POST, [this, rateLimitCallback]() {
         WifiV1ProfileApiService::handleApiSettingsPush(
             server,
             makeV1ProfileRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/v1/current", HTTP_GET, [this, makeV1ProfileRuntime]() {
+    server.on("/api/v1/current", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiCurrentSettings(server, makeV1ProfileRuntime());
     });
     
