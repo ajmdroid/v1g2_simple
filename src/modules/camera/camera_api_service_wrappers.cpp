@@ -56,7 +56,6 @@ void handleApiDemo(WebServer& server,
     }
     handleDemo(server);
 }
-#endif
 
 void handleDemoClear(WebServer& server);
 
@@ -69,5 +68,6 @@ void handleApiDemoClear(WebServer& server,
     }
     handleDemoClear(server);
 }
+#endif
 
 }  // namespace CameraApiService
