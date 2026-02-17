@@ -46,6 +46,10 @@ void appendSignalObsStats(JsonDocument& doc,
 
 namespace LockoutApiService {
 
+void handleZoneDelete(WebServer& server,
+                      LockoutIndex& lockoutIndex,
+                      LockoutStore& lockoutStore);
+
 void sendSummary(WebServer& server,
                  SignalObservationLog& signalObservationLog,
                  SignalObservationSdLogger& signalObservationSdLogger) {
@@ -310,6 +314,22 @@ void handleApiZones(WebServer& server,
         markUiActivity();
     }
     sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+}
+
+void handleApiZoneDelete(WebServer& server,
+                         LockoutIndex& lockoutIndex,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity,
+                         const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleZoneDelete(server, lockoutIndex, lockoutStore);
 }
 
 void handleZoneDelete(WebServer& server,

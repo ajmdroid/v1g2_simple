@@ -74,6 +74,7 @@ void handleApiZones(WebServer& server,
 }
 #endif
 
+#ifdef UNIT_TEST
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
@@ -89,5 +90,6 @@ void handleApiZoneDelete(WebServer& server,
     }
     handleZoneDelete(server, lockoutIndex, lockoutStore);
 }
+#endif
 
 }  // namespace LockoutApiService
