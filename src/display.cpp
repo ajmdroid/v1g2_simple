@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/color_themes.h"
 #include "../include/band_utils.h"
+#include "../include/display_segments.h"  // 7/14-segment data tables
 #include "v1simple_logo.h"  // Splash screen image (640x172)
 #include "settings.h"
 #include "battery_manager.h"
@@ -329,32 +330,9 @@ static inline void GFX_drawString(TFT_eSPI& canvas, const char* str, int16_t x, 
 
 #endif
 
+using namespace DisplaySegments;
+
 namespace {
-struct SegMetrics {
-    int segLen;
-    int segThick;
-    int digitW;
-    int digitH;
-    int spacing;
-    int dot;
-};
-
-SegMetrics segMetrics(float scale) {
-    // Base values tuned to mimic the chunky seven-seg look from the reference panel
-    int segLen = static_cast<int>(8 * scale + 0.5f);
-    int segThick = static_cast<int>(3 * scale + 0.5f);
-    if (segLen < 2) segLen = 2;
-    if (segThick < 1) segThick = 1;
-    return {
-        segLen,
-        segThick,
-        segLen + 2 * segThick,
-        2 * segLen + 3 * segThick,
-        segThick,
-        segThick
-    };
-}
-
 const char* cameraTokenForType(uint8_t cameraType) {
     switch (cameraType) {
         case 1:  // redlight
@@ -378,80 +356,6 @@ constexpr int TOP_COUNTER_FIELD_H = TOP_COUNTER_FONT_SIZE + 8;
 constexpr int TOP_COUNTER_TEXT_Y = 8;
 constexpr int TOP_COUNTER_PAD_RIGHT = 2;
 constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
-
-constexpr bool DIGIT_SEGMENTS[10][7] = {
-    // a, b, c, d, e, f, g
-    {true,  true,  true,  true,  true,  true,  false}, // 0
-    {false, true,  true,  false, false, false, false}, // 1
-    {true,  true,  false, true,  true,  false, true }, // 2
-    {true,  true,  true,  true,  false, false, true }, // 3
-    {false, true,  true,  false, false, true,  true }, // 4
-    {true,  false, true,  true,  false, true,  true }, // 5
-    {true,  false, true,  true,  true,  true,  true }, // 6
-    {true,  true,  true,  false, false, false, false}, // 7
-    {true,  true,  true,  true,  true,  true,  true }, // 8
-    {true,  true,  true,  true,  false, true,  true }  // 9
-};
-
-// 14-segment display encoding
-// Segments: 0=top, 1=top-right, 2=bottom-right, 3=bottom, 4=bottom-left, 5=top-left,
-//           6=middle-left, 7=middle-right, 8=diag-top-left, 9=diag-top-right,
-//           10=center-top, 11=center-bottom, 12=diag-bottom-left, 13=diag-bottom-right
-struct Char14Seg {
-    char ch;
-    uint16_t segs; // bit flags for segments 0-13
-};
-
-// Segment bit definitions
-#define S14_TOP         (1<<0)
-#define S14_TR          (1<<1)   // top-right vertical
-#define S14_BR          (1<<2)   // bottom-right vertical
-#define S14_BOT         (1<<3)
-#define S14_BL          (1<<4)   // bottom-left vertical
-#define S14_TL          (1<<5)   // top-left vertical
-#define S14_ML          (1<<6)   // middle-left horizontal
-#define S14_MR          (1<<7)   // middle-right horizontal
-#define S14_DTL         (1<<8)   // diagonal top-left
-#define S14_DTR         (1<<9)   // diagonal top-right
-#define S14_CT          (1<<10)  // center-top vertical
-#define S14_CB          (1<<11)  // center-bottom vertical
-#define S14_DBL         (1<<12)  // diagonal bottom-left
-#define S14_DBR         (1<<13)  // diagonal bottom-right
-
-constexpr Char14Seg CHAR14_MAP[] = {
-    {'0', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_BL | S14_TL},
-    {'1', S14_TR | S14_BR},
-    {'2', S14_TOP | S14_TR | S14_ML | S14_MR | S14_BL | S14_BOT},
-    {'3', S14_TOP | S14_TR | S14_MR | S14_BR | S14_BOT},
-    {'4', S14_TL | S14_ML | S14_MR | S14_TR | S14_BR},
-    {'5', S14_TOP | S14_TL | S14_ML | S14_MR | S14_BR | S14_BOT},
-    {'6', S14_TOP | S14_TL | S14_ML | S14_MR | S14_BR | S14_BOT | S14_BL},
-    {'7', S14_TOP | S14_TR | S14_BR},
-    {'8', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_BL | S14_TL | S14_ML | S14_MR},
-    {'9', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_TL | S14_ML | S14_MR},
-    {'A', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_BR},
-    {'C', S14_TOP | S14_TL | S14_BL | S14_BOT},
-    {'D', S14_TOP | S14_TR | S14_BR | S14_BOT | S14_CT | S14_CB},
-    {'E', S14_TOP | S14_TL | S14_ML | S14_BL | S14_BOT},
-    {'L', S14_TL | S14_BL | S14_BOT},
-    {'M', S14_TL | S14_TR | S14_BL | S14_BR | S14_DTL | S14_DTR},
-    {'N', S14_TL | S14_BL | S14_TR | S14_BR | S14_DTL | S14_DBR},
-    {'R', S14_TOP | S14_TL | S14_TR | S14_ML | S14_MR | S14_BL | S14_DBR},
-    {'S', S14_TOP | S14_TL | S14_ML | S14_MR | S14_BR | S14_BOT},
-    {'T', S14_TOP | S14_CT | S14_CB},
-    {'U', S14_TL | S14_TR | S14_BL | S14_BR | S14_BOT},
-    {'-', S14_ML | S14_MR},
-    {'.', 0}, // dot handled separately
-};
-constexpr int CHAR14_MAP_SIZE = sizeof(CHAR14_MAP) / sizeof(CHAR14_MAP[0]);
-
-uint16_t get14SegPattern(char c) {
-    char upper = (c >= 'a' && c <= 'z') ? (c - 32) : c;
-    for (int i = 0; i < CHAR14_MAP_SIZE; i++) {
-        if (CHAR14_MAP[i].ch == upper) return CHAR14_MAP[i].segs;
-    }
-    return 0;
-}
 } // namespace
 
 V1Display::V1Display() {
