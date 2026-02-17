@@ -36,3 +36,7 @@ struct DisplayDirtyFlags {
         obdIndicator = true;
     }
 };
+
+// Single shared instance — defined in display.cpp, available to extracted
+// display sub-modules (display_arrow.cpp, etc.)
+extern DisplayDirtyFlags dirty;
