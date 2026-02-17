@@ -37,6 +37,7 @@ void handleApiSummary(WebServer& server,
 }
 #endif
 
+#ifdef UNIT_TEST
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
                      SignalObservationSdLogger& signalObservationSdLogger,
@@ -52,6 +53,7 @@ void handleApiEvents(WebServer& server,
     }
     sendEvents(server, signalObservationLog, signalObservationSdLogger);
 }
+#endif
 
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,

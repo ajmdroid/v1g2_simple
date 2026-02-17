@@ -166,6 +166,22 @@ void sendEvents(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiEvents(WebServer& server,
+                     SignalObservationLog& signalObservationLog,
+                     SignalObservationSdLogger& signalObservationSdLogger,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity,
+                     const std::function<void()>& sendDeprecatedHeader) {
+    if (sendDeprecatedHeader) {
+        sendDeprecatedHeader();
+    }
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendEvents(server, signalObservationLog, signalObservationSdLogger);
+}
+
 void sendZones(WebServer& server,
                LockoutIndex& lockoutIndex,
                LockoutLearner& lockoutLearner,
