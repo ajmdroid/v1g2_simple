@@ -1154,96 +1154,9 @@ void loop() {
     lockoutLearner.process(now, timeService.nowEpochMsOr0());
 
     // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
-    {
-        uint32_t lockoutSaveStartUs = PERF_TIMESTAMP_US();
-        static uint32_t lastLockoutSaveMs = 0;
-        static uint32_t lastLockoutSaveAttemptMs = 0;
-        static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
-        static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 5000;      // Retry backoff on contention/failure
-        if (lockoutStore.isDirty() && storageManager.isReady() &&
-            (now - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
-            (now - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
-            lastLockoutSaveAttemptMs = now;
-            static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
-            JsonDocument doc;
-            lockoutStore.toJson(doc);
-            fs::FS* fs = storageManager.getFilesystem();
-            bool saveOk = false;
-            bool saveDeferred = false;
-            if (fs) {
-                if (storageManager.isSDCard()) {
-                    // Core 1 path must never block waiting for SD ownership.
-                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
-                    if (sdLock) {
-                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
-                    } else {
-                        saveDeferred = true;
-                        static uint32_t lastLockoutSaveSkipLogMs = 0;
-                        if ((now - lastLockoutSaveSkipLogMs) >= 10000) {
-                            lastLockoutSaveSkipLogMs = now;
-                            Serial.println("[Lockout] Save deferred (SD busy or DMA-starved)");
-                        }
-                    }
-                } else {
-                    // LittleFS fallback path (single-CPU filesystem access).
-                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
-                }
-            }
-            if (saveOk) {
-                lastLockoutSaveMs = now;
-                lockoutStore.clearDirty();
-                Serial.printf("[Lockout] Saved %lu zones to %s\n",
-                              static_cast<unsigned long>(lockoutStore.stats().entriesSaved),
-                              LOCKOUT_ZONES_PATH);
-            } else if (!saveDeferred) {
-                Serial.println("[Lockout] Save failed");
-            }
-        }
-        perfRecordLockoutSaveUs(PERF_TIMESTAMP_US() - lockoutSaveStartUs);
-    }
+    processLockoutStoreSave(now);
     // Learner pending candidates: periodic best-effort save (Tier 7).
-    {
-        uint32_t learnerSaveStartUs = PERF_TIMESTAMP_US();
-        static uint32_t lastLearnerSaveMs = 0;
-        static uint32_t lastLearnerSaveAttemptMs = 0;
-        static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
-        static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 5000;      // Retry backoff
-        if (lockoutLearner.isDirty() && storageManager.isReady() &&
-            (now - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
-            (now - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
-            lastLearnerSaveAttemptMs = now;
-            static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-            JsonDocument doc;
-            lockoutLearner.toJson(doc);
-            fs::FS* fs = storageManager.getFilesystem();
-            bool saveOk = false;
-            bool saveDeferred = false;
-            if (fs) {
-                if (storageManager.isSDCard()) {
-                    // Core 1 path must never block waiting for SD ownership.
-                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
-                    if (sdLock) {
-                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
-                    } else {
-                        saveDeferred = true;
-                    }
-                } else {
-                    // LittleFS fallback path (single-CPU filesystem access).
-                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
-                }
-            }
-            if (saveOk) {
-                lastLearnerSaveMs = now;
-                lockoutLearner.clearDirty();
-                Serial.printf("[Learner] Saved %u pending candidates to %s\n",
-                              static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                              LOCKOUT_PENDING_PATH);
-            } else if (!saveDeferred) {
-                Serial.println("[Learner] Pending save failed");
-            }
-        }
-        perfRecordLearnerSaveUs(PERF_TIMESTAMP_US() - learnerSaveStartUs);
-    }
+    processLearnerPendingSave(now);
 
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
