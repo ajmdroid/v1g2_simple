@@ -209,7 +209,7 @@ void handleApiBackup(WebServer& server,
     sendBackup(server);
 }
 
-void handleRestore(WebServer& server) {
+static void handleRestore(WebServer& server) {
     Serial.println("[HTTP] POST /api/settings/restore");
     static constexpr size_t kMaxRestoreBodyBytes = 16 * 1024;
     
@@ -480,6 +480,16 @@ void handleRestore(WebServer& server) {
     }
     response += "\"}";
     server.send(200, "application/json", response);
+}
+
+void handleApiRestore(WebServer& server,
+                      const std::function<bool()>& checkRateLimit,
+                      const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleRestore(server);
 }
 
 }  // namespace BackupApiService
