@@ -4,15 +4,13 @@
  *         plus optional station mode to connect to external network
  */
 
-#include "wifi_manager.h"
+#include "wifi_manager_internals.h"
 #include "perf_metrics.h"
 #include "settings.h"
 #include "settings_sanitize.h"
 #include "display.h"
 #include "storage_manager.h"
-#include "debug_logger.h"
 #include "v1_profiles.h"
-#include "ble_client.h"
 #include "perf_sd_logger.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
@@ -44,7 +42,6 @@
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
-#include "modules/system/system_event_bus.h"
 #include "../include/config.h"
 #include "../include/band_utils.h"
 #include "../include/color_themes.h"
@@ -59,38 +56,13 @@
 #include <LittleFS.h>
 #include "esp_wifi.h"
 
-// External BLE client for V1 commands
-extern V1BLEClient bleClient;
-extern SystemEventBus systemEventBus;
-// Preview helpers for display demo flows (color + camera).
-extern void requestColorPreviewHold(uint32_t durationMs);
-extern void requestCameraPreviewCycleHold(uint32_t durationMs);
-extern void requestCameraPreviewSingleHold(uint8_t cameraType, uint32_t durationMs, bool muted);
-extern bool isDisplayPreviewRunning();
-extern bool isColorPreviewRunning();
-extern void cancelDisplayPreview();
-extern void cancelColorPreview();
-
-// Enable to dump LittleFS root on WiFi start (debug only); keep false for release
-static constexpr bool WIFI_DEBUG_FS_DUMP = false;
-static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial logging
-
-// WiFi logging macro - logs to Serial AND debugLogger when WiFi category enabled
-#if defined(DISABLE_DEBUG_LOGGER)
-#define WIFI_LOG(...) do { } while(0)
-#else
-#define WIFI_LOG(...) do { \
-    if (WIFI_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    DBG_LOGF(DebugLogCategory::Wifi, __VA_ARGS__); \
-} while(0)
-#endif
-
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
 
-// Dump LittleFS root directory for diagnostics
-static void dumpLittleFSRoot() {
+// ---- Promoted helpers (declared in wifi_manager_internals.h) ----
+
+void dumpLittleFSRoot() {
     if (!LittleFS.begin(true)) {
         Serial.println("[SetupMode] ERROR: Failed to mount LittleFS for root dump");
         return;
@@ -121,15 +93,7 @@ static void dumpLittleFSRoot() {
     root.close();
 }
 
-static uint8_t clampU8Value(int value, int minVal, int maxVal) {
-    return clampU8(value, minVal, maxVal);
-}
-
-static bool shouldUseApSta(const V1Settings& settings) {
-    return settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0;
-}
-
-static const char* wifiClientStateApiName(WifiClientState state) {
+const char* wifiClientStateApiName(WifiClientState state) {
     switch (state) {
         case WIFI_CLIENT_DISABLED: return "disabled";
         case WIFI_CLIENT_DISCONNECTED: return "disconnected";
@@ -138,6 +102,12 @@ static const char* wifiClientStateApiName(WifiClientState state) {
         case WIFI_CLIENT_FAILED: return "failed";
         default: return "unknown";
     }
+}
+
+// ---- Static helpers (used only in this TU) ----
+
+static bool shouldUseApSta(const V1Settings& settings) {
+    return settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0;
 }
 
 static void getWifiStartThresholds(bool apStaMode, uint32_t& minFree, uint32_t& minBlock) {
