@@ -46,6 +46,11 @@ echo -e "${YELLOW}🔒 Checking SD lock discipline contract...${NC}"
 python3 scripts/check_sd_lock_discipline_contract.py
 echo -e "${GREEN}✅ SD lock discipline contract matches${NC}"
 
+# Step 0f: Main loop call order contract guard
+echo -e "${YELLOW}🔒 Checking main loop call-order contract...${NC}"
+python3 scripts/check_main_loop_call_order_contract.py
+echo -e "${GREEN}✅ Main loop call-order contract matches${NC}"
+
 # Step 1: Build web interface
 echo -e "${YELLOW}📦 Building web interface...${NC}"
 cd interface

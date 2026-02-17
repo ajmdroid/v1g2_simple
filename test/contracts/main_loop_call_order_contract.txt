@@ -1,0 +1,7 @@
+# Main loop call-order contract (required relative sequence)
+
+bleClient.process
+bleQueueModule.process
+displayPipelineModule.handleParsed
+cameraRuntimeModule.process
+wifiManager.process

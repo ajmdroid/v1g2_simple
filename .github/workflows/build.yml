@@ -59,6 +59,9 @@ jobs:
 
     - name: 🔒 Check SD lock discipline contract
       run: python3 scripts/check_sd_lock_discipline_contract.py
+
+    - name: 🔒 Check main loop call-order contract
+      run: python3 scripts/check_main_loop_call_order_contract.py
     
     - name: 🧪 Run unit tests
       run: |

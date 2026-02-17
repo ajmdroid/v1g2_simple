@@ -93,6 +93,10 @@ jobs:
       - name: Check SD lock discipline contract
         if: steps.check.outputs.should_release == 'true'
         run: python3 scripts/check_sd_lock_discipline_contract.py
+
+      - name: Check main loop call-order contract
+        if: steps.check.outputs.should_release == 'true'
+        run: python3 scripts/check_main_loop_call_order_contract.py
       
       # ========== TEST (gate release on passing tests) ==========
       - name: Run unit tests
