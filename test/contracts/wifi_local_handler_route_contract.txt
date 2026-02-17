@@ -4,7 +4,7 @@ route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 obd_enabled_gate=0
 route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiAutoPushApiService::handleApiStatus
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
 route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsGet
-route=HTTP_GET /api/status rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiStatusApiService::handleApiStatus
+route=HTTP_GET /api/status rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiStatusApiService::handleApiStatus
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiCurrentSettings
 route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileGet
 route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfilesList
@@ -16,9 +16,9 @@ route=HTTP_POST /api/displaycolors rate_limit=0 ui_activity=0 obd_enabled_gate=0
 route=HTTP_POST /api/displaycolors/clear rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiClear
 route=HTTP_POST /api/displaycolors/preview rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiPreview
 route=HTTP_POST /api/displaycolors/reset rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiDisplayColorsApiService::handleApiReset
-route=HTTP_POST /api/profile/push rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiControlApiService::handleApiProfilePush
+route=HTTP_POST /api/profile/push rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiControlApiService::handleApiProfilePush
 route=HTTP_POST /api/settings rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsSave
-route=HTTP_POST /api/time/set rate_limit=1 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiTimeApiService::handleApiTimeSet
+route=HTTP_POST /api/time/set rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiTimeApiService::handleApiTimeSet
 route=HTTP_POST /api/v1/profile rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileSave
 route=HTTP_POST /api/v1/profile/delete rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileDelete
 route=HTTP_POST /api/v1/pull rate_limit=0 ui_activity=0 obd_enabled_gate=0 handlers= delegates=WifiV1ProfileApiService::handleApiSettingsPull

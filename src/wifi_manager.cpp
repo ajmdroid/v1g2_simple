@@ -983,7 +983,7 @@ void WiFiManager::setupWebServer() {
     
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this]() {
+    server.on("/api/status", HTTP_GET, [this, rateLimitCallback]() {
         WifiStatusApiService::handleApiStatus(
             server,
             makeStatusRuntime(),
@@ -991,22 +991,22 @@ void WiFiManager::setupWebServer() {
             lastStatusJsonTime,
             STATUS_CACHE_TTL_MS,
             []() { return millis(); },
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
-    server.on("/api/profile/push", HTTP_POST, [this]() { 
+    server.on("/api/profile/push", HTTP_POST, [this, rateLimitCallback]() { 
         WifiControlApiService::handleApiProfilePush(
             server,
             bleClient.isConnected(),
             requestProfilePush,
-            [this]() { return checkRateLimit(); }); 
+            rateLimitCallback); 
     });
-    server.on("/api/time/set", HTTP_POST, [this]() {
+    server.on("/api/time/set", HTTP_POST, [this, rateLimitCallback]() {
         WifiTimeApiService::handleApiTimeSet(
             server,
             makeTimeRuntime(),
             TimeService::SOURCE_CLIENT_AP,
             [this]() { lastStatusJsonTime = 0; },
-            [this]() { return checkRateLimit(); });
+            rateLimitCallback);
     });
     
     // Legacy status endpoint
