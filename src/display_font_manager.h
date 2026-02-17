@@ -3,7 +3,8 @@
  * glyph caches, and lazy-load helpers that were previously scattered as
  * file-scope statics in display.cpp.
  *
- * Lifetime: a single file-scope instance (`fontMgr`) lives in display.cpp.
+ * Lifetime: a single global instance (`fontMgr`) is defined in display.cpp
+ *           and declared extern here for use by display sub-modules.
  *           init() is called once from V1Display::begin().
  *
  * Threading: same single-thread contract as the rest of the display system.
@@ -108,3 +109,6 @@ int DisplayFontManager::cachedTextWidth(
     nextSlot = static_cast<uint8_t>((nextSlot + 1) % N);
     return width;
 }
+
+// Global font manager instance — defined in display.cpp
+extern DisplayFontManager fontMgr;

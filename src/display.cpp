@@ -39,7 +39,7 @@ static constexpr bool DISPLAY_DEBUG_LOGS = false;  // Set true for verbose Seria
 // DisplayFontManager (see display_font_manager.h).
 #include "display_font_manager.h"
 
-static DisplayFontManager fontMgr;
+DisplayFontManager fontMgr;  // Definition; declared extern in display_font_manager.h
 
 // Convenience aliases so that drawing code updates stay concise.
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
@@ -139,10 +139,7 @@ static VolumeZeroWarning volZeroWarn;
 // External reference to BLE client for checking proxy connection
 extern V1BLEClient bleClient;
 
-// Helper to get effective screen height (fixed primary zone, cards below)
-static inline int getEffectiveScreenHeight() {
-    return PRIMARY_ZONE_HEIGHT;  // Always use fixed primary zone height
-}
+// getEffectiveScreenHeight() now lives in display_layout.h
 
 // Debug timing for display operations (set to true to profile display)
 static constexpr bool DISPLAY_PERF_TIMING = false;  // Disable for production
@@ -169,11 +166,8 @@ static unsigned long _dispPerfStart = 0;
 // Drawing primitives, coordinate transforms, dimColor — see include/display_draw.h
 #include "../include/display_draw.h"
 
-// Platform-specific state kept in display.cpp (needed by GFX_drawString)
+// Platform-specific state kept in display.cpp
 #if defined(DISPLAY_USE_ARDUINO_GFX)
-    // Store current text datum for Arduino_GFX compatibility
-    static uint8_t _gfxCurrentTextDatum = TL_DATUM;
-
     // TFT_BL alias for backlight pin
     #define TFT_BL LCD_BL
 #endif
@@ -184,70 +178,8 @@ V1Display* g_displayInstance = nullptr;
 // Palette helpers and colour macros — see include/display_palette.h
 #include "../include/display_palette.h"
 
-// ============================================================================
-// Cross-platform text drawing helpers
-// TFT_eSPI has setTextDatum() and drawString() 
-// Arduino_GFX uses setCursor() and print()
-// ============================================================================
-
-#if defined(DISPLAY_USE_ARDUINO_GFX)
-
-// Arduino_GFX implementation of setTextDatum (store for later use)
-#define GFX_setTextDatum(d) do { _gfxCurrentTextDatum = (d); } while(0)
-
-// Arduino_GFX implementation of drawString with datum support (with coordinate transform)
-// NOTE: GFX fonts use baseline positioning with setCursor(). The getTextBounds() function
-// returns y1 as the offset from cursor to top of bounding box (typically negative for
-// characters that extend above the baseline). We must account for y1 when aligning.
-static inline void GFX_drawString(Arduino_Canvas* canvas, const char* str, int16_t x, int16_t y) {
-    int16_t x1, y1;
-    uint16_t w, h;
-    canvas->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
-    
-    int16_t drawX = x, drawY = y;
-    
-    // Apply horizontal alignment based on current datum
-    // x1 is the offset from cursor to left edge of bounding box
-    switch (_gfxCurrentTextDatum) {
-        case TC_DATUM: case MC_DATUM: case BC_DATUM:
-            drawX = x - x1 - w / 2;
-            break;
-        case TR_DATUM: case MR_DATUM: case BR_DATUM:
-            drawX = x - x1 - w;
-            break;
-        default: // TL, ML, BL - left aligned
-            drawX = x - x1;
-            break;
-    }
-    
-    // Apply vertical alignment based on current datum
-    // y1 is the offset from cursor (baseline) to top of bounding box (typically negative)
-    // To center: place cursor so that (cursor + y1 + h/2) = y, thus cursor = y - y1 - h/2
-    switch (_gfxCurrentTextDatum) {
-        case ML_DATUM: case MC_DATUM: case MR_DATUM:
-            drawY = y - y1 - h / 2;
-            break;
-        case BL_DATUM: case BC_DATUM: case BR_DATUM:
-            drawY = y - y1 - h;
-            break;
-        default: // TL, TC, TR - top aligned
-            drawY = y - y1;
-            break;
-    }
-    
-    canvas->setCursor(drawX, drawY);
-    canvas->print(str);
-}
-
-#else
-
-// TFT_eSPI - native methods
-#define GFX_setTextDatum(d) tft.setTextDatum(d)
-static inline void GFX_drawString(TFT_eSPI& canvas, const char* str, int16_t x, int16_t y) {
-    canvas.drawString(str, x, y);
-}
-
-#endif
+// Cross-platform text drawing helpers — see include/display_text.h
+#include "../include/display_text.h"
 
 using namespace DisplaySegments;
 
@@ -267,14 +199,16 @@ const char* cameraTokenForType(uint8_t cameraType) {
     }
 }
 
-constexpr int TOP_COUNTER_FONT_SIZE = DisplayFontManager::TOP_COUNTER_FONT_SIZE;
-constexpr int TOP_COUNTER_FIELD_X = 16;
-constexpr int TOP_COUNTER_FIELD_Y = 6;
-constexpr int TOP_COUNTER_FIELD_W = 55;
-constexpr int TOP_COUNTER_FIELD_H = TOP_COUNTER_FONT_SIZE + 8;
-constexpr int TOP_COUNTER_TEXT_Y = 8;
-constexpr int TOP_COUNTER_PAD_RIGHT = 2;
-constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
+// TOP_COUNTER_* constants now live in display_layout.h
+using DisplayLayout::TOP_COUNTER_FONT_SIZE;
+using DisplayLayout::TOP_COUNTER_FIELD_X;
+using DisplayLayout::TOP_COUNTER_FIELD_Y;
+using DisplayLayout::TOP_COUNTER_FIELD_W;
+using DisplayLayout::TOP_COUNTER_FIELD_H;
+using DisplayLayout::TOP_COUNTER_TEXT_Y;
+using DisplayLayout::TOP_COUNTER_PAD_RIGHT;
+using DisplayLayout::TOP_COUNTER_FALLBACK_WIDTH;
+
 } // namespace
 
 V1Display::V1Display() {

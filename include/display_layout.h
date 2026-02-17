@@ -106,6 +106,24 @@ constexpr int STATUS_ICON_SIZE = 14;      // Size of status icons.
 constexpr int STATUS_ICON_GAP = 6;        // Gap between status icons
 constexpr int STATUS_LEFT_MARGIN = 8;     // Left margin for status icons
 
+// ============================================================================
+// Top Counter Area
+// ============================================================================
+
+constexpr int TOP_COUNTER_FONT_SIZE = 60; // Matches DisplayFontManager constant
+constexpr int TOP_COUNTER_FIELD_X = 16;
+constexpr int TOP_COUNTER_FIELD_Y = 6;
+constexpr int TOP_COUNTER_FIELD_W = 55;
+constexpr int TOP_COUNTER_FIELD_H = TOP_COUNTER_FONT_SIZE + 8;
+constexpr int TOP_COUNTER_TEXT_Y = 8;
+constexpr int TOP_COUNTER_PAD_RIGHT = 2;
+constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
+
 } // namespace DisplayLayout
+
+// Convenience: effective screen height for primary zone rendering
+inline int getEffectiveScreenHeight() {
+    return DisplayLayout::PRIMARY_ZONE_HEIGHT;
+}
 
 #endif // DISPLAY_LAYOUT_H
