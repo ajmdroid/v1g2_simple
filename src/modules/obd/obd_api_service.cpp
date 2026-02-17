@@ -287,9 +287,20 @@ void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleCl
     server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD connect queued\"}");
 }
 
-void handleDisconnect(WebServer& server, OBDHandler& obdHandler) {
+static void handleDisconnect(WebServer& server, OBDHandler& obdHandler) {
     obdHandler.disconnect();
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleApiDisconnect(WebServer& server,
+                         OBDHandler& obdHandler,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDisconnect(server, obdHandler);
 }
 
 void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager) {
