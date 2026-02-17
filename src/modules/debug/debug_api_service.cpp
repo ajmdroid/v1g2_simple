@@ -577,12 +577,8 @@ void handlePerfFileDownload(WebServer& server) {
     server.setContentLength(fileSize);
     server.send(200, "text/csv", "");
 
-    const size_t CHUNK_SIZE = 4096;
-    uint8_t* buffer = static_cast<uint8_t*>(malloc(CHUNK_SIZE));
-    if (!buffer) {
-        f.close();
-        return;
-    }
+    static constexpr size_t CHUNK_SIZE = 4096;
+    static uint8_t buffer[CHUNK_SIZE];
 
     size_t totalSent = 0;
     while (f.available() && server.client().connected()) {
@@ -598,7 +594,6 @@ void handlePerfFileDownload(WebServer& server) {
         }
     }
 
-    free(buffer);
     f.close();
 }
 
