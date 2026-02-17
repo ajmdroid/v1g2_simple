@@ -3,7 +3,6 @@
 
 #include "../../src/modules/obd/obd_api_service.h"
 #include "../../src/modules/obd/obd_api_service.cpp"  // Pull implementation for UNIT_TEST.
-#include "../../src/modules/obd/obd_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
 SerialClass Serial;
