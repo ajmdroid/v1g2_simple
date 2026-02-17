@@ -43,31 +43,44 @@ static DisplayFontManager fontMgr;
 // Convenience aliases so that drawing code updates stay concise.
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
-// Multi-alert mode tracking (used for card display, no longer shifts main content)
-static bool g_multiAlertMode = false;
+// ============================================================================
+// Dirty-flag aggregate — tracks which display elements need a forced redraw
+// after a full screen clear or mode change.
+// ============================================================================
+struct DisplayDirtyFlags {
+    bool multiAlert     = false;  // Multi-alert mode (secondary card row visible)
+    bool cards          = false;  // Force secondary-card row redraw
+    bool frequency      = false;  // Force frequency area redraw
+    bool battery        = false;  // Force battery percentage redraw
+    bool bands          = false;  // Force band indicator redraw
+    bool signalBars     = false;  // Force signal bars redraw
+    bool arrow          = false;  // Force direction arrow redraw
+    bool muteIcon       = false;  // Force mute icon redraw
+    bool topCounter     = false;  // Force top counter (bogey symbol) redraw
+    bool lockout        = false;  // Force lockout "L" badge redraw
+    bool gpsIndicator   = false;  // Force GPS indicator redraw
+    bool obdIndicator   = false;  // Force OBD indicator redraw
+    bool resetTracking  = false;  // Signal to reset change-tracking statics
+
+    /// Mark every element as needing a forced redraw (called after screen clear).
+    void setAll() {
+        frequency    = true;
+        battery      = true;
+        bands        = true;
+        signalBars   = true;
+        arrow        = true;
+        muteIcon     = true;
+        topCounter   = true;
+        lockout      = true;
+        gpsIndicator = true;
+        obdIndicator = true;
+    }
+};
+
+static DisplayDirtyFlags dirty;
+
 // Use centralized constant from display_layout.h
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
-
-// Force card redraw flag - set by update() when full screen is cleared
-static bool forceCardRedraw = false;
-
-// Force frequency cache invalidation - set when screen is cleared to ensure redraw
-static bool s_forceFrequencyRedraw = false;
-
-// Force battery percent cache invalidation - set when screen is cleared
-static bool s_forceBatteryRedraw = false;
-
-// Force band/signal bar/arrow cache invalidation - set when screen is cleared
-static bool s_forceBandRedraw = false;
-static bool s_forceSignalBarsRedraw = false;
-static bool s_forceArrowRedraw = false;
-
-// Force status bar/mute icon/top counter cache invalidation - set when screen is cleared
-static bool s_forceMuteIconRedraw = false;
-static bool s_forceTopCounterRedraw = false;
-static bool s_forceLockoutRedraw = false;
-static bool s_forceGpsIndicatorRedraw = false;
-static bool s_forceObdIndicatorRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -720,16 +733,7 @@ void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
     bleProxyDrawn = false;  // Force indicator redraw after full clears
-    s_forceFrequencyRedraw = true;  // Force frequency cache invalidation after screen clear
-    s_forceBatteryRedraw = true;    // Force battery percent cache invalidation after screen clear
-    s_forceBandRedraw = true;       // Force band indicator cache invalidation after screen clear
-    s_forceSignalBarsRedraw = true; // Force signal bars cache invalidation after screen clear
-    s_forceArrowRedraw = true;      // Force arrow cache invalidation after screen clear
-    s_forceMuteIconRedraw = true;   // Force mute icon cache invalidation after screen clear
-    s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
-    s_forceLockoutRedraw = true;    // Force lockout indicator cache invalidation after screen clear
-    s_forceGpsIndicatorRedraw = true;  // Force GPS indicator cache invalidation after screen clear
-    s_forceObdIndicatorRedraw = true;  // Force OBD indicator cache invalidation after screen clear
+    dirty.setAll();         // Invalidate every element cache after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -961,11 +965,11 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     bool colorChanged = (s.colorBogey != lastBogeyColor);
 
     // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!s_forceTopCounterRedraw && !colorChanged &&
+    if (!dirty.topCounter && !colorChanged &&
         symbol == lastSymbol && muted == lastMuted && showDot == lastShowDot) {
         return;
     }
-    s_forceTopCounterRedraw = false;
+    dirty.topCounter = false;
     lastSymbol = symbol;
     lastMuted = muted;
     lastShowDot = showDot;
@@ -1182,10 +1186,10 @@ void V1Display::drawMuteIcon(bool muted) {
     static bool lastMutedState = false;
     
     // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!s_forceMuteIconRedraw && muted == lastMutedState) {
+    if (!dirty.muteIcon && muted == lastMutedState) {
         return;
     }
-    s_forceMuteIconRedraw = false;
+    dirty.muteIcon = false;
     lastMutedState = muted;
     
     // Draw badge at fixed top position (top ~10% of screen)
@@ -1239,10 +1243,10 @@ void V1Display::drawLockoutIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     static bool lastShown = false;
 
-    if (!s_forceLockoutRedraw && lockoutIndicatorShown_ == lastShown) {
+    if (!dirty.lockout && lockoutIndicatorShown_ == lastShown) {
         return;
     }
-    s_forceLockoutRedraw = false;
+    dirty.lockout = false;
     lastShown = lockoutIndicatorShown_;
 
     // Position: right of the mute badge area.
@@ -1288,11 +1292,11 @@ void V1Display::drawGpsIndicator() {
     static bool lastShown = false;
     static uint8_t lastSats = 0;
 
-    if (!s_forceGpsIndicatorRedraw &&
+    if (!dirty.gpsIndicator &&
         wantShow == lastShown && curSats == lastSats) {
         return;
     }
-    s_forceGpsIndicatorRedraw = false;
+    dirty.gpsIndicator = false;
     lastShown = wantShow;
     lastSats  = curSats;
 
@@ -1340,10 +1344,10 @@ void V1Display::drawObdIndicator() {
 
     static bool lastShown = false;
 
-    if (!s_forceObdIndicatorRedraw && wantShow == lastShown) {
+    if (!dirty.obdIndicator && wantShow == lastShown) {
         return;
     }
-    s_forceObdIndicatorRedraw = false;
+    dirty.obdIndicator = false;
     lastShown = wantShow;
 
     // Position: right of lockout "L" (ends at X=366), before signal bars (X=440).
@@ -1571,7 +1575,7 @@ void V1Display::drawBatteryIndicator() {
 
         // Decide if we actually need to redraw
         unsigned long nowMs = millis();
-        bool needsRedraw = s_forceBatteryRedraw ||  // Screen was cleared
+        bool needsRedraw = dirty.battery ||  // Screen was cleared
                            (!lastPctVisible) ||
                            (pct != lastPctDrawn) ||
                            (textColor != lastPctColor) ||
@@ -1582,7 +1586,7 @@ void V1Display::drawBatteryIndicator() {
         }
         
         // Clear force flag - we're handling it
-        s_forceBatteryRedraw = false;
+        dirty.battery = false;
 
         // Format percentage string (no % to save space)
         char pctStr[4];
@@ -1925,7 +1929,7 @@ void V1Display::showDisconnected() {
 
 void V1Display::showResting(bool forceRedraw) {
     // Always use multi-alert layout positioning
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     multiAlertMode = false;
 
     // Save the last known bogey counter before potentially resetting
@@ -2033,7 +2037,7 @@ void V1Display::forceNextRedraw() {
 
 void V1Display::showScanning() {
     // Always use multi-alert layout positioning
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     
     // Get settings for display style
     const V1Settings& s = settingsManager.get();
@@ -2189,15 +2193,12 @@ void V1Display::showScanning() {
     lastRestingProfileSlot = -1;
 }
 
-// Static flag to signal display change tracking reset on next update
-static bool s_resetChangeTrackingFlag = false;
-
 // RSSI periodic update timer (shared between resting and alert modes)
 static unsigned long s_lastRssiUpdateMs = 0;
 static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;  // Update RSSI every 2 seconds
 
 void V1Display::resetChangeTracking() {
-    s_resetChangeTrackingFlag = true;
+    dirty.resetTracking = true;
 }
 
 void V1Display::showDemo() {
@@ -2380,7 +2381,7 @@ void V1Display::update(const DisplayState& state) {
     static bool wasInFlashPeriod = false;
     
     // Always use multi-alert layout positioning
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     multiAlertMode = false;  // No cards to draw in resting state
     
     // Check if profile flash period just expired (needs redraw to clear)
@@ -2419,7 +2420,7 @@ void V1Display::update(const DisplayState& state) {
     static uint8_t lastRestingBogeyByte = 0;  // Track V1's bogey counter for change detection
     
     // Reset resting statics when change tracking reset is requested (on V1 disconnect)
-    if (s_resetChangeTrackingFlag) {
+    if (dirty.resetTracking) {
         firstUpdate = true;
         lastRestingDebouncedBands = 0;
         lastRestingSignalBars = 0;
@@ -2684,7 +2685,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     currentScreen = ScreenMode::Resting;
     
     // Always use multi-alert layout positioning
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     multiAlertMode = false;  // No cards to draw
     wasInMultiAlertMode = false;
     
@@ -2734,7 +2735,7 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     persistedMode = false;
 
     // Camera banner occupies the same primary zone as resting/live content.
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     multiAlertMode = false;
     wasInMultiAlertMode = false;
 
@@ -2796,7 +2797,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     currentScreen = ScreenMode::Live;
 
     // Always use multi-alert mode (raised layout for cards)
-    g_multiAlertMode = true;
+    dirty.multiAlert = true;
     multiAlertMode = true;
 
     // V1 is source of truth - use activeBands directly, no debouncing
@@ -2832,7 +2833,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     static uint8_t lastActiveBands = 0;
     
     // Check if reset was requested (e.g., on V1 disconnect)
-    if (s_resetChangeTrackingFlag) {
+    if (dirty.resetTracking) {
         lastPriority = AlertData();
         lastBogeyByte = 0;
         lastMultiState = DisplayState();
@@ -2841,7 +2842,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         lastArrows = 0;
         lastSignalBars = 0;
         lastActiveBands = 0;
-        s_resetChangeTrackingFlag = false;
+        dirty.resetTracking = false;
     }
     
     bool needsRedraw = false;
@@ -3040,13 +3041,13 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     DISP_PERF_LOG("arrows+icons");
     
     // Force card redraw since drawBaseFrame cleared the screen
-    forceCardRedraw = true;
+    dirty.cards = true;
     
     // Draw secondary alert cards at bottom
     drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
     DISP_PERF_LOG("cards");
     
-    // Keep g_multiAlertMode true while in multi-alert - only reset when going to single-alert mode
+    // Keep dirty.multiAlert true while in multi-alert - only reset when going to single-alert mode
 
 #if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
@@ -3417,9 +3418,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // === INCREMENTAL UPDATE LOGIC ===
     // Instead of clearing all cards and redrawing, check each position independently
     
-    // Capture forceCardRedraw before resetting (need it for redraw checks)
-    bool doForceRedraw = forceCardRedraw;
-    forceCardRedraw = false;  // Reset the force flag
+    // Capture dirty.cards before resetting (need it for redraw checks)
+    bool doForceRedraw = dirty.cards;
+    dirty.cards = false;  // Reset the force flag
     
     // Helper to check if position needs full redraw vs just update
     auto positionNeedsFullRedraw = [&](int pos) -> bool {
@@ -3652,9 +3653,9 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     }
     
     // Check for forced invalidation (e.g., after screen clear)
-    if (s_forceBandRedraw) {
+    if (dirty.bands) {
         cacheValid = false;
-        s_forceBandRedraw = false;
+        dirty.bands = false;
     }
     
     // Check if anything changed
@@ -3797,9 +3798,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     static bool lastUsedOfr = false;
     static bool cacheValid = false;
 
-    if (s_forceFrequencyRedraw) {
+    if (dirty.frequency) {
         cacheValid = false;
-        s_forceFrequencyRedraw = false;
+        dirty.frequency = false;
     }
 
     const bool usingOfr = fontMgr.segment7Ready;
@@ -3987,9 +3988,9 @@ void V1Display::drawFrequencyModern(uint32_t freqMHz, Band band, bool muted, boo
     static uint8_t widthCacheNextSlot = 0;
     
     // Check for forced invalidation (e.g., after screen clear)
-    if (s_forceFrequencyRedraw) {
+    if (dirty.frequency) {
         cacheValid = false;
-        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+        dirty.frequency = false;  // Clear flag - we're handling it
     }
     
     // Modern style: show nothing when no frequency (resting/idle state)
@@ -4108,9 +4109,9 @@ void V1Display::drawFrequencyHemi(uint32_t freqMHz, Band band, bool muted, bool 
     static uint8_t widthCacheNextSlot = 0;
 
     // Check for forced invalidation (e.g., after screen clear)
-    if (s_forceFrequencyRedraw) {
+    if (dirty.frequency) {
         cacheValid = false;
-        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+        dirty.frequency = false;  // Clear flag - we're handling it
     }
 
     // Hemi style: show nothing when no frequency (resting/idle state)
@@ -4231,9 +4232,9 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     static uint8_t widthCacheNextSlot = 0;
 
     // Check for forced invalidation (e.g., after screen clear)
-    if (s_forceFrequencyRedraw) {
+    if (dirty.frequency) {
         cacheValid = false;
-        s_forceFrequencyRedraw = false;  // Clear flag - we're handling it
+        dirty.frequency = false;  // Clear flag - we're handling it
     }
 
     // Serpentine style: show nothing when no frequency (resting/idle state)
@@ -4489,9 +4490,9 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     static bool cacheValid = false;
     
     // Check for forced invalidation (after screen clear)
-    if (s_forceArrowRedraw) {
+    if (dirty.arrow) {
         cacheValid = false;
-        s_forceArrowRedraw = false;
+        dirty.arrow = false;
     }
     
     // Local blink timer - V1 blinks at ~5Hz, we match that
@@ -4525,7 +4526,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
 #if defined(DISPLAY_WAVESHARE_349)
     // Position arrows to fit ABOVE frequency display at bottom
     // With multi-alert always enabled, use raised layout as default
-    if (g_multiAlertMode) {
+    if (dirty.multiAlert) {
         cy = 85;  // Raised but allow full-size arrows
         cx -= 6;
     } else {
@@ -4712,9 +4713,9 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     static bool cacheValid = false;
     
     // Check for forced invalidation (e.g., after screen clear)
-    if (s_forceSignalBarsRedraw) {
+    if (dirty.signalBars) {
         cacheValid = false;
-        s_forceSignalBarsRedraw = false;
+        dirty.signalBars = false;
     }
     
     // Check if anything changed
