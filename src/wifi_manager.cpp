@@ -506,6 +506,174 @@ void WiFiManager::setupAP() {
     WIFI_LOG("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
+WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
+    return WifiAutoPushApiService::Runtime{
+        [this](WifiAutoPushApiService::SlotsSnapshot& snapshot) {
+            const V1Settings& s = settingsManager.get();
+            snapshot.enabled = s.autoPushEnabled;
+            snapshot.activeSlot = s.activeSlot;
+
+            snapshot.slots[0].name = s.slot0Name;
+            snapshot.slots[0].profile = s.slot0_default.profileName;
+            snapshot.slots[0].mode = s.slot0_default.mode;
+            snapshot.slots[0].color = s.slot0Color;
+            snapshot.slots[0].volume = s.slot0Volume;
+            snapshot.slots[0].muteVolume = s.slot0MuteVolume;
+            snapshot.slots[0].darkMode = s.slot0DarkMode;
+            snapshot.slots[0].muteToZero = s.slot0MuteToZero;
+            snapshot.slots[0].alertPersist = s.slot0AlertPersist;
+            snapshot.slots[0].priorityArrowOnly = s.slot0PriorityArrow;
+
+            snapshot.slots[1].name = s.slot1Name;
+            snapshot.slots[1].profile = s.slot1_highway.profileName;
+            snapshot.slots[1].mode = s.slot1_highway.mode;
+            snapshot.slots[1].color = s.slot1Color;
+            snapshot.slots[1].volume = s.slot1Volume;
+            snapshot.slots[1].muteVolume = s.slot1MuteVolume;
+            snapshot.slots[1].darkMode = s.slot1DarkMode;
+            snapshot.slots[1].muteToZero = s.slot1MuteToZero;
+            snapshot.slots[1].alertPersist = s.slot1AlertPersist;
+            snapshot.slots[1].priorityArrowOnly = s.slot1PriorityArrow;
+
+            snapshot.slots[2].name = s.slot2Name;
+            snapshot.slots[2].profile = s.slot2_comfort.profileName;
+            snapshot.slots[2].mode = s.slot2_comfort.mode;
+            snapshot.slots[2].color = s.slot2Color;
+            snapshot.slots[2].volume = s.slot2Volume;
+            snapshot.slots[2].muteVolume = s.slot2MuteVolume;
+            snapshot.slots[2].darkMode = s.slot2DarkMode;
+            snapshot.slots[2].muteToZero = s.slot2MuteToZero;
+            snapshot.slots[2].alertPersist = s.slot2AlertPersist;
+            snapshot.slots[2].priorityArrowOnly = s.slot2PriorityArrow;
+        },
+        [this](String& json) {
+            if (!getPushStatusJson) {
+                return false;
+            }
+            json = getPushStatusJson();
+            return true;
+        },
+        [this](int slot, const String& name) {
+            settingsManager.setSlotName(slot, name);
+        },
+        [this](int slot, uint16_t color) {
+            settingsManager.setSlotColor(slot, color);
+        },
+        [this](int slot) {
+            return settingsManager.getSlotVolume(slot);
+        },
+        [this](int slot) {
+            return settingsManager.getSlotMuteVolume(slot);
+        },
+        [this](int slot, uint8_t volume, uint8_t muteVolume) {
+            settingsManager.setSlotVolumes(slot, volume, muteVolume);
+        },
+        [this](int slot, bool darkMode) {
+            settingsManager.setSlotDarkMode(slot, darkMode);
+        },
+        [this](int slot, bool muteToZero) {
+            settingsManager.setSlotMuteToZero(slot, muteToZero);
+        },
+        [this](int slot, uint8_t alertPersistSec) {
+            settingsManager.setSlotAlertPersistSec(slot, alertPersistSec);
+        },
+        [this](int slot, bool priorityArrowOnly) {
+            settingsManager.setSlotPriorityArrowOnly(slot, priorityArrowOnly);
+        },
+        [this](int slot, const String& profile, int mode) {
+            settingsManager.setSlot(slot, profile, normalizeV1ModeValue(mode));
+        },
+        [this]() {
+            return static_cast<int>(settingsManager.get().activeSlot);
+        },
+        [this](int slot) {
+            display.drawProfileIndicator(slot);
+        },
+        [this](int slot) {
+            settingsManager.setActiveSlot(slot);
+        },
+        [this](bool enabled) {
+            settingsManager.setAutoPushEnabled(enabled);
+        },
+        [this](const WifiAutoPushApiService::PushNowRequest& request) {
+            if (!bleClient.isConnected()) {
+                return WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
+            }
+
+            if (pushNowState.step != PushNowStep::IDLE) {
+                return WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
+            }
+
+            String profileName;
+            V1Mode mode = V1_MODE_UNKNOWN;
+
+            if (request.hasProfileOverride) {
+                profileName = sanitizeProfileNameValue(request.profileName);
+                if (request.hasModeOverride) {
+                    mode = normalizeV1ModeValue(request.mode);
+                }
+            } else {
+                const V1Settings& s = settingsManager.get();
+                AutoPushSlot pushSlot;
+
+                switch (request.slot) {
+                    case 0: pushSlot = s.slot0_default; break;
+                    case 1: pushSlot = s.slot1_highway; break;
+                    case 2: pushSlot = s.slot2_comfort; break;
+                    default: break;
+                }
+
+                profileName = sanitizeProfileNameValue(pushSlot.profileName);
+                mode = normalizeV1ModeValue(static_cast<int>(pushSlot.mode));
+            }
+
+            if (profileName.length() == 0) {
+                return WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
+            }
+
+            V1Profile profile;
+            if (!v1ProfileManager.loadProfile(profileName, profile)) {
+                return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
+            }
+
+            bool slotDarkMode = settingsManager.getSlotDarkMode(request.slot);
+            uint8_t mainVol = settingsManager.getSlotVolume(request.slot);
+            uint8_t muteVol = settingsManager.getSlotMuteVolume(request.slot);
+
+            Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n",
+                          request.slot,
+                          mainVol,
+                          muteVol);
+
+            settingsManager.setActiveSlot(request.slot);
+            display.drawProfileIndicator(request.slot);
+
+            pushNowState.slot = request.slot;
+            memcpy(pushNowState.profileBytes,
+                   profile.settings.bytes,
+                   sizeof(pushNowState.profileBytes));
+            pushNowState.displayOn = !slotDarkMode;  // Dark mode=true => display off
+            pushNowState.applyMode = (mode != V1_MODE_UNKNOWN);
+            pushNowState.mode = mode;
+            pushNowState.applyVolume = (mainVol != 0xFF && muteVol != 0xFF);
+            pushNowState.mainVol = mainVol;
+            pushNowState.muteVol = muteVol;
+            pushNowState.retries = 0;
+            pushNowState.step = PushNowStep::WRITE_PROFILE;
+            pushNowState.nextAtMs = millis();
+
+            Serial.printf("[PushNow] Queued slot=%d profile='%s' mode=%d displayOn=%d volume=%s\n",
+                          request.slot,
+                          profileName.c_str(),
+                          static_cast<int>(mode),
+                          pushNowState.displayOn ? 1 : 0,
+                          pushNowState.applyVolume ? "set" : "skip");
+
+            return WifiAutoPushApiService::PushNowQueueResult::QUEUED;
+        },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -867,198 +1035,31 @@ void WiFiManager::setupWebServer() {
     });
     
     // Auto-Push routes
-    auto makeAutoPushRuntime = [this]() {
-        return WifiAutoPushApiService::Runtime{
-            [this](WifiAutoPushApiService::SlotsSnapshot& snapshot) {
-                const V1Settings& s = settingsManager.get();
-                snapshot.enabled = s.autoPushEnabled;
-                snapshot.activeSlot = s.activeSlot;
-
-                snapshot.slots[0].name = s.slot0Name;
-                snapshot.slots[0].profile = s.slot0_default.profileName;
-                snapshot.slots[0].mode = s.slot0_default.mode;
-                snapshot.slots[0].color = s.slot0Color;
-                snapshot.slots[0].volume = s.slot0Volume;
-                snapshot.slots[0].muteVolume = s.slot0MuteVolume;
-                snapshot.slots[0].darkMode = s.slot0DarkMode;
-                snapshot.slots[0].muteToZero = s.slot0MuteToZero;
-                snapshot.slots[0].alertPersist = s.slot0AlertPersist;
-                snapshot.slots[0].priorityArrowOnly = s.slot0PriorityArrow;
-
-                snapshot.slots[1].name = s.slot1Name;
-                snapshot.slots[1].profile = s.slot1_highway.profileName;
-                snapshot.slots[1].mode = s.slot1_highway.mode;
-                snapshot.slots[1].color = s.slot1Color;
-                snapshot.slots[1].volume = s.slot1Volume;
-                snapshot.slots[1].muteVolume = s.slot1MuteVolume;
-                snapshot.slots[1].darkMode = s.slot1DarkMode;
-                snapshot.slots[1].muteToZero = s.slot1MuteToZero;
-                snapshot.slots[1].alertPersist = s.slot1AlertPersist;
-                snapshot.slots[1].priorityArrowOnly = s.slot1PriorityArrow;
-
-                snapshot.slots[2].name = s.slot2Name;
-                snapshot.slots[2].profile = s.slot2_comfort.profileName;
-                snapshot.slots[2].mode = s.slot2_comfort.mode;
-                snapshot.slots[2].color = s.slot2Color;
-                snapshot.slots[2].volume = s.slot2Volume;
-                snapshot.slots[2].muteVolume = s.slot2MuteVolume;
-                snapshot.slots[2].darkMode = s.slot2DarkMode;
-                snapshot.slots[2].muteToZero = s.slot2MuteToZero;
-                snapshot.slots[2].alertPersist = s.slot2AlertPersist;
-                snapshot.slots[2].priorityArrowOnly = s.slot2PriorityArrow;
-            },
-            [this](String& json) {
-                if (!getPushStatusJson) {
-                    return false;
-                }
-                json = getPushStatusJson();
-                return true;
-            },
-            [this](int slot, const String& name) {
-                settingsManager.setSlotName(slot, name);
-            },
-            [this](int slot, uint16_t color) {
-                settingsManager.setSlotColor(slot, color);
-            },
-            [this](int slot) {
-                return settingsManager.getSlotVolume(slot);
-            },
-            [this](int slot) {
-                return settingsManager.getSlotMuteVolume(slot);
-            },
-            [this](int slot, uint8_t volume, uint8_t muteVolume) {
-                settingsManager.setSlotVolumes(slot, volume, muteVolume);
-            },
-            [this](int slot, bool darkMode) {
-                settingsManager.setSlotDarkMode(slot, darkMode);
-            },
-            [this](int slot, bool muteToZero) {
-                settingsManager.setSlotMuteToZero(slot, muteToZero);
-            },
-            [this](int slot, uint8_t alertPersistSec) {
-                settingsManager.setSlotAlertPersistSec(slot, alertPersistSec);
-            },
-            [this](int slot, bool priorityArrowOnly) {
-                settingsManager.setSlotPriorityArrowOnly(slot, priorityArrowOnly);
-            },
-            [this](int slot, const String& profile, int mode) {
-                settingsManager.setSlot(slot, profile, normalizeV1ModeValue(mode));
-            },
-            [this]() {
-                return static_cast<int>(settingsManager.get().activeSlot);
-            },
-            [this](int slot) {
-                display.drawProfileIndicator(slot);
-            },
-            [this](int slot) {
-                settingsManager.setActiveSlot(slot);
-            },
-            [this](bool enabled) {
-                settingsManager.setAutoPushEnabled(enabled);
-            },
-            [this](const WifiAutoPushApiService::PushNowRequest& request) {
-                if (!bleClient.isConnected()) {
-                    return WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
-                }
-
-                if (pushNowState.step != PushNowStep::IDLE) {
-                    return WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
-                }
-
-                String profileName;
-                V1Mode mode = V1_MODE_UNKNOWN;
-
-                if (request.hasProfileOverride) {
-                    profileName = sanitizeProfileNameValue(request.profileName);
-                    if (request.hasModeOverride) {
-                        mode = normalizeV1ModeValue(request.mode);
-                    }
-                } else {
-                    const V1Settings& s = settingsManager.get();
-                    AutoPushSlot pushSlot;
-
-                    switch (request.slot) {
-                        case 0: pushSlot = s.slot0_default; break;
-                        case 1: pushSlot = s.slot1_highway; break;
-                        case 2: pushSlot = s.slot2_comfort; break;
-                        default: break;
-                    }
-
-                    profileName = sanitizeProfileNameValue(pushSlot.profileName);
-                    mode = normalizeV1ModeValue(static_cast<int>(pushSlot.mode));
-                }
-
-                if (profileName.length() == 0) {
-                    return WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
-                }
-
-                V1Profile profile;
-                if (!v1ProfileManager.loadProfile(profileName, profile)) {
-                    return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
-                }
-
-                bool slotDarkMode = settingsManager.getSlotDarkMode(request.slot);
-                uint8_t mainVol = settingsManager.getSlotVolume(request.slot);
-                uint8_t muteVol = settingsManager.getSlotMuteVolume(request.slot);
-
-                Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n",
-                              request.slot,
-                              mainVol,
-                              muteVol);
-
-                settingsManager.setActiveSlot(request.slot);
-                display.drawProfileIndicator(request.slot);
-
-                pushNowState.slot = request.slot;
-                memcpy(pushNowState.profileBytes,
-                       profile.settings.bytes,
-                       sizeof(pushNowState.profileBytes));
-                pushNowState.displayOn = !slotDarkMode;  // Dark mode=true => display off
-                pushNowState.applyMode = (mode != V1_MODE_UNKNOWN);
-                pushNowState.mode = mode;
-                pushNowState.applyVolume = (mainVol != 0xFF && muteVol != 0xFF);
-                pushNowState.mainVol = mainVol;
-                pushNowState.muteVol = muteVol;
-                pushNowState.retries = 0;
-                pushNowState.step = PushNowStep::WRITE_PROFILE;
-                pushNowState.nextAtMs = millis();
-
-                Serial.printf("[PushNow] Queued slot=%d profile='%s' mode=%d displayOn=%d volume=%s\n",
-                              request.slot,
-                              profileName.c_str(),
-                              static_cast<int>(mode),
-                              pushNowState.displayOn ? 1 : 0,
-                              pushNowState.applyVolume ? "set" : "skip");
-
-                return WifiAutoPushApiService::PushNowQueueResult::QUEUED;
-            },
-        };
-    };
     server.on("/autopush", HTTP_GET, [this]() { 
         WifiPortalApiService::handleApiRedirectToRoot(server);
     });
-    server.on("/api/autopush/slots", HTTP_GET, [this, makeAutoPushRuntime]() {
+    server.on("/api/autopush/slots", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
     });
-    server.on("/api/autopush/slot", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
+    server.on("/api/autopush/slot", HTTP_POST, [this, rateLimitCallback]() {
         WifiAutoPushApiService::handleApiSlotSave(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/autopush/activate", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
+    server.on("/api/autopush/activate", HTTP_POST, [this, rateLimitCallback]() {
         WifiAutoPushApiService::handleApiActivate(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/autopush/push", HTTP_POST, [this, makeAutoPushRuntime, rateLimitCallback]() {
+    server.on("/api/autopush/push", HTTP_POST, [this, rateLimitCallback]() {
         WifiAutoPushApiService::handleApiPushNow(
             server,
             makeAutoPushRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/autopush/status", HTTP_GET, [this, makeAutoPushRuntime]() {
+    server.on("/api/autopush/status", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
     });
     

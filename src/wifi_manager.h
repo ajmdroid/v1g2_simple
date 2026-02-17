@@ -14,6 +14,10 @@
 #include "settings.h"
 #include <functional>
 
+namespace WifiAutoPushApiService {
+struct Runtime;
+}
+
 // Setup Mode state (AP is always on, STA is optional)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -201,6 +205,7 @@ private:
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
     void processPendingPushNow();
+    WifiAutoPushApiService::Runtime makeAutoPushRuntime();
     
     // API endpoints
     void handleNotFound();
