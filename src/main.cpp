@@ -51,7 +51,6 @@
 #include "modules/display/display_pipeline_module.h"
 #include "modules/system/system_event_bus.h"
 #include "esp_heap_caps.h"
-#include "esp_core_dump.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
@@ -75,13 +74,8 @@
 #include <esp_sleep.h>
 #include "../include/display_driver.h"
 #include <FS.h>
-#include <LittleFS.h>
-#include <Preferences.h>
-#include <nvs_flash.h>
-#include <nvs.h>
-#include <vector>
+#include <driver/gpio.h>
 #include <algorithm>
-#include <cstring>
 #include <cmath>
 
 // Global objects
