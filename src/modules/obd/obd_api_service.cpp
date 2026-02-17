@@ -229,9 +229,20 @@ void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClien
     server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan started\"}");
 }
 
-void handleScanStop(WebServer& server, OBDHandler& obdHandler) {
+static void handleScanStop(WebServer& server, OBDHandler& obdHandler) {
     obdHandler.stopScan();
     server.send(200, "application/json", "{\"success\":true,\"message\":\"OBD scan stopped\"}");
+}
+
+void handleApiScanStop(WebServer& server,
+                       OBDHandler& obdHandler,
+                       const std::function<bool()>& checkRateLimit,
+                       const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleScanStop(server, obdHandler);
 }
 
 void handleDevicesClear(WebServer& server, OBDHandler& obdHandler) {
