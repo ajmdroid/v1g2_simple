@@ -11,8 +11,21 @@ void sendStatus(WebServer& server,
                 PerfCounters& perfCounters,
                 SystemEventBus& systemEventBus);
 
+#ifdef UNIT_TEST
 void sendObservations(WebServer& server,
                       GpsObservationLog& gpsObservationLog);
+
+void handleApiObservations(WebServer& server,
+                           GpsObservationLog& gpsObservationLog,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendObservations(server, gpsObservationLog);
+}
+#endif
 
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
@@ -43,17 +56,6 @@ void handleApiStatus(WebServer& server,
                lockoutLearner,
                perfCounters,
                systemEventBus);
-}
-
-void handleApiObservations(WebServer& server,
-                           GpsObservationLog& gpsObservationLog,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    sendObservations(server, gpsObservationLog);
 }
 
 void handleApiConfig(WebServer& server,

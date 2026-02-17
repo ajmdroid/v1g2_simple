@@ -219,6 +219,17 @@ void sendObservations(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiObservations(WebServer& server,
+                           GpsObservationLog& gpsObservationLog,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendObservations(server, gpsObservationLog);
+}
+
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
                   GpsRuntimeModule& gpsRuntimeModule,
