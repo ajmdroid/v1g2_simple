@@ -363,6 +363,12 @@ void handleDebugEnable(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
 }
 
+void handleApiDebugEnable(WebServer& server,
+                          const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleDebugEnable(server);
+}
+
 void sendPanic(WebServer& server) {
     // Return last panic info from LittleFS (written by logPanicBreadcrumbs on crash recovery)
     JsonDocument doc;
