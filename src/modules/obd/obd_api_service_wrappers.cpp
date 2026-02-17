@@ -6,7 +6,6 @@ void handleScan(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClien
 void handleConnect(WebServer& server, OBDHandler& obdHandler, V1BLEClient& bleClient);
 void handleConfig(WebServer& server, OBDHandler& obdHandler, SettingsManager& settingsManager);
 void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler);
-void handleForget(WebServer& server, OBDHandler& obdHandler);
 
 void handleApiScan(WebServer& server,
                    OBDHandler& obdHandler,
@@ -57,17 +56,6 @@ void handleApiRememberedAutoConnect(WebServer& server,
         markUiActivity();
     }
     handleRememberedAutoConnect(server, obdHandler);
-}
-
-void handleApiForget(WebServer& server,
-                     OBDHandler& obdHandler,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    if (markUiActivity) {
-        markUiActivity();
-    }
-    handleForget(server, obdHandler);
 }
 
 }  // namespace ObdApiService

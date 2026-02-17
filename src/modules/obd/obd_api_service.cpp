@@ -354,7 +354,7 @@ void handleRememberedAutoConnect(WebServer& server, OBDHandler& obdHandler) {
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handleForget(WebServer& server, OBDHandler& obdHandler) {
+static void handleForget(WebServer& server, OBDHandler& obdHandler) {
     String address;
     String errorMessage;
     if (!parseForgetAddressRequest(server, address, errorMessage)) {
@@ -368,6 +368,17 @@ void handleForget(WebServer& server, OBDHandler& obdHandler) {
     }
 
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleApiForget(WebServer& server,
+                     OBDHandler& obdHandler,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleForget(server, obdHandler);
 }
 
 static bool parseConnectRequest(WebServer& server, ConnectRequest& out, String& errorMessage) {
