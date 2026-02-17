@@ -768,6 +768,53 @@ WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
     return runtime;
 }
 
+WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
+    return WifiSettingsApiService::Runtime{
+        [this]() -> const V1Settings& {
+            return settingsManager.get();
+        },
+        [this]() -> V1Settings& {
+            return settingsManager.mutableSettings();
+        },
+        [this](const String& ssid, const String& password) {
+            settingsManager.updateAPCredentials(ssid, password);
+        },
+        [this](uint8_t brightness) {
+            settingsManager.updateBrightness(brightness);
+        },
+        [this](DisplayStyle style) {
+            settingsManager.updateDisplayStyle(style);
+        },
+        [this]() {
+            display.forceNextRedraw();
+        },
+        [this](bool enabled) {
+            obdHandler.setVwDataEnabled(enabled);
+        },
+        [this]() {
+            obdHandler.stopScan();
+        },
+        [this]() {
+            obdHandler.disconnect();
+        },
+        [this](bool enabled) {
+            gpsRuntimeModule.setEnabled(enabled);
+        },
+        [this](bool enabled) {
+            speedSourceSelector.setGpsEnabled(enabled);
+        },
+        [this](bool enabled) {
+            cameraRuntimeModule.setEnabled(enabled);
+        },
+        [this](bool enabled) {
+            lockoutSetKaLearningEnabled(enabled);
+        },
+        [this]() {
+            settingsManager.save();
+        },
+    };
+}
+
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false)) {
@@ -823,52 +870,6 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    auto makeSettingsRuntime = [this]() {
-        return WifiSettingsApiService::Runtime{
-            [this]() -> const V1Settings& {
-                return settingsManager.get();
-            },
-            [this]() -> V1Settings& {
-                return settingsManager.mutableSettings();
-            },
-            [this](const String& ssid, const String& password) {
-                settingsManager.updateAPCredentials(ssid, password);
-            },
-            [this](uint8_t brightness) {
-                settingsManager.updateBrightness(brightness);
-            },
-            [this](DisplayStyle style) {
-                settingsManager.updateDisplayStyle(style);
-            },
-            [this]() {
-                display.forceNextRedraw();
-            },
-            [this](bool enabled) {
-                obdHandler.setVwDataEnabled(enabled);
-            },
-            [this]() {
-                obdHandler.stopScan();
-            },
-            [this]() {
-                obdHandler.disconnect();
-            },
-            [this](bool enabled) {
-                gpsRuntimeModule.setEnabled(enabled);
-            },
-            [this](bool enabled) {
-                speedSourceSelector.setGpsEnabled(enabled);
-            },
-            [this](bool enabled) {
-                cameraRuntimeModule.setEnabled(enabled);
-            },
-            [this](bool enabled) {
-                lockoutSetKaLearningEnabled(enabled);
-            },
-            [this]() {
-                settingsManager.save();
-            },
-        };
-    };
     auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this]() {
@@ -907,10 +908,10 @@ void WiFiManager::setupWebServer() {
             STATUS_CACHE_TTL_MS,
             []() { return millis(); });
     });
-    server.on("/api/settings", HTTP_GET, [this, makeSettingsRuntime]() {
+    server.on("/api/settings", HTTP_GET, [this]() {
         WifiSettingsApiService::handleApiSettingsGet(server, makeSettingsRuntime());
     });  // JSON settings for new UI
-    server.on("/api/settings", HTTP_POST, [this, makeSettingsRuntime, settingsRateLimitCallback]() {
+    server.on("/api/settings", HTTP_POST, [this, settingsRateLimitCallback]() {
         WifiSettingsApiService::handleApiSettingsSave(
             server,
             makeSettingsRuntime(),
@@ -923,7 +924,7 @@ void WiFiManager::setupWebServer() {
             server,
             "Use /api/settings");
     });
-    server.on("/settings", HTTP_POST, [this, makeSettingsRuntime]() {
+    server.on("/settings", HTTP_POST, [this]() {
         WifiSettingsApiService::handleApiLegacySettingsSave(
             server,
             makeSettingsRuntime(),

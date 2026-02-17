@@ -30,6 +30,10 @@ namespace WifiStatusApiService {
 struct StatusRuntime;
 }
 
+namespace WifiSettingsApiService {
+struct Runtime;
+}
+
 // Setup Mode state (AP is always on, STA is optional)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -221,6 +225,7 @@ private:
     WifiDisplayColorsApiService::Runtime makeDisplayColorsRuntime();
     WifiTimeApiService::TimeRuntime makeTimeRuntime();
     WifiStatusApiService::StatusRuntime makeStatusRuntime();
+    WifiSettingsApiService::Runtime makeSettingsRuntime();
     
     // API endpoints
     void handleNotFound();
