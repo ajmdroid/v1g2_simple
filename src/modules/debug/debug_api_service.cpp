@@ -411,6 +411,10 @@ void sendPanic(WebServer& server) {
     server.send(200, "application/json", json);
 }
 
+void handleApiPanic(WebServer& server) {
+    sendPanic(server);
+}
+
 void sendPerfFilesList(WebServer& server) {
     JsonDocument doc;
     doc["success"] = true;

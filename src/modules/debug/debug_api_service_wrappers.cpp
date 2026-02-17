@@ -4,21 +4,21 @@ namespace DebugApiService {
 
 #ifdef UNIT_TEST
 void sendMetrics(WebServer& server);
+void sendPanic(WebServer& server);
 
 void handleApiMetrics(WebServer& server) {
     sendMetrics(server);
 }
-#endif
-
-void handleDebugEnable(WebServer& server);
-void sendPanic(WebServer& server);
-void sendPerfFilesList(WebServer& server);
-void handlePerfFileDownload(WebServer& server);
-void handlePerfFileDelete(WebServer& server);
 
 void handleApiPanic(WebServer& server) {
     sendPanic(server);
 }
+#endif
+
+void handleDebugEnable(WebServer& server);
+void sendPerfFilesList(WebServer& server);
+void handlePerfFileDownload(WebServer& server);
+void handlePerfFileDelete(WebServer& server);
 
 void handleApiDebugEnable(WebServer& server,
                           const std::function<bool()>& checkRateLimit) {
