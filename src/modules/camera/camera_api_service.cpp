@@ -393,6 +393,16 @@ void handleDemo(WebServer& server) {
     server.send(200, "application/json", response);
 }
 
+void handleApiDemo(WebServer& server,
+                   const std::function<bool()>& checkRateLimit,
+                   const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleDemo(server);
+}
+
 void handleDemoClear(WebServer& server) {
     cancelDisplayPreview();
     server.send(200, "application/json", "{\"success\":true,\"active\":false}");

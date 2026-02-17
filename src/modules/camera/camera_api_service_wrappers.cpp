@@ -44,11 +44,8 @@ void handleApiEvents(WebServer& server,
     }
     sendEvents(server, cameraRuntimeModule);
 }
-#endif
 
 void handleDemo(WebServer& server);
-
-void handleDemoClear(WebServer& server);
 
 void handleApiDemo(WebServer& server,
                    const std::function<bool()>& checkRateLimit,
@@ -59,6 +56,9 @@ void handleApiDemo(WebServer& server,
     }
     handleDemo(server);
 }
+#endif
+
+void handleDemoClear(WebServer& server);
 
 void handleApiDemoClear(WebServer& server,
                         const std::function<bool()>& checkRateLimit,
