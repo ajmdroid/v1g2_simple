@@ -339,7 +339,24 @@ void test_gps_flicker_no_flipflop() {
 }
 
 // ---------------------------------------------------------------------------
-// 19. Full cycle: IDLE → DROP → lockout alert → real alert → DISARMED → IDLE
+// 19. DROPPED + GPS lost + real alert → RESTORE (safety-critical path)
+// ---------------------------------------------------------------------------
+void test_gps_lost_real_alert_still_restores() {
+    PreQuietState state = droppedState();
+
+    // GPS is down, but V1 fires a real alert — must restore volume.
+    auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                              /*hasAlert=*/true, /*lockoutEvaluated=*/true,
+                              /*lockoutShouldMute=*/false,
+                              0, 0, 0, T0, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
+    TEST_ASSERT_EQUAL(6, d.volume);
+    TEST_ASSERT_EQUAL(0, d.muteVolume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 20. Full cycle: IDLE → DROP → lockout alert → real alert → DISARMED → IDLE
 // ---------------------------------------------------------------------------
 void test_full_lifecycle() {
     PreQuietState state;
@@ -403,6 +420,7 @@ int main() {
     RUN_TEST(test_gps_lost_while_dropped_holds_state);
     RUN_TEST(test_gps_lost_while_disarmed_holds_state);
     RUN_TEST(test_gps_flicker_no_flipflop);
+    RUN_TEST(test_gps_lost_real_alert_still_restores);
     RUN_TEST(test_full_lifecycle);
     return UNITY_END();
 }

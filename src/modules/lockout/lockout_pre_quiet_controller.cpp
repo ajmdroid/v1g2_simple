@@ -48,22 +48,23 @@ PreQuietDecision evaluatePreQuiet(
         return decision;  // NONE
     }
 
-    // GPS fix lost — nearbyZoneCount is 0 when GPS is invalid, which would
-    // falsely trigger exit debounce.  Hold whatever phase we're in until
-    // GPS recovers, same principle as BLE disconnect.
-    if (!gpsValid) {
-        if (state.phase == PreQuietPhase::DROPPED) {
-            state.leftZoneMs = 0;   // Cancel any in-progress exit debounce
-        }
-        return decision;  // NONE
-    }
-
-    const bool inZone = nearbyZoneCount > 0;
+    // GPS validity affects zone-presence logic (entry/exit debounce) but must
+    // NOT block the real-alert restore path.  A real alert while DROPPED must
+    // always restore volume regardless of GPS state — safety trumps position.
+    //
+    // When GPS is invalid, nearbyZoneCount is 0 (findNearby not called).
+    // Treat that as "position unknown" rather than "left the zone."
+    const bool inZone = gpsValid ? (nearbyZoneCount > 0) : false;
+    const bool positionKnown = gpsValid;
 
     switch (state.phase) {
 
     // ── IDLE: not active, watch for zone entry ──────────────────────
     case PreQuietPhase::IDLE:
+        if (!positionKnown) {
+            state.enteredZoneMs = 0;  // Can't trust zone data, reset debounce
+            return decision;  // NONE
+        }
         if (inZone && !hasAlert) {
             // Start or continue entry debounce.
             if (state.enteredZoneMs == 0) {
@@ -89,17 +90,23 @@ PreQuietDecision evaluatePreQuiet(
 
     // ── DROPPED: volume lowered, waiting for zone exit or real alert ─
     case PreQuietPhase::DROPPED:
-        // Still in zone with lockout-matched alert → stay quiet.
-        if (hasAlert && lockoutEvaluated && lockoutShouldMute) {
-            state.leftZoneMs = 0;
-            return decision;  // NONE — mute controller handles
-        }
         // Real alert (non-lockout match) → restore immediately, go DISARMED.
+        // This fires regardless of GPS state — safety over position.
         if (hasAlert && lockoutEvaluated && !lockoutShouldMute) {
             decision = restoreFrom(state);
             state.phase = PreQuietPhase::DISARMED;
             state.leftZoneMs = 0;
             return decision;
+        }
+        // Still in zone with lockout-matched alert → stay quiet.
+        if (hasAlert && lockoutEvaluated && lockoutShouldMute) {
+            state.leftZoneMs = 0;
+            return decision;  // NONE — mute controller handles
+        }
+        // GPS lost — hold DROPPED, cancel any exit debounce.
+        if (!positionKnown) {
+            state.leftZoneMs = 0;
+            return decision;  // NONE — can't evaluate zone presence
         }
         // Still in zone, no alert → hold.
         if (inZone) {
@@ -121,9 +128,9 @@ PreQuietDecision evaluatePreQuiet(
 
     // ── DISARMED: real alert fired, volume restored, stay alert ──────
     case PreQuietPhase::DISARMED:
-        // Stay in DISARMED until all lockout zones are cleared.
+        // Stay in DISARMED until GPS is valid and all lockout zones are cleared.
         // Do not re-drop — a real signal means stay at full volume.
-        if (!inZone) {
+        if (positionKnown && !inZone) {
             state = PreQuietState{};  // → IDLE
         }
         return decision;  // NONE — never send BLE commands in DISARMED
