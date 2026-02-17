@@ -704,6 +704,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorCamT", settings.colorCameraToken);
     written += prefs.putUShort("colorCamA", settings.colorCameraArrow);
     written += prefs.putUShort("colorLockL", settings.colorLockout);
+    written += prefs.putUShort("colorGps", settings.colorGps);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -1023,6 +1024,7 @@ void SettingsManager::load() {
     settings.colorCameraToken = preferences.getUShort("colorCamT", 0xF800);     // Red for camera token text
     settings.colorCameraArrow = preferences.getUShort("colorCamA", 0xF800);     // Red for camera forward arrow
     settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
+    settings.colorGps = preferences.getUShort("colorGps", 0x07FF);              // Cyan GPS badge color
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -1869,6 +1871,7 @@ void SettingsManager::backupToSD() {
     doc["colorCameraToken"] = settings.colorCameraToken;
     doc["colorCameraArrow"] = settings.colorCameraArrow;
     doc["colorLockout"] = settings.colorLockout;
+    doc["colorGps"] = settings.colorGps;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -2141,6 +2144,7 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorCameraToken"].is<int>()) settings.colorCameraToken = doc["colorCameraToken"];
     if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
     if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
+    if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
     restoreBool("freqUseBandColor", settings.freqUseBandColor);
     
     // === UI Toggles ===

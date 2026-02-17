@@ -229,6 +229,7 @@ struct V1Settings {
     uint16_t colorCameraToken;   // Camera token text color
     uint16_t colorCameraArrow;   // Camera forward arrow color
     uint16_t colorLockout;       // Lockout "L" badge color
+    uint16_t colorGps;           // GPS "G" satellite badge color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -371,6 +372,7 @@ struct V1Settings {
         colorCameraToken(0xF800), // Red camera token (matches existing camera default)
         colorCameraArrow(0xF800), // Red camera arrow (matches existing front arrow default)
         colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
+        colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default

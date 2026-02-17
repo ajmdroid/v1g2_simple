@@ -1489,8 +1489,9 @@ void V1Display::drawGpsIndicator() {
     const int w  = 50;  // Wide enough for "G" + 2-digit sat count
 
     if (wantShow) {
-        // Cyan colour scheme: bright text, dimmed fill (matches lockout "L" style).
-        const uint16_t textColor = 0x07FF;  // Cyan
+        // User-configurable GPS badge colour (matches lockout "L" style).
+        const V1Settings& s = settingsManager.get();
+        const uint16_t textColor = s.colorGps;
         const uint16_t fillColor = dimColor(textColor, 45);
 
         FILL_ROUND_RECT(x, y, w, h, 5, fillColor);
