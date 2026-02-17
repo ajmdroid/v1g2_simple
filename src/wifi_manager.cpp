@@ -1237,39 +1237,39 @@ void WiFiManager::setupWebServer() {
             makeWifiClientRuntime(),
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/scan", HTTP_POST, [this]() {
+    server.on("/api/wifi/scan", HTTP_POST, [this, rateLimitCallback]() {
         WifiClientApiService::handleApiScan(
             server,
             makeWifiClientRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/connect", HTTP_POST, [this]() {
+    server.on("/api/wifi/connect", HTTP_POST, [this, rateLimitCallback]() {
         WifiClientApiService::handleApiConnect(
             server,
             makeWifiClientRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
+    server.on("/api/wifi/disconnect", HTTP_POST, [this, rateLimitCallback]() {
         WifiClientApiService::handleApiDisconnect(
             server,
             makeWifiClientRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/forget", HTTP_POST, [this]() {
+    server.on("/api/wifi/forget", HTTP_POST, [this, rateLimitCallback]() {
         WifiClientApiService::handleApiForget(
             server,
             makeWifiClientRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
-    server.on("/api/wifi/enable", HTTP_POST, [this]() {
+    server.on("/api/wifi/enable", HTTP_POST, [this, rateLimitCallback]() {
         WifiClientApiService::handleApiEnable(
             server,
             makeWifiClientRuntime(),
-            [this]() { return checkRateLimit(); },
+            rateLimitCallback,
             [this]() { markUiActivity(); });
     });
 
