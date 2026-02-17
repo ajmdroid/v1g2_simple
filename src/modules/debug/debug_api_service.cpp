@@ -79,7 +79,7 @@ bool perfFilePathFromName(const String& name, String& outPath) {
 
 namespace DebugApiService {
 
-void sendMetrics(WebServer& server) {
+static void sendMetrics(WebServer& server) {
     // Get base perf metrics
     JsonDocument doc;
     
@@ -348,6 +348,10 @@ void sendMetrics(WebServer& server) {
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
+}
+
+void handleApiMetrics(WebServer& server) {
+    sendMetrics(server);
 }
 
 void handleDebugEnable(WebServer& server) {

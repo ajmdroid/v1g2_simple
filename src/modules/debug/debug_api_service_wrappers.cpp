@@ -2,16 +2,19 @@
 
 namespace DebugApiService {
 
+#ifdef UNIT_TEST
 void sendMetrics(WebServer& server);
+
+void handleApiMetrics(WebServer& server) {
+    sendMetrics(server);
+}
+#endif
+
 void handleDebugEnable(WebServer& server);
 void sendPanic(WebServer& server);
 void sendPerfFilesList(WebServer& server);
 void handlePerfFileDownload(WebServer& server);
 void handlePerfFileDelete(WebServer& server);
-
-void handleApiMetrics(WebServer& server) {
-    sendMetrics(server);
-}
 
 void handleApiPanic(WebServer& server) {
     sendPanic(server);
