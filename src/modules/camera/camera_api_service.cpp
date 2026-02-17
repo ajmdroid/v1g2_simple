@@ -335,6 +335,17 @@ void sendEvents(WebServer& server,
     server.send(200, "application/json", response);
 }
 
+void handleApiEvents(WebServer& server,
+                     CameraRuntimeModule& cameraRuntimeModule,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendEvents(server, cameraRuntimeModule);
+}
+
 void handleDemo(WebServer& server) {
     uint8_t type = 0;
     if (server.hasArg("type")) {

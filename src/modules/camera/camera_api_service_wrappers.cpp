@@ -30,14 +30,9 @@ void handleApiCatalog(WebServer& server,
     }
     sendCatalog(server, storageManager);
 }
-#endif
 
 void sendEvents(WebServer& server,
                 CameraRuntimeModule& cameraRuntimeModule);
-
-void handleDemo(WebServer& server);
-
-void handleDemoClear(WebServer& server);
 
 void handleApiEvents(WebServer& server,
                      CameraRuntimeModule& cameraRuntimeModule,
@@ -49,6 +44,11 @@ void handleApiEvents(WebServer& server,
     }
     sendEvents(server, cameraRuntimeModule);
 }
+#endif
+
+void handleDemo(WebServer& server);
+
+void handleDemoClear(WebServer& server);
 
 void handleApiDemo(WebServer& server,
                    const std::function<bool()>& checkRateLimit,
