@@ -177,6 +177,11 @@ public:
     bool isEnabled() const { return enabled; }
     const char* csvPath() const { return csvPathBuf; }
 
+    /// Start a new logical session within the current boot file.
+    /// Emits a fresh CSV header + #session_start marker so scoring tools
+    /// can isolate V1-connected data from idle boot noise.
+    void startNewSession();
+
 private:
     static void writerTaskEntry(void* param);
     void writerTaskLoop();

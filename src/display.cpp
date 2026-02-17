@@ -75,6 +75,7 @@ static bool s_forceStatusBarRedraw = false;
 static bool s_forceMuteIconRedraw = false;
 static bool s_forceTopCounterRedraw = false;
 static bool s_forceLockoutRedraw = false;
+static bool s_forceGpsIndicatorRedraw = false;
 
 // Volume zero warning tracking (show for 10 seconds when no app connected, after 15 second delay)
 static unsigned long volumeZeroDetectedMs = 0;       // When we first detected volume=0
@@ -916,6 +917,7 @@ void V1Display::drawBaseFrame() {
     s_forceMuteIconRedraw = true;   // Force mute icon cache invalidation after screen clear
     s_forceTopCounterRedraw = true; // Force top counter cache invalidation after screen clear
     s_forceLockoutRedraw = true;    // Force lockout indicator cache invalidation after screen clear
+    s_forceGpsIndicatorRedraw = true;  // Force GPS indicator cache invalidation after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -1451,6 +1453,60 @@ void V1Display::drawLockoutIndicator() {
         GFX_drawString(tft, "L", x + sz / 2, y + sz / 2);
     } else {
         FILL_RECT(x, y, sz, sz, PALETTE_BG);
+    }
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// GPS satellite indicator ("G" + sat count badge, left of MUTED)
+// ---------------------------------------------------------------------------
+
+void V1Display::setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) {
+    gpsSatEnabled_ = enabled;
+    gpsSatHasFix_  = hasFix;
+    gpsSatCount_   = satellites;
+}
+
+void V1Display::drawGpsIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    // Build current desired state: show when GPS enabled and has fix.
+    const bool wantShow = gpsSatEnabled_ && gpsSatHasFix_;
+    const uint8_t curSats = wantShow ? gpsSatCount_ : 0;
+
+    static bool lastShown = false;
+    static uint8_t lastSats = 0;
+
+    if (!s_forceGpsIndicatorRedraw &&
+        wantShow == lastShown && curSats == lastSats) {
+        return;
+    }
+    s_forceGpsIndicatorRedraw = false;
+    lastShown = wantShow;
+    lastSats  = curSats;
+
+    // Position: just right of band column (120), left of MUTED (~225).
+    const int x  = 125;
+    const int y  = 5;
+    const int h  = 26;
+    const int w  = 50;  // Wide enough for "G" + 2-digit sat count
+
+    if (wantShow) {
+        // Cyan colour scheme: bright text, dimmed fill (matches lockout "L" style).
+        const uint16_t textColor = 0x07FF;  // Cyan
+        const uint16_t fillColor = dimColor(textColor, 45);
+
+        FILL_ROUND_RECT(x, y, w, h, 5, fillColor);
+        DRAW_ROUND_RECT(x, y, w, h, 5, textColor);
+
+        char buf[6];
+        snprintf(buf, sizeof(buf), "G%u", curSats);
+
+        GFX_setTextDatum(MC_DATUM);
+        TFT_CALL(setTextSize)(2);
+        TFT_CALL(setTextColor)(textColor, fillColor);
+        GFX_drawString(tft, buf, x + w / 2, y + h / 2);
+    } else {
+        FILL_RECT(x, y, w, h, PALETTE_BG);
     }
 #endif
 }
@@ -2057,6 +2113,7 @@ void V1Display::showResting(bool forceRedraw) {
         // Mute indicator off
         drawMuteIcon(false);
         drawLockoutIndicator();
+        drawGpsIndicator();
         
         // Profile indicator
         drawProfileIndicator(profileSlot);
@@ -2139,6 +2196,7 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     drawLockoutIndicator();
+    drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
     drawStatusBar();  // Top status indicators
     
@@ -2703,6 +2761,7 @@ void V1Display::update(const DisplayState& state) {
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
     drawLockoutIndicator();
+    drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
     drawStatusBar();  // Top status indicators
     
@@ -2843,6 +2902,7 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     drawStatusBar();
     drawMuteIcon(false);
     drawLockoutIndicator();
+    drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
 
     AlertData emptyPriority;
@@ -3121,6 +3181,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawStatusBar();  // Top status indicators (must be before mute icon)
     drawMuteIcon(state.muted);
     drawLockoutIndicator();
+    drawGpsIndicator();
     drawProfileIndicator(currentProfileSlot);
     DISP_PERF_LOG("arrows+icons");
     

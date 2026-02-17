@@ -84,6 +84,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     checksumFailures_ = 0;
     bufferOverruns_ = 0;
     lastGpsTimeUpdateMs_ = 0;
+    lastNoFixPublishMs_ = 0;
     sentenceActive_ = false;
     sentenceLen_ = 0;
     sentenceBuf_[0] = '\0';
@@ -799,6 +800,19 @@ void GpsRuntimeModule::publishObservation(uint32_t timestampMs) {
     GpsObservation observation;
     observation.tsMs = (timestampMs == 0) ? millis() : timestampMs;
     observation.hasFix = hasFix_;
+
+    // Throttle no-fix observations to reduce ring churn.
+    // When there's no fix, publish at most every NO_FIX_PUBLISH_INTERVAL_MS.
+    if (!hasFix_) {
+        if (lastNoFixPublishMs_ != 0 &&
+            (observation.tsMs - lastNoFixPublishMs_) < NO_FIX_PUBLISH_INTERVAL_MS) {
+            return;  // Skip: too soon since last no-fix publish
+        }
+        lastNoFixPublishMs_ = observation.tsMs;
+    } else {
+        lastNoFixPublishMs_ = 0;  // Reset throttle when fix is available
+    }
+
     bool speedFresh = sampleValid_ && hasFix_ && sampleTsMs_ != 0 && observation.tsMs >= sampleTsMs_;
     if (speedFresh) {
         speedFresh = (observation.tsMs - sampleTsMs_) <= SAMPLE_MAX_AGE_MS;

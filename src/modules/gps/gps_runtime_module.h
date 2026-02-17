@@ -130,6 +130,8 @@ private:
     uint32_t checksumFailures_ = 0;
     uint32_t bufferOverruns_ = 0;
     uint32_t lastGpsTimeUpdateMs_ = 0;
+    uint32_t lastNoFixPublishMs_ = 0;  // Throttle: last no-fix observation publish timestamp
+    static constexpr uint32_t NO_FIX_PUBLISH_INTERVAL_MS = 5000;  // Publish no-fix at most every 5s
     bool sentenceActive_ = false;
     size_t sentenceLen_ = 0;
     char sentenceBuf_[NMEA_LINE_MAX] = {};

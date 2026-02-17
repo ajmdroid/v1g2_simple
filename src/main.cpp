@@ -388,6 +388,11 @@ static WifiOrchestrator& getWifiOrchestrator() {
 // Handles auto-push of default profile and mode
 void onV1Connected() {
     v1ConnectedAtMs = millis();
+
+    // Start a new perf CSV session so scoring tools can isolate
+    // V1-connected data from idle boot noise.
+    perfSdLogger.startNewSession();
+
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
     const AutoPushSlot& slot = settingsManager.getSlot(activeSlotIndex);
@@ -1172,6 +1177,16 @@ void loop() {
             preQuietState = PreQuietState{};
         }
         perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
+
+        // Feed GPS satellite count into display indicator (throttled to ~90 s).
+        {
+            static uint32_t lastGpsSatUpdateMs = 0;
+            constexpr uint32_t GPS_SAT_UPDATE_INTERVAL_MS = 90000;  // 90 seconds
+            if (lastGpsSatUpdateMs == 0 || (nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
+                display.setGpsSatellites(gpsStatus.enabled, gpsStatus.hasFix, gpsStatus.satellites);
+                lastGpsSatUpdateMs = nowMs;
+            }
+        }
 
         // Skip display pipeline if preview is running (don't overwrite demo)
         if (!displayPreviewModule.isRunning()) {

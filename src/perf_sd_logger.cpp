@@ -121,6 +121,18 @@ bool PerfSdLogger::enqueue(const PerfSdSnapshot& snapshot) {
     return true;
 }
 
+void PerfSdLogger::startNewSession() {
+    if (!enabled) {
+        return;
+    }
+    // Force next write to emit a fresh header + session marker.
+    csvHeaderReady = false;
+    sessionMarkerPending = true;
+    sessionStartMs = millis();
+    sessionToken = static_cast<uint32_t>(esp_random());
+    sessionSeq++;
+}
+
 void PerfSdLogger::writerTaskEntry(void* param) {
     PerfSdLogger* self = static_cast<PerfSdLogger*>(param);
     self->writerTaskLoop();

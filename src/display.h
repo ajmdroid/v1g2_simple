@@ -110,6 +110,10 @@ public:
     // Call from main.cpp after enforcer runs, before display pipeline.
     void setLockoutIndicator(bool show);
 
+    // GPS satellite indicator — shows "G" + sat count when GPS has fix.
+    // Throttle calls to every ~90 s from main.cpp to minimise draw cycles.
+    void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites);
+
     // Pre-quiet active flag — suppresses VOL 0 warning when volume was
     // intentionally dropped by the lockout pre-quiet feature.
     void setPreQuietActive(bool active);
@@ -163,6 +167,7 @@ private:
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
     void drawLockoutIndicator();
+    void drawGpsIndicator();
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -203,6 +208,9 @@ private:
     int16_t frequencyDirtyH = 0;
     bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
     bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
+    bool gpsSatEnabled_ = false;           // GPS module enabled
+    bool gpsSatHasFix_ = false;            // GPS has satellite fix
+    uint8_t gpsSatCount_ = 0;              // Satellite count for display
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };
