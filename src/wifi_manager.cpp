@@ -1438,74 +1438,74 @@ void WiFiManager::setupWebServer() {
             rateLimitCallback,
             markUiActivityCallback);
     });
-    server.on("/api/lockouts/zones", HTTP_GET, [this]() {
+    server.on("/api/lockouts/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiZones(
             server,
             lockoutIndex,
             lockoutLearner,
             settingsManager,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/lockouts/summary", HTTP_GET, [this]() {
+    server.on("/api/lockouts/summary", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiSummary(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/lockouts/events", HTTP_GET, [this]() {
+    server.on("/api/lockouts/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiEvents(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
+    server.on("/api/lockouts/zones/delete", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiZoneDelete(
             server,
             lockoutIndex,
             lockoutStore,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/lockout/zones", HTTP_GET, [this]() {
+    server.on("/api/lockout/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiZones(
             server,
             lockoutIndex,
             lockoutLearner,
             settingsManager,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones"); });
     });
-    server.on("/api/lockout/summary", HTTP_GET, [this]() {
+    server.on("/api/lockout/summary", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiSummary(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary"); });
     });
-    server.on("/api/lockout/events", HTTP_GET, [this]() {
+    server.on("/api/lockout/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiEvents(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events"); });
     });
-    server.on("/api/lockout/zones/delete", HTTP_POST, [this]() {
+    server.on("/api/lockout/zones/delete", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiZoneDelete(
             server,
             lockoutIndex,
             lockoutStore,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); },
+            rateLimitCallback,
+            markUiActivityCallback,
             [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete"); });
     });
     
