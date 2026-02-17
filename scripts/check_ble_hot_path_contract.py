@@ -15,10 +15,14 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
-BLE_CLIENT_FILE = ROOT / "src" / "ble_client.cpp"
+BLE_CALLBACK_FILES: Tuple[Path, ...] = (
+    ROOT / "src" / "ble_client.cpp",
+    ROOT / "src" / "ble_connection.cpp",
+    ROOT / "src" / "ble_proxy.cpp",
+)
 BLE_QUEUE_FILE = ROOT / "src" / "modules" / "ble" / "ble_queue_module.cpp"
 CONTRACT_FILE = ROOT / "test" / "contracts" / "ble_hot_path_contract.txt"
 
@@ -211,6 +215,47 @@ def make_callback_violations(
     return violations
 
 
+def make_multi_source_callback_violations(
+    callback_sources: Sequence[Tuple[Path, str, str]],
+    callback_targets: Sequence[Sequence[str]],
+) -> List[str]:
+    violations: List[str] = []
+    fallback_file = to_relative(callback_sources[0][0]) if callback_sources else "src/ble_client.cpp"
+
+    for candidates in callback_targets:
+        body: FunctionBody | None = None
+        selected_source = ""
+        selected_masked = ""
+        expected_label = candidates[0]
+
+        for path, source, masked_source in callback_sources:
+            body = extract_function_body(source, masked_source, path, candidates)
+            if body is not None:
+                selected_source = source
+                selected_masked = masked_source
+                break
+
+        if body is None:
+            violations.append(
+                f"scope={expected_label} file={fallback_file} line=0 rule=missing_callback_body"
+            )
+            continue
+
+        body_start = body.open_brace_index + 1
+        body_end = body.close_brace_index
+        body_masked = selected_masked[body_start:body_end]
+        relative = to_relative(body.source_path)
+
+        for rule, pattern in FORBIDDEN_PATTERNS:
+            for match in pattern.finditer(body_masked):
+                line = line_for_index(selected_source, body_start + match.start())
+                violations.append(
+                    f"scope={body.name} file={relative} line={line} rule={rule}"
+                )
+
+    return violations
+
+
 def make_parser_parse_violations(ble_queue_process: FunctionBody) -> List[str]:
     violations: List[str] = []
     for path in sorted(SOURCE_SCAN_ROOT.rglob("*.cpp")):
@@ -257,9 +302,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    ble_client_source = read_text(BLE_CLIENT_FILE)
+    callback_sources: List[Tuple[Path, str, str]] = []
+    for path in BLE_CALLBACK_FILES:
+        if not path.exists():
+            continue
+        source = read_text(path)
+        callback_sources.append((path, source, mask_comments_and_strings(source)))
+
     ble_queue_source = read_text(BLE_QUEUE_FILE)
-    ble_client_masked = mask_comments_and_strings(ble_client_source)
     ble_queue_masked = mask_comments_and_strings(ble_queue_source)
 
     ble_queue_process = extract_function_body(
@@ -276,14 +326,7 @@ def main() -> int:
     else:
         violations.extend(make_parser_parse_violations(ble_queue_process))
 
-    violations.extend(
-        make_callback_violations(
-            ble_client_source,
-            ble_client_masked,
-            BLE_CLIENT_FILE,
-            BLE_CLIENT_CALLBACK_TARGETS,
-        )
-    )
+    violations.extend(make_multi_source_callback_violations(callback_sources, BLE_CLIENT_CALLBACK_TARGETS))
     violations.extend(
         make_callback_violations(
             ble_queue_source,
