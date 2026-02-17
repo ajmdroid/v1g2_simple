@@ -8,6 +8,16 @@
 // Maximum bytes to buffer from BLE RX before dropping
 static constexpr size_t RX_BUFFER_MAX = 512;
 
+static size_t appendRxClamped(std::vector<uint8_t>& rxBuffer, const uint8_t* data, size_t length) {
+    if (!data || length == 0 || rxBuffer.size() >= RX_BUFFER_MAX) {
+        return 0;
+    }
+    const size_t remaining = RX_BUFFER_MAX - rxBuffer.size();
+    const size_t toCopy = std::min(remaining, length);
+    rxBuffer.insert(rxBuffer.end(), data, data + toCopy);
+    return toCopy;
+}
+
 // External debug logger instance
 extern DebugLogger debugLogger;
 
@@ -162,9 +172,7 @@ void BleQueueModule::process() {
     uint32_t latestPktTs = 0;
 
     while (queueHandle && xQueueReceive(queueHandle, &pkt, 0) == pdTRUE) {
-        if (rxBuffer.size() < RX_BUFFER_MAX) {
-            rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
-        }
+        appendRxClamped(rxBuffer, pkt.data, pkt.length);
         latestPktTs = pkt.tsMs;
     }
 
@@ -305,7 +313,7 @@ void BleQueueModule::processReplayData() {
         return;
     }
 
-    rxBuffer.insert(rxBuffer.end(), pkt.data, pkt.data + pkt.length);
+    appendRxClamped(rxBuffer, pkt.data, pkt.length);
     Serial.printf("[REPLAY] Injected packet %d/%d (%d bytes)\n",
                   (int)(replayIndex + 1), (int)REPLAY_SEQUENCE_LENGTH, (int)pkt.length);
 
