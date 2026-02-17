@@ -1036,7 +1036,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 }
 
 // Router: bogey counter uses Classic 7-segment for all styles (laser flag support + perf)
-// Frequency still uses OFR for Modern/Hemi/Serpentine
+// Frequency uses OFR for Serpentine, classic 7-segment otherwise
 void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     // Always use Classic 7-segment for bogey counter (both styles)
     // This ensures laser flag ('=') and all symbols render correctly
@@ -1930,10 +1930,7 @@ void V1Display::showResting(bool forceRedraw) {
         drawDirectionArrow(DIR_NONE, false);
         
         // Frequency display
-        const V1Settings& s = settingsManager.get();
-        if (s.displayStyle != DISPLAY_STYLE_MODERN) {
-            drawFrequency(0, BAND_NONE);
-        }
+        drawFrequency(0, BAND_NONE);
         
         // Mute indicator off
         drawMuteIcon(false);
@@ -2024,48 +2021,7 @@ void V1Display::showScanning() {
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
         fontMgr.ensureSerpentineLoaded(tft);
     }
-    if (s.displayStyle == DISPLAY_STYLE_MODERN && fontMgr.modernReady) {
-        // Modern style: use Montserrat Bold via OFR
-        const int fontSize = 66;
-        fontMgr.modern.setFontColor(s.colorBandKa, PALETTE_BG);
-        fontMgr.modern.setFontSize(fontSize);
-        
-        const char* text = "SCAN";
-        FT_BBox bbox = fontMgr.modern.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
-        int textWidth = bbox.xMax - bbox.xMin;
-        int textHeight = bbox.yMax - bbox.yMin;
-        
-        // Center between band indicators and signal bars (match frequency positioning)
-        const int leftMargin = 120;   // After band indicators
-        const int rightMargin = 200;  // Before signal bars
-        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-        int x = leftMargin + (maxWidth - textWidth) / 2;
-        int y = getEffectiveScreenHeight() - 72;  // Match frequency positioning
-        
-        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
-        fontMgr.modern.setCursor(x, y);
-        fontMgr.modern.printf("%s", text);
-    } else if (s.displayStyle == DISPLAY_STYLE_HEMI && fontMgr.hemiReady) {
-        // Hemi style: use Hemi Head via OFR (retro speedometer look)
-        const int fontSize = 76;  // Larger for retro impact
-        fontMgr.hemi.setFontColor(s.colorBandKa, PALETTE_BG);
-        fontMgr.hemi.setFontSize(fontSize);
-        
-        const char* text = "SCAN";
-        FT_BBox bbox = fontMgr.hemi.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
-        int textWidth = bbox.xMax - bbox.xMin;
-        int textHeight = bbox.yMax - bbox.yMin;
-        
-        const int leftMargin = 120;
-        const int rightMargin = 200;
-        int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-        int x = leftMargin + (maxWidth - textWidth) / 2;
-        int y = getEffectiveScreenHeight() - 72;
-        
-        FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
-        fontMgr.hemi.setCursor(x, y);
-        fontMgr.hemi.printf("%s", text);
-    } else if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
+    if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
         // Serpentine style: JB's favorite font
         const int fontSize = 65;
         fontMgr.serpentine.setFontColor(s.colorBandKa, PALETTE_BG);
