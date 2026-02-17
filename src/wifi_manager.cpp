@@ -1373,7 +1373,7 @@ void WiFiManager::setupWebServer() {
     });
 
     // GPS scaffold API routes
-    server.on("/api/gps/status", HTTP_GET, [this]() {
+    server.on("/api/gps/status", HTTP_GET, [this, markUiActivityCallback]() {
         GpsApiService::handleApiStatus(
             server,
             gpsRuntimeModule,
@@ -1383,16 +1383,16 @@ void WiFiManager::setupWebServer() {
             lockoutLearner,
             perfCounters,
             systemEventBus,
-            [this]() { markUiActivity(); });
+            markUiActivityCallback);
     });
-    server.on("/api/gps/observations", HTTP_GET, [this]() {
+    server.on("/api/gps/observations", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         GpsApiService::handleApiObservations(
             server,
             gpsObservationLog,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
-    server.on("/api/gps/config", HTTP_POST, [this]() {
+    server.on("/api/gps/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         GpsApiService::handleApiConfig(
             server,
             settingsManager,
@@ -1402,8 +1402,8 @@ void WiFiManager::setupWebServer() {
             gpsObservationLog,
             perfCounters,
             systemEventBus,
-            [this]() { return checkRateLimit(); },
-            [this]() { markUiActivity(); });
+            rateLimitCallback,
+            markUiActivityCallback);
     });
     server.on("/api/cameras/status", HTTP_GET, [this]() {
         CameraApiService::handleApiStatus(
