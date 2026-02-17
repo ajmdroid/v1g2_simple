@@ -981,7 +981,7 @@ void WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    auto settingsRateLimitCallback = [this]() { return checkRateLimit(); };
+    auto rateLimitCallback = [this]() { return checkRateLimit(); };
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiStatus(
@@ -1022,11 +1022,11 @@ void WiFiManager::setupWebServer() {
     server.on("/api/settings", HTTP_GET, [this]() {
         WifiSettingsApiService::handleApiSettingsGet(server, makeSettingsRuntime());
     });  // JSON settings for new UI
-    server.on("/api/settings", HTTP_POST, [this, settingsRateLimitCallback]() {
+    server.on("/api/settings", HTTP_POST, [this, rateLimitCallback]() {
         WifiSettingsApiService::handleApiSettingsSave(
             server,
             makeSettingsRuntime(),
-            settingsRateLimitCallback);
+            rateLimitCallback);
     });  // Consistent API endpoint
     
     // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
@@ -1091,7 +1091,6 @@ void WiFiManager::setupWebServer() {
     server.on("/v1settings", HTTP_GET, [this]() { 
         WifiPortalApiService::handleApiRedirectToRoot(server);
     });
-    auto rateLimitCallback = [this]() { return checkRateLimit(); };
     server.on("/api/v1/profiles", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
     });
