@@ -14,7 +14,7 @@ class SystemEventBus;
 
 namespace GpsApiService {
 
-/// GET /api/gps/status wrapper for WiFiManager route delegation.
+/// GET /api/gps/status handler with route-level UI activity callback.
 void handleApiStatus(WebServer& server,
                      GpsRuntimeModule& gpsRuntimeModule,
                      SpeedSourceSelector& speedSourceSelector,
@@ -25,13 +25,13 @@ void handleApiStatus(WebServer& server,
                      SystemEventBus& systemEventBus,
                      const std::function<void()>& markUiActivity);
 
-/// GET /api/gps/observations wrapper with route-level policy callbacks.
+/// GET /api/gps/observations handler with route-level policy callbacks.
 void handleApiObservations(WebServer& server,
                            GpsObservationLog& gpsObservationLog,
                            const std::function<bool()>& checkRateLimit,
                            const std::function<void()>& markUiActivity);
 
-/// POST /api/gps/config wrapper with route-level policy callbacks.
+/// POST /api/gps/config handler with route-level policy callbacks.
 void handleApiConfig(WebServer& server,
                      SettingsManager& settingsManager,
                      GpsRuntimeModule& gpsRuntimeModule,

@@ -13,7 +13,7 @@ class SettingsManager;
 
 namespace LockoutApiService {
 
-/// GET /api/lockout/summary wrapper with route-level policy callbacks.
+/// GET /api/lockout/summary handler with route-level policy callbacks.
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
@@ -21,7 +21,7 @@ void handleApiSummary(WebServer& server,
                       const std::function<void()>& markUiActivity,
                       const std::function<void()>& sendDeprecatedHeader = {});
 
-/// GET /api/lockout/events wrapper with route-level policy callbacks.
+/// GET /api/lockout/events handler with route-level policy callbacks.
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
                      SignalObservationSdLogger& signalObservationSdLogger,
@@ -29,7 +29,7 @@ void handleApiEvents(WebServer& server,
                      const std::function<void()>& markUiActivity,
                      const std::function<void()>& sendDeprecatedHeader = {});
 
-/// GET /api/lockout/zones wrapper with route-level policy callbacks.
+/// GET /api/lockout/zones handler with route-level policy callbacks.
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
@@ -38,7 +38,7 @@ void handleApiZones(WebServer& server,
                     const std::function<void()>& markUiActivity,
                     const std::function<void()>& sendDeprecatedHeader = {});
 
-/// POST /api/lockout/zones/delete wrapper with route-level policy callbacks.
+/// POST /api/lockout/zones/delete handler with route-level policy callbacks.
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
