@@ -4943,7 +4943,7 @@ void V1Display::drawStatusBar() {
     
     const int statusY = 2;           // Near top of screen
     const int statusHeight = 18;     // Height for font size 2
-    const int statusX = 140;
+    const int statusX = 180;         // After GPS badge (ends at X≈175)
     const int statusWidth = SCREEN_WIDTH - statusX - 200;
     FILL_RECT(statusX, statusY, statusWidth, statusHeight, PALETTE_BG);
 #endif
