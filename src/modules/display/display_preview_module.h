@@ -65,15 +65,13 @@ private:
         {4000, BAND_KA,   5, DIR_FRONT, 34700, true}  // Muted Ka
     };
     static constexpr int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
+    static constexpr uint8_t CAMERA_TYPE_ALPR = 4;
     static constexpr CameraPreviewStep CAMERA_STEPS[] = {
-        {0,    1, false},  // Red Light
-        {1200, 2, false},  // Speed
-        {2400, 3, false},  // Red+Speed
-        {3600, 4, false},  // ALPR
+        {0, CAMERA_TYPE_ALPR, false},  // ALPR
     };
     static constexpr int CAMERA_STEP_COUNT = sizeof(CAMERA_STEPS) / sizeof(CAMERA_STEPS[0]);
-    static constexpr uint8_t CAMERA_TYPE_MIN = 1;
-    static constexpr uint8_t CAMERA_TYPE_MAX = 4;
+    static constexpr uint8_t CAMERA_TYPE_MIN = CAMERA_TYPE_ALPR;
+    static constexpr uint8_t CAMERA_TYPE_MAX = CAMERA_TYPE_ALPR;
     static constexpr uint32_t PREVIEW_TAIL_MS = 600;  // Extra time after last step to keep frame visible
 
     V1Display* display = nullptr;

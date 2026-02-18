@@ -43,18 +43,10 @@ static unsigned long _dispPerfStart = 0;
 
 namespace {
 const char* cameraTokenForType(uint8_t cameraType) {
-    switch (cameraType) {
-        case 1:  // redlight
-            return "REDL";
-        case 2:  // speed
-            return "SPEED";
-        case 3:  // redlight + speed
-            return "RSPD";
-        case 4:  // alpr
-            return "ALPR";
-        default:
-            return "CAM";
+    if (cameraType == 4) {  // ALPR
+        return "ALPR";
     }
+    return "CAM";
 }
 } // namespace
 

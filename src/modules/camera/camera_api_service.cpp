@@ -28,6 +28,8 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
+constexpr uint8_t kCameraTypeAlpr = 4;
+
 struct VcamHeader {
     char magic[4];
     uint32_t version;
@@ -342,10 +344,12 @@ void handleApiEvents(WebServer& server,
 }
 
 void handleDemo(WebServer& server) {
-    uint8_t type = 0;
+    uint8_t requestedType = 0;
     if (server.hasArg("type")) {
-        type = clampU8Value(server.arg("type").toInt(), 0, 4);
+        requestedType = clampU8Value(server.arg("type").toInt(), 0, kCameraTypeAlpr);
     }
+    const bool cycleMode = requestedType == 0;
+    const uint8_t type = kCameraTypeAlpr;
 
     bool muted = false;
     if (server.hasArg("muted")) {
@@ -363,9 +367,9 @@ void handleDemo(WebServer& server) {
         cancelDisplayPreview();
     }
 
-    if (type == 0) {
+    if (cycleMode) {
         if (durationMs == 0) {
-            durationMs = 5400;
+            durationMs = 2200;
         }
         requestCameraPreviewCycleHold(durationMs);
     } else {
@@ -379,7 +383,7 @@ void handleDemo(WebServer& server) {
     doc["success"] = true;
     doc["active"] = true;
     doc["mode"] = "camera";
-    doc["type"] = type;
+    doc["type"] = cycleMode ? 0 : type;
     doc["muted"] = muted;
     doc["durationMs"] = durationMs;
 
