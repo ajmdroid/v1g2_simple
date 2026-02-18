@@ -210,6 +210,29 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
 
+void test_save_keeps_camera_runtime_enabled_when_gps_disabled() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.settings.gpsEnabled = false;
+    rt.settings.cameraEnabled = false;
+    server.setArg("cameraEnabled", "true");
+    server.setArg("skipPreview", "true");
+
+    WifiDisplayColorsApiService::handleApiSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_FALSE(rt.settings.gpsEnabled);
+    TEST_ASSERT_TRUE(rt.settings.cameraEnabled);
+    TEST_ASSERT_EQUAL_INT(0, rt.setGpsRuntimeEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.setSpeedSourceGpsEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastCameraRuntimeEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
+}
+
 void test_save_skip_preview_does_not_trigger_demo() {
     WebServer server(80);
     FakeRuntime rt;
@@ -401,6 +424,7 @@ int main() {
     RUN_TEST(test_get_serializes_color_payload);
     RUN_TEST(test_save_rate_limited_short_circuits);
     RUN_TEST(test_save_updates_settings_and_calls_side_effects);
+    RUN_TEST(test_save_keeps_camera_runtime_enabled_when_gps_disabled);
     RUN_TEST(test_save_skip_preview_does_not_trigger_demo);
     RUN_TEST(test_save_clamps_numeric_ranges);
     RUN_TEST(test_reset_rate_limited_short_circuits);

@@ -32,7 +32,7 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
 }
 
 bool computeCameraRuntimeEnabled(const V1Settings& settings) {
-    return settings.gpsEnabled && settings.cameraEnabled;
+    return settings.cameraEnabled;
 }
 
 }  // namespace

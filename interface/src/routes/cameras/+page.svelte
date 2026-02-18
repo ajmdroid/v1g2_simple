@@ -401,14 +401,14 @@
 						</div>
 						<div class="text-xs text-base-content/70">
 							Effective state:
-							{runtimeConfig.gpsEnabled && runtimeConfig.cameraEnabled ? 'active' : 'inactive'}
-							(gated by GPS + camera setting)
+							{runtimeConfig.cameraEnabled ? 'active' : 'inactive'}
+							(controlled by camera setting)
 						</div>
 					</div>
 				</label>
 					{#if !runtimeConfig.gpsEnabled}
 						<div class="text-xs text-warning">
-							GPS is disabled. Camera matching remains inactive until GPS is re-enabled.
+							GPS is disabled. Camera index can still load, but live matching remains inactive.
 						</div>
 					{/if}
 					<div class="border-t border-base-300 pt-3 mt-3 space-y-2">

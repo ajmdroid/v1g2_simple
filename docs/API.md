@@ -148,7 +148,7 @@ Get all device settings.
 | `obdEnabled` | boolean | - | Enable OBD integration |
 | `obdVwDataEnabled` | boolean | - | Enable VW-specific OBD decoding |
 | `gpsEnabled` | boolean | - | Enable GPS runtime |
-| `cameraEnabled` | boolean | - | Enable camera alert runtime (effective state also requires GPS enabled) |
+| `cameraEnabled` | boolean | - | Enable camera runtime/index loading (live matching still requires valid GPS fix/course) |
 | `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
 | `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
 | `gpsLockoutMaxQueueDrops` | int | 0-65535 | Queue-drop threshold for core guard |

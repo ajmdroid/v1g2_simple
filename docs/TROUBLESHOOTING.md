@@ -174,7 +174,7 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Enable runtime**: Ensure `cameraEnabled` is enabled (Web UI → Cameras page toggle, or `/api/settings`)
-2. **Check GPS gating**: Camera runtime requires GPS enabled + valid fix/course data
+2. **Check GPS eligibility**: Camera index can load without GPS, but live matching requires GPS enabled + valid fix/course data
 3. **Load dataset on SD**: Ensure `alpr.bin` exists on SD root
 4. **Verify runtime load**: Check `/api/cameras/status` for `enabled=true`, `indexLoaded=true`, and non-zero `index.cameraCount`
 5. **Verify catalog + scope**: Check `/api/cameras/catalog` for file presence and runtime scope fields (`runtimeDatasets`, `alprRuntimeLoaded`)

@@ -656,7 +656,7 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
-    cameraRuntimeModule.begin(settingsManager.get().gpsEnabled && settingsManager.get().cameraEnabled);
+    cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
     // Wire lockout store only if not already done during zone-load above.
     // Calling begin() again would reset the dirty flag set by legacy migration.
     if (!lockoutStore.isInitialized()) {
