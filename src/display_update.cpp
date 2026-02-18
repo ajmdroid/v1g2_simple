@@ -19,6 +19,8 @@
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "packet_parser.h"
+#include "obd_handler.h"
+#include "modules/gps/gps_runtime_module.h"
 
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
@@ -272,6 +274,62 @@ void V1Display::update(const DisplayState& state) {
 
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     drawFrequency(freqMHz, band, muted, isPhotoRadar);
+
+#if defined(DISPLAY_WAVESHARE_349)
+    // Keep top-row badges responsive even when we're in lightweight refresh mode.
+    // This path runs independently of full display.update() redraws.
+    constexpr uint32_t OBD_ICON_FRESH_MS = 1500;
+    const uint32_t nowMs = millis();
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    const bool gpsShow = gpsStatus.enabled && gpsStatus.hasFix;
+    const uint8_t gpsSats = gpsShow ? gpsStatus.satellites : 0;
+
+    const V1Settings& settings = settingsManager.get();
+    const bool obdConnected = obdHandler.isConnected();
+    const bool obdFresh = !obdHandler.isDataStale(OBD_ICON_FRESH_MS);
+    const bool obdShow = settings.obdEnabled && obdConnected && obdFresh;
+
+    setGpsSatellites(gpsStatus.enabled, gpsStatus.hasFix, gpsStatus.satellites);
+    setObdConnected(settings.obdEnabled, obdConnected, obdFresh);
+
+    const bool forceBadgeFlush = dirty.lockout || dirty.gpsIndicator || dirty.obdIndicator;
+
+    drawLockoutIndicator();
+    drawGpsIndicator();
+    drawObdIndicator();
+
+    static bool badgeCacheValid = false;
+    static bool lastLockoutShown = false;
+    static bool lastGpsShown = false;
+    static uint8_t lastGpsSats = 0;
+    static bool lastObdShown = false;
+
+    const bool badgeStripChanged =
+        !badgeCacheValid ||
+        forceBadgeFlush ||
+        (lockoutIndicatorShown_ != lastLockoutShown) ||
+        (gpsShow != lastGpsShown) ||
+        (gpsSats != lastGpsSats) ||
+        (obdShow != lastObdShown);
+
+    if (badgeStripChanged) {
+        // Top status strip containing GPS / lockout / OBD badges.
+        flushRegion(120, 0, 320, 36);
+        badgeCacheValid = true;
+        lastLockoutShown = lockoutIndicatorShown_;
+        lastGpsShown = gpsShow;
+        lastGpsSats = gpsSats;
+        lastObdShown = obdShow;
+    }
+
+    if (currentScreen == ScreenMode::Resting && drawRestTelemetryCards(false)) {
+        flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                    SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                    DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                    SECONDARY_ROW_HEIGHT);
+    }
+#endif
+
     if (frequencyRenderDirty) {
         if (frequencyDirtyValid) {
             flushRegion(frequencyDirtyX, frequencyDirtyY, frequencyDirtyW, frequencyDirtyH);

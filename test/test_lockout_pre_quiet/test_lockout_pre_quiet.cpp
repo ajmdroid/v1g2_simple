@@ -17,7 +17,7 @@ void tearDown() {}
 // Helper constants
 // ---------------------------------------------------------------------------
 static constexpr uint32_t T0 = 10000;
-static constexpr uint32_t ENTRY_WAIT = 250;  // > 200ms entry debounce
+static constexpr uint32_t ENTRY_WAIT = 150;  // > 100ms entry debounce
 static constexpr uint32_t EXIT_WAIT  = 550;  // > 500ms exit debounce
 
 // Helper: build a DROPPED state as if entry debounce already elapsed.
@@ -83,7 +83,7 @@ void test_entry_debounce_waits() {
     TEST_ASSERT_EQUAL(T0, state.enteredZoneMs);
 
     auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
-                               2, 6, 0, T0 + 100, state);
+                               2, 6, 0, T0 + 50, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
 }

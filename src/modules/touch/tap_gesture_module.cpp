@@ -45,6 +45,36 @@ void TapGestureModule::process(unsigned long nowMs) {
         Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
     };
 
+    auto performProfileCycle = [&]() {
+        const V1Settings& s = settings->get();
+        int newSlot = (s.activeSlot + 1) % 3;
+        settings->setActiveSlot(newSlot);
+        *displayMode = DisplayMode::IDLE;
+
+        alertPersistence->clearPersistence();
+
+        const char* slotNames[] = {"Default", "Highway", "Comfort"};
+        Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
+
+        display->drawProfileIndicator(newSlot);
+
+        if (ble->isConnected() && s.autoPushEnabled) {
+            Serial.println("Pushing new profile to V1...");
+            autoPush->start(newSlot);
+        }
+    };
+
+    auto performRestTelemetryToggle = [&]() {
+        const bool nextEnabled = !settings->get().showRestTelemetryCards;
+        settings->setShowRestTelemetryCards(nextEnabled);
+        *displayMode = DisplayMode::IDLE;
+        display->forceNextRedraw();
+        display->showResting(true);
+        Serial.printf("REST TELEMETRY: %s via %d taps\n",
+                      nextEnabled ? "enabled" : "disabled",
+                      REST_TELEMETRY_TAP_COUNT);
+    };
+
     if (touch->getTouchPoint(touchX, touchY)) {
         if (nowMs - lastTapTime >= TAP_DEBOUNCE_MS) {
             if (nowMs - lastTapTime <= TAP_WINDOW_MS) {
@@ -62,36 +92,20 @@ void TapGestureModule::process(unsigned long nowMs) {
                 return;
             }
 
-            if (tapCount >= 3) {
+            if (!hasActiveAlert && tapCount >= REST_TELEMETRY_TAP_COUNT) {
                 tapCount = 0;
-
-                if (hasActiveAlert) {
-                    Serial.println("PROFILE CHANGE BLOCKED: Active alert present - tap to mute instead");
-                } else {
-                    const V1Settings& s = settings->get();
-                    int newSlot = (s.activeSlot + 1) % 3;
-                    settings->setActiveSlot(newSlot);
-                    *displayMode = DisplayMode::IDLE;
-
-                    alertPersistence->clearPersistence();
-
-                    const char* slotNames[] = {"Default", "Highway", "Comfort"};
-                    Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
-
-                    display->drawProfileIndicator(newSlot);
-
-                    if (ble->isConnected() && s.autoPushEnabled) {
-                        Serial.println("Pushing new profile to V1...");
-                        autoPush->start(newSlot);
-                    }
-                }
+                performRestTelemetryToggle();
             }
         }
     } else {
-        if (tapCount > 0 && tapCount < 3 && (nowMs - lastTapTime > TAP_WINDOW_MS)) {
-            Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
+        if (tapCount > 0 && (nowMs - lastTapTime > TAP_WINDOW_MS)) {
+            if (!hasActiveAlert && tapCount >= PROFILE_CHANGE_TAP_COUNT) {
+                performProfileCycle();
+            } else if (hasActiveAlert) {
+                Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
+                performMuteToggle("deferred tap");
+            }
             tapCount = 0;
-            performMuteToggle("deferred tap");
         }
     }
 }

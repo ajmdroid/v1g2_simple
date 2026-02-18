@@ -103,7 +103,7 @@ public:
     void setLockoutIndicator(bool show);
 
     // GPS satellite indicator — shows "G" + sat count when GPS has fix.
-    // Throttle calls to every ~90 s from main.cpp to minimise draw cycles.
+    // State is refreshed by display lightweight update paths.
     void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites);
 
     // OBD connected indicator — shows "OBD" badge when enabled, connected, and polling.

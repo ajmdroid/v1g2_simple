@@ -2,7 +2,7 @@
 
 /// Entry debounce: require GPS to report inside a lockout zone for this
 /// many ms before dropping volume.  Prevents single-frame noise on zone edges.
-static constexpr uint32_t ENTRY_DEBOUNCE_MS = 200;
+static constexpr uint32_t ENTRY_DEBOUNCE_MS = 100;
 
 /// Exit debounce: after leaving all lockout zones, wait this long before
 /// restoring volume.  Prevents flip-flopping at zone boundaries.
