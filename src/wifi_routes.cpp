@@ -582,6 +582,37 @@ void WiFiManager::setupWebServer() {
             rateLimitCallback,
             markUiActivityCallback);
     });
+    server.on("/api/lockouts/zones/create", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        LockoutApiService::handleApiZoneCreate(
+            server,
+            lockoutIndex,
+            lockoutStore,
+            rateLimitCallback,
+            markUiActivityCallback);
+    });
+    server.on("/api/lockouts/zones/update", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        LockoutApiService::handleApiZoneUpdate(
+            server,
+            lockoutIndex,
+            lockoutStore,
+            rateLimitCallback,
+            markUiActivityCallback);
+    });
+    server.on("/api/lockouts/zones/export", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+        LockoutApiService::handleApiZoneExport(
+            server,
+            lockoutStore,
+            rateLimitCallback,
+            markUiActivityCallback);
+    });
+    server.on("/api/lockouts/zones/import", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        LockoutApiService::handleApiZoneImport(
+            server,
+            lockoutIndex,
+            lockoutStore,
+            rateLimitCallback,
+            markUiActivityCallback);
+    });
     server.on("/api/lockout/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
         LockoutApiService::handleApiZones(
             server,
@@ -622,4 +653,3 @@ void WiFiManager::setupWebServer() {
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }
-

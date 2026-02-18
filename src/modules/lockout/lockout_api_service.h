@@ -46,4 +46,31 @@ void handleApiZoneDelete(WebServer& server,
                          const std::function<void()>& markUiActivity,
                          const std::function<void()>& sendDeprecatedHeader = {});
 
+/// POST /api/lockouts/zones/create handler with route-level policy callbacks.
+void handleApiZoneCreate(WebServer& server,
+                         LockoutIndex& lockoutIndex,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity);
+
+/// POST /api/lockouts/zones/update handler with route-level policy callbacks.
+void handleApiZoneUpdate(WebServer& server,
+                         LockoutIndex& lockoutIndex,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity);
+
+/// GET /api/lockouts/zones/export handler with route-level policy callbacks.
+void handleApiZoneExport(WebServer& server,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity);
+
+/// POST /api/lockouts/zones/import handler with route-level policy callbacks.
+void handleApiZoneImport(WebServer& server,
+                         LockoutIndex& lockoutIndex,
+                         LockoutStore& lockoutStore,
+                         const std::function<bool()>& checkRateLimit,
+                         const std::function<void()>& markUiActivity);
+
 }  // namespace LockoutApiService
