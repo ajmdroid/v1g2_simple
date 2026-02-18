@@ -195,8 +195,8 @@ out geom;
             if dist < best_dist:
                 best_dist = dist
                 best_snap = {
-                    'slat': round(snap_lat, 6),
-                    'slon': round(snap_lon, 6),
+                    'slt': round(snap_lat, 6),
+                    'sln': round(snap_lon, 6),
                     'rbr': int(round(bearing)),
                     'cwm': DEFAULT_CORRIDOR_WIDTH_M,
                     'btol': DEFAULT_BEARING_TOLERANCE
@@ -519,8 +519,9 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
         for cam in cameras:
             lat = cam.get('lat', 0.0)
             lon = cam.get('lon', 0.0)
-            snap_lat = cam.get('slt', lat)  # snap lat, or original if not enriched
-            snap_lon = cam.get('sln', lon)  # snap lon, or original if not enriched
+            # Prefer canonical keys (slt/sln), but accept legacy slat/slon.
+            snap_lat = cam.get('slt', cam.get('slat', lat))
+            snap_lon = cam.get('sln', cam.get('slon', lon))
             
             # Bearing: stored as bearing * 10 for 0.1 degree precision
             # Use -1 sentinel for unknown bearings
