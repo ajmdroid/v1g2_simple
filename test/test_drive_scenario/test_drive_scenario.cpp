@@ -709,7 +709,62 @@ void test_weak_alert_does_not_suppress_camera() {
 }
 
 // =============================================================================
-// SCENARIO 16: Mode OFF — nothing evaluated, no crash
+// SCENARIO 16: Lockout path works, camera skips on memory guard, then recovers
+// =============================================================================
+
+void test_lockout_mute_then_camera_memory_guard_then_recovery() {
+    // Pre-load a lockout at HOME.
+    LockoutEntry entry;
+    entry.latE5      = HOME_LAT_E5;
+    entry.lonE5      = HOME_LON_E5;
+    entry.radiusE5   = 1350;
+    entry.bandMask   = BAND_K;
+    entry.freqMHz    = K_FREQ;
+    entry.freqTolMHz = 10;
+    entry.confidence = 100;
+    entry.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    entry.firstSeenMs = EPOCH_BASE - 86400000LL;
+    entry.lastSeenMs  = EPOCH_BASE;
+    lockoutIndex.add(entry);
+
+    // Camera ahead on the same heading.
+    float cameraLon = HOME_LON + 0.0010f;
+    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);
+
+    // Phase A: lockout enforcement should still work with an active priority alert.
+    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
+    setAlert(BAND_K, K_FREQ);
+    LockoutEnforcerResult muted = tickPipeline(10000, EPOCH_BASE + 10000);
+    TEST_ASSERT_TRUE(muted.evaluated);
+    TEST_ASSERT_TRUE(muted.shouldMute);
+
+    // Phase B: no signal priority + low internal heap => camera memory guard skip.
+    clearAlerts();
+    mock_set_heap_caps(20000u, 12000u);
+    setGps(HOME_LAT, HOME_LON, 90.0f, 10300);
+    LockoutEnforcerResult blocked = tickPipeline(10300, EPOCH_BASE + 10300);
+    TEST_ASSERT_TRUE(blocked.evaluated);
+    TEST_ASSERT_FALSE(blocked.shouldMute);
+
+    CameraRuntimeStatus blockedCam = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(blockedCam.counters.cameraTickSkipsMemoryGuard > 0);
+    TEST_ASSERT_EQUAL_UINT32(0, blockedCam.counters.cameraCandidatesChecked);
+    TEST_ASSERT_FALSE(blockedCam.activeAlert.active);
+
+    // Phase C: restore heap and verify camera scanning resumes.
+    mock_set_heap_caps(64000u, 32000u);
+    setGps(HOME_LAT, HOME_LON, 90.0f, 10600);
+    tickPipeline(10600, EPOCH_BASE + 10600);
+
+    CameraRuntimeStatus recoveredCam = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(
+        recoveredCam.counters.cameraCandidatesChecked >
+        blockedCam.counters.cameraCandidatesChecked);
+    TEST_ASSERT_TRUE(recoveredCam.activeAlert.active);
+}
+
+// =============================================================================
+// SCENARIO 17: Mode OFF — nothing evaluated, no crash
 // =============================================================================
 
 void test_mode_off_is_completely_inert() {
@@ -764,6 +819,7 @@ int main() {
     RUN_TEST(test_camera_activates_on_approach_heading_aligned);
     RUN_TEST(test_camera_suppressed_when_signal_priority_active);
     RUN_TEST(test_weak_alert_does_not_suppress_camera);
+    RUN_TEST(test_lockout_mute_then_camera_memory_guard_then_recovery);
 
     // Combined scenarios
     RUN_TEST(test_combined_v1_alert_camera_lockout_sequence);

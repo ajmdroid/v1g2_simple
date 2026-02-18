@@ -8,6 +8,12 @@ Enterprise-grade test suite for critical components.
 # Run all native tests
 pio test -e native
 
+# Run focused functional scenarios (integration + behavior checks)
+./scripts/run_functional_tests.sh
+
+# Run the same functional scenarios on hardware, too
+./scripts/run_functional_tests.sh --with-device
+
 # Run with verbose output
 pio test -e native -v
 
@@ -16,6 +22,23 @@ pio test -e native --filter test_display
 pio test -e native --filter test_packet_parser
 pio test -e native --filter test_drive_scenario
 ```
+
+## Functional Test Gate
+
+Use `./scripts/run_functional_tests.sh` when you want behavior-level coverage
+in addition to broad `native` unit coverage. The functional gate runs:
+
+- `test_drive_scenario` (cross-module drive flows)
+- `test_camera_runtime` (camera lifecycle + memory guard behavior)
+- `test_lockout_enforcer` (enforcement decisions)
+- `test_wifi_boot_policy` (WiFi startup gating)
+- `test_wifi_manager` (WiFi state behavior)
+
+Each run writes machine-readable reports to:
+
+- `.artifacts/test_reports/functional_<timestamp>/native.json`
+- `.artifacts/test_reports/functional_<timestamp>/native.xml`
+- `.artifacts/test_reports/functional_<timestamp>/native.log`
 
 ## Test Structure
 
