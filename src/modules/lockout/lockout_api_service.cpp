@@ -6,6 +6,7 @@
 #include "lockout_index.h"
 #include "lockout_learner.h"
 #include "lockout_store.h"
+#include "lockout_band_policy.h"
 #include "signal_observation_log.h"
 #include "signal_observation_sd_logger.h"
 #include "../../settings.h"
