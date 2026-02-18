@@ -669,8 +669,8 @@ Examples:
 
 Output files (binary format for fast ESP32 loading):
   - alpr.bin      - ALPR/license plate readers
-  - redlight.bin  - Red light cameras  
-  - speed.bin     - Speed cameras
+  - redlight_cam.bin  - Red light cameras
+  - speed_cam.bin     - Speed cameras
 
 Road snapping enriches each camera with:
   - Road bearing (for heading-based filtering)
@@ -783,11 +783,18 @@ This downloads each state individually (with caching for resume capability).
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Save binary files with runtime-compatible names.
+    output_filenames = {
+        'alpr': 'alpr.bin',
+        'redlight': 'redlight_cam.bin',
+        'speed': 'speed_cam.bin',
+    }
+
     # Save binary files for each type with cameras
     saved_files = []
     for cam_type, cams in cameras_by_type.items():
         if cams:
-            bin_path = output_dir / f"{cam_type}.bin"
+            bin_path = output_dir / output_filenames[cam_type]
             save_binary(cams, str(bin_path), [cam_type], state)
             saved_files.append((cam_type, bin_path, len(cams)))
     
