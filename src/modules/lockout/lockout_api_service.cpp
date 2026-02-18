@@ -64,14 +64,14 @@ bool parseDirectionModeArg(const JsonVariantConst& value, uint8_t& outMode) {
 }
 
 bool parseBoolArg(const JsonObjectConst& body, const char* key, bool& outValue) {
-    if (!body.containsKey(key)) return false;
+    if (body[key].isNull()) return false;
     if (!body[key].is<bool>()) return false;
     outValue = body[key].as<bool>();
     return true;
 }
 
 bool parseFloatArg(const JsonObjectConst& body, const char* key, float& outValue) {
-    if (!body.containsKey(key)) return false;
+    if (body[key].isNull()) return false;
     if (!body[key].is<float>() && !body[key].is<double>() && !body[key].is<int>()) {
         return false;
     }
@@ -80,7 +80,7 @@ bool parseFloatArg(const JsonObjectConst& body, const char* key, float& outValue
 }
 
 bool parseIntArg(const JsonObjectConst& body, const char* key, int& outValue) {
-    if (!body.containsKey(key)) return false;
+    if (body[key].isNull()) return false;
     if (!body[key].is<int>()) return false;
     outValue = body[key].as<int>();
     return true;
@@ -183,8 +183,8 @@ bool parseZoneBody(const JsonObjectConst& body,
         entry.setLearned(learnedFlag);
     }
 
-    if (body.containsKey("directionMode") || body.containsKey("dir")) {
-        const JsonVariantConst value = body.containsKey("directionMode")
+    if (!body["directionMode"].isNull() || !body["dir"].isNull()) {
+        const JsonVariantConst value = !body["directionMode"].isNull()
                                            ? body["directionMode"]
                                            : body["dir"];
         uint8_t parsedMode = entry.directionMode;
@@ -195,7 +195,7 @@ bool parseZoneBody(const JsonObjectConst& body,
         entry.directionMode = parsedMode;
     }
 
-    if (body.containsKey("headingToleranceDeg") || body.containsKey("htol")) {
+    if (!body["headingToleranceDeg"].isNull() || !body["htol"].isNull()) {
         int headingTolRaw = 0;
         const bool hasTol = parseIntArg(body, "headingToleranceDeg", headingTolRaw) ||
                             parseIntArg(body, "htol", headingTolRaw);
@@ -206,8 +206,8 @@ bool parseZoneBody(const JsonObjectConst& body,
         entry.headingTolDeg = static_cast<uint8_t>(clampHeadingTol(headingTolRaw));
     }
 
-    if (body.containsKey("headingDeg") || body.containsKey("hdg")) {
-        const JsonVariantConst value = body.containsKey("headingDeg")
+    if (!body["headingDeg"].isNull() || !body["hdg"].isNull()) {
+        const JsonVariantConst value = !body["headingDeg"].isNull()
                                            ? body["headingDeg"]
                                            : body["hdg"];
         if (value.isNull()) {
