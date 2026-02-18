@@ -79,6 +79,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     static uint16_t lastColor = 0;
     static bool lastUsedOfr = false;
     static bool cacheValid = false;
+    static int lastDrawX = 0;
+    static int lastDrawWidth = 0;
+    static TextWidthCacheEntry widthCache[16];
+    static uint8_t widthCacheNextSlot = 0;
+    static int cachedNumericWidth = 0;
+    static int cachedDashWidth = 0;
+    static int cachedLaserWidth = 0;
 
     if (dirty.frequency) {
         cacheValid = false;
@@ -155,29 +162,48 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
 
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-        int x = leftMargin;
-        if (band == BAND_LASER) {
-            FT_BBox bbox = fontMgr.segment7.calculateBoundingBox(
-                0, 0, fontSize, Align::Left, Layout::Horizontal, textBuf);
-            int textWidth = bbox.xMax - bbox.xMin;
-            x = leftMargin + (maxWidth - textWidth) / 2;
-        } else {
-            int charCount = strlen(textBuf);
-            int approxWidth = charCount * 37;  // ~37px per char at fontSize 75
-            x = leftMargin + (maxWidth - approxWidth) / 2;
+        if (cachedNumericWidth <= 0) {
+            cachedNumericWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, "88.888", widthCache, widthCacheNextSlot);
         }
+        if (cachedDashWidth <= 0) {
+            cachedDashWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, "--.---", widthCache, widthCacheNextSlot);
+        }
+        if (cachedLaserWidth <= 0) {
+            cachedLaserWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, "LASER", widthCache, widthCacheNextSlot);
+        }
+
+        int textWidth = cachedNumericWidth;
+        if (band == BAND_LASER) {
+            textWidth = cachedLaserWidth;
+        } else if (!hasFreq) {
+            textWidth = cachedDashWidth;
+        }
+
+        int x = leftMargin + (maxWidth - textWidth) / 2;
         if (x < leftMargin) x = leftMargin;
 
-        // Clear frequency area (start 10px after leftMargin to avoid clipping Ka)
-        // Clamp height to primary zone to avoid clipping cards at Y=118
-        const int clearLeft = leftMargin + 10;
+        // Clear only the union of old/new text bounds to reduce canvas work.
         int clearY = y - 5;
         int clearH = fontSize + 10;
         const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
         if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
-        if (clearH > 0) {
-            FILL_RECT(clearLeft, clearY, maxWidth - 10, clearH, PALETTE_BG);
-            markFrequencyDirtyRegion(clearLeft, clearY, maxWidth - 10, clearH);
+        int clearLeft = x - 6;
+        int clearRight = x + textWidth + 6;
+        if (cacheValid && lastUsedOfr && lastDrawWidth > 0) {
+            clearLeft = std::min(clearLeft, lastDrawX - 6);
+            clearRight = std::max(clearRight, lastDrawX + lastDrawWidth + 6);
+        }
+        const int clearMinX = leftMargin + 10;
+        const int clearMaxX = leftMargin + maxWidth;
+        clearLeft = std::max(clearLeft, clearMinX);
+        clearRight = std::min(clearRight, clearMaxX);
+        const int clearW = clearRight - clearLeft;
+        if (clearH > 0 && clearW > 0) {
+            FILL_RECT(clearLeft, clearY, clearW, clearH, PALETTE_BG);
+            markFrequencyDirtyRegion(clearLeft, clearY, clearW, clearH);
         }
 
         // Convert RGB565 to RGB888 for OpenFontRender
@@ -189,6 +215,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         fontMgr.segment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
         fontMgr.segment7.setCursor(x, y);
         fontMgr.segment7.printf("%s", textBuf);
+        lastDrawX = x;
+        lastDrawWidth = textWidth;
     } else {
         // Fallback to software 7-segment renderer
 #if defined(DISPLAY_WAVESHARE_349)
