@@ -9,9 +9,37 @@
 #include "../../../test/mocks/Arduino.h"
 #endif
 
+#include <algorithm>
 #include <cstring>
 
 LockoutStore lockoutStore;
+
+namespace {
+
+uint8_t clampDirectionMode(int raw) {
+    if (raw <= static_cast<int>(LockoutEntry::DIRECTION_ALL)) {
+        return LockoutEntry::DIRECTION_ALL;
+    }
+    if (raw >= static_cast<int>(LockoutEntry::DIRECTION_REVERSE)) {
+        return LockoutEntry::DIRECTION_REVERSE;
+    }
+    return static_cast<uint8_t>(raw);
+}
+
+uint8_t clampHeadingTolerance(int raw) {
+    if (raw < 0) return 0;
+    if (raw > 90) return 90;
+    return static_cast<uint8_t>(raw);
+}
+
+uint16_t clampHeading(int raw) {
+    if (raw < 0 || raw >= 360) {
+        return LockoutEntry::HEADING_INVALID;
+    }
+    return static_cast<uint16_t>(raw);
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -51,6 +79,9 @@ void LockoutStore::toJson(JsonDocument& doc) const {
         z["ftol"]  = e->freqTolMHz;
         z["conf"]  = e->confidence;
         z["flags"] = e->flags;
+        z["dir"]   = clampDirectionMode(e->directionMode);
+        z["hdg"]   = (e->headingDeg == LockoutEntry::HEADING_INVALID) ? -1 : e->headingDeg;
+        z["htol"]  = clampHeadingTolerance(e->headingTolDeg);
         z["miss"]  = e->missCount;
         z["first"] = e->firstSeenMs;
         z["last"]  = e->lastSeenMs;
@@ -129,11 +160,21 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
         entry.freqTolMHz = z["ftol"] | (uint16_t)10;
         entry.confidence = z["conf"] | (uint8_t)100;
         entry.flags      = z["flags"] | (uint8_t)LockoutEntry::FLAG_ACTIVE;
+        entry.directionMode = clampDirectionMode(z["dir"] | static_cast<int>(LockoutEntry::DIRECTION_ALL));
+        entry.headingDeg = clampHeading(z["hdg"] | -1);
+        entry.headingTolDeg = clampHeadingTolerance(z["htol"] | 45);
         entry.missCount  = z["miss"] | (uint8_t)0;
         entry.firstSeenMs = z["first"] | (int64_t)0;
         entry.lastSeenMs  = z["last"]  | (int64_t)0;
         entry.lastPassMs  = z["pass"]  | (int64_t)0;
         entry.lastCountedMissMs = z["mms"] | (int64_t)0;
+
+        if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
+            entry.headingDeg == LockoutEntry::HEADING_INVALID) {
+            // Corrupt directional metadata: disable direction gate instead of creating
+            // an entry that can never match.
+            entry.directionMode = LockoutEntry::DIRECTION_ALL;
+        }
 
         // Always ensure the entry is active (we only serialize active entries,
         // so deserialize should restore them as active).

@@ -18,6 +18,18 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(value);
 }
 
+const char* lockoutDirectionModeName(uint8_t mode) {
+    switch (mode) {
+        case LockoutEntry::DIRECTION_FORWARD:
+            return "forward";
+        case LockoutEntry::DIRECTION_REVERSE:
+            return "reverse";
+        case LockoutEntry::DIRECTION_ALL:
+        default:
+            return "all";
+    }
+}
+
 // Shared helper: append signal-observation log stats + SD-logger stats to a JSON doc.
 void appendSignalObsStats(JsonDocument& doc,
                           const SignalObservationLogStats& stats,
@@ -245,6 +257,14 @@ void sendZones(WebServer& server,
         zone["confidence"] = entry->confidence;
         zone["manual"] = entry->isManual();
         zone["learned"] = entry->isLearned();
+        zone["directionModeRaw"] = entry->directionMode;
+        zone["directionMode"] = lockoutDirectionModeName(entry->directionMode);
+        if (entry->headingDeg == LockoutEntry::HEADING_INVALID) {
+            zone["headingDeg"] = nullptr;
+        } else {
+            zone["headingDeg"] = entry->headingDeg;
+        }
+        zone["headingToleranceDeg"] = entry->headingTolDeg;
         zone["firstSeenMs"] = entry->firstSeenMs;
         zone["lastSeenMs"] = entry->lastSeenMs;
         zone["lastPassMs"] = entry->lastPassMs;

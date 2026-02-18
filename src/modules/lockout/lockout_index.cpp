@@ -1,6 +1,8 @@
 #include "lockout_index.h"
 #include "lockout_band_policy.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>   // abs
 #include <cstring>   // memset
 
@@ -15,7 +17,9 @@ void LockoutIndex::clear() {
 LockoutDecision LockoutIndex::evaluate(int32_t latE5,
                                        int32_t lonE5,
                                        uint8_t band,
-                                       uint16_t freqMHz) const {
+                                       uint16_t freqMHz,
+                                       bool courseValid,
+                                       float courseDeg) const {
     LockoutDecision decision;
     const uint8_t alertBandMask = lockoutSanitizeBandMask(band);
     if (alertBandMask == 0) {
@@ -35,6 +39,9 @@ LockoutDecision LockoutIndex::evaluate(int32_t latE5,
             continue;
         }
         if (!freqMatches(freqMHz, e)) {
+            continue;
+        }
+        if (!courseMatches(courseValid, courseDeg, e)) {
             continue;
         }
         if (!withinRadius(latE5, lonE5, e)) {
@@ -227,7 +234,9 @@ uint8_t LockoutIndex::recordHit(size_t index, int64_t epochMs) {
 int LockoutIndex::findMatch(int32_t latE5,
                             int32_t lonE5,
                             uint8_t band,
-                            uint16_t freqMHz) const {
+                            uint16_t freqMHz,
+                            bool courseValid,
+                            float courseDeg) const {
     const uint8_t alertBandMask = lockoutSanitizeBandMask(band);
     if (alertBandMask == 0) {
         return -1;
@@ -245,6 +254,9 @@ int LockoutIndex::findMatch(int32_t latE5,
             continue;
         }
         if (!freqMatches(freqMHz, e)) {
+            continue;
+        }
+        if (!courseMatches(courseValid, courseDeg, e)) {
             continue;
         }
         if (!withinRadius(latE5, lonE5, e)) {
@@ -304,4 +316,60 @@ bool LockoutIndex::freqMatches(uint16_t alertFreqMHz, const LockoutEntry& entry)
     }
     const int diff = abs(static_cast<int>(alertFreqMHz) - static_cast<int>(entry.freqMHz));
     return diff <= static_cast<int>(entry.freqTolMHz);
+}
+
+namespace {
+
+float normalizeHeadingDeg(float heading) {
+    if (!std::isfinite(heading)) {
+        return NAN;
+    }
+    float wrapped = std::fmod(heading, 360.0f);
+    if (wrapped < 0.0f) {
+        wrapped += 360.0f;
+    }
+    return wrapped;
+}
+
+float headingDeltaDeg(float a, float b) {
+    const float da = normalizeHeadingDeg(a);
+    const float db = normalizeHeadingDeg(b);
+    if (!std::isfinite(da) || !std::isfinite(db)) {
+        return NAN;
+    }
+    float delta = std::fabs(da - db);
+    if (delta > 180.0f) {
+        delta = 360.0f - delta;
+    }
+    return delta;
+}
+
+}  // namespace
+
+bool LockoutIndex::courseMatches(bool courseValid, float courseDeg, const LockoutEntry& entry) {
+    if (entry.directionMode == LockoutEntry::DIRECTION_ALL) {
+        return true;
+    }
+
+    if (!courseValid || !std::isfinite(courseDeg)) {
+        return false;
+    }
+
+    if (entry.headingDeg == LockoutEntry::HEADING_INVALID || entry.headingDeg >= 360) {
+        return false;
+    }
+
+    const float tolerance = static_cast<float>(std::min<uint8_t>(entry.headingTolDeg, 90));
+    if (entry.directionMode == LockoutEntry::DIRECTION_FORWARD) {
+        const float delta = headingDeltaDeg(courseDeg, static_cast<float>(entry.headingDeg));
+        return std::isfinite(delta) && delta <= tolerance;
+    }
+    if (entry.directionMode == LockoutEntry::DIRECTION_REVERSE) {
+        const float reverseHeading =
+            normalizeHeadingDeg(static_cast<float>(entry.headingDeg) + 180.0f);
+        const float delta = headingDeltaDeg(courseDeg, reverseHeading);
+        return std::isfinite(delta) && delta <= tolerance;
+    }
+
+    return true;
 }

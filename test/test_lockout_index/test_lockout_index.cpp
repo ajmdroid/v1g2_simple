@@ -228,6 +228,42 @@ void test_evaluate_ka_matches_when_policy_enabled() {
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
+void test_evaluate_direction_forward_requires_course_match() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 24148);
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 90;
+    e.headingTolDeg = 20;
+    idx.add(e);
+
+    LockoutDecision match = idx.evaluate(1012345, -2054321, 0x04, 24148, true, 100.0f);
+    TEST_ASSERT_TRUE(match.shouldMute);
+
+    LockoutDecision miss = idx.evaluate(1012345, -2054321, 0x04, 24148, true, 210.0f);
+    TEST_ASSERT_FALSE(miss.shouldMute);
+}
+
+void test_evaluate_direction_reverse_matches_opposite_heading() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 24148);
+    e.directionMode = LockoutEntry::DIRECTION_REVERSE;
+    e.headingDeg = 90;
+    e.headingTolDeg = 15;
+    idx.add(e);
+
+    LockoutDecision match = idx.evaluate(1012345, -2054321, 0x04, 24148, true, 268.0f);
+    TEST_ASSERT_TRUE(match.shouldMute);
+}
+
+void test_evaluate_direction_constraint_fails_without_course() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 24148);
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 90;
+    e.headingTolDeg = 20;
+    idx.add(e);
+
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24148, false, 0.0f);
+    TEST_ASSERT_FALSE(d.shouldMute);
+}
+
 // ================================================================
 // findMatch
 // ================================================================
@@ -641,6 +677,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_evaluate_empty_index_no_match);
     RUN_TEST(test_evaluate_multi_band_entry);
     RUN_TEST(test_evaluate_ka_matches_when_policy_enabled);
+    RUN_TEST(test_evaluate_direction_forward_requires_course_match);
+    RUN_TEST(test_evaluate_direction_reverse_matches_opposite_heading);
+    RUN_TEST(test_evaluate_direction_constraint_fails_without_course);
 
     // findMatch
     RUN_TEST(test_findMatch_returns_correct_index);
