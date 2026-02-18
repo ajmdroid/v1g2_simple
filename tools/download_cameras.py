@@ -71,6 +71,15 @@ DEFAULT_BEARING_TOLERANCE = 30  # Degrees
 ROAD_SNAP_RADIUS_M = 50
 
 
+def is_alpr_camera(cam: dict) -> bool:
+    """Return True when a camera record is ALPR under current or legacy flags."""
+    flg = int(cam.get('flg', CAMERA_FLAG_ALPR) or 0)
+    if flg == CAMERA_FLAG_ALPR:
+        return True
+    # Legacy bitmask schema uses bit 13 for ALPR.
+    return (flg & 8192) != 0
+
+
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate distance in meters between two lat/lon points."""
     R = 6371000  # Earth radius in meters
@@ -490,7 +499,8 @@ def save_binary(cameras: list, output_path: str, state: str = None):
             
             width = int(cam.get('cwm', 35)) & 0xFF  # corridor width meters
             tolerance = int(cam.get('btol', 30)) & 0xFF  # bearing tolerance degrees
-            cam_type = cam.get('flg', CAMERA_FLAG_ALPR) & 0xFF  # camera type (ALPR=4)
+            # ALPR-only runtime schema.
+            cam_type = CAMERA_FLAG_ALPR
             speed_limit = int(cam.get('spd', 0) or 0) & 0xFF  # speed limit if known
             flags = 0  # reserved flags
             if cam.get('unt') == 'kmh':
@@ -550,7 +560,9 @@ def download_all_states(no_snap: bool, verbose: bool,
                     state_cameras = []
                     for line in f:
                         data = json.loads(line)
-                        if '_meta' not in data:
+                        if '_meta' in data:
+                            continue
+                        if is_alpr_camera(data):
                             state_cameras.append(data)
                     all_cameras.extend(state_cameras)
                     successful_states.append(state)
@@ -704,6 +716,15 @@ This downloads each state individually (with caching for resume capability).
     
     if not cameras:
         print("No cameras found!")
+        sys.exit(1)
+
+    # Safety filter: keep ALPR-only records even if stale mixed-type cache exists.
+    filtered_cameras = [cam for cam in cameras if is_alpr_camera(cam)]
+    if len(filtered_cameras) != len(cameras):
+        print(f"Filtered non-ALPR records: {len(cameras) - len(filtered_cameras)}")
+    cameras = filtered_cameras
+    if not cameras:
+        print("No ALPR cameras found after filtering.")
         sys.exit(1)
     
     # Output directory
