@@ -78,7 +78,7 @@ private:
     static constexpr size_t NMEA_LINE_MAX = 128;
     static constexpr uint16_t MAX_BYTES_PER_UPDATE = 512;
     static constexpr float KNOTS_TO_MPH = 1.150779f;
-    static constexpr uint32_t GPS_TIME_UPDATE_INTERVAL_MS = 60000;
+    static constexpr uint32_t GPS_TIME_UPDATE_INTERVAL_MS = 300000;  // Rebase time at most every 5 minutes
 
     void resetRuntimeState();
     void invalidateSpeedSample();
