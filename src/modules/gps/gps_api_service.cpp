@@ -161,8 +161,12 @@ void sendStatus(WebServer& server,
     lockoutObj["learnerUnlearnCount"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnCount);
     lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
     lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    lockoutObj["preQuiet"] = settings.gpsLockoutPreQuiet;
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
+    // Backward-compatible top-level aliases used by older web clients.
+    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
 
     String response;
     serializeJson(doc, response);
