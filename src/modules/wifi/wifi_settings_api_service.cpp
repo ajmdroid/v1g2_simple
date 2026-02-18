@@ -62,6 +62,7 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -194,6 +195,11 @@ void handleApiSettingsSave(WebServer& server,
         if (runtime.setLockoutKaLearningEnabled) {
             runtime.setLockoutKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
         }
+    }
+    if (server.hasArg("gpsLockoutPreQuiet")) {
+        mutableSettings.gpsLockoutPreQuiet =
+            (server.arg("gpsLockoutPreQuiet") == "true" ||
+             server.arg("gpsLockoutPreQuiet") == "1");
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
