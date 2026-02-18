@@ -31,6 +31,11 @@ bool computeCameraRuntimeEnabled(const V1Settings& settings) {
     return settings.gpsEnabled && settings.cameraEnabled;
 }
 
+String sanitizeLastV1AddressForBackup(const String& raw) {
+    static constexpr size_t kMaxV1AddressLen = 32;
+    return clampStringLength(raw, kMaxV1AddressLen);
+}
+
 }  // anonymous namespace
 
 namespace BackupApiService {
@@ -45,8 +50,10 @@ static void sendBackup(WebServer& server) {
     doc["_version"] = 5;  // Backup format version
     doc["_type"] = "v1simple_backup";
     doc["_timestamp"] = millis();
+    doc["timestamp"] = doc["_timestamp"];
     
     // WiFi settings (exclude password for security)
+    doc["enableWifi"] = s.enableWifi;
     doc["apSSID"] = s.apSSID;
     // Note: password not included in backup for security
     
@@ -62,6 +69,16 @@ static void sendBackup(WebServer& server) {
     doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
     doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
+    doc["gpsLockoutLearnerPromotionHits"] = s.gpsLockoutLearnerPromotionHits;
+    doc["gpsLockoutLearnerRadiusE5"] = s.gpsLockoutLearnerRadiusE5;
+    doc["gpsLockoutLearnerFreqToleranceMHz"] = s.gpsLockoutLearnerFreqToleranceMHz;
+    doc["gpsLockoutLearnerLearnIntervalHours"] = s.gpsLockoutLearnerLearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnIntervalHours"] = s.gpsLockoutLearnerUnlearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnCount"] = s.gpsLockoutLearnerUnlearnCount;
+    doc["gpsLockoutManualDemotionMissCount"] = s.gpsLockoutManualDemotionMissCount;
+    doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutPreQuiet"] = s.gpsLockoutPreQuiet;
+    doc["lastV1Address"] = s.lastV1Address;
     
     // Display settings
     doc["brightness"] = s.brightness;
@@ -95,6 +112,11 @@ static void sendBackup(WebServer& server) {
     doc["colorWiFiConnected"] = s.colorWiFiConnected;
     doc["colorRssiV1"] = s.colorRssiV1;
     doc["colorRssiProxy"] = s.colorRssiProxy;
+    doc["colorCameraToken"] = s.colorCameraToken;
+    doc["colorCameraArrow"] = s.colorCameraArrow;
+    doc["colorLockout"] = s.colorLockout;
+    doc["colorGps"] = s.colorGps;
+    doc["colorObd"] = s.colorObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     
     // Display visibility
@@ -251,6 +273,7 @@ static void handleRestore(WebServer& server) {
     V1Settings& s = settingsManager.mutableSettings();
     
     // BLE settings
+    if (doc["enableWifi"].is<bool>()) s.enableWifi = doc["enableWifi"];
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
@@ -275,8 +298,42 @@ static void handleRestore(WebServer& server) {
     if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
         s.gpsLockoutMaxEventBusDrops = clampU16Value(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
     }
+    if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
+        s.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
+            doc["gpsLockoutLearnerPromotionHits"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
+        s.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
+            doc["gpsLockoutLearnerRadiusE5"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
+        s.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+            doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
+        s.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
+        s.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
+        s.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
+            doc["gpsLockoutLearnerUnlearnCount"].as<int>());
+    }
+    if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
+        s.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
+            doc["gpsLockoutManualDemotionMissCount"].as<int>());
+    }
     if (doc["gpsLockoutKaLearningEnabled"].is<bool>()) {
         s.gpsLockoutKaLearningEnabled = doc["gpsLockoutKaLearningEnabled"];
+    }
+    if (doc["gpsLockoutPreQuiet"].is<bool>()) {
+        s.gpsLockoutPreQuiet = doc["gpsLockoutPreQuiet"];
+    }
+    if (doc["lastV1Address"].is<const char*>()) {
+        s.lastV1Address = sanitizeLastV1AddressForBackup(doc["lastV1Address"].as<String>());
     }
     
     // WiFi settings (password intentionally excluded from backups)
@@ -317,6 +374,11 @@ static void handleRestore(WebServer& server) {
     if (doc["colorWiFiConnected"].is<int>()) s.colorWiFiConnected = doc["colorWiFiConnected"];
     if (doc["colorRssiV1"].is<int>()) s.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorCameraToken"].is<int>()) s.colorCameraToken = doc["colorCameraToken"];
+    if (doc["colorCameraArrow"].is<int>()) s.colorCameraArrow = doc["colorCameraArrow"];
+    if (doc["colorLockout"].is<int>()) s.colorLockout = doc["colorLockout"];
+    if (doc["colorGps"].is<int>()) s.colorGps = doc["colorGps"];
+    if (doc["colorObd"].is<int>()) s.colorObd = doc["colorObd"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     
     // Display visibility

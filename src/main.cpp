@@ -433,42 +433,7 @@ void setup() {
     // Initialize display preview driver
     displayPreviewModule.begin(&display);
 
-#ifndef REPLAY_MODE
-    // ── BLE init + scan start ────────────────────────────────────────
-    // Moved BEFORE storage/SD mount so the scan overlaps all remaining
-    // setup work.  BLE depends only on NVS (step 2) and settings (step 6),
-    // both of which are already initialized.
-    {
-        const V1Settings& blePreInitSettings = settingsManager.get();
-        logBootCheckpoint("ble_preinit_begin");
-        const unsigned long blePreInitStartMs = millis();
-        if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
-            SerialLog.println("BLE pre-initialization failed!");
-            fatalBootError("BLE pre-init failed", true);
-        }
-        SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
-        logBootStage("ble_preinit");
-
-        // Start scan early so discovery overlaps remaining setup work.
-        // Connection state-machine work still waits for bootReady gate later in setup().
-        bleClient.onDataReceived(onV1Data);
-        bleClient.onV1Connected(onV1Connected);
-        logBootCheckpoint("ble_callbacks_registered");
-        const V1Settings& bleScanSettings = settingsManager.get();
-        SerialLog.printf("Starting BLE scan for V1 early (proxy: %s, name: %s)\n",
-                         bleScanSettings.proxyBLE ? "enabled" : "disabled",
-                         bleScanSettings.proxyName.c_str());
-        logBootCheckpoint("ble_scan_begin");
-        const unsigned long bleScanStartMs = millis();
-        if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
-            SerialLog.println("BLE scan failed to start!");
-            fatalBootError("BLE scan failed", true);
-        }
-        SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
-    }
-#endif
-
-    // ── Storage / SD mount (scan is running in background) ──────────
+    // ── Storage / SD mount ────────────────────────────────────────────
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
 
     // Mount storage (SD if available, else LittleFS) for profiles and settings
@@ -548,6 +513,40 @@ void setup() {
         }
     }
     logBootStage("storage");
+
+#ifndef REPLAY_MODE
+    // ── BLE init + scan start ────────────────────────────────────────
+    // Run AFTER SD restore/validation so BLE proxy settings reflect the
+    // restored configuration during the first scan/connection attempt.
+    {
+        const V1Settings& blePreInitSettings = settingsManager.get();
+        logBootCheckpoint("ble_preinit_begin");
+        const unsigned long blePreInitStartMs = millis();
+        if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
+            SerialLog.println("BLE pre-initialization failed!");
+            fatalBootError("BLE pre-init failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
+        logBootStage("ble_preinit");
+
+        // Scan starts in setup; connection state-machine work still waits for
+        // the boot-ready gate later in setup().
+        bleClient.onDataReceived(onV1Data);
+        bleClient.onV1Connected(onV1Connected);
+        logBootCheckpoint("ble_callbacks_registered");
+        const V1Settings& bleScanSettings = settingsManager.get();
+        SerialLog.printf("Starting BLE scan for V1 (proxy: %s, name: %s)\n",
+                         bleScanSettings.proxyBLE ? "enabled" : "disabled",
+                         bleScanSettings.proxyName.c_str());
+        logBootCheckpoint("ble_scan_begin");
+        const unsigned long bleScanStartMs = millis();
+        if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
+            SerialLog.println("BLE scan failed to start!");
+            fatalBootError("BLE scan failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
+    }
+#endif
 
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
@@ -707,14 +706,14 @@ void setup() {
 
 #ifndef REPLAY_MODE
     // Absorb BLE scan-stop settle cost in setup rather than first loop iteration.
-    // If V1 was found during scan overlap, this processes the SCAN_STOPPING settle
-    // (~200 ms on cold boot).  If V1 wasn't found yet, this is a ~microsecond no-op.
+    // If V1 was found during setup scanning, this processes the SCAN_STOPPING settle
+    // (~200 ms on cold boot). If V1 wasn't found yet, this is a ~microsecond no-op.
     {
         const unsigned long absorbStartMs = millis();
         bleClient.process();
         SerialLog.printf("[BootTiming] ble_absorb_ms=%lu\n", millis() - absorbStartMs);
     }
-    SerialLog.println("BLE scan already active from early setup path");
+    SerialLog.println("BLE scan active from setup path");
 #else
     SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
 #endif
