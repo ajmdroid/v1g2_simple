@@ -14,7 +14,8 @@ public:
     void reset();
     void capturePriorityObservation(uint32_t nowMs,
                                     const PacketParser& parser,
-                                    const GpsRuntimeStatus& gpsStatus);
+                                    const GpsRuntimeStatus& gpsStatus,
+                                    bool captureUnsupportedBandsToSd = false);
 
 private:
     static int32_t degreesToE5(float degrees);
@@ -27,4 +28,3 @@ private:
 };
 
 extern SignalCaptureModule signalCaptureModule;
-

@@ -245,6 +245,7 @@ struct V1Settings {
     
     // Development settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
+    bool enableSignalTraceLogging; // Log all priority bands to lockout SD CSV for diagnostics
     
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -385,6 +386,7 @@ struct V1Settings {
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
         showRestTelemetryCards(true), // Show resting OBD cards by default
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
+        enableSignalTraceLogging(true), // Keep diagnostic signal trace logging on by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default

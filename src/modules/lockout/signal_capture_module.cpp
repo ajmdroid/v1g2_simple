@@ -90,7 +90,8 @@ bool SignalCaptureModule::shouldPublish(const SignalObservation& sample) const {
 
 void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
                                                      const PacketParser& parser,
-                                                     const GpsRuntimeStatus& gpsStatus) {
+                                                     const GpsRuntimeStatus& gpsStatus,
+                                                     bool captureUnsupportedBandsToSd) {
     if (!parser.hasAlerts()) {
         return;
     }
@@ -100,7 +101,8 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
         return;
     }
     const uint8_t bandRaw = static_cast<uint8_t>(priority.band);
-    if (!lockoutBandSupported(bandRaw)) {
+    const bool bandSupportedForLockout = lockoutBandSupported(bandRaw);
+    if (!bandSupportedForLockout && !captureUnsupportedBandsToSd) {
         return;
     }
 
@@ -126,7 +128,9 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
         return;
     }
 
-    signalObservationLog.publish(observation);
+    if (bandSupportedForLockout) {
+        signalObservationLog.publish(observation);
+    }
     signalObservationSdLogger.enqueue(observation);
     lastSample_ = observation;
     lastValid_ = true;

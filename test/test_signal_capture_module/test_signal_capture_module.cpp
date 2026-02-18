@@ -146,6 +146,18 @@ void test_ka_band_published_when_policy_enabled() {
     TEST_ASSERT_EQUAL_UINT8(BAND_KA, lastEnqueued.bandRaw);
 }
 
+void test_unsupported_bands_enqueued_when_trace_enabled() {
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+
+    parser.setAlerts({AlertData::create(BAND_KA, DIR_FRONT, 4, 4, 34700, true, true)});
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps, true);
+
+    TEST_ASSERT_EQUAL_UINT32(0, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(1, sdEnqueueCount);
+    TEST_ASSERT_EQUAL_UINT8(BAND_KA, lastEnqueued.bandRaw);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_alerts_no_publish);
@@ -155,5 +167,6 @@ int main() {
     RUN_TEST(test_different_bucket_publishes_immediately);
     RUN_TEST(test_unsupported_bands_not_published);
     RUN_TEST(test_ka_band_published_when_policy_enabled);
+    RUN_TEST(test_unsupported_bands_enqueued_when_trace_enabled);
     return UNITY_END();
 }

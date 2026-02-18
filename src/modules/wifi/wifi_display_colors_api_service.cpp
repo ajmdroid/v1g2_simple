@@ -120,6 +120,9 @@ void handleApiSave(WebServer& server,
 
     // Development/runtime toggles
     if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
+    if (server.hasArg("enableSignalTraceLogging")) {
+        s.enableSignalTraceLogging = argBool("enableSignalTraceLogging", s.enableSignalTraceLogging);
+    }
     if (server.hasArg("obdEnabled")) {
         s.obdEnabled = argBool("obdEnabled", s.obdEnabled);
         if (!s.obdEnabled) {
@@ -409,6 +412,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableSignalTraceLogging"] = s.enableSignalTraceLogging;
     doc["voiceAlertMode"] = static_cast<int>(s.voiceAlertMode);
     doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
     doc["announceBogeyCount"] = s.announceBogeyCount;

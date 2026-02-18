@@ -502,6 +502,7 @@ void SettingsManager::backupToSD() {
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
     doc["showRestTelemetryCards"] = settings.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
     
     // === Voice Alert Settings ===
     doc["voiceAlertMode"] = (int)settings.voiceAlertMode;
@@ -777,6 +778,7 @@ bool SettingsManager::restoreFromSD() {
     restoreBool("hideRssiIndicator", settings.hideRssiIndicator);
     restoreBool("showRestTelemetryCards", settings.showRestTelemetryCards);
     restoreBool("enableWifiAtBoot", settings.enableWifiAtBoot);
+    restoreBool("enableSignalTraceLogging", settings.enableSignalTraceLogging);
     
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {

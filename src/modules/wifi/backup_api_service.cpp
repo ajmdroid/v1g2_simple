@@ -109,6 +109,7 @@ static void sendBackup(WebServer& server) {
     
     // Development
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
+    doc["enableSignalTraceLogging"] = s.enableSignalTraceLogging;
     
     // WiFi client settings
     doc["wifiMode"] = (int)s.wifiMode;
@@ -330,6 +331,9 @@ static void handleRestore(WebServer& server) {
     
     // Development
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
+    if (doc["enableSignalTraceLogging"].is<bool>()) {
+        s.enableSignalTraceLogging = doc["enableSignalTraceLogging"];
+    }
     
     // WiFi client settings
     if (doc["wifiMode"].is<int>()) {

@@ -140,6 +140,7 @@ void test_settings_get_serializes_expected_payload() {
     rt.settings.autoPowerOffMinutes = 12;
     rt.settings.apTimeoutMinutes = 25;
     rt.settings.enableWifiAtBoot = true;
+    rt.settings.enableSignalTraceLogging = false;
 
     WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
 
@@ -151,6 +152,7 @@ void test_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"proxy_name\":\"Proxy-Test\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutModeName\":\"advisory\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableWifiAtBoot\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
 }
 
 void test_settings_get_returns_500_without_runtime() {
@@ -321,6 +323,25 @@ void test_settings_save_updates_brightness_and_display_style() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 
+void test_settings_save_updates_development_toggles() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.settings.enableWifiAtBoot = false;
+    rt.settings.enableSignalTraceLogging = true;
+    server.setArg("enableWifiAtBoot", "true");
+    server.setArg("enableSignalTraceLogging", "false");
+
+    WifiSettingsApiService::handleApiSettingsSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(rt.settings.enableWifiAtBoot);
+    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_settings_get_serializes_expected_payload);
@@ -332,5 +353,6 @@ int main() {
     RUN_TEST(test_settings_save_uses_existing_password_placeholder);
     RUN_TEST(test_settings_save_updates_runtime_dependencies);
     RUN_TEST(test_settings_save_updates_brightness_and_display_style);
+    RUN_TEST(test_settings_save_updates_development_toggles);
     return UNITY_END();
 }

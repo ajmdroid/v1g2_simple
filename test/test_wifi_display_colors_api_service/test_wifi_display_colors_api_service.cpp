@@ -124,6 +124,7 @@ void test_get_serializes_color_payload() {
     rt.settings.colorBandKa = 456;
     rt.settings.hideWifiIcon = true;
     rt.settings.voiceVolume = 67;
+    rt.settings.enableSignalTraceLogging = false;
     rt.settings.gpsEnabled = true;
     rt.settings.cameraEnabled = false;
     rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
@@ -135,6 +136,7 @@ void test_get_serializes_color_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"bandKa\":456"));
     TEST_ASSERT_TRUE(responseContains(server, "\"hideWifiIcon\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"voiceVolume\":67"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsEnabled\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"cameraEnabled\":false"));
 }
@@ -169,6 +171,7 @@ void test_save_updates_settings_and_calls_side_effects() {
     server.setArg("obdEnabled", "false");
     server.setArg("gpsEnabled", "true");
     server.setArg("cameraEnabled", "true");
+    server.setArg("enableSignalTraceLogging", "false");
     server.setArg("gpsLockoutMode", "enforce");
 
     WifiDisplayColorsApiService::handleApiSave(
@@ -188,6 +191,7 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_FALSE(rt.settings.obdEnabled);
     TEST_ASSERT_TRUE(rt.settings.gpsEnabled);
     TEST_ASSERT_TRUE(rt.settings.cameraEnabled);
+    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL_INT(1, rt.stopObdScanCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.disconnectObdCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.setGpsRuntimeEnabledCalls);

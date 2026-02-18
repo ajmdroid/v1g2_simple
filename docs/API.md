@@ -133,7 +133,8 @@ Get all device settings.
   "displayStyle": 0,
   "autoPowerOffMinutes": 0,
   "apTimeoutMinutes": 0,
-  "enableWifiAtBoot": false
+  "enableWifiAtBoot": false,
+  "enableSignalTraceLogging": true
 }
 ```
 
@@ -158,6 +159,7 @@ Get all device settings.
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `enableWifiAtBoot` | boolean | - | Boot with AP enabled instead of BOOT long-press |
+| `enableSignalTraceLogging` | boolean | - | Log all priority bands to lockout CSV for diagnostics (best-effort) |
 
 ### POST /api/settings
 
@@ -380,6 +382,7 @@ Get recent lockout candidate observations (newest first).
 
 **Notes:**
 - Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
+- `enableSignalTraceLogging` (default `true`) also captures unsupported lockout bands for diagnostics.
 - SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
 - Legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work with `X-API-Deprecated`.
 

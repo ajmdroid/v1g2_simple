@@ -897,7 +897,11 @@ void loop() {
         static PreQuietState preQuietState;
 
         uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-        signalCaptureModule.capturePriorityObservation(nowMs, parser, gpsStatus);
+        signalCaptureModule.capturePriorityObservation(
+            nowMs,
+            parser,
+            gpsStatus,
+            loopSettings.enableSignalTraceLogging);
         if (!proxyClientConnected) {
             lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
 

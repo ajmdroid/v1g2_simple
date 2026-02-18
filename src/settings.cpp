@@ -19,7 +19,7 @@
 const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
 const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-const int SD_BACKUP_VERSION = 7;  // Increment when adding new fields to backup
+const int SD_BACKUP_VERSION = 8;  // Increment when adding new fields to backup
 const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 const char* SETTINGS_NS_A = "v1settingsA";
 const char* SETTINGS_NS_B = "v1settingsB";
@@ -73,7 +73,7 @@ SettingsManager settingsManager;
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
 const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-const int SETTINGS_VERSION = 4;  // Increment when changing persisted settings schema
+const int SETTINGS_VERSION = 5;  // Increment when changing persisted settings schema
 const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 
@@ -229,6 +229,7 @@ void SettingsManager::load() {
     
     // Development settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
+    settings.enableSignalTraceLogging = preferences.getBool("sigTraceLog", true);
     
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults

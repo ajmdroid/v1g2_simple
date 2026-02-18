@@ -393,6 +393,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
     written += prefs.putBool("restTelem", settings.showRestTelemetryCards);
     written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
+    written += prefs.putBool("sigTraceLog", settings.enableSignalTraceLogging);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings.announceBogeyCount);
@@ -630,4 +631,3 @@ void SettingsManager::clearWifiClientCredentials() {
     
     save();
 }
-

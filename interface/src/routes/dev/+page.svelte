@@ -3,7 +3,8 @@
 
 	let acknowledged = $state(false);
 	let settings = $state({
-		enableWifiAtBoot: false
+		enableWifiAtBoot: false,
+		enableSignalTraceLogging: true
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -43,6 +44,7 @@
 			const data = await response.json();
 			
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
+			settings.enableSignalTraceLogging = data.enableSignalTraceLogging ?? true;
 			
 			loading = false;
 		} catch (error) {
@@ -64,6 +66,7 @@
 		try {
 			const params = new URLSearchParams();
 			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
+			params.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
 			params.append('skipPreview', 'true');
 
 			const response = await fetch('/api/displaycolors', {
@@ -95,6 +98,7 @@
 		if (!confirm('Reset all development settings to defaults?')) return;
 
 		settings.enableWifiAtBoot = false;
+		settings.enableSignalTraceLogging = true;
 		
 		await saveSettings();
 	}
@@ -273,6 +277,23 @@
 							type="checkbox" 
 							class="toggle toggle-primary"
 							bind:checked={settings.enableWifiAtBoot}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Signal Trace Logging (All Bands)</span>
+							<p class="text-xs opacity-70 mt-1">
+								Default ON. Best-effort logging of priority alerts (including Ka) to lockout CSV for bench analysis.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.enableSignalTraceLogging}
 							disabled={!acknowledged}
 						/>
 					</label>

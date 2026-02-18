@@ -68,6 +68,7 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
 
     // Development settings
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
 
     sendJsonDocument(server, 200, doc);
 }
@@ -206,6 +207,15 @@ void handleApiSettingsSave(WebServer& server,
             minutes = std::max(5, std::min(minutes, 60));
         }
         mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
+    }
+    if (server.hasArg("enableWifiAtBoot")) {
+        mutableSettings.enableWifiAtBoot =
+            (server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1");
+    }
+    if (server.hasArg("enableSignalTraceLogging")) {
+        mutableSettings.enableSignalTraceLogging =
+            (server.arg("enableSignalTraceLogging") == "true" ||
+             server.arg("enableSignalTraceLogging") == "1");
     }
 
     // Display style setting
