@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <cmath>
+#include "json_stream_response.h"
 #include <algorithm>
 #include <vector>
 
@@ -345,9 +346,7 @@ static void sendMetrics(WebServer& server) {
     lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
                                    !lockoutGuard.tripped;
     
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
+    sendJsonStream(server, doc);
 }
 
 void handleApiMetrics(WebServer& server) {
@@ -412,9 +411,7 @@ void sendPanic(WebServer& server) {
     doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     doc["heapDmaMin"] = perfGetMinFreeDma();
     
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
+    sendJsonStream(server, doc);
 }
 
 void handleApiPanic(WebServer& server) {
@@ -431,9 +428,7 @@ void sendPerfFilesList(WebServer& server) {
     JsonArray filesArr = doc["files"].to<JsonArray>();
 
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
+        sendJsonStream(server, doc);
         return;
     }
 
@@ -441,17 +436,13 @@ void sendPerfFilesList(WebServer& server) {
     if (!lock) {
         doc["success"] = false;
         doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
-        String json;
-        serializeJson(doc, json);
-        server.send(503, "application/json", json);
+        sendJsonStream(server, doc, 503);
         return;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs || !fs->exists("/perf")) {
-        String json;
-        serializeJson(doc, json);
-        server.send(200, "application/json", json);
+        sendJsonStream(server, doc);
         return;
     }
 
@@ -460,9 +451,7 @@ void sendPerfFilesList(WebServer& server) {
         if (dir) dir.close();
         doc["success"] = false;
         doc["error"] = "Failed to open /perf directory";
-        String json;
-        serializeJson(doc, json);
-        server.send(500, "application/json", json);
+        sendJsonStream(server, doc, 500);
         return;
     }
 
@@ -514,9 +503,7 @@ void sendPerfFilesList(WebServer& server) {
     }
     doc["count"] = static_cast<uint32_t>(rows.size());
 
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "application/json", json);
+    sendJsonStream(server, doc);
 }
 
 void handleApiPerfFilesList(WebServer& server,
@@ -650,9 +637,7 @@ void handlePerfFileDelete(WebServer& server) {
         doc["error"] = "Delete failed";
     }
 
-    String json;
-    serializeJson(doc, json);
-    server.send(ok ? 200 : 500, "application/json", json);
+    sendJsonStream(server, doc, ok ? 200 : 500);
 }
 
 void handleApiPerfFilesDelete(WebServer& server,

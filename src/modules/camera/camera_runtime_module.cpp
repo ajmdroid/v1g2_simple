@@ -510,7 +510,10 @@ void CameraRuntimeModule::process(uint32_t nowMs,
 
                 visitedCandidates++;
                 const uint32_t cameraId = idx + 1u;
-                const CameraRecord& record = records[idx];
+                // Stage one candidate from PSRAM into stack SRAM.
+                // This keeps runtime SRAM use bounded while avoiding a full
+                // dataset copy into internal memory.
+                const CameraRecord record = records[idx];
                 float anchorLatitudeDeg = NAN;
                 float anchorLongitudeDeg = NAN;
                 if (!cameraAnchorPointDeg(record, anchorLatitudeDeg, anchorLongitudeDeg)) {

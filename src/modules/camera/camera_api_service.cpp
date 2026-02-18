@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <cmath>
 #include <cstring>
+#include "json_stream_response.h"
 
 #include "camera_runtime_module.h"
 #include "camera_event_log.h"
@@ -196,9 +197,7 @@ void sendStatus(WebServer& server,
     eventsObj["size"] = static_cast<uint32_t>(eventStats.size);
     eventsObj["capacity"] = static_cast<uint32_t>(CameraEventLog::kCapacity);
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiStatus(WebServer& server,
@@ -238,9 +237,7 @@ void sendCatalog(WebServer& server,
         doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
-        String response;
-        serializeJson(doc, response);
-        server.send(200, "application/json", response);
+        sendJsonStream(server, doc);
         return;
     }
 
@@ -252,9 +249,7 @@ void sendCatalog(WebServer& server,
         doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
-        String response;
-        serializeJson(doc, response);
-        server.send(500, "application/json", response);
+        sendJsonStream(server, doc, 500);
         return;
     }
 
@@ -266,9 +261,7 @@ void sendCatalog(WebServer& server,
         doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
-        String response;
-        serializeJson(doc, response);
-        server.send(503, "application/json", response);
+        sendJsonStream(server, doc, 503);
         return;
     }
 
@@ -280,9 +273,7 @@ void sendCatalog(WebServer& server,
     doc["totalCount"] = alpr.count;
     doc["totalBytes"] = alpr.bytes;
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiCatalog(WebServer& server,
@@ -327,9 +318,7 @@ void sendEvents(WebServer& server,
         entry["synthetic"] = sample.synthetic;
     }
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiEvents(WebServer& server,
@@ -387,9 +376,7 @@ void handleDemo(WebServer& server) {
     doc["muted"] = muted;
     doc["durationMs"] = durationMs;
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiDemo(WebServer& server,

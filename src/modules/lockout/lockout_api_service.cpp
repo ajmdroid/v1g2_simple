@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <cmath>
+#include "json_stream_response.h"
 
 #include "lockout_index.h"
 #include "lockout_learner.h"
@@ -425,9 +426,7 @@ void sendEvents(WebServer& server,
         }
     }
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiEvents(WebServer& server,
@@ -562,9 +561,7 @@ void sendZones(WebServer& server,
     }
     doc["pendingReturned"] = pendingReturned;
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiZones(WebServer& server,
@@ -694,9 +691,7 @@ void handleZoneDelete(WebServer& server,
     responseDoc["manual"] = wasManual;
     responseDoc["learned"] = wasLearned;
     responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
-    String response;
-    serializeJson(responseDoc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, responseDoc);
 }
 
 void handleZoneCreate(WebServer& server,
@@ -723,9 +718,7 @@ void handleZoneCreate(WebServer& server,
         JsonDocument responseDoc;
         responseDoc["success"] = false;
         responseDoc["message"] = errorMessage;
-        String response;
-        serializeJson(responseDoc, response);
-        server.send(400, "application/json", response);
+        sendJsonStream(server, responseDoc, 400);
         return;
     }
 
@@ -751,9 +744,7 @@ void handleZoneCreate(WebServer& server,
     } else {
         responseDoc["slot"] = slot;
     }
-    String response;
-    serializeJson(responseDoc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, responseDoc);
 }
 
 void handleZoneUpdate(WebServer& server,
@@ -792,9 +783,7 @@ void handleZoneUpdate(WebServer& server,
         JsonDocument responseDoc;
         responseDoc["success"] = false;
         responseDoc["message"] = errorMessage;
-        String response;
-        serializeJson(responseDoc, response);
-        server.send(400, "application/json", response);
+        sendJsonStream(server, responseDoc, 400);
         return;
     }
     updated.setActive(true);
@@ -812,9 +801,7 @@ void handleZoneUpdate(WebServer& server,
     responseDoc["success"] = true;
     responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
     appendZoneSummary(responseDoc, slot, updated);
-    String response;
-    serializeJson(responseDoc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, responseDoc);
 }
 
 void sendZoneExport(WebServer& server,
@@ -822,35 +809,39 @@ void sendZoneExport(WebServer& server,
     JsonDocument doc;
     lockoutStore.toJson(doc);
     doc["exportedAtMs"] = millis();
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleZoneImport(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
-    JsonDocument importDoc;
-    if (!parseRequestJson(server, importDoc)) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid JSON\"}");
-        return;
-    }
-
+    // Scope each JsonDocument to minimize peak internal SRAM usage.
+    // Previous approach had 4 concurrent documents (~40-80 KiB peak);
+    // this sequence limits peak to 2 documents at a time.
     LockoutIndex tempIndex;
     LockoutStore tempStore;
     tempStore.begin(&tempIndex);
-    if (!tempStore.fromJson(importDoc)) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid lockout import payload\"}");
-        return;
-    }
 
-    // Normalize through store serializer before applying to runtime index.
+    // Phase 1: Parse and validate import payload (importDoc alive).
+    {
+        JsonDocument importDoc;
+        if (!parseRequestJson(server, importDoc)) {
+            server.send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+            return;
+        }
+
+        if (!tempStore.fromJson(importDoc)) {
+            server.send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid lockout import payload\"}");
+            return;
+        }
+    }  // importDoc freed
+
+    // Phase 2: Normalize and build backup (2 docs alive: normalizedDoc + backupDoc).
     JsonDocument normalizedDoc;
     tempStore.toJson(normalizedDoc);
 
-    // Keep a backup so import never leaves partial state.
     JsonDocument backupDoc;
     lockoutStore.toJson(backupDoc);
     if (!lockoutStore.fromJson(normalizedDoc)) {
@@ -865,9 +856,7 @@ void handleZoneImport(WebServer& server,
     responseDoc["success"] = true;
     responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
     responseDoc["entriesImported"] = lockoutStore.stats().entriesLoaded;
-    String response;
-    serializeJson(responseDoc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, responseDoc);
 }
 
 }  // namespace LockoutApiService
