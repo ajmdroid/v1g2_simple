@@ -21,6 +21,7 @@
 
 // Mocks first — must precede real headers that reference Arduino types.
 #include "../mocks/Arduino.h"
+#include "../mocks/mock_heap_caps_state.h"
 #include "../mocks/settings.h"
 #include "../mocks/packet_parser.h"
 
@@ -236,6 +237,7 @@ static void tickLearner(uint32_t nowMs, int64_t epochMs) {
 
 void setUp() {
     setTime(1000);
+    mock_reset_heap_caps();
     lockoutSetKaLearningEnabled(false);
 
     parser.reset();
@@ -261,6 +263,7 @@ void setUp() {
 }
 
 void tearDown() {
+    mock_reset_heap_caps();
     if (gReadyBuffersValid) {
         CameraIndex::freeOwnedBuffers(gReadyBuffers);
         gReadyBuffers = {};

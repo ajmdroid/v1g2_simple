@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include "../mock_heap_caps_state.h"
 
 // Semaphore/Mutex types
 typedef void* SemaphoreHandle_t;
@@ -39,6 +40,6 @@ inline void taskEXIT_CRITICAL(portMUX_TYPE*) {}
 
 // ESP-specific
 inline uint32_t esp_get_free_heap_size() { return 320000; }
-inline uint32_t heap_caps_get_free_size(int) { return 320000; }
+inline uint32_t heap_caps_get_free_size(int) { return g_mock_heap_caps_free_size; }
 #define MALLOC_CAP_INTERNAL 0
 #define MALLOC_CAP_8BIT 0

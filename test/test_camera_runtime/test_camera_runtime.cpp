@@ -3,6 +3,7 @@
 #include <cmath>
 #include <utility>
 
+#include "../mocks/mock_heap_caps_state.h"
 #include "../../src/modules/camera/camera_data_loader.h"
 #include "../../src/modules/camera/camera_event_log.cpp"      // Pull implementation for UNIT_TEST.
 #include "../../src/modules/camera/camera_index.cpp"          // Pull implementation for UNIT_TEST.
@@ -122,6 +123,7 @@ CameraDataLoaderStatus CameraDataLoader::status() const {
 void setUp() {
     mockMillis = 1;
     mockMicros = 1000;
+    mock_reset_heap_caps();
     gpsRuntimeModule = GpsRuntimeModule();
     gpsRuntimeModule.begin(true);
     cameraRuntimeModule.begin(true);
@@ -129,6 +131,7 @@ void setUp() {
 }
 
 void tearDown() {
+    mock_reset_heap_caps();
     resetReadyBuffers();
 }
 
@@ -282,6 +285,27 @@ void test_signal_priority_blocks_new_camera_start_until_cleared() {
     TEST_ASSERT_EQUAL_UINT32(1, started.activeAlert.cameraId);
 }
 
+void test_memory_guard_blocks_then_recovers_candidate_scans() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+
+    // Force memory-guard rejection.
+    mock_set_heap_caps(20000u, 12000u);
+    processCameraTick(1000);
+    CameraRuntimeStatus blocked = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(blocked.counters.cameraTickSkipsMemoryGuard > 0);
+    TEST_ASSERT_EQUAL_UINT32(0, blocked.counters.cameraCandidatesChecked);
+    TEST_ASSERT_FALSE(blocked.activeAlert.active);
+
+    // Restore healthy heap and verify candidate scanning resumes.
+    mock_set_heap_caps(64000u, 32000u);
+    processCameraTick(1300);
+    CameraRuntimeStatus recovered = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(recovered.counters.cameraCandidatesChecked > blocked.counters.cameraCandidatesChecked);
+    TEST_ASSERT_TRUE(recovered.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT32(1, recovered.activeAlert.cameraId);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_forward_only_start_requires_heading_alignment);
@@ -291,5 +315,6 @@ int main() {
     RUN_TEST(test_lifecycle_clears_on_turn_away_after_two_ticks);
     RUN_TEST(test_preempt_suppresses_same_pass_until_exit_then_allows_reentry);
     RUN_TEST(test_signal_priority_blocks_new_camera_start_until_cleared);
+    RUN_TEST(test_memory_guard_blocks_then_recovers_candidate_scans);
     return UNITY_END();
 }

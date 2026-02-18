@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include "mock_heap_caps_state.h"
 
 #ifndef MALLOC_CAP_SPIRAM
 #define MALLOC_CAP_SPIRAM 0x01
@@ -27,5 +28,5 @@ inline void heap_caps_free(void* ptr) {
 
 inline uint32_t heap_caps_get_largest_free_block(uint32_t caps) {
     (void)caps;
-    return 8u * 1024u * 1024u;
+    return g_mock_heap_caps_largest_block;
 }
