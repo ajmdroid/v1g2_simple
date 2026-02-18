@@ -200,6 +200,7 @@ private:
     int16_t frequencyDirtyY = 0;
     int16_t frequencyDirtyW = 0;
     int16_t frequencyDirtyH = 0;
+    bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
     bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
     bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
     bool gpsSatEnabled_ = false;           // GPS module enabled

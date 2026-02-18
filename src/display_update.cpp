@@ -164,9 +164,13 @@ void V1Display::update(const DisplayState& state) {
     
     if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Incremental update - only redraw what changed
+        bool flushLeftStrip = false;
+        bool flushRightStrip = false;
+
         if (arrowsChanged) {
             lastRestingArrows = state.arrows;
             drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
+            flushRightStrip = true;
         }
         if (signalBarsChanged) {
             lastRestingSignalBars = state.signalBars;
@@ -176,6 +180,7 @@ void V1Display::update(const DisplayState& state) {
             else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
             else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
             drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
+            flushRightStrip = true;
         }
         const V1Settings& s = settingsManager.get();
         if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
@@ -184,19 +189,34 @@ void V1Display::update(const DisplayState& state) {
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
             drawRssiIndicator(bleClient.getConnectionRssi());
             s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+            flushRightStrip = true;
         }
         if (rssiNeedsUpdate && !volumeChanged) {
             // Periodic RSSI-only update
             drawRssiIndicator(bleClient.getConnectionRssi());
             s_lastRssiUpdateMs = now;
+            flushRightStrip = true;
         }
         if (bogeyCounterChanged) {
             lastRestingBogeyByte = state.bogeyCounterByte;
             drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
+            flushLeftStrip = true;
         }
-        drawRestTelemetryCards(false);
+        const bool cardsChanged = drawRestTelemetryCards(false);
 #if defined(DISPLAY_WAVESHARE_349)
-    DISPLAY_FLUSH();
+        constexpr int kPrimaryFlushH = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+        if (flushLeftStrip) {
+            flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, kPrimaryFlushH);
+        }
+        if (flushRightStrip) {
+            flushRegion(DisplayLayout::SIGNAL_COLUMN_X, 0, DisplayLayout::SIGNAL_COLUMN_WIDTH, kPrimaryFlushH);
+        }
+        if (cardsChanged) {
+            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                        SECONDARY_ROW_HEIGHT);
+        }
 #endif
         lastState = state;
         return;
@@ -631,7 +651,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
-    DISPLAY_FLUSH();
+        if (secondaryCardsRenderDirty_) {
+            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                        SECONDARY_ROW_HEIGHT);
+        }
 #endif
         return;
     }
@@ -639,17 +664,23 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
         // Also handle flash updates (periodic redraw for blink animation)
+        bool flushLeftStrip = false;
+        bool flushRightStrip = false;
+
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
             lastArrows = arrowsToShow;
             drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
+            flushRightStrip = true;
         }
         if (signalBarsChanged) {
             lastSignalBars = state.signalBars;
             drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
+            flushRightStrip = true;
         }
         if (bandsChanged || (needsFlashUpdate && state.bandFlashBits != 0)) {
             lastActiveBands = state.activeBands;
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
+            flushLeftStrip = true;
         }
         if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
             lastMainVol = state.mainVolume;
@@ -657,21 +688,36 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
             drawRssiIndicator(bleClient.getConnectionRssi());
             s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
+            flushRightStrip = true;
         }
         if (rssiNeedsUpdate && !volumeChanged) {
             // Periodic RSSI-only update
             drawRssiIndicator(bleClient.getConnectionRssi());
             s_lastRssiUpdateMs = now;
+            flushRightStrip = true;
         }
         if (bogeyCounterChanged) {
             // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
             lastBogeyByte = state.bogeyCounterByte;
             drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
+            flushLeftStrip = true;
         }
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
-    DISPLAY_FLUSH();
+        constexpr int kPrimaryFlushH = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+        if (flushLeftStrip) {
+            flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, kPrimaryFlushH);
+        }
+        if (flushRightStrip) {
+            flushRegion(DisplayLayout::SIGNAL_COLUMN_X, 0, DisplayLayout::SIGNAL_COLUMN_WIDTH, kPrimaryFlushH);
+        }
+        if (secondaryCardsRenderDirty_) {
+            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
+                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                        SECONDARY_ROW_HEIGHT);
+        }
 #endif
         return;
     }
