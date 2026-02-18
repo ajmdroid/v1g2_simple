@@ -277,31 +277,6 @@ bool SettingsManager::checkAndRestoreFromSD() {
         hasSdBackup = loadBestBackupDocument(fs, bestBackupDoc, &bestBackupPath, false);
     }
 
-    if (!needsRestore) {
-        bool slotsEmpty = settings.slot0_default.profileName.length() == 0
-            && settings.slot1_highway.profileName.length() == 0
-            && settings.slot2_comfort.profileName.length() == 0;
-        if (slotsEmpty && hasSdBackup) {
-            Serial.println("[Settings] Slots empty, checking for SD backup...");
-            needsRestore = true;
-        } else if (hasSdBackup && v1ProfileManager.isReady()) {
-            auto slotProfileMissing = [&](const AutoPushSlot& slot) -> bool {
-                if (slot.profileName.length() == 0) {
-                    return false;
-                }
-                V1Profile testProfile;
-                return !v1ProfileManager.loadProfile(slot.profileName, testProfile);
-            };
-
-            if (slotProfileMissing(settings.slot0_default)
-                || slotProfileMissing(settings.slot1_highway)
-                || slotProfileMissing(settings.slot2_comfort)) {
-                Serial.println("[Settings] Slot profile reference missing on filesystem, checking SD backup...");
-                needsRestore = true;
-            }
-        }
-    }
-
     if (needsRestore) {
         Serial.println("[Settings] Checking for SD backup restore...");
         if (restoreFromSD()) {
@@ -310,6 +285,11 @@ bool SettingsManager::checkAndRestoreFromSD() {
             backupToSD();
             return true;
         }
+        Serial.println("[Settings] Restore requested but no valid SD backup was applied");
+    } else if (hasSdBackup) {
+        // Keep user/NVS state authoritative unless corruption is detected.
+        // Slot/profile healing is handled separately by validateProfileReferences().
+        Serial.println("[Settings] NVS healthy; skipping automatic SD settings restore");
     }
 
     // Keep SD backup schema fresh so newly added settings survive the next reflash.
