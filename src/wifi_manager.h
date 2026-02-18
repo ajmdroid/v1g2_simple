@@ -112,7 +112,9 @@ public:
     bool startWifiScan();  // Async scan for networks
     bool isWifiScanRunning() const { return wifiScanRunning; }
     std::vector<ScannedNetwork> getScannedNetworks();  // Get scan results (clears running flag)
-    bool connectToNetwork(const String& ssid, const String& password);
+    bool connectToNetwork(const String& ssid,
+                          const String& password,
+                          bool persistCredentialsOnSuccess = true);
     void disconnectFromNetwork();
     void checkWifiClientStatus();  // Call in loop() to manage STA connection
     String getConnectedSSID() const;  // Returns empty if not connected
@@ -154,6 +156,7 @@ private:
     static constexpr unsigned long WIFI_MODE_SWITCH_SETTLE_MS = 100;  // Preserve existing settle windows, non-blocking
     String pendingConnectSSID;
     String pendingConnectPassword;
+    bool pendingConnectPersistCredentials = true;
     enum class WifiConnectPhase : uint8_t {
         IDLE = 0,
         PREPARE_OFF,

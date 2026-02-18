@@ -102,7 +102,9 @@ std::vector<ScannedNetwork> WiFiManager::getScannedNetworks() {
     return networks;
 }
 
-bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
+bool WiFiManager::connectToNetwork(const String& ssid,
+                                   const String& password,
+                                   bool persistCredentialsOnSuccess) {
     if (ssid.length() == 0) {
         Serial.println("[WiFiClient] Cannot connect: empty SSID");
         return false;
@@ -114,6 +116,7 @@ bool WiFiManager::connectToNetwork(const String& ssid, const String& password) {
     // Stage a non-blocking connect sequence to avoid stalling loop().
     pendingConnectSSID = ssid;
     pendingConnectPassword = password;
+    pendingConnectPersistCredentials = persistCredentialsOnSuccess;
     wifiConnectStartMs = 0;
     wifiClientState = WIFI_CLIENT_CONNECTING;
     wifiConnectPhase = WifiConnectPhase::PREPARE_OFF;
@@ -131,6 +134,7 @@ void WiFiManager::disconnectFromNetwork() {
     wifiClientState = WIFI_CLIENT_DISCONNECTED;
     pendingConnectSSID = "";
     pendingConnectPassword = "";
+    pendingConnectPersistCredentials = true;
 }
 
 void WiFiManager::processWifiClientConnectPhase() {
@@ -314,9 +318,22 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 // Save credentials on successful connection
                 if (pendingConnectSSID.length() > 0) {
-                    settingsManager.setWifiClientCredentials(pendingConnectSSID, pendingConnectPassword);
+                    if (pendingConnectPersistCredentials) {
+                        const V1Settings& currentSettings = settingsManager.get();
+                        const bool ssidChanged = (pendingConnectSSID != currentSettings.wifiClientSSID);
+                        const bool passwordChanged =
+                            (pendingConnectPassword != settingsManager.getWifiClientPassword());
+                        if (ssidChanged || passwordChanged) {
+                            settingsManager.setWifiClientCredentials(pendingConnectSSID, pendingConnectPassword);
+                        } else {
+                            Serial.println("[WiFiClient] Connected with unchanged credentials; skipping re-save");
+                        }
+                    } else {
+                        Serial.println("[WiFiClient] Connected via auto-reconnect; skipping credential re-save");
+                    }
                     pendingConnectSSID = "";
                     pendingConnectPassword = "";
+                    pendingConnectPersistCredentials = true;
                 }
             } else if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
                 wifiClientState = WIFI_CLIENT_FAILED;
@@ -328,6 +345,7 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
+                pendingConnectPersistCredentials = true;
             } else if (millis() - wifiConnectStartMs > WIFI_CONNECT_TIMEOUT_MS) {
                 wifiClientState = WIFI_CLIENT_FAILED;
                 Serial.println("[WiFiClient] Connection timeout");
@@ -339,6 +357,7 @@ void WiFiManager::checkWifiClientStatus() {
                 
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
+                pendingConnectPersistCredentials = true;
             }
             break;
         }
@@ -404,7 +423,7 @@ void WiFiManager::checkWifiClientStatus() {
                     
                     Serial.printf("[WiFiClient] Auto-reconnect attempt %d/%d...\n",
                                   wifiReconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
-                    connectToNetwork(settings.wifiClientSSID, savedPassword);
+                    connectToNetwork(settings.wifiClientSSID, savedPassword, false);
                 }
             }
             break;

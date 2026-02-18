@@ -376,8 +376,11 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     wifiClientState = WIFI_CLIENT_DISABLED;
     wifiScanRunning = false;
     wifiConnectStartMs = 0;
+    wifiConnectPhase = WifiConnectPhase::IDLE;
+    wifiConnectPhaseStartMs = 0;
     pendingConnectSSID = "";
     pendingConnectPassword = "";
+    pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
 
@@ -510,12 +513,15 @@ void WiFiManager::process() {
                 Serial.println("[WiFi] ACTION: dropping STA due to sustained low SRAM (keeping AP online)");
                 WiFi.disconnect(false);
                 WiFi.mode(WIFI_AP);
-                wifiClientState = WIFI_CLIENT_DISCONNECTED;
+                wifiClientState = WIFI_CLIENT_FAILED;
+                wifiReconnectFailures = WIFI_MAX_RECONNECT_FAILURES;
+                Serial.println("[WiFi] STA auto-reconnect paused after low-SRAM drop; manual retry required");
                 wifiConnectPhase = WifiConnectPhase::IDLE;
                 wifiConnectPhaseStartMs = 0;
                 wifiConnectStartMs = 0;
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
+                pendingConnectPersistCredentials = true;
                 lowDmaCooldownUntilMs = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
                 lowDmaSinceMs = 0;
                 debugLogger.notifyWifiTransition(true);
