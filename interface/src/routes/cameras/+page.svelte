@@ -72,9 +72,7 @@
 		totalCount: 0,
 		totalBytes: 0,
 		datasets: {
-			alpr: { present: false, valid: false, count: 0, bytes: 0 },
-			speed: { present: false, valid: false, count: 0, bytes: 0 },
-			redlight: { present: false, valid: false, count: 0, bytes: 0 }
+			alpr: { present: false, valid: false, count: 0, bytes: 0 }
 		}
 	});
 
@@ -136,12 +134,6 @@
 
 	function cameraTypeLabel(rawType) {
 		switch (rawType) {
-			case 1:
-				return 'Red Light';
-			case 2:
-				return 'Speed';
-			case 3:
-				return 'Red+Speed';
 			case 4:
 				return 'ALPR';
 			default:
@@ -210,9 +202,7 @@
 						? data.alprRuntimeLoaded
 						: catalog.alprRuntimeLoaded,
 				datasets: {
-					alpr: { ...catalog.datasets.alpr, ...(data.datasets?.alpr || {}) },
-					speed: { ...catalog.datasets.speed, ...(data.datasets?.speed || {}) },
-					redlight: { ...catalog.datasets.redlight, ...(data.datasets?.redlight || {}) }
+					alpr: { ...catalog.datasets.alpr, ...(data.datasets?.alpr || {}) }
 				}
 			};
 		} catch (e) {
@@ -300,18 +290,7 @@
 	}
 
 	function selectedDemoType() {
-		switch (demoMode) {
-			case 'redlight':
-				return 1;
-			case 'speed':
-				return 2;
-			case 'both':
-				return 3;
-			case 'alpr':
-				return 4;
-			default:
-				return 0;
-		}
+		return demoMode === 'cycle' ? 0 : 4;
 	}
 
 	async function runCameraDemo() {
@@ -439,10 +418,7 @@
 						</div>
 						<div class="flex flex-wrap items-center gap-2">
 							<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
-								<option value="cycle">Cycle All Types</option>
-								<option value="redlight">Red Light</option>
-								<option value="speed">Speed</option>
-								<option value="both">Red+Speed</option>
+								<option value="cycle">Cycle ALPR</option>
 								<option value="alpr">ALPR</option>
 							</select>
 							<label class="label cursor-pointer gap-2 py-0">
@@ -501,7 +477,7 @@
 				<div>
 					<h2 class="card-title">Dataset Catalog</h2>
 					<p class="text-sm text-base-content/70">
-						SD header counts for ALPR, speed, and red light datasets.
+						SD header counts for the ALPR runtime dataset.
 					</p>
 				</div>
 				<div class="text-xs text-base-content/60">last scan: {formatTimestamp(catalog.tsMs)}</div>
@@ -521,12 +497,12 @@
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Loaded Index</div>
 					<div class="stat-value text-base">{status.index?.cameraCount || 0}</div>
-					<div class="stat-desc">enforcement-first in current M2 path</div>
+					<div class="stat-desc">ALPR runtime index records</div>
 				</div>
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Runtime Scope</div>
 					<div class="stat-value text-base">
-						{catalog.runtimeDatasetScope === 'enforcement_only' ? 'Enforcement' : catalog.runtimeDatasetScope}
+						{catalog.runtimeDatasetScope === 'alpr_only' ? 'ALPR' : catalog.runtimeDatasetScope}
 					</div>
 					<div class="stat-desc">loads: {runtimeDatasetsLabel()}</div>
 				</div>
@@ -549,26 +525,14 @@
 							<td>{catalog.datasets?.alpr?.count || 0}</td>
 							<td>{formatBytes(catalog.datasets?.alpr?.bytes || 0)}</td>
 						</tr>
-						<tr>
-							<td>Speed</td>
-							<td>{datasetStatus(catalog.datasets?.speed)}</td>
-							<td>{catalog.datasets?.speed?.count || 0}</td>
-							<td>{formatBytes(catalog.datasets?.speed?.bytes || 0)}</td>
-						</tr>
-						<tr>
-							<td>Red Light</td>
-							<td>{datasetStatus(catalog.datasets?.redlight)}</td>
-							<td>{catalog.datasets?.redlight?.count || 0}</td>
-							<td>{formatBytes(catalog.datasets?.redlight?.bytes || 0)}</td>
-						</tr>
 					</tbody>
 				</table>
 			</div>
 			<div class="text-xs text-base-content/70">
 				{#if catalog.alprRuntimeLoaded}
-					ALPR dataset is currently included in runtime matching.
+					ALPR dataset is loaded into runtime matching.
 				{:else}
-					ALPR is cataloged for file/integrity visibility but not loaded into the active runtime index.
+					ALPR dataset is present on storage but not currently loaded into the runtime index.
 				{/if}
 			</div>
 		</div>
