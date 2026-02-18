@@ -103,6 +103,23 @@ python enrich_cameras.py input.json --dry-run
 
 The enriched files are written to `../../camera_data_enriched/` by default. Copy them to the device's SD card.
 
+### Step 3b: Convert Enriched NDJSON To Runtime `.bin`
+
+Firmware runtime consumes VCAM binary datasets (`*.bin`), not NDJSON.
+
+```bash
+# Current project flag schema (default): 1=redlight, 2=speed, 3=both, 4=ALPR
+python convert_to_binary.py ../../camera_data_enriched/speed_cam.json ../../camera_data_enriched/speed_cam.bin
+
+# If input uses legacy bitmask flags (bit0=speed, bit1=redlight, bit13=ALPR):
+python convert_to_binary.py --flag-schema legacy input.json output.bin
+```
+
+Use runtime-compatible filenames on SD root:
+- `speed_cam.bin`
+- `redlight_cam.bin`
+- `alpr.bin`
+
 ## Enriched Output Format
 
 Original camera record:

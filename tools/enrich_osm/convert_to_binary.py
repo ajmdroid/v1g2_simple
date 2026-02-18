@@ -35,12 +35,17 @@ MAGIC = b"VCAM"
 VERSION = 1
 RECORD_SIZE = 24
 
-# Camera types matching ESP32 enum
-CAMERA_TYPES = {
-    1: 1,  # RedLightAndSpeed
-    2: 2,  # SpeedCamera
-    3: 3,  # RedLightCamera
-    8192: 4,  # ALPR
+# Camera type values expected by firmware runtime.
+# Current schema:
+#   1 = Red Light
+#   2 = Speed
+#   3 = Red + Speed
+#   4 = ALPR
+CURRENT_CAMERA_TYPES = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
 }
 
 
@@ -48,63 +53,110 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("input", type=Path, help="Input enriched NDJSON file")
     p.add_argument("output", type=Path, help="Output binary file (.bin)")
+    p.add_argument(
+        "--flag-schema",
+        choices=("current", "legacy"),
+        default="current",
+        help=(
+            "Interpretation for 'flg' values in input NDJSON "
+            "(default: current project schema)."
+        ),
+    )
     return p.parse_args()
 
 
-def convert_camera(obj: dict) -> bytes:
+def _parse_float(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(fallback)
+
+
+def _parse_int(value, fallback):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(fallback)
+
+
+def _map_camera_type(flag_value: int, flag_schema: str) -> int:
+    """Map NDJSON flg value to runtime camera type enum."""
+    if flag_schema == "current":
+        if flag_value & 8192:
+            return 4
+        return CURRENT_CAMERA_TYPES.get(flag_value, 2)
+
+    # Legacy bitmask schema:
+    #   bit0 speed, bit1 redlight, bit13 ALPR
+    if flag_value & 8192:
+        return 4
+    has_speed = (flag_value & 0x1) != 0
+    has_red = (flag_value & 0x2) != 0
+    if has_speed and has_red:
+        return 3
+    if has_red:
+        return 1
+    if has_speed:
+        return 2
+    return 2
+
+
+def convert_camera(obj: dict, flag_schema: str) -> bytes:
     """Convert single camera record to 24-byte binary."""
-    lat = obj.get("lat", 0.0)
-    lon = obj.get("lon", 0.0)
-    
-    # Snap point (midpoint of corridor endpoints, or camera location if no corridor)
-    p1 = obj.get("p1", [lat, lon])
-    p2 = obj.get("p2", [lat, lon])
-    p1_lat = p1[0] if len(p1) >= 2 else lat
-    p1_lon = p1[1] if len(p1) >= 2 else lon
-    p2_lat = p2[0] if len(p2) >= 2 else lat
-    p2_lon = p2[1] if len(p2) >= 2 else lon
-    
-    # Snap point is midpoint of corridor
-    snap_lat = (p1_lat + p2_lat) / 2.0
-    snap_lon = (p1_lon + p2_lon) / 2.0
-    
-    # Bearing (stored as bearing * 10 to preserve one decimal place)
-    brg = obj.get("brg", -1)
-    if brg is None:
-        brg = -1
+    lat = _parse_float(obj.get("lat", 0.0), 0.0)
+    lon = _parse_float(obj.get("lon", 0.0), 0.0)
+
+    # Snap point sources, in priority order:
+    # 1) Enriched corridor endpoints (p1/p2)
+    # 2) Canonical snap keys (slt/sln)
+    # 3) Legacy snap keys (slat/slon)
+    # 4) Camera lat/lon fallback
+    p1 = obj.get("p1")
+    p2 = obj.get("p2")
+    if isinstance(p1, (list, tuple)) and isinstance(p2, (list, tuple)) and len(p1) >= 2 and len(p2) >= 2:
+        p1_lat = _parse_float(p1[0], lat)
+        p1_lon = _parse_float(p1[1], lon)
+        p2_lat = _parse_float(p2[0], lat)
+        p2_lon = _parse_float(p2[1], lon)
+        snap_lat = (p1_lat + p2_lat) * 0.5
+        snap_lon = (p1_lon + p2_lon) * 0.5
     else:
-        brg = int(brg * 10)  # Multiply by 10 for one decimal precision
-    
-    # Corridor width
-    width = obj.get("w", 35)
-    if width is None:
-        width = 35
-    width = min(255, max(0, int(width)))
-    
-    # Bearing tolerance (default 30 degrees)
-    tolerance = 30
-    
-    # Type
-    flg = obj.get("flg", 2)
-    cam_type = CAMERA_TYPES.get(flg, 2)
-    
-    # Speed
-    speed = obj.get("spd", 0)
-    if speed is None:
-        speed = 0
-    speed = min(255, max(0, int(speed)))
-    
-    # Flags
+        snap_lat = _parse_float(obj.get("slt", obj.get("slat", lat)), lat)
+        snap_lon = _parse_float(obj.get("sln", obj.get("slon", lon)), lon)
+
+    # Bearing stored as *10 (0.1 degree precision), -1 sentinel if unknown.
+    raw_bearing = obj.get("rbr", obj.get("brg"))
+    if raw_bearing is None:
+        bearing = -1
+    else:
+        bearing = int(round(_parse_float(raw_bearing, -1) * 10.0))
+        if bearing < -1:
+            bearing = -1
+        elif bearing > 3599:
+            bearing = 3599
+
+    # Corridor width/tolerance defaults should mirror downloader defaults.
+    width = min(255, max(0, _parse_int(obj.get("cwm", obj.get("w", 35)), 35)))
+    tolerance = min(255, max(0, _parse_int(obj.get("btol", 30), 30)))
+
+    # Camera type mapping.
+    flg = _parse_int(obj.get("flg", 2), 2)
+    cam_type = _map_camera_type(flg, flag_schema)
+
+    # Speed limit value (support either spd or psl metadata).
+    speed = min(255, max(0, _parse_int(obj.get("spd", obj.get("psl", 0)), 0)))
+
+    # Runtime flags.
     flags = 0
     if obj.get("unt") == "kmh":
         flags |= 0x01
-    
+
     # Pack: 4 floats + 1 int16 + 6 uint8
     return struct.pack(
         "<4f h 6B",
         lat, lon,
         snap_lat, snap_lon,
-        brg,
+        bearing,
         width, tolerance, cam_type, speed, flags, 0  # last is reserved
     )
 
@@ -142,7 +194,7 @@ def main():
     with args.output.open("wb") as out:
         out.write(header)
         for cam in cameras:
-            out.write(convert_camera(cam))
+            out.write(convert_camera(cam, args.flag_schema))
     
     input_size = args.input.stat().st_size
     output_size = args.output.stat().st_size
