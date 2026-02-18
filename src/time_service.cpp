@@ -106,7 +106,7 @@ bool savePersistedTimeSnapshot(const PersistedTime& snapshot) {
     }
 
     ok &= prefs.putBool(KEY_VALID, true) > 0;
-    ok &= prefs.putString(KEY_EPOCH_MS, String(snapshot.epochMs)) > 0;
+    ok &= prefs.putLong64(KEY_EPOCH_MS, snapshot.epochMs) > 0;
     ok &= prefs.putInt(KEY_TZ_OFFSET, clampTzOffset(snapshot.tzOffsetMin)) > 0;
     ok &= prefs.putUChar(KEY_SOURCE, snapshot.source) > 0;
     prefs.end();
@@ -127,9 +127,24 @@ bool loadPersistedTimeSnapshot(PersistedTime& snapshot) {
         return false;
     }
 
-    const String epochStr = prefs.getString(KEY_EPOCH_MS, "");
     int64_t epochMs = 0;
-    if (!parseInt64Strict(epochStr, epochMs) || !isValidUnixMs(epochMs)) {
+    const PreferenceType epochType = prefs.getType(KEY_EPOCH_MS);
+    if (epochType == PT_I64 || epochType == PT_U64) {
+        epochMs = prefs.getLong64(KEY_EPOCH_MS, 0);
+    } else if (epochType == PT_STR) {
+        // Legacy format fallback: epoch was previously persisted as a decimal string.
+        const String epochStr = prefs.getString(KEY_EPOCH_MS, "");
+        if (!parseInt64Strict(epochStr, epochMs)) {
+            prefs.end();
+            clearPersistedTimeSnapshot();
+            return false;
+        }
+    } else {
+        prefs.end();
+        clearPersistedTimeSnapshot();
+        return false;
+    }
+    if (!isValidUnixMs(epochMs)) {
         prefs.end();
         clearPersistedTimeSnapshot();
         return false;
@@ -347,6 +362,12 @@ void TimeService::persistCurrentTime() {
 
 void TimeService::periodicSave(uint32_t nowMs) {
     if (valid_.load(std::memory_order_acquire) == 0) {
+        return;
+    }
+    const uint8_t source = source_.load(std::memory_order_relaxed);
+    // GPS/SNTP sources already persist via setEpochBaseMs() material-change logic.
+    // Skipping periodic writes here reduces NVS churn under WiFi+BLE coexistence.
+    if (source == SOURCE_GPS || source == SOURCE_SNTP_STA) {
         return;
     }
     if (nowMs - lastPeriodicSaveMs_ < PERIODIC_SAVE_INTERVAL_MS) {
