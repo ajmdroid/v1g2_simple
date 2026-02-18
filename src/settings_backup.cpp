@@ -370,6 +370,14 @@ bool SettingsManager::checkNeedsRestore() {
         Serial.println("[Settings] NVS appears partial/corrupt (critical keys missing)");
         return true;
     }
+
+    // Detect incomplete writes: settingsVer is the FIRST key written and
+    // nvsValid is the LAST.  If settingsVer exists but nvsValid does not,
+    // the namespace was only partially written (crash/reset mid-save).
+    if (nvsMarker == 0 && settingsVer >= 2) {
+        Serial.println("[Settings] NVS appears incomplete (settingsVer present but nvsValid missing)");
+        return true;
+    }
     
     return false;
 }

@@ -266,7 +266,19 @@ String SettingsManager::getActiveNamespace() {
         active = meta.getString("active", "");
         meta.end();
         if (active.length() > 0 && isKnownSettingsNamespace(active)) {
-            return active;
+            // Verify the meta-pointed namespace is actually healthy.
+            // If a crash interrupted writeSettingsToNamespace (which clears
+            // then rewrites), the namespace could be partial/empty while
+            // the OTHER namespace still holds the previous good copy.
+            const int activeScore = namespaceHealthScore(active.c_str());
+            if (activeScore >= 1000) {
+                // nvsValid marker present → write completed fully.
+                return active;
+            }
+            // Meta points to an unhealthy namespace — fall through to
+            // health-scoring so we pick the best surviving copy.
+            Serial.printf("[Settings] WARN: Meta namespace '%s' unhealthy (score=%d), recovering\n",
+                          active.c_str(), activeScore);
         }
     }
 
@@ -448,11 +460,23 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += prefs.putUChar("apTimeout", settings.apTimeoutMinutes);
     
-    // NVS validity marker - used to detect if NVS was wiped
+    // NVS validity marker - used to detect if NVS was wiped.
+    // Written LAST so its presence proves the entire write completed.
     written += prefs.putInt("nvsValid", SETTINGS_VERSION);
 
+    // Verify the marker was actually persisted.  If NVS ran out of
+    // entries/pages, later keys silently fail and the namespace would
+    // appear incomplete on the next boot.
+    const int verifyMarker = prefs.getInt("nvsValid", 0);
     prefs.end();
-    Serial.printf("[Settings] Wrote %d bytes to namespace %s\n", written, ns);
+
+    if (verifyMarker != SETTINGS_VERSION) {
+        Serial.printf("[Settings] ERROR: nvsValid verify failed in %s (expected %d, got %d) — written=%d\n",
+                      ns, SETTINGS_VERSION, verifyMarker, (int)written);
+        return false;
+    }
+
+    Serial.printf("[Settings] Wrote %d bytes to namespace %s\n", (int)written, ns);
     return true;
 }
 

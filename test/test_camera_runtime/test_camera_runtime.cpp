@@ -306,6 +306,77 @@ void test_memory_guard_blocks_then_recovers_candidate_scans() {
     TEST_ASSERT_EQUAL_UINT32(1, recovered.activeAlert.cameraId);
 }
 
+void test_memory_guard_blocks_when_free_below_threshold() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+
+    mock_set_heap_caps(
+        CameraRuntimeModule::kMemoryGuardMinFreeInternal - 1u,
+        CameraRuntimeModule::kMemoryGuardMinLargestBlock + 1024u);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus blocked = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_EQUAL_UINT32(1, blocked.counters.cameraTickSkipsMemoryGuard);
+    TEST_ASSERT_EQUAL_UINT32(0, blocked.counters.cameraCandidatesChecked);
+    TEST_ASSERT_FALSE(blocked.activeAlert.active);
+}
+
+void test_memory_guard_blocks_when_largest_block_below_threshold() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+
+    mock_set_heap_caps(
+        CameraRuntimeModule::kMemoryGuardMinFreeInternal + 1024u,
+        CameraRuntimeModule::kMemoryGuardMinLargestBlock - 1u);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus blocked = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_EQUAL_UINT32(1, blocked.counters.cameraTickSkipsMemoryGuard);
+    TEST_ASSERT_EQUAL_UINT32(0, blocked.counters.cameraCandidatesChecked);
+    TEST_ASSERT_FALSE(blocked.activeAlert.active);
+}
+
+void test_memory_guard_allows_scan_at_exact_thresholds() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+
+    mock_set_heap_caps(
+        CameraRuntimeModule::kMemoryGuardMinFreeInternal,
+        CameraRuntimeModule::kMemoryGuardMinLargestBlock);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_EQUAL_UINT32(0, status.counters.cameraTickSkipsMemoryGuard);
+    TEST_ASSERT_TRUE(status.counters.cameraCandidatesChecked > 0);
+    TEST_ASSERT_TRUE(status.activeAlert.active);
+}
+
+void test_memory_guard_skip_counter_accumulates_under_sustained_pressure() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2);
+    mock_set_heap_caps(20000u, 12000u);
+
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+    processCameraTick(1000);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1300);
+    processCameraTick(1300);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1600);
+    processCameraTick(1600);
+
+    CameraRuntimeStatus blocked = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_EQUAL_UINT32(3, blocked.counters.cameraTickSkipsMemoryGuard);
+    TEST_ASSERT_EQUAL_UINT32(3, blocked.counters.cameraTicks);
+    TEST_ASSERT_EQUAL_UINT32(0, blocked.counters.cameraCandidatesChecked);
+
+    mock_set_heap_caps(64000u, 32000u);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1900);
+    processCameraTick(1900);
+
+    CameraRuntimeStatus recovered = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_EQUAL_UINT32(3, recovered.counters.cameraTickSkipsMemoryGuard);
+    TEST_ASSERT_TRUE(recovered.counters.cameraCandidatesChecked > 0);
+    TEST_ASSERT_TRUE(recovered.activeAlert.active);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_forward_only_start_requires_heading_alignment);
@@ -316,5 +387,9 @@ int main() {
     RUN_TEST(test_preempt_suppresses_same_pass_until_exit_then_allows_reentry);
     RUN_TEST(test_signal_priority_blocks_new_camera_start_until_cleared);
     RUN_TEST(test_memory_guard_blocks_then_recovers_candidate_scans);
+    RUN_TEST(test_memory_guard_blocks_when_free_below_threshold);
+    RUN_TEST(test_memory_guard_blocks_when_largest_block_below_threshold);
+    RUN_TEST(test_memory_guard_allows_scan_at_exact_thresholds);
+    RUN_TEST(test_memory_guard_skip_counter_accumulates_under_sustained_pressure);
     return UNITY_END();
 }
