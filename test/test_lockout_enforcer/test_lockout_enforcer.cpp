@@ -25,6 +25,10 @@ struct GpsRuntimeStatus {
     bool locationValid = false;
     float latitudeDeg = NAN;
     float longitudeDeg = NAN;
+    bool courseValid = false;
+    float courseDeg = NAN;
+    uint32_t courseSampleTsMs = 0;
+    uint32_t courseAgeMs = UINT32_MAX;
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
     uint32_t fixAgeMs = UINT32_MAX;
@@ -60,13 +64,17 @@ static PacketParser parser;
 
 // --- Helpers ---
 
-static GpsRuntimeStatus makeGps(float lat, float lon, bool fix = true) {
+static GpsRuntimeStatus makeGps(float lat, float lon, bool fix = true, float courseDeg = NAN) {
     GpsRuntimeStatus g;
     g.enabled = true;
     g.hasFix = fix;
     g.locationValid = fix;
     g.latitudeDeg = lat;
     g.longitudeDeg = lon;
+    g.courseValid = fix && std::isfinite(courseDeg);
+    g.courseDeg = g.courseValid ? courseDeg : NAN;
+    g.courseSampleTsMs = g.courseValid ? 1 : 0;
+    g.courseAgeMs = g.courseValid ? 0 : UINT32_MAX;
     g.satellites = fix ? 7 : 0;
     g.hdop = fix ? 1.3f : NAN;
     g.sampleValid = fix;
@@ -317,6 +325,53 @@ void test_no_match_wrong_freq() {
     TEST_ASSERT_FALSE(r.shouldMute);
 }
 
+void test_directional_forward_match_with_course() {
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f, 0x04, 24148, 1350);
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 90;
+    e.headingTolDeg = 20;
+    testIndex.add(e);
+    parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f, true, 98.0f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_TRUE(r.shouldMute);
+}
+
+void test_directional_forward_mismatch_blocks_match() {
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f, 0x04, 24148, 1350);
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 90;
+    e.headingTolDeg = 20;
+    testIndex.add(e);
+    parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f, true, 220.0f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+}
+
+void test_directional_entry_requires_valid_course() {
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f, 0x04, 24148, 1350);
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 90;
+    e.headingTolDeg = 20;
+    testIndex.add(e);
+    parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true)});
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
+    gps.courseValid = false;
+    gps.courseDeg = NAN;
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+}
+
 // ================================================================
 // Stats accumulate across multiple calls
 // ================================================================
@@ -558,6 +613,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_unsupported_band_never_mutes);
     RUN_TEST(test_ka_band_mutes_when_policy_enabled);
     RUN_TEST(test_no_match_wrong_freq);
+    RUN_TEST(test_directional_forward_match_with_course);
+    RUN_TEST(test_directional_forward_mismatch_blocks_match);
+    RUN_TEST(test_directional_entry_requires_valid_course);
     RUN_TEST(test_stats_accumulate);
     RUN_TEST(test_empty_index_no_match);
     RUN_TEST(test_lastResult_reflects_latest);

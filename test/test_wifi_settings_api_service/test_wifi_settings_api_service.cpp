@@ -302,6 +302,28 @@ void test_settings_save_updates_runtime_dependencies() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 
+void test_settings_save_keeps_camera_runtime_enabled_when_gps_disabled() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.settings.gpsEnabled = false;
+    rt.settings.cameraEnabled = false;
+    server.setArg("cameraEnabled", "true");
+
+    WifiSettingsApiService::handleApiSettingsSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_FALSE(rt.settings.gpsEnabled);
+    TEST_ASSERT_TRUE(rt.settings.cameraEnabled);
+    TEST_ASSERT_EQUAL_INT(0, rt.setGpsRuntimeEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.setSpeedSourceGpsEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastCameraRuntimeEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+}
+
 void test_settings_save_updates_brightness_and_display_style() {
     WebServer server(80);
     FakeRuntime rt;
@@ -352,6 +374,7 @@ int main() {
     RUN_TEST(test_settings_save_rejects_invalid_ap_credentials);
     RUN_TEST(test_settings_save_uses_existing_password_placeholder);
     RUN_TEST(test_settings_save_updates_runtime_dependencies);
+    RUN_TEST(test_settings_save_keeps_camera_runtime_enabled_when_gps_disabled);
     RUN_TEST(test_settings_save_updates_brightness_and_display_style);
     RUN_TEST(test_settings_save_updates_development_toggles);
     return UNITY_END();

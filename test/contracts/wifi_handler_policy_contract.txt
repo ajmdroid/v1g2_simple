@@ -15,6 +15,7 @@ route=HTTP_GET /api/lockout/zones rate_limit=1 ui_activity=1 obd_enabled_gate=0 
 route=HTTP_GET /api/lockouts/events rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiEvents
 route=HTTP_GET /api/lockouts/summary rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiSummary
 route=HTTP_GET /api/lockouts/zones rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZones
+route=HTTP_GET /api/lockouts/zones/export rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneExport
 route=HTTP_GET /api/obd/devices rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiDevices
 route=HTTP_GET /api/obd/remembered rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiRemembered
 route=HTTP_GET /api/obd/status rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiStatus
@@ -25,7 +26,10 @@ route=HTTP_POST /api/debug/enable rate_limit=0 ui_activity=0 obd_enabled_gate=0 
 route=HTTP_POST /api/debug/perf-files/delete rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDelete
 route=HTTP_POST /api/gps/config rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleApiConfig
 route=HTTP_POST /api/lockout/zones/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneDelete
+route=HTTP_POST /api/lockouts/zones/create rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneCreate
 route=HTTP_POST /api/lockouts/zones/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneDelete
+route=HTTP_POST /api/lockouts/zones/import rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneImport
+route=HTTP_POST /api/lockouts/zones/update rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneUpdate
 route=HTTP_POST /api/obd/config rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiConfig
 route=HTTP_POST /api/obd/connect rate_limit=1 ui_activity=1 obd_enabled_gate=1 delegates=ObdApiService::handleApiConnect
 route=HTTP_POST /api/obd/devices/clear rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=ObdApiService::handleApiDevicesClear

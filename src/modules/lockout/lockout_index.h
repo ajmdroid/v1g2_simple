@@ -35,7 +35,9 @@ public:
     LockoutDecision evaluate(int32_t latE5,
                              int32_t lonE5,
                              uint8_t band,
-                             uint16_t freqMHz) const;
+                             uint16_t freqMHz,
+                             bool courseValid = false,
+                             float courseDeg = 0.0f) const;
 
     // --- Mutation (boot restore, learner promotion, user creation) ---
 
@@ -86,7 +88,9 @@ public:
     int findMatch(int32_t latE5,
                   int32_t lonE5,
                   uint8_t band,
-                  uint16_t freqMHz) const;
+                  uint16_t freqMHz,
+                  bool courseValid = false,
+                  float courseDeg = 0.0f) const;
 
     /// Find all active entries whose zone contains the given position
     /// (ignores band/freq — position-only).  Fills `out` with slot indices.
@@ -106,6 +110,9 @@ private:
 
     /// Check whether the alert frequency is within entry's tolerance window.
     static bool freqMatches(uint16_t alertFreqMHz, const LockoutEntry& entry);
+
+    /// Direction gate for forward/reverse entries.
+    static bool courseMatches(bool courseValid, float courseDeg, const LockoutEntry& entry);
 
     LockoutEntry entries_[kCapacity] = {};
 };

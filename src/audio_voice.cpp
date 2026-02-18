@@ -379,28 +379,14 @@ void play_camera_ahead_voice(uint8_t cameraTypeRaw) {
         return;
     }
 
-    const char* typeFile = nullptr;
-    switch (static_cast<CameraVoiceType>(cameraTypeRaw)) {
-        case CameraVoiceType::REDLIGHT:
-            typeFile = "cam_redlight.mul";
-            break;
-        case CameraVoiceType::SPEED:
-            typeFile = "cam_speed.mul";
-            break;
-        case CameraVoiceType::REDLIGHT_SPEED:
-            typeFile = "cam_both.mul";
-            break;
-        case CameraVoiceType::ALPR:
-            typeFile = "cam_alpr.mul";
-            break;
-        default:
-            AUDIO_LOGF("[AUDIO] Unknown camera voice type: %u\n", static_cast<unsigned int>(cameraTypeRaw));
-            return;
+    if (cameraTypeRaw != static_cast<uint8_t>(CameraVoiceType::ALPR)) {
+        AUDIO_LOGF("[AUDIO] Normalizing camera voice type %u to ALPR\n",
+                   static_cast<unsigned int>(cameraTypeRaw));
     }
 
     SDAudioTaskParams params;
     params.numClips = 0;
-    snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, typeFile);
+    snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, "cam_alpr.mul");
     snprintf(params.filePaths[params.numClips++], 48, "%s/dir_ahead.mul", AUDIO_PATH);
     start_sd_audio_task(params);
 }

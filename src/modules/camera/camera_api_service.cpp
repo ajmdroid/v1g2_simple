@@ -28,6 +28,8 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
+constexpr uint8_t kCameraTypeAlpr = 4;
+
 struct VcamHeader {
     char magic[4];
     uint32_t version;
@@ -216,11 +218,12 @@ void sendCatalog(WebServer& server,
     doc["success"] = true;
     doc["storageReady"] = false;
     doc["tsMs"] = millis();
+    doc["runtimeDatasetScope"] = "alpr_only";
+    JsonArray runtimeDatasets = doc["runtimeDatasets"].to<JsonArray>();
+    runtimeDatasets.add("alpr");
 
     JsonObject datasets = doc["datasets"].to<JsonObject>();
     JsonObject alprObj = datasets["alpr"].to<JsonObject>();
-    JsonObject speedObj = datasets["speed"].to<JsonObject>();
-    JsonObject redlightObj = datasets["redlight"].to<JsonObject>();
 
     auto writeDataset = [](JsonObject& obj, const CameraCatalogDataset& ds) {
         obj["present"] = ds.present;
@@ -232,8 +235,7 @@ void sendCatalog(WebServer& server,
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         doc["message"] = "storage_unavailable";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -247,8 +249,7 @@ void sendCatalog(WebServer& server,
         doc["success"] = false;
         doc["message"] = "filesystem_unavailable";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -262,8 +263,7 @@ void sendCatalog(WebServer& server,
         doc["success"] = false;
         doc["message"] = "sd_busy";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -273,15 +273,12 @@ void sendCatalog(WebServer& server,
     }
 
     const CameraCatalogDataset alpr = readCameraCatalogDataset(fs, "/alpr.bin");
-    const CameraCatalogDataset speed = readCameraCatalogDataset(fs, "/speed_cam.bin");
-    const CameraCatalogDataset redlight = readCameraCatalogDataset(fs, "/redlight_cam.bin");
 
     doc["storageReady"] = true;
     writeDataset(alprObj, alpr);
-    writeDataset(speedObj, speed);
-    writeDataset(redlightObj, redlight);
-    doc["totalCount"] = alpr.count + speed.count + redlight.count;
-    doc["totalBytes"] = alpr.bytes + speed.bytes + redlight.bytes;
+    doc["alprRuntimeLoaded"] = alpr.valid;
+    doc["totalCount"] = alpr.count;
+    doc["totalBytes"] = alpr.bytes;
 
     String response;
     serializeJson(doc, response);
@@ -347,10 +344,12 @@ void handleApiEvents(WebServer& server,
 }
 
 void handleDemo(WebServer& server) {
-    uint8_t type = 0;
+    uint8_t requestedType = 0;
     if (server.hasArg("type")) {
-        type = clampU8Value(server.arg("type").toInt(), 0, 4);
+        requestedType = clampU8Value(server.arg("type").toInt(), 0, kCameraTypeAlpr);
     }
+    const bool cycleMode = requestedType == 0;
+    const uint8_t type = kCameraTypeAlpr;
 
     bool muted = false;
     if (server.hasArg("muted")) {
@@ -368,9 +367,9 @@ void handleDemo(WebServer& server) {
         cancelDisplayPreview();
     }
 
-    if (type == 0) {
+    if (cycleMode) {
         if (durationMs == 0) {
-            durationMs = 5400;
+            durationMs = 2200;
         }
         requestCameraPreviewCycleHold(durationMs);
     } else {
@@ -384,7 +383,7 @@ void handleDemo(WebServer& server) {
     doc["success"] = true;
     doc["active"] = true;
     doc["mode"] = "camera";
-    doc["type"] = type;
+    doc["type"] = cycleMode ? 0 : type;
     doc["muted"] = muted;
     doc["durationMs"] = durationMs;
 

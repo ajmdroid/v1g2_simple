@@ -6,6 +6,14 @@
 /// All coordinates are fixed-point E5 (degrees * 100000).
 /// Timestamps are Unix epoch milliseconds (int64_t) from TimeService.
 struct LockoutEntry {
+    enum DirectionMode : uint8_t {
+        DIRECTION_ALL = 0,      // Match regardless of travel direction.
+        DIRECTION_FORWARD = 1,  // Match when course aligns with headingDeg.
+        DIRECTION_REVERSE = 2   // Match when course is opposite headingDeg.
+    };
+
+    static constexpr uint16_t HEADING_INVALID = 0xFFFF;
+
     int32_t  latE5       = 0;       // Center latitude  (E5 fixed-point)
     int32_t  lonE5       = 0;       // Center longitude (E5 fixed-point)
     uint16_t radiusE5    = 0;       // Radius in E5 units (~135 ≈ 150 m lat)
@@ -14,7 +22,10 @@ struct LockoutEntry {
     uint16_t freqTolMHz  = 10;      // ±tolerance (MHz) for frequency match
     uint8_t  confidence  = 0;       // 0-255: decays on clean pass, grows on hit
     uint8_t  flags       = 0;       // See Flag constants below
+    uint8_t  directionMode = DIRECTION_ALL; // Optional directional gate (all/forward/reverse)
+    uint8_t  headingTolDeg = 45;    // Allowed angular delta for directional matching
     uint8_t  missCount   = 0;       // Counted clean passes since most recent hit (policy path)
+    uint16_t headingDeg  = HEADING_INVALID; // Heading reference for directional matching
     int64_t  firstSeenMs = 0;       // Unix epoch ms — first observation
     int64_t  lastSeenMs  = 0;       // Unix epoch ms — most recent hit
     int64_t  lastPassMs  = 0;       // Unix epoch ms — most recent clean pass
@@ -28,6 +39,7 @@ struct LockoutEntry {
     bool isActive()  const { return (flags & FLAG_ACTIVE)  != 0; }
     bool isManual()  const { return (flags & FLAG_MANUAL)  != 0; }
     bool isLearned() const { return (flags & FLAG_LEARNED) != 0; }
+    bool hasDirectionConstraint() const { return directionMode != DIRECTION_ALL; }
 
     void setActive(bool v)  { if (v) flags |= FLAG_ACTIVE;  else flags &= ~FLAG_ACTIVE; }
     void setManual(bool v)  { if (v) flags |= FLAG_MANUAL;  else flags &= ~FLAG_MANUAL; }

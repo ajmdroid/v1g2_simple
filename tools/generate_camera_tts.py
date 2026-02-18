@@ -46,12 +46,9 @@ def main():
     # Create output directory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # Camera alert phrases
+    # ALPR-only camera alert phrase
     phrases = [
-        ("Red light camera", "cam_redlight"),
-        ("Speed camera", "cam_speed"),
         ("A. L. P. R.", "cam_alpr"),
-        ("Red light and speed camera", "cam_both"),
     ]
     
     print("Generating camera TTS audio files...")

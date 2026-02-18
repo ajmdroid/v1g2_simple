@@ -45,7 +45,8 @@ class CameraIndex {
 public:
     static constexpr float kCellSizeDeg = 0.01f;
     static constexpr uint32_t kRawScanCap = 128;
-    static constexpr uint32_t kSpanBudgetBytes = 64u * 1024u;  // PSRAM budget (moved from SRAM to avoid WiFi contention)
+    // ALPR-only mode requires a larger span table; keep it in PSRAM.
+    static constexpr uint32_t kSpanBudgetBytes = 512u * 1024u;
 
     CameraIndex() = default;
     ~CameraIndex();

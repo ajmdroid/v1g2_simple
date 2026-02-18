@@ -17,6 +17,12 @@
 	let advancedUnlocked = $state(false);
 	let showKaWarningModal = $state(false);
 	let deletingZoneSlot = $state(null);
+	let zoneEditorOpen = $state(false);
+	let zoneEditorSaving = $state(false);
+	let zoneEditorSlot = $state(null);
+	let exportingZones = $state(false);
+	let importingZones = $state(false);
+	let importFileInput;
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const LOCKOUT_EVENTS_LIMIT = 48;
@@ -38,6 +44,18 @@
 	const LEARNER_UNLEARN_COUNT_MIN = 0;
 	const LEARNER_UNLEARN_COUNT_MAX = 10;
 	const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
+	const DIRECTION_MODE_OPTIONS = [
+		{ value: 'all', label: 'All Directions' },
+		{ value: 'forward', label: 'Forward Only' },
+		{ value: 'reverse', label: 'Reverse Only' }
+	];
+	const LOCKOUT_BAND_OPTIONS = [
+		{ value: 0x04, label: 'K Band' },
+		{ value: 0x02, label: 'Ka Band' },
+		{ value: 0x08, label: 'X Band' },
+		{ value: 0x01, label: 'Laser' },
+		{ value: 0x06, label: 'K + Ka' }
+	];
 	const LOCKOUT_PRESET_LEGACY_SAFE = {
 		name: 'Legacy Safe',
 		learnerPromotionHits: 3,
@@ -140,6 +158,7 @@
 	});
 	let activeLockoutZones = $state([]);
 	let pendingLockoutZones = $state([]);
+	let zoneEditor = $state(defaultZoneEditorState());
 
 	onMount(async () => {
 		await refreshAll();
@@ -366,6 +385,142 @@
 			return `${radiusE5ToFeet(zone.radiusE5)} ft`;
 		}
 		return formatRadiusFeet(zone?.radiusM);
+	}
+
+	function defaultZoneEditorState() {
+		return {
+			latitude: '',
+			longitude: '',
+			radiusFt: radiusE5ToFeet(LEARNER_RADIUS_E5_DEFAULT),
+			bandMask: 0x04,
+			frequencyMHz: '',
+			frequencyToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
+			confidence: 100,
+			directionMode: 'all',
+			headingDeg: '',
+			headingToleranceDeg: 45
+		};
+	}
+
+	function lockoutZoneSourceLabel(zone) {
+		if (zone?.manual && zone?.learned) return 'manual+learned';
+		if (zone?.manual) return 'manual';
+		if (zone?.learned) return 'learned';
+		return 'active';
+	}
+
+	function normalizeDirectionMode(value) {
+		const token = typeof value === 'string' ? value.trim().toLowerCase() : '';
+		if (token === 'forward' || token === 'reverse') return token;
+		return 'all';
+	}
+
+	function formatDirectionSummary(zone) {
+		const mode = normalizeDirectionMode(zone?.directionMode);
+		if (mode === 'all') return 'All';
+		const heading = typeof zone?.headingDeg === 'number' ? `${Math.round(zone.headingDeg)}°` : '—';
+		const tolerance =
+			typeof zone?.headingToleranceDeg === 'number' ? Math.round(zone.headingToleranceDeg) : 45;
+		return `${mode === 'forward' ? 'Forward' : 'Reverse'} ${heading} ±${tolerance}°`;
+	}
+
+	function mapHrefFromZone(zone) {
+		if (typeof zone?.latitude !== 'number' || typeof zone?.longitude !== 'number') return '';
+		return `https://maps.google.com/?q=${zone.latitude},${zone.longitude}`;
+	}
+
+	function closeZoneEditor() {
+		if (zoneEditorSaving) return;
+		zoneEditorOpen = false;
+		zoneEditorSlot = null;
+		zoneEditor = defaultZoneEditorState();
+	}
+
+	function openZoneCreateEditor() {
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before creating manual lockout zones.');
+			return;
+		}
+		zoneEditorSlot = null;
+		zoneEditor = defaultZoneEditorState();
+		zoneEditorOpen = true;
+	}
+
+	function openZoneEditEditor(zone) {
+		const slot = Number(zone?.slot);
+		if (!Number.isInteger(slot) || slot < 0) return;
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before editing lockout zones.');
+			return;
+		}
+		const headingIsSet = typeof zone?.headingDeg === 'number' && Number.isFinite(zone.headingDeg);
+		zoneEditorSlot = slot;
+		zoneEditor = {
+			latitude: typeof zone?.latitude === 'number' ? zone.latitude.toFixed(5) : '',
+			longitude: typeof zone?.longitude === 'number' ? zone.longitude.toFixed(5) : '',
+			radiusFt:
+				typeof zone?.radiusE5 === 'number'
+					? radiusE5ToFeet(zone.radiusE5)
+					: radiusE5ToFeet(LEARNER_RADIUS_E5_DEFAULT),
+			bandMask: clampInt(zone?.bandMask, 1, 255, 0x04),
+			frequencyMHz:
+				typeof zone?.frequencyMHz === 'number' && zone.frequencyMHz > 0 ? String(zone.frequencyMHz) : '',
+			frequencyToleranceMHz: clampInt(
+				zone?.frequencyToleranceMHz,
+				0,
+				65535,
+				LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
+			),
+			confidence: clampInt(zone?.confidence, 0, 255, 100),
+			directionMode: normalizeDirectionMode(zone?.directionMode),
+			headingDeg: headingIsSet ? String(Math.round(zone.headingDeg)) : '',
+			headingToleranceDeg: clampInt(zone?.headingToleranceDeg, 0, 90, 45)
+		};
+		zoneEditorOpen = true;
+	}
+
+	function buildZoneEditorPayload() {
+		const latitude = Number(zoneEditor.latitude);
+		if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+			return { error: 'Latitude must be between -90 and 90.' };
+		}
+		const longitude = Number(zoneEditor.longitude);
+		if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+			return { error: 'Longitude must be between -180 and 180.' };
+		}
+		const directionMode = normalizeDirectionMode(zoneEditor.directionMode);
+		const payload = {
+			latitude,
+			longitude,
+			bandMask: clampInt(zoneEditor.bandMask, 1, 255, 0x04),
+			radiusE5: feetToRadiusE5(zoneEditor.radiusFt),
+			frequencyToleranceMHz: clampInt(
+				zoneEditor.frequencyToleranceMHz,
+				0,
+				65535,
+				LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
+			),
+			confidence: clampInt(zoneEditor.confidence, 0, 255, 100),
+			directionMode,
+			headingToleranceDeg: clampInt(zoneEditor.headingToleranceDeg, 0, 90, 45)
+		};
+
+		const frequencyMHz = Number(zoneEditor.frequencyMHz);
+		if (Number.isFinite(frequencyMHz) && frequencyMHz > 0) {
+			payload.frequencyMHz = clampInt(frequencyMHz, 1, 65535, 0);
+		}
+
+		if (directionMode === 'all') {
+			payload.headingDeg = null;
+		} else {
+			const headingDeg = Number(zoneEditor.headingDeg);
+			if (!Number.isFinite(headingDeg) || headingDeg < 0 || headingDeg >= 360) {
+				return { error: 'Heading must be between 0 and 359 for directional zones.' };
+			}
+			payload.headingDeg = Math.round(headingDeg);
+		}
+
+		return { payload };
 	}
 
 	function runtimeLearnerHits() {
@@ -700,18 +855,56 @@
 		}
 	}
 
-	async function deleteLearnedZone(zone) {
+	async function saveZoneEditor() {
+		if (zoneEditorSaving) return;
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before saving lockout zones.');
+			return;
+		}
+		const { payload, error } = buildZoneEditorPayload();
+		if (error) {
+			setMsg('error', error);
+			return;
+		}
+		zoneEditorSaving = true;
+		try {
+			const creating = zoneEditorSlot === null;
+			const requestPayload = creating ? payload : { slot: zoneEditorSlot, ...payload };
+			const res = await fetch(creating ? '/api/lockouts/zones/create' : '/api/lockouts/zones/update', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(requestPayload)
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg(
+					'error',
+					data.message || `Failed to ${creating ? 'create' : 'update'} lockout zone (${res.status})`
+				);
+				return;
+			}
+			const slotText =
+				typeof data.slot === 'number' ? ` ${data.slot}` : zoneEditorSlot === null ? '' : ` ${zoneEditorSlot}`;
+			setMsg('success', `${creating ? 'Created' : 'Updated'} lockout zone${slotText}`);
+			zoneEditorOpen = false;
+			zoneEditorSlot = null;
+			zoneEditor = defaultZoneEditorState();
+			await fetchLockoutZones({ silent: true });
+		} catch (e) {
+			setMsg('error', e?.message ? `Failed to save lockout zone (${e.message})` : 'Failed to save lockout zone');
+		} finally {
+			zoneEditorSaving = false;
+		}
+	}
+
+	async function deleteZone(zone) {
 		const slot = Number(zone?.slot);
 		if (!Number.isInteger(slot) || slot < 0) return;
-		if (!zone?.learned) {
-			setMsg('error', 'Only learned lockout zones can be deleted from this table.');
-			return;
-		}
 		if (!advancedUnlocked) {
-			setMsg('error', 'Unlock advanced writes before deleting learned lockout zones.');
+			setMsg('error', 'Unlock advanced writes before deleting lockout zones.');
 			return;
 		}
-		if (!confirm(`Delete learned lockout zone in slot ${slot}?`)) return;
+		if (!confirm(`Delete ${lockoutZoneSourceLabel(zone)} lockout zone in slot ${slot}?`)) return;
 		deletingZoneSlot = slot;
 		try {
 			const res = await fetch('/api/lockouts/zones/delete', {
@@ -721,15 +914,100 @@
 			});
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) {
-				setMsg('error', data.message || 'Failed to delete learned lockout zone');
+				setMsg('error', data.message || 'Failed to delete lockout zone');
 				return;
 			}
-			setMsg('success', `Deleted learned lockout zone ${slot}`);
+			if (zoneEditorOpen && zoneEditorSlot === slot) {
+				zoneEditorOpen = false;
+				zoneEditorSlot = null;
+				zoneEditor = defaultZoneEditorState();
+			}
+			setMsg('success', `Deleted ${lockoutZoneSourceLabel(zone)} lockout zone ${slot}`);
 			await fetchLockoutZones({ silent: true });
 		} catch (e) {
-			setMsg('error', 'Failed to delete learned lockout zone');
+			setMsg('error', e?.message ? `Failed to delete lockout zone (${e.message})` : 'Failed to delete lockout zone');
 		} finally {
 			deletingZoneSlot = null;
+		}
+	}
+
+	async function exportLockoutZones() {
+		if (exportingZones) return;
+		exportingZones = true;
+		try {
+			const res = await fetch('/api/lockouts/zones/export');
+			const payload = await res.text().catch(() => '');
+			if (!res.ok || !payload) {
+				setMsg('error', `Failed to export lockout zones (${res.status})`);
+				return;
+			}
+			const blob = new Blob([payload], { type: 'application/json' });
+			const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const href = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = href;
+			link.download = `v1-lockouts-${stamp}.json`;
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			URL.revokeObjectURL(href);
+			setMsg('success', 'Exported lockout zones.');
+		} catch (e) {
+			setMsg('error', e?.message ? `Failed to export lockout zones (${e.message})` : 'Failed to export lockout zones');
+		} finally {
+			exportingZones = false;
+		}
+	}
+
+	function promptLockoutImport() {
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before importing lockout zones.');
+			return;
+		}
+		importFileInput?.click();
+	}
+
+	async function handleImportFileSelected(event) {
+		const input = event.currentTarget;
+		const file = input?.files?.[0];
+		if (!file) return;
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before importing lockout zones.');
+			input.value = '';
+			return;
+		}
+		if (!confirm(`Import lockout zones from ${file.name}? This replaces current in-memory zones.`)) {
+			input.value = '';
+			return;
+		}
+		importingZones = true;
+		try {
+			const payload = await file.text();
+			JSON.parse(payload);
+			const res = await fetch('/api/lockouts/zones/import', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: payload
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				setMsg('error', data.message || `Failed to import lockout zones (${res.status})`);
+				return;
+			}
+			zoneEditorOpen = false;
+			zoneEditorSlot = null;
+			zoneEditor = defaultZoneEditorState();
+			const importedCount = typeof data.entriesImported === 'number' ? data.entriesImported : null;
+			setMsg(
+				'success',
+				importedCount === null ? 'Imported lockout zones.' : `Imported ${importedCount} lockout zones.`
+			);
+			await fetchLockoutZones({ silent: true });
+		} catch (e) {
+			setMsg('error', e?.message ? `Failed to import lockout zones (${e.message})` : 'Failed to import lockout zones');
+		} finally {
+			importingZones = false;
+			input.value = '';
 		}
 	}
 </script>
@@ -1100,15 +1378,48 @@
 				<div>
 					<h2 class="card-title">Lockout Zones</h2>
 					<p class="text-sm text-base-content/70">
-						Snapshot of active lockouts and pending learner candidates. Learned zones can be removed.
+						Review active lockouts and pending learner candidates. Manual zones can be created, edited, exported,
+						or imported from JSON.
 					</p>
 				</div>
-				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutZones()} disabled={lockoutZonesLoading}>
-					{#if lockoutZonesLoading}
-						<span class="loading loading-spinner loading-xs"></span>
-					{/if}
-					Refresh
-				</button>
+				<div class="flex flex-wrap gap-2">
+					<button
+						class="btn btn-primary btn-sm"
+						onclick={openZoneCreateEditor}
+						disabled={!advancedUnlocked || zoneEditorSaving || importingZones}
+					>
+						New Manual Zone
+					</button>
+					<button
+						class="btn btn-outline btn-sm"
+						onclick={promptLockoutImport}
+						disabled={!advancedUnlocked || importingZones || zoneEditorSaving}
+					>
+						{#if importingZones}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Import
+					</button>
+					<button class="btn btn-outline btn-sm" onclick={exportLockoutZones} disabled={exportingZones}>
+						{#if exportingZones}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Export
+					</button>
+					<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutZones()} disabled={lockoutZonesLoading}>
+						{#if lockoutZonesLoading}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Refresh
+					</button>
+					<input
+						type="file"
+						accept=".json,application/json"
+						class="hidden"
+						bind:this={importFileInput}
+						onchange={handleImportFileSelected}
+					/>
+				</div>
 			</div>
 
 			{#if lockoutZonesError}
@@ -1148,16 +1459,17 @@
 						{#if activeLockoutZones.length === 0}
 							<div class="text-sm text-base-content/70">No active lockout zones.</div>
 						{:else}
-							<table class="table table-sm min-w-[980px]">
+							<table class="table table-sm min-w-[1120px]">
 								<thead>
 									<tr>
 										<th>Slot</th>
 										<th>Source</th>
-										<th>Action</th>
+										<th>Controls</th>
 										<th>Band</th>
 										<th>Freq</th>
 										<th>Conf</th>
 										<th>Radius</th>
+										<th>Direction</th>
 										<th>Demote</th>
 										<th>Location</th>
 									</tr>
@@ -1167,19 +1479,30 @@
 										<tr>
 											<td class="font-mono text-xs">{zone.slot}</td>
 											<td class="text-xs">
-												{zone.manual && zone.learned
-													? 'manual+learned'
-													: zone.manual
-														? 'manual'
-														: zone.learned
-															? 'learned'
-														: 'active'}
+												<div class="flex flex-wrap gap-1">
+													{#if zone.manual}
+														<div class="badge badge-outline badge-xs">manual</div>
+													{/if}
+													{#if zone.learned}
+														<div class="badge badge-info badge-outline badge-xs">learned</div>
+													{/if}
+													{#if !zone.manual && !zone.learned}
+														<div class="badge badge-ghost badge-xs">active</div>
+													{/if}
+												</div>
 											</td>
 											<td class="text-xs">
-												{#if zone.learned}
+												<div class="flex flex-wrap gap-1">
+													<button
+														class="btn btn-xs btn-outline"
+														onclick={() => openZoneEditEditor(zone)}
+														disabled={!advancedUnlocked || zoneEditorSaving || importingZones}
+													>
+														Edit
+													</button>
 													<button
 														class="btn btn-xs btn-error btn-outline"
-														onclick={() => deleteLearnedZone(zone)}
+														onclick={() => deleteZone(zone)}
 														disabled={!advancedUnlocked || deletingZoneSlot === zone.slot}
 													>
 														{#if deletingZoneSlot === zone.slot}
@@ -1187,14 +1510,13 @@
 														{/if}
 														Delete
 													</button>
-												{:else}
-													—
-												{/if}
+												</div>
 											</td>
 											<td>{formatBandMask(zone.bandMask)}</td>
 											<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
 											<td class="whitespace-nowrap">{formatZoneRadiusFeet(zone)}</td>
+											<td class="text-xs whitespace-nowrap">{formatDirectionSummary(zone)}</td>
 											<td class="text-xs">
 												{#if typeof zone.demotionMissThreshold === 'number'}
 													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
@@ -1209,14 +1531,16 @@
 												<div class="font-mono text-xs">
 													{formatCoordinate(zone.latitude)}, {formatCoordinate(zone.longitude)}
 												</div>
-												<a
-													class="link link-primary text-xs"
-													href={`https://maps.google.com/?q=${zone.latitude},${zone.longitude}`}
-													target="_blank"
-													rel="noopener noreferrer"
-												>
-													map
-												</a>
+												{#if mapHrefFromZone(zone)}
+													<a
+														class="link link-primary text-xs"
+														href={mapHrefFromZone(zone)}
+														target="_blank"
+														rel="noopener noreferrer"
+													>
+														map
+													</a>
+												{/if}
 											</td>
 										</tr>
 									{/each}
@@ -1392,6 +1716,178 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if zoneEditorOpen}
+		<div class="modal modal-open">
+			<div class="modal-box max-w-3xl">
+				<h3 class="font-bold text-lg">
+					{zoneEditorSlot === null ? 'Create Manual Lockout Zone' : `Edit Lockout Zone ${zoneEditorSlot}`}
+				</h3>
+				<p class="py-2 text-sm text-base-content/70">
+					Use conservative values. Invalid coordinates or heading values are rejected by the firmware.
+				</p>
+
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<label class="form-control">
+						<span class="label-text text-sm">Latitude</span>
+						<input
+							type="number"
+							step="0.00001"
+							min="-90"
+							max="90"
+							class="input input-bordered input-sm"
+							value={zoneEditor.latitude}
+							onchange={(e) => {
+								zoneEditor.latitude = e.currentTarget.value;
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Longitude</span>
+						<input
+							type="number"
+							step="0.00001"
+							min="-180"
+							max="180"
+							class="input input-bordered input-sm"
+							value={zoneEditor.longitude}
+							onchange={(e) => {
+								zoneEditor.longitude = e.currentTarget.value;
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Band</span>
+						<select
+							class="select select-bordered select-sm"
+							value={zoneEditor.bandMask}
+							onchange={(e) => {
+								zoneEditor.bandMask = clampInt(e.currentTarget.value, 1, 255, 0x04);
+							}}
+						>
+							{#each LOCKOUT_BAND_OPTIONS as option}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Frequency (MHz, optional)</span>
+						<input
+							type="number"
+							min="0"
+							max="65535"
+							class="input input-bordered input-sm"
+							value={zoneEditor.frequencyMHz}
+							onchange={(e) => {
+								zoneEditor.frequencyMHz = e.currentTarget.value;
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Frequency tolerance (MHz)</span>
+						<input
+							type="number"
+							min="0"
+							max="65535"
+							class="input input-bordered input-sm"
+							value={zoneEditor.frequencyToleranceMHz}
+							onchange={(e) => {
+								zoneEditor.frequencyToleranceMHz = clampInt(
+									e.currentTarget.value,
+									0,
+									65535,
+									LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
+								);
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Radius (ft)</span>
+						<input
+							type="number"
+							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
+							max={radiusE5ToFeet(LEARNER_RADIUS_E5_MAX)}
+							class="input input-bordered input-sm"
+							value={zoneEditor.radiusFt}
+							onchange={(e) => {
+								zoneEditor.radiusFt = normalizeLearnerRadiusFeet(e.currentTarget.value);
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Confidence</span>
+						<input
+							type="number"
+							min="0"
+							max="255"
+							class="input input-bordered input-sm"
+							value={zoneEditor.confidence}
+							onchange={(e) => {
+								zoneEditor.confidence = clampInt(e.currentTarget.value, 0, 255, 100);
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Direction mode</span>
+						<select
+							class="select select-bordered select-sm"
+							value={zoneEditor.directionMode}
+							onchange={(e) => {
+								zoneEditor.directionMode = normalizeDirectionMode(e.currentTarget.value);
+								if (zoneEditor.directionMode === 'all') {
+									zoneEditor.headingDeg = '';
+								}
+							}}
+						>
+							{#each DIRECTION_MODE_OPTIONS as option}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-sm">Heading tolerance (degrees)</span>
+						<input
+							type="number"
+							min="0"
+							max="90"
+							class="input input-bordered input-sm"
+							value={zoneEditor.headingToleranceDeg}
+							onchange={(e) => {
+								zoneEditor.headingToleranceDeg = clampInt(e.currentTarget.value, 0, 90, 45);
+							}}
+						/>
+					</label>
+					{#if zoneEditor.directionMode !== 'all'}
+						<label class="form-control md:col-span-2">
+							<span class="label-text text-sm">Heading (0-359 degrees)</span>
+							<input
+								type="number"
+								min="0"
+								max="359"
+								class="input input-bordered input-sm"
+								value={zoneEditor.headingDeg}
+								onchange={(e) => {
+									zoneEditor.headingDeg = e.currentTarget.value;
+								}}
+							/>
+						</label>
+					{/if}
+				</div>
+
+				<div class="modal-action">
+					<button class="btn btn-outline btn-sm" onclick={closeZoneEditor} disabled={zoneEditorSaving}>
+						Cancel
+					</button>
+					<button class="btn btn-primary btn-sm" onclick={saveZoneEditor} disabled={zoneEditorSaving}>
+						{#if zoneEditorSaving}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Save Zone
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	{#if showKaWarningModal}
 		<div class="modal modal-open">

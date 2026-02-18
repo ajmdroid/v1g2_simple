@@ -2,7 +2,7 @@
 """
 Download camera database from OpenStreetMap via Overpass API.
 
-This script downloads ALPR, red light, and speed camera data from OpenStreetMap
+This script downloads ALPR camera data from OpenStreetMap
 and converts it to NDJSON format compatible with the V1 Simple camera_manager.
 
 Features:
@@ -11,9 +11,9 @@ Features:
 - Corridor enrichment: adds road bearing for accurate filtering
 
 Usage:
-    python3 download_cameras.py                    # Download all camera types for US
+    python3 download_cameras.py                    # Download ALPR cameras for US
     python3 download_cameras.py --state CA         # Download for specific state
-    python3 download_cameras.py --type alpr        # Download only ALPR cameras
+    python3 download_cameras.py --type alpr        # Explicit ALPR mode
     python3 download_cameras.py --no-snap          # Skip road snapping (faster)
     python3 download_cameras.py --output cameras.json  # Custom output filename
 
@@ -44,9 +44,6 @@ OVERPASS_ENDPOINTS = [
 ]
 
 # Camera type flags (matches camera_manager.h)
-CAMERA_FLAG_REDLIGHT = 1
-CAMERA_FLAG_SPEED = 2
-CAMERA_FLAG_REDLIGHT_SPEED = 3
 CAMERA_FLAG_ALPR = 4
 
 # US State codes for filtering
@@ -72,6 +69,15 @@ DEFAULT_BEARING_TOLERANCE = 30  # Degrees
 
 # Road snap search radius in meters
 ROAD_SNAP_RADIUS_M = 50
+
+
+def is_alpr_camera(cam: dict) -> bool:
+    """Return True when a camera record is ALPR under current or legacy flags."""
+    flg = int(cam.get('flg', CAMERA_FLAG_ALPR) or 0)
+    if flg == CAMERA_FLAG_ALPR:
+        return True
+    # Legacy bitmask schema uses bit 13 for ALPR.
+    return (flg & 8192) != 0
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -195,8 +201,8 @@ out geom;
             if dist < best_dist:
                 best_dist = dist
                 best_snap = {
-                    'slat': round(snap_lat, 6),
-                    'slon': round(snap_lon, 6),
+                    'slt': round(snap_lat, 6),
+                    'sln': round(snap_lon, 6),
                     'rbr': int(round(bearing)),
                     'cwm': DEFAULT_CORRIDOR_WIDTH_M,
                     'btol': DEFAULT_BEARING_TOLERANCE
@@ -205,7 +211,7 @@ out geom;
     return best_snap
 
 
-def build_overpass_query(camera_types: list, area_filter: str = None) -> str:
+def build_overpass_query(area_filter: str = None) -> str:
     """Build Overpass QL query for camera data."""
     
     # Area selection
@@ -216,20 +222,10 @@ def build_overpass_query(camera_types: list, area_filter: str = None) -> str:
         # Entire US
         area_line = 'area["ISO3166-1"="US"]->.searchArea;'
     
-    # Build query parts for each camera type
-    query_parts = []
-    
-    if 'alpr' in camera_types:
-        query_parts.append('node["surveillance:type"="ALPR"](area.searchArea);')
-        query_parts.append('way["surveillance:type"="ALPR"](area.searchArea);')
-    
-    if 'redlight' in camera_types:
-        query_parts.append('node["highway"="speed_camera"]["enforcement"="traffic_signals"](area.searchArea);')
-        query_parts.append('node["highway"="traffic_signals"]["camera"="yes"](area.searchArea);')
-    
-    if 'speed' in camera_types:
-        query_parts.append('node["highway"="speed_camera"](area.searchArea);')
-        query_parts.append('way["highway"="speed_camera"](area.searchArea);')
+    query_parts = [
+        'node["surveillance:type"="ALPR"](area.searchArea);',
+        'way["surveillance:type"="ALPR"](area.searchArea);',
+    ]
     
     query = f"""[out:json][timeout:600];
 {area_line}
@@ -241,7 +237,7 @@ out center;
     return query
 
 
-def parse_osm_element(element: dict, camera_types: list) -> dict:
+def parse_osm_element(element: dict) -> dict:
     """Parse an OSM element into camera record format."""
     
     # Get coordinates
@@ -258,26 +254,13 @@ def parse_osm_element(element: dict, camera_types: list) -> dict:
     
     # Determine camera type
     surveillance_type = tags.get('surveillance:type', '').upper()
-    highway_tag = tags.get('highway', '')
-    enforcement = tags.get('enforcement', '')
-    
-    if surveillance_type == 'ALPR':
-        flag = CAMERA_FLAG_ALPR
-    elif enforcement == 'traffic_signals' or tags.get('camera') == 'yes':
-        flag = CAMERA_FLAG_REDLIGHT
-    elif highway_tag == 'speed_camera':
-        # Check if it's also red light
-        if 'red_light' in tags.get('enforcement', ''):
-            flag = CAMERA_FLAG_REDLIGHT_SPEED
-        else:
-            flag = CAMERA_FLAG_SPEED
-    else:
-        flag = CAMERA_FLAG_SPEED  # Default
+    if surveillance_type != 'ALPR':
+        return None
     
     record = {
         'lat': round(lat, 6),
         'lon': round(lon, 6),
-        'flg': flag
+        'flg': CAMERA_FLAG_ALPR
     }
     
     # Add speed limit if available
@@ -365,15 +348,15 @@ def query_overpass_with_retry(query: str, max_retries: int = 3, verbose: bool = 
     raise requests.exceptions.RequestException(f"All endpoints failed after {max_retries} attempts: {last_error}")
 
 
-def download_cameras(camera_types: list, state: str = None, verbose: bool = False) -> list:
+def download_cameras(state: str = None, verbose: bool = False) -> list:
     """Download camera data from Overpass API."""
     
-    query = build_overpass_query(camera_types, state)
+    query = build_overpass_query(state)
     
     if verbose:
         print(f"Query:\n{query}\n")
     
-    print(f"Downloading {', '.join(camera_types)} cameras" + 
+    print("Downloading ALPR cameras" + 
           (f" for {state.upper()}" if state else " for entire US") + "...")
     print("This may take a few minutes...")
     
@@ -389,7 +372,7 @@ def download_cameras(camera_types: list, state: str = None, verbose: bool = Fals
     # Parse elements
     cameras = []
     for el in elements:
-        record = parse_osm_element(el, camera_types)
+        record = parse_osm_element(el)
         if record:
             cameras.append(record)
     
@@ -443,20 +426,11 @@ def enrich_with_road_data(cameras: list, verbose: bool = False) -> list:
     return cameras
 
 
-def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str = None):
+def save_ndjson(cameras: list, output_path: str, state: str = None):
     """Save cameras to NDJSON file."""
     
     # Count corridor-enriched cameras
     enriched_count = sum(1 for cam in cameras if 'rbr' in cam)
-    
-    # Create metadata
-    type_names = []
-    if 'alpr' in camera_types:
-        type_names.append('ALPR')
-    if 'redlight' in camera_types:
-        type_names.append('Red Light')
-    if 'speed' in camera_types:
-        type_names.append('Speed')
     
     if state:
         area_name = US_STATES.get(state.upper(), state.upper())
@@ -465,7 +439,7 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
     
     meta = {
         '_meta': {
-            'name': f"OSM {'/'.join(type_names)} ({area_name})",
+            'name': f"OSM ALPR ({area_name})",
             'date': datetime.now().strftime('%Y-%m-%d'),
             'count': len(cameras),
             'enriched': enriched_count,
@@ -483,18 +457,10 @@ def save_ndjson(cameras: list, output_path: str, camera_types: list, state: str 
     if enriched_count > 0:
         print(f"Road-enriched: {enriched_count} ({enriched_count * 100 // len(cameras)}%)")
     
-    # Count by type
-    type_counts = {}
-    type_names = {1: 'Red Light', 2: 'Speed', 3: 'Red Light + Speed', 4: 'ALPR'}
-    for cam in cameras:
-        t = cam.get('flg', 2)
-        type_counts[t] = type_counts.get(t, 0) + 1
-    
-    for t, count in sorted(type_counts.items()):
-        print(f"  - {type_names.get(t, 'Unknown')}: {count}")
+    print(f"  - ALPR: {len(cameras)}")
 
 
-def save_binary(cameras: list, output_path: str, camera_types: list = None, state: str = None):
+def save_binary(cameras: list, output_path: str, state: str = None):
     """
     Save cameras to binary format for fast ESP32 loading.
     
@@ -519,8 +485,9 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
         for cam in cameras:
             lat = cam.get('lat', 0.0)
             lon = cam.get('lon', 0.0)
-            snap_lat = cam.get('slt', lat)  # snap lat, or original if not enriched
-            snap_lon = cam.get('sln', lon)  # snap lon, or original if not enriched
+            # Prefer canonical keys (slt/sln), but accept legacy slat/slon.
+            snap_lat = cam.get('slt', cam.get('slat', lat))
+            snap_lon = cam.get('sln', cam.get('slon', lon))
             
             # Bearing: stored as bearing * 10 for 0.1 degree precision
             # Use -1 sentinel for unknown bearings
@@ -532,7 +499,8 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
             
             width = int(cam.get('cwm', 35)) & 0xFF  # corridor width meters
             tolerance = int(cam.get('btol', 30)) & 0xFF  # bearing tolerance degrees
-            cam_type = cam.get('flg', 4) & 0xFF  # camera type (1=red, 2=speed, 4=alpr)
+            # ALPR-only runtime schema.
+            cam_type = CAMERA_FLAG_ALPR
             speed_limit = int(cam.get('spd', 0) or 0) & 0xFF  # speed limit if known
             flags = 0  # reserved flags
             if cam.get('unt') == 'kmh':
@@ -550,18 +518,10 @@ def save_binary(cameras: list, output_path: str, camera_types: list = None, stat
     if enriched_count > 0:
         print(f"  Road-enriched: {enriched_count} ({enriched_count * 100 // count}%)")
     
-    # Count by type
-    type_counts = {}
-    type_names_map = {1: 'Red Light', 2: 'Speed', 3: 'Red Light + Speed', 4: 'ALPR'}
-    for cam in cameras:
-        t = cam.get('flg', 2)
-        type_counts[t] = type_counts.get(t, 0) + 1
-    
-    for t, cnt in sorted(type_counts.items()):
-        print(f"    - {type_names_map.get(t, 'Unknown')}: {cnt}")
+    print(f"    - ALPR: {len(cameras)}")
 
 
-def download_all_states(camera_types: list, no_snap: bool, verbose: bool, 
+def download_all_states(no_snap: bool, verbose: bool,
                         output_dir: str = 'camera_data/states') -> list:
     """
     Download cameras state-by-state and bundle together.
@@ -581,7 +541,7 @@ def download_all_states(camera_types: list, no_snap: bool, verbose: bool,
     
     print(f"\n{'='*60}")
     print(f"Downloading cameras for all {total_states} US states")
-    print(f"Camera types: {', '.join(camera_types)}")
+    print("Camera types: alpr")
     print(f"Road snapping: {'disabled' if no_snap else 'enabled'}")
     print(f"{'='*60}\n")
     
@@ -600,7 +560,9 @@ def download_all_states(camera_types: list, no_snap: bool, verbose: bool,
                     state_cameras = []
                     for line in f:
                         data = json.loads(line)
-                        if '_meta' not in data:
+                        if '_meta' in data:
+                            continue
+                        if is_alpr_camera(data):
                             state_cameras.append(data)
                     all_cameras.extend(state_cameras)
                     successful_states.append(state)
@@ -611,7 +573,7 @@ def download_all_states(camera_types: list, no_snap: bool, verbose: bool,
         
         try:
             # Download this state
-            cameras = download_cameras(camera_types, state, verbose)
+            cameras = download_cameras(state, verbose)
             
             if cameras is None:
                 # API error - add to failed list
@@ -623,7 +585,7 @@ def download_all_states(camera_types: list, no_snap: bool, verbose: bool,
                     cameras = enrich_with_road_data(cameras, verbose)
                 
                 # Save state file for caching/resume
-                save_ndjson(cameras, state_file, camera_types, state)
+                save_ndjson(cameras, state_file, state)
                 
                 all_cameras.extend(cameras)
                 successful_states.append(state)
@@ -660,7 +622,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python3 download_cameras.py                         # All US cameras (single query)
+  python3 download_cameras.py                         # US ALPR cameras (single query)
   python3 download_cameras.py --all-states            # Download state-by-state (recommended!)
   python3 download_cameras.py --state CA              # California only
   python3 download_cameras.py --type alpr --state TX  # Texas ALPR only
@@ -669,8 +631,6 @@ Examples:
 
 Output files (binary format for fast ESP32 loading):
   - alpr.bin      - ALPR/license plate readers
-  - redlight.bin  - Red light cameras  
-  - speed.bin     - Speed cameras
 
 Road snapping enriches each camera with:
   - Road bearing (for heading-based filtering)
@@ -684,9 +644,9 @@ This downloads each state individually (with caching for resume capability).
     )
     
     parser.add_argument('--type', '-t', 
-                       choices=['all', 'alpr', 'redlight', 'speed'],
-                       default='all',
-                       help='Camera type to download (default: all)')
+                       choices=['alpr'],
+                       default='alpr',
+                       help='Camera type to download (ALPR only)')
     
     parser.add_argument('--state', '-s',
                        type=str,
@@ -741,18 +701,12 @@ This downloads each state individually (with caching for resume capability).
             print(f"Error: SD card path is not a directory: {args.sd_path}")
             sys.exit(1)
     
-    # Determine camera types
-    if args.type == 'all':
-        camera_types = ['alpr', 'redlight', 'speed']
-    else:
-        camera_types = [args.type]
-    
     # Download - either all states or single query
     if args.all_states:
-        cameras = download_all_states(camera_types, args.no_snap, args.verbose)
+        cameras = download_all_states(args.no_snap, args.verbose)
         state = None
     else:
-        cameras = download_cameras(camera_types, args.state, args.verbose)
+        cameras = download_cameras(args.state, args.verbose)
         state = args.state
         
         if cameras and not args.no_snap:
@@ -763,45 +717,36 @@ This downloads each state individually (with caching for resume capability).
     if not cameras:
         print("No cameras found!")
         sys.exit(1)
-    
-    # Group cameras by type
-    cameras_by_type = {'alpr': [], 'redlight': [], 'speed': []}
-    for cam in cameras:
-        flg = cam.get('flg', 4)
-        if flg == CAMERA_FLAG_ALPR:
-            cameras_by_type['alpr'].append(cam)
-        elif flg == CAMERA_FLAG_REDLIGHT:
-            cameras_by_type['redlight'].append(cam)
-        elif flg == CAMERA_FLAG_SPEED:
-            cameras_by_type['speed'].append(cam)
-        elif flg == CAMERA_FLAG_REDLIGHT_SPEED:
-            # Add to both
-            cameras_by_type['redlight'].append(cam)
-            cameras_by_type['speed'].append(cam)
+
+    # Safety filter: keep ALPR-only records even if stale mixed-type cache exists.
+    filtered_cameras = [cam for cam in cameras if is_alpr_camera(cam)]
+    if len(filtered_cameras) != len(cameras):
+        print(f"Filtered non-ALPR records: {len(cameras) - len(filtered_cameras)}")
+    cameras = filtered_cameras
+    if not cameras:
+        print("No ALPR cameras found after filtering.")
+        sys.exit(1)
     
     # Output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Save binary files for each type with cameras
-    saved_files = []
-    for cam_type, cams in cameras_by_type.items():
-        if cams:
-            bin_path = output_dir / f"{cam_type}.bin"
-            save_binary(cams, str(bin_path), [cam_type], state)
-            saved_files.append((cam_type, bin_path, len(cams)))
+    # Save ALPR runtime file.
+    alpr_path = output_dir / "alpr.bin"
+    save_binary(cameras, str(alpr_path), state)
+    saved_files = [(alpr_path, len(cameras))]
     
     # Also save combined NDJSON if requested (for debugging)
     if args.json:
         json_path = output_dir / "cameras.json"
-        save_ndjson(cameras, str(json_path), camera_types, state)
+        save_ndjson(cameras, str(json_path), state)
     
     # Copy to SD card if path specified
     if args.sd_path:
         import shutil
         sd_path = Path(args.sd_path)
         print(f"\n📂 Copying to SD card: {sd_path}")
-        for cam_type, bin_path, count in saved_files:
+        for bin_path, count in saved_files:
             dest = sd_path / bin_path.name
             shutil.copy2(bin_path, dest)
             print(f"  ✓ {bin_path.name} -> {dest}")

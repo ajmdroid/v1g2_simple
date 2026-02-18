@@ -21,9 +21,6 @@ enum class AlertDirection : uint8_t {
 
 // Camera dataset type values align with camera event `type` field.
 enum class CameraVoiceType : uint8_t {
-    REDLIGHT = 1,
-    SPEED = 2,
-    REDLIGHT_SPEED = 3,
     ALPR = 4
 };
 
@@ -71,7 +68,7 @@ void play_band_only(AlertBand band);
 
 // Play one-shot camera voice using existing SD clip path:
 // "<camera type>" + "ahead" (dir_ahead.mul)
-// cameraTypeRaw values: 1=redlight, 2=speed, 3=red+speed, 4=alpr
+// cameraTypeRaw value: 4=alpr (other values are normalized to ALPR).
 void play_camera_ahead_voice(uint8_t cameraTypeRaw);
 
 // Initialize SD audio (call after storage manager is ready)

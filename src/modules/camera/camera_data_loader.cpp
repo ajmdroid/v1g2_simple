@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <esp_heap_caps.h>
 #include <utility>
@@ -135,7 +136,7 @@ void CameraDataLoader::loaderTaskLoop() {
 
         CameraIndexOwnedBuffers built{};
         const uint32_t loadStartMs = millis();
-        const BuildOutcome outcome = buildEnforcementIndex(built);
+        const BuildOutcome outcome = buildRuntimeIndex(built);
         const bool ok = (outcome == BuildOutcome::Success);
         const uint32_t loadDurationMs = static_cast<uint32_t>(millis() - loadStartMs);
 
@@ -180,7 +181,7 @@ void CameraDataLoader::loaderTaskLoop() {
     vTaskDelete(nullptr);
 }
 
-CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {
+CameraDataLoader::BuildOutcome CameraDataLoader::buildRuntimeIndex(CameraIndexOwnedBuffers& outBuffers) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         Serial.println("[CameraLoader] Build failed: storage not ready or SD not mounted");
         return BuildOutcome::Failed;
@@ -431,7 +432,10 @@ bool CameraDataLoader::loadFileRecords(const char* path,
             out.speedLimit = raw.speedLimit;
             out.flags = raw.flags;
             out.reserved = raw.reserved;
-            out.cellKey = CameraIndex::encodeCellKey(raw.latitudeDeg, raw.longitudeDeg);
+            const bool hasSnapPoint = std::isfinite(raw.snapLatitudeDeg) && std::isfinite(raw.snapLongitudeDeg);
+            const float cellLatitudeDeg = hasSnapPoint ? raw.snapLatitudeDeg : raw.latitudeDeg;
+            const float cellLongitudeDeg = hasSnapPoint ? raw.snapLongitudeDeg : raw.longitudeDeg;
+            out.cellKey = CameraIndex::encodeCellKey(cellLatitudeDeg, cellLongitudeDeg);
         }
 
         remaining -= toRead;

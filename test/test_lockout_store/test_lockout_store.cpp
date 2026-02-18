@@ -145,6 +145,9 @@ void test_toJson_all_fields_present() {
     e.radiusE5    = 2700;
     e.freqTolMHz  = 15;
     e.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    e.headingDeg = 87;
+    e.headingTolDeg = 18;
     e.missCount   = 4;
     e.firstSeenMs = 1234567890000LL;
     e.lastSeenMs  = 1234567891000LL;
@@ -160,6 +163,9 @@ void test_toJson_all_fields_present() {
     TEST_ASSERT_EQUAL(15, z["ftol"].as<uint16_t>());
     TEST_ASSERT_EQUAL(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL,
                       z["flags"].as<uint8_t>());
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_FORWARD, z["dir"].as<uint8_t>());
+    TEST_ASSERT_EQUAL(87, z["hdg"].as<int>());
+    TEST_ASSERT_EQUAL(18, z["htol"].as<uint8_t>());
     TEST_ASSERT_EQUAL(4, z["miss"].as<uint8_t>());
     TEST_ASSERT_EQUAL(1234567890000LL, z["first"].as<int64_t>());
     TEST_ASSERT_EQUAL(1234567891000LL, z["last"].as<int64_t>());
@@ -186,6 +192,9 @@ void test_fromJson_valid_single_entry() {
     z["ftol"]  = 10;
     z["conf"]  = 100;
     z["flags"] = 5;  // ACTIVE | LEARNED
+    z["dir"]   = LockoutEntry::DIRECTION_REVERSE;
+    z["hdg"]   = 120;
+    z["htol"]  = 25;
     z["miss"]  = 2;
     z["first"] = 1700000000000LL;
     z["last"]  = 1700000060000LL;
@@ -208,6 +217,9 @@ void test_fromJson_valid_single_entry() {
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);
     TEST_ASSERT_EQUAL(100, e->confidence);
     TEST_ASSERT_EQUAL(5, e->flags);
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_REVERSE, e->directionMode);
+    TEST_ASSERT_EQUAL(120, e->headingDeg);
+    TEST_ASSERT_EQUAL(25, e->headingTolDeg);
     TEST_ASSERT_EQUAL(2, e->missCount);
     TEST_ASSERT_TRUE(e->isActive());
     TEST_ASSERT_TRUE(e->isLearned());
@@ -267,6 +279,9 @@ void test_fromJson_all_fields_survive_roundtrip() {
     orig.freqTolMHz  = 15;
     orig.confidence  = 42;
     orig.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    orig.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    orig.headingDeg = 123;
+    orig.headingTolDeg = 17;
     orig.missCount   = 6;
     orig.firstSeenMs = 1111111111111LL;
     orig.lastSeenMs  = 2222222222222LL;
@@ -296,6 +311,9 @@ void test_fromJson_all_fields_survive_roundtrip() {
     TEST_ASSERT_EQUAL(orig.freqTolMHz,  e->freqTolMHz);
     TEST_ASSERT_EQUAL(orig.confidence,  e->confidence);
     TEST_ASSERT_EQUAL(orig.flags,       e->flags);
+    TEST_ASSERT_EQUAL(orig.directionMode, e->directionMode);
+    TEST_ASSERT_EQUAL(orig.headingDeg, e->headingDeg);
+    TEST_ASSERT_EQUAL(orig.headingTolDeg, e->headingTolDeg);
     TEST_ASSERT_EQUAL(orig.missCount,   e->missCount);
     TEST_ASSERT_EQUAL(orig.firstSeenMs, e->firstSeenMs);
     TEST_ASSERT_EQUAL(orig.lastSeenMs,  e->lastSeenMs);
@@ -424,6 +442,9 @@ void test_fromJson_defaults_optional_fields() {
     TEST_ASSERT_EQUAL(0, e->freqMHz);           // Default freq
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);       // Default tolerance
     TEST_ASSERT_EQUAL(100, e->confidence);       // Default confidence
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_ALL, e->directionMode);
+    TEST_ASSERT_EQUAL(LockoutEntry::HEADING_INVALID, e->headingDeg);
+    TEST_ASSERT_EQUAL(45, e->headingTolDeg);
     TEST_ASSERT_TRUE(e->isActive());             // Always active
     TEST_ASSERT_EQUAL(0, e->missCount);
     TEST_ASSERT_EQUAL(0, e->firstSeenMs);
@@ -449,6 +470,27 @@ void test_fromJson_always_sets_active_flag() {
     const LockoutEntry* e = testIndex.at(0);
     TEST_ASSERT_NOT_NULL(e);
     TEST_ASSERT_TRUE(e->isActive());  // Must be forced active.
+}
+
+void test_fromJson_invalid_direction_metadata_falls_back_to_all() {
+    JsonDocument doc;
+    doc["_type"]    = "v1simple_lockout_zones";
+    doc["_version"] = 1;
+    JsonArray zones = doc["zones"].to<JsonArray>();
+    JsonObject z = zones.add<JsonObject>();
+    z["lat"] = 1000000;
+    z["lon"] = -1000000;
+    z["band"] = 4;
+    z["dir"] = LockoutEntry::DIRECTION_FORWARD;
+    z["hdg"] = -1;  // Invalid heading for directional mode.
+
+    bool ok = store.fromJson(doc);
+    TEST_ASSERT_TRUE(ok);
+
+    const LockoutEntry* e = testIndex.at(0);
+    TEST_ASSERT_NOT_NULL(e);
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_ALL, e->directionMode);
+    TEST_ASSERT_EQUAL(LockoutEntry::HEADING_INVALID, e->headingDeg);
 }
 
 void test_fromJson_clears_index_first() {
@@ -571,6 +613,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_fromJson_skips_unsupported_band);
     RUN_TEST(test_fromJson_defaults_optional_fields);
     RUN_TEST(test_fromJson_always_sets_active_flag);
+    RUN_TEST(test_fromJson_invalid_direction_metadata_falls_back_to_all);
     RUN_TEST(test_fromJson_clears_index_first);
     RUN_TEST(test_fromJson_overflow_truncates);
     RUN_TEST(test_fromJson_no_index_returns_false);

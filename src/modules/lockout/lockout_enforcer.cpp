@@ -102,7 +102,12 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     const uint16_t freqMHz = static_cast<uint16_t>(
         (priority.frequency <= UINT16_MAX) ? priority.frequency : 0);
 
-    const LockoutDecision decision = index_->evaluate(latE5, lonE5, band, freqMHz);
+    const LockoutDecision decision = index_->evaluate(latE5,
+                                                      lonE5,
+                                                      band,
+                                                      freqMHz,
+                                                      gpsStatus.courseValid,
+                                                      gpsStatus.courseDeg);
 
     lastResult_.evaluated  = true;
     lastResult_.shouldMute = decision.shouldMute;

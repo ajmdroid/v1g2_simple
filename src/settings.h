@@ -178,7 +178,7 @@ struct V1Settings {
     bool obdEnabled;        // Enable OBD integration service runtime
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
-    bool cameraEnabled;     // Enable camera runtime module (gated by gpsEnabled)
+    bool cameraEnabled;     // Enable camera runtime module + index loading
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
     bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
     uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
@@ -327,7 +327,7 @@ struct V1Settings {
         obdEnabled(true),       // OBD integration enabled by default
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
-        cameraEnabled(true),    // Camera defaults on when GPS is enabled
+        cameraEnabled(true),    // Camera defaults on for runtime/index preload
         gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
         gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
         gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
