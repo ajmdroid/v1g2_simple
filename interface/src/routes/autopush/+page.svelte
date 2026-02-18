@@ -142,6 +142,11 @@
 		const colors = ['bg-primary', 'bg-secondary', 'bg-accent'];
 		return colors[slot] || 'bg-base-300';
 	}
+
+	function hasProfileOption(profileName) {
+		if (!profileName) return true;
+		return profiles.some((p) => p.name === profileName);
+	}
 </script>
 
 <div class="space-y-6">
@@ -219,6 +224,9 @@
 									</label>
 									<select id={`slot-${i}-profile`} class="select select-bordered select-sm" bind:value={slot.profile}>
 										<option value="">-- None --</option>
+										{#if slot.profile && !hasProfileOption(slot.profile)}
+											<option value={slot.profile}>{slot.profile} (saved)</option>
+										{/if}
 										{#each profiles as p}
 											<option value={p.name}>{p.name}</option>
 										{/each}

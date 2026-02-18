@@ -922,6 +922,11 @@ bool SettingsManager::restoreFromSD() {
 
 
 void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
+    if (!profileMgr.isReady()) {
+        Serial.println("[Settings] Profile manager not ready; skipping profile reference validation");
+        return;
+    }
+
     // Validate that profile names in auto-push slots actually exist
     // If not, clear them to prevent repeated "file not found" errors
     bool needsSave = false;
