@@ -173,13 +173,13 @@ Quick solutions for common issues with the V1-Simple device.
 **Symptoms**: No alert when passing known cameras
 
 **Solutions**:
-1. **Enable feature**: Settings → `cameraAlertsEnabled` = true
-2. **Load datasets on SD**: Ensure `alpr.bin`, `speed_cam.bin`, or `redlight_cam.bin` exist on SD card
-3. **Check GPS**: Camera alerts require GPS fix
-4. **Check distance**: Default alert distance is 500m
-5. **Check audio**: Enable `cameraAudioEnabled` for sound
-6. **Verify runtime**: Check `/api/cameras/catalog` and `/api/cameras/status` for counts and loader state
-7. **Run test alert**: From Web UI → Integrations → Test Camera Alerts to verify display/voice; type defaults to Red Light (`type=0`).
+1. **Enable runtime**: Ensure `cameraEnabled` is enabled (Web UI → Cameras page toggle, or `/api/settings`)
+2. **Check GPS gating**: Camera runtime requires GPS enabled + valid fix/course data
+3. **Load datasets on SD**: Ensure `speed_cam.bin` and/or `redlight_cam.bin` exist (`alpr.bin` is catalog-only in current runtime)
+4. **Verify runtime load**: Check `/api/cameras/status` for `enabled=true`, `indexLoaded=true`, and non-zero `index.cameraCount`
+5. **Verify catalog + scope**: Check `/api/cameras/catalog` for file presence and runtime scope fields (`runtimeDatasets`, `alprRuntimeLoaded`)
+6. **Run display demo**: Web UI → Cameras → Display Demo (or POST `/api/cameras/demo`) to validate screen/audio pipeline without live GPS matches
+7. **Check audio path**: Confirm device is not muted and your current audio profile allows camera announcements
 
 ### Camera dataset missing or empty
 
@@ -190,6 +190,7 @@ Quick solutions for common issues with the V1-Simple device.
 2. **Check filenames**: Use exact names `alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`
 3. **Check file integrity**: Re-copy datasets if counts look wrong or stale
 4. **Confirm with API**: `/api/cameras/catalog` should report file presence and counts
+5. **Check runtime scope**: In current firmware, runtime matching loads enforcement datasets (`speed`, `redlight`); ALPR appears in catalog but is not loaded into active matching
 
 ### False camera alerts
 
@@ -198,8 +199,8 @@ Quick solutions for common issues with the V1-Simple device.
 **Solutions**:
 1. **Dataset drift**: Replace camera datasets with newer versions
 2. **Map mismatch**: Physical camera may have been removed/relocated
-3. **Adjust distance**: Reduce `cameraAlertDistanceM` to 300m
-4. **Inspect events**: Review `/api/cameras/events` to verify trigger type/distance
+3. **Inspect event telemetry**: Review `/api/cameras/events` and `/api/cameras/status` (`lastHeadingDeltaDeg`, `activeAlert`) to verify trigger context
+4. **Validate GPS quality**: Large heading jitter or stale GPS samples can increase mismatch risk near intersections
 
 ---
 
