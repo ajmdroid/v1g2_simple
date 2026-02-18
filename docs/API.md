@@ -601,6 +601,9 @@ Get camera dataset availability/count metadata from SD (`alpr.bin`, `speed_cam.b
   "success": true,
   "storageReady": true,
   "tsMs": 123456,
+  "runtimeDatasetScope": "enforcement_only",
+  "runtimeDatasets": ["speed", "redlight"],
+  "alprRuntimeLoaded": false,
   "datasets": {
     "alpr": { "present": true, "valid": true, "count": 70327, "bytes": 1687848 },
     "speed": { "present": true, "valid": true, "count": 870, "bytes": 20880 },
@@ -610,6 +613,8 @@ Get camera dataset availability/count metadata from SD (`alpr.bin`, `speed_cam.b
   "totalBytes": 1719768
 }
 ```
+
+`runtimeDatasetScope`, `runtimeDatasets`, and `alprRuntimeLoaded` describe what the live runtime matcher currently loads; catalog totals still include ALPR files present on SD.
 
 ### GET /api/cameras/events
 

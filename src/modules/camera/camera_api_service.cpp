@@ -216,6 +216,11 @@ void sendCatalog(WebServer& server,
     doc["success"] = true;
     doc["storageReady"] = false;
     doc["tsMs"] = millis();
+    doc["runtimeDatasetScope"] = "enforcement_only";
+    JsonArray runtimeDatasets = doc["runtimeDatasets"].to<JsonArray>();
+    runtimeDatasets.add("speed");
+    runtimeDatasets.add("redlight");
+    doc["alprRuntimeLoaded"] = false;
 
     JsonObject datasets = doc["datasets"].to<JsonObject>();
     JsonObject alprObj = datasets["alpr"].to<JsonObject>();

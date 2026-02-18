@@ -66,6 +66,9 @@
 		storageReady: false,
 		message: '',
 		tsMs: 0,
+		runtimeDatasetScope: 'unknown',
+		runtimeDatasets: [],
+		alprRuntimeLoaded: false,
 		totalCount: 0,
 		totalBytes: 0,
 		datasets: {
@@ -151,6 +154,11 @@
 		return dataset.valid ? 'ok' : 'invalid';
 	}
 
+	function runtimeDatasetsLabel() {
+		const datasets = Array.isArray(catalog.runtimeDatasets) ? catalog.runtimeDatasets : [];
+		return datasets.length > 0 ? datasets.join(', ') : 'none';
+	}
+
 	async function fetchCameraStatus(silent = false) {
 		if (statusFetchInFlight) return;
 		statusFetchInFlight = true;
@@ -190,6 +198,17 @@
 			catalog = {
 				...catalog,
 				...data,
+				runtimeDatasetScope:
+					typeof data.runtimeDatasetScope === 'string'
+						? data.runtimeDatasetScope
+						: catalog.runtimeDatasetScope,
+				runtimeDatasets: Array.isArray(data.runtimeDatasets)
+					? data.runtimeDatasets
+					: catalog.runtimeDatasets,
+				alprRuntimeLoaded:
+					typeof data.alprRuntimeLoaded === 'boolean'
+						? data.alprRuntimeLoaded
+						: catalog.alprRuntimeLoaded,
 				datasets: {
 					alpr: { ...catalog.datasets.alpr, ...(data.datasets?.alpr || {}) },
 					speed: { ...catalog.datasets.speed, ...(data.datasets?.speed || {}) },
@@ -504,6 +523,13 @@
 					<div class="stat-value text-base">{status.index?.cameraCount || 0}</div>
 					<div class="stat-desc">enforcement-first in current M2 path</div>
 				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Runtime Scope</div>
+					<div class="stat-value text-base">
+						{catalog.runtimeDatasetScope === 'enforcement_only' ? 'Enforcement' : catalog.runtimeDatasetScope}
+					</div>
+					<div class="stat-desc">loads: {runtimeDatasetsLabel()}</div>
+				</div>
 			</div>
 
 			<div class="overflow-x-auto">
@@ -537,6 +563,13 @@
 						</tr>
 					</tbody>
 				</table>
+			</div>
+			<div class="text-xs text-base-content/70">
+				{#if catalog.alprRuntimeLoaded}
+					ALPR dataset is currently included in runtime matching.
+				{:else}
+					ALPR is cataloged for file/integrity visibility but not loaded into the active runtime index.
+				{/if}
 			</div>
 		</div>
 	</div>
