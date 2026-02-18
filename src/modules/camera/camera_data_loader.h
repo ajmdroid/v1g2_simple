@@ -72,7 +72,7 @@ private:
 
     static void loaderTaskEntry(void* param);
     void loaderTaskLoop();
-    BuildOutcome buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers);
+    BuildOutcome buildRuntimeIndex(CameraIndexOwnedBuffers& outBuffers);
     bool accumulateRecordCount(uint32_t& outTotalRecords);
     bool loadRecords(CameraRecord* outRecords, uint32_t totalRecords);
     bool loadFileRecords(const char* path,
@@ -88,7 +88,7 @@ private:
     void publishReadyBuffers(CameraIndexOwnedBuffers& built);
     void clearReadyBuffers();
 
-    static constexpr const char* kDatasetFiles[2] = {"/speed_cam.bin", "/redlight_cam.bin"};
+    static constexpr const char* kDatasetFiles[1] = {"/alpr.bin"};
     static constexpr uint32_t kExpectedVersion = 1;
     static constexpr uint32_t kExpectedRecordSize = 24;
     static constexpr uint32_t kPsramHeadroomBytes = 256u * 1024u;

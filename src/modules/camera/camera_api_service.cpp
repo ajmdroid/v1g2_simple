@@ -216,16 +216,12 @@ void sendCatalog(WebServer& server,
     doc["success"] = true;
     doc["storageReady"] = false;
     doc["tsMs"] = millis();
-    doc["runtimeDatasetScope"] = "enforcement_only";
+    doc["runtimeDatasetScope"] = "alpr_only";
     JsonArray runtimeDatasets = doc["runtimeDatasets"].to<JsonArray>();
-    runtimeDatasets.add("speed");
-    runtimeDatasets.add("redlight");
-    doc["alprRuntimeLoaded"] = false;
+    runtimeDatasets.add("alpr");
 
     JsonObject datasets = doc["datasets"].to<JsonObject>();
     JsonObject alprObj = datasets["alpr"].to<JsonObject>();
-    JsonObject speedObj = datasets["speed"].to<JsonObject>();
-    JsonObject redlightObj = datasets["redlight"].to<JsonObject>();
 
     auto writeDataset = [](JsonObject& obj, const CameraCatalogDataset& ds) {
         obj["present"] = ds.present;
@@ -237,8 +233,7 @@ void sendCatalog(WebServer& server,
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         doc["message"] = "storage_unavailable";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -252,8 +247,7 @@ void sendCatalog(WebServer& server,
         doc["success"] = false;
         doc["message"] = "filesystem_unavailable";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -267,8 +261,7 @@ void sendCatalog(WebServer& server,
         doc["success"] = false;
         doc["message"] = "sd_busy";
         writeDataset(alprObj, {});
-        writeDataset(speedObj, {});
-        writeDataset(redlightObj, {});
+        doc["alprRuntimeLoaded"] = false;
         doc["totalCount"] = 0;
         doc["totalBytes"] = 0;
         String response;
@@ -278,15 +271,12 @@ void sendCatalog(WebServer& server,
     }
 
     const CameraCatalogDataset alpr = readCameraCatalogDataset(fs, "/alpr.bin");
-    const CameraCatalogDataset speed = readCameraCatalogDataset(fs, "/speed_cam.bin");
-    const CameraCatalogDataset redlight = readCameraCatalogDataset(fs, "/redlight_cam.bin");
 
     doc["storageReady"] = true;
     writeDataset(alprObj, alpr);
-    writeDataset(speedObj, speed);
-    writeDataset(redlightObj, redlight);
-    doc["totalCount"] = alpr.count + speed.count + redlight.count;
-    doc["totalBytes"] = alpr.bytes + speed.bytes + redlight.bytes;
+    doc["alprRuntimeLoaded"] = alpr.valid;
+    doc["totalCount"] = alpr.count;
+    doc["totalBytes"] = alpr.bytes;
 
     String response;
     serializeJson(doc, response);

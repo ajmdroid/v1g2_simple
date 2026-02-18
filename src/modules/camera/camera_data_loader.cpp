@@ -136,7 +136,7 @@ void CameraDataLoader::loaderTaskLoop() {
 
         CameraIndexOwnedBuffers built{};
         const uint32_t loadStartMs = millis();
-        const BuildOutcome outcome = buildEnforcementIndex(built);
+        const BuildOutcome outcome = buildRuntimeIndex(built);
         const bool ok = (outcome == BuildOutcome::Success);
         const uint32_t loadDurationMs = static_cast<uint32_t>(millis() - loadStartMs);
 
@@ -181,7 +181,7 @@ void CameraDataLoader::loaderTaskLoop() {
     vTaskDelete(nullptr);
 }
 
-CameraDataLoader::BuildOutcome CameraDataLoader::buildEnforcementIndex(CameraIndexOwnedBuffers& outBuffers) {
+CameraDataLoader::BuildOutcome CameraDataLoader::buildRuntimeIndex(CameraIndexOwnedBuffers& outBuffers) {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         Serial.println("[CameraLoader] Build failed: storage not ready or SD not mounted");
         return BuildOutcome::Failed;
