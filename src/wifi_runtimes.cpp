@@ -283,8 +283,8 @@ WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
         [this]() { return batteryManager.isOnBattery(); },
         [this]() { return batteryManager.hasBattery(); },
         [this]() { return bleClient.isConnected(); },
-        getStatusJson,
-        getAlertJson,
+        mergeStatus,
+        mergeAlert,
     };
     return runtime;
 }

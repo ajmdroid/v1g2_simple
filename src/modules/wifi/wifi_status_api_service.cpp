@@ -70,20 +70,13 @@ void sendStatus(WebServer& server,
 
         doc["v1_connected"] = callOr<bool>(runtime.v1Connected, false);
 
-        if (runtime.getStatusJson) {
-            JsonDocument statusDoc;
-            String statusJson = runtime.getStatusJson();
-            deserializeJson(statusDoc, statusJson.c_str());
-            for (JsonPair kv : statusDoc.as<JsonObject>()) {
-                doc[kv.key()] = kv.value();
-            }
+        if (runtime.mergeStatus) {
+            runtime.mergeStatus(doc.as<JsonObject>());
         }
 
-        if (runtime.getAlertJson) {
-            JsonDocument alertDoc;
-            String alertJson = runtime.getAlertJson();
-            deserializeJson(alertDoc, alertJson.c_str());
-            doc["alert"] = alertDoc;
+        if (runtime.mergeAlert) {
+            JsonObject alert = doc["alert"].to<JsonObject>();
+            runtime.mergeAlert(alert);
         }
 
 #ifdef UNIT_TEST

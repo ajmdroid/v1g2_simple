@@ -68,35 +68,27 @@ void WifiOrchestrator::startWifi() {
 
 void WifiOrchestrator::configureCallbacks() {
     // V1 connection status
-    wifiManager.setStatusCallback([this]() {
-        JsonDocument doc;
-        doc["v1_connected"] = bleClient.isConnected();
-        String json;
-        serializeJson(doc, json);
-        return json;
+    wifiManager.setStatusCallback([this](JsonObject obj) {
+        obj["v1_connected"] = bleClient.isConnected();
     });
 
     // Current alert state
-    wifiManager.setAlertCallback([this]() {
-        JsonDocument doc;
+    wifiManager.setAlertCallback([this](JsonObject obj) {
         if (parser.hasAlerts()) {
             AlertData alert = parser.getPriorityAlert();
-            doc["active"] = true;
+            obj["active"] = true;
             const char* bandStr = "None";
             if (alert.band == BAND_KA) bandStr = "Ka";
             else if (alert.band == BAND_K) bandStr = "K";
             else if (alert.band == BAND_X) bandStr = "X";
             else if (alert.band == BAND_LASER) bandStr = "LASER";
-            doc["band"] = bandStr;
-            doc["strength"] = alert.frontStrength;
-            doc["frequency"] = alert.frequency;
-            doc["direction"] = alert.direction;
+            obj["band"] = bandStr;
+            obj["strength"] = alert.frontStrength;
+            obj["frequency"] = alert.frequency;
+            obj["direction"] = alert.direction;
         } else {
-            doc["active"] = false;
+            obj["active"] = false;
         }
-        String json;
-        serializeJson(doc, json);
-        return json;
     });
 
     // Command handling (dark mode / mute)

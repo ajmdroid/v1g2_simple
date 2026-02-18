@@ -8,6 +8,7 @@
 #define WIFI_MANAGER_H
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <WiFi.h>
 #include <FS.h>
 #include <WebServer.h>
@@ -120,8 +121,8 @@ public:
     String getConnectedSSID() const;  // Returns empty if not connected
     
     // Callbacks for alert data (to display on web page)
-    void setAlertCallback(std::function<String()> callback) { getAlertJson = callback; }
-    void setStatusCallback(std::function<String()> callback) { getStatusJson = callback; }
+    void setAlertCallback(std::function<void(JsonObject)> callback) { mergeAlert = callback; }
+    void setStatusCallback(std::function<void(JsonObject)> callback) { mergeStatus = callback; }
     
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
@@ -194,8 +195,8 @@ private:
     String cachedStatusJson;
     unsigned long lastStatusJsonTime = 0;
     
-    std::function<String()> getAlertJson;
-    std::function<String()> getStatusJson;
+    std::function<void(JsonObject)> mergeAlert;
+    std::function<void(JsonObject)> mergeStatus;
     std::function<bool(const char*, bool)> sendV1Command;
     std::function<bool()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;

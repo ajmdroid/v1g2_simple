@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <WebServer.h>
 
 #include <cstdint>
@@ -37,8 +38,8 @@ struct StatusRuntime {
     std::function<bool()> batteryHasBattery;
 
     std::function<bool()> v1Connected;
-    std::function<String()> getStatusJson;
-    std::function<String()> getAlertJson;
+    std::function<void(JsonObject)> mergeStatus;   // Write fields directly into root doc
+    std::function<void(JsonObject)> mergeAlert;    // Write fields into alert sub-object
 };
 
 void handleApiStatus(WebServer& server,

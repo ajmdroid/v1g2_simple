@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <cstring>
 
+#include <ArduinoJson.h>
 #include "../../src/modules/wifi/wifi_status_api_service.h"
 #include "../../src/modules/wifi/wifi_status_api_service.cpp"  // Pull implementation for UNIT_TEST.
 
@@ -44,8 +45,8 @@ struct FakeStatusRuntime {
     bool batteryHasBattery = false;
 
     bool v1Connected = false;
-    String statusJson = "";
-    String alertJson = "";
+    std::function<void(JsonObject)> mergeStatus;
+    std::function<void(JsonObject)> mergeAlert;
 
     int setupModeActiveCalls = 0;
 };
@@ -83,8 +84,8 @@ static WifiStatusApiService::StatusRuntime makeRuntime(FakeStatusRuntime& rt) {
         [&rt]() { return rt.batteryHasBattery; },
 
         [&rt]() { return rt.v1Connected; },
-        [&rt]() { return rt.statusJson; },
-        [&rt]() { return rt.alertJson; },
+        [&rt](JsonObject obj) { if (rt.mergeStatus) rt.mergeStatus(obj); },
+        [&rt](JsonObject obj) { if (rt.mergeAlert) rt.mergeAlert(obj); },
     };
 }
 
@@ -157,8 +158,13 @@ void test_handle_status_merges_legacy_status_and_alert_json() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.v1Connected = true;
-    rt.statusJson = "{\"foo\":123,\"v1_connected\":false}";
-    rt.alertJson = "{\"band\":\"Ka\"}";
+    rt.mergeStatus = [](JsonObject obj) {
+        obj["foo"] = 123;
+        obj["v1_connected"] = false;
+    };
+    rt.mergeAlert = [](JsonObject obj) {
+        obj["band"] = "Ka";
+    };
 
     String cache;
     unsigned long cacheTime = 0;
