@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <esp_heap_caps.h>
 #include <utility>
@@ -431,7 +432,10 @@ bool CameraDataLoader::loadFileRecords(const char* path,
             out.speedLimit = raw.speedLimit;
             out.flags = raw.flags;
             out.reserved = raw.reserved;
-            out.cellKey = CameraIndex::encodeCellKey(raw.latitudeDeg, raw.longitudeDeg);
+            const bool hasSnapPoint = std::isfinite(raw.snapLatitudeDeg) && std::isfinite(raw.snapLongitudeDeg);
+            const float cellLatitudeDeg = hasSnapPoint ? raw.snapLatitudeDeg : raw.latitudeDeg;
+            const float cellLongitudeDeg = hasSnapPoint ? raw.snapLongitudeDeg : raw.longitudeDeg;
+            out.cellKey = CameraIndex::encodeCellKey(cellLatitudeDeg, cellLongitudeDeg);
         }
 
         remaining -= toRead;

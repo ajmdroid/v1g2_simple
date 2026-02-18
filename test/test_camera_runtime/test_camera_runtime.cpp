@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include <cmath>
 #include <utility>
 
 #include "../../src/modules/camera/camera_data_loader.h"
@@ -33,7 +34,10 @@ void queueSingleCamera(float latitudeDeg,
                        float longitudeDeg,
                        int16_t bearingTenthsDeg,
                        uint8_t toleranceDeg,
-                       uint8_t type) {
+                       uint8_t type,
+                       float snapLatitudeDeg = NAN,
+                       float snapLongitudeDeg = NAN,
+                       uint8_t widthM = 25) {
     resetReadyBuffers();
 
     gReadyBuffers.records = static_cast<CameraRecord*>(
@@ -43,19 +47,23 @@ void queueSingleCamera(float latitudeDeg,
     TEST_ASSERT_NOT_NULL(gReadyBuffers.records);
     TEST_ASSERT_NOT_NULL(gReadyBuffers.spans);
 
+    const bool hasSnapPoint = std::isfinite(snapLatitudeDeg) && std::isfinite(snapLongitudeDeg);
+    const float anchorLatitudeDeg = hasSnapPoint ? snapLatitudeDeg : latitudeDeg;
+    const float anchorLongitudeDeg = hasSnapPoint ? snapLongitudeDeg : longitudeDeg;
+
     CameraRecord& record = gReadyBuffers.records[0];
     record.latitudeDeg = latitudeDeg;
     record.longitudeDeg = longitudeDeg;
-    record.snapLatitudeDeg = latitudeDeg;
-    record.snapLongitudeDeg = longitudeDeg;
+    record.snapLatitudeDeg = anchorLatitudeDeg;
+    record.snapLongitudeDeg = anchorLongitudeDeg;
     record.bearingTenthsDeg = bearingTenthsDeg;
-    record.widthM = 25;
+    record.widthM = widthM;
     record.toleranceDeg = toleranceDeg;
     record.type = type;
     record.speedLimit = 35;
     record.flags = 0;
     record.reserved = 0;
-    record.cellKey = CameraIndex::encodeCellKey(latitudeDeg, longitudeDeg);
+    record.cellKey = CameraIndex::encodeCellKey(anchorLatitudeDeg, anchorLongitudeDeg);
 
     gReadyBuffers.recordCount = 1;
     gReadyBuffers.spans[0].cellKey = record.cellKey;
@@ -177,6 +185,34 @@ void test_lifecycle_clears_on_pass_distance_and_lifts_after_exit() {
     TEST_ASSERT_EQUAL_UINT32(0, afterExit.suppressedCameraId);
 }
 
+void test_corridor_width_blocks_off_corridor_candidate() {
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 2, NAN, NAN, 25);
+    setGpsSample(0.0005f, 0.0f, 90.0f, 1000);  // ~55m north of corridor centerline.
+    processCameraTick(1000);
+
+    CameraRuntimeStatus outsideCorridor = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_FALSE(outsideCorridor.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(CameraLifecycleState::IDLE),
+                            static_cast<uint8_t>(outsideCorridor.lifecycleState));
+
+    setGpsSample(0.0001f, 0.0f, 90.0f, 1300);  // ~11m north, inside width=25m.
+    processCameraTick(1300);
+    CameraRuntimeStatus insideCorridor = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(insideCorridor.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT32(1, insideCorridor.activeAlert.cameraId);
+}
+
+void test_snap_anchor_distance_allows_match_when_raw_point_is_far() {
+    queueSingleCamera(
+        0.0f, 0.0200f, 900, 35, 2, 0.0f, 0.0010f, 25);  // Raw point far; snap point is nearby.
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(status.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT32(1, status.activeAlert.cameraId);
+}
+
 void test_lifecycle_clears_on_turn_away_after_two_ticks() {
     queueSingleCamera(0.0f, 0.0010f, 900, 35, 1);
     setGpsSample(0.0f, 0.0f, 90.0f, 1000);
@@ -250,6 +286,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_forward_only_start_requires_heading_alignment);
     RUN_TEST(test_lifecycle_clears_on_pass_distance_and_lifts_after_exit);
+    RUN_TEST(test_corridor_width_blocks_off_corridor_candidate);
+    RUN_TEST(test_snap_anchor_distance_allows_match_when_raw_point_is_far);
     RUN_TEST(test_lifecycle_clears_on_turn_away_after_two_ticks);
     RUN_TEST(test_preempt_suppresses_same_pass_until_exit_then_allows_reentry);
     RUN_TEST(test_signal_priority_blocks_new_camera_start_until_cleared);

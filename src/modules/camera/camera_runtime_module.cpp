@@ -84,6 +84,84 @@ float bearingDeg(float latA, float lonA, float latB, float lonB) {
     return cameraNormalizeHeadingDeg(bearingRad * (180.0f / kPi));
 }
 
+bool cameraAnchorPointDeg(const CameraRecord& record, float& outLatitudeDeg, float& outLongitudeDeg) {
+    if (std::isfinite(record.snapLatitudeDeg) && std::isfinite(record.snapLongitudeDeg)) {
+        outLatitudeDeg = record.snapLatitudeDeg;
+        outLongitudeDeg = record.snapLongitudeDeg;
+        return true;
+    }
+    if (std::isfinite(record.latitudeDeg) && std::isfinite(record.longitudeDeg)) {
+        outLatitudeDeg = record.latitudeDeg;
+        outLongitudeDeg = record.longitudeDeg;
+        return true;
+    }
+    outLatitudeDeg = NAN;
+    outLongitudeDeg = NAN;
+    return false;
+}
+
+bool localOffsetMeters(float originLatitudeDeg,
+                       float originLongitudeDeg,
+                       float targetLatitudeDeg,
+                       float targetLongitudeDeg,
+                       float& outEastM,
+                       float& outNorthM) {
+    if (!std::isfinite(originLatitudeDeg) || !std::isfinite(originLongitudeDeg) ||
+        !std::isfinite(targetLatitudeDeg) || !std::isfinite(targetLongitudeDeg)) {
+        outEastM = NAN;
+        outNorthM = NAN;
+        return false;
+    }
+    const float originLatRad = degToRad(originLatitudeDeg);
+    const float targetLatRad = degToRad(targetLatitudeDeg);
+    const float deltaLatRad = targetLatRad - originLatRad;
+    const float deltaLonRad = degToRad(targetLongitudeDeg - originLongitudeDeg);
+    const float meanLatRad = (originLatRad + targetLatRad) * 0.5f;
+    outNorthM = deltaLatRad * kEarthRadiusM;
+    outEastM = deltaLonRad * std::cos(meanLatRad) * kEarthRadiusM;
+    return std::isfinite(outEastM) && std::isfinite(outNorthM);
+}
+
+bool isWithinCorridorWidth(const GpsRuntimeStatus& gpsStatus,
+                           const CameraRecord& record,
+                           float& outLateralDistanceM) {
+    outLateralDistanceM = NAN;
+    if (record.widthM == 0) {
+        // Width is optional in legacy datasets; keep distance/heading-only behavior.
+        return true;
+    }
+    if (record.bearingTenthsDeg < 0 || record.bearingTenthsDeg >= 3600) {
+        return true;
+    }
+
+    float anchorLatitudeDeg = NAN;
+    float anchorLongitudeDeg = NAN;
+    if (!cameraAnchorPointDeg(record, anchorLatitudeDeg, anchorLongitudeDeg)) {
+        return false;
+    }
+
+    float eastM = NAN;
+    float northM = NAN;
+    if (!localOffsetMeters(anchorLatitudeDeg,
+                           anchorLongitudeDeg,
+                           gpsStatus.latitudeDeg,
+                           gpsStatus.longitudeDeg,
+                           eastM,
+                           northM)) {
+        return false;
+    }
+
+    const float bearingDegValue = static_cast<float>(record.bearingTenthsDeg) * 0.1f;
+    const float bearingRad = degToRad(bearingDegValue);
+    const float crossTrackM = std::fabs((eastM * std::cos(bearingRad)) - (northM * std::sin(bearingRad)));
+    if (!std::isfinite(crossTrackM)) {
+        return false;
+    }
+
+    outLateralDistanceM = crossTrackM;
+    return crossTrackM <= static_cast<float>(record.widthM);
+}
+
 const CameraCellSpan* findCellSpan(const CameraCellSpan* spans, uint32_t spanCount, uint32_t cellKey) {
     uint32_t lo = 0;
     uint32_t hi = spanCount;
@@ -132,6 +210,8 @@ float headingToleranceForRecord(const CameraRecord& record) {
 
 bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
                        const CameraRecord& record,
+                       float targetLatitudeDeg,
+                       float targetLongitudeDeg,
                        float& outDeltaDeg) {
     outDeltaDeg = NAN;
     float targetHeadingDeg = NAN;
@@ -140,8 +220,8 @@ bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
     } else {
         targetHeadingDeg = bearingDeg(gpsStatus.latitudeDeg,
                                       gpsStatus.longitudeDeg,
-                                      record.latitudeDeg,
-                                      record.longitudeDeg);
+                                      targetLatitudeDeg,
+                                      targetLongitudeDeg);
     }
 
     const float deltaDeg = cameraHeadingDeltaDeg(gpsStatus.courseDeg, targetHeadingDeg);
@@ -431,10 +511,15 @@ void CameraRuntimeModule::process(uint32_t nowMs,
                 visitedCandidates++;
                 const uint32_t cameraId = idx + 1u;
                 const CameraRecord& record = records[idx];
+                float anchorLatitudeDeg = NAN;
+                float anchorLongitudeDeg = NAN;
+                if (!cameraAnchorPointDeg(record, anchorLatitudeDeg, anchorLongitudeDeg)) {
+                    continue;
+                }
                 const float distanceM = haversineMeters(gpsStatus.latitudeDeg,
                                                         gpsStatus.longitudeDeg,
-                                                        record.latitudeDeg,
-                                                        record.longitudeDeg);
+                                                        anchorLatitudeDeg,
+                                                        anchorLongitudeDeg);
                 if (!std::isfinite(distanceM) || distanceM > kAlertRadiusM) {
                     continue;
                 }
@@ -442,8 +527,13 @@ void CameraRuntimeModule::process(uint32_t nowMs,
                     sawSuppressedThisTick = true;
                 }
 
+                float lateralDistanceM = NAN;
+                if (!isWithinCorridorWidth(gpsStatus, record, lateralDistanceM)) {
+                    continue;
+                }
+
                 float deltaDeg = NAN;
-                if (!isHeadingEligible(gpsStatus, record, deltaDeg)) {
+                if (!isHeadingEligible(gpsStatus, record, anchorLatitudeDeg, anchorLongitudeDeg, deltaDeg)) {
                     continue;
                 }
                 if (activeAlert_.active && cameraId == activeAlert_.cameraId) {
