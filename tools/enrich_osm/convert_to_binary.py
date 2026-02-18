@@ -35,33 +35,13 @@ MAGIC = b"VCAM"
 VERSION = 1
 RECORD_SIZE = 24
 
-# Camera type values expected by firmware runtime.
-# Current schema:
-#   1 = Red Light
-#   2 = Speed
-#   3 = Red + Speed
-#   4 = ALPR
-CURRENT_CAMERA_TYPES = {
-    1: 1,
-    2: 2,
-    3: 3,
-    4: 4,
-}
+CAMERA_TYPE_ALPR = 4
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("input", type=Path, help="Input enriched NDJSON file")
     p.add_argument("output", type=Path, help="Output binary file (.bin)")
-    p.add_argument(
-        "--flag-schema",
-        choices=("current", "legacy"),
-        default="current",
-        help=(
-            "Interpretation for 'flg' values in input NDJSON "
-            "(default: current project schema)."
-        ),
-    )
     return p.parse_args()
 
 
@@ -79,29 +59,7 @@ def _parse_int(value, fallback):
         return int(fallback)
 
 
-def _map_camera_type(flag_value: int, flag_schema: str) -> int:
-    """Map NDJSON flg value to runtime camera type enum."""
-    if flag_schema == "current":
-        if flag_value & 8192:
-            return 4
-        return CURRENT_CAMERA_TYPES.get(flag_value, 2)
-
-    # Legacy bitmask schema:
-    #   bit0 speed, bit1 redlight, bit13 ALPR
-    if flag_value & 8192:
-        return 4
-    has_speed = (flag_value & 0x1) != 0
-    has_red = (flag_value & 0x2) != 0
-    if has_speed and has_red:
-        return 3
-    if has_red:
-        return 1
-    if has_speed:
-        return 2
-    return 2
-
-
-def convert_camera(obj: dict, flag_schema: str) -> bytes:
+def convert_camera(obj: dict) -> bytes:
     """Convert single camera record to 24-byte binary."""
     lat = _parse_float(obj.get("lat", 0.0), 0.0)
     lon = _parse_float(obj.get("lon", 0.0), 0.0)
@@ -139,9 +97,8 @@ def convert_camera(obj: dict, flag_schema: str) -> bytes:
     width = min(255, max(0, _parse_int(obj.get("cwm", obj.get("w", 35)), 35)))
     tolerance = min(255, max(0, _parse_int(obj.get("btol", 30), 30)))
 
-    # Camera type mapping.
-    flg = _parse_int(obj.get("flg", 2), 2)
-    cam_type = _map_camera_type(flg, flag_schema)
+    # ALPR-only runtime schema.
+    cam_type = CAMERA_TYPE_ALPR
 
     # Speed limit value (support either spd or psl metadata).
     speed = min(255, max(0, _parse_int(obj.get("spd", obj.get("psl", 0)), 0)))
@@ -194,7 +151,7 @@ def main():
     with args.output.open("wb") as out:
         out.write(header)
         for cam in cameras:
-            out.write(convert_camera(cam, args.flag_schema))
+            out.write(convert_camera(cam))
     
     input_size = args.input.stat().st_size
     output_size = args.output.stat().st_size

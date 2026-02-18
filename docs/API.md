@@ -593,7 +593,7 @@ Get camera runtime, loader, index, and lifecycle status.
 
 ### GET /api/cameras/catalog
 
-Get camera dataset availability/count metadata from SD (`alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`).
+Get camera dataset availability/count metadata from SD (`alpr.bin`).
 
 **Response:**
 ```json
@@ -601,20 +601,18 @@ Get camera dataset availability/count metadata from SD (`alpr.bin`, `speed_cam.b
   "success": true,
   "storageReady": true,
   "tsMs": 123456,
-  "runtimeDatasetScope": "enforcement_only",
-  "runtimeDatasets": ["speed", "redlight"],
-  "alprRuntimeLoaded": false,
+  "runtimeDatasetScope": "alpr_only",
+  "runtimeDatasets": ["alpr"],
+  "alprRuntimeLoaded": true,
   "datasets": {
-    "alpr": { "present": true, "valid": true, "count": 70327, "bytes": 1687848 },
-    "speed": { "present": true, "valid": true, "count": 870, "bytes": 20880 },
-    "redlight": { "present": true, "valid": true, "count": 460, "bytes": 11040 }
+    "alpr": { "present": true, "valid": true, "count": 70327, "bytes": 1687848 }
   },
-  "totalCount": 71657,
-  "totalBytes": 1719768
+  "totalCount": 70327,
+  "totalBytes": 1687848
 }
 ```
 
-`runtimeDatasetScope`, `runtimeDatasets`, and `alprRuntimeLoaded` describe what the live runtime matcher currently loads; catalog totals still include ALPR files present on SD.
+`runtimeDatasetScope`, `runtimeDatasets`, and `alprRuntimeLoaded` describe the live runtime matcher load state for the ALPR dataset.
 
 ### GET /api/cameras/events
 
@@ -632,8 +630,8 @@ Get recent camera lifecycle events from the bounded in-memory event log.
   "size": 2,
   "capacity": 64,
   "events": [
-    { "tsMs": 122000, "cameraId": 12345, "distanceM": 240, "type": 2, "synthetic": false },
-    { "tsMs": 121800, "cameraId": 12001, "distanceM": 300, "type": 1, "synthetic": false }
+    { "tsMs": 122000, "cameraId": 12345, "distanceM": 240, "type": 4, "synthetic": false },
+    { "tsMs": 121800, "cameraId": 12001, "distanceM": 300, "type": 4, "synthetic": false }
   ]
 }
 ```
@@ -643,7 +641,7 @@ Get recent camera lifecycle events from the bounded in-memory event log.
 Trigger on-device camera display preview mode (for UI/demo validation).
 
 **Request (form data):**
-- `type` (optional): `0=cycle all`, `1=redlight`, `2=speed`, `3=red+speed`, `4=alpr`
+- `type` (optional): `0=cycle ALPR`, `4=ALPR`
 - `muted` (optional): `1|true|on` for muted palette (single-type mode only)
 - `durationMs` (optional): bounded `500..15000`
 

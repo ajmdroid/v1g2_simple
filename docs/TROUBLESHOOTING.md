@@ -175,7 +175,7 @@ Quick solutions for common issues with the V1-Simple device.
 **Solutions**:
 1. **Enable runtime**: Ensure `cameraEnabled` is enabled (Web UI → Cameras page toggle, or `/api/settings`)
 2. **Check GPS gating**: Camera runtime requires GPS enabled + valid fix/course data
-3. **Load datasets on SD**: Ensure `speed_cam.bin` and/or `redlight_cam.bin` exist (`alpr.bin` is catalog-only in current runtime)
+3. **Load dataset on SD**: Ensure `alpr.bin` exists on SD root
 4. **Verify runtime load**: Check `/api/cameras/status` for `enabled=true`, `indexLoaded=true`, and non-zero `index.cameraCount`
 5. **Verify catalog + scope**: Check `/api/cameras/catalog` for file presence and runtime scope fields (`runtimeDatasets`, `alprRuntimeLoaded`)
 6. **Run display demo**: Web UI → Cameras → Display Demo (or POST `/api/cameras/demo`) to validate screen/audio pipeline without live GPS matches
@@ -187,10 +187,10 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Check SD mount**: Boot logs should show SD/perf logger enabled
-2. **Check filenames**: Use exact names `alpr.bin`, `speed_cam.bin`, `redlight_cam.bin`
+2. **Check filename**: Use exact name `alpr.bin`
 3. **Check file integrity**: Re-copy datasets if counts look wrong or stale
 4. **Confirm with API**: `/api/cameras/catalog` should report file presence and counts
-5. **Check runtime scope**: In current firmware, runtime matching loads enforcement datasets (`speed`, `redlight`); ALPR appears in catalog but is not loaded into active matching
+5. **Check runtime scope**: Runtime should report `runtimeDatasetScope=alpr_only`, `runtimeDatasets=["alpr"]`, and `alprRuntimeLoaded=true` when ALPR is valid
 
 ### False camera alerts
 

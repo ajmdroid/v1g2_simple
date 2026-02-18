@@ -41,9 +41,9 @@ Pipeline steps:
 
 ## 3) Load cameras into PostGIS
 ```bash
-./load_camera_ndjson_to_pg.py ../camera_data/speed_cam.json --table cameras_stage
+./load_camera_ndjson_to_pg.py ../camera_data/alpr.json --table cameras_stage
 ```
-(Repeat for other camera files, or one at a time.)
+(ALPR-only pipeline)
 
 ## 4) Enrich (nearest road, corridor)
 ```bash
@@ -59,7 +59,7 @@ psql -v stage_table=cameras_stage \
 ## 5) Export merged NDJSON
 ```bash
 mkdir -p ../camera_data_enriched
-./export_and_merge.py --table cameras_enriched --output ../camera_data_enriched/speed_cam.json
+./export_and_merge.py --table cameras_enriched --output ../camera_data_enriched/alpr.json
 ```
 
 ## Sanity test (tiny run)
@@ -108,23 +108,18 @@ The enriched files are written to `../../camera_data_enriched/` by default. Copy
 Firmware runtime consumes VCAM binary datasets (`*.bin`), not NDJSON.
 
 ```bash
-# Current project flag schema (default): 1=redlight, 2=speed, 3=both, 4=ALPR
-python convert_to_binary.py ../../camera_data_enriched/speed_cam.json ../../camera_data_enriched/speed_cam.bin
-
-# If input uses legacy bitmask flags (bit0=speed, bit1=redlight, bit13=ALPR):
-python convert_to_binary.py --flag-schema legacy input.json output.bin
+# ALPR-only runtime schema
+python convert_to_binary.py ../../camera_data_enriched/alpr.json ../../camera_data_enriched/alpr.bin
 ```
 
-Use runtime-compatible filenames on SD root:
-- `speed_cam.bin`
-- `redlight_cam.bin`
+Use runtime-compatible filename on SD root:
 - `alpr.bin`
 
 ## Enriched Output Format
 
 Original camera record:
 ```json
-{"lat": 33.7490, "lon": -84.3880, "flg": 2, "spd": 35}
+{"lat": 33.7490, "lon": -84.3880, "flg": 4, "spd": 35}
 ```
 
 Enriched camera record:
@@ -132,7 +127,7 @@ Enriched camera record:
 {
   "lat": 33.7490,
   "lon": -84.3880,
-  "flg": 2,
+  "flg": 4,
   "spd": 35,
   "p1": [33.7485, -84.3875],
   "p2": [33.7495, -84.3885],
