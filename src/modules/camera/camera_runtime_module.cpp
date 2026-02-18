@@ -38,7 +38,7 @@ float haversineMeters(float latA, float lonA, float latB, float lonB) {
     return kEarthRadiusM * c;
 }
 
-float normalizeHeadingDeg(float headingDeg) {
+float cameraNormalizeHeadingDeg(float headingDeg) {
     if (!std::isfinite(headingDeg)) {
         return NAN;
     }
@@ -49,9 +49,9 @@ float normalizeHeadingDeg(float headingDeg) {
     return normalized;
 }
 
-float headingDeltaDeg(float headingA, float headingB) {
-    const float a = normalizeHeadingDeg(headingA);
-    const float b = normalizeHeadingDeg(headingB);
+float cameraHeadingDeltaDeg(float headingA, float headingB) {
+    const float a = cameraNormalizeHeadingDeg(headingA);
+    const float b = cameraNormalizeHeadingDeg(headingB);
     if (!std::isfinite(a) || !std::isfinite(b)) {
         return NAN;
     }
@@ -81,7 +81,7 @@ float bearingDeg(float latA, float lonA, float latB, float lonB) {
         return NAN;
     }
     const float bearingRad = std::atan2(y, x);
-    return normalizeHeadingDeg(bearingRad * (180.0f / kPi));
+    return cameraNormalizeHeadingDeg(bearingRad * (180.0f / kPi));
 }
 
 const CameraCellSpan* findCellSpan(const CameraCellSpan* spans, uint32_t spanCount, uint32_t cellKey) {
@@ -144,7 +144,7 @@ bool isHeadingEligible(const GpsRuntimeStatus& gpsStatus,
                                       record.longitudeDeg);
     }
 
-    const float deltaDeg = headingDeltaDeg(gpsStatus.courseDeg, targetHeadingDeg);
+    const float deltaDeg = cameraHeadingDeltaDeg(gpsStatus.courseDeg, targetHeadingDeg);
     if (!std::isfinite(deltaDeg)) {
         return false;
     }
