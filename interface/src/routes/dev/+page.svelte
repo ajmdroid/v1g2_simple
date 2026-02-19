@@ -335,7 +335,7 @@
 		{/if}
 
 		<!-- Message Display -->
-			<StatusAlert message={message} />
+		<StatusAlert message={message} />
 
 		<!-- WiFi Settings -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>
