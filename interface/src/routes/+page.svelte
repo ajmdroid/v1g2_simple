@@ -137,7 +137,7 @@
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-sm">Valentine One</h2>
+				<div class="copy-mini-title">Valentine One</div>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -151,7 +151,7 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-sm">WiFi</h2>
+				<div class="copy-mini-title">WiFi</div>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -159,7 +159,7 @@
 						{status.wifi.sta_connected ? 'Online' : 'AP Only'}
 					</div>
 					{#if status.wifi.sta_connected}
-						<div class="text-xs {getRssiClass(status.wifi.rssi)}">
+						<div class="copy-caption {getRssiClass(status.wifi.rssi)}">
 							{status.wifi.ssid} • {status.wifi.rssi} dBm
 						</div>
 					{/if}
@@ -169,7 +169,7 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-sm">Uptime</h2>
+				<div class="copy-mini-title">Uptime</div>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
@@ -185,14 +185,14 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-sm">Alerts</h2>
+				<div class="copy-mini-title">Alerts</div>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if status.alert?.active}
 					<div class="text-xl font-bold text-warning">
 						{status.alert.band}
 					</div>
-					<div class="text-xs">{status.alert.frequency} MHz</div>
+					<div class="copy-caption">{status.alert.frequency} MHz</div>
 				{:else}
 					<div class="text-xl font-bold text-success">Clear</div>
 					<div class="copy-caption">No threats</div>
@@ -202,7 +202,7 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-sm">GPS</h2>
+				<div class="copy-mini-title">GPS</div>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if !gps.enabled}
