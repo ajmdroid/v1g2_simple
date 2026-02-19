@@ -113,6 +113,16 @@ html {
 		background: oklch(var(--b1) / 0.42);
 	}
 
+	.surface-subsection {
+		@apply ml-4 space-y-4 rounded-md py-2 pl-4 pr-3;
+		border-left: 2px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 1.1));
+		background: oklch(var(--b1) / 0.34);
+	}
+
+	.surface-subsection.tight {
+		@apply space-y-2;
+	}
+
 	.surface-table-wrap {
 		@apply overflow-x-auto rounded-lg p-1;
 		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));

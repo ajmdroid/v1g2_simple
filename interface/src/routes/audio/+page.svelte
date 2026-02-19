@@ -267,7 +267,7 @@
 					
 					<!-- Band Filters (nested, only shown when master enabled) -->
 					{#if settings.announceSecondaryAlerts && settings.voiceAlertMode !== 0}
-						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-2">
+						<div class="surface-subsection tight">
 							<p class="text-xs text-base-content/50 mb-2">Which bands to announce:</p>
 							
 							<div class="form-control">
@@ -342,7 +342,7 @@
 					</div>
 					
 					{#if settings.alertVolumeFadeEnabled}
-						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+						<div class="surface-subsection">
 							<!-- Delay -->
 							<div class="form-control">
 								<label class="label" for="fade-delay">
@@ -414,7 +414,7 @@
 					</div>
 					
 					{#if settings.speedVolumeEnabled}
-						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+						<div class="surface-subsection">
 							<!-- Speed Threshold -->
 							<div class="form-control">
 								<label class="label" for="speed-threshold">
@@ -486,7 +486,7 @@
 					</div>
 					
 					{#if settings.lowSpeedMuteEnabled}
-						<div class="ml-4 pl-4 border-l-2 border-base-300 space-y-4">
+						<div class="surface-subsection">
 							<!-- Speed Threshold -->
 							<div class="form-control">
 								<label class="label" for="low-speed-threshold">
