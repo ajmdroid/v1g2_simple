@@ -307,13 +307,13 @@
 						{:else}
 							<!-- View Mode -->
 							<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-								<div class="text-base-content/60">Profile:</div>
+								<div class="copy-muted">Profile:</div>
 								<div class="font-medium">{slot.profile || '—'}</div>
-								<div class="text-base-content/60">Mode:</div>
+								<div class="copy-muted">Mode:</div>
 								<div class="font-medium">{modeNames[slot.mode] || '—'}</div>
-								<div class="text-base-content/60">Volume:</div>
+								<div class="copy-muted">Volume:</div>
 								<div class="font-medium">{slot.volume} / Mute: {slot.muteVolume}</div>
-								<div class="text-base-content/60">Options:</div>
+								<div class="copy-muted">Options:</div>
 								<div class="font-medium">
 									{#if slot.darkMode}🌙 Dark{/if}
 									{#if slot.darkMode && slot.muteToZero} · {/if}
@@ -322,7 +322,7 @@
 									{#if slot.priorityArrowOnly}↑ Prio Arrow{/if}
 									{#if !slot.darkMode && !slot.muteToZero && !slot.priorityArrowOnly}—{/if}
 								</div>
-								<div class="text-base-content/60">Alert persistence:</div>
+								<div class="copy-muted">Alert persistence:</div>
 								<div class="font-medium">{slot.alertPersist || 0}s</div>
 							</div>
 						{/if}
