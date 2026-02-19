@@ -42,6 +42,18 @@ html {
 }
 
 @layer components {
+	.app-shell {
+		@apply min-h-screen;
+		background:
+			radial-gradient(120% 85% at 0% 0%, color-mix(in oklab, var(--v1-red) 24%, transparent 76%) 0%, transparent 58%),
+			radial-gradient(95% 75% at 100% 0%, color-mix(in oklab, var(--v1-cyan) 16%, transparent 84%) 0%, transparent 62%),
+			linear-gradient(180deg, oklch(var(--b1)) 0%, oklch(var(--b1) / 0.96) 100%);
+	}
+
+	.app-main {
+		@apply container mx-auto max-w-6xl p-4;
+	}
+
 	.page-stack {
 		@apply space-y-6;
 	}
@@ -52,6 +64,29 @@ html {
 
 	.page-header-copy {
 		@apply min-w-0;
+	}
+
+	.page-eyebrow {
+		@apply mb-1 inline-flex items-center gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-base-content/55;
+	}
+
+	.page-eyebrow::before,
+	.page-eyebrow::after {
+		content: '';
+		display: inline-block;
+		width: 0.58rem;
+		height: 0.48rem;
+		clip-path: polygon(50% 0, 100% 62%, 64% 62%, 64% 100%, 36% 100%, 36% 62%, 0 62%);
+		filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.28));
+	}
+
+	.page-eyebrow::before {
+		background: linear-gradient(180deg, #ff5f5f 0%, #d12626 100%);
+	}
+
+	.page-eyebrow::after {
+		background: linear-gradient(180deg, #bbc2cd 0%, #767f8d 100%);
+		transform: rotate(180deg);
 	}
 
 	.page-title {

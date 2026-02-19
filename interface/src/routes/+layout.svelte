@@ -87,7 +87,7 @@
 	}
 </script>
 
-<div class="min-h-screen bg-base-100">
+<div class="app-shell">
 	<!-- Security Warning Banner -->
 	{#if showPasswordWarning && !warningDismissed}
 		<div class="surface-alert alert-warning banner" role="alert">
@@ -143,7 +143,7 @@
 	</nav>
 
 	<!-- Main Content -->
-	<main class="container mx-auto p-4 max-w-6xl">
+	<main class="app-main">
 		{@render children()}
 	</main>
 
