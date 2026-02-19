@@ -267,7 +267,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text font-semibold">Enable WiFi at Boot</span>
-							<p class="text-xs opacity-70 mt-1">
+							<p class="copy-caption-soft mt-1">
 								Automatically start WiFi on power-up (bypasses BOOT button requirement)
 							</p>
 						</div>
@@ -284,7 +284,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text font-semibold">Signal Trace Logging (All Bands)</span>
-							<p class="text-xs opacity-70 mt-1">
+							<p class="copy-caption-soft mt-1">
 								Default ON. Best-effort logging of priority alerts (including Ka) to lockout CSV for bench analysis.
 							</p>
 						</div>
@@ -339,19 +339,19 @@
 								<h3 class="font-semibold text-sm mb-2">BLE Queue (V1 to Display)</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
-										<span class="opacity-70">RX Packets:</span>
+										<span class="copy-caption">RX Packets:</span>
 										<span class="font-mono">{metrics.rxPackets?.toLocaleString() || 0}</span>
 									</div>
 									<div class="flex justify-between">
-										<span class="opacity-70">Parse OK:</span>
+										<span class="copy-caption">Parse OK:</span>
 										<span class="font-mono">{metrics.parseSuccesses?.toLocaleString() || 0}</span>
 									</div>
 									<div class="flex justify-between">
-										<span class="opacity-70">Queue Drops:</span>
+										<span class="copy-caption">Queue Drops:</span>
 										<span class="font-mono" class:text-error={metrics.queueDrops > 0}>{metrics.queueDrops || 0}</span>
 									</div>
 									<div class="flex justify-between">
-										<span class="opacity-70">Queue High-Water:</span>
+										<span class="copy-caption">Queue High-Water:</span>
 										<span class="font-mono">{metrics.queueHighWater || 0}/64</span>
 									</div>
 								</div>
@@ -362,11 +362,11 @@
 								<h3 class="font-semibold text-sm mb-2">Display</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
-										<span class="opacity-70">Updates:</span>
+										<span class="copy-caption">Updates:</span>
 										<span class="font-mono">{metrics.displayUpdates?.toLocaleString() || 0}</span>
 									</div>
 									<div class="flex justify-between">
-										<span class="opacity-70">Skipped:</span>
+										<span class="copy-caption">Skipped:</span>
 										<span class="font-mono">{metrics.displaySkips || 0}</span>
 									</div>
 								</div>
@@ -378,19 +378,19 @@
 									<h3 class="font-semibold text-sm mb-2">BLE to Flush Latency</h3>
 									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
-											<span class="opacity-70">Min:</span>
+											<span class="copy-caption">Min:</span>
 											<span class="font-mono">{formatLatency(metrics.latencyMinUs)}</span>
 										</div>
 										<div class="flex justify-between">
-											<span class="opacity-70">Avg:</span>
+											<span class="copy-caption">Avg:</span>
 											<span class="font-mono">{formatLatency(metrics.latencyAvgUs)}</span>
 										</div>
 										<div class="flex justify-between">
-											<span class="opacity-70">Max:</span>
+											<span class="copy-caption">Max:</span>
 											<span class="font-mono" class:text-warning={metrics.latencyMaxUs > 100000}>{formatLatency(metrics.latencyMaxUs)}</span>
 										</div>
 									</div>
-									<div class="text-[10px] opacity-50 mt-1">
+									<div class="copy-micro mt-1">
 										Samples: {metrics.latencySamples?.toLocaleString() || 0} (1 in 8 packets)
 									</div>
 								</div>
@@ -402,19 +402,19 @@
 									<h3 class="font-semibold text-sm mb-2">V1 Proxy (to JBV1/V1C)</h3>
 									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
-											<span class="opacity-70">Connected:</span>
+											<span class="copy-caption">Connected:</span>
 											<span class="font-mono" class:text-success={metrics.proxy.connected}>{metrics.proxy.connected ? 'Yes' : 'No'}</span>
 										</div>
 										<div class="flex justify-between">
-											<span class="opacity-70">Packets Sent:</span>
+											<span class="copy-caption">Packets Sent:</span>
 											<span class="font-mono">{metrics.proxy.sendCount?.toLocaleString() || 0}</span>
 										</div>
 										<div class="flex justify-between">
-											<span class="opacity-70">Drops:</span>
+											<span class="copy-caption">Drops:</span>
 											<span class="font-mono" class:text-error={metrics.proxy.dropCount > 0}>{metrics.proxy.dropCount || 0}</span>
 										</div>
 										<div class="flex justify-between">
-											<span class="opacity-70">Errors:</span>
+											<span class="copy-caption">Errors:</span>
 											<span class="font-mono" class:text-error={metrics.proxy.errorCount > 0}>{metrics.proxy.errorCount || 0}</span>
 										</div>
 									</div>
@@ -426,11 +426,11 @@
 								<h3 class="font-semibold text-sm mb-2">Connection</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
-										<span class="opacity-70">Reconnects:</span>
+										<span class="copy-caption">Reconnects:</span>
 										<span class="font-mono">{metrics.reconnects || 0}</span>
 									</div>
 									<div class="flex justify-between">
-										<span class="opacity-70">Disconnects:</span>
+										<span class="copy-caption">Disconnects:</span>
 										<span class="font-mono">{metrics.disconnects || 0}</span>
 									</div>
 								</div>
@@ -440,7 +440,7 @@
 								<span class="loading loading-spinner loading-sm"></span>
 							</div>
 						{:else}
-							<div class="text-center text-sm opacity-60 py-4">
+							<div class="text-center copy-muted py-4">
 								Click Refresh or enable Auto to load metrics
 							</div>
 						{/if}
@@ -466,7 +466,7 @@
 					</button>
 				</CardSectionHead>
 
-				<p class="text-xs opacity-70">
+				<p class="copy-caption-soft">
 					Files under <span class="font-mono">{perfFilesInfo.path}</span>.
 					Download or delete without opening contents.
 				</p>
