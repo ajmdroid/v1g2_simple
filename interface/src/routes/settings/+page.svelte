@@ -573,7 +573,7 @@
 						<div><strong>epochMs (projected):</strong> <span class="font-mono">{getProjectedEpochMs()}</span></div>
 						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
 					{:else}
-						<div class="copy-caption-soft text-warning"><strong>status:</strong> time not set</div>
+						<div class="copy-warning"><strong>status:</strong> time not set</div>
 					{/if}
 				</div>
 				<button class="btn btn-primary btn-sm w-fit" onclick={syncTimeFromPhone} disabled={timeStatus.syncing}>

@@ -411,8 +411,8 @@
 					/>
 				</div>
 			{/if}
-			{#if (!v1Connected) && !editingSettings}
-				<p class="text-warning">Connect to V1 to view/edit settings</p>
+				{#if (!v1Connected) && !editingSettings}
+					<p class="copy-warning">Connect to V1 to view/edit settings</p>
 			{:else if currentProfile && currentProfile.settings}
 				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
 				<div class="space-y-3">

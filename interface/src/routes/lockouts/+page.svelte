@@ -1349,7 +1349,7 @@
 						}}
 					/>
 				</label>
-				<div class="copy-caption-soft text-warning">
+				<div class="copy-warning">
 					Disabled by default. Enabling Ka learning can suppress real Ka threats if lockouts are wrong.
 				</div>
 				<div class="copy-meta">
@@ -1881,7 +1881,7 @@
 		<div class="modal modal-open">
 			<div class="modal-box surface-modal">
 				<h3 class="font-bold text-lg">Ka Lockout Learning Warning</h3>
-				<p class="py-3 copy-caption-soft text-warning">
+				<p class="py-3 copy-warning">
 					High risk: enabling Ka lockout learning can suppress real Ka threats.
 				</p>
 				<p class="copy-caption-soft">

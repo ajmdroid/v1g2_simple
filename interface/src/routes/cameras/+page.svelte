@@ -402,7 +402,7 @@
 					</div>
 				</label>
 					{#if !runtimeConfig.gpsEnabled}
-						<div class="copy-caption-soft text-warning">
+						<div class="copy-warning">
 							GPS is disabled. Camera index can still load, but live matching remains inactive.
 						</div>
 					{/if}

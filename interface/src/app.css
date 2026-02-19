@@ -109,6 +109,10 @@ html {
 		@apply text-xs text-base-content/70;
 	}
 
+	.copy-warning {
+		@apply text-xs text-warning;
+	}
+
 	.copy-meta {
 		@apply text-xs text-base-content/65;
 	}
