@@ -494,7 +494,7 @@
 				<div class="form-control">
 					<label class="label" for="muted-color">
 						<span class="label-text">Muted Alert Color</span>
-						<span class="label-text-alt text-base-content/50">When alert is muted</span>
+						<span class="label-text-alt copy-micro">When alert is muted</span>
 					</label>
 					<div class="flex items-center gap-2">
 						<button 
@@ -524,7 +524,7 @@
 				<div class="form-control">
 					<label class="label" for="persisted-color">
 						<span class="label-text">Persisted Alert Color</span>
-						<span class="label-text-alt text-base-content/50">Ghost alert after V1 clears</span>
+						<span class="label-text-alt copy-micro">Ghost alert after V1 clears</span>
 					</label>
 					<div class="flex items-center gap-2">
 						<button 
