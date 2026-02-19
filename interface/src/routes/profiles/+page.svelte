@@ -350,7 +350,7 @@
 	<!-- Save Profile Dialog -->
 	{#if showSaveDialog}
 		<div class="modal modal-open">
-			<div class="modal-box">
+			<div class="modal-box surface-modal">
 				<h3 class="font-bold text-lg">Save Profile</h3>
 				<div class="py-4 space-y-4">
 					<div class="form-control">

@@ -708,7 +708,7 @@
 
 {#if showPinModal && selectedDevice}
 	<div class="modal modal-open">
-		<div class="modal-box">
+		<div class="modal-box surface-modal">
 			<h3 class="font-bold text-lg">Connect to Device</h3>
 			<p class="text-sm mt-1 text-base-content/70">
 				{selectedDevice.name || 'Unnamed'}<br />

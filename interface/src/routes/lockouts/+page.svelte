@@ -1717,7 +1717,7 @@
 
 	{#if zoneEditorOpen}
 		<div class="modal modal-open">
-			<div class="modal-box max-w-3xl">
+			<div class="modal-box surface-modal max-w-3xl">
 				<h3 class="font-bold text-lg">
 					{zoneEditorSlot === null ? 'Create Manual Lockout Zone' : `Edit Lockout Zone ${zoneEditorSlot}`}
 				</h3>
@@ -1889,7 +1889,7 @@
 
 	{#if showKaWarningModal}
 		<div class="modal modal-open">
-			<div class="modal-box">
+			<div class="modal-box surface-modal">
 				<h3 class="font-bold text-lg">Ka Lockout Learning Warning</h3>
 				<p class="py-3 text-sm text-warning">
 					this is a bad idea, please don't enable

@@ -103,7 +103,7 @@
 	{/if}
 
 	<!-- Navigation -->
-	<nav class="navbar bg-base-200 border-b border-base-300/70 shadow-sm" aria-label="Main navigation">
+	<nav class="navbar surface-chrome border-b" aria-label="Main navigation">
 		<div class="navbar-start">
 			<div class="dropdown">
 			<button type="button" aria-label="Open navigation menu" aria-expanded="false" class="btn btn-ghost lg:hidden">
@@ -111,7 +111,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" />
 				</svg>
 			</button>
-			<ul class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-200 rounded-box w-52" role="menu">
+			<ul class="menu menu-sm dropdown-content mt-3 z-[1] w-52 surface-menu" role="menu">
 					{#each navLinks as link}
 						<li><a href={link.href}>{link.label}</a></li>
 					{/each}
@@ -148,7 +148,7 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="footer footer-center p-4 bg-base-200 border-t border-base-300/70 text-base-content mt-8">
+	<footer class="footer footer-center p-4 surface-chrome border-t text-base-content mt-8">
 		<aside>
 			<div class="flex flex-wrap items-center justify-center gap-2">
 				<BrandMark compact />

@@ -646,7 +646,7 @@
 		<!-- WiFi Scan Modal -->
 		{#if showWifiModal}
 		<div class="modal modal-open">
-			<div class="modal-box max-w-md">
+			<div class="modal-box surface-modal max-w-md">
 				<h3 class="font-bold text-lg">Select WiFi Network</h3>
 				
 				{#if wifiScanning}
@@ -697,7 +697,7 @@
 						{#if wifiNetworks.length === 0}
 							<p class="text-center text-base-content/60 py-4">No networks found</p>
 						{:else}
-							<ul class="menu bg-base-100 rounded-box max-h-64 overflow-y-auto">
+							<ul class="menu surface-menu max-h-64 overflow-y-auto">
 								{#each wifiNetworks as network}
 									<li>
 										<button onclick={() => selectNetwork(network)} class="flex justify-between">
