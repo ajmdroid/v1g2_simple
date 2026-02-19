@@ -290,6 +290,27 @@ bool SettingsManager::checkAndRestoreFromSD() {
         // Keep user/NVS state authoritative unless corruption is detected.
         // Slot/profile healing is handled separately by validateProfileReferences().
         Serial.println("[Settings] NVS healthy; skipping automatic SD settings restore");
+
+        // Targeted WiFi credential recovery: if wifiClientEnabled=true but SSID
+        // is missing from NVS (e.g. partial NVS wipe, firmware flash that erased
+        // some keys), recover the SSID from the SD backup without overwriting
+        // the rest of the NVS settings.
+        if (settings.wifiClientEnabled && settings.wifiClientSSID.length() == 0) {
+            const char* backupSsid = bestBackupDoc["wifiClientSSID"] | "";
+            if (strlen(backupSsid) > 0) {
+                settings.wifiClientSSID = sanitizeWifiClientSsidValue(String(backupSsid));
+                settings.wifiMode = V1_WIFI_APSTA;
+                Serial.printf("[Settings] HEAL: recovered wifiClientSSID='%s' from SD backup\n",
+                              settings.wifiClientSSID.c_str());
+                save();
+            } else {
+                // SSID also missing from backup — disable to avoid an inconsistent state
+                settings.wifiClientEnabled = false;
+                settings.wifiMode = V1_WIFI_AP;
+                Serial.println("[Settings] HEAL: wifiClientEnabled=true but no SSID anywhere — disabling");
+                save();
+            }
+        }
     }
 
     // Keep SD backup schema fresh so newly added settings survive the next reflash.
