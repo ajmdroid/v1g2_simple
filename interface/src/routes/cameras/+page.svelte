@@ -374,7 +374,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Runtime Status</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Camera runtime stays lower priority than core BLE/display path.
 					</p>
 				</div>
@@ -473,11 +473,11 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Dataset Catalog</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						SD header counts for the ALPR runtime dataset.
 					</p>
 				</div>
-				<div class="text-xs text-base-content/60">last scan: {formatTimestamp(catalog.tsMs)}</div>
+				<div class="copy-caption">last scan: {formatTimestamp(catalog.tsMs)}</div>
 			</div>
 
 			<div class="surface-stats">
@@ -540,15 +540,15 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Recent Events</h2>
-					<p class="text-sm text-base-content/70">Recent camera events from bounded runtime ring buffer.</p>
+					<p class="copy-subtle">Recent camera events from bounded runtime ring buffer.</p>
 				</div>
-				<div class="text-xs text-base-content/60">
+				<div class="copy-caption">
 					count {eventStats.count} · ring {eventStats.size}/{eventStats.capacity} · drops {eventStats.drops}
 				</div>
 			</div>
 
 			{#if loading}
-				<div class="flex items-center gap-2 text-sm text-base-content/70">
+				<div class="flex items-center gap-2 copy-subtle">
 					<span class="loading loading-spinner loading-sm"></span>
 					<span>Loading events...</span>
 				</div>

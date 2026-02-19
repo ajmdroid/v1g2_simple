@@ -463,7 +463,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">GPS Runtime</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						GPS provides fix/location telemetry only. Speed control is OBD-only.
 					</p>
 				</div>
@@ -513,7 +513,7 @@
 				<div class="section-head">
 					<div>
 						<h2 class="card-title">Current Status</h2>
-						<p class="text-sm text-base-content/70">
+						<p class="copy-subtle">
 							{#if !status.enabled}
 								OBD service disabled
 							{:else if status.connected}
@@ -539,7 +539,7 @@
 						/>
 						<span class="label-text">OBD service</span>
 					</label>
-					<div class="text-xs text-base-content/60">
+					<div class="copy-caption">
 						{#if status.enabled}
 							Scan/connect and auto-connect are active.
 						{:else}
@@ -558,7 +558,7 @@
 						/>
 						<span class="label-text">VW data</span>
 					</label>
-					<div class="text-xs text-base-content/60">Enable VW-specific PIDs (oil temp)</div>
+					<div class="copy-caption">Enable VW-specific PIDs (oil temp)</div>
 				</div>
 
 				<div class="surface-stats">
@@ -602,7 +602,7 @@
 				<div class="section-head">
 					<div>
 						<h2 class="card-title">Nearby Devices</h2>
-						<p class="text-sm text-base-content/70">Scan runs only when you start it.</p>
+						<p class="copy-subtle">Scan runs only when you start it.</p>
 					</div>
 					<div class="flex gap-2">
 						{#if scanning}
@@ -659,7 +659,7 @@
 	<div class="surface-card">
 		<div class="card-body gap-3">
 			<h2 class="card-title">Previously Connected</h2>
-			<p class="text-sm text-base-content/70">
+			<p class="copy-subtle">
 				Auto-connect attempts only for devices enabled below. No background scan is started.
 			</p>
 
@@ -712,7 +712,7 @@
 	<div class="modal modal-open">
 		<div class="modal-box surface-modal">
 			<h3 class="font-bold text-lg">Connect to Device</h3>
-			<p class="text-sm mt-1 text-base-content/70">
+			<p class="copy-subtle mt-1">
 				{selectedDevice.name || 'Unnamed'}<br />
 				<span class="font-mono text-xs">{selectedDevice.address}</span>
 			</p>

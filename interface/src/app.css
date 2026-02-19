@@ -97,6 +97,22 @@ html {
 		@apply text-sm text-base-content/70;
 	}
 
+	.copy-subtle {
+		@apply text-sm text-base-content/70;
+	}
+
+	.copy-caption {
+		@apply text-xs text-base-content/60;
+	}
+
+	.copy-meta {
+		@apply text-xs text-base-content/65;
+	}
+
+	.copy-mini-title {
+		@apply mb-2 text-sm font-medium;
+	}
+
 	.page-header-actions {
 		@apply flex items-center gap-2;
 	}

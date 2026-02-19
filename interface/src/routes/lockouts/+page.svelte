@@ -1039,7 +1039,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Safety Gate</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Advanced lockout writes stay disabled until explicitly unlocked for this session.
 					</p>
 				</div>
@@ -1066,7 +1066,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Runtime Controls</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Live runtime controls currently available in firmware.
 					</p>
 				</div>
@@ -1124,7 +1124,7 @@
 				<label class="label cursor-pointer justify-start gap-3 py-0">
 					<div>
 						<span class="label-text text-sm">Pre-quiet in lockout zones</span>
-						<p class="text-xs text-base-content/60">Drop V1 volume to mute-volume when entering a lockout zone. Restores instantly on real alerts.</p>
+						<p class="copy-caption">Drop V1 volume to mute-volume when entering a lockout zone. Restores instantly on real alerts.</p>
 					</div>
 					<input
 						type="checkbox"
@@ -1184,11 +1184,11 @@
 					/>
 				</label>
 			</div>
-			<div class="text-xs text-base-content/65">
+			<div class="copy-meta">
 				Core guard thresholds: <code>0</code> trips guard on the first drop event.
 			</div>
 
-			<div class="text-xs text-base-content/65">
+			<div class="copy-meta">
 				Current mode: {gpsStatus?.lockout?.mode || 'off'} · enforce allowed:{' '}
 				{gpsStatus?.lockout?.enforceAllowed ? 'yes' : 'no'} · core guard:{' '}
 				{gpsStatus?.lockout?.coreGuardTripped ? 'tripped' : 'clear'}
@@ -1203,7 +1203,7 @@
 			<div class="card-body gap-3">
 				<div>
 					<h2 class="card-title">Learner Settings</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Writes apply immediately and persist in settings. Use conservative values to reduce false muting.
 					</p>
 				</div>
@@ -1223,7 +1223,7 @@
 						Stage JBV1 Blend
 					</button>
 				</div>
-				<div class="text-xs text-base-content/65">
+				<div class="copy-meta">
 					JBV1 blend stages: 3 hits · 4h learn interval · ±10 MHz · 492 ft · unlearn 5 misses / 4h · manual delete 25 misses.
 				</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -1359,7 +1359,7 @@
 				<div class="text-xs text-warning">
 					Disabled by default. Enabling Ka learning can suppress real Ka threats if lockouts are wrong.
 				</div>
-				<div class="text-xs text-base-content/65">
+				<div class="copy-meta">
 					Runtime learner: {runtimeLearnerHits()} hits · interval {formatIntervalLabel(runtimeLearnerLearnIntervalHours())}
 					· ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
 					· unlearn {runtimeLearnerUnlearnCount()} misses / {formatIntervalLabel(runtimeLearnerUnlearnIntervalHours())}
@@ -1375,7 +1375,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Zones</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Review active lockouts and pending learner candidates. Manual zones can be created, edited, exported,
 						or imported from JSON.
 					</p>
@@ -1455,7 +1455,7 @@
 			{:else}
 				<div class="grid grid-cols-1 gap-4">
 					<div class="surface-table-wrap">
-						<div class="text-sm font-medium mb-2">Active Zones</div>
+						<div class="copy-mini-title">Active Zones</div>
 						{#if activeLockoutZones.length === 0}
 							<div class="state-empty">No active lockout zones.</div>
 						{:else}
@@ -1550,7 +1550,7 @@
 					</div>
 
 					<div class="surface-table-wrap">
-						<div class="text-sm font-medium mb-2">Pending Candidates</div>
+						<div class="copy-mini-title">Pending Candidates</div>
 						{#if pendingLockoutZones.length === 0}
 							<div class="state-empty">No pending candidates.</div>
 						{:else}
@@ -1606,7 +1606,7 @@
 			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Candidates</h2>
-					<p class="text-sm text-base-content/70">
+					<p class="copy-subtle">
 						Recent signal observations for post-drive lockout review.
 					</p>
 				</div>
@@ -1655,7 +1655,7 @@
 				</div>
 			</div>
 
-			<div class="text-xs text-base-content/65">
+			<div class="copy-meta">
 				SD {lockoutSd.enabled ? 'enabled' : 'disabled'} · writes {lockoutSd.written} · deduped {lockoutSd.deduped}
 				· queue drops {lockoutSd.queueDrops} · write fail {lockoutSd.writeFail} · rotations {lockoutSd.rotations}
 				{#if lockoutSd.path}
@@ -1707,7 +1707,7 @@
 												</a>
 											{/if}
 										{:else}
-											<span class="text-xs text-base-content/60">no fix</span>
+											<span class="copy-caption">no fix</span>
 										{/if}
 									</td>
 								</tr>
@@ -1725,7 +1725,7 @@
 				<h3 class="font-bold text-lg">
 					{zoneEditorSlot === null ? 'Create Manual Lockout Zone' : `Edit Lockout Zone ${zoneEditorSlot}`}
 				</h3>
-				<p class="py-2 text-sm text-base-content/70">
+				<p class="py-2 copy-subtle">
 					Use conservative values. Invalid coordinates or heading values are rejected by the firmware.
 				</p>
 
