@@ -1,6 +1,7 @@
 <script>
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	
 	let { children } = $props();
@@ -85,6 +86,14 @@
 		warningDismissed = true;
 		sessionStorage.setItem(DEFAULT_PASSWORD_DISMISSED_KEY, 'true');
 	}
+
+	function isActivePath(href) {
+		const path = $page.url.pathname;
+		if (href === '/') {
+			return path === '/';
+		}
+		return path === href || path.startsWith(`${href}/`);
+	}
 </script>
 
 <div class="app-shell">
@@ -113,11 +122,11 @@
 			</button>
 			<ul class="menu menu-sm dropdown-content mt-3 z-[1] w-52 surface-menu" role="menu">
 					{#each navLinks as link}
-						<li><a href={link.href}>{link.label}</a></li>
+						<li><a href={link.href} class="nav-link" class:active={isActivePath(link.href)}>{link.label}</a></li>
 					{/each}
 					<li class="menu-title"><span>Advanced</span></li>
 					{#each advancedLinks as link}
-						<li><a href={link.href} class="text-warning">{link.label}</a></li>
+						<li><a href={link.href} class="nav-link advanced" class:active={isActivePath(link.href)}>{link.label}</a></li>
 					{/each}
 				</ul>
 			</div>
@@ -128,10 +137,10 @@
 		<div class="navbar-center hidden lg:flex">
 			<ul class="menu menu-horizontal px-1">
 				{#each navLinks as link}
-					<li><a href={link.href} class="hover:text-primary">{link.label}</a></li>
+					<li><a href={link.href} class="nav-link" class:active={isActivePath(link.href)}>{link.label}</a></li>
 				{/each}
 				{#each advancedLinks as link}
-					<li><a href={link.href} class="hover:text-warning text-warning">{link.label}</a></li>
+					<li><a href={link.href} class="nav-link advanced" class:active={isActivePath(link.href)}>{link.label}</a></li>
 				{/each}
 			</ul>
 		</div>
