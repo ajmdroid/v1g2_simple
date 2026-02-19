@@ -644,6 +644,11 @@ bool SettingsManager::restoreFromSD() {
     if (doc["apSSID"].is<const char*>()) settings.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
     restoreBool("wifiClientEnabled", settings.wifiClientEnabled);
     if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
+    // Self-healing: derive wifiClientEnabled from SSID presence
+    if (!settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+        settings.wifiClientEnabled = true;
+    }
+    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     restoreBool("proxyBLE", settings.proxyBLE);
     if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     restoreBool("obdEnabled", settings.obdEnabled);

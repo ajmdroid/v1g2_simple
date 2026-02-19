@@ -405,6 +405,11 @@ static void handleRestore(WebServer& server) {
     }
     if (doc["wifiClientEnabled"].is<bool>()) s.wifiClientEnabled = doc["wifiClientEnabled"];
     if (doc["wifiClientSSID"].is<const char*>()) s.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
+    // Self-healing: derive wifiClientEnabled from SSID presence
+    if (!s.wifiClientEnabled && s.wifiClientSSID.length() > 0) {
+        s.wifiClientEnabled = true;
+    }
+    s.wifiMode = s.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
     // Auto power-off
     if (doc["autoPowerOffMinutes"].is<int>()) {

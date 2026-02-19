@@ -138,6 +138,16 @@ void SettingsManager::load() {
     // WiFi client (STA) settings
     settings.wifiClientEnabled = preferences.getBool("wifiClientEn", false);
     settings.wifiClientSSID = sanitizeWifiClientSsidValue(preferences.getString("wifiClSSID", ""));
+
+    // Self-healing: if a saved SSID exists, force wifiClientEnabled to true.
+    // This covers cases where a backup restore set the SSID but wifiClientEnabled
+    // was missing from the JSON, or where the two got out of sync.
+    // Mirrors setWifiClientCredentials() which derives enabled from SSID length.
+    if (!settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+        Serial.println("[Settings] HEAL: wifiClientEnabled was false but SSID is set — enabling");
+        settings.wifiClientEnabled = true;
+    }
+
     // Determine WiFi mode based on client enabled state
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
