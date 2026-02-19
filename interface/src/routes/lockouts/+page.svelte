@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let loading = $state(true);
@@ -1036,13 +1037,10 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Safety Gate</h2>
-					<p class="copy-subtle">
-						Advanced lockout writes stay disabled until explicitly unlocked for this session.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Safety Gate"
+				subtitle="Advanced lockout writes stay disabled until explicitly unlocked for this session."
+			>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
 					<span class="label-text">Unlock advanced writes</span>
 					<input
@@ -1054,7 +1052,7 @@
 						}}
 					/>
 				</label>
-			</div>
+			</CardSectionHead>
 			<div class="copy-caption-soft">
 				Use caution in `Enforce` mode. Bad lockout settings can mute real threats.
 			</div>
@@ -1063,13 +1061,10 @@
 
 		<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Lockout Runtime Controls</h2>
-					<p class="copy-subtle">
-						Live runtime controls currently available in firmware.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Lockout Runtime Controls"
+				subtitle="Live runtime controls currently available in firmware."
+			>
 				<div class="flex gap-2">
 					{#if lockoutConfigDirty}
 						<div class="badge badge-warning badge-sm">staged changes</div>
@@ -1090,7 +1085,7 @@
 						Save
 					</button>
 				</div>
-			</div>
+			</CardSectionHead>
 
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				<label class="form-control">
@@ -1372,14 +1367,10 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Lockout Zones</h2>
-					<p class="copy-subtle">
-						Review active lockouts and pending learner candidates. Manual zones can be created, edited, exported,
-						or imported from JSON.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Lockout Zones"
+				subtitle="Review active lockouts and pending learner candidates. Manual zones can be created, edited, exported, or imported from JSON."
+			>
 				<div class="flex flex-wrap gap-2">
 					<button
 						class="btn btn-primary btn-sm"
@@ -1418,7 +1409,7 @@
 						onchange={handleImportFileSelected}
 					/>
 				</div>
-			</div>
+			</CardSectionHead>
 
 			{#if lockoutZonesError}
 				<div class="surface-alert alert-warning py-2" role="status">
@@ -1603,20 +1594,17 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Lockout Candidates</h2>
-					<p class="copy-subtle">
-						Recent signal observations for post-drive lockout review.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Lockout Candidates"
+				subtitle="Recent signal observations for post-drive lockout review."
+			>
 				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutEvents()} disabled={lockoutLoading}>
 					{#if lockoutLoading}
 						<span class="loading loading-spinner loading-xs"></span>
 					{/if}
 					Refresh
 				</button>
-			</div>
+			</CardSectionHead>
 
 			{#if lockoutError}
 				<div class="surface-alert alert-warning py-2" role="status">
