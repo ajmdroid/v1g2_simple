@@ -105,8 +105,16 @@ html {
 		@apply text-xs text-base-content/60;
 	}
 
+	.copy-caption-soft {
+		@apply text-xs text-base-content/70;
+	}
+
 	.copy-meta {
 		@apply text-xs text-base-content/65;
+	}
+
+	.copy-muted {
+		@apply text-sm text-base-content/60;
 	}
 
 	.copy-mini-title {

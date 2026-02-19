@@ -396,7 +396,7 @@
 							Camera Runtime
 							{runtimeConfig.cameraEnabled ? 'Enabled' : 'Disabled'}
 						</div>
-						<div class="text-xs text-base-content/70">
+						<div class="copy-caption-soft">
 							Effective state:
 							{runtimeConfig.cameraEnabled ? 'active' : 'inactive'}
 							(controlled by camera setting)
@@ -409,10 +409,10 @@
 						</div>
 					{/if}
 					<div class="surface-divider space-y-2">
-						<div class="text-sm font-medium">Display Demo</div>
-						<div class="text-xs text-base-content/70">
-							Preview camera screen tokens on device without needing live GPS/camera matches.
-						</div>
+							<div class="copy-mini-title">Display Demo</div>
+							<div class="copy-caption-soft">
+								Preview camera screen tokens on device without needing live GPS/camera matches.
+							</div>
 						<div class="flex flex-wrap items-center gap-2">
 							<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
 								<option value="cycle">Cycle ALPR</option>
@@ -525,10 +525,10 @@
 					</tbody>
 				</table>
 			</div>
-			<div class="text-xs text-base-content/70">
-				{#if catalog.alprRuntimeLoaded}
-					ALPR dataset is loaded into runtime matching.
-				{:else}
+				<div class="copy-caption-soft">
+					{#if catalog.alprRuntimeLoaded}
+						ALPR dataset is loaded into runtime matching.
+					{:else}
 					ALPR dataset is present on storage but not currently loaded into the runtime index.
 				{/if}
 			</div>

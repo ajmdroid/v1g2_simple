@@ -495,7 +495,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title">Access Point (AP)</h2>
-				<p class="text-sm text-base-content/60">Device hosts its own hotspot for direct connection.</p>
+				<p class="copy-muted">Device hosts its own hotspot for direct connection.</p>
 				
 				<div class="form-control">
 					<label class="label" for="ap-ssid">
@@ -560,7 +560,7 @@
 		<div class="surface-card">
 			<div class="card-body space-y-3">
 				<h2 class="card-title">Device Time</h2>
-				<p class="text-sm text-base-content/60">Manual phone sync only. No background NTP.</p>
+				<p class="copy-muted">Manual phone sync only. No background NTP.</p>
 				<div class="text-sm space-y-1">
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
@@ -589,7 +589,7 @@
 				<div class="flex justify-between items-center">
 					<div>
 						<h2 class="card-title">WiFi Client</h2>
-						<p class="text-sm text-base-content/60">Connect to an existing WiFi network.</p>
+						<p class="copy-muted">Connect to an existing WiFi network.</p>
 					</div>
 					<input 
 						type="checkbox" 
@@ -652,7 +652,7 @@
 				{#if wifiScanning}
 					<div class="state-loading stack">
 						<span class="loading loading-spinner loading-lg"></span>
-						<p class="mt-4 text-sm text-base-content/60">Scanning for networks...</p>
+						<p class="mt-4 copy-muted">Scanning for networks...</p>
 					</div>
 				{:else if selectedNetwork}
 					<div class="py-4 space-y-4">
@@ -705,7 +705,7 @@
 												{#if network.secure}🔒{:else}🔓{/if}
 												{network.ssid}
 											</span>
-											<span class="text-sm text-base-content/60">
+											<span class="copy-muted">
 												{network.rssi} dBm
 											</span>
 										</button>
@@ -735,7 +735,7 @@
 		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">Bluetooth Proxy</h2>
-				<p class="text-sm text-base-content/60">Relay V1 data to phone apps.</p>
+				<p class="copy-muted">Relay V1 data to phone apps.</p>
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
 					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
@@ -760,7 +760,7 @@
 		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">Auto Power Off</h2>
-				<p class="text-sm text-base-content/60">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
+				<p class="copy-muted">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
 				<div class="form-control">
 					<label class="label" for="auto-power-off">
 						<span class="label-text">Minutes after disconnect (0 = disabled)</span>
@@ -803,7 +803,7 @@
 		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">Backup & Restore</h2>
-				<p class="text-sm text-base-content/60">Download your settings or restore from a backup file.</p>
+				<p class="copy-muted">Download your settings or restore from a backup file.</p>
 				
 					<div class="flex flex-col gap-3">
 						<button class="btn btn-outline btn-sm" onclick={downloadBackup}>

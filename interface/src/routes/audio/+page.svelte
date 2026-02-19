@@ -379,7 +379,7 @@
 							
 							<!-- Preview -->
 							<div class="surface-panel text-sm">
-								<p class="text-base-content/70">
+								<p class="copy-subtle">
 									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
 									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
 									alert clears → <strong>restore volume</strong>
@@ -395,7 +395,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Speed-Based Volume</h2>
-				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires an external speed source)</p>
+				<p class="copy-subtle">Boost V1 volume at highway speeds (requires an external speed source)</p>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -452,7 +452,7 @@
 							
 							<!-- Preview -->
 							<div class="surface-panel text-sm">
-								<p class="text-base-content/70">
+								<p class="copy-subtle">
 									Speed &gt; {settings.speedVolumeThresholdMph} mph → 
 									<strong>+{settings.speedVolumeBoost} volume</strong> (max 9)
 								</p>
@@ -467,7 +467,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Low-Speed Mute</h2>
-				<p class="text-sm text-base-content/70">Suppress voice at low speeds (parking lots, drive-thrus)</p>
+				<p class="copy-subtle">Suppress voice at low speeds (parking lots, drive-thrus)</p>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -507,7 +507,7 @@
 							
 							<!-- Preview -->
 							<div class="surface-panel text-sm">
-								<p class="text-base-content/70">
+								<p class="copy-subtle">
 									Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
 									<strong>voice muted</strong> (alerts still display)
 								</p>
@@ -553,7 +553,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">How It Works</h2>
-				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
+				<ul class="copy-subtle space-y-2 list-disc list-inside">
 					<li>Voice alerts only play when <strong>no phone app</strong> is connected via BLE proxy</li>
 					<li>New alert: full announcement based on your content settings</li>
 					<li>Direction change: direction-only announcement (e.g., "behind") if direction is enabled</li>

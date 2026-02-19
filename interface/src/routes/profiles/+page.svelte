@@ -666,7 +666,7 @@
 						<div class="surface-panel flex items-center justify-between">
 							<div>
 								<div class="font-medium">{profile.name}</div>
-								<div class="text-xs text-base-content/60">
+								<div class="copy-caption">
 									{profile.description || 'No description'}
 								</div>
 							</div>

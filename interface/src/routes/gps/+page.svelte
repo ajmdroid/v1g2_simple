@@ -11,9 +11,9 @@
 
 <div class="page-stack">
 	<PageHeader title="GPS" subtitle="This page now lives under Integrations." />
-	<div class="surface-card">
-		<div class="card-body py-6 text-sm text-base-content/70">
-			<div class="flex items-center gap-3">
+		<div class="surface-card">
+			<div class="card-body py-6 copy-subtle">
+				<div class="flex items-center gap-3">
 				<span class="loading loading-spinner loading-md"></span>
 				<span>Redirecting to Hardware Integrations...</span>
 			</div>

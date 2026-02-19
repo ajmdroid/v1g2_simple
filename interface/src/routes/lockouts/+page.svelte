@@ -1055,7 +1055,7 @@
 					/>
 				</label>
 			</div>
-			<div class="text-xs text-base-content/70">
+			<div class="copy-caption-soft">
 				Use caution in `Enforce` mode. Bad lockout settings can mute real threats.
 			</div>
 		</div>
@@ -1898,7 +1898,7 @@
 				<p class="py-3 text-sm text-warning">
 					this is a bad idea, please don't enable
 				</p>
-				<p class="text-xs text-base-content/70">
+				<p class="copy-caption-soft">
 					Ka lockouts can hide real threats. Keep this off unless you fully understand the risk.
 				</p>
 				<div class="modal-action">

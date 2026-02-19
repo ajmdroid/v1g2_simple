@@ -124,7 +124,7 @@
 				<BrandMark />
 			</div>
 			<p class="mb-1 text-xs text-base-content/50">v{status.device?.firmware_version || '...'}</p>
-			<p class="text-sm text-base-content/70">
+			<p class="copy-subtle">
 				{#if status.wifi.sta_connected}
 					{status.wifi.ssid} • {status.wifi.sta_ip}
 				{:else}
@@ -144,7 +144,7 @@
 					<div class="text-xl font-bold {status.v1_connected ? 'text-success' : 'text-warning'}">
 						{status.v1_connected ? 'Connected' : 'Scanning...'}
 					</div>
-					<div class="text-xs text-base-content/60">Bluetooth LE</div>
+					<div class="copy-caption">Bluetooth LE</div>
 				{/if}
 			</div>
 		</div>
@@ -176,7 +176,7 @@
 					<div class="text-xl font-bold">
 						{formatUptime(status.device?.uptime || 0)}
 					</div>
-					<div class="text-xs text-base-content/60">
+					<div class="copy-caption">
 						{Math.round((status.device?.heap_free || 0) / 1024)} KB free
 					</div>
 				{/if}
@@ -195,7 +195,7 @@
 					<div class="text-xs">{status.alert.frequency} MHz</div>
 				{:else}
 					<div class="text-xl font-bold text-success">Clear</div>
-					<div class="text-xs text-base-content/60">No threats</div>
+					<div class="copy-caption">No threats</div>
 				{/if}
 			</div>
 		</div>
@@ -207,23 +207,23 @@
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if !gps.enabled}
 					<div class="text-xl font-bold text-base-content/70">Disabled</div>
-					<div class="text-xs text-base-content/60">Enable in Integrations</div>
+					<div class="copy-caption">Enable in Integrations</div>
 				{:else if gps.detectionTimedOut}
 					<div class="text-xl font-bold text-warning">Not Found</div>
-					<div class="text-xs text-base-content/60">Module timeout</div>
+					<div class="copy-caption">Module timeout</div>
 				{:else if gps.hasFix}
 					<div class="text-xl font-bold text-success">
 						{gps.satellites || 0} sats
 					</div>
-					<div class="text-xs text-base-content/60">
+					<div class="copy-caption">
 						{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
 					</div>
 				{:else if gps.moduleDetected}
 					<div class="text-xl font-bold text-info">Searching</div>
-					<div class="text-xs text-base-content/60">No fix yet</div>
+					<div class="copy-caption">No fix yet</div>
 				{:else}
 					<div class="text-xl font-bold text-base-content/70">Idle</div>
-					<div class="text-xs text-base-content/60">{gps.mode}</div>
+					<div class="copy-caption">{gps.mode}</div>
 				{/if}
 			</div>
 		</div>

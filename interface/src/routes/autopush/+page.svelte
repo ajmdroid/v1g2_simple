@@ -300,7 +300,7 @@
 											class="input input-bordered input-xs w-16"
 											bind:value={slot.alertPersist}
 										/>
-										<span class="text-xs text-base-content/60">s</span>
+										<span class="copy-caption">s</span>
 									</div>
 								</div>
 							</div>

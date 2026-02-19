@@ -401,7 +401,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Display Style</h2>
-				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
+				<p class="copy-muted">Choose font style for frequency and counter</p>
 				<div class="form-control">
 						<select 
 							id="display-style"
@@ -514,7 +514,7 @@
 							class="text-2xl font-bold font-mono"
 							style="color: {rgb565ToHex(colors.muted)}"
 						>35.5</span>
-						<span class="text-sm text-base-content/60">(muted)</span>
+						<span class="copy-muted">(muted)</span>
 					</div>
 				</div>
 				<div class="divider my-2"></div>
@@ -544,7 +544,7 @@
 							class="text-2xl font-bold font-mono"
 							style="color: {rgb565ToHex(colors.persisted)}"
 						>35.5</span>
-						<span class="text-sm text-base-content/60">(persisted)</span>
+						<span class="copy-muted">(persisted)</span>
 					</div>
 				</div>
 				<div class="divider my-2"></div>
@@ -1436,7 +1436,7 @@
 		
 		<!-- Quick presets -->
 		<div class="mt-4">
-			<span class="text-sm text-base-content/60">Quick colors:</span>
+			<span class="copy-muted">Quick colors:</span>
 			<div class="flex gap-2 mt-2 flex-wrap">
 				<button class="btn btn-sm" style="background-color: #f80000" onclick={() => { pickerR = 248; pickerG = 0; pickerB = 0; }}>Red</button>
 				<button class="btn btn-sm" style="background-color: #00fc00" onclick={() => { pickerR = 0; pickerG = 252; pickerB = 0; }}>Green</button>
