@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	let profiles = $state([]);
@@ -389,7 +390,7 @@
 	<!-- Current V1 Settings -->
 	<div class="surface-card">
 		<div class="card-body">
-			<h2 class="card-title">Current V1 Settings</h2>
+			<CardSectionHead title="Current V1 Settings" />
 			{#if editingSettings && currentProfile?.name}
 				<div class="surface-alert alert-info text-sm">
 					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
@@ -652,7 +653,7 @@
 	<!-- Saved Profiles -->
 	<div class="surface-card">
 		<div class="card-body">
-			<h2 class="card-title">Saved Profiles</h2>
+			<CardSectionHead title="Saved Profiles" />
 			
 			{#if loading}
 				<div class="state-loading compact">

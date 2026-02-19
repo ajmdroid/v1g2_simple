@@ -1196,12 +1196,10 @@
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
-				<div>
-					<h2 class="card-title">Learner Settings</h2>
-					<p class="copy-subtle">
-						Writes apply immediately and persist in settings. Use conservative values to reduce false muting.
-					</p>
-				</div>
+				<CardSectionHead
+					title="Learner Settings"
+					subtitle="Writes apply immediately and persist in settings. Use conservative values to reduce false muting."
+				/>
 				<div class="flex flex-wrap gap-2">
 					<button
 						class="btn btn-outline btn-xs"

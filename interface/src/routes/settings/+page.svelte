@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	
     let settings = $state({
@@ -494,8 +495,10 @@
 		<!-- AP Settings -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title">Access Point (AP)</h2>
-				<p class="copy-muted">Device hosts its own hotspot for direct connection.</p>
+				<CardSectionHead
+					title="Access Point (AP)"
+					subtitle="Device hosts its own hotspot for direct connection."
+				/>
 				
 				<div class="form-control">
 					<label class="label" for="ap-ssid">
@@ -559,8 +562,7 @@
 		<!-- Device Time -->
 		<div class="surface-card">
 			<div class="card-body space-y-3">
-				<h2 class="card-title">Device Time</h2>
-				<p class="copy-muted">Manual phone sync only. No background NTP.</p>
+				<CardSectionHead title="Device Time" subtitle="Manual phone sync only. No background NTP." />
 				<div class="text-sm space-y-1">
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
@@ -586,18 +588,14 @@
 		<!-- WiFi Client (Connect to Network) -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<div class="flex justify-between items-center">
-					<div>
-						<h2 class="card-title">WiFi Client</h2>
-						<p class="copy-muted">Connect to an existing WiFi network.</p>
-					</div>
+				<CardSectionHead title="WiFi Client" subtitle="Connect to an existing WiFi network.">
 					<input 
 						type="checkbox" 
 						class="toggle toggle-primary" 
 						checked={wifiStatus.enabled}
 						onchange={(e) => toggleWifiClient(e.target.checked)}
 					/>
-				</div>
+				</CardSectionHead>
 				
 				{#if wifiStatus.enabled}
 				{#if wifiStatus.state === 'connected'}
@@ -734,8 +732,7 @@
 		<!-- BLE Proxy -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">Bluetooth Proxy</h2>
-				<p class="copy-muted">Relay V1 data to phone apps.</p>
+				<CardSectionHead title="Bluetooth Proxy" subtitle="Relay V1 data to phone apps." />
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
 					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
@@ -759,8 +756,10 @@
 		<!-- Auto Power Off -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">Auto Power Off</h2>
-				<p class="copy-muted">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
+				<CardSectionHead
+					title="Auto Power Off"
+					subtitle="Automatically power off when V1 disconnects (e.g., when you turn off your car)."
+				/>
 				<div class="form-control">
 					<label class="label" for="auto-power-off">
 						<span class="label-text">Minutes after disconnect (0 = disabled)</span>
@@ -802,8 +801,10 @@
 		<!-- Backup & Restore -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">Backup & Restore</h2>
-				<p class="copy-muted">Download your settings or restore from a backup file.</p>
+				<CardSectionHead
+					title="Backup & Restore"
+					subtitle="Download your settings or restore from a backup file."
+				/>
 				
 					<div class="flex flex-col gap-3">
 						<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
