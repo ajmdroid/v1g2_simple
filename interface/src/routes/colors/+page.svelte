@@ -1353,20 +1353,20 @@
 				class="btn btn-primary flex-1" 
 				onclick={saveColors}
 				disabled={saving}
-			>
-				{#if saving}
-					<span class="loading loading-spinner loading-sm"></span>
-				{:else}
-					💾 Save Colors
-				{/if}
-			</button>
-			<button class="btn btn-secondary" onclick={testColors}>
-				🧪 Test
-			</button>
-			<button class="btn btn-outline" onclick={resetDefaults}>
-				🔄 Reset
-			</button>
-		</div>
+				>
+					{#if saving}
+						<span class="loading loading-spinner loading-sm"></span>
+					{:else}
+						Save Colors
+					{/if}
+				</button>
+				<button class="btn btn-secondary" onclick={testColors}>
+					Preview
+				</button>
+				<button class="btn btn-outline" onclick={resetDefaults}>
+					Reset Defaults
+				</button>
+			</div>
 		
 		<div class="text-xs text-base-content/40 text-center">
 			Colors use RGB565 format. Save triggers a preview on the display.

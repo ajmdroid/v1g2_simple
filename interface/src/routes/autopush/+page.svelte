@@ -202,9 +202,7 @@
 										Cancel
 									</button>
 								{:else}
-									<button class="btn btn-ghost btn-sm" onclick={() => editingSlot = i}>
-										✏️
-									</button>
+									<button class="btn btn-ghost btn-sm" onclick={() => editingSlot = i}>Edit</button>
 								{/if}
 							</div>
 						</div>

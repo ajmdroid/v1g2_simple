@@ -73,6 +73,10 @@ html {
 		box-shadow: var(--app-shadow);
 	}
 
+	.surface-card > .card-body {
+		@apply p-4;
+	}
+
 	.surface-note {
 		@apply text-sm text-base-content/60 p-3;
 		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));

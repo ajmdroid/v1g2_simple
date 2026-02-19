@@ -625,23 +625,23 @@
 						Cancel
 					</button>
 					<button class="btn btn-success btn-sm" onclick={saveEdits}>
-						✅ Push to V1
+						Push to V1
 					</button>
 					{#if currentProfile?.name}
 						<button class="btn btn-primary btn-sm" onclick={saveEditedProfile}>
-							💾 Save Profile
+							Save Profile
 						</button>
 					{/if}
 				{:else}
 					<button class="btn btn-primary btn-sm" onclick={pullFromV1} disabled={!v1Connected}>
-						⬇️ Pull from V1
+						Pull from V1
 					</button>
 					{#if currentProfile && currentProfile.settings}
 						<button class="btn btn-secondary btn-sm" onclick={startEditing} disabled={!v1Connected}>
-							✏️ Edit
+							Edit
 						</button>
 						<button class="btn btn-success btn-sm" onclick={() => showSaveDialog = true}>
-							💾 Save
+							Save
 						</button>
 					{/if}
 				{/if}
@@ -675,20 +675,20 @@
 									class="btn btn-secondary btn-xs"
 									onclick={() => editProfile(profile.name)}
 								>
-									✏️ Edit
+									Edit
 								</button>
 								<button 
 									class="btn btn-primary btn-xs" 
 									onclick={() => pushToV1(profile.name)}
 									disabled={!v1Connected}
 								>
-									⬆️ Push
+									Push
 								</button>
 								<button 
 									class="btn btn-error btn-xs btn-outline" 
 									onclick={() => deleteProfile(profile.name)}
 								>
-									🗑️
+									Delete
 								</button>
 							</div>
 						</div>

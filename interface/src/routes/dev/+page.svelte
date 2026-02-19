@@ -320,17 +320,17 @@
 								onclick={loadMetrics}
 								disabled={metricsLoading}
 							>
-								{#if metricsLoading}
-									<span class="loading loading-spinner loading-xs"></span>
-								{:else}
-									🔄 Refresh
-								{/if}
-							</button>
-							<label class="btn btn-sm swap flex-1" class:btn-primary={metricsAutoRefresh} class:btn-outline={!metricsAutoRefresh}>
-								<input type="checkbox" checked={metricsAutoRefresh} onchange={toggleMetricsAutoRefresh} />
-								<span class="swap-on">⏸️ Stop Auto</span>
-								<span class="swap-off">▶️ Auto (2s)</span>
-							</label>
+							{#if metricsLoading}
+								<span class="loading loading-spinner loading-xs"></span>
+							{:else}
+								Refresh
+							{/if}
+						</button>
+						<label class="btn btn-sm swap flex-1" class:btn-primary={metricsAutoRefresh} class:btn-outline={!metricsAutoRefresh}>
+							<input type="checkbox" checked={metricsAutoRefresh} onchange={toggleMetricsAutoRefresh} />
+							<span class="swap-on">Stop Auto</span>
+							<span class="swap-off">Auto (2s)</span>
+						</label>
 						</div>
 
 						{#if metrics}
@@ -462,7 +462,7 @@
 						{#if perfFilesLoading}
 							<span class="loading loading-spinner loading-xs"></span>
 						{:else}
-							🔄 Refresh
+							Refresh
 						{/if}
 					</button>
 				</div>

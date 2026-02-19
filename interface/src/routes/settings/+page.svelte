@@ -624,7 +624,7 @@
 					</div>
 					<div class="flex gap-2">
 						<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
-							🔍 Scan for Networks
+							Scan for Networks
 						</button>
 						<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
 							Forget Network
@@ -632,7 +632,7 @@
 					</div>
 				{:else}
 					<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
-						🔍 Scan for Networks
+						Scan for Networks
 					</button>
 				{/if}
 				{:else}
@@ -716,7 +716,7 @@
 						
 						<div class="flex gap-2 justify-end mt-4">
 							<button class="btn btn-ghost btn-sm" onclick={startWifiScan}>
-								🔄 Rescan
+								Rescan
 							</button>
 						</div>
 					</div>
@@ -805,10 +805,10 @@
 				<h2 class="card-title">💾 Backup & Restore</h2>
 				<p class="text-sm text-base-content/60">Download your settings or restore from a backup file.</p>
 				
-				<div class="flex flex-col gap-3">
-					<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
-						⬇️ Download Backup
-					</button>
+					<div class="flex flex-col gap-3">
+						<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
+							Download Backup
+						</button>
 					
 					<div class="divider my-0">OR</div>
 					
@@ -819,17 +819,17 @@
 						onchange={handleFileSelect}
 					/>
 					
-					<button 
-						class="btn btn-warning btn-sm" 
-						onclick={restoreBackup}
-						disabled={!restoreFile || restoring}
-					>
+						<button 
+							class="btn btn-warning btn-sm" 
+							onclick={restoreBackup}
+							disabled={!restoreFile || restoring}
+						>
 						{#if restoring}
 							<span class="loading loading-spinner loading-sm"></span>
 						{/if}
-						⬆️ Restore from Backup
-					</button>
-				</div>
+							Restore from Backup
+						</button>
+					</div>
 			</div>
 		</div>
 	{/if}
