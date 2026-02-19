@@ -394,10 +394,10 @@
 				title="Current V1 Settings"
 				subtitle="Pull, edit, and push your detector configuration."
 			/>
-			{#if editingSettings && currentProfile?.name}
-				<div class="surface-alert alert-info text-sm">
-					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
-				</div>
+				{#if editingSettings && currentProfile?.name}
+					<div class="surface-alert alert-info">
+						<span class="copy-subtle">Editing profile: <span class="font-semibold">{currentProfile.name}</span></span>
+					</div>
 				<div class="form-control max-w-md">
 					<label class="label" for="edit-description">
 						<span class="label-text">Description</span>

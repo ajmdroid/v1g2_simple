@@ -475,10 +475,10 @@
 					<div class="state-loading inline">
 						<span class="loading loading-spinner loading-sm"></span>
 					</div>
-				{:else if !perfFilesInfo.storageReady || !perfFilesInfo.onSdCard}
-					<div class="surface-alert alert-warning">
-						<span class="text-sm">SD storage not ready. Perf CSV files are unavailable.</span>
-					</div>
+					{:else if !perfFilesInfo.storageReady || !perfFilesInfo.onSdCard}
+						<div class="surface-alert alert-warning">
+							<span class="copy-caption-soft">SD storage not ready. Perf CSV files are unavailable.</span>
+						</div>
 				{:else if perfFiles.length === 0}
 					<div class="state-empty py-2">
 						No perf CSV files found.

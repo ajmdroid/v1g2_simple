@@ -599,10 +599,10 @@
 				
 				{#if wifiStatus.enabled}
 				{#if wifiStatus.state === 'connected'}
-					<div class="surface-alert alert-success">
-						<span>Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
-						<span class="text-sm">IP: {wifiStatus.ip} | Signal: {wifiStatus.rssi} dBm</span>
-					</div>
+						<div class="surface-alert alert-success">
+							<span>Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
+							<span class="copy-caption-soft">IP: {wifiStatus.ip} | Signal: {wifiStatus.rssi} dBm</span>
+						</div>
 					<div class="flex gap-2">
 						<button class="btn btn-outline btn-sm" onclick={disconnectWifi}>
 							Disconnect
@@ -670,11 +670,11 @@
 									onkeydown={(e) => e.key === 'Enter' && connectToNetwork()}
 								/>
 							</div>
-						{:else}
-							<div class="surface-alert alert-warning py-2">
-								<span class="text-sm">This is an open network</span>
-							</div>
-						{/if}
+							{:else}
+								<div class="surface-alert alert-warning py-2">
+									<span class="copy-caption-soft">This is an open network</span>
+								</div>
+							{/if}
 						
 						<div class="flex gap-2 justify-end">
 							<button class="btn btn-ghost" onclick={() => selectedNetwork = null}>
