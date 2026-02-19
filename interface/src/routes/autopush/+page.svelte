@@ -281,7 +281,7 @@
 								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-persist`}>
 										<span class="label-text text-xs">Alert persistence (seconds)</span>
-										<span class="label-text-alt text-[10px] text-base-content/60">0 = off, max 5s</span>
+										<span class="label-text-alt copy-micro">0 = off, max 5s</span>
 									</label>
 									<div class="flex items-center gap-2">
 										<input
