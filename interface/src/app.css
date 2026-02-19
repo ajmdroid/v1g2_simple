@@ -107,6 +107,12 @@ html {
 		background: oklch(var(--b2) / 0.42);
 	}
 
+	.surface-collapse {
+		@apply collapse collapse-arrow rounded-lg;
+		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));
+		background: oklch(var(--b2) / 0.46);
+	}
+
 	.color-swatch-btn {
 		@apply cursor-pointer rounded border-2 border-base-300;
 	}

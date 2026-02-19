@@ -108,7 +108,7 @@
 
 <div class="page-stack">
 	{#if status.alert?.active}
-		<div class="alert alert-warning shadow-lg animate-pulse" role="alert" aria-live="assertive">
+		<div class="alert alert-warning animate-pulse border border-warning/40" role="alert" aria-live="assertive">
 			<span class="font-bold text-2xl">{status.alert.band}</span>
 			<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
 			<span class="ml-4">Strength: {status.alert.strength}/8</span>

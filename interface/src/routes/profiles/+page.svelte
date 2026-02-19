@@ -563,7 +563,7 @@
 					</div>
 					
 					<!-- Photo Radar Section (Collapsible) -->
-					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
+					<details class="surface-collapse">
 						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
 							Photo Radar
 						</summary>
@@ -602,7 +602,7 @@
 					</details>
 					
 					<!-- Advanced Section (Collapsible) -->
-					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
+					<details class="surface-collapse">
 						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
 							Advanced
 						</summary>
