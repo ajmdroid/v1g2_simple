@@ -481,7 +481,7 @@
 						<span class="text-sm">SD storage not ready. Perf CSV files are unavailable.</span>
 					</div>
 				{:else if perfFiles.length === 0}
-					<div class="text-sm opacity-60 py-2">
+					<div class="state-empty py-2">
 						No perf CSV files found.
 					</div>
 				{:else}

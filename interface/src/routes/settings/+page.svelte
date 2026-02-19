@@ -695,7 +695,7 @@
 				{:else}
 					<div class="py-4">
 						{#if wifiNetworks.length === 0}
-							<p class="text-center text-base-content/60 py-4">No networks found</p>
+							<p class="state-empty center">No networks found</p>
 						{:else}
 							<ul class="menu surface-menu max-h-64 overflow-y-auto">
 								{#each wifiNetworks as network}

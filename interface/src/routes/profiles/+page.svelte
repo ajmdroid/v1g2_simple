@@ -617,7 +617,7 @@
 					</details>
 				</div>
 			{:else}
-				<p class="text-base-content/60">No settings available. Pull from V1 to view.</p>
+				<p class="state-empty">No settings available. Pull from V1 to view.</p>
 			{/if}
 			<div class="card-actions justify-end gap-2">
 				{#if editingSettings}
@@ -659,7 +659,7 @@
 					<span class="loading loading-spinner"></span>
 				</div>
 			{:else if profiles.length === 0}
-				<p class="text-base-content/60">No saved profiles. Pull settings from V1 to create one.</p>
+				<p class="state-empty">No saved profiles. Pull settings from V1 to create one.</p>
 			{:else}
 				<div class="space-y-2">
 					{#each profiles as profile}
