@@ -408,7 +408,7 @@
 							GPS is disabled. Camera index can still load, but live matching remains inactive.
 						</div>
 					{/if}
-					<div class="border-t border-base-300 pt-3 mt-3 space-y-2">
+					<div class="surface-divider space-y-2">
 						<div class="text-sm font-medium">Display Demo</div>
 						<div class="text-xs text-base-content/70">
 							Preview camera screen tokens on device without needing live GPS/camera matches.

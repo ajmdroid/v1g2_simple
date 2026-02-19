@@ -123,6 +123,11 @@ html {
 		@apply space-y-2;
 	}
 
+	.surface-divider {
+		@apply mt-3 border-t pt-3;
+		border-top-color: oklch(var(--bc) / calc(var(--app-border-alpha) * 1.05));
+	}
+
 	.surface-table-wrap {
 		@apply overflow-x-auto rounded-lg p-1;
 		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));
@@ -174,6 +179,12 @@ html {
 
 	.color-swatch-btn:disabled {
 		@apply cursor-not-allowed opacity-50;
+	}
+
+	.surface-color-preview {
+		@apply mb-4 h-20 w-full rounded-lg border-2;
+		border-color: oklch(var(--bc) / calc(var(--app-border-alpha) * 1.15));
+		box-shadow: inset 0 0 0 1px oklch(var(--b1) / 0.35);
 	}
 
 	.brand-lockup {

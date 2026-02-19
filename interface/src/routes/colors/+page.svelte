@@ -1381,10 +1381,7 @@
 		<h3 class="font-bold text-lg mb-4">{pickerLabel}</h3>
 		
 		<!-- Color preview -->
-		<div 
-			class="w-full h-20 rounded-lg mb-4 border-2 border-base-300"
-			style="background-color: {getPickerHex()}"
-		></div>
+		<div class="surface-color-preview" style="background-color: {getPickerHex()}"></div>
 		
 		<!-- RGB Sliders -->
 		<div class="space-y-4">
