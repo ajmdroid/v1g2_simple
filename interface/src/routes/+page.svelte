@@ -141,7 +141,7 @@
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
-					<div class="text-xl font-bold {status.v1_connected ? 'text-success' : 'text-warning'}">
+						<div class="status-heading {status.v1_connected ? 'status-heading-success' : 'status-heading-warning'}">
 						{status.v1_connected ? 'Connected' : 'Scanning...'}
 					</div>
 					<div class="copy-caption">Bluetooth LE</div>
@@ -155,7 +155,7 @@
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
-					<div class="text-xl font-bold {status.wifi.sta_connected ? 'text-success' : 'text-info'}">
+						<div class="status-heading {status.wifi.sta_connected ? 'status-heading-success' : 'status-heading-info'}">
 						{status.wifi.sta_connected ? 'Online' : 'AP Only'}
 					</div>
 					{#if status.wifi.sta_connected}
@@ -173,7 +173,7 @@
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else}
-					<div class="text-xl font-bold">
+						<div class="status-heading">
 						{formatUptime(status.device?.uptime || 0)}
 					</div>
 					<div class="copy-caption">
@@ -189,12 +189,12 @@
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if status.alert?.active}
-					<div class="text-xl font-bold text-warning">
+						<div class="status-heading-warning">
 						{status.alert.band}
 					</div>
 					<div class="copy-caption">{status.alert.frequency} MHz</div>
 				{:else}
-					<div class="text-xl font-bold text-success">Clear</div>
+						<div class="status-heading-success">Clear</div>
 					<div class="copy-caption">No threats</div>
 				{/if}
 			</div>
@@ -209,17 +209,17 @@
 					<div class="status-heading-muted">Disabled</div>
 					<div class="copy-caption">Enable in Integrations</div>
 				{:else if gps.detectionTimedOut}
-					<div class="text-xl font-bold text-warning">Not Found</div>
+						<div class="status-heading-warning">Not Found</div>
 					<div class="copy-caption">Module timeout</div>
 				{:else if gps.hasFix}
-					<div class="text-xl font-bold text-success">
+						<div class="status-heading-success">
 						{gps.satellites || 0} sats
 					</div>
 					<div class="copy-caption">
 						{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
 					</div>
 				{:else if gps.moduleDetected}
-					<div class="text-xl font-bold text-info">Searching</div>
+						<div class="status-heading-info">Searching</div>
 					<div class="copy-caption">No fix yet</div>
 				{:else}
 					<div class="status-heading-muted">Idle</div>

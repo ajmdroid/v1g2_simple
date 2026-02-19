@@ -141,6 +141,22 @@ html {
 		@apply text-xl font-bold text-base-content/70;
 	}
 
+	.status-heading {
+		@apply text-xl font-bold;
+	}
+
+	.status-heading-success {
+		@apply text-xl font-bold text-success;
+	}
+
+	.status-heading-warning {
+		@apply text-xl font-bold text-warning;
+	}
+
+	.status-heading-info {
+		@apply text-xl font-bold text-info;
+	}
+
 	.page-header-actions {
 		@apply flex items-center gap-2;
 	}
