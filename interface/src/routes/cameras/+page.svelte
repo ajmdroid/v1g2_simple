@@ -553,7 +553,7 @@
 					<span>Loading events...</span>
 				</div>
 			{:else if recentEvents.length === 0}
-				<div class="text-sm text-base-content/70">No camera events captured yet.</div>
+				<div class="state-empty">No camera events captured yet.</div>
 			{:else}
 				<div class="surface-table-wrap">
 					<table class="table table-zebra table-sm">

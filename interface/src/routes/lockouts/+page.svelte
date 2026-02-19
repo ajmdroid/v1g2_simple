@@ -1457,7 +1457,7 @@
 					<div class="surface-table-wrap">
 						<div class="text-sm font-medium mb-2">Active Zones</div>
 						{#if activeLockoutZones.length === 0}
-							<div class="text-sm text-base-content/70">No active lockout zones.</div>
+							<div class="state-empty">No active lockout zones.</div>
 						{:else}
 							<table class="table table-sm min-w-[1120px]">
 								<thead>
@@ -1552,7 +1552,7 @@
 					<div class="surface-table-wrap">
 						<div class="text-sm font-medium mb-2">Pending Candidates</div>
 						{#if pendingLockoutZones.length === 0}
-							<div class="text-sm text-base-content/70">No pending candidates.</div>
+							<div class="state-empty">No pending candidates.</div>
 						{:else}
 							<table class="table table-sm min-w-[860px]">
 								<thead>
@@ -1668,7 +1668,7 @@
 					<span class="loading loading-spinner loading-md"></span>
 				</div>
 			{:else if lockoutEvents.length === 0}
-				<div class="text-sm text-base-content/70">
+				<div class="state-empty">
 					No candidates logged yet. Run a drive test, then refresh this card.
 				</div>
 			{:else}

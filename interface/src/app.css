@@ -78,6 +78,14 @@ html {
 		@apply items-center p-0 py-12;
 	}
 
+	.state-empty {
+		@apply text-sm text-base-content/70;
+	}
+
+	.state-empty.center {
+		@apply py-4 text-center;
+	}
+
 	.surface-card {
 		@apply card bg-base-200;
 		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));

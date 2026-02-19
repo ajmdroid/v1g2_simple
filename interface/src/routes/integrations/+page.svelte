@@ -626,7 +626,7 @@
 						<span class="loading loading-spinner loading-md"></span>
 					</div>
 				{:else if nearby.length === 0}
-					<div class="text-sm text-base-content/70">No devices found yet.</div>
+					<div class="state-empty">No devices found yet.</div>
 				{:else}
 					<div class="surface-table-wrap">
 						<table class="table table-sm">
@@ -664,7 +664,7 @@
 			</p>
 
 			{#if remembered.length === 0}
-				<div class="text-sm text-base-content/70">No remembered devices.</div>
+				<div class="state-empty">No remembered devices.</div>
 			{:else}
 				<div class="surface-table-wrap">
 					<table class="table table-sm">
