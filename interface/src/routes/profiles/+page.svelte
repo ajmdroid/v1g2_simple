@@ -335,7 +335,7 @@
 </script>
 
 <div class="page-stack">
-	<PageHeader title="V1 Profiles">
+	<PageHeader title="V1 Profiles" subtitle="Pull, edit, save, and push complete V1 settings profiles.">
 		<div class="badge {v1Connected ? 'badge-success' : 'badge-warning'}">
 			{v1Connected ? 'V1 Connected' : 'V1 Disconnected'}
 		</div>
@@ -351,7 +351,7 @@
 	{#if showSaveDialog}
 		<div class="modal modal-open">
 			<div class="modal-box">
-				<h3 class="font-bold text-lg">💾 Save Profile</h3>
+				<h3 class="font-bold text-lg">Save Profile</h3>
 				<div class="py-4 space-y-4">
 					<div class="form-control">
 						<label class="label" for="profile-name">
@@ -389,7 +389,7 @@
 	<!-- Current V1 Settings -->
 	<div class="surface-card">
 		<div class="card-body">
-			<h2 class="card-title">📡 Current V1 Settings</h2>
+			<h2 class="card-title">Current V1 Settings</h2>
 			{#if editingSettings && currentProfile?.name}
 				<div class="alert alert-info text-sm">
 					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
@@ -414,7 +414,7 @@
 				<div class="space-y-3">
 					<!-- Band Detection Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">📡 Band Detection</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">Band Detection</h3>
 						<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
 							<label class="flex items-center gap-2">
 								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ka} disabled={!editingSettings} />
@@ -445,7 +445,7 @@
 					
 					<!-- Sensitivity Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎚️ Sensitivity</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">Sensitivity</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
 							<div class="flex items-center justify-between">
 								<span>Ka Sensitivity</span>
@@ -488,7 +488,7 @@
 					
 					<!-- Audio & Mute Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔇 Audio & Mute</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">Audio & Mute</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<div class="flex items-center justify-between">
 								<span>X, K, Ku Automute</span>
@@ -511,7 +511,7 @@
 					
 					<!-- Laser Options Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔦 Laser Options</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">Laser Options</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>Rear Laser</span>
@@ -526,7 +526,7 @@
 					
 					<!-- Logic & Filtering Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎯 Logic & Priority</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">Logic & Priority</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>X&K Rear Mute in Logic</span>
@@ -549,7 +549,7 @@
 					
 					<!-- Display Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">📺 V1 Display</h3>
+						<h3 class="font-bold text-sm text-yellow-400 mb-2">V1 Display</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>Startup Sequence</span>
@@ -565,7 +565,7 @@
 					<!-- Photo Radar Section (Collapsible) -->
 					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
 						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
-							📷 Photo Radar
+							Photo Radar
 						</summary>
 						<div class="collapse-content">
 							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
@@ -604,7 +604,7 @@
 					<!-- Advanced Section (Collapsible) -->
 					<details class="collapse collapse-arrow bg-base-300 rounded-lg">
 						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
-							⚙️ Advanced
+							Advanced
 						</summary>
 						<div class="collapse-content">
 							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
@@ -652,7 +652,7 @@
 	<!-- Saved Profiles -->
 	<div class="surface-card">
 		<div class="card-body">
-			<h2 class="card-title">💾 Saved Profiles</h2>
+			<h2 class="card-title">Saved Profiles</h2>
 			
 			{#if loading}
 				<div class="flex justify-center p-4">

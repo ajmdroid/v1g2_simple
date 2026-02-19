@@ -162,7 +162,7 @@
 		<!-- Voice Alerts -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">🔊 Voice Alerts</h2>
+				<h2 class="card-title text-lg">Voice Alerts</h2>
 				<p class="text-xs text-base-content/50 mb-4">Speak alert information through the built-in speaker when no phone app is connected</p>
 				
 				<div class="space-y-4">
@@ -228,7 +228,7 @@
 							<div>
 								<span class="label-text font-medium">Mute Voice at Volume 0</span>
 								<p class="text-xs text-base-content/50">Silence alert announcements when V1 volume is 0</p>
-								<p class="text-xs text-warning/70 mt-1">⚠️ "Warning Volume Zero" will still play</p>
+								<p class="text-xs text-warning/70 mt-1">Note: "Warning Volume Zero" will still play</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -245,7 +245,7 @@
 		<!-- Secondary Alerts -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">📢 Secondary Alert Announcements</h2>
+				<h2 class="card-title text-lg">Secondary Alert Announcements</h2>
 				<p class="text-xs text-base-content/50 mb-4">Optionally announce non-priority alerts (lower bars) after priority stabilizes</p>
 				
 				<div class="space-y-4">
@@ -322,7 +322,7 @@
 		<!-- Volume Fade -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">📉 V1 Volume Fade</h2>
+				<h2 class="card-title text-lg">V1 Volume Fade</h2>
 				<p class="text-xs text-base-content/50 mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
 				
 				<div class="space-y-4">
@@ -394,7 +394,7 @@
 		<!-- Speed-Based Volume -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">🚗 Speed-Based Volume</h2>
+				<h2 class="card-title text-lg">Speed-Based Volume</h2>
 				<p class="text-sm text-base-content/70">Boost V1 volume at highway speeds (requires an external speed source)</p>
 				
 				<div class="space-y-4">
@@ -466,7 +466,7 @@
 		<!-- Low-Speed Mute -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">🅿️ Low-Speed Mute</h2>
+				<h2 class="card-title text-lg">Low-Speed Mute</h2>
 				<p class="text-sm text-base-content/70">Suppress voice at low speeds (parking lots, drive-thrus)</p>
 				
 				<div class="space-y-4">
@@ -514,7 +514,7 @@
 							</div>
 							
 							<div class="text-xs text-base-content/40">
-								💡 Requires a speed source. If unavailable, voice remains active.
+								Note: Requires a speed source. If unavailable, voice remains active.
 							</div>
 						</div>
 					{/if}
@@ -525,7 +525,7 @@
 		<!-- Speaker Volume -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">🔈 Speaker Volume</h2>
+				<h2 class="card-title text-lg">Speaker Volume</h2>
 				
 				<div class="form-control">
 					<label class="label" for="voice-volume-slider">
@@ -552,7 +552,7 @@
 		<!-- Info Card -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">ℹ️ How It Works</h2>
+				<h2 class="card-title text-lg">How It Works</h2>
 				<ul class="text-sm text-base-content/70 space-y-2 list-disc list-inside">
 					<li>Voice alerts only play when <strong>no phone app</strong> is connected via BLE proxy</li>
 					<li>New alert: full announcement based on your content settings</li>

@@ -445,7 +445,7 @@
 </script>
 
 <div class="page-stack">
-	<PageHeader title="Integrations">
+	<PageHeader title="Integrations" subtitle="GPS and OBD runtime controls plus connectivity status.">
 		<div class="flex items-center gap-2">
 			<a href="/lockouts" class="btn btn-outline btn-sm">Open Lockouts</a>
 			<div class="badge {getStateBadge(status.state)} badge-lg">{status.state}</div>

@@ -400,7 +400,7 @@
 		<!-- Display Style -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">🖥️ Display Style</h2>
+				<h2 class="card-title text-lg">Display Style</h2>
 				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
 				<div class="form-control">
 						<select 
@@ -1276,7 +1276,7 @@
 		<!-- Display Brightness -->
 		<div class="surface-card">
 			<div class="card-body p-4">
-				<h2 class="card-title text-lg">☀️ Display Brightness</h2>
+				<h2 class="card-title text-lg">Display Brightness</h2>
 				<p class="text-xs text-base-content/50 mb-2">Adjust the AMOLED screen brightness (0-255)</p>
 				<div class="form-control">
 					<div class="flex items-center gap-4">

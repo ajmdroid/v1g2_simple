@@ -445,7 +445,7 @@
 		}
 		
 		// Confirm before overwriting
-		if (!confirm('⚠️ This will overwrite all your current settings and profiles.\n\nAre you sure you want to restore from this backup?')) {
+		if (!confirm('Warning: This will overwrite all your current settings and profiles.\n\nAre you sure you want to restore from this backup?')) {
 			return;
 		}
 		
@@ -478,7 +478,7 @@
 </script>
 
 <div class="page-stack">
-	<PageHeader title="Settings" />
+	<PageHeader title="Settings" subtitle="Network, proxy, power, and backup configuration." />
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
@@ -494,7 +494,7 @@
 		<!-- AP Settings -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title">📡 Access Point (AP)</h2>
+				<h2 class="card-title">Access Point (AP)</h2>
 				<p class="text-sm text-base-content/60">Device hosts its own hotspot for direct connection.</p>
 				
 				<div class="form-control">
@@ -559,7 +559,7 @@
 		<!-- Device Time -->
 		<div class="surface-card">
 			<div class="card-body space-y-3">
-				<h2 class="card-title">🕒 Device Time</h2>
+				<h2 class="card-title">Device Time</h2>
 				<p class="text-sm text-base-content/60">Manual phone sync only. No background NTP.</p>
 				<div class="text-sm space-y-1">
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
@@ -588,7 +588,7 @@
 			<div class="card-body space-y-4">
 				<div class="flex justify-between items-center">
 					<div>
-						<h2 class="card-title">📶 WiFi Client</h2>
+						<h2 class="card-title">WiFi Client</h2>
 						<p class="text-sm text-base-content/60">Connect to an existing WiFi network.</p>
 					</div>
 					<input 
@@ -602,8 +602,8 @@
 				{#if wifiStatus.enabled}
 				{#if wifiStatus.state === 'connected'}
 					<div class="alert alert-success">
-						<span>✓ Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
-						<span class="text-sm">IP: {wifiStatus.ip} • Signal: {wifiStatus.rssi} dBm</span>
+						<span>Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
+						<span class="text-sm">IP: {wifiStatus.ip} | Signal: {wifiStatus.rssi} dBm</span>
 					</div>
 					<div class="flex gap-2">
 						<button class="btn btn-outline btn-sm" onclick={disconnectWifi}>
@@ -620,7 +620,7 @@
 					</div>
 				{:else if wifiStatus.savedSSID}
 					<div class="alert alert-warning">
-						<span>⚠️ Not connected to <strong>{wifiStatus.savedSSID}</strong></span>
+						<span>Not connected to <strong>{wifiStatus.savedSSID}</strong></span>
 					</div>
 					<div class="flex gap-2">
 						<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
@@ -673,7 +673,7 @@
 								/>
 							</div>
 						{:else}
-							<p class="text-sm text-warning">⚠️ This is an open network</p>
+							<p class="text-sm text-warning">This is an open network</p>
 						{/if}
 						
 						<div class="flex gap-2 justify-end">
@@ -734,7 +734,7 @@
 		<!-- BLE Proxy -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">🟦 Bluetooth Proxy</h2>
+				<h2 class="card-title">Bluetooth Proxy</h2>
 				<p class="text-sm text-base-content/60">Relay V1 data to phone apps.</p>
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
@@ -759,7 +759,7 @@
 		<!-- Auto Power Off -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">🔌 Auto Power Off</h2>
+				<h2 class="card-title">Auto Power Off</h2>
 				<p class="text-sm text-base-content/60">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
 				<div class="form-control">
 					<label class="label" for="auto-power-off">
@@ -802,7 +802,7 @@
 		<!-- Backup & Restore -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
-				<h2 class="card-title">💾 Backup & Restore</h2>
+				<h2 class="card-title">Backup & Restore</h2>
 				<p class="text-sm text-base-content/60">Download your settings or restore from a backup file.</p>
 				
 					<div class="flex flex-col gap-3">

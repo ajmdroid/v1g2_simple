@@ -233,7 +233,7 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 			</svg>
 			<div class="flex-1">
-				<h3 class="font-bold">⚠️ Warning: Advanced Settings</h3>
+				<h3 class="font-bold">Warning: Advanced Settings</h3>
 				<div class="text-sm">
 					These settings can cause instability or unexpected behavior. Only modify if you know what you're doing.
 				</div>
@@ -302,12 +302,12 @@
 		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
 				<div class="flex items-center justify-between">
-					<h2 class="card-title">📊 Performance Metrics</h2>
+					<h2 class="card-title">Performance Metrics</h2>
 					<button 
 						class="btn btn-sm btn-ghost"
 						onclick={() => { metricsExpanded = !metricsExpanded; if (metricsExpanded && !metrics) loadMetrics(); }}
 					>
-						{metricsExpanded ? '▼' : '▶'}
+						{metricsExpanded ? 'Collapse' : 'Expand'}
 					</button>
 				</div>
 				
@@ -336,7 +336,7 @@
 						{#if metrics}
 							<!-- BLE Queue Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">📡 BLE Queue (V1→Display)</h3>
+								<h3 class="font-semibold text-sm mb-2">BLE Queue (V1 to Display)</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="opacity-70">RX Packets:</span>
@@ -359,7 +359,7 @@
 
 							<!-- Display Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">🖥️ Display</h3>
+								<h3 class="font-semibold text-sm mb-2">Display</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="opacity-70">Updates:</span>
@@ -375,7 +375,7 @@
 							<!-- Latency Stats (when PERF_METRICS enabled) -->
 							{#if metrics.monitoringEnabled}
 								<div class="surface-panel">
-									<h3 class="font-semibold text-sm mb-2">⏱️ BLE→Flush Latency</h3>
+									<h3 class="font-semibold text-sm mb-2">BLE to Flush Latency</h3>
 									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
 											<span class="opacity-70">Min:</span>
@@ -399,7 +399,7 @@
 							<!-- Proxy Stats -->
 							{#if metrics.proxy}
 								<div class="surface-panel">
-									<h3 class="font-semibold text-sm mb-2">📲 V1 Proxy (to JBV1/V1C)</h3>
+									<h3 class="font-semibold text-sm mb-2">V1 Proxy (to JBV1/V1C)</h3>
 									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
 											<span class="opacity-70">Connected:</span>
@@ -423,7 +423,7 @@
 
 							<!-- Connection Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">🔗 Connection</h3>
+								<h3 class="font-semibold text-sm mb-2">Connection</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="opacity-70">Reconnects:</span>
@@ -453,7 +453,7 @@
 		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
 				<div class="flex items-center justify-between gap-2">
-					<h2 class="card-title">🗂️ Perf CSV Files</h2>
+					<h2 class="card-title">Perf CSV Files</h2>
 					<button
 						class="btn btn-sm btn-outline"
 						onclick={loadPerfFiles}

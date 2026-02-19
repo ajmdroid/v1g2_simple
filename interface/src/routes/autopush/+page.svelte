@@ -146,7 +146,7 @@
 </script>
 
 <div class="page-stack">
-	<PageHeader title="Auto-Push Profiles">
+	<PageHeader title="Auto-Push Profiles" subtitle="Manage automatic profile slots and activation.">
 		<div class="badge {data.enabled ? 'badge-success' : 'badge-ghost'}">
 			{data.enabled ? 'Enabled' : 'Disabled'}
 		</div>
