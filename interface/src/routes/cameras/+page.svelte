@@ -371,7 +371,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Runtime Status</h2>
 					<p class="text-sm text-base-content/70">
@@ -470,7 +470,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Dataset Catalog</h2>
 					<p class="text-sm text-base-content/70">
@@ -537,7 +537,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Recent Events</h2>
 					<p class="text-sm text-base-content/70">Recent camera events from bounded runtime ring buffer.</p>

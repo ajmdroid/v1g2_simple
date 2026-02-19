@@ -66,6 +66,10 @@ html {
 		@apply flex items-center gap-2;
 	}
 
+	.section-head {
+		@apply flex flex-wrap items-center justify-between gap-3;
+	}
+
 	.state-loading {
 		@apply flex justify-center p-8;
 	}

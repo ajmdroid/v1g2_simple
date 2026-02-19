@@ -460,7 +460,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">GPS Runtime</h2>
 					<p class="text-sm text-base-content/70">
@@ -510,7 +510,7 @@
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
-				<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="section-head">
 					<div>
 						<h2 class="card-title">Current Status</h2>
 						<p class="text-sm text-base-content/70">
@@ -599,7 +599,7 @@
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
-				<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="section-head">
 					<div>
 						<h2 class="card-title">Nearby Devices</h2>
 						<p class="text-sm text-base-content/70">Scan runs only when you start it.</p>

@@ -1036,7 +1036,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Safety Gate</h2>
 					<p class="text-sm text-base-content/70">
@@ -1063,7 +1063,7 @@
 
 		<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Runtime Controls</h2>
 					<p class="text-sm text-base-content/70">
@@ -1372,7 +1372,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Zones</h2>
 					<p class="text-sm text-base-content/70">
@@ -1603,7 +1603,7 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="section-head">
 				<div>
 					<h2 class="card-title">Lockout Candidates</h2>
 					<p class="text-sm text-base-content/70">
