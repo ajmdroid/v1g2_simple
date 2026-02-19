@@ -667,11 +667,9 @@
 									onkeydown={(e) => e.key === 'Enter' && connectToNetwork()}
 								/>
 							</div>
-							{:else}
-								<div class="surface-alert alert-warning py-2">
-									<span class="copy-caption-soft">This is an open network</span>
-								</div>
-							{/if}
+						{:else}
+							<StatusAlert message="This is an open network" fallbackType="warning" />
+						{/if}
 						
 						<div class="flex gap-2 justify-end">
 							<button class="btn btn-ghost" onclick={() => selectedNetwork = null}>

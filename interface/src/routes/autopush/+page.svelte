@@ -347,9 +347,7 @@
 		
 		<!-- Info -->
 		{#if profiles.length === 0}
-			<div class="surface-alert alert-warning">
-				<span>No saved profiles. Go to V1 Profiles to pull settings from your V1 first.</span>
-			</div>
+			<StatusAlert message="No saved profiles. Go to V1 Profiles to pull settings from your V1 first." fallbackType="warning" />
 		{/if}
 	{/if}
-</div>
+	</div>
