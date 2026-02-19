@@ -133,6 +133,10 @@ html {
 		@apply mb-2 text-sm font-medium;
 	}
 
+	.status-heading-muted {
+		@apply text-xl font-bold text-base-content/70;
+	}
+
 	.page-header-actions {
 		@apply flex items-center gap-2;
 	}

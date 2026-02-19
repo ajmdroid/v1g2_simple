@@ -206,7 +206,7 @@
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if !gps.enabled}
-					<div class="text-xl font-bold text-base-content/70">Disabled</div>
+					<div class="status-heading-muted">Disabled</div>
 					<div class="copy-caption">Enable in Integrations</div>
 				{:else if gps.detectionTimedOut}
 					<div class="text-xl font-bold text-warning">Not Found</div>
@@ -222,7 +222,7 @@
 					<div class="text-xl font-bold text-info">Searching</div>
 					<div class="copy-caption">No fix yet</div>
 				{:else}
-					<div class="text-xl font-bold text-base-content/70">Idle</div>
+					<div class="status-heading-muted">Idle</div>
 					<div class="copy-caption">{gps.mode}</div>
 				{/if}
 			</div>
