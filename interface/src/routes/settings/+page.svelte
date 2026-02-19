@@ -531,7 +531,7 @@
 						<span class="label-text">AP Always On</span>
 						<input 
 							type="checkbox" 
-							class="toggle" 
+							class="toggle toggle-primary" 
 							checked={settings.apTimeoutMinutes === 0}
 							onchange={(e) => settings.apTimeoutMinutes = e.target.checked ? 0 : 15}
 						/>
@@ -573,7 +573,7 @@
 						<div><strong>epochMs (projected):</strong> <span class="font-mono">{getProjectedEpochMs()}</span></div>
 						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
 					{:else}
-						<div class="text-warning"><strong>status:</strong> time not set</div>
+						<div class="copy-caption-soft text-warning"><strong>status:</strong> time not set</div>
 					{/if}
 				</div>
 				<button class="btn btn-primary btn-sm w-fit" onclick={syncTimeFromPhone} disabled={timeStatus.syncing}>
@@ -634,7 +634,7 @@
 					</button>
 				{/if}
 				{:else}
-				<div class="copy-faint-sm">
+				<div class="surface-note copy-faint-sm">
 					WiFi client is disabled. Enable to connect to a network.
 				</div>
 				{/if}
@@ -671,7 +671,9 @@
 								/>
 							</div>
 						{:else}
-							<p class="text-sm text-warning">This is an open network</p>
+							<div class="surface-alert alert-warning py-2">
+								<span class="text-sm">This is an open network</span>
+							</div>
 						{/if}
 						
 						<div class="flex gap-2 justify-end">
@@ -735,7 +737,7 @@
 				<CardSectionHead title="Bluetooth Proxy" subtitle="Relay V1 data to phone apps." />
 				<label class="label cursor-pointer">
 					<span class="label-text">Enable Proxy</span>
-					<input type="checkbox" class="toggle" bind:checked={settings.proxy_ble} />
+					<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.proxy_ble} />
 				</label>
 				<div class="form-control">
 					<label class="label" for="proxy-name">
