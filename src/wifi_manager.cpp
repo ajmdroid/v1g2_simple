@@ -299,13 +299,21 @@ bool WiFiManager::startSetupMode() {
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
 
-    // Immediately kick off STA connection when AP+STA mode is used.
-    // This bypasses the auto-reconnect guard conditions (boot-grace deferral,
-    // debounce timer) that can delay or block the first connect attempt.
+    // When AP+STA mode is active, connect to the saved STA network directly.
+    // WiFi.mode(WIFI_AP_STA) is already set and setupAP() has configured the AP,
+    // so we can call WiFi.begin() immediately — no need for the deferred phase
+    // machine that connectToNetwork() uses (which adds multi-loop-iteration
+    // latency and mode-switch guards that are redundant here).
     if (apStaMode) {
         String savedPassword = settingsManager.getWifiClientPassword();
-        Serial.printf("[SetupMode] Initiating STA connect to '%s'\n", settings.wifiClientSSID.c_str());
-        connectToNetwork(settings.wifiClientSSID, savedPassword, false);
+        Serial.printf("[SetupMode] STA connecting to '%s'\n", settings.wifiClientSSID.c_str());
+        debugLogger.notifyWifiTransition(false);
+        WiFi.setSleep(false);
+        WiFi.setAutoReconnect(true);
+        WiFi.begin(settings.wifiClientSSID.c_str(), savedPassword.c_str());
+        wifiClientState = WIFI_CLIENT_CONNECTING;
+        wifiConnectStartMs = millis();
+        wifiConnectPhase = WifiConnectPhase::IDLE;
     }
 
     WIFI_LOG("[SetupMode] AP started - connect to SSID shown on display\n");
