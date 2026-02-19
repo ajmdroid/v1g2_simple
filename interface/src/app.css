@@ -78,6 +78,18 @@ html {
 		@apply items-center p-0 py-12;
 	}
 
+	.state-loading.compact {
+		@apply p-4;
+	}
+
+	.state-loading.inline {
+		@apply items-center p-0 py-4;
+	}
+
+	.state-loading.stack {
+		@apply flex-col items-center p-0 py-8;
+	}
+
 	.state-empty {
 		@apply text-sm text-base-content/70;
 	}

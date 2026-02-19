@@ -655,7 +655,7 @@
 			<h2 class="card-title">Saved Profiles</h2>
 			
 			{#if loading}
-				<div class="flex justify-center p-4">
+				<div class="state-loading compact">
 					<span class="loading loading-spinner"></span>
 				</div>
 			{:else if profiles.length === 0}

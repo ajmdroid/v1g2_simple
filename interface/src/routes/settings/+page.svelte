@@ -650,7 +650,7 @@
 				<h3 class="font-bold text-lg">Select WiFi Network</h3>
 				
 				{#if wifiScanning}
-					<div class="flex flex-col items-center py-8">
+					<div class="state-loading stack">
 						<span class="loading loading-spinner loading-lg"></span>
 						<p class="mt-4 text-sm text-base-content/60">Scanning for networks...</p>
 					</div>

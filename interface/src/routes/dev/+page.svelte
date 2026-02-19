@@ -436,7 +436,7 @@
 								</div>
 							</div>
 						{:else if metricsLoading}
-							<div class="flex items-center justify-center py-4">
+							<div class="state-loading inline">
 								<span class="loading loading-spinner loading-sm"></span>
 							</div>
 						{:else}
@@ -473,7 +473,7 @@
 				</p>
 
 				{#if perfFilesLoading}
-					<div class="flex items-center justify-center py-4">
+					<div class="state-loading inline">
 						<span class="loading loading-spinner loading-sm"></span>
 					</div>
 				{:else if !perfFilesInfo.storageReady || !perfFilesInfo.onSdCard}
