@@ -382,7 +382,7 @@
 					{status.indexLoaded ? 'Index Loaded' : 'Index Empty'}
 				</div>
 			</div>
-				<div class="bg-base-100 rounded-lg p-3 space-y-2">
+				<div class="surface-panel subtle space-y-2">
 					<label class="label cursor-pointer justify-start gap-3">
 					<input
 						type="checkbox"
@@ -454,12 +454,12 @@
 				</div>
 			</div>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-				<div class="bg-base-100 rounded-lg p-3">
+				<div class="surface-panel subtle">
 					<div>Tick: {status.lastTickDurationUs || 0} us (max {status.maxTickDurationUs || 0} us)</div>
 					<div>Loader: {status.loader?.lastLoadDurationMs || 0} ms (max {status.loader?.maxLoadDurationMs || 0} ms)</div>
 					<div>Sort/Spans: {status.loader?.lastSortDurationMs || 0} / {status.loader?.lastSpanBuildDurationMs || 0} ms</div>
 				</div>
-				<div class="bg-base-100 rounded-lg p-3">
+				<div class="surface-panel subtle">
 					<div>Tick skips (overload/non-core/mem): {status.counters?.cameraTickSkipsOverload || 0} / {status.counters?.cameraTickSkipsNonCore || 0} / {status.counters?.cameraTickSkipsMemoryGuard || 0}</div>
 					<div>Loads (attempts/fail/skips): {status.loader?.loadAttempts || 0} / {status.loader?.loadFailures || 0} / {status.loader?.loadSkipsMemoryGuard || 0}</div>
 					<div>Internal SRAM: {status.lastInternalFree || 0} free, {status.lastInternalLargestBlock || 0} block</div>
@@ -505,7 +505,7 @@
 				</div>
 			</div>
 
-			<div class="overflow-x-auto">
+			<div class="surface-table-wrap">
 				<table class="table table-zebra table-sm">
 					<thead>
 						<tr>
@@ -555,7 +555,7 @@
 			{:else if recentEvents.length === 0}
 				<div class="text-sm text-base-content/70">No camera events captured yet.</div>
 			{:else}
-				<div class="overflow-x-auto">
+				<div class="surface-table-wrap">
 					<table class="table table-zebra table-sm">
 						<thead>
 							<tr>

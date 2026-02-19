@@ -626,7 +626,7 @@
 				{:else if nearby.length === 0}
 					<div class="text-sm text-base-content/70">No devices found yet.</div>
 				{:else}
-					<div class="overflow-x-auto">
+					<div class="surface-table-wrap">
 						<table class="table table-sm">
 							<thead>
 								<tr>
@@ -664,7 +664,7 @@
 			{#if remembered.length === 0}
 				<div class="text-sm text-base-content/70">No remembered devices.</div>
 			{:else}
-				<div class="overflow-x-auto">
+				<div class="surface-table-wrap">
 					<table class="table table-sm">
 						<thead>
 							<tr>

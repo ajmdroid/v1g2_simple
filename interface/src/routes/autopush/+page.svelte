@@ -139,11 +139,6 @@
 		}
 	}
 	
-	function getSlotColor(slot) {
-		const colors = ['bg-primary', 'bg-secondary', 'bg-accent'];
-		return colors[slot] || 'bg-base-300';
-	}
-
 	function hasProfileOption(profileName) {
 		if (!profileName) return true;
 		return profiles.some((p) => p.name === profileName);

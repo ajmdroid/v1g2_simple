@@ -1452,7 +1452,7 @@
 				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
 			{:else}
 				<div class="grid grid-cols-1 gap-4">
-					<div class="overflow-x-auto">
+					<div class="surface-table-wrap">
 						<div class="text-sm font-medium mb-2">Active Zones</div>
 						{#if activeLockoutZones.length === 0}
 							<div class="text-sm text-base-content/70">No active lockout zones.</div>
@@ -1547,7 +1547,7 @@
 						{/if}
 					</div>
 
-					<div class="overflow-x-auto">
+					<div class="surface-table-wrap">
 						<div class="text-sm font-medium mb-2">Pending Candidates</div>
 						{#if pendingLockoutZones.length === 0}
 							<div class="text-sm text-base-content/70">No pending candidates.</div>
@@ -1668,7 +1668,7 @@
 					No candidates logged yet. Run a drive test, then refresh this card.
 				</div>
 			{:else}
-				<div class="overflow-x-auto">
+				<div class="surface-table-wrap">
 					<table class="table table-sm">
 						<thead>
 							<tr>

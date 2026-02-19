@@ -413,7 +413,7 @@
 				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
 				<div class="space-y-3">
 					<!-- Band Detection Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">📡 Band Detection</h3>
 						<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
 							<label class="flex items-center gap-2">
@@ -444,7 +444,7 @@
 					</div>
 					
 					<!-- Sensitivity Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎚️ Sensitivity</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
 							<div class="flex items-center justify-between">
@@ -487,7 +487,7 @@
 					</div>
 					
 					<!-- Audio & Mute Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔇 Audio & Mute</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<div class="flex items-center justify-between">
@@ -510,7 +510,7 @@
 					</div>
 					
 					<!-- Laser Options Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">🔦 Laser Options</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
@@ -525,7 +525,7 @@
 					</div>
 					
 					<!-- Logic & Filtering Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">🎯 Logic & Priority</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
@@ -548,7 +548,7 @@
 					</div>
 					
 					<!-- Display Section -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<h3 class="font-bold text-sm text-yellow-400 mb-2">📺 V1 Display</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
@@ -663,7 +663,7 @@
 			{:else}
 				<div class="space-y-2">
 					{#each profiles as profile}
-						<div class="flex justify-between items-center p-3 bg-base-300 rounded-lg">
+						<div class="surface-panel flex items-center justify-between">
 							<div>
 								<div class="font-medium">{profile.name}</div>
 								<div class="text-xs text-base-content/60">

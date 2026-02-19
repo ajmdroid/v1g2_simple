@@ -215,7 +215,7 @@
 					</div>
 					
 					<!-- Preview -->
-					<div class="bg-base-300 rounded-lg p-3">
+					<div class="surface-panel">
 						<p class="text-xs text-base-content/50 mb-1">Preview:</p>
 						<p class="text-lg font-mono">{getPreviewText()}</p>
 					</div>
@@ -378,7 +378,7 @@
 							</div>
 							
 							<!-- Preview -->
-							<div class="bg-base-300 rounded-lg p-3 text-sm">
+							<div class="surface-panel text-sm">
 								<p class="text-base-content/70">
 									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
 									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
@@ -451,7 +451,7 @@
 							</div>
 							
 							<!-- Preview -->
-							<div class="bg-base-300 rounded-lg p-3 text-sm">
+							<div class="surface-panel text-sm">
 								<p class="text-base-content/70">
 									Speed &gt; {settings.speedVolumeThresholdMph} mph → 
 									<strong>+{settings.speedVolumeBoost} volume</strong> (max 9)
@@ -506,7 +506,7 @@
 							</div>
 							
 							<!-- Preview -->
-							<div class="bg-base-300 rounded-lg p-3 text-sm">
+							<div class="surface-panel text-sm">
 								<p class="text-base-content/70">
 									Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
 									<strong>voice muted</strong> (alerts still display)

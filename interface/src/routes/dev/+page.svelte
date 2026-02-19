@@ -335,7 +335,7 @@
 
 						{#if metrics}
 							<!-- BLE Queue Stats -->
-							<div class="bg-base-300 rounded-lg p-3">
+							<div class="surface-panel">
 								<h3 class="font-semibold text-sm mb-2">📡 BLE Queue (V1→Display)</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
@@ -358,7 +358,7 @@
 							</div>
 
 							<!-- Display Stats -->
-							<div class="bg-base-300 rounded-lg p-3">
+							<div class="surface-panel">
 								<h3 class="font-semibold text-sm mb-2">🖥️ Display</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
@@ -374,7 +374,7 @@
 
 							<!-- Latency Stats (when PERF_METRICS enabled) -->
 							{#if metrics.monitoringEnabled}
-								<div class="bg-base-300 rounded-lg p-3">
+								<div class="surface-panel">
 									<h3 class="font-semibold text-sm mb-2">⏱️ BLE→Flush Latency</h3>
 									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
@@ -398,7 +398,7 @@
 
 							<!-- Proxy Stats -->
 							{#if metrics.proxy}
-								<div class="bg-base-300 rounded-lg p-3">
+								<div class="surface-panel">
 									<h3 class="font-semibold text-sm mb-2">📲 V1 Proxy (to JBV1/V1C)</h3>
 									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
@@ -422,7 +422,7 @@
 							{/if}
 
 							<!-- Connection Stats -->
-							<div class="bg-base-300 rounded-lg p-3">
+							<div class="surface-panel">
 								<h3 class="font-semibold text-sm mb-2">🔗 Connection</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
@@ -485,7 +485,7 @@
 						No perf CSV files found.
 					</div>
 				{:else}
-					<div class="overflow-x-auto">
+					<div class="surface-table-wrap">
 						<table class="table table-sm">
 							<thead>
 								<tr>

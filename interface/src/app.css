@@ -80,6 +80,22 @@ html {
 		background: oklch(var(--b2) / 0.45);
 	}
 
+	.surface-panel {
+		@apply rounded-lg p-3;
+		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));
+		background: oklch(var(--b2) / 0.48);
+	}
+
+	.surface-panel.subtle {
+		background: oklch(var(--b1) / 0.42);
+	}
+
+	.surface-table-wrap {
+		@apply overflow-x-auto rounded-lg p-1;
+		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));
+		background: oklch(var(--b2) / 0.42);
+	}
+
 	.brand-lockup {
 		--brand-pill-height: 2.3rem;
 		--brand-pill-pad-x: 1rem;
