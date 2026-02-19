@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let acknowledged = $state(false);
@@ -260,7 +261,7 @@
 		<!-- WiFi Settings -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
-				<h2 class="card-title">WiFi & Network</h2>
+				<CardSectionHead title="WiFi & Network" />
 				
 				<div class="form-control">
 					<label class="label cursor-pointer">
@@ -301,15 +302,14 @@
 		<!-- Performance Metrics -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
-				<div class="flex items-center justify-between">
-					<h2 class="card-title">Performance Metrics</h2>
+				<CardSectionHead title="Performance Metrics">
 					<button 
 						class="btn btn-sm btn-ghost"
 						onclick={() => { metricsExpanded = !metricsExpanded; if (metricsExpanded && !metrics) loadMetrics(); }}
 					>
 						{metricsExpanded ? 'Collapse' : 'Expand'}
 					</button>
-				</div>
+				</CardSectionHead>
 				
 				{#if metricsExpanded}
 					<div class="space-y-4 mt-2">
@@ -452,8 +452,7 @@
 		<!-- Perf CSV Files -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
-				<div class="flex items-center justify-between gap-2">
-					<h2 class="card-title">Perf CSV Files</h2>
+				<CardSectionHead title="Perf CSV Files">
 					<button
 						class="btn btn-sm btn-outline"
 						onclick={loadPerfFiles}
@@ -465,7 +464,7 @@
 							Refresh
 						{/if}
 					</button>
-				</div>
+				</CardSectionHead>
 
 				<p class="text-xs opacity-70">
 					Files under <span class="font-mono">{perfFilesInfo.path}</span>.
