@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	const STATUS_POLL_INTERVAL_MS = 3000;
@@ -371,17 +372,14 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Runtime Status</h2>
-					<p class="copy-subtle">
-						Camera runtime stays lower priority than core BLE/display path.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Runtime Status"
+				subtitle="Camera runtime stays lower priority than core BLE/display path."
+			>
 				<div class="badge {status.indexLoaded ? 'badge-success' : 'badge-ghost'} badge-lg">
 					{status.indexLoaded ? 'Index Loaded' : 'Index Empty'}
 				</div>
-			</div>
+			</CardSectionHead>
 				<div class="surface-panel subtle space-y-2">
 					<label class="label cursor-pointer justify-start gap-3">
 					<input
@@ -470,15 +468,12 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Dataset Catalog</h2>
-					<p class="copy-subtle">
-						SD header counts for the ALPR runtime dataset.
-					</p>
-				</div>
+			<CardSectionHead
+				title="Dataset Catalog"
+				subtitle="SD header counts for the ALPR runtime dataset."
+			>
 				<div class="copy-caption">last scan: {formatTimestamp(catalog.tsMs)}</div>
-			</div>
+			</CardSectionHead>
 
 			<div class="surface-stats">
 				<div class="stat py-3 px-4">
@@ -537,15 +532,14 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">Recent Events</h2>
-					<p class="copy-subtle">Recent camera events from bounded runtime ring buffer.</p>
-				</div>
+			<CardSectionHead
+				title="Recent Events"
+				subtitle="Recent camera events from bounded runtime ring buffer."
+			>
 				<div class="copy-caption">
 					count {eventStats.count} · ring {eventStats.size}/{eventStats.capacity} · drops {eventStats.drops}
 				</div>
-			</div>
+			</CardSectionHead>
 
 			{#if loading}
 				<div class="flex items-center gap-2 copy-subtle">

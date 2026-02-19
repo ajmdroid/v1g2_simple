@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let loading = $state(true);
@@ -460,13 +461,10 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<div class="section-head">
-				<div>
-					<h2 class="card-title">GPS Runtime</h2>
-					<p class="copy-subtle">
-						GPS provides fix/location telemetry only. Speed control is OBD-only.
-					</p>
-				</div>
+			<CardSectionHead
+				title="GPS Runtime"
+				subtitle="GPS provides fix/location telemetry only. Speed control is OBD-only."
+			>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
 					<span class="label-text">Enabled</span>
 					<input
@@ -477,7 +475,7 @@
 						disabled={savingGpsEnabled}
 					/>
 				</label>
-			</div>
+			</CardSectionHead>
 
 			<div class="surface-stats">
 				<div class="stat py-3 px-4">
@@ -510,24 +508,19 @@
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
-				<div class="section-head">
-					<div>
-						<h2 class="card-title">Current Status</h2>
-						<p class="copy-subtle">
-							{#if !status.enabled}
-								OBD service disabled
-							{:else if status.connected}
-								Connected to {status.deviceName || status.deviceAddress}
-							{:else}
-								Not connected
-							{/if}
-						</p>
-					</div>
+				<CardSectionHead
+					title="Current Status"
+					subtitle={!status.enabled
+						? 'OBD service disabled'
+						: status.connected
+							? `Connected to ${status.deviceName || status.deviceAddress}`
+							: 'Not connected'}
+				>
 					<div class="flex gap-2">
 						<button class="btn btn-outline btn-sm" onclick={refreshAll}>Refresh</button>
 						<button class="btn btn-warning btn-sm" onclick={disconnectObd} disabled={!status.connected}>Disconnect</button>
 					</div>
-				</div>
+				</CardSectionHead>
 				<div class="form-control">
 					<label class="label cursor-pointer justify-start gap-3 py-0">
 						<input
@@ -599,11 +592,7 @@
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
-				<div class="section-head">
-					<div>
-						<h2 class="card-title">Nearby Devices</h2>
-						<p class="copy-subtle">Scan runs only when you start it.</p>
-					</div>
+				<CardSectionHead title="Nearby Devices" subtitle="Scan runs only when you start it.">
 					<div class="flex gap-2">
 						{#if scanning}
 							<button class="btn btn-warning btn-sm" onclick={stopScan}>Stop Scan</button>
@@ -612,7 +601,7 @@
 						{/if}
 						<button class="btn btn-ghost btn-sm" onclick={clearNearby} disabled={nearby.length === 0}>Clear</button>
 					</div>
-				</div>
+				</CardSectionHead>
 
 				{#if scanning}
 					<div class="surface-alert alert-info py-2">
@@ -658,10 +647,10 @@
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
-			<h2 class="card-title">Previously Connected</h2>
-			<p class="copy-subtle">
-				Auto-connect attempts only for devices enabled below. No background scan is started.
-			</p>
+			<CardSectionHead
+				title="Previously Connected"
+				subtitle="Auto-connect attempts only for devices enabled below. No background scan is started."
+			/>
 
 			{#if remembered.length === 0}
 				<div class="state-empty">No remembered devices.</div>
