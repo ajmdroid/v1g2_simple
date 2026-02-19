@@ -608,7 +608,7 @@
 				</div>
 				<div class="divider my-2"></div>
 				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
-				<p class="copy-caption-soft text-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<p class="copy-subtle mb-2">Colors for V1 and Proxy connection strength labels</p>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="rssiV1-color">
@@ -1287,7 +1287,7 @@
 				/>
 				<div class="form-control">
 					<div class="flex items-center gap-4">
-						<label for="brightness-slider" class="text-sm">🌑</label>
+						<label for="brightness-slider" class="copy-subtle">🌑</label>
 						<input 
 							id="brightness-slider"
 							type="range" 
@@ -1296,7 +1296,7 @@
 							bind:value={colors.brightness}
 							class="range range-primary flex-1" 
 						/>
-						<span class="text-sm">☀️</span>
+						<span class="copy-subtle">☀️</span>
 						<span class="text-sm font-mono w-12 text-right">{colors.brightness}</span>
 					</div>
 				</div>

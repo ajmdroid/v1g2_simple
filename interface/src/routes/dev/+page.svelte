@@ -235,9 +235,9 @@
 			</svg>
 			<div class="flex-1">
 				<h3 class="font-bold">Warning: Advanced Settings</h3>
-				<div class="text-sm">
-					These settings can cause instability or unexpected behavior. Only modify if you know what you're doing.
-				</div>
+					<div class="copy-subtle">
+						These settings can cause instability or unexpected behavior. Only modify if you know what you're doing.
+					</div>
 				<div class="form-control mt-2">
 					<label class="label cursor-pointer justify-start gap-2">
 						<input 
