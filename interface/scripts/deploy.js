@@ -28,13 +28,60 @@ mkdirSync(dataDir, { recursive: true });
 console.log('📁 Copying build files...');
 cpSync(buildDir, dataDir, { recursive: true });
 
+// Keep only compressed runtime assets under /_app when a .gz twin exists.
+// This saves flash while preserving uncompressed HTML entry pages.
+function pruneUncompressedAppAssets(appDir) {
+    if (!existsSync(appDir)) {
+        return { removedFiles: 0, removedBytes: 0 };
+    }
+
+    const stack = [appDir];
+    let removedFiles = 0;
+    let removedBytes = 0;
+    const compressibleExt = /\.(js|css|json)$/;
+
+    while (stack.length > 0) {
+        const dir = stack.pop();
+        for (const file of readdirSync(dir)) {
+            const filePath = join(dir, file);
+            const stat = statSync(filePath);
+
+            if (stat.isDirectory()) {
+                stack.push(filePath);
+                continue;
+            }
+
+            if (!compressibleExt.test(file) || file.endsWith('.gz')) {
+                continue;
+            }
+
+            const gzPath = `${filePath}.gz`;
+            if (!existsSync(gzPath)) {
+                continue;
+            }
+
+            rmSync(filePath);
+            removedFiles++;
+            removedBytes += stat.size;
+        }
+    }
+
+    return { removedFiles, removedBytes };
+}
+
+const pruned = pruneUncompressedAppAssets(join(dataDir, '_app'));
+if (pruned.removedFiles > 0) {
+    console.log(`🗜️ Pruned ${pruned.removedFiles} uncompressed /_app assets (${(pruned.removedBytes / 1024).toFixed(1)} KB)`);
+}
+
 // Restore audio assets after deploy wipes data/.
 // Keep this here so both scripted and manual deploy flows stage audio consistently.
 const audioDir = join(dataDir, 'audio');
 const audioSources = [
     {
         dir: join(__dirname, '..', '..', 'tools', 'freq_audio', 'mulaw'),
-        filter: (name) => name.endsWith('.mul')
+        // ghz_*.mul clips are legacy duplicates; runtime uses tens_XX for GHz tokens.
+        filter: (name) => name.endsWith('.mul') && !name.startsWith('ghz_')
     },
     {
         dir: join(__dirname, '..', '..', 'tools', 'camera_audio'),
