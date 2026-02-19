@@ -4,7 +4,9 @@
 	function resolveType(type) {
 		if (type === 'error') return 'error';
 		if (type === 'success') return 'success';
+		if (type === 'warning') return 'warning';
 		if (type === 'info') return 'info';
+		if (fallbackType === 'warning') return 'warning';
 		return fallbackType === 'success' ? 'success' : 'info';
 	}
 </script>

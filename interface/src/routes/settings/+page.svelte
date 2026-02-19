@@ -560,7 +560,7 @@
 		<div class="surface-card">
 			<div class="card-body space-y-3">
 				<CardSectionHead title="Device Time" subtitle="Manual phone sync only. No background NTP." />
-				<div class="text-sm space-y-1">
+				<div class="copy-subtle space-y-1">
 					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
 					<div><strong>timeConfidence:</strong> {timeStatus.confidence} ({getTimeConfidenceLabel(timeStatus.confidence)})</div>

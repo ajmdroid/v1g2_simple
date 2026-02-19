@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 
 	let acknowledged = $state(false);
 	const DEV_WARNING_ACK_BYPASS_KEY = 'v1simple:devWarningAckBypass';
@@ -45,6 +46,13 @@
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 	};
+
+	function getStatusMessage() {
+		if (!message) return null;
+		if (message.includes('Failed')) return { type: 'error', text: message };
+		if (message.toLowerCase().includes('saved')) return { type: 'success', text: message };
+		return { type: 'info', text: message };
+	}
 
 	function loadWarningPreferences() {
 		if (typeof window === 'undefined') return;
@@ -336,11 +344,7 @@
 		{/if}
 
 		<!-- Message Display -->
-		{#if message}
-			<div class="surface-alert" class:alert-success={message.includes('saved')} class:alert-error={message.includes('Failed')}>
-				<span>{message}</span>
-			</div>
-		{/if}
+		<StatusAlert message={getStatusMessage()} />
 
 		<!-- WiFi Settings -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>

@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 
 	const STATUS_POLL_INTERVAL_MS = 3000;
 	const EVENTS_LIMIT = 24;
@@ -354,21 +355,11 @@
 		</div>
 	</PageHeader>
 
-	{#if statusError}
-		<div class="surface-alert alert-error" role="alert"><span>{statusError}</span></div>
-	{/if}
-	{#if catalogError}
-		<div class="surface-alert alert-warning" role="alert"><span>{catalogError}</span></div>
-	{/if}
-	{#if eventsError}
-		<div class="surface-alert alert-warning" role="alert"><span>{eventsError}</span></div>
-	{/if}
-	{#if configError}
-		<div class="surface-alert alert-warning" role="alert"><span>{configError}</span></div>
-	{/if}
-	{#if demoError}
-		<div class="surface-alert alert-warning" role="alert"><span>{demoError}</span></div>
-	{/if}
+	<StatusAlert message={statusError} fallbackType="error" />
+	<StatusAlert message={catalogError} fallbackType="warning" />
+	<StatusAlert message={eventsError} fallbackType="warning" />
+	<StatusAlert message={configError} fallbackType="warning" />
+	<StatusAlert message={demoError} fallbackType="warning" />
 
 	<div class="surface-card">
 		<div class="card-body gap-3">
@@ -380,8 +371,8 @@
 					{status.indexLoaded ? 'Index Loaded' : 'Index Empty'}
 				</div>
 			</CardSectionHead>
-				<div class="surface-panel subtle space-y-2">
-					<label class="label cursor-pointer justify-start gap-3">
+			<div class="surface-panel subtle space-y-2">
+				<label class="label cursor-pointer justify-start gap-3">
 					<input
 						type="checkbox"
 						class="toggle toggle-primary"
@@ -401,34 +392,34 @@
 						</div>
 					</div>
 				</label>
-					{#if !runtimeConfig.gpsEnabled}
-						<div class="copy-warning">
-							GPS is disabled. Camera index can still load, but live matching remains inactive.
-						</div>
-					{/if}
-					<div class="surface-divider space-y-2">
-						<div class="copy-mini-title">Display Demo</div>
-						<div class="copy-caption-soft">
-							Preview camera screen tokens on device without needing live GPS/camera matches.
-						</div>
-						<div class="flex flex-wrap items-center gap-2">
-							<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
-								<option value="cycle">Cycle ALPR</option>
-								<option value="alpr">ALPR</option>
-							</select>
-							<label class="label cursor-pointer gap-2 py-0">
-								<input type="checkbox" class="checkbox checkbox-sm" bind:checked={demoMuted} disabled={demoInFlight || demoMode === 'cycle'} />
-								<span class="label-text text-xs">Muted palette</span>
-							</label>
-							<button class="btn btn-outline btn-sm" onclick={runCameraDemo} disabled={demoInFlight}>
-								{demoInFlight ? 'Starting...' : 'Run Demo'}
-							</button>
-							<button class="btn btn-ghost btn-sm" onclick={clearCameraDemo} disabled={demoInFlight}>
-								Clear Demo
-							</button>
-						</div>
+				{#if !runtimeConfig.gpsEnabled}
+					<div class="copy-warning">
+						GPS is disabled. Camera index can still load, but live matching remains inactive.
+					</div>
+				{/if}
+				<div class="surface-divider space-y-2">
+					<div class="copy-mini-title">Display Demo</div>
+					<div class="copy-caption-soft">
+						Preview camera screen tokens on device without needing live GPS/camera matches.
+					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
+							<option value="cycle">Cycle ALPR</option>
+							<option value="alpr">ALPR</option>
+						</select>
+						<label class="label cursor-pointer gap-2 py-0">
+							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={demoMuted} disabled={demoInFlight || demoMode === 'cycle'} />
+							<span class="label-text copy-caption">Muted palette</span>
+						</label>
+						<button class="btn btn-outline btn-sm" onclick={runCameraDemo} disabled={demoInFlight}>
+							{demoInFlight ? 'Starting...' : 'Run Demo'}
+						</button>
+						<button class="btn btn-ghost btn-sm" onclick={clearCameraDemo} disabled={demoInFlight}>
+							Clear Demo
+						</button>
 					</div>
 				</div>
+			</div>
 			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Runtime</div>

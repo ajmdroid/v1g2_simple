@@ -137,7 +137,7 @@
 			</svg>
 			<div>
 				<h3 class="font-bold">Default Password Detected</h3>
-				<div class="text-xs">Change your WiFi password in <a href="/settings" class="link link-primary font-semibold">Settings</a> to secure your device.</div>
+				<div class="copy-caption">Change your WiFi password in <a href="/settings" class="link link-primary font-semibold">Settings</a> to secure your device.</div>
 			</div>
 			<button class="btn btn-sm btn-ghost" onclick={dismissWarning} aria-label="Dismiss warning">✕</button>
 		</div>
@@ -193,7 +193,7 @@
 		<aside>
 			<div class="flex flex-wrap items-center justify-center gap-2">
 				<BrandMark compact />
-				<span class="text-sm text-base-content/60">•</span>
+				<span class="copy-muted">•</span>
 				<a href="https://github.com/ajmdroid/v1g2_simple" class="link link-primary">GitHub</a>
 			</div>
 		</aside>

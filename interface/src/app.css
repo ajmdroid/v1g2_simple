@@ -121,14 +121,6 @@ html {
 		@apply text-sm text-base-content/60;
 	}
 
-	.copy-faint {
-		@apply text-xs text-base-content/50;
-	}
-
-	.copy-faint-sm {
-		@apply text-sm text-base-content/50;
-	}
-
 	.copy-micro {
 		@apply text-xs text-base-content/40;
 	}
