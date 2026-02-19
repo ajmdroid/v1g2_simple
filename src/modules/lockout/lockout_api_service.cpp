@@ -379,9 +379,9 @@ void handleApiSummary(WebServer& server,
 void sendEvents(WebServer& server,
                 SignalObservationLog& signalObservationLog,
                 SignalObservationSdLogger& signalObservationSdLogger) {
-    uint16_t limit = 32;
+    uint16_t limit = 24;
     if (server.hasArg("limit")) {
-        limit = clampU16Value(server.arg("limit").toInt(), 1, 128);
+        limit = clampU16Value(server.arg("limit").toInt(), 1, 96);
     }
 
     // Keep this large scratch buffer off the loop-task stack.
@@ -401,10 +401,8 @@ void sendEvents(WebServer& server,
         JsonObject entry = events.add<JsonObject>();
         entry["tsMs"] = sample.tsMs;
         entry["band"] = bandName(static_cast<Band>(sample.bandRaw));
-        entry["bandRaw"] = sample.bandRaw;
         entry["frequencyMHz"] = sample.frequencyMHz;
         entry["strength"] = sample.strength;
-        entry["hasFix"] = sample.hasFix;
         if (sample.fixAgeMs == UINT32_MAX) {
             entry["fixAgeMs"] = nullptr;
         } else {
@@ -449,14 +447,27 @@ void sendZones(WebServer& server,
                LockoutIndex& lockoutIndex,
                LockoutLearner& lockoutLearner,
                SettingsManager& settingsManager) {
-    // Bound endpoint cost (JSON size + serialization time) for lower-tier web UI.
-    uint16_t activeLimit = 64;
-    uint16_t pendingLimit = 64;
+    // Bound endpoint cost (JSON size + serialization time) for embedded web UI.
+    uint16_t activeLimit = 24;
+    uint16_t pendingLimit = 24;
+    uint16_t activeOffset = 0;
+    uint16_t pendingOffset = 0;
     if (server.hasArg("activeLimit")) {
-        activeLimit = clampU16Value(server.arg("activeLimit").toInt(), 1, 200);
+        activeLimit = clampU16Value(server.arg("activeLimit").toInt(), 1, 96);
     }
     if (server.hasArg("pendingLimit")) {
-        pendingLimit = clampU16Value(server.arg("pendingLimit").toInt(), 1, 64);
+        pendingLimit = clampU16Value(server.arg("pendingLimit").toInt(), 1, 48);
+    }
+
+    const int activeOffsetMax =
+        (lockoutIndex.capacity() > 0) ? static_cast<int>(lockoutIndex.capacity() - 1) : 0;
+    const int pendingOffsetMax =
+        (LockoutLearner::kCandidateCapacity > 0) ? static_cast<int>(LockoutLearner::kCandidateCapacity - 1) : 0;
+    if (server.hasArg("activeOffset")) {
+        activeOffset = clampU16Value(server.arg("activeOffset").toInt(), 0, activeOffsetMax);
+    }
+    if (server.hasArg("pendingOffset")) {
+        pendingOffset = clampU16Value(server.arg("pendingOffset").toInt(), 0, pendingOffsetMax);
     }
 
     JsonDocument doc;
@@ -470,9 +481,11 @@ void sendZones(WebServer& server,
                                         ? static_cast<int64_t>(learnIntervalHours) * 3600LL * 1000LL
                                         : 0;
     doc["success"] = true;
-    doc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
+    const uint32_t activeCount = static_cast<uint32_t>(lockoutIndex.activeCount());
+    const uint32_t pendingCount = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
+    doc["activeCount"] = activeCount;
     doc["activeCapacity"] = static_cast<uint32_t>(lockoutIndex.capacity());
-    doc["pendingCount"] = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
+    doc["pendingCount"] = pendingCount;
     doc["pendingCapacity"] = static_cast<uint32_t>(LockoutLearner::kCandidateCapacity);
     doc["promotionHits"] = static_cast<uint32_t>(promotionHits);
     doc["promotionRadiusE5"] = static_cast<uint32_t>(lockoutLearner.radiusE5());
@@ -484,13 +497,26 @@ void sendZones(WebServer& server,
     doc["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["activeLimit"] = activeLimit;
     doc["pendingLimit"] = pendingLimit;
+    doc["activeOffset"] = activeOffset;
+    doc["pendingOffset"] = pendingOffset;
+
+    const String detailsArg = server.arg("details");
+    const bool includeDetails = detailsArg == "1" || detailsArg == "true";
 
     JsonArray activeZones = doc["activeZones"].to<JsonArray>();
+    uint16_t activeSeen = 0;
     uint16_t activeReturned = 0;
-    for (size_t i = 0; i < lockoutIndex.capacity() && activeReturned < activeLimit; ++i) {
+    for (size_t i = 0; i < lockoutIndex.capacity(); ++i) {
         const LockoutEntry* entry = lockoutIndex.at(i);
         if (!entry || !entry->isActive()) {
             continue;
+        }
+        if (activeSeen < activeOffset) {
+            ++activeSeen;
+            continue;
+        }
+        if (activeReturned >= activeLimit) {
+            break;
         }
         JsonObject zone = activeZones.add<JsonObject>();
         zone["slot"] = static_cast<uint32_t>(i);
@@ -512,11 +538,7 @@ void sendZones(WebServer& server,
             zone["headingDeg"] = entry->headingDeg;
         }
         zone["headingToleranceDeg"] = entry->headingTolDeg;
-        zone["firstSeenMs"] = entry->firstSeenMs;
-        zone["lastSeenMs"] = entry->lastSeenMs;
-        zone["lastPassMs"] = entry->lastPassMs;
         zone["missCount"] = entry->missCount;
-        zone["lastCountedMissMs"] = entry->lastCountedMissMs;
         const uint8_t demotionThreshold = entry->isManual() ? manualDemotionMissCount : unlearnCount;
         if (demotionThreshold > 0) {
             zone["demotionMissThreshold"] = demotionThreshold;
@@ -526,16 +548,36 @@ void sendZones(WebServer& server,
             zone["demotionMissThreshold"] = nullptr;
             zone["demotionMissesRemaining"] = nullptr;
         }
+        if (includeDetails) {
+            zone["firstSeenMs"] = entry->firstSeenMs;
+            zone["lastSeenMs"] = entry->lastSeenMs;
+            zone["lastPassMs"] = entry->lastPassMs;
+            zone["lastCountedMissMs"] = entry->lastCountedMissMs;
+        }
+        ++activeSeen;
         ++activeReturned;
     }
     doc["activeReturned"] = activeReturned;
+    if (static_cast<uint32_t>(activeOffset) + activeReturned < activeCount) {
+        doc["activeNextOffset"] = static_cast<uint32_t>(activeOffset) + activeReturned;
+    } else {
+        doc["activeNextOffset"] = nullptr;
+    }
 
     JsonArray pendingZones = doc["pendingZones"].to<JsonArray>();
+    uint16_t pendingSeen = 0;
     uint16_t pendingReturned = 0;
-    for (size_t i = 0; i < LockoutLearner::kCandidateCapacity && pendingReturned < pendingLimit; ++i) {
+    for (size_t i = 0; i < LockoutLearner::kCandidateCapacity; ++i) {
         const LearnerCandidate* candidate = lockoutLearner.candidateAt(i);
         if (!candidate || !candidate->active) {
             continue;
+        }
+        if (pendingSeen < pendingOffset) {
+            ++pendingSeen;
+            continue;
+        }
+        if (pendingReturned >= pendingLimit) {
+            break;
         }
         JsonObject pending = pendingZones.add<JsonObject>();
         pending["slot"] = static_cast<uint32_t>(i);
@@ -557,9 +599,15 @@ void sendZones(WebServer& server,
         } else {
             pending["nextEligibleHitMs"] = nullptr;
         }
+        ++pendingSeen;
         ++pendingReturned;
     }
     doc["pendingReturned"] = pendingReturned;
+    if (static_cast<uint32_t>(pendingOffset) + pendingReturned < pendingCount) {
+        doc["pendingNextOffset"] = static_cast<uint32_t>(pendingOffset) + pendingReturned;
+    } else {
+        doc["pendingNextOffset"] = nullptr;
+    }
 
     sendJsonStream(server, doc);
 }

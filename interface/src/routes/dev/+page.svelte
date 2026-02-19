@@ -151,7 +151,7 @@
 	async function loadPerfFiles() {
 		perfFilesLoading = true;
 		try {
-			const response = await fetch('/api/debug/perf-files');
+			const response = await fetch('/api/debug/perf-files?limit=24');
 			if (!response.ok) throw new Error('Failed to load perf files');
 			const data = await response.json();
 			perfFiles = data.files || [];

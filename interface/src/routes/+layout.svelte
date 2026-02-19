@@ -5,6 +5,10 @@
 	let { children } = $props();
 	let showPasswordWarning = $state(false);
 	let warningDismissed = $state(false);
+	const DEFAULT_PASSWORD_CACHE_KEY = 'v1simple:isDefaultPassword';
+	const DEFAULT_PASSWORD_DISMISSED_KEY = 'passwordWarningDismissed';
+	const TIME_SYNC_CACHE_KEY = 'v1simple:lastTimeSyncMs';
+	const TIME_SYNC_MIN_INTERVAL_MS = 10 * 60 * 1000;
 	const navLinks = [
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/autopush', label: 'Auto-Push' },
@@ -18,13 +22,23 @@
 		{ href: '/settings', label: 'Settings' }
 	];
 	const advancedLinks = [{ href: '/dev', label: 'Development' }];
-	
-	// Check if using default password on mount
-	onMount(async () => {
-		// Auto-sync time from phone on every page load (fire-and-forget).
-		// The ESP32-S3 has no RTC battery, so time is lost on every reboot.
-		// This ensures the device clock is set whenever the UI is opened.
-		try {
+
+	function runWhenIdle(callback, fallbackDelayMs = 250) {
+		if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+			window.requestIdleCallback(callback, { timeout: 1500 });
+			return;
+		}
+		setTimeout(callback, fallbackDelayMs);
+	}
+
+	function scheduleClientTimeSync() {
+		const now = Date.now();
+		const lastSyncMs = Number(sessionStorage.getItem(TIME_SYNC_CACHE_KEY) || '0');
+		if (Number.isFinite(lastSyncMs) && lastSyncMs > 0 && now - lastSyncMs < TIME_SYNC_MIN_INTERVAL_MS) {
+			return;
+		}
+		sessionStorage.setItem(TIME_SYNC_CACHE_KEY, String(now));
+		runWhenIdle(() => {
 			fetch('/api/time/set', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -33,34 +47,42 @@
 					tzOffsetMin: new Date().getTimezoneOffset() * -1,
 					source: 'client'
 				})
-			}).catch(() => {});  // swallow errors silently
-		} catch (e) {
-			// ignore
-		}
+			}).catch(() => {});
+		}, 300);
+	}
+	
+	// Check if using default password on mount
+	onMount(() => {
+		scheduleClientTimeSync();
 
-		// Only check once per session (use sessionStorage)
-		if (sessionStorage.getItem('passwordWarningDismissed')) {
+		if (sessionStorage.getItem(DEFAULT_PASSWORD_DISMISSED_KEY)) {
 			warningDismissed = true;
 			return;
 		}
-		
-		try {
-			const res = await fetch('/api/settings');
-			if (res.ok) {
-				const data = await res.json();
-				// Check if firmware reports default password in use
-				if (data.isDefaultPassword === true) {
-					showPasswordWarning = true;
-				}
-			}
-		} catch (e) {
-			// Don't show warning on error
+
+		const cachedDefaultPassword = sessionStorage.getItem(DEFAULT_PASSWORD_CACHE_KEY);
+		if (cachedDefaultPassword !== null) {
+			showPasswordWarning = cachedDefaultPassword === '1';
+			return;
 		}
+
+		runWhenIdle(async () => {
+			try {
+				const res = await fetch('/api/settings');
+				if (!res.ok) return;
+				const data = await res.json();
+				const isDefaultPassword = data.isDefaultPassword === true;
+				showPasswordWarning = isDefaultPassword;
+				sessionStorage.setItem(DEFAULT_PASSWORD_CACHE_KEY, isDefaultPassword ? '1' : '0');
+			} catch (e) {
+				// Don't show warning on error.
+			}
+		}, 600);
 	});
 	
 	function dismissWarning() {
 		warningDismissed = true;
-		sessionStorage.setItem('passwordWarningDismissed', 'true');
+		sessionStorage.setItem(DEFAULT_PASSWORD_DISMISSED_KEY, 'true');
 	}
 </script>
 

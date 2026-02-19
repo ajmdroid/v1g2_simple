@@ -33,12 +33,21 @@
 	let error = $state(null);
 	let statusInterval = null;
 	let statusFetchInFlight = false;
+	let gpsFetchInFlight = false;
+	let statusPollTicks = 0;
+	const STATUS_POLL_INTERVAL_MS = 3000;
+	const GPS_POLL_MULTIPLIER = 3;
 
 	onMount(async () => {
 		await fetchStatus();
+		void fetchGpsStatus();
 		statusInterval = setInterval(() => {
 			void fetchStatus();
-		}, 3000);
+			statusPollTicks += 1;
+			if ((statusPollTicks % GPS_POLL_MULTIPLIER) === 0) {
+				void fetchGpsStatus();
+			}
+		}, STATUS_POLL_INTERVAL_MS);
 	});
 
 	onDestroy(() => {
@@ -49,10 +58,7 @@
 		if (statusFetchInFlight) return;
 		statusFetchInFlight = true;
 		try {
-			const [statusRes, gpsRes] = await Promise.all([
-				fetch('/api/status'),
-				fetch('/api/gps/status')
-			]);
+			const statusRes = await fetch('/api/status');
 
 			if (statusRes.ok) {
 				status = await statusRes.json();
@@ -60,16 +66,26 @@
 			} else {
 				error = 'API error';
 			}
-
-			if (gpsRes.ok) {
-				const gpsData = await gpsRes.json();
-				gps = { ...gps, ...gpsData };
-			}
 		} catch (e) {
 			error = 'Connection lost';
 		} finally {
 			loading = false;
 			statusFetchInFlight = false;
+		}
+	}
+
+	async function fetchGpsStatus() {
+		if (gpsFetchInFlight) return;
+		gpsFetchInFlight = true;
+		try {
+			const gpsRes = await fetch('/api/gps/status');
+			if (!gpsRes.ok) return;
+			const gpsData = await gpsRes.json();
+			gps = { ...gps, ...gpsData };
+		} catch (e) {
+			// Keep dashboard rendering from status endpoint if GPS poll fails.
+		} finally {
+			gpsFetchInFlight = false;
 		}
 	}
 

@@ -76,6 +76,44 @@ bool perfFilePathFromName(const String& name, String& outPath) {
     return true;
 }
 
+struct PerfFileInfo {
+    String name;
+    uint32_t sizeBytes;
+    uint32_t bootId;
+};
+
+struct PerfFileListCache {
+    bool valid = false;
+    uint32_t builtAtMs = 0;
+    std::vector<PerfFileInfo> rows;
+};
+
+constexpr uint32_t PERF_FILES_CACHE_TTL_MS = 2500;
+PerfFileListCache gPerfFileListCache;
+
+uint16_t clampPerfFilesLimit(int value) {
+    if (value < 1) return 1;
+    if (value > 64) return 64;
+    return static_cast<uint16_t>(value);
+}
+
+uint16_t perfFilesLimitFromRequest(WebServer& server) {
+    if (!server.hasArg("limit")) return 24;
+    return clampPerfFilesLimit(server.arg("limit").toInt());
+}
+
+bool isPerfFileCacheFresh() {
+    if (!gPerfFileListCache.valid) return false;
+    const uint32_t now = millis();
+    return (now - gPerfFileListCache.builtAtMs) <= PERF_FILES_CACHE_TTL_MS;
+}
+
+void invalidatePerfFileCache() {
+    gPerfFileListCache.valid = false;
+    gPerfFileListCache.builtAtMs = 0;
+    gPerfFileListCache.rows.clear();
+}
+
 }  // anonymous namespace
 
 namespace DebugApiService {
@@ -419,89 +457,102 @@ void handleApiPanic(WebServer& server) {
 }
 
 void sendPerfFilesList(WebServer& server) {
+    const uint16_t limit = perfFilesLimitFromRequest(server);
     JsonDocument doc;
     doc["success"] = true;
     doc["storageReady"] = storageManager.isReady();
     doc["onSdCard"] = storageManager.isSDCard();
     doc["path"] = "/perf";
+    doc["limit"] = limit;
 
     JsonArray filesArr = doc["files"].to<JsonArray>();
 
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        invalidatePerfFileCache();
         sendJsonStream(server, doc);
         return;
     }
 
-    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
-    if (!lock) {
-        doc["success"] = false;
-        doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
-        sendJsonStream(server, doc, 503);
-        return;
-    }
+    if (!isPerfFileCacheFresh()) {
+        StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+        if (!lock) {
+            doc["success"] = false;
+            doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
+            sendJsonStream(server, doc, 503);
+            return;
+        }
 
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!fs || !fs->exists("/perf")) {
-        sendJsonStream(server, doc);
-        return;
-    }
+        fs::FS* fs = storageManager.getFilesystem();
+        if (!fs || !fs->exists("/perf")) {
+            invalidatePerfFileCache();
+            sendJsonStream(server, doc);
+            return;
+        }
 
-    File dir = fs->open("/perf");
-    if (!dir || !dir.isDirectory()) {
-        if (dir) dir.close();
-        doc["success"] = false;
-        doc["error"] = "Failed to open /perf directory";
-        sendJsonStream(server, doc, 500);
-        return;
-    }
+        File dir = fs->open("/perf");
+        if (!dir || !dir.isDirectory()) {
+            if (dir) dir.close();
+            doc["success"] = false;
+            doc["error"] = "Failed to open /perf directory";
+            sendJsonStream(server, doc, 500);
+            return;
+        }
 
-    struct PerfFileInfo {
-        String name;
-        uint32_t sizeBytes;
-        uint32_t bootId;
-    };
-    std::vector<PerfFileInfo> rows;
-    rows.reserve(16);
+        std::vector<PerfFileInfo> rows;
+        rows.reserve(16);
 
-    File entry;
-    while ((entry = dir.openNextFile())) {
-        if (entry.isDirectory()) {
+        File entry;
+        while ((entry = dir.openNextFile())) {
+            if (entry.isDirectory()) {
+                entry.close();
+                continue;
+            }
+
+            String name = fileNameFromPath(entry.name());
+            if (!isValidPerfFileName(name)) {
+                entry.close();
+                continue;
+            }
+
+            uint32_t bootId = 0;
+            if (name.startsWith("perf_boot_") && name.endsWith(".csv")) {
+                String digits = name.substring(strlen("perf_boot_"), name.length() - 4);
+                bootId = static_cast<uint32_t>(strtoul(digits.c_str(), nullptr, 10));
+            }
+
+            rows.push_back({name, static_cast<uint32_t>(entry.size()), bootId});
             entry.close();
-            continue;
         }
+        dir.close();
 
-        String name = fileNameFromPath(entry.name());
-        if (!isValidPerfFileName(name)) {
-            entry.close();
-            continue;
-        }
+        std::sort(rows.begin(), rows.end(), [](const PerfFileInfo& a, const PerfFileInfo& b) {
+            if (a.bootId != b.bootId) {
+                return a.bootId > b.bootId;
+            }
+            return a.name > b.name;
+        });
 
-        uint32_t bootId = 0;
-        if (name.startsWith("perf_boot_") && name.endsWith(".csv")) {
-            String digits = name.substring(strlen("perf_boot_"), name.length() - 4);
-            bootId = static_cast<uint32_t>(strtoul(digits.c_str(), nullptr, 10));
-        }
-
-        rows.push_back({name, static_cast<uint32_t>(entry.size()), bootId});
-        entry.close();
+        gPerfFileListCache.rows = std::move(rows);
+        gPerfFileListCache.valid = true;
+        gPerfFileListCache.builtAtMs = millis();
     }
-    dir.close();
 
-    std::sort(rows.begin(), rows.end(), [](const PerfFileInfo& a, const PerfFileInfo& b) {
-        if (a.bootId != b.bootId) {
-            return a.bootId > b.bootId;
-        }
-        return a.name > b.name;
-    });
-
-    for (const PerfFileInfo& row : rows) {
+    const size_t countTotal = gPerfFileListCache.rows.size();
+    const size_t countReturned = std::min(countTotal, static_cast<size_t>(limit));
+    const String activePath = String(perfSdLogger.csvPath());
+    for (size_t i = 0; i < countReturned; ++i) {
+        const PerfFileInfo& row = gPerfFileListCache.rows[i];
         JsonObject f = filesArr.add<JsonObject>();
         f["name"] = row.name;
         f["sizeBytes"] = row.sizeBytes;
         f["bootId"] = row.bootId;
-        f["active"] = (String("/perf/") + row.name) == String(perfSdLogger.csvPath());
+        f["active"] = (String("/perf/") + row.name) == activePath;
     }
-    doc["count"] = static_cast<uint32_t>(rows.size());
+    doc["count"] = static_cast<uint32_t>(countTotal);
+    doc["countReturned"] = static_cast<uint32_t>(countReturned);
+    doc["cacheAgeMs"] = isPerfFileCacheFresh()
+                            ? (millis() - gPerfFileListCache.builtAtMs)
+                            : static_cast<uint32_t>(0);
 
     sendJsonStream(server, doc);
 }
@@ -629,6 +680,9 @@ void handlePerfFileDelete(WebServer& server) {
     }
 
     bool ok = fs->remove(path);
+    if (ok) {
+        invalidatePerfFileCache();
+    }
 
     JsonDocument doc;
     doc["success"] = ok;
