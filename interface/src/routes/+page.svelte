@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import BrandMark from '$lib/components/BrandMark.svelte';
 
 	let status = $state({
 		wifi: {
@@ -117,7 +118,9 @@
 	<div class="hero bg-base-200 rounded-box p-4">
 		<div class="hero-content text-center">
 			<div>
-				<h1 class="text-3xl font-bold text-primary">V1 Simple</h1>
+				<div class="mb-2 flex justify-center">
+					<BrandMark />
+				</div>
 				<p class="text-xs text-base-content/50 mb-1">v{status.device?.firmware_version || '...'}</p>
 				<p class="text-sm text-base-content/70">
 					{#if status.wifi.sta_connected}

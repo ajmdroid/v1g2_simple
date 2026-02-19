@@ -9,6 +9,8 @@
 	--v1-orange: #ff6b35;
 	--v1-green: #00ff88;
 	--v1-yellow: #ffcc00;
+	--v1-steel: #8e97a3;
+	--v1-charcoal: #1f2733;
 	--app-radius-md: 0.75rem;
 	--app-radius-lg: 1rem;
 	--app-border-alpha: 0.42;
@@ -76,5 +78,58 @@ html {
 		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));
 		border-radius: var(--app-radius-md);
 		background: oklch(var(--b2) / 0.45);
+	}
+
+	.brand-lockup {
+		--brand-pill-height: 2.3rem;
+		--brand-pill-pad-x: 1rem;
+		--brand-font-size: 0.95rem;
+		@apply inline-flex items-center gap-2;
+	}
+
+	.brand-lockup.compact {
+		--brand-pill-height: 2rem;
+		--brand-pill-pad-x: 0.8rem;
+		--brand-font-size: 0.8rem;
+	}
+
+	.brand-pill {
+		@apply inline-flex items-center gap-2 font-semibold tracking-[0.16em] uppercase;
+		height: var(--brand-pill-height);
+		padding-inline: var(--brand-pill-pad-x);
+		border-radius: 0.65rem;
+		border: 1px solid color-mix(in oklab, var(--v1-steel) 70%, #fff 30%);
+		background: linear-gradient(180deg, #2a3340 0%, #151b24 100%);
+		box-shadow:
+			inset 0 1px 0 color-mix(in oklab, #fff 65%, transparent 35%),
+			0 4px 12px oklch(0% 0 0 / 0.35);
+		font-size: var(--brand-font-size);
+		color: #f6f8fb;
+	}
+
+	.brand-v1 {
+		letter-spacing: 0.08em;
+		color: #ffffff;
+	}
+
+	.brand-simple {
+		color: color-mix(in oklab, #ffffff 90%, var(--v1-steel) 10%);
+	}
+
+	.brand-arrow {
+		display: inline-block;
+		width: 1.35rem;
+		height: 1rem;
+		filter: drop-shadow(0 2px 4px oklch(0% 0 0 / 0.35));
+		clip-path: polygon(50% 0, 100% 62%, 64% 62%, 64% 100%, 36% 100%, 36% 62%, 0 62%);
+	}
+
+	.brand-arrow.up {
+		background: linear-gradient(180deg, #ff5757 0%, #d71f1f 100%);
+	}
+
+	.brand-arrow.down {
+		background: linear-gradient(180deg, #b8c0cc 0%, #737d8b 100%);
+		transform: rotate(180deg);
 	}
 }

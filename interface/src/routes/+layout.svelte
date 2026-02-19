@@ -1,6 +1,7 @@
 <script>
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import BrandMark from '$lib/components/BrandMark.svelte';
 	
 	let { children } = $props();
 	let showPasswordWarning = $state(false);
@@ -120,7 +121,9 @@
 					{/each}
 				</ul>
 			</div>
-			<a href="/" class="btn btn-ghost text-lg font-semibold tracking-wide text-primary">V1 SIMPLE</a>
+			<a href="/" class="btn btn-ghost h-auto min-h-0 px-2 py-1">
+				<BrandMark compact />
+			</a>
 		</div>
 		<div class="navbar-center hidden lg:flex">
 			<ul class="menu menu-horizontal px-1">
@@ -147,7 +150,11 @@
 	<!-- Footer -->
 	<footer class="footer footer-center p-4 bg-base-200 border-t border-base-300/70 text-base-content mt-8">
 		<aside>
-			<p>V1 Simple • <a href="https://github.com/ajmdroid/v1g2_simple" class="link link-primary">GitHub</a></p>
+			<div class="flex flex-wrap items-center justify-center gap-2">
+				<BrandMark compact />
+				<span class="text-sm text-base-content/60">•</span>
+				<a href="https://github.com/ajmdroid/v1g2_simple" class="link link-primary">GitHub</a>
+			</div>
 		</aside>
 	</footer>
 </div>
