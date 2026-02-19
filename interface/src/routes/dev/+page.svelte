@@ -223,7 +223,7 @@
 	<PageHeader title="Development Settings" subtitle="Advanced features and debugging tools" />
 
 	{#if loading}
-		<div class="flex justify-center items-center py-12">
+		<div class="state-loading tall">
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else}

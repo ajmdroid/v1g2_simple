@@ -622,7 +622,9 @@
 				{/if}
 
 				{#if loading}
-					<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+					<div class="state-loading tight">
+						<span class="loading loading-spinner loading-md"></span>
+					</div>
 				{:else if nearby.length === 0}
 					<div class="text-sm text-base-content/70">No devices found yet.</div>
 				{:else}

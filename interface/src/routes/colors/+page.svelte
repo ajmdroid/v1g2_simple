@@ -393,7 +393,7 @@
 	{/if}
 	
 	{#if loading}
-		<div class="flex justify-center p-8">
+		<div class="state-loading">
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else}

@@ -66,6 +66,18 @@ html {
 		@apply flex items-center gap-2;
 	}
 
+	.state-loading {
+		@apply flex justify-center p-8;
+	}
+
+	.state-loading.tight {
+		@apply p-6;
+	}
+
+	.state-loading.tall {
+		@apply items-center p-0 py-12;
+	}
+
 	.surface-card {
 		@apply card bg-base-200;
 		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));

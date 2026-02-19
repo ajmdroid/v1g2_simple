@@ -1449,7 +1449,9 @@
 			</div>
 
 			{#if lockoutZonesLoading}
-				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+				<div class="state-loading tight">
+					<span class="loading loading-spinner loading-md"></span>
+				</div>
 			{:else}
 				<div class="grid grid-cols-1 gap-4">
 					<div class="surface-table-wrap">
@@ -1662,7 +1664,9 @@
 			</div>
 
 			{#if loading || lockoutLoading}
-				<div class="flex justify-center p-6"><span class="loading loading-spinner loading-md"></span></div>
+				<div class="state-loading tight">
+					<span class="loading loading-spinner loading-md"></span>
+				</div>
 			{:else if lockoutEvents.length === 0}
 				<div class="text-sm text-base-content/70">
 					No candidates logged yet. Run a drive test, then refresh this card.
