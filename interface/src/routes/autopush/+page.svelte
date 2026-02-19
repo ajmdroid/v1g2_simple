@@ -196,7 +196,7 @@
 							<div class="flex gap-1">
 								{#if editingSlot === i}
 									<button class="btn btn-success btn-sm" onclick={() => saveSlot(i)}>
-										💾 Save
+										Save
 									</button>
 									<button class="btn btn-ghost btn-sm" onclick={() => editingSlot = null}>
 										Cancel
@@ -341,7 +341,7 @@
 									onclick={() => pushNow(i)}
 									disabled={!slot.profile}
 								>
-									⬆️ Push Now
+									Push Now
 								</button>
 							</div>
 						{/if}

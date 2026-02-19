@@ -609,7 +609,7 @@
 						<button class="btn btn-outline btn-sm" onclick={disconnectWifi}>
 							Disconnect
 						</button>
-						<button class="btn btn-ghost btn-sm text-error" onclick={forgetWifi}>
+						<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
 							Forget Network
 						</button>
 					</div>
@@ -626,7 +626,7 @@
 						<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
 							🔍 Scan for Networks
 						</button>
-						<button class="btn btn-ghost btn-sm text-error" onclick={forgetWifi}>
+						<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
 							Forget Network
 						</button>
 					</div>

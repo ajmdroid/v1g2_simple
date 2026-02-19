@@ -96,6 +96,26 @@ html {
 		background: oklch(var(--b2) / 0.42);
 	}
 
+	.color-swatch-btn {
+		@apply cursor-pointer rounded border-2 border-base-300;
+	}
+
+	.color-swatch-btn.lg {
+		@apply h-10 w-12;
+	}
+
+	.color-swatch-btn.md {
+		@apply h-10 w-10;
+	}
+
+	.color-swatch-btn.sm {
+		@apply h-8 w-10;
+	}
+
+	.color-swatch-btn:disabled {
+		@apply cursor-not-allowed opacity-50;
+	}
+
 	.brand-lockup {
 		--brand-pill-height: 2.3rem;
 		--brand-pill-pad-x: 1rem;

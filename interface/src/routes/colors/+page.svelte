@@ -430,7 +430,7 @@
 								id="bogey-color"
 								type="button"
 								aria-label="Bogey counter color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bogey)}"
 								onclick={() => openPicker('bogey', 'Bogey Counter')}
 							></button>
@@ -457,7 +457,7 @@
 								id="freq-color"
 								type="button"
 								aria-label="Frequency display color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.freq)}"
 								onclick={() => openPicker('freq', 'Frequency Display')}
 								disabled={colors.freqUseBandColor}
@@ -498,7 +498,7 @@
 							id="muted-color"
 							type="button"
 							aria-label="Muted alert color"
-							class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+							class="color-swatch-btn lg"
 							style="background-color: {rgb565ToHex(colors.muted)}"
 							onclick={() => openPicker('muted', 'Muted Alert')}
 						></button>
@@ -528,7 +528,7 @@
 							id="persisted-color"
 							type="button"
 							aria-label="Persisted alert color"
-							class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+							class="color-swatch-btn lg"
 							style="background-color: {rgb565ToHex(colors.persisted)}"
 							onclick={() => openPicker('persisted', 'Persisted Alert')}
 						></button>
@@ -559,7 +559,7 @@
 								id="volumeMain-color"
 								type="button"
 								aria-label="Main volume color"
-								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn sm"
 								style="background-color: {rgb565ToHex(colors.volumeMain)}"
 								onclick={() => openPicker('volumeMain', 'Main Volume')}
 							></button>
@@ -585,7 +585,7 @@
 								id="volumeMute-color"
 								type="button"
 								aria-label="Mute volume color"
-								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn sm"
 								style="background-color: {rgb565ToHex(colors.volumeMute)}"
 								onclick={() => openPicker('volumeMute', 'Mute Volume')}
 							></button>
@@ -616,7 +616,7 @@
 								id="rssiV1-color"
 								type="button"
 								aria-label="V1 RSSI label color"
-								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn sm"
 								style="background-color: {rgb565ToHex(colors.rssiV1)}"
 								onclick={() => openPicker('rssiV1', 'V1 RSSI Label')}
 							></button>
@@ -643,7 +643,7 @@
 								id="rssiProxy-color"
 								type="button"
 								aria-label="Proxy RSSI label color"
-								class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn sm"
 								style="background-color: {rgb565ToHex(colors.rssiProxy)}"
 								onclick={() => openPicker('rssiProxy', 'Proxy RSSI Label')}
 							></button>
@@ -679,7 +679,7 @@
 								id="bandL-color"
 								type="button"
 								aria-label="Laser band color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bandL)}"
 								onclick={() => openPicker('bandL', 'Laser Band')}
 							></button>
@@ -705,7 +705,7 @@
 								id="bandKa-color"
 								type="button"
 								aria-label="Ka band color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bandKa)}"
 								onclick={() => openPicker('bandKa', 'Ka Band')}
 							></button>
@@ -731,7 +731,7 @@
 								id="bandK-color"
 								type="button"
 								aria-label="K band color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bandK)}"
 								onclick={() => openPicker('bandK', 'K Band')}
 							></button>
@@ -757,7 +757,7 @@
 								id="bandX-color"
 								type="button"
 								aria-label="X band color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bandX)}"
 								onclick={() => openPicker('bandX', 'X Band')}
 							></button>
@@ -784,7 +784,7 @@
 								id="band-photo-color"
 								type="button"
 								aria-label="Photo radar band color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.bandPhoto)}"
 								onclick={() => openPicker('bandPhoto', 'Photo Radar Band')}
 							></button>
@@ -819,7 +819,7 @@
 								id="arrow-front-color"
 								type="button"
 								aria-label="Front arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.arrowFront)}"
 								onclick={() => openPicker('arrowFront', 'Front Arrow')}
 							></button>
@@ -845,7 +845,7 @@
 								id="arrow-side-color"
 								type="button"
 								aria-label="Side arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.arrowSide)}"
 								onclick={() => openPicker('arrowSide', 'Side Arrows')}
 							></button>
@@ -871,7 +871,7 @@
 								id="arrow-rear-color"
 								type="button"
 								aria-label="Rear arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.arrowRear)}"
 								onclick={() => openPicker('arrowRear', 'Rear Arrow')}
 							></button>
@@ -907,7 +907,7 @@
 								id="camera-token-color"
 								type="button"
 								aria-label="Camera token color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.cameraToken)}"
 								onclick={() => openPicker('cameraToken', 'Camera Token')}
 							></button>
@@ -933,7 +933,7 @@
 								id="camera-arrow-color"
 								type="button"
 								aria-label="Camera arrow color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.cameraArrow)}"
 								onclick={() => openPicker('cameraArrow', 'Camera Arrow')}
 							></button>
@@ -959,7 +959,7 @@
 								id="lockout-color"
 								type="button"
 								aria-label="Lockout badge color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.lockout)}"
 								onclick={() => openPicker('lockout', 'Lockout Badge')}
 							></button>
@@ -985,7 +985,7 @@
 								id="gps-color"
 								type="button"
 								aria-label="GPS badge color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.gps)}"
 								onclick={() => openPicker('gps', 'GPS Badge')}
 							></button>
@@ -1011,7 +1011,7 @@
 								id="obd-color"
 								type="button"
 								aria-label="OBD badge color"
-								class="w-10 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn md"
 								style="background-color: {rgb565ToHex(colors.obd)}"
 								onclick={() => openPicker('obd', 'OBD Badge')}
 							></button>
@@ -1047,7 +1047,7 @@
 								id="wifiConnected-color"
 								type="button"
 								aria-label="WiFi connected color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.wifiConnected)}"
 								onclick={() => openPicker('wifiConnected', 'WiFi Connected')}
 							></button>
@@ -1073,7 +1073,7 @@
 								id="wifiIcon-color"
 								type="button"
 								aria-label="WiFi icon color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.wifiIcon)}"
 								onclick={() => openPicker('wifiIcon', 'WiFi (No Client)')}
 							></button>
@@ -1102,7 +1102,7 @@
 								id="bleConnected-color"
 								type="button"
 								aria-label="Bluetooth connected color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bleConnected)}"
 								onclick={() => openPicker('bleConnected', 'Proxy Connected')}
 							></button>
@@ -1128,7 +1128,7 @@
 								id="bleDisconnected-color"
 								type="button"
 								aria-label="BLE proxy ready color"
-								class="w-12 h-10 cursor-pointer rounded border-2 border-base-300"
+								class="color-swatch-btn lg"
 								style="background-color: {rgb565ToHex(colors.bleDisconnected)}"
 								onclick={() => openPicker('bleDisconnected', 'Proxy Ready')}
 							></button>
@@ -1314,7 +1314,7 @@
 									id={barId}
 									type="button"
 									aria-label="Signal bar {barNum} color"
-									class="w-10 h-8 cursor-pointer rounded border-2 border-base-300"
+									class="color-swatch-btn sm"
 									style="background-color: {rgb565ToHex(colors[barKey])}"
 									onclick={() => openPicker(barKey, `Signal Bar ${barNum}`)}
 								></button>
