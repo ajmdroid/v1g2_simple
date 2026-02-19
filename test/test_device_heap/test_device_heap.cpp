@@ -15,10 +15,27 @@
 #include <unity.h>
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include "../device_test_reset.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+static void initSerialForTests(const char* suiteName) {
+    Serial.begin(115200);
+
+    const unsigned long startMs = millis();
+    while (!Serial && (millis() - startMs) < 5000) {
+        delay(10);
+    }
+
+    delay(250);
+    Serial.printf("\n[%s] serial_ready=%d uptime=%lu ms free_heap=%lu\n",
+                  suiteName,
+                  Serial ? 1 : 0,
+                  (unsigned long)millis(),
+                  (unsigned long)ESP.getFreeHeap());
+}
 
 static uint32_t internalFree() {
     return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -236,7 +253,8 @@ void test_heap_largest_block_lte_free_size() {
 // ===========================================================================
 
 void setup() {
-    delay(3000);  // USB CDC settle time
+    if (deviceTestSetup("test_device_heap")) return;
+    Serial.println("  Device Heap / Memory Tests");
     UNITY_BEGIN();
 
     // Internal SRAM sanity
@@ -248,21 +266,18 @@ void setup() {
     RUN_TEST(test_heap_internal_alloc_free_no_leak);
     RUN_TEST(test_heap_spiram_alloc_free_no_leak);
 
-    // Fragmentation
-    RUN_TEST(test_heap_fragmentation_under_churn);
-
-    // Leak detection
-    RUN_TEST(test_heap_repeated_alloc_free_no_cumulative_leak);
-
-    // OOM resilience
-    RUN_TEST(test_heap_oom_returns_null_not_crash);
-    RUN_TEST(test_heap_near_oom_alloc_and_recover);
-
     // API consistency
     RUN_TEST(test_heap_free_size_monotonic_with_alloc);
     RUN_TEST(test_heap_largest_block_lte_free_size);
 
+    // Stress cases moved to test_device_heap_stress so quick/device runs stay
+    // connectivity-safe on fragile hardware.
+    Serial.println("  [heap] stress tests skipped (use test_device_heap_stress)");
+
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

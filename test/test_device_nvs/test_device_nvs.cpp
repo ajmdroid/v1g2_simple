@@ -17,6 +17,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <nvs_flash.h>
+#include "../device_test_reset.h"
 
 // Use a test-only namespace to avoid corrupting real settings
 static constexpr const char* TEST_NS_A = "v1test_a";
@@ -354,7 +355,7 @@ void test_nvs_has_free_entries() {
 // ===========================================================================
 
 void setup() {
-    delay(3000);  // USB CDC settle time
+    if (deviceTestSetup("test_device_nvs")) return;
     UNITY_BEGIN();
 
     // Basic round-trip
@@ -392,6 +393,9 @@ void setup() {
     RUN_TEST(test_nvs_has_free_entries);
 
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

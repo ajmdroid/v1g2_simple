@@ -19,6 +19,7 @@
 #include <esp_adc/adc_oneshot.h>
 #include <freertos/semphr.h>
 #include <esp_task_wdt.h>
+#include "../device_test_reset.h"
 
 // GPIO definitions from battery_manager.h
 static constexpr int BATTERY_ADC_GPIO   = 4;
@@ -213,7 +214,7 @@ void test_battery_voltage_to_percent_on_device() {
 // ===========================================================================
 
 void setup() {
-    delay(3000);
+    if (deviceTestSetup("test_device_battery")) return;
 
     // Watchdog: auto-reboot if any I2C operation hangs for 10s
     esp_task_wdt_config_t wdt_config = {
@@ -246,6 +247,9 @@ void setup() {
 
     UNITY_END();
     esp_task_wdt_delete(NULL);
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

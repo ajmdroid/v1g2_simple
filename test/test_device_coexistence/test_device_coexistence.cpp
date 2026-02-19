@@ -23,6 +23,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include "../device_test_reset.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -208,7 +209,7 @@ void test_coex_wifi_repeated_start_stop_no_leak() {
 // ===========================================================================
 
 void setup() {
-    delay(2000);
+    if (deviceTestSetup("test_device_coexistence")) return;
 
     WiFi.mode(WIFI_OFF);
     delay(500);
@@ -224,6 +225,9 @@ void setup() {
     RUN_TEST(test_coex_wifi_repeated_start_stop_no_leak);
 
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

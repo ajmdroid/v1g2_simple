@@ -18,6 +18,7 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include "../device_test_reset.h"
 
 void setUp() {}
 void tearDown() {}
@@ -320,7 +321,7 @@ void test_vtask_delay_approximately_correct() {
 // ===========================================================================
 
 void setup() {
-    delay(2000);
+    if (deviceTestSetup("test_device_freertos")) return;
     UNITY_BEGIN();
 
     // Queue basics
@@ -348,6 +349,9 @@ void setup() {
     RUN_TEST(test_vtask_delay_approximately_correct);
 
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

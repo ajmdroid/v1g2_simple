@@ -20,6 +20,7 @@ __MACOSX/
 *.log
 !test/fixtures/debug_base_stable.log
 artifacts/
+.artifacts/
 
 # Font files (source fonts, converted to headers)
 /*.ttf

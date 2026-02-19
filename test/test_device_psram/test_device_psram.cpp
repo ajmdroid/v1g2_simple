@@ -16,6 +16,7 @@
 #include <unity.h>
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include "../device_test_reset.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,7 +246,7 @@ void test_psram_write_speed_sanity() {
 // ===========================================================================
 
 void setup() {
-    delay(3000);  // USB CDC settle time
+    if (deviceTestSetup("test_device_psram")) return;
     UNITY_BEGIN();
 
     RUN_TEST(test_psram_detected);
@@ -262,6 +263,9 @@ void setup() {
     RUN_TEST(test_psram_write_speed_sanity);
 
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}

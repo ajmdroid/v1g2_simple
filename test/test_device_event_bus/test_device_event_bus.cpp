@@ -24,6 +24,7 @@
 
 // Include the real SystemEventBus (header-only, uses portMUX on device)
 #include "../../src/modules/system/system_event_bus.h"
+#include "../device_test_reset.h"
 
 static SystemEventBus bus;
 
@@ -331,7 +332,7 @@ void test_device_bus_dual_producer_no_corruption() {
 // ===========================================================================
 
 void setup() {
-    delay(2000);
+    if (deviceTestSetup("test_device_event_bus")) return;
     UNITY_BEGIN();
 
     // Single-core basics
@@ -351,6 +352,9 @@ void setup() {
     RUN_TEST(test_device_bus_dual_producer_no_corruption);
 
     UNITY_END();
+    deviceTestFinish();
 }
 
-void loop() {}
+void loop() {
+    delay(100);  // Keep USB CDC alive after post-test reboot
+}
