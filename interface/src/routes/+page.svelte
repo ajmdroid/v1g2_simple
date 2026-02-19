@@ -136,7 +136,7 @@
 
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-sm">Valentine One</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
@@ -150,7 +150,7 @@
 		</div>
 
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-sm">WiFi</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
@@ -168,7 +168,7 @@
 		</div>
 
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-sm">Uptime</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
@@ -184,7 +184,7 @@
 		</div>
 
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-sm">Alerts</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
@@ -201,7 +201,7 @@
 		</div>
 
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-sm">GPS</h2>
 				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>

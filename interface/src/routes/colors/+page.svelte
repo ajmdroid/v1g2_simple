@@ -399,7 +399,7 @@
 	{:else}
 		<!-- Display Style -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Display Style</h2>
 				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
 				<div class="form-control">
@@ -418,7 +418,7 @@
 
 		<!-- Counter & Frequency -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Counter & Frequency</h2>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
@@ -667,7 +667,7 @@
 		
 		<!-- Band Indicators -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Band Indicators</h2>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="form-control">
@@ -807,7 +807,7 @@
 		
 		<!-- Direction Arrows -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Direction Arrows</h2>
 				<div class="grid grid-cols-3 gap-4">
 					<div class="form-control">
@@ -894,7 +894,7 @@
 
 		<!-- Camera, Lockout, GPS & OBD -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Camera, Lockout, GPS & OBD</h2>
 				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
 				<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1034,7 +1034,7 @@
 		
 		<!-- Status Indicators -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Status Indicators</h2>
 				
 				<div class="grid grid-cols-2 gap-4">
@@ -1275,7 +1275,7 @@
 		
 		<!-- Display Brightness -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Display Brightness</h2>
 				<p class="text-xs text-base-content/50 mb-2">Adjust the AMOLED screen brightness (0-255)</p>
 				<div class="form-control">
@@ -1298,7 +1298,7 @@
 		
 		<!-- Signal Bars -->
 		<div class="surface-card">
-			<div class="card-body p-4">
+			<div class="card-body">
 				<h2 class="card-title text-lg">Signal Bars</h2>
 				<p class="text-xs text-base-content/50 mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
 				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
