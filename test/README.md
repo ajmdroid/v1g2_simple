@@ -23,6 +23,40 @@ pio test -e native --filter test_packet_parser
 pio test -e native --filter test_drive_scenario
 ```
 
+## Device Test Suite
+
+Hardware-specific tests that find memory, coexistence, and concurrency issues
+before production. Requires ESP32-S3 connected via USB.
+
+```bash
+# All device-only suites (boot → heap → PSRAM → RTOS → NVS → battery → radio)
+./scripts/run_device_tests.sh
+
+# Quick sanity (boot + heap only)
+./scripts/run_device_tests.sh --quick
+
+# Full run (device suites + shared native suites on hardware)
+./scripts/run_device_tests.sh --full
+
+# Individual suite
+pio test -e device --filter test_device_heap
+```
+
+### Device Suites
+
+| Suite | Category | What it catches |
+|-------|----------|-----------------|
+| `test_device_boot` | Core / System | Post-boot baseline, CPU/PSRAM detection, flash/partition |
+| `test_device_heap` | Core / Memory | Internal SRAM leaks, fragmentation, OOM resilience |
+| `test_device_psram` | Core / Memory | PSRAM detection, 4 MB pattern-verify, write-speed sanity |
+| `test_device_freertos` | Core / RTOS | Queue overflow, semaphore, cross-task communication |
+| `test_device_event_bus` | Core / Concurrency | SystemEventBus under real portMUX across cores |
+| `test_device_nvs` | Dependent / Persistence | NVS write/read round-trip, namespace A/B, XOR obfuscation |
+| `test_device_battery` | Dependent / Hardware | ADC sampling, TCA9554 I2C, power latch, button GPIO |
+| `test_device_coexistence` | Dependent / Radio | WiFi AP heap cost, DMA gate, BLE+WiFi simultaneous |
+
+See [device/README.md](device/README.md) for detailed documentation.
+
 ## Functional Test Gate
 
 Use `./scripts/run_functional_tests.sh` when you want behavior-level coverage
@@ -44,6 +78,8 @@ Each run writes machine-readable reports to:
 
 ```
 test/
+├── device/              # Device test documentation
+│   └── README.md
 ├── fixtures/            # Real-world logs, packet captures, and replay data
 ├── mocks/               # Mock headers for ESP32/Arduino types
 │   ├── Arduino.h        # Basic Arduino types
@@ -51,6 +87,14 @@ test/
 │   ├── settings.h       # Settings manager mock
 │   ├── external_deps.h  # BLE/GPS/Battery manager mocks
 │   └── freertos/        # FreeRTOS stubs
+├── test_device_boot/    # [DEVICE] System baseline + chip detection
+├── test_device_heap/    # [DEVICE] Heap fragmentation + leak detection
+├── test_device_psram/   # [DEVICE] PSRAM integrity + write speed
+├── test_device_freertos/ # [DEVICE] Queue/semaphore/cross-task
+├── test_device_event_bus/ # [DEVICE] Event bus concurrency
+├── test_device_nvs/     # [DEVICE] NVS persistence round-trip
+├── test_device_battery/ # [DEVICE] ADC + I2C hardware
+├── test_device_coexistence/ # [DEVICE] BLE/WiFi radio coexistence
 ├── test_alert_persistence/
 ├── test_display/        # Display system torture tests
 ├── test_drive_scenario/ # Replay-driven integration tests
@@ -60,15 +104,14 @@ test/
 └── README.md
 ```
 
-## Current Baseline (Verified 2026-02-16)
+## Current Baseline (Verified 2026-02-18)
 
-| Metric | Value |
-|--------|-------|
-| Environment | `native` |
-| Test suites | 32 |
-| Test cases | 563 |
-| Result | ✅ 563 passed |
-| Command | `pio test -e native` |
+| Metric | Native | Device |
+|--------|--------|--------|
+| Test suites | 48 | 8 (device-only) |
+| Test cases | 771 | ~90 |
+| Result | ✅ 771 passed | Compile-verified |
+| Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
 
 ## Display Torture Test Categories
 

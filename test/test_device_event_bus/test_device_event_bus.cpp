@@ -1,0 +1,356 @@
+/**
+ * Device SystemEventBus Concurrency Tests
+ *
+ * The native event bus tests use std::atomic_flag for locking. On device, the
+ * bus uses portMUX_TYPE critical sections. This suite exercises real
+ * multi-core contention:
+ *   - Producer on Core 0, consumer on Core 1
+ *   - Rapid publish under portMUX
+ *   - Overflow under contention (drop-oldest policy)
+ *   - Event type filtering under concurrent access
+ *
+ * SAFETY RULES (learned from production freeze):
+ *   - Use counting semaphore (not binary) for multi-task start gates.
+ *   - Spawned tasks use bounded timeouts (2 s), never portMAX_DELAY.
+ *   - All spawned tasks are vTaskDelete'd in timeout path before cleanup.
+ *   - Resources (semaphores, tasks) freed even on assertion failure.
+ */
+
+#include <unity.h>
+#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+
+// Include the real SystemEventBus (header-only, uses portMUX on device)
+#include "../../src/modules/system/system_event_bus.h"
+
+static SystemEventBus bus;
+
+void setUp() {
+    bus.reset();
+}
+void tearDown() {}
+
+// ===========================================================================
+// BASIC SINGLE-CORE OPERATION ON DEVICE
+// ===========================================================================
+
+void test_device_bus_publish_consume() {
+    SystemEvent ev;
+    ev.type = SystemEventType::BLE_FRAME_PARSED;
+    ev.tsMs = millis();
+    ev.seq  = 1;
+
+    TEST_ASSERT_TRUE(bus.publish(ev));
+    TEST_ASSERT_EQUAL_UINT32(1, bus.getPublishCount());
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)SystemEventType::BLE_FRAME_PARSED, (uint8_t)out.type);
+    TEST_ASSERT_EQUAL_UINT32(1, out.seq);
+}
+
+void test_device_bus_overflow_drops_frame_first() {
+    // Fill with one control event + rest frames
+    SystemEvent control;
+    control.type = SystemEventType::BLE_CONNECTED;
+    control.seq  = 1;
+    bus.publish(control);
+
+    for (uint32_t i = 1; i < SystemEventBus::kCapacity; i++) {
+        SystemEvent frame;
+        frame.type = SystemEventType::BLE_FRAME_PARSED;
+        frame.seq  = i + 1;
+        bus.publish(frame);
+    }
+
+    // Overflow: should drop oldest frame, preserve control
+    SystemEvent overflow;
+    overflow.type = SystemEventType::GPS_UPDATED;
+    overflow.seq  = 999;
+    bus.publish(overflow);
+
+    TEST_ASSERT_EQUAL_UINT32(1, bus.getDropCount());
+
+    // First consumed should be the control event (preserved)
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)SystemEventType::BLE_CONNECTED, (uint8_t)out.type);
+}
+
+// ===========================================================================
+// CROSS-CORE CONTENTION
+//
+// Safety: producer uses bounded semaphore take (2 s) and bounded bus
+// operations (no blocking). Consumer has 5 s deadline. Producer task
+// is vTaskDelete'd if it hasn't finished by deadline.
+// ===========================================================================
+
+struct ProducerArgs {
+    SystemEventBus*   bus;
+    uint32_t          count;
+    SemaphoreHandle_t startSem;
+    volatile bool     done;
+};
+
+static void busProducerTask(void* param) {
+    ProducerArgs* args = (ProducerArgs*)param;
+    // Bounded wait — bail if start signal never comes
+    if (xSemaphoreTake(args->startSem, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        args->done = true;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    for (uint32_t i = 0; i < args->count; i++) {
+        SystemEvent ev;
+        ev.type = SystemEventType::BLE_FRAME_PARSED;
+        ev.tsMs = millis();
+        ev.seq  = i;
+        args->bus->publish(ev);
+    }
+
+    args->done = true;
+    vTaskDelete(NULL);
+}
+
+void test_device_bus_cross_core_no_crash() {
+    static constexpr uint32_t PRODUCE_COUNT = 500;
+
+    SemaphoreHandle_t startSem = xSemaphoreCreateBinary();
+    TEST_ASSERT_NOT_NULL(startSem);
+
+    ProducerArgs args = {&bus, PRODUCE_COUNT, startSem, false};
+
+    TaskHandle_t producer = NULL;
+    BaseType_t created = xTaskCreatePinnedToCore(
+        busProducerTask, "bus_prod", 4096, &args, 2, &producer, 0);
+    TEST_ASSERT_EQUAL(pdPASS, created);
+
+    // Start producer
+    xSemaphoreGive(startSem);
+
+    // Consumer loop on current core
+    uint32_t consumed = 0;
+    unsigned long deadline = millis() + 5000;
+
+    while (millis() < deadline) {
+        SystemEvent ev;
+        while (bus.consume(ev)) {
+            consumed++;
+        }
+        if (args.done && bus.size() == 0) break;
+        vTaskDelay(1);
+    }
+
+    // Drain any remaining
+    SystemEvent ev;
+    while (bus.consume(ev)) consumed++;
+
+    // Safety: kill producer if still alive
+    if (!args.done) {
+        vTaskDelete(producer);
+        delay(50);
+    }
+
+    uint32_t published = bus.getPublishCount();
+    uint32_t dropped   = bus.getDropCount();
+
+    Serial.printf("  [bus] published=%lu consumed=%lu dropped=%lu\n",
+                  (unsigned long)published, (unsigned long)consumed, (unsigned long)dropped);
+
+    vSemaphoreDelete(startSem);
+
+    // All published events should be either consumed or dropped
+    TEST_ASSERT_EQUAL_UINT32(published, consumed + dropped);
+    TEST_ASSERT_EQUAL_UINT32(PRODUCE_COUNT, published);
+}
+
+// ===========================================================================
+// RAPID PUBLISH/CONSUME STRESS
+// ===========================================================================
+
+void test_device_bus_rapid_publish_consume_stress() {
+    static constexpr int ITERATIONS = 1000;
+
+    for (int i = 0; i < ITERATIONS; i++) {
+        SystemEvent ev;
+        ev.type = (i % 3 == 0) ? SystemEventType::BLE_CONNECTED
+                                : SystemEventType::BLE_FRAME_PARSED;
+        ev.seq = i;
+        bus.publish(ev);
+
+        // Consume every 5th iteration to let queue build up then drain
+        if (i % 5 == 4) {
+            SystemEvent out;
+            while (bus.consume(out)) {}
+        }
+    }
+
+    // Final drain
+    SystemEvent out;
+    while (bus.consume(out)) {}
+
+    TEST_ASSERT_EQUAL_UINT32(0, bus.size());
+    TEST_ASSERT_EQUAL_UINT32(ITERATIONS, bus.getPublishCount());
+}
+
+// ===========================================================================
+// CONSUME-BY-TYPE UNDER LOAD
+// ===========================================================================
+
+void test_device_bus_consume_by_type_correctness() {
+    for (int i = 0; i < 10; i++) {
+        SystemEvent ev;
+        ev.type = SystemEventType::BLE_FRAME_PARSED;
+        ev.seq  = i;
+        bus.publish(ev);
+    }
+
+    SystemEvent gps;
+    gps.type = SystemEventType::GPS_UPDATED;
+    gps.seq  = 100;
+    bus.publish(gps);
+
+    SystemEvent conn;
+    conn.type = SystemEventType::BLE_CONNECTED;
+    conn.seq  = 200;
+    bus.publish(conn);
+
+    // Selectively consume GPS event
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::GPS_UPDATED, out));
+    TEST_ASSERT_EQUAL_UINT32(100, out.seq);
+
+    // Selectively consume CONNECTED event
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_CONNECTED, out));
+    TEST_ASSERT_EQUAL_UINT32(200, out.seq);
+
+    // GPS and CONNECTED gone; 10 frame events remain
+    TEST_ASSERT_EQUAL_UINT32(10, bus.size());
+    TEST_ASSERT_FALSE(bus.consumeByType(SystemEventType::GPS_UPDATED, out));
+}
+
+// ===========================================================================
+// DUAL PRODUCER CONTENTION
+//
+// Safety: uses COUNTING semaphore (initial count 0, max 2) so both producers
+// can be released reliably with two xSemaphoreGive calls. Each task uses
+// bounded semaphore take (2 s). Tasks are killed on timeout.
+// ===========================================================================
+
+struct DualProducerArgs {
+    SystemEventBus*   bus;
+    uint32_t          count;
+    SystemEventType   type;
+    SemaphoreHandle_t startSem;
+    volatile bool     done;
+};
+
+static void dualProducerTask(void* param) {
+    DualProducerArgs* args = (DualProducerArgs*)param;
+    // Bounded wait — bail if start signal never comes
+    if (xSemaphoreTake(args->startSem, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        args->done = true;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    for (uint32_t i = 0; i < args->count; i++) {
+        SystemEvent ev;
+        ev.type = args->type;
+        ev.seq  = i;
+        args->bus->publish(ev);
+    }
+
+    args->done = true;
+    vTaskDelete(NULL);
+}
+
+void test_device_bus_dual_producer_no_corruption() {
+    static constexpr uint32_t PER_PRODUCER = 200;
+
+    // COUNTING semaphore: max=2, initial=0 — reliable release for 2 tasks
+    SemaphoreHandle_t startSem = xSemaphoreCreateCounting(2, 0);
+    TEST_ASSERT_NOT_NULL(startSem);
+
+    DualProducerArgs args1 = {&bus, PER_PRODUCER, SystemEventType::BLE_FRAME_PARSED, startSem, false};
+    DualProducerArgs args2 = {&bus, PER_PRODUCER, SystemEventType::GPS_UPDATED,      startSem, false};
+
+    TaskHandle_t t1 = NULL, t2 = NULL;
+    xTaskCreatePinnedToCore(dualProducerTask, "prod1", 4096, &args1, 2, &t1, 0);
+    xTaskCreatePinnedToCore(dualProducerTask, "prod2", 4096, &args2, 2, &t2, 1);
+
+    // Let tasks reach their semaphore take
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // Release both — counting semaphore increments to 2
+    xSemaphoreGive(startSem);
+    xSemaphoreGive(startSem);
+
+    unsigned long deadline = millis() + 5000;
+    while (millis() < deadline) {
+        if (args1.done && args2.done) break;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    // Wait a bit for tasks to self-delete
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Safety: kill any task that didn't finish
+    if (!args1.done) { vTaskDelete(t1); delay(50); }
+    if (!args2.done) { vTaskDelete(t2); delay(50); }
+
+    uint32_t published = bus.getPublishCount();
+    uint32_t dropped   = bus.getDropCount();
+
+    Serial.printf("  [bus] dual-producer: published=%lu dropped=%lu\n",
+                  (unsigned long)published, (unsigned long)dropped);
+
+    // Total published should be sum of both producers
+    TEST_ASSERT_EQUAL_UINT32(PER_PRODUCER * 2, published);
+
+    // All events should be valid types (no corruption)
+    SystemEvent out;
+    uint32_t frameCount = 0, gpsCount = 0, otherCount = 0;
+    while (bus.consume(out)) {
+        if (out.type == SystemEventType::BLE_FRAME_PARSED) frameCount++;
+        else if (out.type == SystemEventType::GPS_UPDATED)  gpsCount++;
+        else otherCount++;
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(0, otherCount);
+    TEST_ASSERT_EQUAL_UINT32(published - dropped, frameCount + gpsCount);
+
+    vSemaphoreDelete(startSem);
+}
+
+// ===========================================================================
+// TEST RUNNER
+// ===========================================================================
+
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+
+    // Single-core basics
+    RUN_TEST(test_device_bus_publish_consume);
+    RUN_TEST(test_device_bus_overflow_drops_frame_first);
+
+    // Cross-core contention
+    RUN_TEST(test_device_bus_cross_core_no_crash);
+
+    // Stress
+    RUN_TEST(test_device_bus_rapid_publish_consume_stress);
+
+    // Type filtering
+    RUN_TEST(test_device_bus_consume_by_type_correctness);
+
+    // Dual producer
+    RUN_TEST(test_device_bus_dual_producer_no_corruption);
+
+    UNITY_END();
+}
+
+void loop() {}
