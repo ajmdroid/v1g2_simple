@@ -65,6 +65,11 @@ echo -e "${GREEN}✅ Web files deployed${NC}"
 
 cd "$ROOT_DIR"
 
+# Step 2b: Web packaging guardrails
+echo -e "${YELLOW}🔒 Checking web asset guardrails...${NC}"
+python3 scripts/check_web_asset_budget.py
+echo -e "${GREEN}✅ Web asset guardrails pass${NC}"
+
 # Step 3: Build firmware
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
 pio run -e waveshare-349

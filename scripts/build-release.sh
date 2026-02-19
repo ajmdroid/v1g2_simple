@@ -21,7 +21,15 @@ cd ..
 echo "🔊 Staging audio assets for LittleFS..."
 mkdir -p data/audio
 if ls tools/freq_audio/mulaw/*.mul 1>/dev/null 2>&1; then
-  cp tools/freq_audio/mulaw/*.mul data/audio/
+  # ghz_*.mul clips are legacy duplicates; runtime now uses tens_XX for GHz tokens.
+  for src in tools/freq_audio/mulaw/*.mul; do
+    [ -e "$src" ] || continue
+    base="$(basename "$src")"
+    case "$base" in
+      ghz_*.mul) continue ;;
+    esac
+    cp "$src" data/audio/
+  done
 fi
 if ls tools/camera_audio/cam_*.mul 1>/dev/null 2>&1; then
   cp tools/camera_audio/cam_*.mul data/audio/
