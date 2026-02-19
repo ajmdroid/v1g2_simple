@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	let settings = $state({
@@ -162,8 +163,10 @@
 		<!-- Voice Alerts -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Voice Alerts</h2>
-				<p class="copy-faint mb-4">Speak alert information through the built-in speaker when no phone app is connected</p>
+				<CardSectionHead
+					title="Voice Alerts"
+					subtitle="Speak alert information through the built-in speaker when no phone app is connected."
+				/>
 				
 				<div class="space-y-4">
 					<!-- Voice Content Mode Dropdown -->
@@ -245,8 +248,10 @@
 		<!-- Secondary Alerts -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Secondary Alert Announcements</h2>
-				<p class="copy-faint mb-4">Optionally announce non-priority alerts (lower bars) after priority stabilizes</p>
+				<CardSectionHead
+					title="Secondary Alert Announcements"
+					subtitle="Optionally announce non-priority alerts (lower bars) after priority stabilizes."
+				/>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -322,8 +327,10 @@
 		<!-- Volume Fade -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">V1 Volume Fade</h2>
-				<p class="copy-faint mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
+				<CardSectionHead
+					title="V1 Volume Fade"
+					subtitle="Reduce V1 volume after initial alert period (doesn't affect muted alerts)."
+				/>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -394,8 +401,10 @@
 		<!-- Speed-Based Volume -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Speed-Based Volume</h2>
-				<p class="copy-subtle">Boost V1 volume at highway speeds (requires an external speed source)</p>
+				<CardSectionHead
+					title="Speed-Based Volume"
+					subtitle="Boost V1 volume at highway speeds (requires an external speed source)."
+				/>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -466,8 +475,10 @@
 		<!-- Low-Speed Mute -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Low-Speed Mute</h2>
-				<p class="copy-subtle">Suppress voice at low speeds (parking lots, drive-thrus)</p>
+				<CardSectionHead
+					title="Low-Speed Mute"
+					subtitle="Suppress voice at low speeds (parking lots, drive-thrus)."
+				/>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -525,7 +536,10 @@
 		<!-- Speaker Volume -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Speaker Volume</h2>
+				<CardSectionHead
+					title="Speaker Volume"
+					subtitle="Tune Waveshare ES8311 output level for local voice playback."
+				/>
 				
 				<div class="form-control">
 					<label class="label" for="voice-volume-slider">
@@ -552,7 +566,7 @@
 		<!-- Info Card -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">How It Works</h2>
+				<CardSectionHead title="How It Works" />
 				<ul class="copy-subtle space-y-2 list-disc list-inside">
 					<li>Voice alerts only play when <strong>no phone app</strong> is connected via BLE proxy</li>
 					<li>New alert: full announcement based on your content settings</li>
