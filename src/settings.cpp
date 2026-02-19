@@ -158,7 +158,7 @@ void SettingsManager::load() {
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
-    settings.obdEnabled = preferences.getBool("obdEn", true);
+    settings.obdEnabled = preferences.getBool("obdEn", false);
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
     settings.cameraEnabled = preferences.getBool("camEn", true);
@@ -235,7 +235,7 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
-    settings.showRestTelemetryCards = preferences.getBool("restTelem", true);
+    settings.showRestTelemetryCards = preferences.getBool("restTelem", false);
     
     // Development settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);

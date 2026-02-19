@@ -45,7 +45,7 @@
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
-		showRestTelemetryCards: true,
+		showRestTelemetryCards: false,
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -374,7 +374,7 @@
 					hideBleIcon: false,
 					hideVolumeIndicator: false,
 					hideRssiIndicator: false,
-					showRestTelemetryCards: true
+					showRestTelemetryCards: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}

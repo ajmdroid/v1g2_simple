@@ -325,7 +325,7 @@ struct V1Settings {
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
-        obdEnabled(true),       // OBD integration enabled by default
+        obdEnabled(false),      // OBD integration disabled by default (opt-in)
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
         cameraEnabled(true),    // Camera defaults on for runtime/index preload
@@ -385,7 +385,7 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
-        showRestTelemetryCards(true), // Show resting OBD cards by default
+        showRestTelemetryCards(false), // Hide resting OBD cards by default (opt-in)
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
         enableSignalTraceLogging(true), // Keep diagnostic signal trace logging on by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
