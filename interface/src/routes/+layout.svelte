@@ -9,6 +9,8 @@
 	let warningDismissed = $state(false);
 	const DEFAULT_PASSWORD_CACHE_KEY = 'v1simple:isDefaultPassword';
 	const DEFAULT_PASSWORD_DISMISSED_KEY = 'passwordWarningDismissed';
+	const DEFAULT_PASSWORD_DISMISSED_PERSIST_KEY = 'v1simple:passwordWarningDismissedPersist';
+	const PASSWORD_WARNING_EVENT = 'v1simple-password-warning-dismissed-change';
 	const TIME_SYNC_CACHE_KEY = 'v1simple:lastTimeSyncMs';
 	const TIME_SYNC_MIN_INTERVAL_MS = 10 * 60 * 1000;
 	const navLinks = [
@@ -52,34 +54,64 @@
 			}).catch(() => {});
 		}, 300);
 	}
+
+	async function refreshDefaultPasswordWarning() {
+		try {
+			const res = await fetch('/api/settings');
+			if (!res.ok) return;
+			const data = await res.json();
+			const isDefaultPassword = data.isDefaultPassword === true;
+			showPasswordWarning = isDefaultPassword;
+			sessionStorage.setItem(DEFAULT_PASSWORD_CACHE_KEY, isDefaultPassword ? '1' : '0');
+		} catch (e) {
+			// Don't show warning on error.
+		}
+	}
 	
 	// Check if using default password on mount
 	onMount(() => {
 		scheduleClientTimeSync();
 
-		if (sessionStorage.getItem(DEFAULT_PASSWORD_DISMISSED_KEY)) {
-			warningDismissed = true;
-			return;
-		}
-
-		const cachedDefaultPassword = sessionStorage.getItem(DEFAULT_PASSWORD_CACHE_KEY);
-		if (cachedDefaultPassword !== null) {
-			showPasswordWarning = cachedDefaultPassword === '1';
-			return;
-		}
-
-		runWhenIdle(async () => {
-			try {
-				const res = await fetch('/api/settings');
-				if (!res.ok) return;
-				const data = await res.json();
-				const isDefaultPassword = data.isDefaultPassword === true;
-				showPasswordWarning = isDefaultPassword;
-				sessionStorage.setItem(DEFAULT_PASSWORD_CACHE_KEY, isDefaultPassword ? '1' : '0');
-			} catch (e) {
-				// Don't show warning on error.
+		const handlePasswordWarningPreferenceChange = (event) => {
+			const dismissed = event?.detail?.dismissed === true;
+			warningDismissed = dismissed;
+			if (dismissed) {
+				sessionStorage.setItem(DEFAULT_PASSWORD_DISMISSED_KEY, 'true');
+				return;
 			}
-		}, 600);
+
+			sessionStorage.removeItem(DEFAULT_PASSWORD_DISMISSED_KEY);
+			const cachedDefaultPassword = sessionStorage.getItem(DEFAULT_PASSWORD_CACHE_KEY);
+			if (cachedDefaultPassword !== null) {
+				showPasswordWarning = cachedDefaultPassword === '1';
+				return;
+			}
+			runWhenIdle(() => {
+				void refreshDefaultPasswordWarning();
+			}, 250);
+		};
+
+		window.addEventListener(PASSWORD_WARNING_EVENT, handlePasswordWarningPreferenceChange);
+
+		if (
+			sessionStorage.getItem(DEFAULT_PASSWORD_DISMISSED_KEY) ||
+			localStorage.getItem(DEFAULT_PASSWORD_DISMISSED_PERSIST_KEY) === '1'
+		) {
+			warningDismissed = true;
+		} else {
+			const cachedDefaultPassword = sessionStorage.getItem(DEFAULT_PASSWORD_CACHE_KEY);
+			if (cachedDefaultPassword !== null) {
+				showPasswordWarning = cachedDefaultPassword === '1';
+			} else {
+				runWhenIdle(() => {
+					void refreshDefaultPasswordWarning();
+				}, 600);
+			}
+		}
+
+		return () => {
+			window.removeEventListener(PASSWORD_WARNING_EVENT, handlePasswordWarningPreferenceChange);
+		};
 	});
 	
 	function dismissWarning() {

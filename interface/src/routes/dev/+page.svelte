@@ -4,6 +4,16 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let acknowledged = $state(false);
+	const DEV_WARNING_ACK_BYPASS_KEY = 'v1simple:devWarningAckBypass';
+	const PASSWORD_WARNING_DISMISSED_PERSIST_KEY = 'v1simple:passwordWarningDismissedPersist';
+	const PASSWORD_WARNING_DISMISSED_SESSION_KEY = 'passwordWarningDismissed';
+	const PASSWORD_WARNING_EVENT = 'v1simple-password-warning-dismissed-change';
+
+	let warningPreferences = $state({
+		hidePasswordWarningBanner: false,
+		hideDevWarningBanner: false
+	});
+
 	let settings = $state({
 		enableWifiAtBoot: false,
 		enableSignalTraceLogging: true
@@ -36,7 +46,42 @@
 		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 	};
 
+	function loadWarningPreferences() {
+		if (typeof window === 'undefined') return;
+		warningPreferences.hidePasswordWarningBanner = localStorage.getItem(PASSWORD_WARNING_DISMISSED_PERSIST_KEY) === '1';
+		warningPreferences.hideDevWarningBanner = localStorage.getItem(DEV_WARNING_ACK_BYPASS_KEY) === '1';
+		if (warningPreferences.hideDevWarningBanner) {
+			acknowledged = true;
+		}
+	}
+
+	function togglePasswordWarningPreference(enabled) {
+		warningPreferences.hidePasswordWarningBanner = enabled;
+		if (typeof window === 'undefined') return;
+		if (enabled) {
+			localStorage.setItem(PASSWORD_WARNING_DISMISSED_PERSIST_KEY, '1');
+			sessionStorage.setItem(PASSWORD_WARNING_DISMISSED_SESSION_KEY, 'true');
+		} else {
+			localStorage.removeItem(PASSWORD_WARNING_DISMISSED_PERSIST_KEY);
+			sessionStorage.removeItem(PASSWORD_WARNING_DISMISSED_SESSION_KEY);
+		}
+		window.dispatchEvent(new CustomEvent(PASSWORD_WARNING_EVENT, { detail: { dismissed: enabled } }));
+	}
+
+	function toggleDevWarningPreference(enabled) {
+		warningPreferences.hideDevWarningBanner = enabled;
+		if (typeof window !== 'undefined') {
+			if (enabled) {
+				localStorage.setItem(DEV_WARNING_ACK_BYPASS_KEY, '1');
+			} else {
+				localStorage.removeItem(DEV_WARNING_ACK_BYPASS_KEY);
+			}
+		}
+		acknowledged = enabled ? true : false;
+	}
+
 	onMount(async () => {
+		loadWarningPreferences();
 		await Promise.all([loadSettings(), loadPerfFiles()]);
 	});
 
@@ -228,28 +273,67 @@
 			<span class="loading loading-spinner loading-lg"></span>
 		</div>
 	{:else}
-		<!-- Warning Banner -->
-		<div class="surface-alert alert-warning warning-strong">
-			<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-			</svg>
-			<div class="flex-1">
-				<h3 class="font-bold">Warning: Advanced Settings</h3>
+		<div class="surface-card">
+			<div class="card-body">
+				<CardSectionHead title="Warning Acknowledgements" subtitle="Local browser toggles for warning banners." />
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Hide default password banner</span>
+							<p class="copy-caption-soft mt-1">Suppress the top security banner when default AP password is detected.</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={warningPreferences.hidePasswordWarningBanner}
+							onchange={(event) => togglePasswordWarningPreference(event.currentTarget.checked)}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Auto-accept development warning</span>
+							<p class="copy-caption-soft mt-1">Hide the advanced warning banner and keep dev controls unlocked.</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={warningPreferences.hideDevWarningBanner}
+							onchange={(event) => toggleDevWarningPreference(event.currentTarget.checked)}
+						/>
+					</label>
+				</div>
+				<p class="copy-micro">Stored in this browser.</p>
+			</div>
+		</div>
+
+		{#if !warningPreferences.hideDevWarningBanner}
+			<!-- Warning Banner -->
+			<div class="surface-alert alert-warning warning-strong">
+				<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+				</svg>
+				<div class="flex-1">
+					<h3 class="font-bold">Warning: Advanced Settings</h3>
 					<div class="copy-subtle">
 						These settings can cause instability or unexpected behavior. Only modify if you know what you're doing.
 					</div>
-				<div class="form-control mt-2">
-					<label class="label cursor-pointer justify-start gap-2">
-						<input 
-							type="checkbox" 
-							class="checkbox checkbox-warning" 
-							bind:checked={acknowledged}
-						/>
-						<span class="label-text font-semibold">I understand the risks</span>
-					</label>
+					<div class="form-control mt-2">
+						<label class="label cursor-pointer justify-start gap-2">
+							<input
+								type="checkbox"
+								class="checkbox checkbox-warning"
+								bind:checked={acknowledged}
+							/>
+							<span class="label-text font-semibold">I understand the risks</span>
+						</label>
+					</div>
 				</div>
 			</div>
-		</div>
+		{/if}
 
 		<!-- Message Display -->
 		{#if message}
