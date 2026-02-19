@@ -390,7 +390,10 @@
 	<!-- Current V1 Settings -->
 	<div class="surface-card">
 		<div class="card-body">
-			<CardSectionHead title="Current V1 Settings" />
+			<CardSectionHead
+				title="Current V1 Settings"
+				subtitle="Pull, edit, and push your detector configuration."
+			/>
 			{#if editingSettings && currentProfile?.name}
 				<div class="surface-alert alert-info text-sm">
 					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
@@ -415,30 +418,30 @@
 				<div class="space-y-3">
 					<!-- Band Detection Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">Band Detection</h3>
+						<h3 class="copy-mini-title">Band Detection</h3>
 						<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ka} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.ka} disabled={!editingSettings} />
 								<span>Ka Band</span>
 							</label>
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.k} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.k} disabled={!editingSettings} />
 								<span>K Band</span>
 							</label>
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.x} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.x} disabled={!editingSettings} />
 								<span>X Band</span>
 							</label>
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ku} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.ku} disabled={!editingSettings} />
 								<span>Ku Band</span>
 							</label>
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.laser} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.laser} disabled={!editingSettings} />
 								<span>Laser</span>
 							</label>
 							<label class="flex items-center gap-2">
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.euroMode} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.euroMode} disabled={!editingSettings} />
 								<span>Euro Mode</span>
 							</label>
 						</div>
@@ -446,7 +449,7 @@
 					
 					<!-- Sensitivity Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">Sensitivity</h3>
+						<h3 class="copy-mini-title">Sensitivity</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
 							<div class="flex items-center justify-between">
 								<span>Ka Sensitivity</span>
@@ -489,7 +492,7 @@
 					
 					<!-- Audio & Mute Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">Audio & Mute</h3>
+						<h3 class="copy-mini-title">Audio & Mute</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<div class="flex items-center justify-between">
 								<span>X, K, Ku Automute</span>
@@ -505,98 +508,98 @@
 							</div>
 							<label class="flex items-center justify-between">
 								<span>Bogey-Lock Loud</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.bogeyLockLoud} disabled={!editingSettings} />
 							</label>
 						</div>
 					</div>
 					
 					<!-- Laser Options Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">Laser Options</h3>
+						<h3 class="copy-mini-title">Laser Options</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>Rear Laser</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.laserRear} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.laserRear} disabled={!editingSettings} />
 							</label>
 							<label class="flex items-center justify-between">
 								<span>Fast Laser Detection</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.fastLaserDetect} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.fastLaserDetect} disabled={!editingSettings} />
 							</label>
 						</div>
 					</div>
 					
 					<!-- Logic & Filtering Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">Logic & Priority</h3>
+						<h3 class="copy-mini-title">Logic & Priority</h3>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>X&K Rear Mute in Logic</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.muteXKRear} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.muteXKRear} disabled={!editingSettings} />
 							</label>
 							<label class="flex items-center justify-between">
 								<span>Ka Always Radar Priority</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.kaAlwaysPriority} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.kaAlwaysPriority} disabled={!editingSettings} />
 							</label>
 							<label class="flex items-center justify-between">
 								<span>K-Verifier (TMF)</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.kVerifier} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.kVerifier} disabled={!editingSettings} />
 							</label>
 							<label class="flex items-center justify-between">
 								<span>BSM Plus</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.bsmPlus} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.bsmPlus} disabled={!editingSettings} />
 							</label>
 						</div>
 					</div>
 					
 					<!-- Display Section -->
 					<div class="surface-panel">
-						<h3 class="font-bold text-sm text-yellow-400 mb-2">V1 Display</h3>
+						<h3 class="copy-mini-title">V1 Display</h3>
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<label class="flex items-center justify-between">
 								<span>Startup Sequence</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.startupSequence} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.startupSequence} disabled={!editingSettings} />
 							</label>
 							<label class="flex items-center justify-between">
 								<span>Resting Display</span>
-								<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
+								<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.restingDisplay} disabled={!editingSettings} />
 							</label>
 						</div>
 					</div>
 					
 					<!-- Photo Radar Section (Collapsible) -->
 					<details class="surface-collapse">
-						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
+						<summary class="collapse-title font-semibold text-sm min-h-0 py-3">
 							Photo Radar
 						</summary>
 						<div class="collapse-content">
 							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
 								<label class="flex items-center justify-between">
 									<span>Photo Verifier</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.photoVerifier} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.photoVerifier} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>MRCT</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.mrct} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.mrct} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>DriveSafe™ 3D</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.driveSafe3D} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.driveSafe3D} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>DriveSafe™ 3DHD</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.driveSafe3DHD} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.driveSafe3DHD} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>Redflex® Halo</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.redflexHalo} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.redflexHalo} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>Redflex® NK7</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.redflexNK7} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.redflexNK7} disabled={!editingSettings} />
 								</label>
 								<label class="flex items-center justify-between">
 									<span>Ekin</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.ekin} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.ekin} disabled={!editingSettings} />
 								</label>
 							</div>
 						</div>
@@ -604,14 +607,14 @@
 					
 					<!-- Advanced Section (Collapsible) -->
 					<details class="surface-collapse">
-						<summary class="collapse-title font-bold text-sm text-yellow-400 min-h-0 py-3">
+						<summary class="collapse-title font-semibold text-sm min-h-0 py-3">
 							Advanced
 						</summary>
 						<div class="collapse-content">
 							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
 								<label class="flex items-center justify-between">
 									<span>Custom Frequencies</span>
-									<input type="checkbox" class="toggle checked:bg-green-500" bind:checked={settings.customFreqs} disabled={!editingSettings} />
+									<input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={settings.customFreqs} disabled={!editingSettings} />
 								</label>
 							</div>
 						</div>
@@ -653,7 +656,10 @@
 	<!-- Saved Profiles -->
 	<div class="surface-card">
 		<div class="card-body">
-			<CardSectionHead title="Saved Profiles" />
+			<CardSectionHead
+				title="Saved Profiles"
+				subtitle="Named snapshots you can edit, push to V1, or delete."
+			/>
 			
 			{#if loading}
 				<div class="state-loading compact">
