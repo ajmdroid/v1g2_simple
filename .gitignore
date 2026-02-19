@@ -70,6 +70,7 @@ docs/SD_BACKUP_IMPLEMENTATION.md
 # Images (unless needed for docs)
 *.png
 !docs/*.png
+!interface/static/branding/*.png
 
 # Audio source files (keep generated headers, not source audio)
 *.aiff

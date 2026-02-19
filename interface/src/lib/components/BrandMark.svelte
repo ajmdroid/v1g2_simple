@@ -3,10 +3,5 @@
 </script>
 
 <div class="brand-lockup" class:compact aria-label="V1 Simple">
-	<span class="brand-arrow up" aria-hidden="true"></span>
-	<span class="brand-pill">
-		<span class="brand-v1">V1</span>
-		<span class="brand-simple">SIMPLE</span>
-	</span>
-	<span class="brand-arrow down" aria-hidden="true"></span>
+	<img class="brand-logo" src="/branding/v1simple-logo.png" alt="V1 Simple" decoding="async" />
 </div>
