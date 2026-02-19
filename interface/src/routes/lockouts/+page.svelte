@@ -1881,18 +1881,18 @@
 		<div class="modal modal-open">
 			<div class="modal-box surface-modal">
 				<h3 class="font-bold text-lg">Ka Lockout Learning Warning</h3>
-				<p class="py-3 text-sm text-warning">
-					this is a bad idea, please don't enable
+				<p class="py-3 copy-caption-soft text-warning">
+					High risk: enabling Ka lockout learning can suppress real Ka threats.
 				</p>
 				<p class="copy-caption-soft">
 					Ka lockouts can hide real threats. Keep this off unless you fully understand the risk.
 				</p>
 				<div class="modal-action">
 					<button class="btn btn-outline btn-sm" onclick={cancelKaLearningEnable}>
-						this is a bad idea, please don't enable
+						Cancel (recommended)
 					</button>
 					<button class="btn btn-warning btn-sm" onclick={confirmKaLearningEnable}>
-						i accept this will probably casue me to miss real threats
+						Enable anyway (high risk)
 					</button>
 				</div>
 			</div>
