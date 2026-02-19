@@ -398,7 +398,7 @@
 		</div>
 	{:else}
 		<!-- Display Style -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">🖥️ Display Style</h2>
 				<p class="text-sm text-base-content/60">Choose font style for frequency and counter</p>
@@ -417,7 +417,7 @@
 		</div>
 
 		<!-- Counter & Frequency -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Counter & Frequency</h2>
 				<div class="grid grid-cols-2 gap-4">
@@ -666,7 +666,7 @@
 		</div>
 		
 		<!-- Band Indicators -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Band Indicators</h2>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -806,7 +806,7 @@
 		</div>
 		
 		<!-- Direction Arrows -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Direction Arrows</h2>
 				<div class="grid grid-cols-3 gap-4">
@@ -893,7 +893,7 @@
 		</div>
 
 		<!-- Camera, Lockout, GPS & OBD -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Camera, Lockout, GPS & OBD</h2>
 				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
@@ -1033,7 +1033,7 @@
 		</div>
 		
 		<!-- Status Indicators -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Status Indicators</h2>
 				
@@ -1274,7 +1274,7 @@
 			</div>
 		
 		<!-- Display Brightness -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">☀️ Display Brightness</h2>
 				<p class="text-xs text-base-content/50 mb-2">Adjust the AMOLED screen brightness (0-255)</p>
@@ -1297,7 +1297,7 @@
 		</div>
 		
 		<!-- Signal Bars -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-lg">Signal Bars</h2>
 				<p class="text-xs text-base-content/50 mb-2">Bar 1 = weakest, Bar 6 = strongest</p>

@@ -1,14 +1,22 @@
 <script>
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	onMount(() => {
-		// Redirect to consolidated Hardware Integrations page
+		// Redirect to consolidated Hardware Integrations page.
 		goto('/integrations', { replaceState: true });
 	});
 </script>
 
-<div class="flex justify-center items-center p-8">
-	<span class="loading loading-spinner loading-lg"></span>
-	<span class="ml-4">Redirecting to Hardware Integrations...</span>
+<div class="page-stack">
+	<PageHeader title="GPS" subtitle="This page now lives under Integrations." />
+	<div class="surface-card">
+		<div class="card-body py-6 text-sm text-base-content/70">
+			<div class="flex items-center gap-3">
+				<span class="loading loading-spinner loading-md"></span>
+				<span>Redirecting to Hardware Integrations...</span>
+			</div>
+		</div>
+	</div>
 </div>

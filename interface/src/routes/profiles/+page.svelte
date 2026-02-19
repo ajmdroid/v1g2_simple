@@ -387,7 +387,7 @@
 	{/if}
 
 	<!-- Current V1 Settings -->
-	<div class="card bg-base-200">
+	<div class="surface-card">
 		<div class="card-body">
 			<h2 class="card-title">📡 Current V1 Settings</h2>
 			{#if editingSettings && currentProfile?.name}
@@ -650,7 +650,7 @@
 	</div>
 	
 	<!-- Saved Profiles -->
-	<div class="card bg-base-200">
+	<div class="surface-card">
 		<div class="card-body">
 			<h2 class="card-title">💾 Saved Profiles</h2>
 			

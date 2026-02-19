@@ -175,7 +175,7 @@
 		<!-- Slot Cards -->
 		<div class="grid gap-4">
 			{#each data.slots as slot, i}
-				<div class="card bg-base-200 {data.activeSlot === i ? 'ring-2 ring-primary' : ''}">
+				<div class="surface-card {data.activeSlot === i ? 'ring-2 ring-primary' : ''}">
 					<div class="card-body p-4">
 						<div class="flex justify-between items-start">
 							<div class="flex items-center gap-3">

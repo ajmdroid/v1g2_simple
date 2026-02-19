@@ -492,7 +492,7 @@
 		</div>
 	{:else}
 		<!-- AP Settings -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title">📡 Access Point (AP)</h2>
 				<p class="text-sm text-base-content/60">Device hosts its own hotspot for direct connection.</p>
@@ -557,7 +557,7 @@
 		</div>
 
 		<!-- Device Time -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body space-y-3">
 				<h2 class="card-title">🕒 Device Time</h2>
 				<p class="text-sm text-base-content/60">Manual phone sync only. No background NTP.</p>
@@ -584,7 +584,7 @@
 		</div>
 		
 		<!-- WiFi Client (Connect to Network) -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<div class="flex justify-between items-center">
 					<div>
@@ -732,7 +732,7 @@
 		{/if}
 		
 		<!-- BLE Proxy -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🟦 Bluetooth Proxy</h2>
 				<p class="text-sm text-base-content/60">Relay V1 data to phone apps.</p>
@@ -757,7 +757,7 @@
 		</div>
 		
 		<!-- Auto Power Off -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">🔌 Auto Power Off</h2>
 				<p class="text-sm text-base-content/60">Automatically power off when V1 disconnects (e.g., when you turn off your car).</p>
@@ -800,7 +800,7 @@
 		</button>
 		
 		<!-- Backup & Restore -->
-		<div class="card bg-base-200">
+		<div class="surface-card">
 			<div class="card-body space-y-4">
 				<h2 class="card-title">💾 Backup & Restore</h2>
 				<p class="text-sm text-base-content/60">Download your settings or restore from a backup file.</p>

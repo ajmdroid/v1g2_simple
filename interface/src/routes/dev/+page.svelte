@@ -258,7 +258,7 @@
 		{/if}
 
 		<!-- WiFi Settings -->
-		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
+		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
 				<h2 class="card-title">WiFi & Network</h2>
 				
@@ -299,7 +299,7 @@
 		</div>
 
 		<!-- Performance Metrics -->
-		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
+		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
 				<div class="flex items-center justify-between">
 					<h2 class="card-title">📊 Performance Metrics</h2>
@@ -450,7 +450,7 @@
 		</div>
 
 		<!-- Perf CSV Files -->
-		<div class="card bg-base-200 shadow-xl" class:opacity-50={!acknowledged}>
+		<div class="surface-card" class:opacity-50={!acknowledged}>
 			<div class="card-body">
 				<div class="flex items-center justify-between gap-2">
 					<h2 class="card-title">🗂️ Perf CSV Files</h2>

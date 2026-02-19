@@ -1034,7 +1034,7 @@
 		</div>
 	{/if}
 
-	<div class="card bg-base-200 shadow">
+	<div class="surface-card">
 		<div class="card-body gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
@@ -1061,7 +1061,7 @@
 		</div>
 		</div>
 
-		<div class="card bg-base-200 shadow">
+		<div class="surface-card">
 		<div class="card-body gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
@@ -1199,7 +1199,7 @@
 		</div>
 	</div>
 
-		<div class="card bg-base-200 shadow">
+		<div class="surface-card">
 			<div class="card-body gap-3">
 				<div>
 					<h2 class="card-title">Learner Settings</h2>
@@ -1370,7 +1370,7 @@
 			</div>
 		</div>
 
-	<div class="card bg-base-200 shadow">
+	<div class="surface-card">
 		<div class="card-body gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
@@ -1599,7 +1599,7 @@
 		</div>
 	</div>
 
-	<div class="card bg-base-200 shadow">
+	<div class="surface-card">
 		<div class="card-body gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
