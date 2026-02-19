@@ -402,15 +402,15 @@
 					</div>
 				</label>
 					{#if !runtimeConfig.gpsEnabled}
-						<div class="text-xs text-warning">
+						<div class="copy-caption-soft text-warning">
 							GPS is disabled. Camera index can still load, but live matching remains inactive.
 						</div>
 					{/if}
 					<div class="surface-divider space-y-2">
-							<div class="copy-mini-title">Display Demo</div>
-							<div class="copy-caption-soft">
-								Preview camera screen tokens on device without needing live GPS/camera matches.
-							</div>
+						<div class="copy-mini-title">Display Demo</div>
+						<div class="copy-caption-soft">
+							Preview camera screen tokens on device without needing live GPS/camera matches.
+						</div>
 						<div class="flex flex-wrap items-center gap-2">
 							<select class="select select-sm select-bordered w-48" bind:value={demoMode} disabled={demoInFlight}>
 								<option value="cycle">Cycle ALPR</option>

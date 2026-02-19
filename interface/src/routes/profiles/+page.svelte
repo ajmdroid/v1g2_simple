@@ -706,7 +706,7 @@
 	</div>
 	
 	<!-- Info -->
-	<div class="surface-note copy-faint-sm space-y-1">
+	<div class="surface-note copy-muted space-y-1">
 		<p><strong>Pull:</strong> Read current V1 settings (shows in Current V1 Settings)</p>
 		<p><strong>Edit:</strong> Modify settings and push directly to V1</p>
 		<p><strong>Save:</strong> Store current V1 settings as a named profile</p>

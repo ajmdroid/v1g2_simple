@@ -123,7 +123,7 @@
 			<div class="mb-2 flex justify-center">
 				<BrandMark />
 			</div>
-			<p class="mb-1 copy-faint">v{status.device?.firmware_version || '...'}</p>
+			<p class="mb-1 copy-caption">v{status.device?.firmware_version || '...'}</p>
 			<p class="copy-subtle">
 				{#if status.wifi.sta_connected}
 					{status.wifi.ssid} • {status.wifi.sta_ip}

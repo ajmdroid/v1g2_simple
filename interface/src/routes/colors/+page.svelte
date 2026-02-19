@@ -608,7 +608,7 @@
 				</div>
 				<div class="divider my-2"></div>
 				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
-				<p class="copy-caption-soft-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<p class="copy-caption-soft text-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="rssiV1-color">

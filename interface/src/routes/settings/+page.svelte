@@ -634,9 +634,9 @@
 					</button>
 				{/if}
 				{:else}
-				<div class="surface-note copy-faint-sm">
-					WiFi client is disabled. Enable to connect to a network.
-				</div>
+					<div class="surface-note copy-muted">
+						WiFi client is disabled. Enable to connect to a network.
+					</div>
 				{/if}
 			</div>
 		</div>

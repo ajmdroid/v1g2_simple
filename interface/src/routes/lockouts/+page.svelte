@@ -1349,7 +1349,7 @@
 						}}
 					/>
 				</label>
-				<div class="text-xs text-warning">
+				<div class="copy-caption-soft text-warning">
 					Disabled by default. Enabling Ka learning can suppress real Ka threats if lockouts are wrong.
 				</div>
 				<div class="copy-meta">
