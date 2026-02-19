@@ -608,7 +608,7 @@
 				</div>
 				<div class="divider my-2"></div>
 				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
-				<p class="copy-faint-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<p class="copy-caption-soft-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="rssiV1-color">
@@ -1159,7 +1159,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide WiFi Icon</span>
-							<p class="copy-faint">Show briefly on connect, then hide</p>
+							<p class="copy-caption-soft">Show briefly on connect, then hide</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1174,7 +1174,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Profile Indicator</span>
-							<p class="copy-faint">Show on profile change, then hide</p>
+							<p class="copy-caption-soft">Show on profile change, then hide</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1189,7 +1189,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Battery Icon</span>
-							<p class="copy-faint">Hide the battery indicator</p>
+							<p class="copy-caption-soft">Hide the battery indicator</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1204,7 +1204,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Show Battery Percentage</span>
-							<p class="copy-faint">Show battery level as percentage instead of icon</p>
+							<p class="copy-caption-soft">Show battery level as percentage instead of icon</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1220,7 +1220,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide BLE Proxy Icon</span>
-							<p class="copy-faint">Hide the BLE proxy status indicator</p>
+							<p class="copy-caption-soft">Hide the BLE proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1235,7 +1235,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Volume Indicator</span>
-							<p class="copy-faint">Hide the V1 volume display (requires V1 firmware 4.1028+)</p>
+							<p class="copy-caption-soft">Hide the V1 volume display (requires V1 firmware 4.1028+)</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1250,7 +1250,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text">Hide RSSI Indicator</span>
-								<p class="copy-faint">Hide the BLE signal strength display</p>
+								<p class="copy-caption-soft">Hide the BLE signal strength display</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -1265,7 +1265,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text">Show Rest OBD Cards</span>
-								<p class="copy-faint">Show oil temp, IAT, and voltage cards on resting screen</p>
+								<p class="copy-caption-soft">Show oil temp, IAT, and voltage cards on resting screen</p>
 							</div>
 							<input
 								type="checkbox"

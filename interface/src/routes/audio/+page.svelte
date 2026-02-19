@@ -231,7 +231,7 @@
 							<div>
 								<span class="label-text font-medium">Mute Voice at Volume 0</span>
 								<p class="copy-caption-soft">Silence alert announcements when V1 volume is 0</p>
-								<p class="text-xs text-warning/70 mt-1">Note: "Warning Volume Zero" will still play</p>
+								<p class="copy-caption-soft text-warning mt-1">Note: "Warning Volume Zero" will still play</p>
 							</div>
 							<input 
 								type="checkbox" 
