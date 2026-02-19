@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
 	let profiles = $state([]);
 	let currentProfile = $state(null);
@@ -342,11 +343,7 @@
 		</div>
 	</PageHeader>
 	
-	{#if message}
-		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
-			<span>{message.text}</span>
-		</div>
-	{/if}
+	<StatusAlert {message} />
 	
 	<!-- Save Profile Dialog -->
 	{#if showSaveDialog}

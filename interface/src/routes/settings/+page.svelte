@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
     let settings = $state({
         ap_ssid: '',
@@ -481,11 +482,7 @@
 <div class="page-stack">
 	<PageHeader title="Settings" subtitle="Network, proxy, power, and backup configuration." />
 	
-	{#if message}
-		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
-			<span>{message.text}</span>
-		</div>
-	{/if}
+	<StatusAlert {message} />
 	
 	{#if loading}
 		<div class="state-loading">

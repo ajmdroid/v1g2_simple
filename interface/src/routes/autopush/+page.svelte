@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
 	let data = $state({
 		enabled: false,
@@ -152,11 +153,7 @@
 		</div>
 	</PageHeader>
 	
-	{#if message}
-		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
-			<span>{message.text}</span>
-		</div>
-	{/if}
+	<StatusAlert {message} />
 	
 	<div class="surface-note">
 		<p>Auto-Push automatically sends V1 settings when you connect. Configure 3 slots for different driving scenarios and switch between them with a touch.</p>

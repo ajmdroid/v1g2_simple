@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
 	// RGB565 color values (stored on ESP32)
 	let colors = $state({
@@ -386,12 +387,7 @@
 <div class="page-stack">
 	<PageHeader title="Display Colors" subtitle="Customize alert colors" />
 	
-	{#if message}
-		<div class="surface-alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
-			<span>{message.text}</span>
-			<button class="btn btn-ghost btn-xs" onclick={() => message = null} aria-label="Dismiss message">✕</button>
-		</div>
-	{/if}
+	<StatusAlert {message} fallbackType="success" dismiss={() => message = null} />
 	
 	{#if loading}
 		<div class="state-loading">

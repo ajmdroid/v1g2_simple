@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
 	let settings = $state({
 		voiceAlertMode: 3,  // 0=disabled, 1=band, 2=freq, 3=band+freq
@@ -149,11 +150,7 @@
 <div class="page-stack">
 	<PageHeader title="Audio Settings" subtitle="Voice alerts and speaker options" />
 	
-	{#if message}
-		<div class="surface-alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
-			<span>{message.text}</span>
-		</div>
-	{/if}
+	<StatusAlert {message} fallbackType="success" />
 	
 	{#if loading}
 		<div class="state-loading">
