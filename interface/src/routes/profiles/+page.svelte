@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	let profiles = $state([]);
 	let currentProfile = $state(null);
@@ -333,13 +334,12 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex justify-between items-center">
-		<h1 class="text-2xl font-bold">V1 Profiles</h1>
+<div class="page-stack">
+	<PageHeader title="V1 Profiles">
 		<div class="badge {v1Connected ? 'badge-success' : 'badge-warning'}">
 			{v1Connected ? 'V1 Connected' : 'V1 Disconnected'}
 		</div>
-	</div>
+	</PageHeader>
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">

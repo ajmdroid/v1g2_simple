@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	let settings = $state({
 		voiceAlertMode: 3,  // 0=disabled, 1=band, 2=freq, 3=band+freq
@@ -144,13 +145,8 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex justify-between items-center">
-		<div>
-			<h1 class="text-2xl font-bold">Audio Settings</h1>
-			<p class="text-sm text-base-content/60">Voice alerts and speaker options</p>
-		</div>
-	</div>
+<div class="page-stack">
+	<PageHeader title="Audio Settings" subtitle="Voice alerts and speaker options" />
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}">

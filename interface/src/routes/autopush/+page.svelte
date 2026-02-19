@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	let data = $state({
 		enabled: false,
@@ -149,13 +150,12 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex justify-between items-center">
-		<h1 class="text-2xl font-bold">Auto-Push Profiles</h1>
+<div class="page-stack">
+	<PageHeader title="Auto-Push Profiles">
 		<div class="badge {data.enabled ? 'badge-success' : 'badge-ghost'}">
 			{data.enabled ? 'Enabled' : 'Disabled'}
 		</div>
-	</div>
+	</PageHeader>
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
@@ -163,7 +163,7 @@
 		</div>
 	{/if}
 	
-	<div class="text-sm text-base-content/60 bg-base-200 p-3 rounded-lg">
+	<div class="surface-note">
 		<p>Auto-Push automatically sends V1 settings when you connect. Configure 3 slots for different driving scenarios and switch between them with a touch.</p>
 	</div>
 	

@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	// RGB565 color values (stored on ESP32)
 	let colors = $state({
@@ -381,13 +382,8 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex justify-between items-center">
-		<div>
-			<h1 class="text-2xl font-bold">Display Colors</h1>
-			<p class="text-sm text-base-content/60">Customize alert colors</p>
-		</div>
-	</div>
+<div class="page-stack">
+	<PageHeader title="Display Colors" subtitle="Customize alert colors" />
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">

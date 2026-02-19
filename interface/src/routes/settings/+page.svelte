@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	
     let settings = $state({
         ap_ssid: '',
@@ -476,8 +477,8 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<h1 class="text-2xl font-bold">Settings</h1>
+<div class="page-stack">
+	<PageHeader title="Settings" />
 	
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">

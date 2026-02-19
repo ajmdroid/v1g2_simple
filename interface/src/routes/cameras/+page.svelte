@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	const STATUS_POLL_INTERVAL_MS = 3000;
 	const EVENTS_LIMIT = 24;
@@ -340,12 +341,8 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<div>
-			<h1 class="text-2xl font-bold">Cameras</h1>
-			<p class="text-sm text-base-content/70">Runtime controls, telemetry, and dataset inventory.</p>
-		</div>
+<div class="page-stack">
+	<PageHeader title="Cameras" subtitle="Runtime controls, telemetry, and dataset inventory.">
 		<div class="flex items-center gap-2">
 			<button class="btn btn-outline btn-sm" onclick={() => fetchCameraCatalog(false)} disabled={catalogFetchInFlight}>
 				{catalogFetchInFlight ? 'Refreshing catalog...' : 'Refresh Catalog'}
@@ -354,7 +351,7 @@
 				{refreshing ? 'Refreshing...' : 'Refresh All'}
 			</button>
 		</div>
-	</div>
+	</PageHeader>
 
 	{#if statusError}
 		<div class="alert alert-error" role="alert"><span>{statusError}</span></div>

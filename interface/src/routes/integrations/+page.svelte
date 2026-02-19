@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let loading = $state(true);
 	let scanning = $state(false);
@@ -443,14 +444,13 @@
 
 </script>
 
-<div class="space-y-6">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-2xl font-bold">Integrations</h1>
+<div class="page-stack">
+	<PageHeader title="Integrations">
 		<div class="flex items-center gap-2">
 			<a href="/lockouts" class="btn btn-outline btn-sm">Open Lockouts</a>
 			<div class="badge {getStateBadge(status.state)} badge-lg">{status.state}</div>
 		</div>
-	</div>
+	</PageHeader>
 
 	{#if message}
 		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">

@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let acknowledged = $state(false);
 	let settings = $state({
@@ -218,12 +219,8 @@
 	});
 </script>
 
-<div class="space-y-6">
-	<!-- Header -->
-	<div>
-		<h1 class="text-3xl font-bold">Development Settings</h1>
-		<p class="text-sm opacity-70 mt-2">Advanced features and debugging tools</p>
-	</div>
+<div class="page-stack">
+	<PageHeader title="Development Settings" subtitle="Advanced features and debugging tools" />
 
 	{#if loading}
 		<div class="flex justify-center items-center py-12">

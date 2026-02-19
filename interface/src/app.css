@@ -9,6 +9,10 @@
 	--v1-orange: #ff6b35;
 	--v1-green: #00ff88;
 	--v1-yellow: #ffcc00;
+	--app-radius-md: 0.75rem;
+	--app-radius-lg: 1rem;
+	--app-border-alpha: 0.42;
+	--app-shadow: 0 8px 22px oklch(0% 0 0 / 0.2);
 }
 
 /* Smooth scrolling */
@@ -33,4 +37,44 @@ html {
 
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--fallback-bc, oklch(var(--bc) / 0.5));
+}
+
+@layer components {
+	.page-stack {
+		@apply space-y-6;
+	}
+
+	.page-header {
+		@apply flex flex-wrap items-center justify-between gap-3;
+	}
+
+	.page-header-copy {
+		@apply min-w-0;
+	}
+
+	.page-title {
+		@apply text-2xl font-bold tracking-tight;
+	}
+
+	.page-subtitle {
+		@apply text-sm text-base-content/70;
+	}
+
+	.page-header-actions {
+		@apply flex items-center gap-2;
+	}
+
+	.surface-card {
+		@apply card bg-base-200;
+		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));
+		border-radius: var(--app-radius-lg);
+		box-shadow: var(--app-shadow);
+	}
+
+	.surface-note {
+		@apply text-sm text-base-content/60 p-3;
+		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));
+		border-radius: var(--app-radius-md);
+		background: oklch(var(--b2) / 0.45);
+	}
 }

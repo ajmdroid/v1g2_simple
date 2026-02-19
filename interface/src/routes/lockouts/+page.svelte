@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let loading = $state(true);
 	let message = $state(null);
@@ -1012,19 +1013,16 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex flex-wrap items-start justify-between gap-3">
-		<div>
-			<h1 class="text-2xl font-bold">Lockouts</h1>
-			<p class="text-sm text-base-content/70">
-				Dedicated lockout controls and observability with safety-gated runtime and learner tuning.
-			</p>
-		</div>
+<div class="page-stack">
+	<PageHeader
+		title="Lockouts"
+		subtitle="Dedicated lockout controls and observability with safety-gated runtime and learner tuning."
+	>
 		<div class="flex gap-2">
 			<a href="/integrations" class="btn btn-outline btn-sm">OBD & GPS</a>
 			<button class="btn btn-outline btn-sm" onclick={refreshAll}>Refresh All</button>
 		</div>
-	</div>
+	</PageHeader>
 
 	{#if message}
 		<div

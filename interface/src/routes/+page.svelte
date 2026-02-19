@@ -89,7 +89,7 @@
 	}
 </script>
 
-<div class="space-y-6">
+<div class="page-stack">
 	{#if status.alert?.active}
 		<div class="alert alert-warning shadow-lg animate-pulse" role="alert" aria-live="assertive">
 			<span class="font-bold text-2xl">{status.alert.band}</span>
@@ -101,7 +101,7 @@
 	<div class="hero bg-base-200 rounded-box p-4">
 		<div class="hero-content text-center">
 			<div>
-				<h1 class="text-3xl font-bold text-primary">V1 Gen2 Display</h1>
+				<h1 class="text-3xl font-bold text-primary">V1 Simple</h1>
 				<p class="text-xs text-base-content/50 mb-1">v{status.device?.firmware_version || '...'}</p>
 				<p class="text-sm text-base-content/70">
 					{#if status.wifi.sta_connected}
