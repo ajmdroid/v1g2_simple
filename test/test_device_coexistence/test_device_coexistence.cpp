@@ -13,8 +13,8 @@
  *   - NO NimBLEDevice::deinit() — per CLAUDE.md guardrail:
  *     "Never delete active NimBLE clients at runtime; disconnect and reuse."
  *     BLE tests are limited to read-only queries, not init/deinit cycles.
- *   - tearDown() always forces WiFi OFF, even on assertion failure.
- *   - Generous delays (≥1 s) after WiFi stop for full radio release.
+ *   - tearDown() forces WiFi OFF when active, even on assertion failure.
+ *   - Sufficient delays after WiFi stop for full radio release.
  *   - heap_caps_free() BEFORE TEST_ASSERT on pressure tests.
  *   - No portMAX_DELAY anywhere.
  */
@@ -48,9 +48,11 @@ static constexpr uint32_t WIFI_MIN_LARGEST_BLOCK = 20 * 1024;   // 20 KB
 void setUp() {}
 
 void tearDown() {
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(1000);
+    if (WiFi.getMode() != WIFI_OFF) {
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_OFF);
+        delay(1000);
+    }
 }
 
 // ===========================================================================
@@ -107,9 +109,10 @@ void test_coex_wifi_stop_heap_recovery() {
     WiFi.softAP("v1test_recover", "testpass123");
     delay(1000);
 
+    // Explicit stop — tearDown() skips when WiFi is already OFF
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
-    delay(1500);   // Full cleanup
+    delay(1000);
 
     uint32_t afterStop = internalFree();
 
@@ -125,10 +128,9 @@ void test_coex_wifi_stop_heap_recovery() {
 // ===========================================================================
 
 void test_coex_dma_gate_passes_at_boot() {
-    uint32_t free    = internalFree();
-    uint32_t largest = internalLargest();
-
-    bool canStart = (free >= WIFI_MIN_FREE_DMA) && (largest >= WIFI_MIN_LARGEST_BLOCK);
+    // Reuse baseline captured by first test (no WiFi started between them)
+    bool canStart = (baselineInternalFree >= WIFI_MIN_FREE_DMA)
+                 && (baselineInternalLargest >= WIFI_MIN_LARGEST_BLOCK);
     TEST_ASSERT_TRUE_MESSAGE(canStart,
         "DMA gate should pass at boot — insufficient internal SRAM");
 }
@@ -192,7 +194,7 @@ void test_coex_wifi_repeated_start_stop_no_leak() {
         delay(500);
         WiFi.softAPdisconnect(true);
         WiFi.mode(WIFI_OFF);
-        delay(1000);   // 1 s cool-down per cycle
+        delay(500);    // 500 ms cool-down per cycle
     }
 
     uint32_t after = internalFree();
