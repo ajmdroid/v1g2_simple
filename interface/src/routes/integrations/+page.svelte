@@ -601,10 +601,7 @@
 				</CardSectionHead>
 
 				{#if scanning}
-					<div class="surface-alert alert-info py-2">
-						<span class="loading loading-spinner loading-sm"></span>
-						<span>Scanning...</span>
-					</div>
+					<StatusAlert message={{ type: 'info', text: 'Scanning...' }} busy />
 				{/if}
 
 				{#if loading}

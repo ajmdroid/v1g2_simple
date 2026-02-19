@@ -210,7 +210,7 @@
 								<div class="form-control">
 									<!-- provide stable ids for accessibility -->
 									<label class="label py-1" for={`slot-${i}-profile`}>
-										<span class="label-text text-xs">Profile</span>
+										<span class="label-text copy-caption">Profile</span>
 									</label>
 									<select id={`slot-${i}-profile`} class="select select-bordered select-sm" bind:value={slot.profile}>
 										<option value="">-- None --</option>
@@ -224,7 +224,7 @@
 								</div>
 								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-mode`}>
-										<span class="label-text text-xs">V1 Mode</span>
+										<span class="label-text copy-caption">V1 Mode</span>
 									</label>
 									<select id={`slot-${i}-mode`} class="select select-bordered select-sm" bind:value={slot.mode}>
 										<option value={0}>Don't Change</option>
@@ -235,7 +235,7 @@
 								</div>
 								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-volume`}>
-										<span class="label-text text-xs">Volume (0-9)</span>
+										<span class="label-text copy-caption">Volume (0-9)</span>
 									</label>
 									<input 
 										id={`slot-${i}-volume`}
@@ -247,7 +247,7 @@
 								</div>
 								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-mute`}>
-										<span class="label-text text-xs">Mute Volume (0-9)</span>
+										<span class="label-text copy-caption">Mute Volume (0-9)</span>
 									</label>
 									<input 
 										id={`slot-${i}-mute`}
@@ -260,24 +260,24 @@
 								<div class="form-control">
 									<label class="label cursor-pointer justify-start gap-3 py-1">
 										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.darkMode} />
-										<span class="label-text text-xs">Dark Mode (V1 display off)</span>
+										<span class="label-text copy-caption">Dark Mode (V1 display off)</span>
 									</label>
 								</div>
 								<div class="form-control">
 									<label class="label cursor-pointer justify-start gap-3 py-1">
 										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.muteToZero} />
-										<span class="label-text text-xs">Mute to Zero</span>
+										<span class="label-text copy-caption">Mute to Zero</span>
 									</label>
 								</div>
 								<div class="form-control">
 									<label class="label cursor-pointer justify-start gap-3 py-1">
 										<input type="checkbox" class="toggle toggle-sm toggle-primary" bind:checked={slot.priorityArrowOnly} />
-										<span class="label-text text-xs">Priority Arrow Only</span>
+										<span class="label-text copy-caption">Priority Arrow Only</span>
 									</label>
 								</div>
 								<div class="form-control">
 									<label class="label py-1" for={`slot-${i}-persist`}>
-										<span class="label-text text-xs">Alert persistence (seconds)</span>
+										<span class="label-text copy-caption">Alert persistence (seconds)</span>
 										<span class="label-text-alt copy-micro">0 = off, max 5s</span>
 									</label>
 									<div class="flex items-center gap-2">

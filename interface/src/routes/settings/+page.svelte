@@ -595,41 +595,33 @@
 				</CardSectionHead>
 				
 				{#if wifiStatus.enabled}
-				{#if wifiStatus.state === 'connected'}
-						<div class="surface-alert alert-success">
-							<span>Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
-							<span class="copy-caption-soft">IP: {wifiStatus.ip} | Signal: {wifiStatus.rssi} dBm</span>
+					{#if wifiStatus.state === 'connected'}
+						<StatusAlert message={{ type: 'success', text: `Connected to ${wifiStatus.connectedSSID} • ${wifiStatus.ip} • ${wifiStatus.rssi} dBm` }} />
+						<div class="flex gap-2">
+							<button class="btn btn-outline btn-sm" onclick={disconnectWifi}>
+								Disconnect
+							</button>
+							<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
+								Forget Network
+							</button>
 						</div>
-					<div class="flex gap-2">
-						<button class="btn btn-outline btn-sm" onclick={disconnectWifi}>
-							Disconnect
-						</button>
-						<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
-							Forget Network
-						</button>
-					</div>
-				{:else if wifiStatus.state === 'connecting'}
-					<div class="surface-alert alert-info">
-						<span class="loading loading-spinner loading-sm"></span>
-						<span>Connecting to {wifiStatus.savedSSID}...</span>
-					</div>
-				{:else if wifiStatus.savedSSID}
-					<div class="surface-alert alert-warning">
-						<span>Not connected to <strong>{wifiStatus.savedSSID}</strong></span>
-					</div>
-					<div class="flex gap-2">
+					{:else if wifiStatus.state === 'connecting'}
+						<StatusAlert message={{ type: 'info', text: `Connecting to ${wifiStatus.savedSSID}...` }} busy />
+					{:else if wifiStatus.savedSSID}
+						<StatusAlert message={{ type: 'warning', text: `Not connected to ${wifiStatus.savedSSID}` }} />
+						<div class="flex gap-2">
+							<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
+								Scan for Networks
+							</button>
+							<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
+								Forget Network
+							</button>
+						</div>
+					{:else}
 						<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
 							Scan for Networks
 						</button>
-						<button class="btn btn-error btn-outline btn-sm" onclick={forgetWifi}>
-							Forget Network
-						</button>
-					</div>
-				{:else}
-					<button class="btn btn-primary btn-sm" onclick={startWifiScan}>
-						Scan for Networks
-					</button>
-				{/if}
+					{/if}
 				{:else}
 					<div class="surface-note copy-muted">
 						WiFi client is disabled. Enable to connect to a network.

@@ -1403,9 +1403,7 @@
 			</CardSectionHead>
 
 			{#if lockoutZonesError}
-				<div class="surface-alert alert-warning py-2" role="status">
-					<span>{lockoutZonesError}</span>
-				</div>
+				<StatusAlert message={lockoutZonesError} fallbackType="warning" />
 			{/if}
 
 			<div class="surface-stats">
@@ -1598,9 +1596,7 @@
 			</CardSectionHead>
 
 			{#if lockoutError}
-				<div class="surface-alert alert-warning py-2" role="status">
-					<span>{lockoutError}</span>
-				</div>
+				<StatusAlert message={lockoutError} fallbackType="warning" />
 			{/if}
 
 			<div class="surface-stats">

@@ -1,5 +1,5 @@
 <script>
-	let { message = null, fallbackType = 'info', dismiss = null } = $props();
+	let { message = null, fallbackType = 'info', dismiss = null, busy = false } = $props();
 
 	function resolveType(type) {
 		if (type === 'error') return 'error';
@@ -13,6 +13,9 @@
 
 {#if message}
 	<div class="surface-alert alert-{resolveType(message?.type)}" role="status" aria-live="polite">
+		{#if busy}
+			<span class="loading loading-spinner loading-sm"></span>
+		{/if}
 		<span>{message?.text ?? message}</span>
 		{#if dismiss}
 			<button class="btn btn-ghost btn-xs" onclick={dismiss} aria-label="Dismiss message">✕</button>
