@@ -163,7 +163,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Voice Alerts</h2>
-				<p class="text-xs text-base-content/50 mb-4">Speak alert information through the built-in speaker when no phone app is connected</p>
+				<p class="copy-faint mb-4">Speak alert information through the built-in speaker when no phone app is connected</p>
 				
 				<div class="space-y-4">
 					<!-- Voice Content Mode Dropdown -->
@@ -187,7 +187,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Include Direction</span>
-								<p class="text-xs text-base-content/50">Append "ahead", "side", or "behind" to announcement</p>
+								<p class="copy-faint">Append "ahead", "side", or "behind" to announcement</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -203,7 +203,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Announce Bogey Count</span>
-								<p class="text-xs text-base-content/50">Append "2 bogeys", "3 bogeys", etc. when multiple alerts active</p>
+								<p class="copy-faint">Append "2 bogeys", "3 bogeys", etc. when multiple alerts active</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -216,7 +216,7 @@
 					
 					<!-- Preview -->
 					<div class="surface-panel">
-						<p class="text-xs text-base-content/50 mb-1">Preview:</p>
+						<p class="copy-faint mb-1">Preview:</p>
 						<p class="text-lg font-mono">{getPreviewText()}</p>
 					</div>
 					
@@ -227,7 +227,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Mute Voice at Volume 0</span>
-								<p class="text-xs text-base-content/50">Silence alert announcements when V1 volume is 0</p>
+								<p class="copy-faint">Silence alert announcements when V1 volume is 0</p>
 								<p class="text-xs text-warning/70 mt-1">Note: "Warning Volume Zero" will still play</p>
 							</div>
 							<input 
@@ -246,7 +246,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Secondary Alert Announcements</h2>
-				<p class="text-xs text-base-content/50 mb-4">Optionally announce non-priority alerts (lower bars) after priority stabilizes</p>
+				<p class="copy-faint mb-4">Optionally announce non-priority alerts (lower bars) after priority stabilizes</p>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -254,7 +254,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Announce Secondary Alerts</span>
-								<p class="text-xs text-base-content/50">Speak non-priority alerts once after 1s priority stability + 1.5s gap</p>
+								<p class="copy-faint">Speak non-priority alerts once after 1s priority stability + 1.5s gap</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -268,7 +268,7 @@
 					<!-- Band Filters (nested, only shown when master enabled) -->
 					{#if settings.announceSecondaryAlerts && settings.voiceAlertMode !== 0}
 						<div class="surface-subsection tight">
-							<p class="text-xs text-base-content/50 mb-2">Which bands to announce:</p>
+							<p class="copy-faint mb-2">Which bands to announce:</p>
 							
 							<div class="form-control">
 								<label class="label cursor-pointer py-1">
@@ -323,7 +323,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">V1 Volume Fade</h2>
-				<p class="text-xs text-base-content/50 mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
+				<p class="copy-faint mb-4">Reduce V1 volume after initial alert period (doesn't affect muted alerts)</p>
 				
 				<div class="space-y-4">
 					<!-- Master Toggle -->
@@ -331,7 +331,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Enable Volume Fade</span>
-								<p class="text-xs text-base-content/50">Lower V1 volume after delay, restore when alert clears</p>
+								<p class="copy-faint">Lower V1 volume after delay, restore when alert clears</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -357,7 +357,7 @@
 									bind:value={settings.alertVolumeFadeDelaySec}
 									class="range range-primary range-sm" 
 								/>
-								<p class="text-xs text-base-content/50 mt-1">Time at full volume before reducing</p>
+								<p class="copy-faint mt-1">Time at full volume before reducing</p>
 							</div>
 							
 							<!-- Reduced Volume -->
@@ -374,7 +374,7 @@
 									bind:value={settings.alertVolumeFadeVolume}
 									class="range range-primary range-sm" 
 								/>
-								<p class="text-xs text-base-content/50 mt-1">V1 volume to fade to (0-9)</p>
+								<p class="copy-faint mt-1">V1 volume to fade to (0-9)</p>
 							</div>
 							
 							<!-- Preview -->
@@ -403,7 +403,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Enable Speed Volume</span>
-								<p class="text-xs text-base-content/50">Louder alerts when driving faster (more road noise)</p>
+								<p class="copy-faint">Louder alerts when driving faster (more road noise)</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -430,7 +430,7 @@
 									bind:value={settings.speedVolumeThresholdMph}
 									class="range range-primary range-sm" 
 								/>
-								<p class="text-xs text-base-content/50 mt-1">Boost volume when above this speed</p>
+								<p class="copy-faint mt-1">Boost volume when above this speed</p>
 							</div>
 							
 							<!-- Volume Boost -->
@@ -447,7 +447,7 @@
 									bind:value={settings.speedVolumeBoost}
 									class="range range-primary range-sm" 
 								/>
-								<p class="text-xs text-base-content/50 mt-1">Volume levels to add (1-5)</p>
+								<p class="copy-faint mt-1">Volume levels to add (1-5)</p>
 							</div>
 							
 							<!-- Preview -->
@@ -475,7 +475,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Enable Low-Speed Mute</span>
-								<p class="text-xs text-base-content/50">Silence voice announcements when nearly stopped</p>
+								<p class="copy-faint">Silence voice announcements when nearly stopped</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -502,7 +502,7 @@
 									bind:value={settings.lowSpeedMuteThresholdMph}
 									class="range range-primary range-sm" 
 								/>
-								<p class="text-xs text-base-content/50 mt-1">Mute voice when below this speed</p>
+								<p class="copy-faint mt-1">Mute voice when below this speed</p>
 							</div>
 							
 							<!-- Preview -->
@@ -513,7 +513,7 @@
 								</p>
 							</div>
 							
-							<div class="text-xs text-base-content/40">
+							<div class="copy-micro">
 								Note: Requires a speed source. If unavailable, voice remains active.
 							</div>
 						</div>
@@ -544,7 +544,7 @@
 						/>
 						<span class="text-lg">🔊</span>
 					</div>
-					<p class="text-xs text-base-content/50 mt-1">Controls the Waveshare ES8311 DAC output level</p>
+					<p class="copy-faint mt-1">Controls the Waveshare ES8311 DAC output level</p>
 				</div>
 			</div>
 		</div>

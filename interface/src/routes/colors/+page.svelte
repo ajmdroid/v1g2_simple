@@ -605,7 +605,7 @@
 				</div>
 				<div class="divider my-2"></div>
 				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
-				<p class="text-sm text-base-content/50 mb-2">Colors for V1 and Proxy connection strength labels</p>
+				<p class="copy-faint-sm mb-2">Colors for V1 and Proxy connection strength labels</p>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="rssiV1-color">
@@ -896,7 +896,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Camera, Lockout, GPS & OBD</h2>
-				<p class="text-xs text-base-content/50 mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
+				<p class="copy-faint mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
 				<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
 					<div class="form-control">
 						<label class="label" for="camera-token-color">
@@ -1154,7 +1154,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide WiFi Icon</span>
-							<p class="text-xs text-base-content/50">Show briefly on connect, then hide</p>
+							<p class="copy-faint">Show briefly on connect, then hide</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1169,7 +1169,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Profile Indicator</span>
-							<p class="text-xs text-base-content/50">Show on profile change, then hide</p>
+							<p class="copy-faint">Show on profile change, then hide</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1184,7 +1184,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Battery Icon</span>
-							<p class="text-xs text-base-content/50">Hide the battery indicator</p>
+							<p class="copy-faint">Hide the battery indicator</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1199,7 +1199,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Show Battery Percentage</span>
-							<p class="text-xs text-base-content/50">Show battery level as percentage instead of icon</p>
+							<p class="copy-faint">Show battery level as percentage instead of icon</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1215,7 +1215,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide BLE Proxy Icon</span>
-							<p class="text-xs text-base-content/50">Hide the BLE proxy status indicator</p>
+							<p class="copy-faint">Hide the BLE proxy status indicator</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1230,7 +1230,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text">Hide Volume Indicator</span>
-							<p class="text-xs text-base-content/50">Hide the V1 volume display (requires V1 firmware 4.1028+)</p>
+							<p class="copy-faint">Hide the V1 volume display (requires V1 firmware 4.1028+)</p>
 						</div>
 						<input 
 							type="checkbox" 
@@ -1245,7 +1245,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text">Hide RSSI Indicator</span>
-								<p class="text-xs text-base-content/50">Hide the BLE signal strength display</p>
+								<p class="copy-faint">Hide the BLE signal strength display</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -1260,7 +1260,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text">Show Rest OBD Cards</span>
-								<p class="text-xs text-base-content/50">Show oil temp, IAT, and voltage cards on resting screen</p>
+								<p class="copy-faint">Show oil temp, IAT, and voltage cards on resting screen</p>
 							</div>
 							<input
 								type="checkbox"
@@ -1277,7 +1277,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Display Brightness</h2>
-				<p class="text-xs text-base-content/50 mb-2">Adjust the AMOLED screen brightness (0-255)</p>
+				<p class="copy-faint mb-2">Adjust the AMOLED screen brightness (0-255)</p>
 				<div class="form-control">
 					<div class="flex items-center gap-4">
 						<label for="brightness-slider" class="text-sm">🌑</label>
@@ -1300,7 +1300,7 @@
 		<div class="surface-card">
 			<div class="card-body">
 				<h2 class="card-title text-lg">Signal Bars</h2>
-				<p class="text-xs text-base-content/50 mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
+				<p class="copy-faint mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
 				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
 					{#each [1, 2, 3, 4, 5, 6] as barNum}
 						{@const barId = `bar-${barNum}-color`}
@@ -1368,7 +1368,7 @@
 				</button>
 			</div>
 		
-		<div class="text-xs text-base-content/40 text-center">
+		<div class="copy-micro text-center">
 			Colors use RGB565 format. Save triggers a preview on the display.
 		</div>
 	{/if}

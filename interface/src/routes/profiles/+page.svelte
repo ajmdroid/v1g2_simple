@@ -699,7 +699,7 @@
 	</div>
 	
 	<!-- Info -->
-	<div class="text-sm text-base-content/50">
+	<div class="copy-faint-sm">
 		<p><strong>Pull:</strong> Read current V1 settings (shows in Current V1 Settings)</p>
 		<p><strong>Edit:</strong> Modify settings and push directly to V1</p>
 		<p><strong>Save:</strong> Store current V1 settings as a named profile</p>

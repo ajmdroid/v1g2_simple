@@ -636,7 +636,7 @@
 					</button>
 				{/if}
 				{:else}
-				<div class="text-sm text-base-content/50">
+				<div class="copy-faint-sm">
 					WiFi client is disabled. Enable to connect to a network.
 				</div>
 				{/if}
