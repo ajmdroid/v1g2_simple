@@ -271,9 +271,10 @@ struct V1Settings {
     uint8_t speedVolumeThresholdMph; // Speed threshold to trigger boost (default: 45 mph)
     uint8_t speedVolumeBoost;       // Volume levels to add when above threshold (1-5)
     
-    // Low-speed mute (suppress voice at low speeds, e.g., parking lots)
-    bool lowSpeedMuteEnabled;        // Enable low-speed voice muting
-    uint8_t lowSpeedMuteThresholdMph; // Mute voice when below this speed (default: 5 mph)
+    // Low-speed quiet (reduce V1 + speaker volume at low speeds, e.g., parking lots)
+    bool lowSpeedMuteEnabled;        // Enable low-speed volume reduction
+    uint8_t lowSpeedMuteThresholdMph; // Reduce volume when below this speed (default: 5 mph)
+    uint8_t lowSpeedVolume;           // V1 volume level at low speed (0-9, 0=mute, default: 0)
     
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -403,8 +404,9 @@ struct V1Settings {
         speedVolumeEnabled(false),       // Speed-based volume disabled by default
         speedVolumeThresholdMph(45),     // Boost above 45 mph (highway speeds)
         speedVolumeBoost(2),             // Add 2 volume levels when above threshold
-        lowSpeedMuteEnabled(false),      // Low-speed voice mute disabled by default
-        lowSpeedMuteThresholdMph(5),     // Mute voice below 5 mph (parking lot mode)
+        lowSpeedMuteEnabled(false),      // Low-speed volume reduction disabled by default
+        lowSpeedMuteThresholdMph(5),     // Reduce volume below 5 mph (parking lot mode)
+        lowSpeedVolume(0),               // V1 volume at low speed (0=mute for backward compat)
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -505,7 +507,7 @@ public:
     void setSecondaryX(bool enabled);
     void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
     void setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost);
-    void setLowSpeedMute(bool enabled, uint8_t thresholdMph);
+    void setLowSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t volume = 0);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

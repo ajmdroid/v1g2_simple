@@ -210,11 +210,15 @@ void handleApiSave(WebServer& server,
         s.speedVolumeBoost = static_cast<uint8_t>(std::max(1, std::min(val, 5)));
     }
 
-    // Low-speed mute
+    // Low-speed quiet
     if (server.hasArg("lowSpeedMuteEnabled")) s.lowSpeedMuteEnabled = argBool("lowSpeedMuteEnabled", s.lowSpeedMuteEnabled);
     if (server.hasArg("lowSpeedMuteThresholdMph")) {
         int val = server.arg("lowSpeedMuteThresholdMph").toInt();
         s.lowSpeedMuteThresholdMph = static_cast<uint8_t>(std::max(1, std::min(val, 30)));
+    }
+    if (server.hasArg("lowSpeedVolume")) {
+        int val = server.arg("lowSpeedVolume").toInt();
+        s.lowSpeedVolume = static_cast<uint8_t>(std::max(0, std::min(val, 9)));
     }
 
     // Misc sliders
@@ -432,6 +436,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["speedVolumeBoost"] = s.speedVolumeBoost;
     doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
+    doc["lowSpeedVolume"] = s.lowSpeedVolume;
     doc["obdEnabled"] = s.obdEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["cameraEnabled"] = s.cameraEnabled;

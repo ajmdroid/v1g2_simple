@@ -532,6 +532,7 @@ void SettingsManager::backupToSD() {
     doc["speedVolumeBoost"] = settings.speedVolumeBoost;
     doc["lowSpeedMuteEnabled"] = settings.lowSpeedMuteEnabled;
     doc["lowSpeedMuteThresholdMph"] = settings.lowSpeedMuteThresholdMph;
+    doc["lowSpeedVolume"] = settings.lowSpeedVolume;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;
@@ -829,6 +830,9 @@ bool SettingsManager::restoreFromSD() {
     restoreBool("lowSpeedMuteEnabled", settings.lowSpeedMuteEnabled);
     if (doc["lowSpeedMuteThresholdMph"].is<int>()) {
         settings.lowSpeedMuteThresholdMph = clampU8(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
+    }
+    if (doc["lowSpeedVolume"].is<int>()) {
+        settings.lowSpeedVolume = clampU8(doc["lowSpeedVolume"].as<int>(), 0, 9);
     }
     
     // === Auto-Push Settings ===

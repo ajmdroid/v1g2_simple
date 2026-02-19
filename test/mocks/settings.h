@@ -91,9 +91,10 @@ struct V1Settings {
     uint8_t speedVolumeThresholdMph = 45;
     uint8_t speedVolumeBoost = 2;
     
-    // Low-speed mute
+    // Low-speed quiet
     bool lowSpeedMuteEnabled = false;
     uint8_t lowSpeedMuteThresholdMph = 5;
+    uint8_t lowSpeedVolume = 0;
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;

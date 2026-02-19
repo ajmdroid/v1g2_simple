@@ -613,6 +613,10 @@ bool VoiceModule::isLowSpeedMuted(unsigned long now) const {
     const V1Settings& s = settings->get();
     
     if (!s.lowSpeedMuteEnabled) return false;
+    // Only fully mute voice when low-speed volume is 0.
+    // When lowSpeedVolume > 0, voice plays at reduced speaker volume
+    // (handled by SpeedVolumeModule + main loop).
+    if (s.lowSpeedVolume > 0) return false;
     if (bleClient && bleClient->isProxyClientConnected()) return false;
     if (!hasValidSpeedSource(now)) return false;
     
@@ -623,7 +627,7 @@ bool VoiceModule::isLowSpeedMuted(unsigned long now) const {
         static unsigned long lastLogTime = 0;
         if (now - lastLogTime > 5000) {
             DBG_LOGF(DebugLogCategory::Audio,
-                     "[Voice] Low speed mute: %.1f mph < %d\n",
+                     "[Voice] Low speed mute: %.1f mph < %d (vol=0)\n",
                      speedMph,
                      s.lowSpeedMuteThresholdMph);
             lastLogTime = now;

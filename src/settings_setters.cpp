@@ -321,9 +321,10 @@ void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t
     save();
 }
 
-void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph) {
+void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t volume) {
     settings.lowSpeedMuteEnabled = enabled;
     settings.lowSpeedMuteThresholdMph = clampU8(thresholdMph, 1, 30);
+    settings.lowSpeedVolume = clampU8(volume, 0, 9);
     save();
 }
 

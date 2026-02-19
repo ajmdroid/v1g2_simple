@@ -287,9 +287,10 @@ void SettingsManager::load() {
     settings.speedVolumeThresholdMph = clampU8(preferences.getUChar("spdVolThr", 45), 10, 100);
     settings.speedVolumeBoost = clampU8(preferences.getUChar("spdVolBoost", 2), 1, 5);
     
-    // Low-speed mute settings
+    // Low-speed quiet settings
     settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
     settings.lowSpeedMuteThresholdMph = clampU8(preferences.getUChar("lowSpdThr", 5), 1, 30);
+    settings.lowSpeedVolume = clampU8(preferences.getUChar("lowSpdVol", 0), 0, 9);
     
     settings.autoPushEnabled = preferences.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings.activeSlot = preferences.getInt("activeSlot", 0);

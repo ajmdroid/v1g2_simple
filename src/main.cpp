@@ -1107,6 +1107,27 @@ void loop() {
     // Speed-based volume: delegate to module (rate-limited internally)
     speedVolumeModule.process(now);
     
+    // Low-speed speaker volume scaling: when quiet is active, reduce speaker
+    // proportionally; restore when quiet ends.
+    {
+        static bool speakerQuietActive = false;
+        static uint8_t speakerOriginalVolume = 0;
+        bool quietNow = speedVolumeModule.isQuietActive();
+        if (quietNow && !speakerQuietActive) {
+            // Entering low-speed quiet — scale speaker volume
+            speakerOriginalVolume = settingsManager.get().voiceVolume;
+            uint8_t qv = speedVolumeModule.getQuietVolume();
+            uint8_t scaled = (qv == 0) ? 0
+                : static_cast<uint8_t>((uint16_t)speakerOriginalVolume * qv / 9);
+            audio_set_volume(scaled);
+            speakerQuietActive = true;
+        } else if (!quietNow && speakerQuietActive) {
+            // Exiting low-speed quiet — restore speaker volume
+            audio_set_volume(settingsManager.get().voiceVolume);
+            speakerQuietActive = false;
+        }
+    }
+    
     // Update display periodically
     now = millis();
     bleConnectedNow = bleClient.isConnected();

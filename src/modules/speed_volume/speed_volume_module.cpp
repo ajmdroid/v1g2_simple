@@ -52,6 +52,9 @@ void SpeedVolumeModule::process(unsigned long nowMs) {
             ble->setVolume(originalVolume, state.muteVolume);
             SPEED_VOL_PERF_INC(speedVolRestores);
         }
+        if (quietActive && originalQuietVolume != 0xFF && state.mainVolume != originalQuietVolume) {
+            ble->setVolume(originalQuietVolume, state.muteVolume);
+        }
         reset();
         return;
     }
@@ -62,6 +65,7 @@ void SpeedVolumeModule::process(unsigned long nowMs) {
     ctx.currentVolume = state.mainVolume;
     ctx.currentMuteVolume = state.muteVolume;
     ctx.speedMph = voice ? voice->getCurrentSpeedMph(nowMs) : 0.0f;
+    ctx.hasValidSpeed = voice ? voice->hasValidSpeedSource(nowMs) : false;
     ctx.now = nowMs;
 
     SpeedVolumeAction action = process(ctx);
@@ -70,6 +74,7 @@ void SpeedVolumeModule::process(unsigned long nowMs) {
     if (action.hasAction() && ble) {
         switch (action.type) {
             case SpeedVolumeAction::Type::BOOST:
+            case SpeedVolumeAction::Type::QUIET:
             case SpeedVolumeAction::Type::RESTORE:
                 ble->setVolume(action.volume, action.muteVolume);
                 break;
@@ -83,8 +88,15 @@ void SpeedVolumeModule::process(unsigned long nowMs) {
 void SpeedVolumeModule::reset() {
     boostActive = false;
     originalVolume = 0xFF;
+    quietActive = false;
+    originalQuietVolume = 0xFF;
     lastCheckMs = 0;
     // keep loggedSettings to avoid spamming logs across resets
+}
+
+uint8_t SpeedVolumeModule::getQuietVolume() const {
+    if (!quietActive || !settings) return 0xFF;
+    return settings->get().lowSpeedVolume;
 }
 
 SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
@@ -106,6 +118,12 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
             action.muteVolume = ctx.currentMuteVolume;
             SPEED_VOL_PERF_INC(speedVolRestores);
         }
+        if (!ctx.fadeTakingControl && quietActive && originalQuietVolume != 0xFF &&
+            ctx.currentVolume != originalQuietVolume) {
+            action.type = SpeedVolumeAction::Type::RESTORE;
+            action.volume = originalQuietVolume;
+            action.muteVolume = ctx.currentMuteVolume;
+        }
         reset();
         return action;
     }
@@ -117,10 +135,46 @@ SpeedVolumeAction SpeedVolumeModule::process(const SpeedVolumeContext& ctx) {
     lastCheckMs = ctx.now;
 
     if (!loggedSettings) {
-        Serial.printf("[SpeedVolume] Settings: enabled=%d threshold=%d boost=%d\n",
-                      s.speedVolumeEnabled, s.speedVolumeThresholdMph, s.speedVolumeBoost);
+        Serial.printf("[SpeedVolume] Settings: enabled=%d hiThresh=%d boost=%d loEnabled=%d loThresh=%d loVol=%d\n",
+                      s.speedVolumeEnabled, s.speedVolumeThresholdMph, s.speedVolumeBoost,
+                      s.lowSpeedMuteEnabled, s.lowSpeedMuteThresholdMph, s.lowSpeedVolume);
         loggedSettings = true;
     }
+
+    // === Low-speed quiet logic ===
+    bool shouldQuiet = s.lowSpeedMuteEnabled && ctx.hasValidSpeed &&
+                       ctx.speedMph < s.lowSpeedMuteThresholdMph;
+
+    if (shouldQuiet && !quietActive) {
+        originalQuietVolume = ctx.currentVolume;
+        uint8_t targetVol = s.lowSpeedVolume;
+        if (ctx.currentVolume != targetVol) {
+            action.type = SpeedVolumeAction::Type::QUIET;
+            action.volume = targetVol;
+            action.muteVolume = ctx.currentMuteVolume;
+            quietActive = true;
+            Serial.printf("[SpeedVolume] LOW-SPEED QUIET: %d -> %d (%.1f mph < %d)\n",
+                          ctx.currentVolume, targetVol, ctx.speedMph, s.lowSpeedMuteThresholdMph);
+        } else {
+            quietActive = true;  // Already at target, just track
+        }
+        return action;
+    }
+
+    if (!shouldQuiet && quietActive) {
+        if (originalQuietVolume != 0xFF && ctx.currentVolume != originalQuietVolume) {
+            action.type = SpeedVolumeAction::Type::RESTORE;
+            action.volume = originalQuietVolume;
+            action.muteVolume = ctx.currentMuteVolume;
+            Serial.printf("[SpeedVolume] LOW-SPEED RESTORE: %d -> %d\n",
+                          ctx.currentVolume, originalQuietVolume);
+        }
+        quietActive = false;
+        originalQuietVolume = 0xFF;
+        return action;
+    }
+
+    // === High-speed boost logic ===
 
     bool shouldBoost = ctx.speedMph >= s.speedVolumeThresholdMph;
 

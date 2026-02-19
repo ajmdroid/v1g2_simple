@@ -13,6 +13,7 @@ struct SpeedVolumeAction {
     enum class Type : uint8_t {
         NONE = 0,
         BOOST,
+        QUIET,      // Low-speed volume reduction
         RESTORE
     };
     Type type = Type::NONE;
@@ -28,6 +29,7 @@ struct SpeedVolumeContext {
     uint8_t currentVolume = 0;
     uint8_t currentMuteVolume = 0;
     float speedMph = 0.0f;
+    bool hasValidSpeed = false;  // Whether speed source is available
     unsigned long now = 0;
 };
 
@@ -53,7 +55,9 @@ public:
     
     void reset();
     bool isBoostActive() const { return boostActive; }
+    bool isQuietActive() const { return quietActive; }
     uint8_t getOriginalVolume() const { return originalVolume; }
+    uint8_t getQuietVolume() const;  // Current low-speed target (0xFF if not active)
     
 private:
     SettingsManager* settings = nullptr;
@@ -62,8 +66,14 @@ private:
     VoiceModule* voice = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     
+    // High-speed boost state
     bool boostActive = false;
     uint8_t originalVolume = 0xFF;
+    
+    // Low-speed quiet state
+    bool quietActive = false;
+    uint8_t originalQuietVolume = 0xFF;
+    
     unsigned long lastCheckMs = 0;
     bool loggedSettings = false;
     

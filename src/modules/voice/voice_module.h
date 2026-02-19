@@ -128,6 +128,7 @@ public:
     bool getCurrentSpeedSample(unsigned long now, float& speedMphOut) const;
     void updateSpeedSample(float speedMph, unsigned long timestampMs);
     void clearSpeedSample();
+    bool hasValidSpeedSource(unsigned long now) const;
 
 private:
     // Dependencies
@@ -217,7 +218,6 @@ private:
     unsigned long cachedSpeedTimestamp = 0;
     static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;
     
-    bool hasValidSpeedSource(unsigned long now) const;
     bool isLowSpeedMuted(unsigned long now) const;
     
     // Alert history helpers

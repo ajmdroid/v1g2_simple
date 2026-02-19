@@ -259,6 +259,7 @@ void test_save_clamps_numeric_ranges() {
     server.setArg("speedVolumeThresholdMph", "300");
     server.setArg("speedVolumeBoost", "0");
     server.setArg("lowSpeedMuteThresholdMph", "0");
+    server.setArg("lowSpeedVolume", "99");
     server.setArg("gpsLockoutMaxQueueDrops", "70000");
 
     WifiDisplayColorsApiService::handleApiSave(
@@ -273,6 +274,7 @@ void test_save_clamps_numeric_ranges() {
     TEST_ASSERT_EQUAL_UINT8(100, rt.settings.speedVolumeThresholdMph);
     TEST_ASSERT_EQUAL_UINT8(1, rt.settings.speedVolumeBoost);
     TEST_ASSERT_EQUAL_UINT8(1, rt.settings.lowSpeedMuteThresholdMph);
+    TEST_ASSERT_EQUAL_UINT8(9, rt.settings.lowSpeedVolume);
     TEST_ASSERT_EQUAL_UINT16(65535, rt.settings.gpsLockoutMaxQueueDrops);
 }
 

@@ -24,9 +24,10 @@
 		speedVolumeEnabled: false,
 		speedVolumeThresholdMph: 45,
 		speedVolumeBoost: 2,
-		// Low-speed mute settings
+		// Low-speed quiet settings
 		lowSpeedMuteEnabled: false,
-		lowSpeedMuteThresholdMph: 5
+		lowSpeedMuteThresholdMph: 5,
+		lowSpeedVolume: 0
 	});
 	
 	let loading = $state(true);
@@ -76,9 +77,10 @@
 				settings.speedVolumeEnabled = data.speedVolumeEnabled ?? false;
 				settings.speedVolumeThresholdMph = data.speedVolumeThresholdMph ?? 45;
 				settings.speedVolumeBoost = data.speedVolumeBoost ?? 2;
-				// Low-speed mute settings
+				// Low-speed quiet settings
 				settings.lowSpeedMuteEnabled = data.lowSpeedMuteEnabled ?? false;
 				settings.lowSpeedMuteThresholdMph = data.lowSpeedMuteThresholdMph ?? 5;
+				settings.lowSpeedVolume = data.lowSpeedVolume ?? 0;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -112,9 +114,10 @@
 			params.append('speedVolumeEnabled', settings.speedVolumeEnabled);
 			params.append('speedVolumeThresholdMph', settings.speedVolumeThresholdMph);
 			params.append('speedVolumeBoost', settings.speedVolumeBoost);
-			// Low-speed mute settings
+			// Low-speed quiet settings
 			params.append('lowSpeedMuteEnabled', settings.lowSpeedMuteEnabled);
 			params.append('lowSpeedMuteThresholdMph', settings.lowSpeedMuteThresholdMph);
+			params.append('lowSpeedVolume', settings.lowSpeedVolume);
 			
 			const res = await fetch('/api/displaycolors', {
 				method: 'POST',
@@ -395,12 +398,12 @@
 			</div>
 		</div>
 		
-		<!-- Speed-Based Volume -->
+		<!-- Speed Volume -->
 		<div class="surface-card">
 			<div class="card-body">
 				<CardSectionHead
-					title="Speed-Based Volume"
-					subtitle="Boost V1 volume at highway speeds (requires an external speed source)."
+					title="Speed Volume"
+					subtitle="Adjust V1 and speaker volume based on driving speed (requires a speed source)."
 				/>
 				
 				<div class="space-y-4">
@@ -409,7 +412,7 @@
 						<label class="label cursor-pointer">
 							<div>
 								<span class="label-text font-medium">Enable Speed Volume</span>
-								<p class="copy-caption-soft">Louder alerts when driving faster (more road noise)</p>
+								<p class="copy-caption-soft">Automatically adjust volume based on speed</p>
 							</div>
 							<input 
 								type="checkbox" 
@@ -420,7 +423,10 @@
 					</div>
 					
 					{#if settings.speedVolumeEnabled}
+						<!-- High-Speed Boost -->
 						<div class="surface-subsection">
+							<p class="text-sm font-semibold mb-2 copy-heading">High-Speed Boost</p>
+							
 							<!-- Speed Threshold -->
 							<div class="form-control">
 								<label class="label" for="speed-threshold">
@@ -453,7 +459,7 @@
 									bind:value={settings.speedVolumeBoost}
 									class="range range-primary range-sm" 
 								/>
-								<p class="copy-caption-soft mt-1">Volume levels to add (1-5)</p>
+								<p class="copy-caption-soft mt-1">V1 volume levels to add (1-5)</p>
 							</div>
 							
 							<!-- Preview -->
@@ -464,66 +470,76 @@
 								</p>
 							</div>
 						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
-		
-		<!-- Low-Speed Mute -->
-		<div class="surface-card">
-			<div class="card-body">
-				<CardSectionHead
-					title="Low-Speed Mute"
-					subtitle="Suppress voice at low speeds (parking lots, drive-thrus)."
-				/>
-				
-				<div class="space-y-4">
-					<!-- Master Toggle -->
-					<div class="form-control">
-						<label class="label cursor-pointer">
-							<div>
-								<span class="label-text font-medium">Enable Low-Speed Mute</span>
-								<p class="copy-caption-soft">Silence voice announcements when nearly stopped</p>
-							</div>
-							<input 
-								type="checkbox" 
-								class="toggle toggle-primary" 
-								bind:checked={settings.lowSpeedMuteEnabled}
-							/>
-						</label>
-					</div>
-					
-					{#if settings.lowSpeedMuteEnabled}
+						
+						<!-- Low-Speed Quiet -->
 						<div class="surface-subsection">
-							<!-- Speed Threshold -->
 							<div class="form-control">
-								<label class="label" for="low-speed-threshold">
-									<span class="label-text">Speed Threshold</span>
-									<span class="label-text-alt">{settings.lowSpeedMuteThresholdMph} mph</span>
+								<label class="label cursor-pointer">
+									<div>
+										<span class="label-text font-semibold">Low-Speed Quiet</span>
+										<p class="copy-caption-soft">Reduce V1 and speaker volume at low speeds (parking lots, drive-thrus)</p>
+									</div>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-primary toggle-sm" 
+										bind:checked={settings.lowSpeedMuteEnabled}
+									/>
 								</label>
-								<input 
-									id="low-speed-threshold"
-									type="range" 
-									min="1" 
-									max="20" 
-									step="1"
-									bind:value={settings.lowSpeedMuteThresholdMph}
-									class="range range-primary range-sm" 
-								/>
-								<p class="copy-caption-soft mt-1">Mute voice when below this speed</p>
 							</div>
 							
-							<!-- Preview -->
-							<div class="surface-panel text-sm">
-								<p class="copy-subtle">
-									Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
-									<strong>voice muted</strong> (alerts still display)
-								</p>
-							</div>
-							
-							<div class="copy-micro">
-								Note: Requires a speed source. If unavailable, voice remains active.
-							</div>
+							{#if settings.lowSpeedMuteEnabled}
+								<!-- Speed Threshold -->
+								<div class="form-control mt-2">
+									<label class="label" for="low-speed-threshold">
+										<span class="label-text">Speed Threshold</span>
+										<span class="label-text-alt">{settings.lowSpeedMuteThresholdMph} mph</span>
+									</label>
+									<input 
+										id="low-speed-threshold"
+										type="range" 
+										min="1" 
+										max="20" 
+										step="1"
+										bind:value={settings.lowSpeedMuteThresholdMph}
+										class="range range-primary range-sm" 
+									/>
+									<p class="copy-caption-soft mt-1">Reduce volume when below this speed</p>
+								</div>
+								
+								<!-- Reduced Volume Level -->
+								<div class="form-control">
+									<label class="label" for="low-speed-volume">
+										<span class="label-text">Reduced Volume</span>
+										<span class="label-text-alt">{settings.lowSpeedVolume === 0 ? 'Mute' : settings.lowSpeedVolume}</span>
+									</label>
+									<input 
+										id="low-speed-volume"
+										type="range" 
+										min="0" 
+										max="9" 
+										step="1"
+										bind:value={settings.lowSpeedVolume}
+										class="range range-primary range-sm" 
+									/>
+									<p class="copy-caption-soft mt-1">V1 and speaker volume level (0 = mute)</p>
+								</div>
+								
+								<!-- Preview -->
+								<div class="surface-panel text-sm">
+									<p class="copy-subtle">
+										Speed &lt; {settings.lowSpeedMuteThresholdMph} mph → 
+										{#if settings.lowSpeedVolume === 0}
+											<strong>muted</strong> (V1 + speaker silent)
+										{:else}
+											<strong>V1 vol = {settings.lowSpeedVolume}</strong>, speaker scaled
+										{/if}
+									</p>
+								</div>
+								
+								<div class="copy-micro">
+									Note: Requires a speed source. If unavailable, volume stays unchanged.
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
