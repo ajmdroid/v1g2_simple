@@ -486,7 +486,7 @@
 								class="toggle toggle-sm toggle-primary"
 								bind:checked={colors.freqUseBandColor}
 							/>
-							<span class="label-text text-sm">Use band color for frequency</span>
+							<span class="label-text-field">Use band color for frequency</span>
 						</label>
 					</div>
 				</div>

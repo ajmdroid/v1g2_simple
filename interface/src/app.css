@@ -137,6 +137,10 @@ html {
 		@apply mb-2 text-sm font-medium;
 	}
 
+	.label-text-field {
+		@apply label-text text-sm;
+	}
+
 	.status-heading-muted {
 		@apply text-xl font-bold text-base-content/70;
 	}

@@ -1089,7 +1089,7 @@
 
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				<label class="form-control">
-					<span class="label-text text-sm">Mode</span>
+					<span class="label-text-field">Mode</span>
 					<select
 						class="select select-bordered select-sm"
 						bind:value={lockoutConfig.modeRaw}
@@ -1103,7 +1103,7 @@
 					</select>
 				</label>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<span class="label-text text-sm">Core guard</span>
+					<span class="label-text-field">Core guard</span>
 					<input
 						type="checkbox"
 						class="toggle toggle-primary toggle-sm"
@@ -1118,7 +1118,7 @@
 				{#if lockoutConfig.modeRaw === 3}
 				<label class="label cursor-pointer justify-start gap-3 py-0">
 					<div>
-						<span class="label-text text-sm">Pre-quiet in lockout zones</span>
+						<span class="label-text-field">Pre-quiet in lockout zones</span>
 						<p class="copy-caption">Drop V1 volume to mute-volume when entering a lockout zone. Restores instantly on real alerts.</p>
 					</div>
 					<input
@@ -1134,7 +1134,7 @@
 				</label>
 				{/if}
 				<label class="form-control">
-					<span class="label-text text-sm">Max queue drops (0 = strictest)</span>
+					<span class="label-text-field">Max queue drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -1149,7 +1149,7 @@
 					/>
 				</label>
 				<label class="form-control">
-					<span class="label-text text-sm">Max perf drops (0 = strictest)</span>
+					<span class="label-text-field">Max perf drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -1164,7 +1164,7 @@
 					/>
 				</label>
 				<label class="form-control">
-					<span class="label-text text-sm">Max event-bus drops (0 = strictest)</span>
+					<span class="label-text-field">Max event-bus drops (0 = strictest)</span>
 					<input
 						type="number"
 						min="0"
@@ -1221,7 +1221,7 @@
 				</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 					<label class="form-control">
-						<span class="label-text text-sm">Hits to promote</span>
+						<span class="label-text-field">Hits to promote</span>
 						<input
 							type="number"
 							min={LEARNER_PROMOTION_HITS_MIN}
@@ -1236,7 +1236,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Learn interval (hours, 0 = disabled)</span>
+						<span class="label-text-field">Learn interval (hours, 0 = disabled)</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerLearnIntervalHours}
@@ -1254,7 +1254,7 @@
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Drift tolerance (MHz)</span>
+						<span class="label-text-field">Drift tolerance (MHz)</span>
 						<input
 							type="number"
 							min={LEARNER_FREQ_TOLERANCE_MHZ_MIN}
@@ -1271,7 +1271,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Lockout radius (ft)</span>
+						<span class="label-text-field">Lockout radius (ft)</span>
 						<input
 							type="number"
 							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
@@ -1286,7 +1286,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Unlearn count (0 = legacy)</span>
+						<span class="label-text-field">Unlearn count (0 = legacy)</span>
 						<input
 							type="number"
 							min={LEARNER_UNLEARN_COUNT_MIN}
@@ -1301,7 +1301,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Unlearn interval (hours, 0 = disabled)</span>
+						<span class="label-text-field">Unlearn interval (hours, 0 = disabled)</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerUnlearnIntervalHours}
@@ -1319,7 +1319,7 @@
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Manual delete misses (0 = disabled)</span>
+						<span class="label-text-field">Manual delete misses (0 = disabled)</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.manualDemotionMissCount}
@@ -1338,7 +1338,7 @@
 					</label>
 				</div>
 				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<span class="label-text text-sm">Ka lockout learning (high risk)</span>
+					<span class="label-text-field">Ka lockout learning (high risk)</span>
 					<input
 						type="checkbox"
 						class="toggle toggle-warning toggle-sm"
@@ -1717,7 +1717,7 @@
 
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					<label class="form-control">
-						<span class="label-text text-sm">Latitude</span>
+						<span class="label-text-field">Latitude</span>
 						<input
 							type="number"
 							step="0.00001"
@@ -1731,7 +1731,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Longitude</span>
+						<span class="label-text-field">Longitude</span>
 						<input
 							type="number"
 							step="0.00001"
@@ -1745,7 +1745,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Band</span>
+						<span class="label-text-field">Band</span>
 						<select
 							class="select select-bordered select-sm"
 							value={zoneEditor.bandMask}
@@ -1759,7 +1759,7 @@
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Frequency (MHz, optional)</span>
+						<span class="label-text-field">Frequency (MHz, optional)</span>
 						<input
 							type="number"
 							min="0"
@@ -1772,7 +1772,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Frequency tolerance (MHz)</span>
+						<span class="label-text-field">Frequency tolerance (MHz)</span>
 						<input
 							type="number"
 							min="0"
@@ -1790,7 +1790,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Radius (ft)</span>
+						<span class="label-text-field">Radius (ft)</span>
 						<input
 							type="number"
 							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
@@ -1803,7 +1803,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Confidence</span>
+						<span class="label-text-field">Confidence</span>
 						<input
 							type="number"
 							min="0"
@@ -1816,7 +1816,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Direction mode</span>
+						<span class="label-text-field">Direction mode</span>
 						<select
 							class="select select-bordered select-sm"
 							value={zoneEditor.directionMode}
@@ -1833,7 +1833,7 @@
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text text-sm">Heading tolerance (degrees)</span>
+						<span class="label-text-field">Heading tolerance (degrees)</span>
 						<input
 							type="number"
 							min="0"
@@ -1847,7 +1847,7 @@
 					</label>
 					{#if zoneEditor.directionMode !== 'all'}
 						<label class="form-control md:col-span-2">
-							<span class="label-text text-sm">Heading (0-359 degrees)</span>
+							<span class="label-text-field">Heading (0-359 degrees)</span>
 							<input
 								type="number"
 								min="0"
