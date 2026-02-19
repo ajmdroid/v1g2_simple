@@ -26,8 +26,6 @@ void processLockoutStoreSave(uint32_t nowMs) {
         (nowMs - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
         lastLockoutSaveAttemptMs = nowMs;
         static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
-        JsonDocument doc;
-        lockoutStore.toJson(doc);
         fs::FS* fs = storageManager.getFilesystem();
         bool saveOk = false;
         bool saveDeferred = false;
@@ -36,6 +34,8 @@ void processLockoutStoreSave(uint32_t nowMs) {
                 // Core 1 path must never block waiting for SD ownership.
                 StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
                 if (sdLock) {
+                    JsonDocument doc;
+                    lockoutStore.toJson(doc);
                     saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
                 } else {
                     saveDeferred = true;
@@ -47,6 +47,8 @@ void processLockoutStoreSave(uint32_t nowMs) {
                 }
             } else {
                 // LittleFS fallback path (single-CPU filesystem access).
+                JsonDocument doc;
+                lockoutStore.toJson(doc);
                 saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
             }
         }
@@ -76,8 +78,6 @@ void processLearnerPendingSave(uint32_t nowMs) {
         (nowMs - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
         lastLearnerSaveAttemptMs = nowMs;
         static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-        JsonDocument doc;
-        lockoutLearner.toJson(doc);
         fs::FS* fs = storageManager.getFilesystem();
         bool saveOk = false;
         bool saveDeferred = false;
@@ -86,12 +86,16 @@ void processLearnerPendingSave(uint32_t nowMs) {
                 // Core 1 path must never block waiting for SD ownership.
                 StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
                 if (sdLock) {
+                    JsonDocument doc;
+                    lockoutLearner.toJson(doc);
                     saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
                 } else {
                     saveDeferred = true;
                 }
             } else {
                 // LittleFS fallback path (single-CPU filesystem access).
+                JsonDocument doc;
+                lockoutLearner.toJson(doc);
                 saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
             }
         }
