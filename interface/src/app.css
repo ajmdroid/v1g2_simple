@@ -100,6 +100,13 @@ html {
 		background: oklch(var(--b2) / 0.42);
 	}
 
+	.surface-stats {
+		@apply stats stats-vertical md:stats-horizontal;
+		border: 1px solid oklch(var(--bc) / calc(var(--app-border-alpha) * 0.85));
+		border-radius: var(--app-radius-md);
+		background: oklch(var(--b2) / 0.42);
+	}
+
 	.color-swatch-btn {
 		@apply cursor-pointer rounded border-2 border-base-300;
 	}

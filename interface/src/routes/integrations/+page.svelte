@@ -479,7 +479,7 @@
 				</label>
 			</div>
 
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Mode</div>
 					<div class="stat-value text-base">{gpsStatus.mode || 'scaffold'}</div>
@@ -561,7 +561,7 @@
 					<div class="text-xs text-base-content/60">Enable VW-specific PIDs (oil temp)</div>
 				</div>
 
-				<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+				<div class="surface-stats">
 					<div class="stat py-3 px-4">
 						<div class="stat-title">V1 Link</div>
 						<div class="stat-value text-base">{status.v1Connected ? 'Ready' : 'Offline'}</div>

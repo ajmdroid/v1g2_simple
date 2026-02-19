@@ -1426,7 +1426,7 @@
 				</div>
 			{/if}
 
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Active</div>
 					<div class="stat-value text-base">
@@ -1622,7 +1622,7 @@
 				</div>
 			{/if}
 
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Buffer</div>
 					<div class="stat-value text-base">

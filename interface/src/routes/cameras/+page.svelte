@@ -431,7 +431,7 @@
 						</div>
 					</div>
 				</div>
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Runtime</div>
 					<div class="stat-value text-base">{status.enabled ? 'Enabled' : 'Disabled'}</div>
@@ -480,7 +480,7 @@
 				<div class="text-xs text-base-content/60">last scan: {formatTimestamp(catalog.tsMs)}</div>
 			</div>
 
-			<div class="stats stats-vertical md:stats-horizontal shadow bg-base-100">
+			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Storage</div>
 					<div class="stat-value text-base">{catalog.storageReady ? 'Ready' : 'Unavailable'}</div>
