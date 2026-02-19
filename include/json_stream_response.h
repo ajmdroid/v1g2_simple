@@ -16,10 +16,84 @@
 
 #include <ArduinoJson.h>
 #include <WebServer.h>
+#include <stdint.h>
+#include <string.h>
+
+namespace json_stream_detail {
+
+// Buffered Print adapter to avoid byte-at-a-time TCP writes from serializeJson().
+template <typename ClientT, size_t kBufferSize = 512>
+class BufferedClientPrint final : public Print {
+public:
+    explicit BufferedClientPrint(ClientT& client) : client_(client) {}
+
+    size_t write(uint8_t c) override { return write(&c, 1); }
+
+    size_t write(const uint8_t* data, size_t size) override {
+        if (!data || size == 0 || failed_) {
+            return 0;
+        }
+
+        size_t accepted = 0;
+        while (size > 0) {
+            if (used_ == kBufferSize) {
+                if (!flushBuffer()) {
+                    break;
+                }
+            }
+
+            const size_t freeBytes = kBufferSize - used_;
+            const size_t toCopy = (size < freeBytes) ? size : freeBytes;
+            memcpy(buffer_ + used_, data, toCopy);
+            used_ += toCopy;
+            data += toCopy;
+            size -= toCopy;
+            accepted += toCopy;
+        }
+        return accepted;
+    }
+
+    bool flushBuffer() {
+        if (failed_ || used_ == 0) {
+            return !failed_;
+        }
+
+        size_t offset = 0;
+        while (offset < used_) {
+            const size_t written = client_.write(buffer_ + offset, used_ - offset);
+            if (written == 0) {
+                failed_ = true;
+                break;
+            }
+            offset += written;
+        }
+
+        used_ = 0;
+        return !failed_;
+    }
+
+private:
+    ClientT& client_;
+    uint8_t buffer_[kBufferSize] = {};
+    size_t used_ = 0;
+    bool failed_ = false;
+};
+
+}  // namespace json_stream_detail
 
 inline void sendJsonStream(WebServer& server, JsonDocument& doc, int code = 200) {
+#if defined(UNIT_TEST)
+    String response;
+    serializeJson(doc, response);
+    server.send(code, "application/json", response);
+#else
     const size_t len = measureJson(doc);
     server.setContentLength(len);
     server.send(code, "application/json", "");
-    serializeJson(doc, server.client());
+
+    auto client = server.client();
+    json_stream_detail::BufferedClientPrint<decltype(client)> buffered(client);
+    serializeJson(doc, buffered);
+    buffered.flushBuffer();
+#endif
 }
