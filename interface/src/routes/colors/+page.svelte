@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	
 	// RGB565 color values (stored on ESP32)
@@ -400,8 +401,10 @@
 		<!-- Display Style -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Display Style</h2>
-				<p class="copy-muted">Choose font style for frequency and counter</p>
+				<CardSectionHead
+					title="Display Style"
+					subtitle="Choose font style for frequency and counter."
+				/>
 				<div class="form-control">
 						<select 
 							id="display-style"
@@ -419,7 +422,7 @@
 		<!-- Counter & Frequency -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Counter & Frequency</h2>
+				<CardSectionHead title="Counter & Frequency" />
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="bogey-color">
@@ -668,7 +671,7 @@
 		<!-- Band Indicators -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Band Indicators</h2>
+				<CardSectionHead title="Band Indicators" />
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="form-control">
 						<label class="label" for="bandL-color">
@@ -808,7 +811,7 @@
 		<!-- Direction Arrows -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Direction Arrows</h2>
+				<CardSectionHead title="Direction Arrows" />
 				<div class="grid grid-cols-3 gap-4">
 					<div class="form-control">
 						<label class="label" for="arrow-front-color">
@@ -895,8 +898,10 @@
 		<!-- Camera, Lockout, GPS & OBD -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Camera, Lockout, GPS & OBD</h2>
-				<p class="copy-faint mb-2">Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color</p>
+				<CardSectionHead
+					title="Camera, Lockout, GPS & OBD"
+					subtitle="Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color."
+				/>
 				<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
 					<div class="form-control">
 						<label class="label" for="camera-token-color">
@@ -1035,7 +1040,7 @@
 		<!-- Status Indicators -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Status Indicators</h2>
+				<CardSectionHead title="Status Indicators" />
 				
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
@@ -1276,8 +1281,10 @@
 		<!-- Display Brightness -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Display Brightness</h2>
-				<p class="copy-faint mb-2">Adjust the AMOLED screen brightness (0-255)</p>
+				<CardSectionHead
+					title="Display Brightness"
+					subtitle="Adjust the AMOLED screen brightness (0-255)."
+				/>
 				<div class="form-control">
 					<div class="flex items-center gap-4">
 						<label for="brightness-slider" class="text-sm">🌑</label>
@@ -1299,8 +1306,10 @@
 		<!-- Signal Bars -->
 		<div class="surface-card">
 			<div class="card-body">
-				<h2 class="card-title text-lg">Signal Bars</h2>
-				<p class="copy-faint mb-2">Bar 1 = weakest, Bar 6 = strongest</p>
+				<CardSectionHead
+					title="Signal Bars"
+					subtitle="Bar 1 = weakest, Bar 6 = strongest."
+				/>
 				<div class="grid grid-cols-3 md:grid-cols-6 gap-2">
 					{#each [1, 2, 3, 4, 5, 6] as barNum}
 						{@const barId = `bar-${barNum}-color`}

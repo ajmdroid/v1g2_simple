@@ -99,8 +99,9 @@ public:
     bool canStartSetupMode(uint32_t* freeInternal = nullptr, uint32_t* largestInternal = nullptr) const;
     unsigned long lowDmaCooldownRemainingMs() const;
     
-    // Reset WiFi reconnect failure counter (call when user manually triggers WiFi)
-    void resetReconnectFailures() { wifiReconnectFailures = 0; }
+    // Reset WiFi reconnect failure counter and debounce timer
+    // (call when user manually triggers WiFi)
+    void resetReconnectFailures() { wifiReconnectFailures = 0; lastReconnectAttemptMs = 0; }
     
     // Status
     bool isConnected() const { return wifiClientState == WIFI_CLIENT_CONNECTED; }
@@ -171,6 +172,7 @@ private:
     
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
     int wifiReconnectFailures = 0;
+    unsigned long lastReconnectAttemptMs = 0;  // Moved from static local for proper reset across WiFi sessions
     static constexpr int WIFI_MAX_RECONNECT_FAILURES = 5;  // Give up after 5 failures
     static constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 30000;  // 30s between attempts
     static constexpr unsigned long WIFI_RECONNECT_DEFER_NO_V1_MS = 90000;  // Protect BLE acquisition on boot

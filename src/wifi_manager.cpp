@@ -299,6 +299,15 @@ bool WiFiManager::startSetupMode() {
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
 
+    // Immediately kick off STA connection when AP+STA mode is used.
+    // This bypasses the auto-reconnect guard conditions (boot-grace deferral,
+    // debounce timer) that can delay or block the first connect attempt.
+    if (apStaMode) {
+        String savedPassword = settingsManager.getWifiClientPassword();
+        Serial.printf("[SetupMode] Initiating STA connect to '%s'\n", settings.wifiClientSSID.c_str());
+        connectToNetwork(settings.wifiClientSSID, savedPassword, false);
+    }
+
     WIFI_LOG("[SetupMode] AP started - connect to SSID shown on display\n");
     WIFI_LOG("[SetupMode] Web UI at http://%s\n", WiFi.softAPIP().toString().c_str());
     uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
@@ -383,6 +392,8 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
+    lastReconnectAttemptMs = 0;
+    wifiReconnectDeferredLogged = false;
 
     // ========== 4. OBSERVABILITY ==========
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
