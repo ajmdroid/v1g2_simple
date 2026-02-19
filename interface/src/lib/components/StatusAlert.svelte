@@ -1,13 +1,20 @@
 <script>
 	let { message = null, fallbackType = 'info', dismiss = null, busy = false } = $props();
 
+	const TYPE_BY_MESSAGE = {
+		error: 'error',
+		success: 'success',
+		warning: 'warning',
+		info: 'info'
+	};
+
+	const TYPE_BY_FALLBACK = {
+		warning: 'warning',
+		success: 'success'
+	};
+
 	function resolveType(type) {
-		if (type === 'error') return 'error';
-		if (type === 'success') return 'success';
-		if (type === 'warning') return 'warning';
-		if (type === 'info') return 'info';
-		if (fallbackType === 'warning') return 'warning';
-		return fallbackType === 'success' ? 'success' : 'info';
+		return TYPE_BY_MESSAGE[type] ?? TYPE_BY_FALLBACK[fallbackType] ?? 'info';
 	}
 </script>
 

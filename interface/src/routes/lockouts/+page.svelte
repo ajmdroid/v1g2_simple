@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { formatFrequencyMhz } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -177,9 +178,8 @@
 		message = { type, text };
 	}
 
-	function formatFrequencyMhz(mhz) {
-		if (typeof mhz !== 'number' || !Number.isFinite(mhz) || mhz <= 0) return '—';
-		return `${Math.round(mhz)} MHz`;
+	function formatRoundedFrequencyMhz(mhz) {
+		return formatFrequencyMhz(mhz, { roundMhz: true });
 	}
 
 	function formatCoordinate(value) {
@@ -1493,7 +1493,7 @@
 												</div>
 											</td>
 											<td>{formatBandMask(zone.bandMask)}</td>
-											<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
+											<td class="whitespace-nowrap">{formatRoundedFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.confidence === 'number' ? zone.confidence : '—'}</td>
 											<td class="whitespace-nowrap">{formatZoneRadiusFeet(zone)}</td>
 											<td class="text-xs whitespace-nowrap">{formatDirectionSummary(zone)}</td>
@@ -1552,7 +1552,7 @@
 										<tr>
 											<td class="font-mono text-xs">{zone.slot}</td>
 											<td>{zone.band || 'UNK'}</td>
-												<td class="whitespace-nowrap">{formatFrequencyMhz(zone.frequencyMHz)}</td>
+												<td class="whitespace-nowrap">{formatRoundedFrequencyMhz(zone.frequencyMHz)}</td>
 											<td>{typeof zone.hitCount === 'number' ? zone.hitCount : '—'}</td>
 											<td>{typeof zone.hitsRemaining === 'number' ? zone.hitsRemaining : '—'}</td>
 											<td class="text-xs">{formatEpochMs(zone.lastSeenMs)}</td>
@@ -1624,7 +1624,7 @@
 					</div>
 					<div class="stat-desc">
 						{lockoutEvents[0]
-							? `${formatFrequencyMhz(lockoutEvents[0].frequencyMHz)} • fix age ${formatFixAgeMs(lockoutEvents[0].fixAgeMs)}`
+							? `${formatRoundedFrequencyMhz(lockoutEvents[0].frequencyMHz)} • fix age ${formatFixAgeMs(lockoutEvents[0].fixAgeMs)}`
 							: 'no samples yet'}
 					</div>
 				</div>
@@ -1666,7 +1666,7 @@
 								<tr>
 									<td class="font-mono text-xs">{formatBootTime(event.tsMs)}</td>
 									<td>{event.band || 'UNK'}</td>
-									<td>{formatFrequencyMhz(event.frequencyMHz)}</td>
+									<td>{formatRoundedFrequencyMhz(event.frequencyMHz)}</td>
 									<td>{typeof event.strength === 'number' ? event.strength : '—'}</td>
 									<td>{formatFixAgeMs(event.fixAgeMs)}</td>
 									<td>{typeof event.satellites === 'number' ? event.satellites : '—'}</td>

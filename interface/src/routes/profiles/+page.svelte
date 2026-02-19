@@ -391,10 +391,8 @@
 				title="Current V1 Settings"
 				subtitle="Pull, edit, and push your detector configuration."
 			/>
-				{#if editingSettings && currentProfile?.name}
-					<div class="surface-alert alert-info">
-						<span class="copy-subtle">Editing profile: <span class="font-semibold">{currentProfile.name}</span></span>
-					</div>
+			{#if editingSettings && currentProfile?.name}
+				<StatusAlert message={{ type: 'info', text: `Editing profile: ${currentProfile.name}` }} />
 				<div class="form-control max-w-md">
 					<label class="label" for="edit-description">
 						<span class="label-text">Description</span>
@@ -408,8 +406,8 @@
 					/>
 				</div>
 			{/if}
-				{#if (!v1Connected) && !editingSettings}
-					<p class="copy-warning">Connect to V1 to view/edit settings</p>
+			{#if (!v1Connected) && !editingSettings}
+				<p class="copy-warning">Connect to V1 to view/edit settings</p>
 			{:else if currentProfile && currentProfile.settings}
 				{@const settings = editingSettings ? editedSettings : currentProfile.settings}
 				<div class="space-y-3">

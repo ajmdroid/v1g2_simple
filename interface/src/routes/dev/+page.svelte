@@ -1,5 +1,6 @@
 <script>
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import { formatBytes } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -21,7 +22,7 @@
 	});
 	let loading = $state(true);
 	let saving = $state(false);
-	let message = $state('');
+	let message = $state(null);
 
 	// Performance metrics state
 	let metricsExpanded = $state(false);
@@ -40,18 +41,12 @@
 		path: '/perf'
 	});
 
-	const formatBytes = (bytes) => {
-		if (!bytes) return '0 B';
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-	};
+	function setMessage(type, text) {
+		message = { type, text };
+	}
 
-	function getStatusMessage() {
-		if (!message) return null;
-		if (message.includes('Failed')) return { type: 'error', text: message };
-		if (message.toLowerCase().includes('saved')) return { type: 'success', text: message };
-		return { type: 'info', text: message };
+	function clearMessage() {
+		message = null;
 	}
 
 	function loadWarningPreferences() {
@@ -97,26 +92,24 @@
 		try {
 			const response = await fetch('/api/settings');
 			const data = await response.json();
-			
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableSignalTraceLogging = data.enableSignalTraceLogging ?? true;
-			
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
-			message = 'Failed to load settings';
+			setMessage('error', 'Failed to load settings');
 			loading = false;
 		}
 	}
 
 	async function saveSettings() {
 		if (!acknowledged) {
-			message = 'Please acknowledge the warning before saving';
+			setMessage('warning', 'Please acknowledge the warning before saving');
 			return;
 		}
 
 		saving = true;
-		message = '';
+		clearMessage();
 
 		try {
 			const params = new URLSearchParams();
@@ -131,14 +124,14 @@
 			});
 
 			if (response.ok) {
-				message = 'Settings saved!';
-				await loadSettings();  // Reload to confirm persistence
+				setMessage('success', 'Settings saved!');
+				await loadSettings(); // Reload to confirm persistence
 			} else {
-				message = 'Failed to save settings';
+				setMessage('error', 'Failed to save settings');
 			}
 		} catch (error) {
 			console.error('Save failed:', error);
-			message = 'Failed to save settings';
+			setMessage('error', 'Failed to save settings');
 		} finally {
 			saving = false;
 		}
@@ -146,7 +139,7 @@
 
 	async function resetDefaults() {
 		if (!acknowledged) {
-			message = 'Please acknowledge the warning before resetting';
+			setMessage('warning', 'Please acknowledge the warning before resetting');
 			return;
 		}
 
@@ -154,11 +147,9 @@
 
 		settings.enableWifiAtBoot = false;
 		settings.enableSignalTraceLogging = true;
-		
 		await saveSettings();
 	}
 
-	// Performance metrics functions
 	async function loadMetrics() {
 		metricsLoading = true;
 		try {
@@ -182,10 +173,10 @@
 
 	function startMetricsAutoRefresh() {
 		metricsAutoRefresh = true;
-		loadMetrics();  // Load immediately
+		loadMetrics(); // Load immediately
 		metricsRefreshInterval = setInterval(() => {
 			loadMetrics();
-		}, 2000);  // Refresh every 2 seconds
+		}, 2000); // Refresh every 2 seconds
 	}
 
 	function stopMetricsAutoRefresh() {
@@ -215,7 +206,7 @@
 		} catch (error) {
 			console.error('Failed to load perf files:', error);
 			perfFiles = [];
-			message = 'Failed to load perf files';
+			setMessage('error', 'Failed to load perf files');
 		} finally {
 			perfFilesLoading = false;
 		}
@@ -223,22 +214,22 @@
 
 	function downloadPerfFile(name) {
 		if (!acknowledged) {
-			message = 'Please acknowledge the warning before downloading files';
+			setMessage('warning', 'Please acknowledge the warning before downloading files');
 			return;
 		}
 		if (!name) return;
 		try {
 			window.open(`/api/debug/perf-files/download?name=${encodeURIComponent(name)}`, '_blank');
-			message = `Downloading ${name}...`;
+			setMessage('info', `Downloading ${name}...`);
 		} catch (error) {
 			console.error('Perf file download failed:', error);
-			message = `Failed to download ${name}`;
+			setMessage('error', `Failed to download ${name}`);
 		}
 	}
 
 	async function deletePerfFile(name) {
 		if (!acknowledged) {
-			message = 'Please acknowledge the warning before deleting files';
+			setMessage('warning', 'Please acknowledge the warning before deleting files');
 			return;
 		}
 		if (!name) return;
@@ -255,14 +246,14 @@
 			});
 			const data = await response.json().catch(() => ({}));
 			if (response.ok && data.success) {
-				message = `Deleted ${name}`;
+				setMessage('success', `Deleted ${name}`);
 				await loadPerfFiles();
 			} else {
-				message = data.error ? `Failed to delete ${name}: ${data.error}` : `Failed to delete ${name}`;
+				setMessage('error', data.error ? `Failed to delete ${name}: ${data.error}` : `Failed to delete ${name}`);
 			}
 		} catch (error) {
 			console.error('Perf file delete failed:', error);
-			message = `Failed to delete ${name}`;
+			setMessage('error', `Failed to delete ${name}`);
 		} finally {
 			perfFileActionBusy = '';
 		}
@@ -344,7 +335,7 @@
 		{/if}
 
 		<!-- Message Display -->
-		<StatusAlert message={getStatusMessage()} />
+			<StatusAlert message={message} />
 
 		<!-- WiFi Settings -->
 		<div class="surface-card" class:opacity-50={!acknowledged}>
@@ -424,7 +415,7 @@
 						{#if metrics}
 							<!-- BLE Queue Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">BLE Queue (V1 to Display)</h3>
+								<h3 class="copy-subheading mb-2">BLE Queue (V1 to Display)</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="copy-caption">RX Packets:</span>
@@ -447,7 +438,7 @@
 
 							<!-- Display Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">Display</h3>
+								<h3 class="copy-subheading mb-2">Display</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="copy-caption">Updates:</span>
@@ -463,7 +454,7 @@
 							<!-- Latency Stats (when PERF_METRICS enabled) -->
 							{#if metrics.monitoringEnabled}
 								<div class="surface-panel">
-									<h3 class="font-semibold text-sm mb-2">BLE to Flush Latency</h3>
+									<h3 class="copy-subheading mb-2">BLE to Flush Latency</h3>
 									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
 											<span class="copy-caption">Min:</span>
@@ -487,7 +478,7 @@
 							<!-- Proxy Stats -->
 							{#if metrics.proxy}
 								<div class="surface-panel">
-									<h3 class="font-semibold text-sm mb-2">V1 Proxy (to JBV1/V1C)</h3>
+									<h3 class="copy-subheading mb-2">V1 Proxy (to JBV1/V1C)</h3>
 									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
 											<span class="copy-caption">Connected:</span>
@@ -511,7 +502,7 @@
 
 							<!-- Connection Stats -->
 							<div class="surface-panel">
-								<h3 class="font-semibold text-sm mb-2">Connection</h3>
+								<h3 class="copy-subheading mb-2">Connection</h3>
 								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 									<div class="flex justify-between">
 										<span class="copy-caption">Reconnects:</span>

@@ -129,6 +129,10 @@ html {
 		@apply mb-2 text-sm font-medium;
 	}
 
+	.copy-subheading {
+		@apply text-sm font-semibold;
+	}
+
 	.label-text-field {
 		@apply label-text text-sm;
 	}

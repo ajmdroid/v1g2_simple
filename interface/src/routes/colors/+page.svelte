@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -132,30 +133,6 @@
 		}
 	}
 
-	async function postSettingsForm(formData) {
-		let res;
-		try {
-			res = await fetch('/api/settings', {
-				method: 'POST',
-				body: formData
-			});
-		} catch (e) {
-			return await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
-		}
-
-		if (!res.ok && (res.status === 404 || res.status === 405)) {
-			return await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
-		}
-
-		return res;
-	}
-	
 	async function saveDisplayStyle(event) {
 		const newStyle = parseInt(event.target.value);
 		try {
@@ -547,7 +524,7 @@
 					</div>
 				</div>
 				<div class="divider my-2"></div>
-				<h3 class="font-semibold text-sm mt-2">Volume Indicator</h3>
+				<h3 class="copy-subheading mt-2">Volume Indicator</h3>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">
 						<label class="label" for="volumeMain-color">
@@ -603,7 +580,7 @@
 					</div>
 				</div>
 				<div class="divider my-2"></div>
-				<h3 class="font-semibold text-sm mt-2">RSSI Labels</h3>
+				<h3 class="copy-subheading mt-2">RSSI Labels</h3>
 				<p class="copy-subtle mb-2">Colors for V1 and Proxy connection strength labels</p>
 				<div class="grid grid-cols-2 gap-4">
 					<div class="form-control">

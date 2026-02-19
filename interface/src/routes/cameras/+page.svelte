@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import { formatBytes } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -121,13 +122,6 @@
 		]);
 		loading = false;
 		refreshing = false;
-	}
-
-	function formatBytes(bytes) {
-		if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '0 B';
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 	}
 
 	function formatTimestamp(tsMs) {

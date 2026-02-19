@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -360,30 +361,6 @@
 		}
 	}
 
-	async function postSettingsForm(formData) {
-		let res;
-		try {
-			res = await fetch('/api/settings', {
-				method: 'POST',
-				body: formData
-			});
-		} catch (e) {
-			return await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
-		}
-
-		if (!res.ok && (res.status === 404 || res.status === 405)) {
-			return await fetch('/settings', {
-				method: 'POST',
-				body: formData
-			});
-		}
-
-		return res;
-	}
-	
 	async function saveSettings() {
 		saving = true;
 		message = null;

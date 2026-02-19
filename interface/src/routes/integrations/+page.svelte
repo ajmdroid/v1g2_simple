@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { formatFrequencyMhz } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -112,9 +113,11 @@
 	}
 
 	function formatFrequency(mhz) {
-		if (typeof mhz !== 'number' || !Number.isFinite(mhz) || mhz <= 0) return '—';
-		if (mhz >= 1000) return `${(mhz / 1000).toFixed(3)} GHz`;
-		return `${mhz.toFixed(1)} MHz`;
+		return formatFrequencyMhz(mhz, {
+			allowGhz: true,
+			ghzDecimals: 3,
+			mhzDecimals: 1
+		});
 	}
 
 	async function refreshAll() {
