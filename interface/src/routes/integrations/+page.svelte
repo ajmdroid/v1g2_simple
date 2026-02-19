@@ -453,7 +453,7 @@
 	</PageHeader>
 
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}
@@ -615,7 +615,7 @@
 				</div>
 
 				{#if scanning}
-					<div class="alert alert-info py-2">
+					<div class="surface-alert alert-info py-2">
 						<span class="loading loading-spinner loading-sm"></span>
 						<span>Scanning...</span>
 					</div>

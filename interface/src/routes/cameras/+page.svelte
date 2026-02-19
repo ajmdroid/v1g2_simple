@@ -354,19 +354,19 @@
 	</PageHeader>
 
 	{#if statusError}
-		<div class="alert alert-error" role="alert"><span>{statusError}</span></div>
+		<div class="surface-alert alert-error" role="alert"><span>{statusError}</span></div>
 	{/if}
 	{#if catalogError}
-		<div class="alert alert-warning" role="alert"><span>{catalogError}</span></div>
+		<div class="surface-alert alert-warning" role="alert"><span>{catalogError}</span></div>
 	{/if}
 	{#if eventsError}
-		<div class="alert alert-warning" role="alert"><span>{eventsError}</span></div>
+		<div class="surface-alert alert-warning" role="alert"><span>{eventsError}</span></div>
 	{/if}
 	{#if configError}
-		<div class="alert alert-warning" role="alert"><span>{configError}</span></div>
+		<div class="surface-alert alert-warning" role="alert"><span>{configError}</span></div>
 	{/if}
 	{#if demoError}
-		<div class="alert alert-warning" role="alert"><span>{demoError}</span></div>
+		<div class="surface-alert alert-warning" role="alert"><span>{demoError}</span></div>
 	{/if}
 
 	<div class="surface-card">

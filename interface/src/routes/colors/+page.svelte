@@ -386,7 +386,7 @@
 	<PageHeader title="Display Colors" subtitle="Customize alert colors" />
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 			<button class="btn btn-ghost btn-xs" onclick={() => message = null} aria-label="Dismiss message">✕</button>
 		</div>

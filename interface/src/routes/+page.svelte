@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import BrandMark from '$lib/components/BrandMark.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let status = $state({
 		wifi: {
@@ -107,33 +108,33 @@
 </script>
 
 <div class="page-stack">
+	<PageHeader title="Dashboard" subtitle="Live system status and quick health checks." />
+
 	{#if status.alert?.active}
-		<div class="alert alert-warning animate-pulse border border-warning/40" role="alert" aria-live="assertive">
+		<div class="surface-alert alert-warning animate-pulse border-warning/40" role="alert" aria-live="assertive">
 			<span class="font-bold text-2xl">{status.alert.band}</span>
 			<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
 			<span class="ml-4">Strength: {status.alert.strength}/8</span>
 		</div>
 	{/if}
 
-	<div class="hero bg-base-200 rounded-box p-4">
-		<div class="hero-content text-center">
-			<div>
-				<div class="mb-2 flex justify-center">
-					<BrandMark />
-				</div>
-				<p class="text-xs text-base-content/50 mb-1">v{status.device?.firmware_version || '...'}</p>
-				<p class="text-sm text-base-content/70">
-					{#if status.wifi.sta_connected}
-						{status.wifi.ssid} • {status.wifi.sta_ip}
-					{:else}
-						AP Mode • {status.wifi.ap_ip}
-					{/if}
-				</p>
+	<div class="surface-hero">
+		<div class="text-center">
+			<div class="mb-2 flex justify-center">
+				<BrandMark />
 			</div>
+			<p class="mb-1 text-xs text-base-content/50">v{status.device?.firmware_version || '...'}</p>
+			<p class="text-sm text-base-content/70">
+				{#if status.wifi.sta_connected}
+					{status.wifi.ssid} • {status.wifi.sta_ip}
+				{:else}
+					AP Mode • {status.wifi.ap_ip}
+				{/if}
+			</p>
 		</div>
 	</div>
 
-		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+	<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
 		<div class="surface-card">
 			<div class="card-body p-4">
 				<h2 class="card-title text-sm">Valentine One</h2>
@@ -182,10 +183,10 @@
 			</div>
 		</div>
 
-			<div class="surface-card">
-				<div class="card-body p-4">
-					<h2 class="card-title text-sm">Alerts</h2>
-					{#if loading}
+		<div class="surface-card">
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">Alerts</h2>
+				{#if loading}
 					<span class="loading loading-spinner loading-sm"></span>
 				{:else if status.alert?.active}
 					<div class="text-xl font-bold text-warning">
@@ -195,40 +196,40 @@
 				{:else}
 					<div class="text-xl font-bold text-success">Clear</div>
 					<div class="text-xs text-base-content/60">No threats</div>
-					{/if}
-				</div>
-			</div>
-
-			<div class="surface-card">
-				<div class="card-body p-4">
-					<h2 class="card-title text-sm">GPS</h2>
-					{#if loading}
-						<span class="loading loading-spinner loading-sm"></span>
-					{:else if !gps.enabled}
-						<div class="text-xl font-bold text-base-content/70">Disabled</div>
-						<div class="text-xs text-base-content/60">Enable in Integrations</div>
-					{:else if gps.detectionTimedOut}
-						<div class="text-xl font-bold text-warning">Not Found</div>
-						<div class="text-xs text-base-content/60">Module timeout</div>
-					{:else if gps.hasFix}
-						<div class="text-xl font-bold text-success">
-							{gps.satellites || 0} sats
-						</div>
-						<div class="text-xs text-base-content/60">
-							{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
-						</div>
-					{:else if gps.moduleDetected}
-						<div class="text-xl font-bold text-info">Searching</div>
-						<div class="text-xs text-base-content/60">No fix yet</div>
-					{:else}
-						<div class="text-xl font-bold text-base-content/70">Idle</div>
-						<div class="text-xs text-base-content/60">{gps.mode}</div>
-					{/if}
-				</div>
+				{/if}
 			</div>
 		</div>
 
+		<div class="surface-card">
+			<div class="card-body p-4">
+				<h2 class="card-title text-sm">GPS</h2>
+				{#if loading}
+					<span class="loading loading-spinner loading-sm"></span>
+				{:else if !gps.enabled}
+					<div class="text-xl font-bold text-base-content/70">Disabled</div>
+					<div class="text-xs text-base-content/60">Enable in Integrations</div>
+				{:else if gps.detectionTimedOut}
+					<div class="text-xl font-bold text-warning">Not Found</div>
+					<div class="text-xs text-base-content/60">Module timeout</div>
+				{:else if gps.hasFix}
+					<div class="text-xl font-bold text-success">
+						{gps.satellites || 0} sats
+					</div>
+					<div class="text-xs text-base-content/60">
+						{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
+					</div>
+				{:else if gps.moduleDetected}
+					<div class="text-xl font-bold text-info">Searching</div>
+					<div class="text-xs text-base-content/60">No fix yet</div>
+				{:else}
+					<div class="text-xl font-bold text-base-content/70">Idle</div>
+					<div class="text-xs text-base-content/60">{gps.mode}</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+
 	{#if error}
-		<div class="alert alert-error" role="alert">{error}</div>
+		<div class="surface-alert alert-error" role="alert">{error}</div>
 	{/if}
 </div>

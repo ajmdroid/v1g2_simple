@@ -149,7 +149,7 @@
 	<PageHeader title="Audio Settings" subtitle="Voice alerts and speaker options" />
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : 'success'}">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : 'success'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}

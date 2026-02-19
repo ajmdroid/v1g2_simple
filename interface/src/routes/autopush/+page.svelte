@@ -153,7 +153,7 @@
 	</PageHeader>
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}
@@ -350,7 +350,7 @@
 		
 		<!-- Info -->
 		{#if profiles.length === 0}
-			<div class="alert alert-warning">
+			<div class="surface-alert alert-warning">
 				<span>No saved profiles. Go to V1 Profiles to pull settings from your V1 first.</span>
 			</div>
 		{/if}

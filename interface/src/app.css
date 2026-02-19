@@ -77,11 +77,24 @@ html {
 		@apply p-4;
 	}
 
+	.surface-alert {
+		@apply alert border;
+		border-color: oklch(var(--bc) / calc(var(--app-border-alpha) * 0.95));
+		border-radius: var(--app-radius-md);
+	}
+
 	.surface-note {
 		@apply text-sm text-base-content/60 p-3;
 		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));
 		border-radius: var(--app-radius-md);
 		background: oklch(var(--b2) / 0.45);
+	}
+
+	.surface-hero {
+		@apply rounded-box p-4;
+		border: 1px solid oklch(var(--bc) / var(--app-border-alpha));
+		background: linear-gradient(160deg, oklch(var(--b2) / 0.9) 0%, oklch(var(--b1) / 0.55) 100%);
+		box-shadow: var(--app-shadow);
 	}
 
 	.surface-panel {

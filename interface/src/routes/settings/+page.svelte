@@ -481,7 +481,7 @@
 	<PageHeader title="Settings" subtitle="Network, proxy, power, and backup configuration." />
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}
@@ -601,7 +601,7 @@
 				
 				{#if wifiStatus.enabled}
 				{#if wifiStatus.state === 'connected'}
-					<div class="alert alert-success">
+					<div class="surface-alert alert-success">
 						<span>Connected to <strong>{wifiStatus.connectedSSID}</strong></span>
 						<span class="text-sm">IP: {wifiStatus.ip} | Signal: {wifiStatus.rssi} dBm</span>
 					</div>
@@ -614,12 +614,12 @@
 						</button>
 					</div>
 				{:else if wifiStatus.state === 'connecting'}
-					<div class="alert alert-info">
+					<div class="surface-alert alert-info">
 						<span class="loading loading-spinner loading-sm"></span>
 						<span>Connecting to {wifiStatus.savedSSID}...</span>
 					</div>
 				{:else if wifiStatus.savedSSID}
-					<div class="alert alert-warning">
+					<div class="surface-alert alert-warning">
 						<span>Not connected to <strong>{wifiStatus.savedSSID}</strong></span>
 					</div>
 					<div class="flex gap-2">

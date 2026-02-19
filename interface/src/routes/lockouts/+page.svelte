@@ -1026,7 +1026,7 @@
 
 	{#if message}
 		<div
-			class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}"
+			class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}"
 			role="status"
 			aria-live="polite"
 		>
@@ -1421,7 +1421,7 @@
 			</div>
 
 			{#if lockoutZonesError}
-				<div class="alert alert-warning py-2" role="status">
+				<div class="surface-alert alert-warning py-2" role="status">
 					<span>{lockoutZonesError}</span>
 				</div>
 			{/if}
@@ -1617,7 +1617,7 @@
 			</div>
 
 			{#if lockoutError}
-				<div class="alert alert-warning py-2" role="status">
+				<div class="surface-alert alert-warning py-2" role="status">
 					<span>{lockoutError}</span>
 				</div>
 			{/if}

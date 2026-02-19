@@ -342,7 +342,7 @@
 	</PageHeader>
 	
 	{#if message}
-		<div class="alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
+		<div class="surface-alert alert-{message.type === 'error' ? 'error' : message.type === 'success' ? 'success' : 'info'}" role="status" aria-live="polite">
 			<span>{message.text}</span>
 		</div>
 	{/if}
@@ -391,7 +391,7 @@
 		<div class="card-body">
 			<h2 class="card-title">Current V1 Settings</h2>
 			{#if editingSettings && currentProfile?.name}
-				<div class="alert alert-info text-sm">
+				<div class="surface-alert alert-info text-sm">
 					Editing profile: <span class="font-semibold">{currentProfile.name}</span>
 				</div>
 				<div class="form-control max-w-md">
