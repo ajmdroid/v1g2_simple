@@ -111,7 +111,7 @@
 	<PageHeader title="Dashboard" subtitle="Live system status and quick health checks." />
 
 	{#if status.alert?.active}
-		<div class="surface-alert alert-warning animate-pulse border-warning/40" role="alert" aria-live="assertive">
+		<div class="surface-alert alert-warning warning-strong animate-pulse" role="alert" aria-live="assertive">
 			<span class="font-bold text-2xl">{status.alert.band}</span>
 			<span class="text-lg ml-2">{status.alert.frequency} MHz</span>
 			<span class="ml-4">Strength: {status.alert.strength}/8</span>

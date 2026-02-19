@@ -119,6 +119,14 @@ html {
 		border-radius: var(--app-radius-md);
 	}
 
+	.surface-alert.warning-strong {
+		@apply border-warning/40;
+	}
+
+	.surface-alert.banner {
+		@apply rounded-none border-y shadow-sm;
+	}
+
 	.surface-chrome {
 		border-color: oklch(var(--bc) / calc(var(--app-border-alpha) * 0.9));
 		background: linear-gradient(180deg, oklch(var(--b2) / 0.92) 0%, oklch(var(--b1) / 0.78) 100%);
