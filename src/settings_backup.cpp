@@ -945,6 +945,17 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         return;
     }
 
+    const bool hasConfiguredSlotReferences =
+        settings.slot0_default.profileName.length() > 0 ||
+        settings.slot1_highway.profileName.length() > 0 ||
+        settings.slot2_comfort.profileName.length() > 0;
+    const size_t availableProfileCount = profileMgr.listProfiles().size();
+    if (backup_pure::shouldSkipProfileReferenceValidation(availableProfileCount,
+                                                          hasConfiguredSlotReferences)) {
+        Serial.println("[Settings] Profile catalog empty; preserving slot profile references");
+        return;
+    }
+
     // Validate that profile names in auto-push slots actually exist
     // If not, clear them to prevent repeated "file not found" errors
     bool needsSave = false;
