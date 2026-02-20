@@ -114,6 +114,24 @@ void test_alert_clear_restores_if_needed() {
     TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
 }
 
+void test_alert_clear_does_not_restore_when_never_faded() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 5;  // Keep fade inactive.
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    // Start an alert session; baseline captured as 5, but fade delay not reached.
+    auto ctx = makeCtx(true, 1000, 5, 24150);
+    auto start = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, start.type);
+    TEST_ASSERT_TRUE(fade.isTracking());
+
+    // Alert clears with a different current volume (e.g., user/external change).
+    auto clearCtx = makeCtx(false, 1200, 1, 0);
+    auto restore = fade.process(clearCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, restore.type);
+    TEST_ASSERT_FALSE(fade.isTracking());
+}
+
 void test_alert_clear_restores_when_fade_command_inflight_and_volume_stale() {
     settingsManager.settings.alertVolumeFadeEnabled = true;
     settingsManager.settings.alertVolumeFadeDelaySec = 1;
@@ -205,6 +223,7 @@ void runAllTests() {
     RUN_TEST(test_new_frequency_restores_when_faded);
     RUN_TEST(test_muted_alert_restores_and_resets);
     RUN_TEST(test_alert_clear_restores_if_needed);
+    RUN_TEST(test_alert_clear_does_not_restore_when_never_faded);
     RUN_TEST(test_alert_clear_restores_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_muted_restore_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_new_frequency_restore_when_fade_command_inflight_and_volume_stale);

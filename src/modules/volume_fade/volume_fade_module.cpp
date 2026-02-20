@@ -59,8 +59,10 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     // No active alerts -> restore if needed, retry until V1 confirms
     if (!ctx.hasAlert) {
+        const bool restoreInFlight = (pendingRestoreVolume != 0xFF);
         const bool shouldRestore =
-            (originalVolume != 0xFF) && (fadeActive || ctx.currentVolume != originalVolume);
+            (originalVolume != 0xFF) &&
+            (fadeActive || (restoreInFlight && ctx.currentVolume != originalVolume));
         if (shouldRestore) {
             const bool retryWindowOpen =
                 (lastRestoreAttemptMs == 0) ||
@@ -90,13 +92,23 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             return action;
         }
         if (originalVolume != 0xFF) {
-            perfRecordVolumeFadeDecision(
-                PerfFadeDecision::RestoreSkippedEqual,
-                ctx.currentVolume,
-                originalVolume,
-                ctx.now);
-            Serial.printf("[VolumeFade] Restore confirmed: current=%d == original=%d\n",
-                          ctx.currentVolume, originalVolume);
+            if (ctx.currentVolume == originalVolume) {
+                perfRecordVolumeFadeDecision(
+                    PerfFadeDecision::RestoreSkippedEqual,
+                    ctx.currentVolume,
+                    originalVolume,
+                    ctx.now);
+                Serial.printf("[VolumeFade] Restore confirmed: current=%d == original=%d\n",
+                              ctx.currentVolume, originalVolume);
+            } else if (!fadeActive && !restoreInFlight) {
+                // No fade was active and no restore was pending; treat this as external/manual
+                // ownership and drop our baseline instead of forcing a stale restore.
+                perfRecordVolumeFadeDecision(
+                    PerfFadeDecision::RestoreSkippedNotFaded,
+                    ctx.currentVolume,
+                    originalVolume,
+                    ctx.now);
+            }
         }
         resetSessionState();
         return action;
