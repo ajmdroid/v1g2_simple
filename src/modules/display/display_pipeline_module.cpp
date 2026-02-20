@@ -165,7 +165,8 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
         // Persistence is cleared on slot change (below) or when window expires
 
-        speedVolume->reset();
+        // Preserve speed-volume state across idle frames; the module owns reset
+        // on its own lifecycle edges (proxy, disconnect, feature/fade gating).
 
         const V1Settings& s = settingsRef;
         uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);

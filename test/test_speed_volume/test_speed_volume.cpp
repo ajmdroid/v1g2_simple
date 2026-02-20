@@ -7,6 +7,9 @@
 #include "../mocks/modules/volume_fade/volume_fade_module.h"
 #include "../../src/modules/speed_volume/speed_volume_module.h"
 #include "../../src/modules/speed_volume/speed_volume_module.cpp"  // pull implementation for UNIT_TEST
+#include <cstdio>
+#include <string>
+#include <vector>
 
 #ifndef ARDUINO
 SerialClass Serial;
@@ -201,6 +204,28 @@ void test_low_speed_quiet_already_at_target_no_action() {
     TEST_ASSERT_TRUE(speedModule.isQuietActive());  // Tracking is active even without BLE command
 }
 
+void test_display_pipeline_does_not_reset_speed_volume_state() {
+    const char* pipelinePath = "src/modules/display/display_pipeline_module.cpp";
+    FILE* f = fopen(pipelinePath, "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f, "Failed to open display_pipeline_module.cpp for guard check");
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, size);
+    rewind(f);
+
+    std::vector<char> buf(static_cast<size_t>(size) + 1, '\0');
+    size_t bytesRead = fread(buf.data(), 1, static_cast<size_t>(size), f);
+    fclose(f);
+    TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(size), static_cast<uint64_t>(bytesRead));
+
+    const std::string source(buf.data());
+    const bool hasResetCall = source.find("speedVolume->reset(") != std::string::npos;
+    TEST_ASSERT_FALSE_MESSAGE(
+        hasResetCall,
+        "Regression guard: display pipeline must not reset SpeedVolumeModule state");
+}
+
 void runAllTests() {
     RUN_TEST(test_disabled_returns_none);
     RUN_TEST(test_boost_then_restore);
@@ -213,6 +238,7 @@ void runAllTests() {
     RUN_TEST(test_low_speed_quiet_disabled_returns_none);
     RUN_TEST(test_low_speed_quiet_no_speed_source_returns_none);
     RUN_TEST(test_low_speed_quiet_already_at_target_no_action);
+    RUN_TEST(test_display_pipeline_does_not_reset_speed_volume_state);
 }
 
 #ifdef ARDUINO
