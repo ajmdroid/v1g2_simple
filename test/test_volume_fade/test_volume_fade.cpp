@@ -217,6 +217,36 @@ void test_restore_baseline_survives_immediate_realert_with_stale_volume() {
     TEST_ASSERT_EQUAL_UINT8(4, restore2.restoreVolume);
 }
 
+void test_restore_retries_stop_after_pending_window_expires() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 1;
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    auto ctx = makeCtx(true, 1000, 5, 35498);
+    fade.process(ctx);  // start tracking
+
+    ctx.now = 2200;
+    auto fadeAction = fade.process(ctx);  // fade down to 1
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
+
+    // Alerts clear with faded volume. First clear should request restore.
+    auto clearCtx = makeCtx(false, 2300, 1, 0);
+    auto restore1 = fade.process(clearCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore1.type);
+    TEST_ASSERT_TRUE(fade.isTracking());
+
+    // While pending window is open, retries continue.
+    auto retryCtx = makeCtx(false, 2400, 1, 0);
+    auto restore2 = fade.process(retryCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore2.type);
+
+    // After pending window expiry, stop retrying and release tracking.
+    auto expiredCtx = makeCtx(false, 3900, 1, 0);
+    auto none = fade.process(expiredCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, none.type);
+    TEST_ASSERT_FALSE(fade.isTracking());
+}
+
 void runAllTests() {
     RUN_TEST(test_disabled_feature_returns_none);
     RUN_TEST(test_fade_triggers_after_delay);
@@ -228,6 +258,7 @@ void runAllTests() {
     RUN_TEST(test_muted_restore_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_new_frequency_restore_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_restore_baseline_survives_immediate_realert_with_stale_volume);
+    RUN_TEST(test_restore_retries_stop_after_pending_window_expires);
 }
 
 #ifdef ARDUINO

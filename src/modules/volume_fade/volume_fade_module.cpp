@@ -38,6 +38,8 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             pendingRestoreVolume = 0xFF;
             pendingRestoreMuteVolume = 0;
             pendingRestoreSetMs = 0;
+            // Restore has either converged or timed out; stop forcing restore.
+            fadeActive = false;
         }
     }
 
@@ -60,9 +62,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     // No active alerts -> restore if needed, retry until V1 confirms
     if (!ctx.hasAlert) {
         const bool restoreInFlight = (pendingRestoreVolume != 0xFF);
+        const bool firstRestoreAttempt = fadeActive && !restoreInFlight;
+        const bool retryRestore = restoreInFlight && (ctx.currentVolume != originalVolume);
         const bool shouldRestore =
             (originalVolume != 0xFF) &&
-            (fadeActive || (restoreInFlight && ctx.currentVolume != originalVolume));
+            (firstRestoreAttempt || retryRestore);
         if (shouldRestore) {
             const bool retryWindowOpen =
                 (lastRestoreAttemptMs == 0) ||
@@ -74,9 +78,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
-            pendingRestoreVolume = originalVolume;
-            pendingRestoreMuteVolume = originalMuteVolume;
-            pendingRestoreSetMs = ctx.now;
+            if (pendingRestoreVolume == 0xFF) {
+                pendingRestoreVolume = originalVolume;
+                pendingRestoreMuteVolume = originalMuteVolume;
+                pendingRestoreSetMs = ctx.now;
+            }
             if (!restoreLogEmitted) {
                 perfRecordVolumeFadeDecision(
                     PerfFadeDecision::RestoreApplied,
@@ -116,7 +122,10 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     
     // Alert muted or suppressed -> restore if we had faded, retry until confirmed
     if (ctx.alertMuted || ctx.alertSuppressed) {
-        if (fadeActive && originalVolume != 0xFF) {
+        const bool restoreInFlight = (pendingRestoreVolume != 0xFF);
+        const bool firstRestoreAttempt = fadeActive && !restoreInFlight;
+        const bool retryRestore = restoreInFlight && (ctx.currentVolume != originalVolume);
+        if (originalVolume != 0xFF && (firstRestoreAttempt || retryRestore)) {
             const bool retryWindowOpen =
                 (lastRestoreAttemptMs == 0) ||
                 ((ctx.now - lastRestoreAttemptMs) >= RESTORE_RETRY_MIN_INTERVAL_MS);
@@ -127,9 +136,11 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             action.type = VolumeFadeAction::Type::RESTORE;
             action.restoreVolume = originalVolume;
             action.restoreMuteVolume = originalMuteVolume;
-            pendingRestoreVolume = originalVolume;
-            pendingRestoreMuteVolume = originalMuteVolume;
-            pendingRestoreSetMs = ctx.now;
+            if (pendingRestoreVolume == 0xFF) {
+                pendingRestoreVolume = originalVolume;
+                pendingRestoreMuteVolume = originalMuteVolume;
+                pendingRestoreSetMs = ctx.now;
+            }
             if (!restoreLogEmitted) {
                 perfRecordVolumeFadeDecision(
                     PerfFadeDecision::RestoreApplied,
