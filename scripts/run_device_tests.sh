@@ -15,6 +15,7 @@ cd "$ROOT_DIR"
 
 MODE="device"
 RUN_STRESS=0
+SUITE_COOLDOWN_SECONDS="${DEVICE_SUITE_COOLDOWN_SECONDS:-5}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,8 +28,16 @@ while [[ $# -gt 0 ]]; do
     --stress)
       RUN_STRESS=1
       ;;
+    --cooldown-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --cooldown-seconds" >&2
+        exit 2
+      fi
+      SUITE_COOLDOWN_SECONDS="$2"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--quick | --full] [--stress]"
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N]"
       echo ""
       echo "Modes:"
       echo "  (default)  Run all device-only test suites (safe set)"
@@ -36,10 +45,16 @@ while [[ $# -gt 0 ]]; do
       echo "  --full     Run device suites PLUS shared native suites (safe set)"
       echo "Options:"
       echo "  --stress   Include stress suites (can destabilize fragile hardware)"
+      echo "  --cooldown-seconds N"
+      echo "             Wait N seconds between suites (default: ${DEVICE_SUITE_COOLDOWN_SECONDS:-5})"
+      echo ""
+      echo "Environment:"
+      echo "  DEVICE_SUITE_COOLDOWN_SECONDS"
+      echo "             Default cooldown if --cooldown-seconds is not provided"
       exit 0
       ;;
     *)
-      echo "Usage: $0 [--quick | --full] [--stress]" >&2
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N]" >&2
       echo "" >&2
       echo "Unknown option: $1" >&2
       exit 2
@@ -47,6 +62,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if ! [[ "$SUITE_COOLDOWN_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "Invalid cooldown value '$SUITE_COOLDOWN_SECONDS' (expected integer seconds)." >&2
+  exit 2
+fi
 
 if ! command -v pio >/dev/null 2>&1; then
   echo "PlatformIO (pio) is required but not found in PATH." >&2
@@ -233,6 +253,7 @@ echo "==> Planned suite order:"
 for suite in "${SUITES[@]}"; do
   echo "    - $suite"
 done
+echo "==> Inter-suite cooldown: ${SUITE_COOLDOWN_SECONDS}s"
 
 # ─── Summarize JSON results ──────────────────────────────────────────
 
@@ -286,9 +307,9 @@ run_suite() {
   local run_port
 
   # After a previous test, give USB CDC time to stabilize before re-detecting
-  if (( index > 1 )); then
-    echo "    Waiting for USB CDC port to stabilize..."
-    sleep 3
+  if (( index > 1 )) && (( SUITE_COOLDOWN_SECONDS > 0 )); then
+    echo "    Waiting ${SUITE_COOLDOWN_SECONDS}s for USB CDC port to stabilize..."
+    sleep "$SUITE_COOLDOWN_SECONDS"
   fi
 
   # Re-detect port each time (USB CDC may change name after reset)
