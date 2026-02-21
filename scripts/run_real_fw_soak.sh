@@ -30,6 +30,16 @@ METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_REQUIRED=0
 MIN_METRICS_OK_SAMPLES=1
+MIN_RX_PACKETS_DELTA=1
+MIN_PARSE_SUCCESSES_DELTA=1
+MAX_PARSE_FAILURES_DELTA=0
+MAX_QUEUE_DROPS_DELTA=0
+MAX_PERF_DROPS_DELTA=0
+MAX_EVENT_DROPS_DELTA=0
+MAX_FLUSH_MAX_US=0
+MAX_LOOP_MAX_US=0
+MAX_WIFI_MAX_US=0
+MAX_BLE_DRAIN_MAX_US=0
 ALLOW_INCONCLUSIVE=0
 DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
@@ -112,6 +122,86 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MIN_METRICS_OK_SAMPLES="$2"
+      shift
+      ;;
+    --min-rx-packets-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-rx-packets-delta" >&2
+        exit 2
+      fi
+      MIN_RX_PACKETS_DELTA="$2"
+      shift
+      ;;
+    --min-parse-successes-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-parse-successes-delta" >&2
+        exit 2
+      fi
+      MIN_PARSE_SUCCESSES_DELTA="$2"
+      shift
+      ;;
+    --max-parse-failures-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-parse-failures-delta" >&2
+        exit 2
+      fi
+      MAX_PARSE_FAILURES_DELTA="$2"
+      shift
+      ;;
+    --max-queue-drops-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-queue-drops-delta" >&2
+        exit 2
+      fi
+      MAX_QUEUE_DROPS_DELTA="$2"
+      shift
+      ;;
+    --max-perf-drops-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-perf-drops-delta" >&2
+        exit 2
+      fi
+      MAX_PERF_DROPS_DELTA="$2"
+      shift
+      ;;
+    --max-event-drops-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-event-drops-delta" >&2
+        exit 2
+      fi
+      MAX_EVENT_DROPS_DELTA="$2"
+      shift
+      ;;
+    --max-flush-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-flush-max-us" >&2
+        exit 2
+      fi
+      MAX_FLUSH_MAX_US="$2"
+      shift
+      ;;
+    --max-loop-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-loop-max-us" >&2
+        exit 2
+      fi
+      MAX_LOOP_MAX_US="$2"
+      shift
+      ;;
+    --max-wifi-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-wifi-max-us" >&2
+        exit 2
+      fi
+      MAX_WIFI_MAX_US="$2"
+      shift
+      ;;
+    --max-ble-drain-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-ble-drain-max-us" >&2
+        exit 2
+      fi
+      MAX_BLE_DRAIN_MAX_US="$2"
       shift
       ;;
     --allow-inconclusive)
@@ -199,6 +289,23 @@ Options:
   --require-metrics      Fail run if no successful metrics samples are captured
   --min-metrics-ok-samples N
                         Minimum parsed metrics successes when --require-metrics (default: 1)
+  --min-rx-packets-delta N
+                        Minimum rxPackets delta across soak (default: 1)
+  --min-parse-successes-delta N
+                        Minimum parseSuccesses delta across soak (default: 1)
+  --max-parse-failures-delta N
+                        Maximum parseFailures delta across soak (default: 0)
+  --max-queue-drops-delta N
+                        Maximum queueDrops delta across soak (default: 0)
+  --max-perf-drops-delta N
+                        Maximum perfDrop delta across soak (default: 0)
+  --max-event-drops-delta N
+                        Maximum eventBus drop delta across soak (default: 0)
+  --max-flush-max-us N  Maximum observed flushMaxUs peak (0 disables gate)
+  --max-loop-max-us N   Maximum observed loopMaxUs peak (0 disables gate)
+  --max-wifi-max-us N   Maximum observed wifiMaxUs peak (0 disables gate)
+  --max-ble-drain-max-us N
+                        Maximum observed bleDrainMaxUs peak (0 disables gate)
   --drive-display-preview
                         Repeatedly call display preview endpoint during soak
   --display-drive-interval-seconds N
@@ -252,6 +359,25 @@ if ! [[ "$MIN_METRICS_OK_SAMPLES" =~ ^[0-9]+$ ]]; then
   echo "Invalid --min-metrics-ok-samples value '$MIN_METRICS_OK_SAMPLES' (expected non-negative integer)." >&2
   exit 2
 fi
+
+for gate_var in \
+  MIN_RX_PACKETS_DELTA \
+  MIN_PARSE_SUCCESSES_DELTA \
+  MAX_PARSE_FAILURES_DELTA \
+  MAX_QUEUE_DROPS_DELTA \
+  MAX_PERF_DROPS_DELTA \
+  MAX_EVENT_DROPS_DELTA \
+  MAX_FLUSH_MAX_US \
+  MAX_LOOP_MAX_US \
+  MAX_WIFI_MAX_US \
+  MAX_BLE_DRAIN_MAX_US
+do
+  gate_val="${!gate_var}"
+  if ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
+    echo "Invalid $gate_var value '$gate_val' (expected non-negative integer)." >&2
+    exit 2
+  fi
+done
 
 if ! [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
   echo "Invalid --camera-drive-interval-seconds value '$CAMERA_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
@@ -432,6 +558,8 @@ echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
 fi
+echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA}" | tee -a "$RUN_LOG"
+echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
 else
@@ -656,6 +784,16 @@ flush_max_peak = None
 loop_max_peak = None
 wifi_max_peak = None
 ble_drain_max_peak = None
+rx_packets_first = None
+rx_packets_last = None
+parse_successes_first = None
+parse_successes_last = None
+parse_failures_first = None
+parse_failures_last = None
+queue_drops_first = None
+queue_drops_last = None
+perf_drop_first = None
+perf_drop_last = None
 
 event_publish_first = None
 event_publish_last = None
@@ -725,6 +863,36 @@ try:
             if display_skips is not None:
                 display_skips_last = display_skips
 
+            rx_packets = num(data.get("rxPackets"))
+            if rx_packets_first is None and rx_packets is not None:
+                rx_packets_first = rx_packets
+            if rx_packets is not None:
+                rx_packets_last = rx_packets
+
+            parse_successes = num(data.get("parseSuccesses"))
+            if parse_successes_first is None and parse_successes is not None:
+                parse_successes_first = parse_successes
+            if parse_successes is not None:
+                parse_successes_last = parse_successes
+
+            parse_failures = num(data.get("parseFailures"))
+            if parse_failures_first is None and parse_failures is not None:
+                parse_failures_first = parse_failures
+            if parse_failures is not None:
+                parse_failures_last = parse_failures
+
+            queue_drops = num(data.get("queueDrops"))
+            if queue_drops_first is None and queue_drops is not None:
+                queue_drops_first = queue_drops
+            if queue_drops is not None:
+                queue_drops_last = queue_drops
+
+            perf_drop = num(data.get("perfDrop"))
+            if perf_drop_first is None and perf_drop is not None:
+                perf_drop_first = perf_drop
+            if perf_drop is not None:
+                perf_drop_last = perf_drop
+
             proxy = data.get("proxy")
             if isinstance(proxy, dict):
                 proxy_drop_peak = update_max(proxy_drop_peak, num(proxy.get("dropCount")))
@@ -773,6 +941,16 @@ emit("flush_max_peak", flush_max_peak)
 emit("loop_max_peak", loop_max_peak)
 emit("wifi_max_peak", wifi_max_peak)
 emit("ble_drain_max_peak", ble_drain_max_peak)
+emit("rx_packets_first", rx_packets_first)
+emit("rx_packets_last", rx_packets_last)
+emit("parse_successes_first", parse_successes_first)
+emit("parse_successes_last", parse_successes_last)
+emit("parse_failures_first", parse_failures_first)
+emit("parse_failures_last", parse_failures_last)
+emit("queue_drops_first", queue_drops_first)
+emit("queue_drops_last", queue_drops_last)
+emit("perf_drop_first", perf_drop_first)
+emit("perf_drop_last", perf_drop_last)
 emit("event_publish_first", event_publish_first)
 emit("event_publish_last", event_publish_last)
 emit("event_drop_first", event_drop_first)
@@ -799,6 +977,31 @@ if display_skips_first is None or display_skips_last is None:
     print("display_skips_delta=")
 else:
     print(f"display_skips_delta={display_skips_last - display_skips_first}")
+
+if rx_packets_first is None or rx_packets_last is None:
+    print("rx_packets_delta=")
+else:
+    print(f"rx_packets_delta={rx_packets_last - rx_packets_first}")
+
+if parse_successes_first is None or parse_successes_last is None:
+    print("parse_successes_delta=")
+else:
+    print(f"parse_successes_delta={parse_successes_last - parse_successes_first}")
+
+if parse_failures_first is None or parse_failures_last is None:
+    print("parse_failures_delta=")
+else:
+    print(f"parse_failures_delta={parse_failures_last - parse_failures_first}")
+
+if queue_drops_first is None or queue_drops_last is None:
+    print("queue_drops_delta=")
+else:
+    print(f"queue_drops_delta={queue_drops_last - queue_drops_first}")
+
+if perf_drop_first is None or perf_drop_last is None:
+    print("perf_drop_delta=")
+else:
+    print(f"perf_drop_delta={perf_drop_last - perf_drop_first}")
 PY
 
 python3 - "$PANIC_JSONL" <<'PY' > "$panic_kv"
@@ -864,6 +1067,11 @@ flush_max_peak=""
 loop_max_peak=""
 wifi_max_peak=""
 ble_drain_max_peak=""
+rx_packets_delta=""
+parse_successes_delta=""
+parse_failures_delta=""
+queue_drops_delta=""
+perf_drop_delta=""
 event_publish_delta=""
 event_drop_delta=""
 event_size_peak=""
@@ -889,6 +1097,11 @@ while IFS='=' read -r key value; do
     loop_max_peak) loop_max_peak="$value" ;;
     wifi_max_peak) wifi_max_peak="$value" ;;
     ble_drain_max_peak) ble_drain_max_peak="$value" ;;
+    rx_packets_delta) rx_packets_delta="$value" ;;
+    parse_successes_delta) parse_successes_delta="$value" ;;
+    parse_failures_delta) parse_failures_delta="$value" ;;
+    queue_drops_delta) queue_drops_delta="$value" ;;
+    perf_drop_delta) perf_drop_delta="$value" ;;
     event_publish_delta) event_publish_delta="$value" ;;
     event_drop_delta) event_drop_delta="$value" ;;
     event_size_peak) event_size_peak="$value" ;;
@@ -944,6 +1157,65 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
     result="FAIL"
   fi
 fi
+
+if [[ -n "$METRICS_URL" ]]; then
+  have_metrics_window=0
+  if [[ -n "$metrics_ok_samples_parsed" ]] && [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]] && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
+    have_metrics_window=1
+  fi
+
+  if [[ "$have_metrics_window" -eq 1 ]]; then
+    for gate_delta in rx_packets_delta parse_successes_delta parse_failures_delta queue_drops_delta perf_drop_delta event_drop_delta; do
+      gate_val="${!gate_delta}"
+      if [[ -z "$gate_val" ]] || ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
+        result="FAIL"
+      fi
+    done
+
+    if [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
+      result="FAIL"
+    fi
+    if [[ "$parse_successes_delta" -lt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
+      result="FAIL"
+    fi
+    if [[ "$parse_failures_delta" -gt "$MAX_PARSE_FAILURES_DELTA" ]]; then
+      result="FAIL"
+    fi
+    if [[ "$queue_drops_delta" -gt "$MAX_QUEUE_DROPS_DELTA" ]]; then
+      result="FAIL"
+    fi
+    if [[ "$perf_drop_delta" -gt "$MAX_PERF_DROPS_DELTA" ]]; then
+      result="FAIL"
+    fi
+    if [[ "$event_drop_delta" -gt "$MAX_EVENT_DROPS_DELTA" ]]; then
+      result="FAIL"
+    fi
+
+    if [[ "$MAX_FLUSH_MAX_US" -gt 0 ]]; then
+      if [[ -z "$flush_max_peak" ]] || ! [[ "$flush_max_peak" =~ ^[0-9]+$ ]] || [[ "$flush_max_peak" -gt "$MAX_FLUSH_MAX_US" ]]; then
+        result="FAIL"
+      fi
+    fi
+    if [[ "$MAX_LOOP_MAX_US" -gt 0 ]]; then
+      if [[ -z "$loop_max_peak" ]] || ! [[ "$loop_max_peak" =~ ^[0-9]+$ ]] || [[ "$loop_max_peak" -gt "$MAX_LOOP_MAX_US" ]]; then
+        result="FAIL"
+      fi
+    fi
+    if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
+      if [[ -z "$wifi_max_peak" ]] || ! [[ "$wifi_max_peak" =~ ^[0-9]+$ ]] || [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
+        result="FAIL"
+      fi
+    fi
+    if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
+      if [[ -z "$ble_drain_max_peak" ]] || ! [[ "$ble_drain_max_peak" =~ ^[0-9]+$ ]] || [[ "$ble_drain_max_peak" -gt "$MAX_BLE_DRAIN_MAX_US" ]]; then
+        result="FAIL"
+      fi
+    fi
+  else
+    result="FAIL"
+  fi
+fi
+
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   if [[ "$display_drive_calls" -eq 0 ]]; then
     result="FAIL"
@@ -993,20 +1265,25 @@ fi
   echo "- Metrics samples parsed: ${metrics_samples_parsed:-0}"
   echo "- Metrics successful parsed: ${metrics_ok_samples_parsed:-0}"
   echo "- Metrics required minimum parsed successes: ${MIN_METRICS_OK_SAMPLES}"
+  echo "- rxPackets delta: ${rx_packets_delta:-n/a} (min ${MIN_RX_PACKETS_DELTA})"
+  echo "- parseSuccesses delta: ${parse_successes_delta:-n/a} (min ${MIN_PARSE_SUCCESSES_DELTA})"
+  echo "- parseFailures delta: ${parse_failures_delta:-n/a} (max ${MAX_PARSE_FAILURES_DELTA})"
+  echo "- queueDrops delta: ${queue_drops_delta:-n/a} (max ${MAX_QUEUE_DROPS_DELTA})"
+  echo "- perfDrop delta: ${perf_drop_delta:-n/a} (max ${MAX_PERF_DROPS_DELTA})"
   echo "- Min heapFree: ${heap_free_min:-n/a}"
   echo "- Min heapMinFree: ${heap_min_free_min:-n/a}"
   echo "- Min heapDma: ${heap_dma_min:-n/a}"
   echo "- Min heapDmaLargest: ${heap_dma_largest_min:-n/a}"
   echo "- Peak latencyMaxUs: ${latency_max_peak:-n/a}"
   echo "- Event publish delta: ${event_publish_delta:-n/a}"
-  echo "- Event drop delta: ${event_drop_delta:-n/a}"
+  echo "- Event drop delta: ${event_drop_delta:-n/a} (max ${MAX_EVENT_DROPS_DELTA})"
   echo "- Event size peak: ${event_size_peak:-n/a}"
   echo "- Display updates first/last/delta: ${display_updates_first:-n/a} / ${display_updates_last:-n/a} / ${display_updates_delta:-n/a}"
   echo "- Display skips first/last/delta: ${display_skips_first:-n/a} / ${display_skips_last:-n/a} / ${display_skips_delta:-n/a}"
-  echo "- Peak flushMaxUs: ${flush_max_peak:-n/a}"
-  echo "- Peak loopMaxUs: ${loop_max_peak:-n/a}"
-  echo "- Peak wifiMaxUs: ${wifi_max_peak:-n/a}"
-  echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a}"
+  echo "- Peak flushMaxUs: ${flush_max_peak:-n/a} (max gate ${MAX_FLUSH_MAX_US})"
+  echo "- Peak loopMaxUs: ${loop_max_peak:-n/a} (max gate ${MAX_LOOP_MAX_US})"
+  echo "- Peak wifiMaxUs: ${wifi_max_peak:-n/a} (max gate ${MAX_WIFI_MAX_US})"
+  echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
   echo "- Lockout core guard tripped count: ${core_guard_tripped_count:-n/a}"
   echo ""
