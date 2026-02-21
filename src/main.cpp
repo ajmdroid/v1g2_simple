@@ -66,6 +66,7 @@
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/lockout/lockout_pre_quiet_controller.h"
+#include "modules/lockout/lockout_orchestration_module.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/perf/debug_macros.h"
@@ -110,6 +111,9 @@ static bool wifiAutoStartDone = false;
 
 // Display preview driver (color + camera demos)
 DisplayPreviewModule displayPreviewModule;
+
+// Lockout orchestration (enforcement + mute + pre-quiet pipeline)
+LockoutOrchestrationModule lockoutOrchestrationModule;
 
 void requestColorPreviewHold(uint32_t durationMs) {
     displayPreviewModule.requestHold(durationMs);
@@ -663,6 +667,10 @@ void setup() {
         lockoutStore.begin(&lockoutIndex);
     }
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
+    lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
+                                      &display, &lockoutEnforcer, &lockoutIndex,
+                                      &signalCaptureModule, &volumeFadeModule,
+                                      &systemEventBus, &perfCounters, &timeService);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     {
         const V1Settings& settings = settingsManager.get();
@@ -892,137 +900,12 @@ void loop() {
         const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
         const bool proxyClientConnected = bleClient.isProxyClientConnected();
         bool lockoutPrioritySuppressed = false;
-        static LockoutRuntimeMuteState lockoutMuteState;
-        static PreQuietState preQuietState;
-        static bool overrideUnmuteActive = false;
-        static uint32_t overrideUnmuteLastRetryMs = 0;
 
         uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-        signalCaptureModule.capturePriorityObservation(
-            nowMs,
-            parser,
-            gpsStatus,
+        const auto lockoutResult = lockoutOrchestrationModule.process(
+            nowMs, gpsStatus, proxyClientConnected,
             loopSettings.enableSignalTraceLogging);
-        if (!proxyClientConnected) {
-            lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
-
-            const auto& lockRes = lockoutEnforcer.lastResult();
-            const DisplayState& lockoutDisplayState = parser.getDisplayState();
-            constexpr uint8_t kMuteOverrideBandMask = static_cast<uint8_t>(BAND_LASER | BAND_KA);
-            const bool overrideBandActive =
-                (lockoutDisplayState.activeBands & kMuteOverrideBandMask) != 0;
-
-            // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
-            // Rate-limited: only send once per lockout-match cycle (not every frame).
-            const V1Settings& lockoutSettings = settingsManager.get();
-            const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
-                lockoutSettings.gpsLockoutCoreGuardEnabled,
-                lockoutSettings.gpsLockoutMaxQueueDrops,
-                lockoutSettings.gpsLockoutMaxPerfDrops,
-                lockoutSettings.gpsLockoutMaxEventBusDrops,
-                perfCounters.queueDrops.load(),
-                perfCounters.perfDrop.load(),
-                systemEventBus.getDropCount());
-
-            const bool enforceMode =
-                lockRes.mode == static_cast<uint8_t>(LOCKOUT_RUNTIME_ENFORCE);
-            const bool enforceAllowed = enforceMode && !lockoutGuard.tripped;
-            const bool effectiveLockoutMute =
-                lockRes.evaluated && lockRes.shouldMute && enforceAllowed && !overrideBandActive;
-
-            // Suppress local priority announcements in ENFORCE lockout matches.
-            lockoutPrioritySuppressed = effectiveLockoutMute;
-
-            // Feed lockout decision into display indicator before rendering.
-            display.setLockoutIndicator(effectiveLockoutMute);
-
-            const LockoutRuntimeMuteDecision muteDecision =
-                evaluateLockoutRuntimeMute(lockRes,
-                                          lockoutGuard,
-                                          bleClient.isConnected(),
-                                          lockoutDisplayState.muted,
-                                          overrideBandActive,
-                                          lockoutMuteState);
-
-            if (muteDecision.sendMute) {
-                bleClient.setMute(true);
-                Serial.println("[Lockout] ENFORCE: mute sent to V1");
-            }
-            if (muteDecision.sendUnmute) {
-                bleClient.setMute(false);
-                Serial.println("[Lockout] ENFORCE: unmute sent to V1");
-            }
-            if (muteDecision.logGuardBlocked) {
-                Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
-            }
-
-            // Safety override: live Ka/Laser must break through mute.
-            // Retry at a low rate until V1 reports unmuted.
-            constexpr uint32_t OVERRIDE_UNMUTE_RETRY_MS = 400;
-            const bool needsOverrideUnmute =
-                bleClient.isConnected() && overrideBandActive && lockoutDisplayState.muted;
-            if (needsOverrideUnmute) {
-                if (!overrideUnmuteActive ||
-                    static_cast<uint32_t>(nowMs - overrideUnmuteLastRetryMs) >= OVERRIDE_UNMUTE_RETRY_MS) {
-                    bleClient.setMute(false);
-                    overrideUnmuteLastRetryMs = nowMs;
-                    if (!overrideUnmuteActive) {
-                        Serial.println("[Safety] Ka/Laser override active: unmute sent to V1");
-                    }
-                    overrideUnmuteActive = true;
-                }
-            } else {
-                overrideUnmuteActive = false;
-                overrideUnmuteLastRetryMs = 0;
-            }
-
-            // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
-            // findNearby is position-only, O(N) ~50 μs — same scan the enforcer uses.
-            {
-                const DisplayState& pqState = parser.getDisplayState();
-                size_t nearbyCount = 0;
-                if (gpsStatus.locationValid &&
-                    std::isfinite(gpsStatus.latitudeDeg) &&
-                    std::isfinite(gpsStatus.longitudeDeg)) {
-                    const int32_t latE5 = static_cast<int32_t>(lroundf(gpsStatus.latitudeDeg * 100000.0f));
-                    const int32_t lonE5 = static_cast<int32_t>(lroundf(gpsStatus.longitudeDeg * 100000.0f));
-                    int16_t nearbyBuf[16];
-                    nearbyCount = lockoutIndex.findNearby(latE5, lonE5, nearbyBuf, 16);
-                }
-                const PreQuietDecision pqDecision = evaluatePreQuiet(
-                    lockoutSettings.gpsLockoutPreQuiet,
-                    enforceMode,
-                    bleClient.isConnected(),
-                    gpsStatus.locationValid,
-                    parser.hasAlerts(),
-                    lockRes.evaluated,
-                    effectiveLockoutMute,
-                    nearbyCount,
-                    pqState.mainVolume,
-                    pqState.muteVolume,
-                    nowMs,
-                    preQuietState);
-                if (pqDecision.action == PreQuietDecision::DROP_VOLUME) {
-                    bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
-                    Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
-                } else if (pqDecision.action == PreQuietDecision::RESTORE_VOLUME) {
-                    bleClient.setVolume(pqDecision.volume, pqDecision.muteVolume);
-                    // Tell VolumeFade the real baseline so it doesn't capture stale echo.
-                    volumeFadeModule.setBaselineHint(pqDecision.volume, pqDecision.muteVolume, nowMs);
-                    Serial.println("[Lockout] PRE-QUIET: volume restored");
-                }
-                display.setPreQuietActive(preQuietState.phase == PreQuietPhase::DROPPED);
-            }
-        } else {
-            // Proxy-connected sessions are display-first:
-            // keep learner capture active, but disable runtime lockout enforcement.
-            display.setLockoutIndicator(false);
-            display.setPreQuietActive(false);
-            lockoutMuteState = LockoutRuntimeMuteState{};
-            preQuietState = PreQuietState{};
-            overrideUnmuteActive = false;
-            overrideUnmuteLastRetryMs = 0;
-        }
+        lockoutPrioritySuppressed = lockoutResult.prioritySuppressed;
         perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
 
         // Feed GPS satellite count into display indicator (throttled to ~90 s).

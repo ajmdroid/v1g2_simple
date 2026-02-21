@@ -1,0 +1,79 @@
+#pragma once
+
+#include <stdint.h>
+
+#include "lockout_runtime_mute_controller.h"
+#include "lockout_pre_quiet_controller.h"
+
+class V1BLEClient;
+class PacketParser;
+class SettingsManager;
+class V1Display;
+class LockoutEnforcer;
+class LockoutIndex;
+class SignalCaptureModule;
+class VolumeFadeModule;
+class SystemEventBus;
+struct PerfCounters;
+class TimeService;
+struct GpsRuntimeStatus;
+
+/// Result emitted per process() call for main-loop consumption.
+struct LockoutOrchestrationResult {
+    bool prioritySuppressed = false;  // True → suppress voice priority announcements
+};
+
+/// Orchestrates the full lockout enforcement pipeline:
+///   signal capture → enforce → mute execution → safety override → pre-quiet.
+///
+/// Extracted from main.cpp loop() to consolidate the static state and
+/// decision logic that previously lived inline.
+///
+/// Thread safety: designed for single-threaded access from loop().
+class LockoutOrchestrationModule {
+public:
+    void begin(V1BLEClient* ble,
+               PacketParser* parser,
+               SettingsManager* settings,
+               V1Display* display,
+               LockoutEnforcer* enforcer,
+               LockoutIndex* index,
+               SignalCaptureModule* sigCapture,
+               VolumeFadeModule* volFade,
+               SystemEventBus* eventBus,
+               PerfCounters* perfCounters,
+               TimeService* timeSvc);
+
+    /// Run the full lockout pipeline for one parsed BLE frame.
+    /// @param nowMs                Current millis() timestamp
+    /// @param gpsStatus            Current GPS snapshot
+    /// @param proxyClientConnected True when a proxy (JBV1) client is connected
+    /// @param enableSignalTrace    Settings flag for signal trace logging
+    LockoutOrchestrationResult process(uint32_t nowMs,
+                                       const GpsRuntimeStatus& gpsStatus,
+                                       bool proxyClientConnected,
+                                       bool enableSignalTrace);
+
+    /// Reset all internal state (e.g. on proxy connect or mode change).
+    void reset();
+
+private:
+    // Persistent state (was static locals in loop())
+    LockoutRuntimeMuteState muteState_{};
+    PreQuietState preQuietState_{};
+    bool overrideUnmuteActive_ = false;
+    uint32_t overrideUnmuteLastRetryMs_ = 0;
+
+    // DI pointers (set in begin())
+    V1BLEClient* ble_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    SettingsManager* settings_ = nullptr;
+    V1Display* display_ = nullptr;
+    LockoutEnforcer* enforcer_ = nullptr;
+    LockoutIndex* index_ = nullptr;
+    SignalCaptureModule* sigCapture_ = nullptr;
+    VolumeFadeModule* volFade_ = nullptr;
+    SystemEventBus* eventBus_ = nullptr;
+    PerfCounters* perfCounters_ = nullptr;
+    TimeService* timeSvc_ = nullptr;
+};
