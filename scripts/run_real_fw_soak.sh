@@ -6,6 +6,7 @@
 # Usage examples:
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 600
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 1800 --metrics-url http://192.168.35.5/api/debug/metrics
+#   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 300 --no-metrics
 #
 set -euo pipefail
@@ -28,6 +29,10 @@ METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_REQUIRED=0
 ALLOW_INCONCLUSIVE=0
+DISPLAY_DRIVE_ENABLED=0
+DISPLAY_DRIVE_INTERVAL_SECONDS=7
+DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
+DISPLAY_MIN_UPDATES_DELTA=1
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -97,6 +102,33 @@ while [[ $# -gt 0 ]]; do
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
+    --drive-display-preview)
+      DISPLAY_DRIVE_ENABLED=1
+      ;;
+    --display-drive-interval-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --display-drive-interval-seconds" >&2
+        exit 2
+      fi
+      DISPLAY_DRIVE_INTERVAL_SECONDS="$2"
+      shift
+      ;;
+    --display-preview-url)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --display-preview-url" >&2
+        exit 2
+      fi
+      DISPLAY_PREVIEW_URL="$2"
+      shift
+      ;;
+    --min-display-updates-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-display-updates-delta" >&2
+        exit 2
+      fi
+      DISPLAY_MIN_UPDATES_DELTA="$2"
+      shift
+      ;;
     --out-dir)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --out-dir" >&2
@@ -120,6 +152,14 @@ Options:
   --panic-url URL        Poll debug panic endpoint (default: derived from metrics URL)
   --no-metrics           Disable debug API polling (serial-only soak)
   --require-metrics      Fail run if no successful metrics samples are captured
+  --drive-display-preview
+                        Repeatedly call display preview endpoint during soak
+  --display-drive-interval-seconds N
+                        Interval between display preview triggers (default: 7)
+  --display-preview-url URL
+                        Display preview endpoint URL (default: derived from metrics URL)
+  --min-display-updates-delta N
+                        Fail when parsed displayUpdates delta is below N (default: 1)
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
   -h, --help             Show this help
@@ -144,6 +184,16 @@ if ! [[ "$POLL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$POLL_SECONDS" -lt 1 ]]; then
   exit 2
 fi
 
+if ! [[ "$DISPLAY_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DISPLAY_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
+  echo "Invalid --display-drive-interval-seconds value '$DISPLAY_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$DISPLAY_MIN_UPDATES_DELTA" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --min-display-updates-delta value '$DISPLAY_MIN_UPDATES_DELTA' (expected non-negative integer)." >&2
+  exit 2
+fi
+
 if ! command -v pio >/dev/null 2>&1; then
   echo "PlatformIO (pio) is required but not found in PATH." >&2
   exit 1
@@ -151,6 +201,16 @@ fi
 
 if [[ -n "$METRICS_URL" && -z "$PANIC_URL" ]]; then
   PANIC_URL="${METRICS_URL%/api/debug/metrics}/api/debug/panic"
+fi
+
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" && -n "$METRICS_URL" ]]; then
+  DISPLAY_PREVIEW_URL="${METRICS_URL%/api/debug/metrics}/api/displaycolors/preview"
+fi
+
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
+  echo "Display drive is enabled but no preview URL was provided or derivable." >&2
+  echo "Set --display-preview-url or provide --metrics-url ending in /api/debug/metrics." >&2
+  exit 2
 fi
 
 detect_usb_port() {
@@ -290,6 +350,11 @@ echo "    port: $TEST_PORT" | tee -a "$RUN_LOG"
 echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
+  echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
+else
+  echo "    display drive: disabled" | tee -a "$RUN_LOG"
+fi
 echo "    out dir: $OUT_DIR" | tee -a "$RUN_LOG"
 echo "" | tee -a "$RUN_LOG"
 
@@ -382,10 +447,15 @@ metrics_samples=0
 metrics_ok_samples=0
 panic_samples=0
 panic_ok_samples=0
+display_drive_calls=0
+display_drive_errors=0
+display_drive_start_misses=0
+next_display_drive_epoch="$soak_start_epoch"
 
 echo "==> Soaking for ${DURATION_SECONDS}s..." | tee -a "$RUN_LOG"
 
 while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
+  now_epoch="$(date +%s)"
   now_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
   if [[ "$monitor_died_early" -eq 0 ]] && ! kill -0 "$MONITOR_PID" >/dev/null 2>&1; then
@@ -415,6 +485,27 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
     else
       printf '{"ts":"%s","ok":false}\n' "$now_utc" >> "$PANIC_JSONL"
     fi
+  fi
+
+  if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_display_drive_epoch" ]]; then
+    display_drive_calls=$((display_drive_calls + 1))
+    drive_resp="$(curl -fsS --max-time 2 -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
+    if [[ -z "$drive_resp" ]]; then
+      display_drive_errors=$((display_drive_errors + 1))
+      echo "[WARN] Display drive call failed (no response)." | tee -a "$RUN_LOG"
+    elif [[ "$drive_resp" == *'"active":false'* ]]; then
+      # /api/displaycolors/preview toggles off when already running. Call again
+      # to ensure preview is active for stress coverage.
+      drive_resp2="$(curl -fsS --max-time 2 -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
+      if [[ -z "$drive_resp2" ]]; then
+        display_drive_errors=$((display_drive_errors + 1))
+        echo "[WARN] Display drive retry failed (no response)." | tee -a "$RUN_LOG"
+      elif [[ "$drive_resp2" == *'"active":false'* ]]; then
+        display_drive_start_misses=$((display_drive_start_misses + 1))
+        echo "[WARN] Display preview did not remain active after retry." | tee -a "$RUN_LOG"
+      fi
+    fi
+    next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
   fi
 
   sleep "$POLL_SECONDS"
@@ -455,6 +546,14 @@ heap_dma_min = None
 heap_dma_largest_min = None
 latency_max_peak = None
 proxy_drop_peak = None
+display_updates_first = None
+display_updates_last = None
+display_skips_first = None
+display_skips_last = None
+flush_max_peak = None
+loop_max_peak = None
+wifi_max_peak = None
+ble_drain_max_peak = None
 
 event_publish_first = None
 event_publish_last = None
@@ -507,6 +606,22 @@ try:
             heap_dma_min = update_min(heap_dma_min, num(data.get("heapDma")))
             heap_dma_largest_min = update_min(heap_dma_largest_min, num(data.get("heapDmaLargest")))
             latency_max_peak = update_max(latency_max_peak, num(data.get("latencyMaxUs")))
+            flush_max_peak = update_max(flush_max_peak, num(data.get("flushMaxUs")))
+            loop_max_peak = update_max(loop_max_peak, num(data.get("loopMaxUs")))
+            wifi_max_peak = update_max(wifi_max_peak, num(data.get("wifiMaxUs")))
+            ble_drain_max_peak = update_max(ble_drain_max_peak, num(data.get("bleDrainMaxUs")))
+
+            display_updates = num(data.get("displayUpdates"))
+            if display_updates_first is None and display_updates is not None:
+                display_updates_first = display_updates
+            if display_updates is not None:
+                display_updates_last = display_updates
+
+            display_skips = num(data.get("displaySkips"))
+            if display_skips_first is None and display_skips is not None:
+                display_skips_first = display_skips
+            if display_skips is not None:
+                display_skips_last = display_skips
 
             proxy = data.get("proxy")
             if isinstance(proxy, dict):
@@ -548,6 +663,14 @@ emit("heap_dma_min", heap_dma_min)
 emit("heap_dma_largest_min", heap_dma_largest_min)
 emit("latency_max_peak", latency_max_peak)
 emit("proxy_drop_peak", proxy_drop_peak)
+emit("display_updates_first", display_updates_first)
+emit("display_updates_last", display_updates_last)
+emit("display_skips_first", display_skips_first)
+emit("display_skips_last", display_skips_last)
+emit("flush_max_peak", flush_max_peak)
+emit("loop_max_peak", loop_max_peak)
+emit("wifi_max_peak", wifi_max_peak)
+emit("ble_drain_max_peak", ble_drain_max_peak)
 emit("event_publish_first", event_publish_first)
 emit("event_publish_last", event_publish_last)
 emit("event_drop_first", event_drop_first)
@@ -564,6 +687,16 @@ if event_drop_first is None or event_drop_last is None:
     print("event_drop_delta=")
 else:
     print(f"event_drop_delta={event_drop_last - event_drop_first}")
+
+if display_updates_first is None or display_updates_last is None:
+    print("display_updates_delta=")
+else:
+    print(f"display_updates_delta={display_updates_last - display_updates_first}")
+
+if display_skips_first is None or display_skips_last is None:
+    print("display_skips_delta=")
+else:
+    print(f"display_skips_delta={display_skips_last - display_skips_first}")
 PY
 
 python3 - "$PANIC_JSONL" <<'PY' > "$panic_kv"
@@ -619,6 +752,16 @@ heap_dma_min=""
 heap_dma_largest_min=""
 latency_max_peak=""
 proxy_drop_peak=""
+display_updates_first=""
+display_updates_last=""
+display_updates_delta=""
+display_skips_first=""
+display_skips_last=""
+display_skips_delta=""
+flush_max_peak=""
+loop_max_peak=""
+wifi_max_peak=""
+ble_drain_max_peak=""
 event_publish_delta=""
 event_drop_delta=""
 event_size_peak=""
@@ -634,6 +777,16 @@ while IFS='=' read -r key value; do
     heap_dma_largest_min) heap_dma_largest_min="$value" ;;
     latency_max_peak) latency_max_peak="$value" ;;
     proxy_drop_peak) proxy_drop_peak="$value" ;;
+    display_updates_first) display_updates_first="$value" ;;
+    display_updates_last) display_updates_last="$value" ;;
+    display_updates_delta) display_updates_delta="$value" ;;
+    display_skips_first) display_skips_first="$value" ;;
+    display_skips_last) display_skips_last="$value" ;;
+    display_skips_delta) display_skips_delta="$value" ;;
+    flush_max_peak) flush_max_peak="$value" ;;
+    loop_max_peak) loop_max_peak="$value" ;;
+    wifi_max_peak) wifi_max_peak="$value" ;;
+    ble_drain_max_peak) ble_drain_max_peak="$value" ;;
     event_publish_delta) event_publish_delta="$value" ;;
     event_drop_delta) event_drop_delta="$value" ;;
     event_size_peak) event_size_peak="$value" ;;
@@ -687,6 +840,16 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
     result="FAIL"
   fi
 fi
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
+  if [[ "$display_drive_calls" -eq 0 ]]; then
+    result="FAIL"
+  fi
+  if [[ -z "$display_updates_delta" ]] || ! [[ "$display_updates_delta" =~ ^-?[0-9]+$ ]]; then
+    result="FAIL"
+  elif [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
+    result="FAIL"
+  fi
+fi
 if [[ "$result" == "PASS" && "$signal_sources" -eq 0 ]]; then
   result="INCONCLUSIVE"
 fi
@@ -725,8 +888,24 @@ fi
   echo "- Event publish delta: ${event_publish_delta:-n/a}"
   echo "- Event drop delta: ${event_drop_delta:-n/a}"
   echo "- Event size peak: ${event_size_peak:-n/a}"
+  echo "- Display updates first/last/delta: ${display_updates_first:-n/a} / ${display_updates_last:-n/a} / ${display_updates_delta:-n/a}"
+  echo "- Display skips first/last/delta: ${display_skips_first:-n/a} / ${display_skips_last:-n/a} / ${display_skips_delta:-n/a}"
+  echo "- Peak flushMaxUs: ${flush_max_peak:-n/a}"
+  echo "- Peak loopMaxUs: ${loop_max_peak:-n/a}"
+  echo "- Peak wifiMaxUs: ${wifi_max_peak:-n/a}"
+  echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a}"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
   echo "- Lockout core guard tripped count: ${core_guard_tripped_count:-n/a}"
+  echo ""
+  echo "## Display Drive"
+  echo ""
+  echo "- Display drive enabled: $([[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Display preview URL: ${DISPLAY_PREVIEW_URL:-disabled}"
+  echo "- Display drive interval (s): ${DISPLAY_DRIVE_INTERVAL_SECONDS}"
+  echo "- Display drive calls: ${display_drive_calls}"
+  echo "- Display drive errors: ${display_drive_errors}"
+  echo "- Display drive start misses: ${display_drive_start_misses}"
+  echo "- Minimum required displayUpdates delta: ${DISPLAY_MIN_UPDATES_DELTA}"
   echo ""
   echo "## Panic Endpoint"
   echo ""
