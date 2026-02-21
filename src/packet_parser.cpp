@@ -494,8 +494,14 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         Band band = decodeBand(bandArrow);
         Direction dir = decodeDirection(bandArrow);
         bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
-        bool isJunk = (aux0 & 0x40) != 0;
-        uint8_t photoType = aux0 & 0x0F;
+        // Match official Android/iOS library behavior:
+        // junk flag is valid on V1 4.1032+, photo type on 4.1037+.
+        const bool junkSupported =
+            !displayState.hasV1Version || (displayState.v1FirmwareVersion >= 41032);
+        const bool photoSupported =
+            !displayState.hasV1Version || (displayState.v1FirmwareVersion >= 41037);
+        bool isJunk = junkSupported && ((aux0 & 0x40) != 0);
+        uint8_t photoType = photoSupported ? static_cast<uint8_t>(aux0 & 0x0F) : 0;
 
         // Add new alert, checking for overflow
         if (alertCount < MAX_ALERTS) {

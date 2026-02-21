@@ -89,6 +89,20 @@ std::vector<uint8_t> makeDisplayPayload(uint8_t bogeyByte,
     return std::vector<uint8_t>{bogeyByte, 0x00, barBitmap, image1, image2, aux0, aux1, aux2};
 }
 
+std::vector<uint8_t> makeVersionPayload(char major,
+                                        char minor,
+                                        char rev1,
+                                        char rev2,
+                                        char ctrl) {
+    return std::vector<uint8_t>{0x00,
+                                static_cast<uint8_t>('V'),
+                                static_cast<uint8_t>(major),
+                                static_cast<uint8_t>(minor),
+                                static_cast<uint8_t>(rev1),
+                                static_cast<uint8_t>(rev2),
+                                static_cast<uint8_t>(ctrl)};
+}
+
 std::vector<uint8_t> makeAlertPayload(uint8_t index,
                                       uint8_t count,
                                       uint16_t freqMHz,
@@ -232,6 +246,44 @@ void test_alert_stream_aux0_decodes_junk_photo_and_priority() {
     TEST_ASSERT_EQUAL_UINT8(3, priority.photoType);
 }
 
+void test_alert_stream_aux0_photo_gated_before_41037() {
+    PacketParser parser;
+
+    const auto versionPacket = makePacket(PACKET_ID_VERSION, makeVersionPayload('4', '1', '0', '3', '5'));
+    TEST_ASSERT_TRUE(parser.parse(versionPacket.data(), versionPacket.size()));
+
+    const auto row = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 1, 24150, 0x90, 0x80, 0x84, 0xC3));
+    TEST_ASSERT_TRUE(parser.parse(row.data(), row.size()));
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_TRUE(priority.isPriority);
+    TEST_ASSERT_TRUE(priority.isJunk);
+    TEST_ASSERT_EQUAL_UINT8(0, priority.photoType);
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_TRUE(state.hasJunkAlert);
+    TEST_ASSERT_FALSE(state.hasPhotoAlert);
+}
+
+void test_alert_stream_aux0_junk_gated_before_41032() {
+    PacketParser parser;
+
+    const auto versionPacket = makePacket(PACKET_ID_VERSION, makeVersionPayload('4', '1', '0', '3', '1'));
+    TEST_ASSERT_TRUE(parser.parse(versionPacket.data(), versionPacket.size()));
+
+    const auto row = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 1, 24150, 0x90, 0x80, 0x84, 0xC3));
+    TEST_ASSERT_TRUE(parser.parse(row.data(), row.size()));
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_TRUE(priority.isPriority);
+    TEST_ASSERT_FALSE(priority.isJunk);
+    TEST_ASSERT_EQUAL_UINT8(0, priority.photoType);
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_FALSE(state.hasJunkAlert);
+    TEST_ASSERT_FALSE(state.hasPhotoAlert);
+}
+
 void test_alert_stream_missing_row_keeps_previous_complete_table() {
     PacketParser parser;
 
@@ -350,6 +402,8 @@ int main() {
     RUN_TEST(test_alert_stream_duplicate_index_replaces_prior_row);
     RUN_TEST(test_alert_stream_zero_based_index_fallback_supported);
     RUN_TEST(test_alert_stream_aux0_decodes_junk_photo_and_priority);
+    RUN_TEST(test_alert_stream_aux0_photo_gated_before_41037);
+    RUN_TEST(test_alert_stream_aux0_junk_gated_before_41032);
     RUN_TEST(test_alert_stream_missing_row_keeps_previous_complete_table);
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
 
