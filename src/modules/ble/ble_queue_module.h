@@ -62,6 +62,7 @@ private:
     QueueHandle_t queueHandle = nullptr;
 
     std::vector<uint8_t> rxBuffer;
+    size_t rxReadPos = 0;  // Logical read pointer into rxBuffer (avoids front erases)
     unsigned long lastRxMillis = 0;
     uint32_t lastNotifyTsMs = 0;
     uint32_t lastParsedTsMs = 0;      // Timestamp of last successful parse (for display latency)

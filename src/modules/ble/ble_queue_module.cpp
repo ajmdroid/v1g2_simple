@@ -4,15 +4,47 @@
 #include "debug_logger.h"
 #include "modules/system/system_event_bus.h"
 #include <algorithm>
+#include <cstring>
 
 // Maximum bytes to buffer from BLE RX before dropping
 static constexpr size_t RX_BUFFER_MAX = 512;
+static constexpr size_t RX_COMPACT_THRESHOLD = RX_BUFFER_MAX / 2;
 
-static size_t appendRxClamped(std::vector<uint8_t>& rxBuffer, const uint8_t* data, size_t length) {
-    if (!data || length == 0 || rxBuffer.size() >= RX_BUFFER_MAX) {
+static void compactRxBuffer(std::vector<uint8_t>& rxBuffer, size_t& readPos) {
+    if (readPos == 0) {
+        return;
+    }
+    if (readPos >= rxBuffer.size()) {
+        rxBuffer.clear();
+        readPos = 0;
+        return;
+    }
+    const size_t unread = rxBuffer.size() - readPos;
+    memmove(rxBuffer.data(), rxBuffer.data() + readPos, unread);
+    rxBuffer.resize(unread);
+    readPos = 0;
+}
+
+static size_t appendRxClamped(std::vector<uint8_t>& rxBuffer,
+                              size_t& readPos,
+                              const uint8_t* data,
+                              size_t length) {
+    if (!data || length == 0) {
         return 0;
     }
-    const size_t remaining = RX_BUFFER_MAX - rxBuffer.size();
+
+    if (readPos > 0) {
+        const size_t unread = (readPos < rxBuffer.size()) ? (rxBuffer.size() - readPos) : 0;
+        if (rxBuffer.size() >= RX_BUFFER_MAX || (unread + length) > RX_BUFFER_MAX) {
+            compactRxBuffer(rxBuffer, readPos);
+        }
+    }
+
+    const size_t unread = (readPos < rxBuffer.size()) ? (rxBuffer.size() - readPos) : 0;
+    if (unread >= RX_BUFFER_MAX) {
+        return 0;
+    }
+    const size_t remaining = RX_BUFFER_MAX - unread;
     const size_t toCopy = std::min(remaining, length);
     rxBuffer.insert(rxBuffer.end(), data, data + toCopy);
     return toCopy;
@@ -133,6 +165,7 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
     config = cfg;
 
     queueHandle = xQueueCreate(config.queueDepth, sizeof(BLEDataPacket));
+    rxReadPos = 0;
     rxBuffer.reserve(std::max(config.rxBufferCap, RX_BUFFER_MAX));
 }
 
@@ -172,7 +205,7 @@ void BleQueueModule::process() {
     uint32_t latestPktTs = 0;
 
     while (queueHandle && xQueueReceive(queueHandle, &pkt, 0) == pdTRUE) {
-        appendRxClamped(rxBuffer, pkt.data, pkt.length);
+        appendRxClamped(rxBuffer, rxReadPos, pkt.data, pkt.length);
         latestPktTs = pkt.tsMs;
     }
 
@@ -187,14 +220,21 @@ void BleQueueModule::process() {
     }
 #endif
 
-    if (rxBuffer.empty()) {
+    if (rxReadPos >= rxBuffer.size()) {
+        rxBuffer.clear();
+        rxReadPos = 0;
         return;
     }
 
-    if (rxBuffer.size() > 256) {
-        if (rxBuffer.size() > config.rxTrimKeep) {
-            rxBuffer.erase(rxBuffer.begin(), rxBuffer.end() - config.rxTrimKeep);
-        }
+    size_t availableBytes = rxBuffer.size() - rxReadPos;
+    if (availableBytes == 0) {
+        return;
+    }
+
+    if (availableBytes > 256 && availableBytes > config.rxTrimKeep) {
+        rxReadPos = rxBuffer.size() - config.rxTrimKeep;
+        compactRxBuffer(rxBuffer, rxReadPos);
+        availableBytes = rxBuffer.size() - rxReadPos;
     }
 
     const size_t MIN_HEADER_SIZE = 6;
@@ -211,44 +251,48 @@ void BleQueueModule::process() {
             break;  // Continue next loop() iteration
         }
         
-        if (rxBuffer.empty()) break;
-        auto startIt = (rxBuffer[0] == ESP_PACKET_START)
-            ? rxBuffer.begin()
-            : std::find(rxBuffer.begin(), rxBuffer.end(), ESP_PACKET_START);
+        availableBytes = rxBuffer.size() - rxReadPos;
+        if (availableBytes == 0) break;
+
+        auto dataBegin = rxBuffer.begin() + rxReadPos;
+        auto startIt = (rxBuffer[rxReadPos] == ESP_PACKET_START)
+            ? dataBegin
+            : std::find(dataBegin, rxBuffer.end(), ESP_PACKET_START);
         if (startIt == rxBuffer.end()) {
             rxBuffer.clear();
+            rxReadPos = 0;
             break;
         }
-        if (startIt != rxBuffer.begin()) {
-            rxBuffer.erase(rxBuffer.begin(), startIt);
+        if (startIt != dataBegin) {
+            rxReadPos = static_cast<size_t>(startIt - rxBuffer.begin());
             continue;
         }
-        if (rxBuffer.size() < MIN_HEADER_SIZE) {
+        if (availableBytes < MIN_HEADER_SIZE) {
             break;
         }
 
-        uint8_t lenField = rxBuffer[4];
+        uint8_t lenField = rxBuffer[rxReadPos + 4];
         if (lenField == 0) {
-            rxBuffer.erase(rxBuffer.begin());
+            rxReadPos++;
             continue;
         }
 
         size_t packetSize = 6 + lenField;
         if (packetSize > MAX_PACKET_SIZE) {
             Serial.printf("WARNING: BLE packet too large (%u bytes) - resyncing\n", (unsigned)packetSize);
-            rxBuffer.erase(rxBuffer.begin());
+            rxReadPos++;
             continue;
         }
-        if (rxBuffer.size() < packetSize) {
+        if (availableBytes < packetSize) {
             break;
         }
-        if (rxBuffer[packetSize - 1] != ESP_PACKET_END) {
+        if (rxBuffer[rxReadPos + packetSize - 1] != ESP_PACKET_END) {
             Serial.println("WARNING: Packet missing end marker - resyncing");
-            rxBuffer.erase(rxBuffer.begin());
+            rxReadPos++;
             continue;
         }
 
-        const uint8_t* packetPtr = rxBuffer.data();
+        const uint8_t* packetPtr = rxBuffer.data() + rxReadPos;
 
         lastRxMillis = millis();
 
@@ -260,7 +304,7 @@ void BleQueueModule::process() {
             memcpy(userBytes, &packetPtr[5], 6);
             ble->onUserBytesReceived(userBytes);
             profiles->setCurrentSettings(userBytes);
-            rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+            rxReadPos += packetSize;
             packetsProcessedThisCycle++;
             continue;
         }
@@ -276,7 +320,7 @@ void BleQueueModule::process() {
             }
         }
 
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + packetSize);
+        rxReadPos += packetSize;
         packetsProcessedThisCycle++;
 
         if (parseOk) {
@@ -303,6 +347,13 @@ void BleQueueModule::process() {
             }
         }
     }
+
+    if (rxReadPos >= rxBuffer.size()) {
+        rxBuffer.clear();
+        rxReadPos = 0;
+    } else if (rxReadPos >= RX_COMPACT_THRESHOLD) {
+        compactRxBuffer(rxBuffer, rxReadPos);
+    }
 }
 
 #ifdef REPLAY_MODE
@@ -313,7 +364,7 @@ void BleQueueModule::processReplayData() {
         return;
     }
 
-    appendRxClamped(rxBuffer, pkt.data, pkt.length);
+    appendRxClamped(rxBuffer, rxReadPos, pkt.data, pkt.length);
     Serial.printf("[REPLAY] Injected packet %d/%d (%d bytes)\n",
                   (int)(replayIndex + 1), (int)REPLAY_SEQUENCE_LENGTH, (int)pkt.length);
 
