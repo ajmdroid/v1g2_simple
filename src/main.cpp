@@ -894,6 +894,8 @@ void loop() {
         bool lockoutPrioritySuppressed = false;
         static LockoutRuntimeMuteState lockoutMuteState;
         static PreQuietState preQuietState;
+        static bool overrideUnmuteActive = false;
+        static uint32_t overrideUnmuteLastRetryMs = 0;
 
         uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
         signalCaptureModule.capturePriorityObservation(
@@ -904,9 +906,11 @@ void loop() {
         if (!proxyClientConnected) {
             lockoutEnforcer.process(nowMs, timeService.nowEpochMsOr0(), parser, gpsStatus);
 
-            // Feed lockout decision into display indicator before rendering.
             const auto& lockRes = lockoutEnforcer.lastResult();
-            display.setLockoutIndicator(lockRes.evaluated && lockRes.shouldMute);
+            const DisplayState& lockoutDisplayState = parser.getDisplayState();
+            constexpr uint8_t kMuteOverrideBandMask = static_cast<uint8_t>(BAND_LASER | BAND_KA);
+            const bool overrideBandActive =
+                (lockoutDisplayState.activeBands & kMuteOverrideBandMask) != 0;
 
             // ENFORCE mute execution: send mute to V1 when lockout decides to suppress.
             // Rate-limited: only send once per lockout-match cycle (not every frame).
@@ -923,20 +927,53 @@ void loop() {
             const bool enforceMode =
                 lockRes.mode == static_cast<uint8_t>(LOCKOUT_RUNTIME_ENFORCE);
             const bool enforceAllowed = enforceMode && !lockoutGuard.tripped;
+            const bool effectiveLockoutMute =
+                lockRes.evaluated && lockRes.shouldMute && enforceAllowed && !overrideBandActive;
 
             // Suppress local priority announcements in ENFORCE lockout matches.
-            lockoutPrioritySuppressed =
-                lockRes.evaluated && lockRes.shouldMute && enforceAllowed;
+            lockoutPrioritySuppressed = effectiveLockoutMute;
+
+            // Feed lockout decision into display indicator before rendering.
+            display.setLockoutIndicator(effectiveLockoutMute);
 
             const LockoutRuntimeMuteDecision muteDecision =
-                evaluateLockoutRuntimeMute(lockRes, lockoutGuard, bleClient.isConnected(), lockoutMuteState);
+                evaluateLockoutRuntimeMute(lockRes,
+                                          lockoutGuard,
+                                          bleClient.isConnected(),
+                                          lockoutDisplayState.muted,
+                                          overrideBandActive,
+                                          lockoutMuteState);
 
             if (muteDecision.sendMute) {
                 bleClient.setMute(true);
                 Serial.println("[Lockout] ENFORCE: mute sent to V1");
             }
+            if (muteDecision.sendUnmute) {
+                bleClient.setMute(false);
+                Serial.println("[Lockout] ENFORCE: unmute sent to V1");
+            }
             if (muteDecision.logGuardBlocked) {
                 Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
+            }
+
+            // Safety override: live Ka/Laser must break through mute.
+            // Retry at a low rate until V1 reports unmuted.
+            constexpr uint32_t OVERRIDE_UNMUTE_RETRY_MS = 400;
+            const bool needsOverrideUnmute =
+                bleClient.isConnected() && overrideBandActive && lockoutDisplayState.muted;
+            if (needsOverrideUnmute) {
+                if (!overrideUnmuteActive ||
+                    static_cast<uint32_t>(nowMs - overrideUnmuteLastRetryMs) >= OVERRIDE_UNMUTE_RETRY_MS) {
+                    bleClient.setMute(false);
+                    overrideUnmuteLastRetryMs = nowMs;
+                    if (!overrideUnmuteActive) {
+                        Serial.println("[Safety] Ka/Laser override active: unmute sent to V1");
+                    }
+                    overrideUnmuteActive = true;
+                }
+            } else {
+                overrideUnmuteActive = false;
+                overrideUnmuteLastRetryMs = 0;
             }
 
             // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
@@ -959,7 +996,7 @@ void loop() {
                     gpsStatus.locationValid,
                     parser.hasAlerts(),
                     lockRes.evaluated,
-                    lockRes.shouldMute,
+                    effectiveLockoutMute,
                     nearbyCount,
                     pqState.mainVolume,
                     pqState.muteVolume,
@@ -983,6 +1020,8 @@ void loop() {
             display.setPreQuietActive(false);
             lockoutMuteState = LockoutRuntimeMuteState{};
             preQuietState = PreQuietState{};
+            overrideUnmuteActive = false;
+            overrideUnmuteLastRetryMs = 0;
         }
         perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
 
