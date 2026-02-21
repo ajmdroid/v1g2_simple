@@ -1097,6 +1097,36 @@ void loop() {
         wifiManager.process();
         perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
     }
+
+    // Keep WiFi icon state in sync with AP lifecycle even when no alert redraws
+    // happen (auto-start AP can come up after the last full-screen paint).
+    {
+        static bool lastWifiSetupActive = false;
+        static unsigned long lastWifiIconRefreshMs = 0;
+        const bool wifiSetupActiveNow = wifiManager.isSetupModeActive();
+        const unsigned long nowMs = millis();
+
+        bool refreshWifiIcon = false;
+        if (wifiSetupActiveNow != lastWifiSetupActive) {
+            refreshWifiIcon = true;
+            lastWifiSetupActive = wifiSetupActiveNow;
+        } else if (wifiSetupActiveNow && (nowMs - lastWifiIconRefreshMs) >= 2000UL) {
+            // Periodic refresh keeps AP client-connect color current.
+            refreshWifiIcon = true;
+        }
+
+        if (refreshWifiIcon && !displayPreviewModule.isRunning() && !bootSplashHoldActive) {
+            display.drawWiFiIndicator();
+#if defined(DISPLAY_USE_ARDUINO_GFX)
+            const int leftColWidth = 64;
+            const int leftColHeight = 96;
+            display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
+#else
+            display.flush();
+#endif
+            lastWifiIconRefreshMs = nowMs;
+        }
+    }
     
     perfRecordLoopJitterUs(micros() - loopStartUs);
     StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating

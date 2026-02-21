@@ -7,6 +7,7 @@
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 600
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 1800 --metrics-url http://192.168.35.5/api/debug/metrics
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview
+#   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview --drive-camera-demo
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 300 --no-metrics
 #
 set -euo pipefail
@@ -28,11 +29,17 @@ SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_REQUIRED=0
+MIN_METRICS_OK_SAMPLES=1
 ALLOW_INCONCLUSIVE=0
 DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
 DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
 DISPLAY_MIN_UPDATES_DELTA=1
+CAMERA_DRIVE_ENABLED=0
+CAMERA_DRIVE_INTERVAL_SECONDS=11
+CAMERA_DEMO_URL="${REAL_FW_CAMERA_DEMO_URL:-}"
+CAMERA_DEMO_DURATION_MS=2200
+CAMERA_DEMO_MUTED=0
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -99,6 +106,14 @@ while [[ $# -gt 0 ]]; do
     --require-metrics)
       METRICS_REQUIRED=1
       ;;
+    --min-metrics-ok-samples)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-metrics-ok-samples" >&2
+        exit 2
+      fi
+      MIN_METRICS_OK_SAMPLES="$2"
+      shift
+      ;;
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
@@ -129,6 +144,36 @@ while [[ $# -gt 0 ]]; do
       DISPLAY_MIN_UPDATES_DELTA="$2"
       shift
       ;;
+    --drive-camera-demo)
+      CAMERA_DRIVE_ENABLED=1
+      ;;
+    --camera-drive-interval-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --camera-drive-interval-seconds" >&2
+        exit 2
+      fi
+      CAMERA_DRIVE_INTERVAL_SECONDS="$2"
+      shift
+      ;;
+    --camera-demo-url)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --camera-demo-url" >&2
+        exit 2
+      fi
+      CAMERA_DEMO_URL="$2"
+      shift
+      ;;
+    --camera-demo-duration-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --camera-demo-duration-ms" >&2
+        exit 2
+      fi
+      CAMERA_DEMO_DURATION_MS="$2"
+      shift
+      ;;
+    --camera-demo-muted)
+      CAMERA_DEMO_MUTED=1
+      ;;
     --out-dir)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --out-dir" >&2
@@ -152,6 +197,8 @@ Options:
   --panic-url URL        Poll debug panic endpoint (default: derived from metrics URL)
   --no-metrics           Disable debug API polling (serial-only soak)
   --require-metrics      Fail run if no successful metrics samples are captured
+  --min-metrics-ok-samples N
+                        Minimum parsed metrics successes when --require-metrics (default: 1)
   --drive-display-preview
                         Repeatedly call display preview endpoint during soak
   --display-drive-interval-seconds N
@@ -160,6 +207,13 @@ Options:
                         Display preview endpoint URL (default: derived from metrics URL)
   --min-display-updates-delta N
                         Fail when parsed displayUpdates delta is below N (default: 1)
+  --drive-camera-demo   Repeatedly call camera demo endpoint during soak
+  --camera-drive-interval-seconds N
+                        Interval between camera demo calls (default: 11)
+  --camera-demo-url URL Camera demo endpoint URL (default: derived from metrics URL)
+  --camera-demo-duration-ms N
+                        Camera demo duration per trigger (default: 2200)
+  --camera-demo-muted   Request muted camera demo
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
   -h, --help             Show this help
@@ -194,6 +248,21 @@ if ! [[ "$DISPLAY_MIN_UPDATES_DELTA" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if ! [[ "$MIN_METRICS_OK_SAMPLES" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --min-metrics-ok-samples value '$MIN_METRICS_OK_SAMPLES' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
+  echo "Invalid --camera-drive-interval-seconds value '$CAMERA_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$CAMERA_DEMO_DURATION_MS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DEMO_DURATION_MS" -lt 500 ]] || [[ "$CAMERA_DEMO_DURATION_MS" -gt 15000 ]]; then
+  echo "Invalid --camera-demo-duration-ms value '$CAMERA_DEMO_DURATION_MS' (expected integer in 500..15000)." >&2
+  exit 2
+fi
+
 if ! command -v pio >/dev/null 2>&1; then
   echo "PlatformIO (pio) is required but not found in PATH." >&2
   exit 1
@@ -207,9 +276,19 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" && -n "$METRIC
   DISPLAY_PREVIEW_URL="${METRICS_URL%/api/debug/metrics}/api/displaycolors/preview"
 fi
 
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" && -n "$METRICS_URL" ]]; then
+  CAMERA_DEMO_URL="${METRICS_URL%/api/debug/metrics}/api/cameras/demo"
+fi
+
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
   echo "Display drive is enabled but no preview URL was provided or derivable." >&2
   echo "Set --display-preview-url or provide --metrics-url ending in /api/debug/metrics." >&2
+  exit 2
+fi
+
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" ]]; then
+  echo "Camera drive is enabled but no demo URL was provided or derivable." >&2
+  echo "Set --camera-demo-url or provide --metrics-url ending in /api/debug/metrics." >&2
   exit 2
 fi
 
@@ -350,10 +429,18 @@ echo "    port: $TEST_PORT" | tee -a "$RUN_LOG"
 echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
+if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+  echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
+fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
 else
   echo "    display drive: disabled" | tee -a "$RUN_LOG"
+fi
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+  echo "    camera drive: enabled (${CAMERA_DEMO_URL}) every ${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}" | tee -a "$RUN_LOG"
+else
+  echo "    camera drive: disabled" | tee -a "$RUN_LOG"
 fi
 echo "    out dir: $OUT_DIR" | tee -a "$RUN_LOG"
 echo "" | tee -a "$RUN_LOG"
@@ -451,6 +538,9 @@ display_drive_calls=0
 display_drive_errors=0
 display_drive_start_misses=0
 next_display_drive_epoch="$soak_start_epoch"
+camera_drive_calls=0
+camera_drive_errors=0
+next_camera_drive_epoch="$soak_start_epoch"
 
 echo "==> Soaking for ${DURATION_SECONDS}s..." | tee -a "$RUN_LOG"
 
@@ -506,6 +596,18 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
       fi
     fi
     next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
+  fi
+
+  if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_camera_drive_epoch" ]]; then
+    camera_drive_calls=$((camera_drive_calls + 1))
+    camera_resp="$(curl -fsS --max-time 2 -X POST \
+      --data "type=0&durationMs=${CAMERA_DEMO_DURATION_MS}&muted=${CAMERA_DEMO_MUTED}" \
+      "$CAMERA_DEMO_URL" 2>/dev/null || true)"
+    if [[ -z "$camera_resp" ]]; then
+      camera_drive_errors=$((camera_drive_errors + 1))
+      echo "[WARN] Camera drive call failed (no response)." | tee -a "$RUN_LOG"
+    fi
+    next_camera_drive_epoch=$((now_epoch + CAMERA_DRIVE_INTERVAL_SECONDS))
   fi
 
   sleep "$POLL_SECONDS"
@@ -836,7 +938,9 @@ if [[ -n "$panic_was_crash_true" && "$panic_was_crash_true" -gt 0 ]]; then
   result="FAIL"
 fi
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-  if [[ -z "$metrics_ok_samples_parsed" || "$metrics_ok_samples_parsed" -eq 0 ]]; then
+  if [[ -z "$metrics_ok_samples_parsed" ]] || ! [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]]; then
+    result="FAIL"
+  elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
     result="FAIL"
   fi
 fi
@@ -847,6 +951,14 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   if [[ -z "$display_updates_delta" ]] || ! [[ "$display_updates_delta" =~ ^-?[0-9]+$ ]]; then
     result="FAIL"
   elif [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
+    result="FAIL"
+  fi
+fi
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+  if [[ "$camera_drive_calls" -eq 0 ]]; then
+    result="FAIL"
+  fi
+  if [[ "$camera_drive_errors" -gt 0 ]]; then
     result="FAIL"
   fi
 fi
@@ -880,6 +992,7 @@ fi
   echo "- Metrics successful (shell): $metrics_ok_samples"
   echo "- Metrics samples parsed: ${metrics_samples_parsed:-0}"
   echo "- Metrics successful parsed: ${metrics_ok_samples_parsed:-0}"
+  echo "- Metrics required minimum parsed successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "- Min heapFree: ${heap_free_min:-n/a}"
   echo "- Min heapMinFree: ${heap_min_free_min:-n/a}"
   echo "- Min heapDma: ${heap_dma_min:-n/a}"
@@ -906,6 +1019,16 @@ fi
   echo "- Display drive errors: ${display_drive_errors}"
   echo "- Display drive start misses: ${display_drive_start_misses}"
   echo "- Minimum required displayUpdates delta: ${DISPLAY_MIN_UPDATES_DELTA}"
+  echo ""
+  echo "## Camera Drive"
+  echo ""
+  echo "- Camera drive enabled: $([[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Camera demo URL: ${CAMERA_DEMO_URL:-disabled}"
+  echo "- Camera drive interval (s): ${CAMERA_DRIVE_INTERVAL_SECONDS}"
+  echo "- Camera demo duration (ms): ${CAMERA_DEMO_DURATION_MS}"
+  echo "- Camera demo muted: ${CAMERA_DEMO_MUTED}"
+  echo "- Camera drive calls: ${camera_drive_calls}"
+  echo "- Camera drive errors: ${camera_drive_errors}"
   echo ""
   echo "## Panic Endpoint"
   echo ""

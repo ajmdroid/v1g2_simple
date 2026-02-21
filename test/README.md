@@ -48,8 +48,17 @@ before production. Requires ESP32-S3 connected via USB.
 # Real display-path lag check (forces preview redraw during soak)
 ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics \
+  --require-metrics --min-metrics-ok-samples 50 \
   --drive-display-preview --display-drive-interval-seconds 6 \
   --min-display-updates-delta 100
+
+# Mixed-load soak (display + camera demo + runtime telemetry together)
+./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
+  --metrics-url http://192.168.35.5/api/debug/metrics \
+  --require-metrics --min-metrics-ok-samples 50 \
+  --drive-display-preview --display-drive-interval-seconds 6 \
+  --min-display-updates-delta 100 \
+  --drive-camera-demo --camera-drive-interval-seconds 11
 
 # Individual suite
 pio test -e device --filter test_device_heap
@@ -60,6 +69,7 @@ If you provide `--metrics-url`, enable the setup AP first (default URL assumes
 `http://192.168.35.5`). If no telemetry is captured, the run is marked
 `INCONCLUSIVE` (exit code `2`) instead of reporting a false pass.
 Use `--drive-display-preview` when you specifically need display-path coverage.
+Use `--drive-camera-demo` to overlap display stress with camera/runtime activity.
 
 ### Device Suites
 

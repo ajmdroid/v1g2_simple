@@ -27,14 +27,24 @@ pio test -e device --filter test_device_heap
 # Display lag soak (forces preview redraw and enforces display activity)
 ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics \
+  --require-metrics --min-metrics-ok-samples 50 \
   --drive-display-preview --display-drive-interval-seconds 6 \
   --min-display-updates-delta 100
+
+# Mixed-load soak (display + camera/runtime overlap)
+./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
+  --metrics-url http://192.168.35.5/api/debug/metrics \
+  --require-metrics --min-metrics-ok-samples 50 \
+  --drive-display-preview --display-drive-interval-seconds 6 \
+  --min-display-updates-delta 100 \
+  --drive-camera-demo --camera-drive-interval-seconds 11
 ```
 
 `run_real_fw_soak.sh` uses the normal firmware image (not test firmware). If
 it captures no telemetry, it reports `INCONCLUSIVE` (exit code `2`) so you
 don't mistake silence for stability. Add `--drive-display-preview` for real
-display-path stress coverage.
+display-path stress coverage, and `--drive-camera-demo` for overlapping
+display + camera/runtime load.
 
 ## Suites
 
