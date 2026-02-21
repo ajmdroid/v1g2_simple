@@ -397,8 +397,10 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     
     // Frequency in persisted color (pass muted=true)
-    // Note: Photo radar check uses state.bogeyCounterChar even for persisted alerts
-    bool isPhotoRadar = (state.bogeyCounterChar == 'P');
+    const bool isPhotoRadar =
+        (alert.photoType != 0) ||
+        state.hasPhotoAlert ||
+        (state.bogeyCounterChar == 'P');
     drawFrequency(alert.frequency, alert.band, true, isPhotoRadar);
     
     // No signal bars - just draw empty
@@ -731,7 +733,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
-    bool isPhotoRadar = (liveTopCounterChar == 'P');
+    const bool isPhotoRadar =
+        (priority.photoType != 0) ||
+        state.hasPhotoAlert ||
+        (liveTopCounterChar == 'P');
     drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
     DISP_PERF_LOG("drawFrequency");
     drawBandIndicators(bandMask, state.muted, state.bandFlashBits);
