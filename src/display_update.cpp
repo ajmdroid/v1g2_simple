@@ -196,19 +196,10 @@ void V1Display::update(const DisplayState& state) {
         }
         const bool cardsChanged = drawRestTelemetryCards(false);
 #if defined(DISPLAY_WAVESHARE_349)
-        constexpr int kPrimaryFlushH = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
-        if (flushLeftStrip) {
-            flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, kPrimaryFlushH);
-        }
-        if (flushRightStrip) {
-            flushRegion(DisplayLayout::SIGNAL_COLUMN_X, 0, DisplayLayout::SIGNAL_COLUMN_WIDTH, kPrimaryFlushH);
-        }
-        if (cardsChanged) {
-            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
-                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                        SECONDARY_ROW_HEIGHT);
-        }
+        (void)flushLeftStrip;
+        (void)flushRightStrip;
+        (void)cardsChanged;
+        DISPLAY_FLUSH();
 #endif
         lastState = state;
         return;
@@ -697,19 +688,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
-        constexpr int kPrimaryFlushH = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
-        if (flushLeftStrip) {
-            flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, kPrimaryFlushH);
-        }
-        if (flushRightStrip) {
-            flushRegion(DisplayLayout::SIGNAL_COLUMN_X, 0, DisplayLayout::SIGNAL_COLUMN_WIDTH, kPrimaryFlushH);
-        }
-        if (secondaryCardsRenderDirty_) {
-            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
-                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                        SECONDARY_ROW_HEIGHT);
-        }
+        (void)flushLeftStrip;
+        (void)flushRightStrip;
+        DISPLAY_FLUSH();
 #endif
         return;
     }
