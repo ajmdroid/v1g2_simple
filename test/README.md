@@ -38,9 +38,21 @@ before production. Requires ESP32-S3 connected via USB.
 # Full run (device suites + shared native suites on hardware)
 ./scripts/run_device_tests.sh --full
 
+# Repeat device test firmware cycles and collect flake metrics (CSV + summary)
+./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
+
+# Flash REAL production firmware (waveshare-349) and soak runtime behavior
+./scripts/run_real_fw_soak.sh --duration-seconds 900 \
+  --metrics-url http://192.168.35.5/api/debug/metrics
+
 # Individual suite
 pio test -e device --filter test_device_heap
 ```
+
+`run_real_fw_soak.sh` validates the normal app image (not UNIT_TEST firmware).
+If you provide `--metrics-url`, enable the setup AP first (default URL assumes
+`http://192.168.35.5`). If no telemetry is captured, the run is marked
+`INCONCLUSIVE` (exit code `2`) instead of reporting a false pass.
 
 ### Device Suites
 

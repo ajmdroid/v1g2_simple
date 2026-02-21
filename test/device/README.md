@@ -16,7 +16,18 @@ pio test -e device --filter test_device_heap
 
 # Run the device functional gate (core + dependent suites)
 ./scripts/run_device_tests.sh
+
+# Repeat the device test gate and collect failure-rate metrics
+./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
+
+# Flash and soak REAL production firmware (waveshare-349)
+./scripts/run_real_fw_soak.sh --duration-seconds 900 \
+  --metrics-url http://192.168.35.5/api/debug/metrics
 ```
+
+`run_real_fw_soak.sh` uses the normal firmware image (not test firmware). If
+it captures no telemetry, it reports `INCONCLUSIVE` (exit code `2`) so you
+don't mistake silence for stability.
 
 ## Suites
 
