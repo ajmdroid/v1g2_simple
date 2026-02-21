@@ -183,9 +183,9 @@ void test_boot_reset_reason_readable() {
 // ===========================================================================
 
 void test_boot_serial_functional() {
-    // If we can print and reach this point, serial is working
-    Serial.println("  [boot] Serial output functional");
-    TEST_PASS();
+    // Serial write should report that bytes were queued/sent.
+    size_t written = Serial.println("  [boot] Serial output functional");
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)written);
 }
 
 // ===========================================================================

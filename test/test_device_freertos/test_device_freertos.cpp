@@ -219,10 +219,16 @@ void test_binary_semaphore_signaling() {
 
 void test_critical_section_no_deadlock() {
     portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    volatile uint32_t progress = 0;
 
-    portENTER_CRITICAL(&mux);
-    portEXIT_CRITICAL(&mux);
-    TEST_PASS();
+    // Repeatedly enter/exit the critical section and prove forward progress.
+    for (int i = 0; i < 1000; i++) {
+        portENTER_CRITICAL(&mux);
+        progress++;
+        portEXIT_CRITICAL(&mux);
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(1000, progress);
 }
 
 void test_critical_section_protects_variable() {

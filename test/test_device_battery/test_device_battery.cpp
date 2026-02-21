@@ -19,6 +19,7 @@
 #include <esp_adc/adc_oneshot.h>
 #include <freertos/semphr.h>
 #include <esp_task_wdt.h>
+#include <driver/gpio.h>
 #include "../device_test_reset.h"
 
 // GPIO definitions from battery_manager.h
@@ -44,8 +45,10 @@ void tearDown() {}
 void test_battery_adc_gpio_configurable() {
     // Verify the ADC GPIO can be configured as input (basic GPIO test)
     pinMode(BATTERY_ADC_GPIO, INPUT);
-    // If we get here without crash, GPIO is valid
-    TEST_PASS();
+
+    // Reads must resolve to a digital level.
+    int level = digitalRead(BATTERY_ADC_GPIO);
+    TEST_ASSERT_TRUE(level == LOW || level == HIGH);
 }
 
 void test_battery_adc_raw_reading_in_range() {
@@ -114,10 +117,6 @@ void test_battery_tca9554_config_register_readable() {
     uint8_t configVal = testWire.read();
     Serial.printf("  [battery] TCA9554 config register: 0x%02X\n", configVal);
 
-    // Config register should have some valid value (0xFF = all inputs at reset)
-    // We don't assert the exact value since it depends on boot state.
-    TEST_PASS();
-
     testWire.end();
 }
 
@@ -129,12 +128,12 @@ void test_battery_power_button_gpio_readable() {
     pinMode(PWR_BUTTON_GPIO, INPUT);
 
     int state = digitalRead(PWR_BUTTON_GPIO);
+    int idfState = gpio_get_level((gpio_num_t)PWR_BUTTON_GPIO);
     Serial.printf("  [battery] Power button GPIO %d state: %d\n",
                   PWR_BUTTON_GPIO, state);
 
-    // Button should be in released state (HIGH or LOW depending on pull)
-    // Just verify it's readable without crash
-    TEST_ASSERT_TRUE(state == LOW || state == HIGH);
+    // Cross-check Arduino and IDF GPIO read paths agree.
+    TEST_ASSERT_EQUAL(idfState, state);
 }
 
 // ===========================================================================
@@ -167,14 +166,16 @@ void test_battery_i2c_concurrent_access_safe() {
     TwoWire testWire(1);
     testWire.begin(TCA9554_SDA_GPIO, TCA9554_SCL_GPIO, 100000);
 
+    int successfulTransactions = 0;
     for (int i = 0; i < 10; i++) {
         if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             testWire.beginTransmission(TCA9554_ADDR);
             testWire.write(TCA9554_CONFIG_PORT);
-            testWire.endTransmission();
-            testWire.requestFrom(TCA9554_ADDR, (uint8_t)1);
-            if (testWire.available()) {
+            uint8_t txErr = testWire.endTransmission();
+            uint8_t bytesRead = testWire.requestFrom(TCA9554_ADDR, (uint8_t)1);
+            if (txErr == 0 && bytesRead == 1 && testWire.available()) {
                 testWire.read();
+                successfulTransactions++;
             }
             xSemaphoreGive(mutex);
         }
@@ -183,8 +184,7 @@ void test_battery_i2c_concurrent_access_safe() {
     testWire.end();
     vSemaphoreDelete(mutex);
 
-    // If we get here without hang or crash, concurrent access is safe
-    TEST_PASS();
+    TEST_ASSERT_GREATER_THAN(0, successfulTransactions);
 }
 
 // ===========================================================================

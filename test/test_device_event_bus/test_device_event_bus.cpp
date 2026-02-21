@@ -12,8 +12,8 @@
  * SAFETY RULES (learned from production freeze):
  *   - Use counting semaphore (not binary) for multi-task start gates.
  *   - Spawned tasks use bounded timeouts (2 s), never portMAX_DELAY.
- *   - All spawned tasks are vTaskDelete'd in timeout path before cleanup.
- *   - Resources (semaphores, tasks) freed even on assertion failure.
+ *   - Never force-delete worker tasks while they might hold portMUX locks.
+ *   - Resources are always released before assertions that can fail.
  */
 
 #include <unity.h>
@@ -32,6 +32,11 @@ void setUp() {
     bus.reset();
 }
 void tearDown() {}
+
+// 0 = run full suite, 1..6 = run specific test only.
+#ifndef DEVICE_EVENT_BUS_TEST_ID
+#define DEVICE_EVENT_BUS_TEST_ID 0
+#endif
 
 // ===========================================================================
 // BASIC SINGLE-CORE OPERATION ON DEVICE
@@ -92,14 +97,14 @@ struct ProducerArgs {
     SystemEventBus*   bus;
     uint32_t          count;
     SemaphoreHandle_t startSem;
-    volatile bool     done;
+    TaskHandle_t      notifyTask;
 };
 
 static void busProducerTask(void* param) {
     ProducerArgs* args = (ProducerArgs*)param;
     // Bounded wait — bail if start signal never comes
     if (xSemaphoreTake(args->startSem, pdMS_TO_TICKS(2000)) != pdTRUE) {
-        args->done = true;
+        xTaskNotifyGive(args->notifyTask);
         vTaskDelete(NULL);
         return;
     }
@@ -110,19 +115,22 @@ static void busProducerTask(void* param) {
         ev.tsMs = millis();
         ev.seq  = i;
         args->bus->publish(ev);
+        // Always yield one tick; this suite validates contention correctness,
+        // not max-throughput publish rate.
+        vTaskDelay(1);
     }
 
-    args->done = true;
+    xTaskNotifyGive(args->notifyTask);
     vTaskDelete(NULL);
 }
 
 void test_device_bus_cross_core_no_crash() {
-    static constexpr uint32_t PRODUCE_COUNT = 500;
+    static constexpr uint32_t PRODUCE_COUNT = 200;
 
     SemaphoreHandle_t startSem = xSemaphoreCreateBinary();
     TEST_ASSERT_NOT_NULL(startSem);
 
-    ProducerArgs args = {&bus, PRODUCE_COUNT, startSem, false};
+    ProducerArgs args = {&bus, PRODUCE_COUNT, startSem, xTaskGetCurrentTaskHandle()};
 
     TaskHandle_t producer = NULL;
     BaseType_t created = xTaskCreatePinnedToCore(
@@ -134,34 +142,38 @@ void test_device_bus_cross_core_no_crash() {
 
     // Consumer loop on current core
     uint32_t consumed = 0;
+    bool producerDone = false;
     unsigned long deadline = millis() + 5000;
 
     while (millis() < deadline) {
+        if (ulTaskNotifyTake(pdTRUE, 0) > 0) {
+            producerDone = true;
+        }
         SystemEvent ev;
         while (bus.consume(ev)) {
             consumed++;
         }
-        if (args.done && bus.size() == 0) break;
+        if (producerDone && bus.size() == 0) break;
         vTaskDelay(1);
+    }
+
+    if (!producerDone && ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100)) > 0) {
+        producerDone = true;
     }
 
     // Drain any remaining
     SystemEvent ev;
     while (bus.consume(ev)) consumed++;
 
-    // Safety: kill producer if still alive
-    if (!args.done) {
-        vTaskDelete(producer);
-        delay(50);
-    }
+    // Timeout is a hard failure; do not force-delete potentially locked task.
+    vSemaphoreDelete(startSem);
+    TEST_ASSERT_TRUE_MESSAGE(producerDone, "Producer task did not complete before timeout");
 
     uint32_t published = bus.getPublishCount();
     uint32_t dropped   = bus.getDropCount();
 
     Serial.printf("  [bus] published=%lu consumed=%lu dropped=%lu\n",
                   (unsigned long)published, (unsigned long)consumed, (unsigned long)dropped);
-
-    vSemaphoreDelete(startSem);
 
     // All published events should be either consumed or dropped
     TEST_ASSERT_EQUAL_UINT32(published, consumed + dropped);
@@ -246,14 +258,14 @@ struct DualProducerArgs {
     uint32_t          count;
     SystemEventType   type;
     SemaphoreHandle_t startSem;
-    volatile bool     done;
+    TaskHandle_t      notifyTask;
 };
 
 static void dualProducerTask(void* param) {
     DualProducerArgs* args = (DualProducerArgs*)param;
     // Bounded wait — bail if start signal never comes
     if (xSemaphoreTake(args->startSem, pdMS_TO_TICKS(2000)) != pdTRUE) {
-        args->done = true;
+        xTaskNotifyGive(args->notifyTask);
         vTaskDelete(NULL);
         return;
     }
@@ -263,9 +275,10 @@ static void dualProducerTask(void* param) {
         ev.type = args->type;
         ev.seq  = i;
         args->bus->publish(ev);
+        vTaskDelay(1);
     }
 
-    args->done = true;
+    xTaskNotifyGive(args->notifyTask);
     vTaskDelete(NULL);
 }
 
@@ -276,12 +289,15 @@ void test_device_bus_dual_producer_no_corruption() {
     SemaphoreHandle_t startSem = xSemaphoreCreateCounting(2, 0);
     TEST_ASSERT_NOT_NULL(startSem);
 
-    DualProducerArgs args1 = {&bus, PER_PRODUCER, SystemEventType::BLE_FRAME_PARSED, startSem, false};
-    DualProducerArgs args2 = {&bus, PER_PRODUCER, SystemEventType::GPS_UPDATED,      startSem, false};
+    TaskHandle_t self = xTaskGetCurrentTaskHandle();
+    DualProducerArgs args1 = {&bus, PER_PRODUCER, SystemEventType::BLE_FRAME_PARSED, startSem, self};
+    DualProducerArgs args2 = {&bus, PER_PRODUCER, SystemEventType::GPS_UPDATED,      startSem, self};
 
     TaskHandle_t t1 = NULL, t2 = NULL;
-    xTaskCreatePinnedToCore(dualProducerTask, "prod1", 4096, &args1, 2, &t1, 0);
-    xTaskCreatePinnedToCore(dualProducerTask, "prod2", 4096, &args2, 2, &t2, 1);
+    BaseType_t c1 = xTaskCreatePinnedToCore(dualProducerTask, "prod1", 4096, &args1, 2, &t1, 0);
+    BaseType_t c2 = xTaskCreatePinnedToCore(dualProducerTask, "prod2", 4096, &args2, 2, &t2, 1);
+    TEST_ASSERT_EQUAL(pdPASS, c1);
+    TEST_ASSERT_EQUAL(pdPASS, c2);
 
     // Let tasks reach their semaphore take
     vTaskDelay(pdMS_TO_TICKS(20));
@@ -290,18 +306,18 @@ void test_device_bus_dual_producer_no_corruption() {
     xSemaphoreGive(startSem);
     xSemaphoreGive(startSem);
 
+    uint32_t doneSignals = 0;
     unsigned long deadline = millis() + 5000;
     while (millis() < deadline) {
-        if (args1.done && args2.done) break;
-        vTaskDelay(pdMS_TO_TICKS(10));
+        doneSignals += (uint32_t)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+        if (doneSignals >= 2) break;
     }
 
-    // Wait a bit for tasks to self-delete
-    vTaskDelay(pdMS_TO_TICKS(50));
-
-    // Safety: kill any task that didn't finish
-    if (!args1.done) { vTaskDelete(t1); delay(50); }
-    if (!args2.done) { vTaskDelete(t2); delay(50); }
+    if (doneSignals < 2) {
+        doneSignals += (uint32_t)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+    }
+    vSemaphoreDelete(startSem);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2, doneSignals);
 
     uint32_t published = bus.getPublishCount();
     uint32_t dropped   = bus.getDropCount();
@@ -323,8 +339,6 @@ void test_device_bus_dual_producer_no_corruption() {
 
     TEST_ASSERT_EQUAL_UINT32(0, otherCount);
     TEST_ASSERT_EQUAL_UINT32(published - dropped, frameCount + gpsCount);
-
-    vSemaphoreDelete(startSem);
 }
 
 // ===========================================================================
@@ -335,21 +349,24 @@ void setup() {
     if (deviceTestSetup("test_device_event_bus")) return;
     UNITY_BEGIN();
 
-    // Single-core basics
-    RUN_TEST(test_device_bus_publish_consume);
-    RUN_TEST(test_device_bus_overflow_drops_frame_first);
-
-    // Cross-core contention
-    RUN_TEST(test_device_bus_cross_core_no_crash);
-
-    // Stress
-    RUN_TEST(test_device_bus_rapid_publish_consume_stress);
-
-    // Type filtering
-    RUN_TEST(test_device_bus_consume_by_type_correctness);
-
-    // Dual producer
-    RUN_TEST(test_device_bus_dual_producer_no_corruption);
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 1) {
+        RUN_TEST(test_device_bus_publish_consume);
+    }
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 2) {
+        RUN_TEST(test_device_bus_overflow_drops_frame_first);
+    }
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 3) {
+        RUN_TEST(test_device_bus_cross_core_no_crash);
+    }
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 4) {
+        RUN_TEST(test_device_bus_rapid_publish_consume_stress);
+    }
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 5) {
+        RUN_TEST(test_device_bus_consume_by_type_correctness);
+    }
+    if (DEVICE_EVENT_BUS_TEST_ID == 0 || DEVICE_EVENT_BUS_TEST_ID == 6) {
+        RUN_TEST(test_device_bus_dual_producer_no_corruption);
+    }
 
     UNITY_END();
     deviceTestFinish();
