@@ -95,12 +95,20 @@ char decodeBogeyCounterByte(uint8_t bogeyImage, bool& hasDot) {
 
 } // namespace
 
-PacketParser::PacketParser() : alertCount(0), chunkCount(0) {
+PacketParser::PacketParser()
+    : alertCount(0),
+      chunkCount(0),
+      assemblingAlertCount(0),
+      alertIndexMode(AlertIndexMode::Unknown) {
+    alertChunkPresent.fill(false);
 }
 
 void PacketParser::resetAlertAssembly() {
     // Drop any partially collected alert rows without altering display state
     chunkCount = 0;
+    assemblingAlertCount = 0;
+    alertIndexMode = AlertIndexMode::Unknown;
+    alertChunkPresent.fill(false);
 }
 
 
@@ -371,13 +379,17 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    // Byte0: high nibble = alert index (0-based), low nibble = alert count
-    // The first alert sent (index 0) is the V1's priority alert
-    [[maybe_unused]] uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
+    // Byte0: high nibble = alert index, low nibble = alert count.
+    // Official Android/iOS libraries assemble alert tables by index 1..count.
+    // Keep a zero-based fallback path for compatibility with legacy captures.
+    uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
         alertCount = 0;
         chunkCount = 0;
+        assemblingAlertCount = 0;
+        alertIndexMode = AlertIndexMode::Unknown;
+        alertChunkPresent.fill(false);
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
         displayState.arrows = DIR_NONE;
         displayState.muted = false;
@@ -389,34 +401,71 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         return false;
     }
 
-    // Track expected alert count - if it changes mid-assembly, reset to avoid stale data
-    // This handles the case where alerts change while we're still collecting chunks
-    static uint8_t lastExpectedCount = 0;
-    
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetAlertCountFlag) {
-        lastExpectedCount = 0;
+        chunkCount = 0;
+        assemblingAlertCount = 0;
+        alertIndexMode = AlertIndexMode::Unknown;
+        alertChunkPresent.fill(false);
         s_resetAlertCountFlag = false;
     }
-    
-    if (receivedAlertCount != lastExpectedCount) {
-        // Alert count changed - discard any partial assembly and start fresh
-        chunkCount = 0;
-        lastExpectedCount = receivedAlertCount;
-    }
 
-    // Add new chunk with strict bounds checking to prevent overflow
-    if (chunkCount >= MAX_ALERTS) {
-        // Overflow - silently drop (hot path)
+    if (receivedAlertCount > MAX_ALERTS) {
+        // Invalid table size - drop and wait for next valid set.
+        chunkCount = 0;
+        assemblingAlertCount = 0;
+        alertIndexMode = AlertIndexMode::Unknown;
+        alertChunkPresent.fill(false);
         return false;
     }
 
-    std::array<uint8_t, 8> chunk{};
+    if (receivedAlertCount != assemblingAlertCount) {
+        // Alert count changed - discard any partial assembly and start fresh
+        chunkCount = 0;
+        assemblingAlertCount = receivedAlertCount;
+        alertIndexMode = AlertIndexMode::Unknown;
+        alertChunkPresent.fill(false);
+    }
+
+    // Auto-detect index base per-table once and keep it stable for that table.
+    if (alertIndexMode == AlertIndexMode::Unknown) {
+        if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
+            alertIndexMode = AlertIndexMode::OneBased;
+        } else if (alertIndex < receivedAlertCount) {
+            alertIndexMode = AlertIndexMode::ZeroBased;
+        }
+    }
+
+    size_t slot = MAX_ALERTS;
+    if (alertIndexMode == AlertIndexMode::OneBased) {
+        if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
+            slot = static_cast<size_t>(alertIndex - 1);
+        }
+    } else if (alertIndexMode == AlertIndexMode::ZeroBased) {
+        if (alertIndex < receivedAlertCount) {
+            slot = static_cast<size_t>(alertIndex);
+        }
+    }
+
+    // If the row index is invalid for the detected mode, drop this row but keep assembly alive.
+    if (slot >= MAX_ALERTS) {
+        return true;
+    }
+
+    if (!alertChunkPresent[slot]) {
+        if (chunkCount >= MAX_ALERTS) {
+            return false;
+        }
+        alertChunkPresent[slot] = true;
+        ++chunkCount;
+    }
+
+    std::array<uint8_t, 8>& chunk = alertChunks[slot];
+    chunk.fill(0);
     size_t copyLen = std::min<size_t>(8, length);
     for (size_t i = 0; i < copyLen; ++i) {
         chunk[i] = payload[i];
     }
-    alertChunks[chunkCount++] = chunk;
 
     // Wait until we've received the full set of alert table rows
     if (chunkCount < receivedAlertCount) {
@@ -428,7 +477,12 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // for what bands are visually shown (including blink behavior). We just extract alert details.
     bool anyMuted = false;
 
-    for (size_t i = 0; i < chunkCount && i < receivedAlertCount; ++i) {
+    for (size_t i = 0; i < receivedAlertCount && i < MAX_ALERTS; ++i) {
+        if (!alertChunkPresent[i]) {
+            // Missing row for this table - keep current partial assembly alive.
+            return true;
+        }
+
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
         uint8_t aux0 = a[6];       // aux0 - bit 7 (0x80) = isPriority per JB's Java code
@@ -538,7 +592,10 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
     }
 
-    chunkCount = 0; // Clear chunks after processing
+    // Clear assembled rows; next table rebuilds from fresh chunks.
+    chunkCount = 0;
+    alertChunkPresent.fill(false);
+    alertIndexMode = AlertIndexMode::Unknown;
     return true;
 }
 

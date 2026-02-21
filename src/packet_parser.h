@@ -119,11 +119,20 @@ public:
     static void resetAlertCountTracker();
 
 private:
+    enum class AlertIndexMode : uint8_t {
+        Unknown = 0,
+        OneBased,
+        ZeroBased
+    };
+
     DisplayState displayState;
     std::array<AlertData, MAX_ALERTS> alerts;
     size_t alertCount;
     std::array<std::array<uint8_t, 8>, MAX_ALERTS> alertChunks;  // full 8-byte alert rows
+    std::array<bool, MAX_ALERTS> alertChunkPresent;
     size_t chunkCount;
+    uint8_t assemblingAlertCount;
+    AlertIndexMode alertIndexMode;
     
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);

@@ -157,19 +157,34 @@ void test_alert_stream_out_of_order_rows_completes_table() {
     assertContainsFrequencies(parser, 24150, 34700);
 }
 
-void test_alert_stream_duplicate_rows_stays_bounded() {
+void test_alert_stream_duplicate_index_replaces_prior_row() {
     PacketParser parser;
 
     const auto row1a = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 24150, 0x90, 0x80, 0x84, 0x00));
     const auto row1b = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 24152, 0x92, 0x81, 0x84, 0x00));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 34700, 0xB0, 0x00, 0x22, 0x80));
 
     TEST_ASSERT_TRUE(parser.parse(row1a.data(), row1a.size()));
     TEST_ASSERT_TRUE(parser.parse(row1b.data(), row1b.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
 
-    // Safety invariant for current parser behavior: table must remain bounded.
     TEST_ASSERT_TRUE(parser.hasAlerts());
-    TEST_ASSERT_LESS_OR_EQUAL_UINT32(PacketParser::MAX_ALERTS,
-                                     static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24152, 34700);
+}
+
+void test_alert_stream_zero_based_index_fallback_supported() {
+    PacketParser parser;
+
+    const auto row0 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(0, 2, 24150, 0x90, 0x80, 0x84, 0x00));
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 34700, 0xB0, 0x00, 0x22, 0x80));
+
+    TEST_ASSERT_TRUE(parser.parse(row0.data(), row0.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24150, 34700);
 }
 
 void test_alert_stream_missing_row_keeps_previous_complete_table() {
@@ -284,7 +299,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_display_stream_decodes_junk_counter_char);
     RUN_TEST(test_alert_stream_out_of_order_rows_completes_table);
-    RUN_TEST(test_alert_stream_duplicate_rows_stays_bounded);
+    RUN_TEST(test_alert_stream_duplicate_index_replaces_prior_row);
+    RUN_TEST(test_alert_stream_zero_based_index_fallback_supported);
     RUN_TEST(test_alert_stream_missing_row_keeps_previous_complete_table);
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
 
