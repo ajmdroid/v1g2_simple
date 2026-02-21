@@ -1613,7 +1613,9 @@ if [[ -n "$METRICS_URL" ]]; then
       fi
     fi
   else
-    result="FAIL"
+    if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+      result="FAIL"
+    fi
   fi
 fi
 
@@ -1693,8 +1695,10 @@ fi
 
 if [[ -n "$METRICS_URL" ]]; then
   if [[ "$have_metrics_window" -eq 0 ]]; then
-    gate_metrics_window_fail=1
-    add_fail_reason "No successful metrics samples captured from ${METRICS_URL}."
+    if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+      gate_metrics_window_fail=1
+      add_fail_reason "No successful metrics samples captured from ${METRICS_URL}."
+    fi
   else
     if [[ -z "$rx_packets_delta" ]] || ! [[ "$rx_packets_delta" =~ ^[0-9]+$ ]] || [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
       gate_rx_fail=1
