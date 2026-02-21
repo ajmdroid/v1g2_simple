@@ -320,11 +320,9 @@ void perfRecordNotifyToProxyMs(uint32_t ms) {
 }
 
 void perfRecordLoopJitterUs(uint32_t us) {
-    portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.loopMaxUs) {
         perfExtended.loopMaxUs = us;
     }
-    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma, uint32_t largestDma) {
@@ -373,11 +371,9 @@ void perfRecordDisplayRenderUs(uint32_t us) {
 }
 
 void perfRecordBleDrainUs(uint32_t us) {
-    portENTER_CRITICAL(&sPerfSnapshotMux);
     if (us > perfExtended.bleDrainMaxUs) {
         perfExtended.bleDrainMaxUs = us;
     }
-    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordBleConnectUs(uint32_t us) {
