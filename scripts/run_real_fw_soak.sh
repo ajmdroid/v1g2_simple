@@ -1526,121 +1526,6 @@ while IFS='=' read -r key value; do
   esac
 done < "$panic_kv"
 
-result="PASS"
-serial_log_bytes="$(wc -c < "$SERIAL_LOG" | tr -d '[:space:]')"
-if [[ -z "$serial_log_bytes" ]]; then
-  serial_log_bytes=0
-fi
-signal_sources=0
-if [[ "$serial_log_bytes" -gt 0 ]]; then
-  signal_sources=$((signal_sources + 1))
-fi
-if [[ -n "$metrics_ok_samples_parsed" && "$metrics_ok_samples_parsed" -gt 0 ]]; then
-  signal_sources=$((signal_sources + 1))
-fi
-if [[ -n "$panic_ok_samples_parsed" && "$panic_ok_samples_parsed" -gt 0 ]]; then
-  signal_sources=$((signal_sources + 1))
-fi
-
-if [[ "$monitor_died_early" -eq 1 ]]; then
-  result="FAIL"
-fi
-if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
-  result="FAIL"
-fi
-if [[ -n "$panic_was_crash_true" && "$panic_was_crash_true" -gt 0 ]]; then
-  result="FAIL"
-fi
-if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-  if [[ -z "$metrics_ok_samples_parsed" ]] || ! [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]]; then
-    result="FAIL"
-  elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
-    result="FAIL"
-  fi
-fi
-
-have_metrics_window=0
-if [[ -n "$METRICS_URL" ]]; then
-  if [[ -n "$metrics_ok_samples_parsed" ]] && [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]] && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
-    have_metrics_window=1
-  fi
-
-  if [[ "$have_metrics_window" -eq 1 ]]; then
-    for gate_delta in rx_packets_delta parse_successes_delta parse_failures_delta queue_drops_delta perf_drop_delta event_drop_delta; do
-      gate_val="${!gate_delta}"
-      if [[ -z "$gate_val" ]] || ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
-        result="FAIL"
-      fi
-    done
-
-    if [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
-      result="FAIL"
-    fi
-    if [[ "$parse_successes_delta" -lt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
-      result="FAIL"
-    fi
-    if [[ "$parse_failures_delta" -gt "$MAX_PARSE_FAILURES_DELTA" ]]; then
-      result="FAIL"
-    fi
-    if [[ "$queue_drops_delta" -gt "$MAX_QUEUE_DROPS_DELTA" ]]; then
-      result="FAIL"
-    fi
-    if [[ "$perf_drop_delta" -gt "$MAX_PERF_DROPS_DELTA" ]]; then
-      result="FAIL"
-    fi
-    if [[ "$event_drop_delta" -gt "$MAX_EVENT_DROPS_DELTA" ]]; then
-      result="FAIL"
-    fi
-
-    if [[ "$MAX_FLUSH_MAX_US" -gt 0 ]]; then
-      if [[ -z "$flush_max_peak" ]] || ! [[ "$flush_max_peak" =~ ^[0-9]+$ ]] || [[ "$flush_max_peak" -gt "$MAX_FLUSH_MAX_US" ]]; then
-        result="FAIL"
-      fi
-    fi
-    if [[ "$MAX_LOOP_MAX_US" -gt 0 ]]; then
-      if [[ -z "$loop_max_peak" ]] || ! [[ "$loop_max_peak" =~ ^[0-9]+$ ]] || [[ "$loop_max_peak" -gt "$MAX_LOOP_MAX_US" ]]; then
-        result="FAIL"
-      fi
-    fi
-    if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
-      if [[ -z "$wifi_max_peak" ]] || ! [[ "$wifi_max_peak" =~ ^[0-9]+$ ]] || [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
-        result="FAIL"
-      fi
-    fi
-    if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
-      if [[ -z "$ble_drain_max_peak" ]] || ! [[ "$ble_drain_max_peak" =~ ^[0-9]+$ ]] || [[ "$ble_drain_max_peak" -gt "$MAX_BLE_DRAIN_MAX_US" ]]; then
-        result="FAIL"
-      fi
-    fi
-  else
-    if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-      result="FAIL"
-    fi
-  fi
-fi
-
-if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
-  if [[ "$display_drive_calls" -eq 0 ]]; then
-    result="FAIL"
-  fi
-  if [[ -z "$display_updates_delta" ]] || ! [[ "$display_updates_delta" =~ ^-?[0-9]+$ ]]; then
-    result="FAIL"
-  elif [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
-    result="FAIL"
-  fi
-fi
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
-  if [[ "$camera_drive_calls" -eq 0 ]]; then
-    result="FAIL"
-  fi
-  if [[ "$camera_drive_errors" -gt 0 ]]; then
-    result="FAIL"
-  fi
-fi
-if [[ "$result" == "PASS" && "$signal_sources" -eq 0 ]]; then
-  result="INCONCLUSIVE"
-fi
-
 declare -a fail_reasons=()
 add_fail_reason() {
   local reason="$1"
@@ -1652,6 +1537,44 @@ add_fail_reason() {
   done
   fail_reasons+=("$reason")
 }
+
+mark_gate_fail() {
+  local gate_var="$1"
+  local reason="$2"
+  printf -v "$gate_var" '%s' 1
+  add_fail_reason "$reason"
+}
+
+is_uint() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[0-9]+$ ]]
+}
+
+is_int() {
+  local value="${1:-}"
+  [[ "$value" =~ ^-?[0-9]+$ ]]
+}
+
+result="PASS"
+serial_log_bytes="$(wc -c < "$SERIAL_LOG" | tr -d '[:space:]')"
+if [[ -z "$serial_log_bytes" ]]; then
+  serial_log_bytes=0
+fi
+signal_sources=0
+if [[ "$serial_log_bytes" -gt 0 ]]; then
+  signal_sources=$((signal_sources + 1))
+fi
+if is_uint "$metrics_ok_samples_parsed" && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
+  signal_sources=$((signal_sources + 1))
+fi
+if is_uint "$panic_ok_samples_parsed" && [[ "$panic_ok_samples_parsed" -gt 0 ]]; then
+  signal_sources=$((signal_sources + 1))
+fi
+
+have_metrics_window=0
+if [[ -n "$METRICS_URL" ]] && is_uint "$metrics_ok_samples_parsed" && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
+  have_metrics_window=1
+fi
 
 gate_rx_fail=0
 gate_parse_success_fail=0
@@ -1672,81 +1595,85 @@ gate_display_drive_fail=0
 gate_camera_drive_fail=0
 
 if [[ "$monitor_died_early" -eq 1 ]]; then
-  gate_serial_monitor_fail=1
-  add_fail_reason "Serial capture exited during soak."
+  mark_gate_fail gate_serial_monitor_fail "Serial capture exited during soak."
 fi
 if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
-  gate_serial_panic_fail=1
-  add_fail_reason "Serial panic/WDT signatures detected (${serial_wdt_or_panic_count})."
+  mark_gate_fail gate_serial_panic_fail "Serial panic/WDT signatures detected (${serial_wdt_or_panic_count})."
 fi
-if [[ -n "$panic_was_crash_true" && "$panic_was_crash_true" =~ ^[0-9]+$ && "$panic_was_crash_true" -gt 0 ]]; then
-  gate_panic_endpoint_fail=1
-  add_fail_reason "Panic endpoint reported crashes (${panic_was_crash_true})."
+if is_uint "$panic_was_crash_true" && [[ "$panic_was_crash_true" -gt 0 ]]; then
+  mark_gate_fail gate_panic_endpoint_fail "Panic endpoint reported crashes (${panic_was_crash_true})."
 fi
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-  if [[ -z "$metrics_ok_samples_parsed" ]] || ! [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]]; then
-    gate_metrics_min_samples_fail=1
-    add_fail_reason "Metrics gate could not be evaluated (no parsed samples)."
+  if ! is_uint "$metrics_ok_samples_parsed"; then
+    mark_gate_fail gate_metrics_min_samples_fail "Metrics gate could not be evaluated (no parsed samples)."
   elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
-    gate_metrics_min_samples_fail=1
-    add_fail_reason "Metrics parsed successes ${metrics_ok_samples_parsed} below required ${MIN_METRICS_OK_SAMPLES}."
+    mark_gate_fail gate_metrics_min_samples_fail "Metrics parsed successes ${metrics_ok_samples_parsed} below required ${MIN_METRICS_OK_SAMPLES}."
   fi
 fi
 
 if [[ -n "$METRICS_URL" ]]; then
   if [[ "$have_metrics_window" -eq 0 ]]; then
     if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-      gate_metrics_window_fail=1
-      add_fail_reason "No successful metrics samples captured from ${METRICS_URL}."
+      mark_gate_fail gate_metrics_window_fail "No successful metrics samples captured from ${METRICS_URL}."
     fi
   else
-    if [[ -z "$rx_packets_delta" ]] || ! [[ "$rx_packets_delta" =~ ^[0-9]+$ ]] || [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
-      gate_rx_fail=1
-      add_fail_reason "rxPackets delta ${rx_packets_delta:-n/a} below minimum ${MIN_RX_PACKETS_DELTA}."
+    if ! is_uint "$rx_packets_delta"; then
+      mark_gate_fail gate_rx_fail "rxPackets delta ${rx_packets_delta:-n/a} below minimum ${MIN_RX_PACKETS_DELTA}."
+    elif [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
+      mark_gate_fail gate_rx_fail "rxPackets delta ${rx_packets_delta} below minimum ${MIN_RX_PACKETS_DELTA}."
     fi
-    if [[ -z "$parse_successes_delta" ]] || ! [[ "$parse_successes_delta" =~ ^[0-9]+$ ]] || [[ "$parse_successes_delta" -lt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
-      gate_parse_success_fail=1
-      add_fail_reason "parseSuccesses delta ${parse_successes_delta:-n/a} below minimum ${MIN_PARSE_SUCCESSES_DELTA}."
+    if ! is_uint "$parse_successes_delta"; then
+      mark_gate_fail gate_parse_success_fail "parseSuccesses delta ${parse_successes_delta:-n/a} below minimum ${MIN_PARSE_SUCCESSES_DELTA}."
+    elif [[ "$parse_successes_delta" -lt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
+      mark_gate_fail gate_parse_success_fail "parseSuccesses delta ${parse_successes_delta} below minimum ${MIN_PARSE_SUCCESSES_DELTA}."
     fi
-    if [[ -z "$parse_failures_delta" ]] || ! [[ "$parse_failures_delta" =~ ^[0-9]+$ ]] || [[ "$parse_failures_delta" -gt "$MAX_PARSE_FAILURES_DELTA" ]]; then
-      gate_parse_fail_fail=1
-      add_fail_reason "parseFailures delta ${parse_failures_delta:-n/a} above max ${MAX_PARSE_FAILURES_DELTA}."
+    if ! is_uint "$parse_failures_delta"; then
+      mark_gate_fail gate_parse_fail_fail "parseFailures delta ${parse_failures_delta:-n/a} above max ${MAX_PARSE_FAILURES_DELTA}."
+    elif [[ "$parse_failures_delta" -gt "$MAX_PARSE_FAILURES_DELTA" ]]; then
+      mark_gate_fail gate_parse_fail_fail "parseFailures delta ${parse_failures_delta} above max ${MAX_PARSE_FAILURES_DELTA}."
     fi
-    if [[ -z "$queue_drops_delta" ]] || ! [[ "$queue_drops_delta" =~ ^[0-9]+$ ]] || [[ "$queue_drops_delta" -gt "$MAX_QUEUE_DROPS_DELTA" ]]; then
-      gate_queue_drop_fail=1
-      add_fail_reason "queueDrops delta ${queue_drops_delta:-n/a} above max ${MAX_QUEUE_DROPS_DELTA}."
+    if ! is_uint "$queue_drops_delta"; then
+      mark_gate_fail gate_queue_drop_fail "queueDrops delta ${queue_drops_delta:-n/a} above max ${MAX_QUEUE_DROPS_DELTA}."
+    elif [[ "$queue_drops_delta" -gt "$MAX_QUEUE_DROPS_DELTA" ]]; then
+      mark_gate_fail gate_queue_drop_fail "queueDrops delta ${queue_drops_delta} above max ${MAX_QUEUE_DROPS_DELTA}."
     fi
-    if [[ -z "$perf_drop_delta" ]] || ! [[ "$perf_drop_delta" =~ ^[0-9]+$ ]] || [[ "$perf_drop_delta" -gt "$MAX_PERF_DROPS_DELTA" ]]; then
-      gate_perf_drop_fail=1
-      add_fail_reason "perfDrop delta ${perf_drop_delta:-n/a} above max ${MAX_PERF_DROPS_DELTA}."
+    if ! is_uint "$perf_drop_delta"; then
+      mark_gate_fail gate_perf_drop_fail "perfDrop delta ${perf_drop_delta:-n/a} above max ${MAX_PERF_DROPS_DELTA}."
+    elif [[ "$perf_drop_delta" -gt "$MAX_PERF_DROPS_DELTA" ]]; then
+      mark_gate_fail gate_perf_drop_fail "perfDrop delta ${perf_drop_delta} above max ${MAX_PERF_DROPS_DELTA}."
     fi
-    if [[ -z "$event_drop_delta" ]] || ! [[ "$event_drop_delta" =~ ^[0-9]+$ ]] || [[ "$event_drop_delta" -gt "$MAX_EVENT_DROPS_DELTA" ]]; then
-      gate_event_drop_fail=1
-      add_fail_reason "eventBus drop delta ${event_drop_delta:-n/a} above max ${MAX_EVENT_DROPS_DELTA}."
+    if ! is_uint "$event_drop_delta"; then
+      mark_gate_fail gate_event_drop_fail "eventBus drop delta ${event_drop_delta:-n/a} above max ${MAX_EVENT_DROPS_DELTA}."
+    elif [[ "$event_drop_delta" -gt "$MAX_EVENT_DROPS_DELTA" ]]; then
+      mark_gate_fail gate_event_drop_fail "eventBus drop delta ${event_drop_delta} above max ${MAX_EVENT_DROPS_DELTA}."
     fi
 
     if [[ "$MAX_FLUSH_MAX_US" -gt 0 ]]; then
-      if [[ -z "$flush_max_peak" ]] || ! [[ "$flush_max_peak" =~ ^[0-9]+$ ]] || [[ "$flush_max_peak" -gt "$MAX_FLUSH_MAX_US" ]]; then
-        gate_flush_fail=1
-        add_fail_reason "flushMaxUs peak ${flush_max_peak:-n/a} above max ${MAX_FLUSH_MAX_US}."
+      if ! is_uint "$flush_max_peak"; then
+        mark_gate_fail gate_flush_fail "flushMaxUs peak ${flush_max_peak:-n/a} above max ${MAX_FLUSH_MAX_US}."
+      elif [[ "$flush_max_peak" -gt "$MAX_FLUSH_MAX_US" ]]; then
+        mark_gate_fail gate_flush_fail "flushMaxUs peak ${flush_max_peak} above max ${MAX_FLUSH_MAX_US}."
       fi
     fi
     if [[ "$MAX_LOOP_MAX_US" -gt 0 ]]; then
-      if [[ -z "$loop_max_peak" ]] || ! [[ "$loop_max_peak" =~ ^[0-9]+$ ]] || [[ "$loop_max_peak" -gt "$MAX_LOOP_MAX_US" ]]; then
-        gate_loop_fail=1
-        add_fail_reason "loopMaxUs peak ${loop_max_peak:-n/a} above max ${MAX_LOOP_MAX_US}."
+      if ! is_uint "$loop_max_peak"; then
+        mark_gate_fail gate_loop_fail "loopMaxUs peak ${loop_max_peak:-n/a} above max ${MAX_LOOP_MAX_US}."
+      elif [[ "$loop_max_peak" -gt "$MAX_LOOP_MAX_US" ]]; then
+        mark_gate_fail gate_loop_fail "loopMaxUs peak ${loop_max_peak} above max ${MAX_LOOP_MAX_US}."
       fi
     fi
     if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
-      if [[ -z "$wifi_max_peak" ]] || ! [[ "$wifi_max_peak" =~ ^[0-9]+$ ]] || [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
-        gate_wifi_fail=1
-        add_fail_reason "wifiMaxUs peak ${wifi_max_peak:-n/a} above max ${MAX_WIFI_MAX_US}."
+      if ! is_uint "$wifi_max_peak"; then
+        mark_gate_fail gate_wifi_fail "wifiMaxUs peak ${wifi_max_peak:-n/a} above max ${MAX_WIFI_MAX_US}."
+      elif [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
+        mark_gate_fail gate_wifi_fail "wifiMaxUs peak ${wifi_max_peak} above max ${MAX_WIFI_MAX_US}."
       fi
     fi
     if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
-      if [[ -z "$ble_drain_max_peak" ]] || ! [[ "$ble_drain_max_peak" =~ ^[0-9]+$ ]] || [[ "$ble_drain_max_peak" -gt "$MAX_BLE_DRAIN_MAX_US" ]]; then
-        gate_ble_drain_fail=1
-        add_fail_reason "bleDrainMaxUs peak ${ble_drain_max_peak:-n/a} above max ${MAX_BLE_DRAIN_MAX_US}."
+      if ! is_uint "$ble_drain_max_peak"; then
+        mark_gate_fail gate_ble_drain_fail "bleDrainMaxUs peak ${ble_drain_max_peak:-n/a} above max ${MAX_BLE_DRAIN_MAX_US}."
+      elif [[ "$ble_drain_max_peak" -gt "$MAX_BLE_DRAIN_MAX_US" ]]; then
+        mark_gate_fail gate_ble_drain_fail "bleDrainMaxUs peak ${ble_drain_max_peak} above max ${MAX_BLE_DRAIN_MAX_US}."
       fi
     fi
   fi
@@ -1754,23 +1681,27 @@ fi
 
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   if [[ "$display_drive_calls" -eq 0 ]]; then
-    gate_display_drive_fail=1
-    add_fail_reason "Display drive produced zero calls."
+    mark_gate_fail gate_display_drive_fail "Display drive produced zero calls."
   fi
-  if [[ -z "$display_updates_delta" ]] || ! [[ "$display_updates_delta" =~ ^-?[0-9]+$ ]] || [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
-    gate_display_drive_fail=1
-    add_fail_reason "Display updates delta ${display_updates_delta:-n/a} below required ${DISPLAY_MIN_UPDATES_DELTA}."
+  if ! is_int "$display_updates_delta"; then
+    mark_gate_fail gate_display_drive_fail "Display updates delta ${display_updates_delta:-n/a} below required ${DISPLAY_MIN_UPDATES_DELTA}."
+  elif [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
+    mark_gate_fail gate_display_drive_fail "Display updates delta ${display_updates_delta} below required ${DISPLAY_MIN_UPDATES_DELTA}."
   fi
 fi
 if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
   if [[ "$camera_drive_calls" -eq 0 ]]; then
-    gate_camera_drive_fail=1
-    add_fail_reason "Camera drive produced zero calls."
+    mark_gate_fail gate_camera_drive_fail "Camera drive produced zero calls."
   fi
   if [[ "$camera_drive_errors" -gt 0 ]]; then
-    gate_camera_drive_fail=1
-    add_fail_reason "Camera drive had ${camera_drive_errors} failed call(s)."
+    mark_gate_fail gate_camera_drive_fail "Camera drive had ${camera_drive_errors} failed call(s)."
   fi
+fi
+
+if [[ ${#fail_reasons[@]} -gt 0 ]]; then
+  result="FAIL"
+elif [[ "$signal_sources" -eq 0 ]]; then
+  result="INCONCLUSIVE"
 fi
 
 diagnosis_bucket="No issues"
