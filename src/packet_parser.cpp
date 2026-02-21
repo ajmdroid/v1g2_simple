@@ -393,6 +393,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
         displayState.arrows = DIR_NONE;
         displayState.muted = false;
+        displayState.hasJunkAlert = false;
+        displayState.hasPhotoAlert = false;
         return true;
     }
 
@@ -476,6 +478,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // Note: Don't reset displayState.activeBands here - let parseDisplayData() be source of truth
     // for what bands are visually shown (including blink behavior). We just extract alert details.
     bool anyMuted = false;
+    bool anyJunk = false;
+    bool anyPhoto = false;
 
     for (size_t i = 0; i < receivedAlertCount && i < MAX_ALERTS; ++i) {
         if (!alertChunkPresent[i]) {
@@ -485,11 +489,13 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
-        uint8_t aux0 = a[6];       // aux0 - bit 7 (0x80) = isPriority per JB's Java code
+        uint8_t aux0 = a[6];       // aux0: bit7=priority, bit6=junk, low nibble=photo type
 
         Band band = decodeBand(bandArrow);
         Direction dir = decodeDirection(bandArrow);
         bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
+        bool isJunk = (aux0 & 0x40) != 0;
+        uint8_t photoType = aux0 & 0x0F;
 
         // Add new alert, checking for overflow
         if (alertCount < MAX_ALERTS) {
@@ -497,6 +503,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.band = band;
             alert.direction = dir;
             alert.isPriority = isPriority;
+            alert.isJunk = isJunk;
+            alert.photoType = photoType;
             
             // Bytes 3 and 4 are raw RSSI values for front/rear antennas
             // Use our RSSI-to-bars mapping with band-specific thresholds
@@ -509,12 +517,16 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             // Note: We no longer update displayState.activeBands here
             // The display packet (image1) is authoritative for band indicators
             anyMuted |= ((bandArrow & 0x10) != 0);
+            anyJunk |= isJunk;
+            anyPhoto |= (photoType != 0);
         }
     }
 
     // Combine alert mute bits with display packet's mute flag
     // V1 logic mute shows in display packet even if alert entries don't have mute bit
     displayState.muted = displayState.muted || anyMuted;
+    displayState.hasJunkAlert = anyJunk;
+    displayState.hasPhotoAlert = anyPhoto;
 
     if (alertCount > 0) {
         // Find the priority alert using isPriority flag (aux0 bit 7)

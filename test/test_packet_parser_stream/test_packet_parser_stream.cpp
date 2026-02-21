@@ -187,6 +187,51 @@ void test_alert_stream_zero_based_index_fallback_supported() {
     assertContainsFrequencies(parser, 24150, 34700);
 }
 
+void test_alert_stream_aux0_decodes_junk_photo_and_priority() {
+    PacketParser parser;
+
+    // Row 1: priority + junk + photoType=3
+    // Row 2: normal signal, photoType=0
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 34700, 0xB0, 0x00, 0x22, 0xC3));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 24150, 0x90, 0x80, 0x84, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+
+    const auto& alerts = parser.getAllAlerts();
+    const AlertData* pri = nullptr;
+    const AlertData* kBand = nullptr;
+    for (size_t i = 0; i < parser.getAlertCount(); ++i) {
+        if (alerts[i].frequency == 34700) {
+            pri = &alerts[i];
+        }
+        if (alerts[i].frequency == 24150) {
+            kBand = &alerts[i];
+        }
+    }
+
+    TEST_ASSERT_NOT_NULL(pri);
+    TEST_ASSERT_TRUE(pri->isPriority);
+    TEST_ASSERT_TRUE(pri->isJunk);
+    TEST_ASSERT_EQUAL_UINT8(3, pri->photoType);
+
+    TEST_ASSERT_NOT_NULL(kBand);
+    TEST_ASSERT_FALSE(kBand->isPriority);
+    TEST_ASSERT_FALSE(kBand->isJunk);
+    TEST_ASSERT_EQUAL_UINT8(0, kBand->photoType);
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_TRUE(state.hasJunkAlert);
+    TEST_ASSERT_TRUE(state.hasPhotoAlert);
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_EQUAL_UINT32(34700, priority.frequency);
+    TEST_ASSERT_TRUE(priority.isPriority);
+    TEST_ASSERT_TRUE(priority.isJunk);
+    TEST_ASSERT_EQUAL_UINT8(3, priority.photoType);
+}
+
 void test_alert_stream_missing_row_keeps_previous_complete_table() {
     PacketParser parser;
 
@@ -218,6 +263,9 @@ void test_alert_stream_count_zero_clears_alerts() {
     TEST_ASSERT_TRUE(parser.parse(clear.data(), clear.size()));
     TEST_ASSERT_FALSE(parser.hasAlerts());
     TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_FALSE(state.hasJunkAlert);
+    TEST_ASSERT_FALSE(state.hasPhotoAlert);
 }
 
 void test_strict_alert_stream_duplicate_index_replaces_prior_row() {
@@ -301,6 +349,7 @@ int main() {
     RUN_TEST(test_alert_stream_out_of_order_rows_completes_table);
     RUN_TEST(test_alert_stream_duplicate_index_replaces_prior_row);
     RUN_TEST(test_alert_stream_zero_based_index_fallback_supported);
+    RUN_TEST(test_alert_stream_aux0_decodes_junk_photo_and_priority);
     RUN_TEST(test_alert_stream_missing_row_keeps_previous_complete_table);
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
 

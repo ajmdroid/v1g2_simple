@@ -36,10 +36,13 @@ struct AlertData {
     uint32_t frequency;     // MHz
     bool isValid;
     bool isPriority;        // aux0 bit 7 - V1's priority flag
+    bool isJunk;            // aux0 bit 6 - junked alert
+    uint8_t photoType;      // aux0 bits 0..3 - photo type (V4.1037+)
     
     AlertData() : band(BAND_NONE), direction(DIR_NONE), 
                   frontStrength(0), rearStrength(0), 
-                  frequency(0), isValid(false), isPriority(false) {}
+                  frequency(0), isValid(false), isPriority(false),
+                  isJunk(false), photoType(0) {}
 };
 
 // Display state
@@ -65,6 +68,8 @@ struct DisplayState {
     uint8_t bogeyCounterByte;  // Raw 7-segment byte from V1 display (for decoding J, P, volume, etc)
     char bogeyCounterChar;     // Decoded character from bogeyCounterByte
     bool bogeyCounterDot;      // Decimal point from bogeyCounterByte (bit 7)
+    bool hasJunkAlert;         // True if any alert row has aux0 junk bit set
+    bool hasPhotoAlert;        // True if any alert row has photo type > 0
     
     DisplayState() : activeBands(BAND_NONE), arrows(DIR_NONE), priorityArrow(DIR_NONE),
                      signalBars(0), muted(false), systemTest(false),
@@ -72,7 +77,7 @@ struct DisplayState {
                      flashBits(0), bandFlashBits(0), mainVolume(0), muteVolume(0),
                      v1FirmwareVersion(0), hasV1Version(false), hasVolumeData(false),
                      v1PriorityIndex(0), bogeyCounterByte(0), bogeyCounterChar('0'), 
-                     bogeyCounterDot(false) {}
+                     bogeyCounterDot(false), hasJunkAlert(false), hasPhotoAlert(false) {}
     
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+
