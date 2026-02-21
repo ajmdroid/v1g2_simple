@@ -64,6 +64,7 @@ BASELINE_DERIVED_MAX_FLUSH_US=""
 BASELINE_DERIVED_MAX_WIFI_US=""
 BASELINE_DERIVED_MAX_BLE_DRAIN_US=""
 ALLOW_INCONCLUSIVE=0
+DRY_RUN=0
 DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
 DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
@@ -278,6 +279,9 @@ while [[ $# -gt 0 ]]; do
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
+    --dry-run)
+      DRY_RUN=1
+      ;;
     --drive-display-preview)
       DISPLAY_DRIVE_ENABLED=1
       ;;
@@ -405,6 +409,7 @@ Options:
   --camera-demo-duration-ms N
                         Camera demo duration per trigger (default: 2200)
   --camera-demo-muted   Request muted camera demo
+  --dry-run             Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
   -h, --help             Show this help
@@ -508,9 +513,11 @@ if [[ -n "$BASELINE_PERF_CSV" ]]; then
   fi
 fi
 
-if ! command -v pio >/dev/null 2>&1; then
-  echo "PlatformIO (pio) is required but not found in PATH." >&2
-  exit 1
+if [[ "$DRY_RUN" -ne 1 ]]; then
+  if ! command -v pio >/dev/null 2>&1; then
+    echo "PlatformIO (pio) is required but not found in PATH." >&2
+    exit 1
+  fi
 fi
 
 if [[ -n "$METRICS_URL" && -z "$PANIC_URL" ]]; then
@@ -643,12 +650,14 @@ ensure_port_unlocked() {
   return 0
 }
 
-if [[ -z "$TEST_PORT" ]]; then
-  TEST_PORT="$(detect_usb_port || true)"
-fi
-if [[ -z "$TEST_PORT" ]]; then
-  echo "No USB serial device detected. Connect the board and retry." >&2
-  exit 1
+if [[ "$DRY_RUN" -ne 1 ]]; then
+  if [[ -z "$TEST_PORT" ]]; then
+    TEST_PORT="$(detect_usb_port || true)"
+  fi
+  if [[ -z "$TEST_PORT" ]]; then
+    echo "No USB serial device detected. Connect the board and retry." >&2
+    exit 1
+  fi
 fi
 
 if [[ -z "$OUT_DIR" ]]; then
@@ -739,6 +748,32 @@ if [[ -n "$BASELINE_PERF_CSV" ]]; then
   MAX_BLE_DRAIN_MAX_US="$(tighten_max_gate "$MAX_BLE_DRAIN_MAX_US" "$BASELINE_DERIVED_MAX_BLE_DRAIN_US")"
 
   BASELINE_GATES_APPLIED=1
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "==> Dry run (no flash, no soak)"
+  echo "    env: $ENV_NAME"
+  echo "    port: ${TEST_PORT:-auto-detect (skipped in dry-run)}"
+  echo "    duration: ${DURATION_SECONDS}s"
+  echo "    poll: ${POLL_SECONDS}s"
+  echo "    serial baud: ${SERIAL_BAUD}"
+  echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s"
+  echo "    metrics url: ${METRICS_URL:-disabled}"
+  echo "    panic url: ${PANIC_URL:-disabled}"
+  echo "    metrics required: ${METRICS_REQUIRED}"
+  echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
+  echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA}"
+  echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} (0 disables)"
+  echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
+  echo "    camera drive: enabled=${CAMERA_DRIVE_ENABLED} url=${CAMERA_DEMO_URL:-disabled} interval=${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}"
+  echo "    out dir: $OUT_DIR"
+  if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
+    echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})"
+    echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s"
+  else
+    echo "    baseline csv: disabled"
+  fi
+  exit 0
 fi
 
 run_and_log() {
