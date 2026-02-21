@@ -111,60 +111,22 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
 
-    portENTER_CRITICAL(&sPerfSnapshotMux);
-    if (freeDmaCap < sDmaFreeCapMin) {
-        sDmaFreeCapMin = freeDmaCap;
-    }
-    if (largestDmaCap < sDmaLargestCapMin) {
-        sDmaLargestCapMin = largestDmaCap;
-    }
-
     snapshot.millisTs = nowMs;
     snapshot.timeValid = timeService.timeValid() ? 1 : 0;
     snapshot.timeSource = timeService.timeSource();
+    snapshot.freeHeap = freeHeap;
+    snapshot.freeDma = freeDma;
+    snapshot.largestDma = largestDma;
+    snapshot.freeDmaCap = freeDmaCap;
+    snapshot.largestDmaCap = largestDmaCap;
+
     snapshot.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
     snapshot.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
     snapshot.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);
     snapshot.parseFail = perfCounters.parseFailures.load(std::memory_order_relaxed);
     snapshot.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
     snapshot.reconn = perfCounters.reconnects.load(std::memory_order_relaxed);
-    snapshot.loopMaxUs = perfExtended.loopMaxUs;
-    snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
-    snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
-    snapshot.freeHeap = freeHeap;
-    snapshot.freeDma = freeDma;
-    snapshot.largestDma = largestDma;
-    snapshot.freeDmaCap = freeDmaCap;
-    snapshot.largestDmaCap = largestDmaCap;
-    snapshot.dmaFreeMin = (sDmaFreeCapMin == UINT32_MAX) ? freeDmaCap : sDmaFreeCapMin;
-    snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
-    snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
-    snapshot.touchMaxUs = perfExtended.touchMaxUs;
-    snapshot.obdMaxUs = perfExtended.obdMaxUs;
-    snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
-    snapshot.cameraMaxUs = perfExtended.cameraMaxUs;
-    snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
-    snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
-    snapshot.uiToScanCount = perfExtended.uiToScanCount;
-    snapshot.uiToRestCount = perfExtended.uiToRestCount;
-    snapshot.uiScanToRestCount = perfExtended.uiScanToRestCount;
-    snapshot.uiFastScanExitCount = perfExtended.uiFastScanExitCount;
-    snapshot.uiLastScanDwellMs = perfExtended.uiLastScanDwellMs;
-    snapshot.uiMinScanDwellMs = (perfExtended.uiMinScanDwellMs == UINT32_MAX) ? 0 : perfExtended.uiMinScanDwellMs;
-    snapshot.fadeDownCount = perfExtended.fadeDownCount;
-    snapshot.fadeRestoreCount = perfExtended.fadeRestoreCount;
-    snapshot.fadeSkipEqualCount = perfExtended.fadeSkipEqualCount;
-    snapshot.fadeSkipNoBaselineCount = perfExtended.fadeSkipNoBaselineCount;
-    snapshot.fadeSkipNotFadedCount = perfExtended.fadeSkipNotFadedCount;
-    snapshot.fadeLastDecision = perfExtended.fadeLastDecision;
-    snapshot.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
-    snapshot.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
-    snapshot.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
-    snapshot.bleScanStartMs = perfExtended.bleScanStartMs;
-    snapshot.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
-    snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
-    snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
-    snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
+
     snapshot.obdState = obdPerf.state;
     snapshot.obdConnected = obdPerf.connected;
     snapshot.obdScanActive = obdPerf.scanActive;
@@ -264,8 +226,29 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
     snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
     snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
-    snapshot.minLargestBlock =
-        (perfExtended.minLargestBlock == UINT32_MAX) ? 0 : perfExtended.minLargestBlock;
+
+    // Keep the lock only around windowed maxima read+reset and shared
+    // timeline/fade counters that are mutated under this same mux.
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    if (freeDmaCap < sDmaFreeCapMin) {
+        sDmaFreeCapMin = freeDmaCap;
+    }
+    if (largestDmaCap < sDmaLargestCapMin) {
+        sDmaLargestCapMin = largestDmaCap;
+    }
+    snapshot.dmaFreeMin = (sDmaFreeCapMin == UINT32_MAX) ? freeDmaCap : sDmaFreeCapMin;
+    snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
+
+    snapshot.loopMaxUs = perfExtended.loopMaxUs;
+    snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
+    snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
+    snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
+    snapshot.touchMaxUs = perfExtended.touchMaxUs;
+    snapshot.obdMaxUs = perfExtended.obdMaxUs;
+    snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
+    snapshot.cameraMaxUs = perfExtended.cameraMaxUs;
+    snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
+    snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
     snapshot.fsMaxUs = perfExtended.fsMaxUs;
     snapshot.sdMaxUs = perfExtended.sdMaxUs;
     snapshot.flushMaxUs = perfExtended.flushMaxUs;
@@ -277,6 +260,30 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.learnerSaveMaxUs = perfExtended.learnerSaveMaxUs;
     snapshot.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
     snapshot.perfReportMaxUs = perfExtended.perfReportMaxUs;
+    snapshot.minLargestBlock =
+        (perfExtended.minLargestBlock == UINT32_MAX) ? 0 : perfExtended.minLargestBlock;
+
+    snapshot.uiToScanCount = perfExtended.uiToScanCount;
+    snapshot.uiToRestCount = perfExtended.uiToRestCount;
+    snapshot.uiScanToRestCount = perfExtended.uiScanToRestCount;
+    snapshot.uiFastScanExitCount = perfExtended.uiFastScanExitCount;
+    snapshot.uiLastScanDwellMs = perfExtended.uiLastScanDwellMs;
+    snapshot.uiMinScanDwellMs =
+        (perfExtended.uiMinScanDwellMs == UINT32_MAX) ? 0 : perfExtended.uiMinScanDwellMs;
+    snapshot.fadeDownCount = perfExtended.fadeDownCount;
+    snapshot.fadeRestoreCount = perfExtended.fadeRestoreCount;
+    snapshot.fadeSkipEqualCount = perfExtended.fadeSkipEqualCount;
+    snapshot.fadeSkipNoBaselineCount = perfExtended.fadeSkipNoBaselineCount;
+    snapshot.fadeSkipNotFadedCount = perfExtended.fadeSkipNotFadedCount;
+    snapshot.fadeLastDecision = perfExtended.fadeLastDecision;
+    snapshot.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
+    snapshot.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
+    snapshot.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
+    snapshot.bleScanStartMs = perfExtended.bleScanStartMs;
+    snapshot.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
+    snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
+    snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
+    snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
