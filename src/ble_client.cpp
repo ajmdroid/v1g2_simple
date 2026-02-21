@@ -377,6 +377,10 @@ void V1BLEClient::cleanupConnection() {
     pCommandChar = nullptr;
     pCommandCharLong = nullptr;
     pRemoteService = nullptr;
+    notifyShortChar.store(nullptr, std::memory_order_relaxed);
+    notifyShortCharId.store(0, std::memory_order_relaxed);
+    notifyLongChar.store(nullptr, std::memory_order_relaxed);
+    notifyLongCharId.store(0, std::memory_order_relaxed);
     
     // 4. Clear connection flags
     {
@@ -714,6 +718,10 @@ void V1BLEClient::process() {
             pDisplayDataChar = nullptr;
             pCommandChar = nullptr;
             pCommandCharLong = nullptr;
+            notifyShortChar.store(nullptr, std::memory_order_relaxed);
+            notifyShortCharId.store(0, std::memory_order_relaxed);
+            notifyLongChar.store(nullptr, std::memory_order_relaxed);
+            notifyLongCharId.store(0, std::memory_order_relaxed);
             verifyPending = false;
             verifyComplete = false;
             verifyMatch = false;

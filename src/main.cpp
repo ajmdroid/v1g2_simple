@@ -1028,15 +1028,19 @@ void loop() {
         }
     }
 
+    const bool loopHasAlerts = parser.hasAlerts();
+    const AlertData loopPriority = loopHasAlerts ? parser.getPriorityAlert() : AlertData();
+    const bool loopSignalPriorityActive =
+        loopHasAlerts && loopPriority.isValid && loopPriority.band != BAND_NONE;
+
     bool previewRunning = displayPreviewModule.isRunning();
     unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
     if (!bootSplashHoldActive && bleClient.isConnected() && (now - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser.getDisplayState();
-        const AlertData priority = parser.getPriorityAlert();
-        bool hasPriority = parser.hasAlerts() && priority.isValid && priority.band != BAND_NONE;
+        bool hasPriority = loopSignalPriorityActive;
         bool isPhotoRadar = (state.bogeyCounterChar == 'P');
         if (hasPriority) {
-            display.refreshFrequencyOnly(priority.frequency, priority.band, state.muted, isPhotoRadar);
+            display.refreshFrequencyOnly(loopPriority.frequency, loopPriority.band, state.muted, isPhotoRadar);
         } else {
             display.refreshFrequencyOnly(0, BAND_NONE, false, false);
         }
@@ -1050,9 +1054,8 @@ void loop() {
         (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
         const auto& allAlerts = parser.getAllAlerts();
         int alertCount = static_cast<int>(parser.getAlertCount());
-        const AlertData priority = parser.getPriorityAlert();
         const DisplayState& state = parser.getDisplayState();
-        display.refreshSecondaryAlertCards(allAlerts.data(), alertCount, priority, state.muted);
+        display.refreshSecondaryAlertCards(allAlerts.data(), alertCount, loopPriority, state.muted);
         lastCardUiMs = now;
     }
 
@@ -1064,11 +1067,7 @@ void loop() {
     // alerts (BSM, door openers, etc.) must not suppress camera matching.
     uint32_t cameraStartUs = PERF_TIMESTAMP_US();
     {
-        const AlertData camPriority = parser.getPriorityAlert();
-        const bool signalPriorityActive = parser.hasAlerts() &&
-                                          camPriority.isValid &&
-                                          camPriority.band != BAND_NONE;
-        cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, signalPriorityActive);
+        cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, loopSignalPriorityActive);
     }
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 

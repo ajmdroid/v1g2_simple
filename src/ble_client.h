@@ -265,6 +265,12 @@ private:
     NimBLERemoteCharacteristic* pDisplayDataChar;
     NimBLERemoteCharacteristic* pCommandChar;
     NimBLERemoteCharacteristic* pCommandCharLong;  // B8D2 - for long commands like voltage request
+    // Cached notify characteristic -> short UUID mapping for callback hot path.
+    // Written during subscribe steps; read from notify callback without locking.
+    std::atomic<NimBLERemoteCharacteristic*> notifyShortChar{nullptr};
+    std::atomic<uint16_t> notifyShortCharId{0};
+    std::atomic<NimBLERemoteCharacteristic*> notifyLongChar{nullptr};
+    std::atomic<uint16_t> notifyLongCharId{0};
     
     // BLE Server (proxy) objects
     NimBLEServer* pServer;

@@ -36,6 +36,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
     DisplayState state = parser->getDisplayState();
     bool hasAlerts = parser->hasAlerts();
+    const AlertData priority = hasAlerts ? parser->getPriorityAlert() : AlertData();
     const V1Settings& settingsRef = settings->get();
 
     if (!hasAlerts && state.activeBands != BAND_NONE) {
@@ -62,13 +63,12 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     {
         VolumeFadeContext fadeCtx;
         if (hasAlerts) {
-            AlertData fadePriority = parser->getPriorityAlert();
             fadeCtx.hasAlert = true;
             fadeCtx.alertMuted = state.muted;
             fadeCtx.alertSuppressed = prioritySuppressed;
             fadeCtx.currentVolume = state.mainVolume;
             fadeCtx.currentMuteVolume = state.muteVolume;
-            fadeCtx.currentFrequency = (uint16_t)fadePriority.frequency;
+            fadeCtx.currentFrequency = (uint16_t)priority.frequency;
         } else {
             fadeCtx.hasAlert = false;
             fadeCtx.currentVolume = state.mainVolume;
@@ -98,7 +98,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     const V1Settings& alertSettings = settingsRef;
 
     if (hasAlerts) {
-        AlertData priority = parser->getPriorityAlert();
         int alertCount = parser->getAlertCount();
         const auto& currentAlerts = parser->getAllAlerts();
 

@@ -180,6 +180,10 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
             instancePtr->pDisplayDataChar = nullptr;
             instancePtr->pCommandChar = nullptr;
             instancePtr->pCommandCharLong = nullptr;
+            instancePtr->notifyShortChar.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyShortCharId.store(0, std::memory_order_relaxed);
+            instancePtr->notifyLongChar.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyLongCharId.store(0, std::memory_order_relaxed);
             // Reset verification state in case a write-verify was in progress
             instancePtr->verifyPending = false;
             instancePtr->verifyComplete = false;
@@ -617,6 +621,8 @@ bool V1BLEClient::executeSubscribeStep() {
                 Serial.println("[BLE] FAIL display char");
                 return false;
             }
+            notifyShortChar.store(pDisplayDataChar, std::memory_order_relaxed);
+            notifyShortCharId.store(shortUuid(pDisplayDataChar->getUUID()), std::memory_order_relaxed);
             subscribeStep = SubscribeStep::GET_COMMAND_CHAR;
             return false;
         }
@@ -677,6 +683,9 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::GET_DISPLAY_LONG: {
             // Get B4E0 characteristic (non-critical, used for voltage passthrough)
             NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
+            notifyLongChar.store(pDisplayLong, std::memory_order_relaxed);
+            notifyLongCharId.store(pDisplayLong ? shortUuid(pDisplayLong->getUUID()) : 0,
+                                   std::memory_order_relaxed);
             if (pDisplayLong && pDisplayLong->canNotify()) {
                 subscribeStep = SubscribeStep::SUBSCRIBE_LONG;
             } else {
@@ -775,7 +784,17 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         return;
     }
     
-    uint16_t charId = shortUuid(pChar->getUUID());
+    uint16_t charId = 0;
+    NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar.load(std::memory_order_relaxed);
+    NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar.load(std::memory_order_relaxed);
+    if (pChar == shortChar) {
+        charId = instancePtr->notifyShortCharId.load(std::memory_order_relaxed);
+    } else if (pChar == longChar) {
+        charId = instancePtr->notifyLongCharId.load(std::memory_order_relaxed);
+    }
+    if (charId == 0) {
+        charId = shortUuid(pChar->getUUID());
+    }
     
     if (charId == 0) {
         charId = 0xB2CE; // sensible fallback
