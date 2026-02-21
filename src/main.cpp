@@ -1038,8 +1038,9 @@ void loop() {
     if (!bootSplashHoldActive && bleClient.isConnected() && (now - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser.getDisplayState();
         bool hasPriority = loopSignalPriorityActive;
+        const AlertData& priority = loopPriority;
         const bool isPhotoRadar =
-            (loopPriority.photoType != 0) ||
+            (priority.photoType != 0) ||
             state.hasPhotoAlert ||
             (state.bogeyCounterChar == 'P');
         if (hasPriority) {

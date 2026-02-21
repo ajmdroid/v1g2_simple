@@ -497,24 +497,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // V1 is source of truth - use activeBands directly, no debouncing
     // This allows V1's native blinking to come through
 
-    // Alert packets can arrive before the matching display packet, which leaves
-    // bogeyCounterChar briefly stale (often mode letters like 'A') on the first frame.
-    // Normalize to alert-count digits for live alerts unless the symbol is a known
-    // special alert marker that should be preserved.
     char liveTopCounterChar = state.bogeyCounterChar;
     bool liveTopCounterDot = state.bogeyCounterDot;
-    if (alertCount > 0 && alertCount <= 9) {
-        const bool rawIsDigit = (liveTopCounterChar >= '0' && liveTopCounterChar <= '9');
-        const bool preserveSpecialSymbol =
-            (liveTopCounterChar == '#') || (liveTopCounterChar == 'P') || (liveTopCounterChar == 'J');
-        if (!rawIsDigit && !preserveSpecialSymbol) {
-            const char normalized = static_cast<char>('0' + alertCount);
-            DISPLAY_LOG("[DISP] Normalize top counter '%c' -> '%c' (alerts=%d)\n",
-                        liveTopCounterChar, normalized, alertCount);
-            liveTopCounterChar = normalized;
-            liveTopCounterDot = false;
-        }
-    }
 
     // Change detection: check if we need to redraw
     static AlertData lastPriority;
