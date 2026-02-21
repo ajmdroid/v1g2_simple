@@ -24,6 +24,8 @@ fi
 
 DURATION_SECONDS=300
 POLL_SECONDS=5
+SERIAL_BAUD="${REAL_FW_SERIAL_BAUD:-115200}"
+HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-2}"
 UPLOAD_FS=0
 SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
@@ -89,6 +91,22 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       POLL_SECONDS="$2"
+      shift
+      ;;
+    --serial-baud)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --serial-baud" >&2
+        exit 2
+      fi
+      SERIAL_BAUD="$2"
+      shift
+      ;;
+    --http-timeout-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --http-timeout-seconds" >&2
+        exit 2
+      fi
+      HTTP_TIMEOUT_SECONDS="$2"
       shift
       ;;
     --env)
@@ -332,6 +350,9 @@ Usage: ./scripts/run_real_fw_soak.sh [options]
 Options:
   --duration-seconds N   Soak duration after flashing (default: 300)
   --poll-seconds N       Debug API poll interval (default: 5)
+  --serial-baud N        Serial capture baud rate (default: 115200)
+  --http-timeout-seconds N
+                        curl timeout for metrics/drive calls (default: 2)
   --env NAME             PlatformIO env to flash (default: waveshare-349)
   --port PATH            Fixed serial port (default: auto-detect)
   --with-fs              Upload LittleFS image before firmware upload
@@ -405,6 +426,16 @@ fi
 
 if ! [[ "$POLL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$POLL_SECONDS" -lt 1 ]]; then
   echo "Invalid --poll-seconds value '$POLL_SECONDS' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$SERIAL_BAUD" =~ ^[0-9]+$ ]] || [[ "$SERIAL_BAUD" -lt 1 ]]; then
+  echo "Invalid --serial-baud value '$SERIAL_BAUD' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$HTTP_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$HTTP_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "Invalid --http-timeout-seconds value '$HTTP_TIMEOUT_SECONDS' (expected positive integer)." >&2
   exit 2
 fi
 
@@ -750,6 +781,8 @@ echo "    env: $ENV_NAME" | tee -a "$RUN_LOG"
 echo "    port: $TEST_PORT" | tee -a "$RUN_LOG"
 echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
+echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
+echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
@@ -817,7 +850,7 @@ if [[ -z "$SERIAL_PYTHON" ]]; then
   exit 1
 fi
 
-"$SERIAL_PYTHON" - "$MONITOR_PORT" "115200" "$SERIAL_LOG" "$DURATION_SECONDS" > "$SERIAL_CAPTURE_ERR" 2>&1 <<'PY' &
+"$SERIAL_PYTHON" - "$MONITOR_PORT" "$SERIAL_BAUD" "$SERIAL_LOG" "$DURATION_SECONDS" > "$SERIAL_CAPTURE_ERR" 2>&1 <<'PY' &
 import serial
 import sys
 import time
@@ -883,7 +916,7 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
 
   if [[ -n "$METRICS_URL" ]]; then
     metrics_samples=$((metrics_samples + 1))
-    payload="$(curl -fsS --max-time 2 "$METRICS_URL" 2>/dev/null || true)"
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_URL" 2>/dev/null || true)"
     if [[ -n "$payload" ]]; then
       metrics_ok_samples=$((metrics_ok_samples + 1))
       payload_oneline="$(printf "%s" "$payload" | tr -d '\r\n')"
@@ -895,7 +928,7 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
 
   if [[ -n "$PANIC_URL" ]]; then
     panic_samples=$((panic_samples + 1))
-    panic_payload="$(curl -fsS --max-time 2 "$PANIC_URL" 2>/dev/null || true)"
+    panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_URL" 2>/dev/null || true)"
     if [[ -n "$panic_payload" ]]; then
       panic_ok_samples=$((panic_ok_samples + 1))
       panic_oneline="$(printf "%s" "$panic_payload" | tr -d '\r\n')"
@@ -907,14 +940,14 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
 
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_display_drive_epoch" ]]; then
     display_drive_calls=$((display_drive_calls + 1))
-    drive_resp="$(curl -fsS --max-time 2 -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
+    drive_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
     if [[ -z "$drive_resp" ]]; then
       display_drive_errors=$((display_drive_errors + 1))
       echo "[WARN] Display drive call failed (no response)." | tee -a "$RUN_LOG"
     elif [[ "$drive_resp" == *'"active":false'* ]]; then
       # /api/displaycolors/preview toggles off when already running. Call again
       # to ensure preview is active for stress coverage.
-      drive_resp2="$(curl -fsS --max-time 2 -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
+      drive_resp2="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
       if [[ -z "$drive_resp2" ]]; then
         display_drive_errors=$((display_drive_errors + 1))
         echo "[WARN] Display drive retry failed (no response)." | tee -a "$RUN_LOG"
@@ -928,7 +961,7 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
 
   if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_camera_drive_epoch" ]]; then
     camera_drive_calls=$((camera_drive_calls + 1))
-    camera_resp="$(curl -fsS --max-time 2 -X POST \
+    camera_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST \
       --data "type=0&durationMs=${CAMERA_DEMO_DURATION_MS}&muted=${CAMERA_DEMO_MUTED}" \
       "$CAMERA_DEMO_URL" 2>/dev/null || true)"
     if [[ -z "$camera_resp" ]]; then
