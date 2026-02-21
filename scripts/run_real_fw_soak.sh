@@ -777,11 +777,10 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 fi
 
 run_and_log() {
-  set +e
-  "$@" 2>&1 | tee -a "$RUN_LOG"
-  local status=${PIPESTATUS[0]}
-  set -e
-  return "$status"
+  if "$@" 2>&1 | tee -a "$RUN_LOG"; then
+    return 0
+  fi
+  return "${PIPESTATUS[0]}"
 }
 
 find_serial_python() {
@@ -1013,10 +1012,11 @@ soak_end_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 soak_end_epoch_actual="$(date +%s)"
 soak_elapsed_s=$((soak_end_epoch_actual - soak_start_epoch))
 
-set +e
-wait "$MONITOR_PID"
-serial_capture_status=$?
-set -e
+if wait "$MONITOR_PID"; then
+  serial_capture_status=0
+else
+  serial_capture_status=$?
+fi
 if [[ "$serial_capture_status" -ne 0 ]]; then
   monitor_died_early=1
 fi
