@@ -51,6 +51,11 @@ echo -e "${YELLOW}🔒 Checking main loop call-order contract...${NC}"
 python3 scripts/check_main_loop_call_order_contract.py
 echo -e "${GREEN}✅ Main loop call-order contract matches${NC}"
 
+# Step 0g: Native unit tests
+echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
+pio test -e native
+echo -e "${GREEN}✅ Native unit tests passed${NC}"
+
 # Step 1: Build web interface
 echo -e "${YELLOW}📦 Building web interface...${NC}"
 cd interface
