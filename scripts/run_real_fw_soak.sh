@@ -40,6 +40,27 @@ MAX_FLUSH_MAX_US=0
 MAX_LOOP_MAX_US=0
 MAX_WIFI_MAX_US=0
 MAX_BLE_DRAIN_MAX_US=0
+BASELINE_PERF_CSV=""
+BASELINE_PERF_SESSION="last-connected"
+BASELINE_LATENCY_FACTOR="1.20"
+BASELINE_THROUGHPUT_FACTOR="0.50"
+BASELINE_GATES_APPLIED=0
+BASELINE_GATES_KV_FILE=""
+BASELINE_SELECTED_SESSION=""
+BASELINE_SELECTED_ROWS=""
+BASELINE_SELECTED_DURATION_MS=""
+BASELINE_RX_RATE_PER_SEC=""
+BASELINE_PARSE_RATE_PER_SEC=""
+BASELINE_PEAK_LOOP_US=""
+BASELINE_PEAK_FLUSH_US=""
+BASELINE_PEAK_WIFI_US=""
+BASELINE_PEAK_BLE_DRAIN_US=""
+BASELINE_DERIVED_MIN_RX_DELTA=""
+BASELINE_DERIVED_MIN_PARSE_DELTA=""
+BASELINE_DERIVED_MAX_LOOP_US=""
+BASELINE_DERIVED_MAX_FLUSH_US=""
+BASELINE_DERIVED_MAX_WIFI_US=""
+BASELINE_DERIVED_MAX_BLE_DRAIN_US=""
 ALLOW_INCONCLUSIVE=0
 DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
@@ -204,6 +225,38 @@ while [[ $# -gt 0 ]]; do
       MAX_BLE_DRAIN_MAX_US="$2"
       shift
       ;;
+    --baseline-perf-csv)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-perf-csv" >&2
+        exit 2
+      fi
+      BASELINE_PERF_CSV="$2"
+      shift
+      ;;
+    --baseline-perf-session)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-perf-session" >&2
+        exit 2
+      fi
+      BASELINE_PERF_SESSION="$2"
+      shift
+      ;;
+    --baseline-latency-factor)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-latency-factor" >&2
+        exit 2
+      fi
+      BASELINE_LATENCY_FACTOR="$2"
+      shift
+      ;;
+    --baseline-throughput-factor)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-throughput-factor" >&2
+        exit 2
+      fi
+      BASELINE_THROUGHPUT_FACTOR="$2"
+      shift
+      ;;
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
@@ -306,6 +359,16 @@ Options:
   --max-wifi-max-us N   Maximum observed wifiMaxUs peak (0 disables gate)
   --max-ble-drain-max-us N
                         Maximum observed bleDrainMaxUs peak (0 disables gate)
+  --baseline-perf-csv PATH
+                        Derive runtime gates from a known-good perf_boot CSV
+  --baseline-perf-session MODE
+                        Session selector: last-connected (default), last,
+                        longest-connected, longest, or 1-based index
+  --baseline-latency-factor F
+                        Multiply baseline peaks for max gates (default: 1.20)
+  --baseline-throughput-factor F
+                        Fraction of baseline rx/parse rates used for min deltas
+                        (default: 0.50)
   --drive-display-preview
                         Repeatedly call display preview endpoint during soak
   --display-drive-interval-seconds N
@@ -389,6 +452,31 @@ if ! [[ "$CAMERA_DEMO_DURATION_MS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DEMO_DURATION_M
   exit 2
 fi
 
+if [[ -n "$BASELINE_PERF_CSV" && ! -f "$BASELINE_PERF_CSV" ]]; then
+  echo "Baseline perf CSV not found: '$BASELINE_PERF_CSV'" >&2
+  exit 2
+fi
+
+if [[ -n "$BASELINE_PERF_CSV" ]]; then
+  if ! [[ "$BASELINE_LATENCY_FACTOR" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "Invalid --baseline-latency-factor value '$BASELINE_LATENCY_FACTOR' (expected positive number)." >&2
+    exit 2
+  fi
+  if ! awk -v v="$BASELINE_LATENCY_FACTOR" 'BEGIN { exit (v > 0) ? 0 : 1 }'; then
+    echo "Invalid --baseline-latency-factor value '$BASELINE_LATENCY_FACTOR' (expected > 0)." >&2
+    exit 2
+  fi
+
+  if ! [[ "$BASELINE_THROUGHPUT_FACTOR" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "Invalid --baseline-throughput-factor value '$BASELINE_THROUGHPUT_FACTOR' (expected positive number)." >&2
+    exit 2
+  fi
+  if ! awk -v v="$BASELINE_THROUGHPUT_FACTOR" 'BEGIN { exit (v > 0) ? 0 : 1 }'; then
+    echo "Invalid --baseline-throughput-factor value '$BASELINE_THROUGHPUT_FACTOR' (expected > 0)." >&2
+    exit 2
+  fi
+fi
+
 if ! command -v pio >/dev/null 2>&1; then
   echo "PlatformIO (pio) is required but not found in PATH." >&2
   exit 1
@@ -470,6 +558,42 @@ wait_for_port() {
   return 1
 }
 
+find_python_for_csv() {
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return 0
+  fi
+
+  local pio_python="$HOME/.platformio/penv/bin/python"
+  if [[ -x "$pio_python" ]]; then
+    echo "$pio_python"
+    return 0
+  fi
+
+  return 1
+}
+
+tighten_max_gate() {
+  local current="$1"
+  local derived="$2"
+
+  if [[ -z "$derived" ]] || ! [[ "$derived" =~ ^[0-9]+$ ]] || [[ "$derived" -le 0 ]]; then
+    echo "$current"
+    return 0
+  fi
+
+  if [[ "$current" -le 0 ]]; then
+    echo "$derived"
+    return 0
+  fi
+
+  if [[ "$derived" -lt "$current" ]]; then
+    echo "$derived"
+  else
+    echo "$current"
+  fi
+}
+
 ensure_port_unlocked() {
   local port="$1"
   if ! command -v lsof >/dev/null 2>&1; then
@@ -513,6 +637,196 @@ SUMMARY_MD="$OUT_DIR/summary.md"
 : > "$SERIAL_CAPTURE_ERR"
 : > "$METRICS_JSONL"
 : > "$PANIC_JSONL"
+
+if [[ -n "$BASELINE_PERF_CSV" ]]; then
+  BASELINE_PYTHON="$(find_python_for_csv || true)"
+  if [[ -z "$BASELINE_PYTHON" ]]; then
+    echo "Cannot derive baseline gates: no Python interpreter found." >&2
+    exit 1
+  fi
+
+  BASELINE_GATES_KV_FILE="$OUT_DIR/baseline_perf_gates_kv.txt"
+  if ! "$BASELINE_PYTHON" - \
+      "$BASELINE_PERF_CSV" \
+      "$BASELINE_PERF_SESSION" \
+      "$DURATION_SECONDS" \
+      "$BASELINE_LATENCY_FACTOR" \
+      "$BASELINE_THROUGHPUT_FACTOR" > "$BASELINE_GATES_KV_FILE" <<'PY'
+import csv
+import math
+import sys
+
+path = sys.argv[1]
+session_mode = sys.argv[2]
+target_duration_s = int(sys.argv[3])
+latency_factor = float(sys.argv[4])
+throughput_factor = float(sys.argv[5])
+
+session_rows = {}
+session_index = 0
+header = None
+
+with open(path, newline="", encoding="utf-8", errors="replace") as fh:
+    reader = csv.reader(fh)
+    for row in reader:
+        if not row:
+            continue
+        first = row[0].strip()
+        if first.startswith("#session_start"):
+            session_index += 1
+            continue
+        if first == "millis":
+            header = row
+            continue
+        if header is None:
+            continue
+        if len(row) < len(header):
+            row = row + [""] * (len(header) - len(row))
+        if session_index == 0:
+            session_index = 1
+        record = dict(zip(header, row))
+        session_rows.setdefault(session_index, []).append(record)
+
+if not session_rows:
+    raise SystemExit("no session rows parsed from baseline perf CSV")
+
+
+def iv(row, key):
+    try:
+        return int(row.get(key, "0") or "0")
+    except Exception:
+        return 0
+
+
+sessions = sorted(session_rows.items(), key=lambda item: item[0])
+connected = [(idx, rows) for idx, rows in sessions if rows and iv(rows[-1], "rx") > 0]
+
+selected = None
+if session_mode == "last-connected":
+    if connected:
+        selected = connected[-1]
+    else:
+        selected = sessions[-1]
+elif session_mode == "last":
+    selected = sessions[-1]
+elif session_mode == "longest-connected":
+    source = connected if connected else sessions
+    selected = max(source, key=lambda item: max(0, iv(item[1][-1], "millis") - iv(item[1][0], "millis")))
+elif session_mode == "longest":
+    selected = max(sessions, key=lambda item: max(0, iv(item[1][-1], "millis") - iv(item[1][0], "millis")))
+elif session_mode.isdigit():
+    wanted = int(session_mode)
+    selected = next((item for item in sessions if item[0] == wanted), None)
+    if selected is None:
+        raise SystemExit(f"session index {wanted} not found")
+else:
+    raise SystemExit(
+        f"unsupported --baseline-perf-session '{session_mode}' (use last-connected, last, longest-connected, longest, or index)"
+    )
+
+sel_index, rows = selected
+if not rows:
+    raise SystemExit("selected baseline session has no rows")
+
+duration_ms = max(1, iv(rows[-1], "millis") - iv(rows[0], "millis"))
+duration_s = duration_ms / 1000.0
+if duration_s <= 0:
+    duration_s = 0.001
+
+rx_delta = max(0, iv(rows[-1], "rx") - iv(rows[0], "rx"))
+parse_delta = max(0, iv(rows[-1], "parseOK") - iv(rows[0], "parseOK"))
+
+rx_rate = rx_delta / duration_s
+parse_rate = parse_delta / duration_s
+
+derived_min_rx = max(1, int(math.floor(rx_rate * target_duration_s * throughput_factor)))
+derived_min_parse = max(1, int(math.floor(parse_rate * target_duration_s * throughput_factor)))
+
+peak_loop = max(iv(r, "loopMax_us") for r in rows)
+peak_flush = max(iv(r, "flushMax_us") for r in rows)
+peak_wifi = max(iv(r, "wifiMax_us") for r in rows)
+peak_ble_drain = max(iv(r, "bleDrainMax_us") for r in rows)
+
+
+def derive_peak_limit(peak_value):
+    if peak_value <= 0:
+        return 0
+    return max(1, int(math.ceil(peak_value * latency_factor)))
+
+
+print(f"session_index={sel_index}")
+print(f"rows={len(rows)}")
+print(f"duration_ms={duration_ms}")
+print(f"rx_rate_per_sec={rx_rate:.6f}")
+print(f"parse_rate_per_sec={parse_rate:.6f}")
+print(f"peak_loop_us={peak_loop}")
+print(f"peak_flush_us={peak_flush}")
+print(f"peak_wifi_us={peak_wifi}")
+print(f"peak_ble_drain_us={peak_ble_drain}")
+print(f"derived_min_rx_delta={derived_min_rx}")
+print(f"derived_min_parse_delta={derived_min_parse}")
+print(f"derived_max_loop_us={derive_peak_limit(peak_loop)}")
+print(f"derived_max_flush_us={derive_peak_limit(peak_flush)}")
+print(f"derived_max_wifi_us={derive_peak_limit(peak_wifi)}")
+print(f"derived_max_ble_drain_us={derive_peak_limit(peak_ble_drain)}")
+PY
+  then
+    echo "Failed to derive baseline gates from '$BASELINE_PERF_CSV'." >&2
+    exit 2
+  fi
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      session_index) BASELINE_SELECTED_SESSION="$value" ;;
+      rows) BASELINE_SELECTED_ROWS="$value" ;;
+      duration_ms) BASELINE_SELECTED_DURATION_MS="$value" ;;
+      rx_rate_per_sec) BASELINE_RX_RATE_PER_SEC="$value" ;;
+      parse_rate_per_sec) BASELINE_PARSE_RATE_PER_SEC="$value" ;;
+      peak_loop_us) BASELINE_PEAK_LOOP_US="$value" ;;
+      peak_flush_us) BASELINE_PEAK_FLUSH_US="$value" ;;
+      peak_wifi_us) BASELINE_PEAK_WIFI_US="$value" ;;
+      peak_ble_drain_us) BASELINE_PEAK_BLE_DRAIN_US="$value" ;;
+      derived_min_rx_delta) BASELINE_DERIVED_MIN_RX_DELTA="$value" ;;
+      derived_min_parse_delta) BASELINE_DERIVED_MIN_PARSE_DELTA="$value" ;;
+      derived_max_loop_us) BASELINE_DERIVED_MAX_LOOP_US="$value" ;;
+      derived_max_flush_us) BASELINE_DERIVED_MAX_FLUSH_US="$value" ;;
+      derived_max_wifi_us) BASELINE_DERIVED_MAX_WIFI_US="$value" ;;
+      derived_max_ble_drain_us) BASELINE_DERIVED_MAX_BLE_DRAIN_US="$value" ;;
+    esac
+  done < "$BASELINE_GATES_KV_FILE"
+
+  for required in \
+    BASELINE_SELECTED_SESSION \
+    BASELINE_SELECTED_ROWS \
+    BASELINE_SELECTED_DURATION_MS \
+    BASELINE_DERIVED_MIN_RX_DELTA \
+    BASELINE_DERIVED_MIN_PARSE_DELTA \
+    BASELINE_DERIVED_MAX_LOOP_US \
+    BASELINE_DERIVED_MAX_FLUSH_US \
+    BASELINE_DERIVED_MAX_WIFI_US \
+    BASELINE_DERIVED_MAX_BLE_DRAIN_US
+  do
+    required_val="${!required}"
+    if [[ -z "$required_val" ]]; then
+      echo "Baseline gate derivation missing required key '$required'." >&2
+      exit 2
+    fi
+  done
+
+  if [[ "$BASELINE_DERIVED_MIN_RX_DELTA" -gt "$MIN_RX_PACKETS_DELTA" ]]; then
+    MIN_RX_PACKETS_DELTA="$BASELINE_DERIVED_MIN_RX_DELTA"
+  fi
+  if [[ "$BASELINE_DERIVED_MIN_PARSE_DELTA" -gt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
+    MIN_PARSE_SUCCESSES_DELTA="$BASELINE_DERIVED_MIN_PARSE_DELTA"
+  fi
+
+  MAX_FLUSH_MAX_US="$(tighten_max_gate "$MAX_FLUSH_MAX_US" "$BASELINE_DERIVED_MAX_FLUSH_US")"
+  MAX_LOOP_MAX_US="$(tighten_max_gate "$MAX_LOOP_MAX_US" "$BASELINE_DERIVED_MAX_LOOP_US")"
+  MAX_WIFI_MAX_US="$(tighten_max_gate "$MAX_WIFI_MAX_US" "$BASELINE_DERIVED_MAX_WIFI_US")"
+  MAX_BLE_DRAIN_MAX_US="$(tighten_max_gate "$MAX_BLE_DRAIN_MAX_US" "$BASELINE_DERIVED_MAX_BLE_DRAIN_US")"
+
+  BASELINE_GATES_APPLIED=1
+fi
 
 run_and_log() {
   set +e
@@ -560,6 +874,10 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
 fi
 echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA}" | tee -a "$RUN_LOG"
 echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
+if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
+  echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
+  echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
+fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
 else
@@ -784,6 +1102,20 @@ flush_max_peak = None
 loop_max_peak = None
 wifi_max_peak = None
 ble_drain_max_peak = None
+loop_peak_ts = ""
+loop_peak_wifi = None
+loop_peak_flush = None
+loop_peak_ble_drain = None
+loop_peak_display_updates = None
+loop_peak_rx_packets = None
+wifi_peak_ts = ""
+wifi_peak_loop = None
+wifi_peak_flush = None
+wifi_peak_ble_drain = None
+wifi_peak_display_updates = None
+wifi_peak_rx_packets = None
+flush_peak_ts = ""
+ble_drain_peak_ts = ""
 rx_packets_first = None
 rx_packets_last = None
 parse_successes_first = None
@@ -846,10 +1178,37 @@ try:
             heap_dma_min = update_min(heap_dma_min, num(data.get("heapDma")))
             heap_dma_largest_min = update_min(heap_dma_largest_min, num(data.get("heapDmaLargest")))
             latency_max_peak = update_max(latency_max_peak, num(data.get("latencyMaxUs")))
-            flush_max_peak = update_max(flush_max_peak, num(data.get("flushMaxUs")))
-            loop_max_peak = update_max(loop_max_peak, num(data.get("loopMaxUs")))
-            wifi_max_peak = update_max(wifi_max_peak, num(data.get("wifiMaxUs")))
-            ble_drain_max_peak = update_max(ble_drain_max_peak, num(data.get("bleDrainMaxUs")))
+            flush_val = num(data.get("flushMaxUs"))
+            loop_val = num(data.get("loopMaxUs"))
+            wifi_val = num(data.get("wifiMaxUs"))
+            ble_drain_val = num(data.get("bleDrainMaxUs"))
+            sample_ts = rec.get("ts") if isinstance(rec.get("ts"), str) else ""
+
+            if flush_val is not None and (flush_max_peak is None or flush_val > flush_max_peak):
+                flush_max_peak = flush_val
+                flush_peak_ts = sample_ts
+
+            if loop_val is not None and (loop_max_peak is None or loop_val > loop_max_peak):
+                loop_max_peak = loop_val
+                loop_peak_ts = sample_ts
+                loop_peak_wifi = wifi_val
+                loop_peak_flush = flush_val
+                loop_peak_ble_drain = ble_drain_val
+                loop_peak_display_updates = num(data.get("displayUpdates"))
+                loop_peak_rx_packets = num(data.get("rxPackets"))
+
+            if wifi_val is not None and (wifi_max_peak is None or wifi_val > wifi_max_peak):
+                wifi_max_peak = wifi_val
+                wifi_peak_ts = sample_ts
+                wifi_peak_loop = loop_val
+                wifi_peak_flush = flush_val
+                wifi_peak_ble_drain = ble_drain_val
+                wifi_peak_display_updates = num(data.get("displayUpdates"))
+                wifi_peak_rx_packets = num(data.get("rxPackets"))
+
+            if ble_drain_val is not None and (ble_drain_max_peak is None or ble_drain_val > ble_drain_max_peak):
+                ble_drain_max_peak = ble_drain_val
+                ble_drain_peak_ts = sample_ts
 
             display_updates = num(data.get("displayUpdates"))
             if display_updates_first is None and display_updates is not None:
@@ -941,6 +1300,20 @@ emit("flush_max_peak", flush_max_peak)
 emit("loop_max_peak", loop_max_peak)
 emit("wifi_max_peak", wifi_max_peak)
 emit("ble_drain_max_peak", ble_drain_max_peak)
+emit("loop_peak_ts", loop_peak_ts)
+emit("loop_peak_wifi", loop_peak_wifi)
+emit("loop_peak_flush", loop_peak_flush)
+emit("loop_peak_ble_drain", loop_peak_ble_drain)
+emit("loop_peak_display_updates", loop_peak_display_updates)
+emit("loop_peak_rx_packets", loop_peak_rx_packets)
+emit("wifi_peak_ts", wifi_peak_ts)
+emit("wifi_peak_loop", wifi_peak_loop)
+emit("wifi_peak_flush", wifi_peak_flush)
+emit("wifi_peak_ble_drain", wifi_peak_ble_drain)
+emit("wifi_peak_display_updates", wifi_peak_display_updates)
+emit("wifi_peak_rx_packets", wifi_peak_rx_packets)
+emit("flush_peak_ts", flush_peak_ts)
+emit("ble_drain_peak_ts", ble_drain_peak_ts)
 emit("rx_packets_first", rx_packets_first)
 emit("rx_packets_last", rx_packets_last)
 emit("parse_successes_first", parse_successes_first)
@@ -1067,6 +1440,20 @@ flush_max_peak=""
 loop_max_peak=""
 wifi_max_peak=""
 ble_drain_max_peak=""
+loop_peak_ts=""
+loop_peak_wifi=""
+loop_peak_flush=""
+loop_peak_ble_drain=""
+loop_peak_display_updates=""
+loop_peak_rx_packets=""
+wifi_peak_ts=""
+wifi_peak_loop=""
+wifi_peak_flush=""
+wifi_peak_ble_drain=""
+wifi_peak_display_updates=""
+wifi_peak_rx_packets=""
+flush_peak_ts=""
+ble_drain_peak_ts=""
 rx_packets_delta=""
 parse_successes_delta=""
 parse_failures_delta=""
@@ -1097,6 +1484,20 @@ while IFS='=' read -r key value; do
     loop_max_peak) loop_max_peak="$value" ;;
     wifi_max_peak) wifi_max_peak="$value" ;;
     ble_drain_max_peak) ble_drain_max_peak="$value" ;;
+    loop_peak_ts) loop_peak_ts="$value" ;;
+    loop_peak_wifi) loop_peak_wifi="$value" ;;
+    loop_peak_flush) loop_peak_flush="$value" ;;
+    loop_peak_ble_drain) loop_peak_ble_drain="$value" ;;
+    loop_peak_display_updates) loop_peak_display_updates="$value" ;;
+    loop_peak_rx_packets) loop_peak_rx_packets="$value" ;;
+    wifi_peak_ts) wifi_peak_ts="$value" ;;
+    wifi_peak_loop) wifi_peak_loop="$value" ;;
+    wifi_peak_flush) wifi_peak_flush="$value" ;;
+    wifi_peak_ble_drain) wifi_peak_ble_drain="$value" ;;
+    wifi_peak_display_updates) wifi_peak_display_updates="$value" ;;
+    wifi_peak_rx_packets) wifi_peak_rx_packets="$value" ;;
+    flush_peak_ts) flush_peak_ts="$value" ;;
+    ble_drain_peak_ts) ble_drain_peak_ts="$value" ;;
     rx_packets_delta) rx_packets_delta="$value" ;;
     parse_successes_delta) parse_successes_delta="$value" ;;
     parse_failures_delta) parse_failures_delta="$value" ;;
@@ -1158,8 +1559,8 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   fi
 fi
 
+have_metrics_window=0
 if [[ -n "$METRICS_URL" ]]; then
-  have_metrics_window=0
   if [[ -n "$metrics_ok_samples_parsed" ]] && [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]] && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
     have_metrics_window=1
   fi
@@ -1238,6 +1639,174 @@ if [[ "$result" == "PASS" && "$signal_sources" -eq 0 ]]; then
   result="INCONCLUSIVE"
 fi
 
+declare -a fail_reasons=()
+add_fail_reason() {
+  local reason="$1"
+  local existing
+  for existing in "${fail_reasons[@]:-}"; do
+    if [[ "$existing" == "$reason" ]]; then
+      return 0
+    fi
+  done
+  fail_reasons+=("$reason")
+}
+
+gate_rx_fail=0
+gate_parse_success_fail=0
+gate_parse_fail_fail=0
+gate_queue_drop_fail=0
+gate_perf_drop_fail=0
+gate_event_drop_fail=0
+gate_flush_fail=0
+gate_loop_fail=0
+gate_wifi_fail=0
+gate_ble_drain_fail=0
+gate_metrics_window_fail=0
+gate_metrics_min_samples_fail=0
+gate_serial_monitor_fail=0
+gate_serial_panic_fail=0
+gate_panic_endpoint_fail=0
+gate_display_drive_fail=0
+gate_camera_drive_fail=0
+
+if [[ "$monitor_died_early" -eq 1 ]]; then
+  gate_serial_monitor_fail=1
+  add_fail_reason "Serial capture exited during soak."
+fi
+if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
+  gate_serial_panic_fail=1
+  add_fail_reason "Serial panic/WDT signatures detected (${serial_wdt_or_panic_count})."
+fi
+if [[ -n "$panic_was_crash_true" && "$panic_was_crash_true" =~ ^[0-9]+$ && "$panic_was_crash_true" -gt 0 ]]; then
+  gate_panic_endpoint_fail=1
+  add_fail_reason "Panic endpoint reported crashes (${panic_was_crash_true})."
+fi
+if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+  if [[ -z "$metrics_ok_samples_parsed" ]] || ! [[ "$metrics_ok_samples_parsed" =~ ^[0-9]+$ ]]; then
+    gate_metrics_min_samples_fail=1
+    add_fail_reason "Metrics gate could not be evaluated (no parsed samples)."
+  elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
+    gate_metrics_min_samples_fail=1
+    add_fail_reason "Metrics parsed successes ${metrics_ok_samples_parsed} below required ${MIN_METRICS_OK_SAMPLES}."
+  fi
+fi
+
+if [[ -n "$METRICS_URL" ]]; then
+  if [[ "$have_metrics_window" -eq 0 ]]; then
+    gate_metrics_window_fail=1
+    add_fail_reason "No successful metrics samples captured from ${METRICS_URL}."
+  else
+    if [[ -z "$rx_packets_delta" ]] || ! [[ "$rx_packets_delta" =~ ^[0-9]+$ ]] || [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
+      gate_rx_fail=1
+      add_fail_reason "rxPackets delta ${rx_packets_delta:-n/a} below minimum ${MIN_RX_PACKETS_DELTA}."
+    fi
+    if [[ -z "$parse_successes_delta" ]] || ! [[ "$parse_successes_delta" =~ ^[0-9]+$ ]] || [[ "$parse_successes_delta" -lt "$MIN_PARSE_SUCCESSES_DELTA" ]]; then
+      gate_parse_success_fail=1
+      add_fail_reason "parseSuccesses delta ${parse_successes_delta:-n/a} below minimum ${MIN_PARSE_SUCCESSES_DELTA}."
+    fi
+    if [[ -z "$parse_failures_delta" ]] || ! [[ "$parse_failures_delta" =~ ^[0-9]+$ ]] || [[ "$parse_failures_delta" -gt "$MAX_PARSE_FAILURES_DELTA" ]]; then
+      gate_parse_fail_fail=1
+      add_fail_reason "parseFailures delta ${parse_failures_delta:-n/a} above max ${MAX_PARSE_FAILURES_DELTA}."
+    fi
+    if [[ -z "$queue_drops_delta" ]] || ! [[ "$queue_drops_delta" =~ ^[0-9]+$ ]] || [[ "$queue_drops_delta" -gt "$MAX_QUEUE_DROPS_DELTA" ]]; then
+      gate_queue_drop_fail=1
+      add_fail_reason "queueDrops delta ${queue_drops_delta:-n/a} above max ${MAX_QUEUE_DROPS_DELTA}."
+    fi
+    if [[ -z "$perf_drop_delta" ]] || ! [[ "$perf_drop_delta" =~ ^[0-9]+$ ]] || [[ "$perf_drop_delta" -gt "$MAX_PERF_DROPS_DELTA" ]]; then
+      gate_perf_drop_fail=1
+      add_fail_reason "perfDrop delta ${perf_drop_delta:-n/a} above max ${MAX_PERF_DROPS_DELTA}."
+    fi
+    if [[ -z "$event_drop_delta" ]] || ! [[ "$event_drop_delta" =~ ^[0-9]+$ ]] || [[ "$event_drop_delta" -gt "$MAX_EVENT_DROPS_DELTA" ]]; then
+      gate_event_drop_fail=1
+      add_fail_reason "eventBus drop delta ${event_drop_delta:-n/a} above max ${MAX_EVENT_DROPS_DELTA}."
+    fi
+
+    if [[ "$MAX_FLUSH_MAX_US" -gt 0 ]]; then
+      if [[ -z "$flush_max_peak" ]] || ! [[ "$flush_max_peak" =~ ^[0-9]+$ ]] || [[ "$flush_max_peak" -gt "$MAX_FLUSH_MAX_US" ]]; then
+        gate_flush_fail=1
+        add_fail_reason "flushMaxUs peak ${flush_max_peak:-n/a} above max ${MAX_FLUSH_MAX_US}."
+      fi
+    fi
+    if [[ "$MAX_LOOP_MAX_US" -gt 0 ]]; then
+      if [[ -z "$loop_max_peak" ]] || ! [[ "$loop_max_peak" =~ ^[0-9]+$ ]] || [[ "$loop_max_peak" -gt "$MAX_LOOP_MAX_US" ]]; then
+        gate_loop_fail=1
+        add_fail_reason "loopMaxUs peak ${loop_max_peak:-n/a} above max ${MAX_LOOP_MAX_US}."
+      fi
+    fi
+    if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
+      if [[ -z "$wifi_max_peak" ]] || ! [[ "$wifi_max_peak" =~ ^[0-9]+$ ]] || [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
+        gate_wifi_fail=1
+        add_fail_reason "wifiMaxUs peak ${wifi_max_peak:-n/a} above max ${MAX_WIFI_MAX_US}."
+      fi
+    fi
+    if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
+      if [[ -z "$ble_drain_max_peak" ]] || ! [[ "$ble_drain_max_peak" =~ ^[0-9]+$ ]] || [[ "$ble_drain_max_peak" -gt "$MAX_BLE_DRAIN_MAX_US" ]]; then
+        gate_ble_drain_fail=1
+        add_fail_reason "bleDrainMaxUs peak ${ble_drain_max_peak:-n/a} above max ${MAX_BLE_DRAIN_MAX_US}."
+      fi
+    fi
+  fi
+fi
+
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
+  if [[ "$display_drive_calls" -eq 0 ]]; then
+    gate_display_drive_fail=1
+    add_fail_reason "Display drive produced zero calls."
+  fi
+  if [[ -z "$display_updates_delta" ]] || ! [[ "$display_updates_delta" =~ ^-?[0-9]+$ ]] || [[ "$display_updates_delta" -lt "$DISPLAY_MIN_UPDATES_DELTA" ]]; then
+    gate_display_drive_fail=1
+    add_fail_reason "Display updates delta ${display_updates_delta:-n/a} below required ${DISPLAY_MIN_UPDATES_DELTA}."
+  fi
+fi
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+  if [[ "$camera_drive_calls" -eq 0 ]]; then
+    gate_camera_drive_fail=1
+    add_fail_reason "Camera drive produced zero calls."
+  fi
+  if [[ "$camera_drive_errors" -gt 0 ]]; then
+    gate_camera_drive_fail=1
+    add_fail_reason "Camera drive had ${camera_drive_errors} failed call(s)."
+  fi
+fi
+
+diagnosis_bucket="No issues"
+diagnosis_next_action="No action required."
+diagnosis_baseline_note=""
+
+if [[ "$BASELINE_GATES_APPLIED" -eq 1 && ( "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ) ]]; then
+  diagnosis_baseline_note="Baseline gates came from perf CSV and this run used active stress drivers; compare against a stress baseline for release gating."
+fi
+
+if [[ "$result" == "FAIL" ]]; then
+  if [[ "$gate_metrics_window_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
+    diagnosis_bucket="Connectivity/Telemetry Outage"
+    diagnosis_next_action="Verify WiFi/API reachability and USB serial capture first, then rerun before evaluating firmware."
+  elif [[ "$gate_serial_monitor_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
+    diagnosis_bucket="USB Serial Capture Failure"
+    diagnosis_next_action="Stabilize /dev/cu.usbmodem capture (close other monitors/cables), rerun soak."
+  elif [[ "$gate_parse_fail_fail" -eq 1 || "$gate_queue_drop_fail" -eq 1 || "$gate_perf_drop_fail" -eq 1 || "$gate_event_drop_fail" -eq 1 ]]; then
+    diagnosis_bucket="Core Data-Path Integrity Regression"
+    diagnosis_next_action="Inspect parser/queue/event counters around failing timestamps and bisect recent BLE/parser changes."
+  elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 ]]; then
+    if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+      diagnosis_bucket="Stress Latency Regression"
+      diagnosis_next_action="Run paired tests: core (no stress drivers) and stress (drivers on). Optimize only the delta introduced by stress paths."
+    else
+      diagnosis_bucket="Core Latency Regression"
+      diagnosis_next_action="Profile loop/wifi/flush peaks at reported timestamps and reduce blocking work on the main loop."
+    fi
+  elif [[ "$gate_display_drive_fail" -eq 1 || "$gate_camera_drive_fail" -eq 1 ]]; then
+    diagnosis_bucket="Stress Endpoint Saturation"
+    diagnosis_next_action="Stabilize preview/demo endpoint handling under load (timeouts/retries) before treating as firmware regression."
+  else
+    diagnosis_bucket="Mixed Failure"
+    diagnosis_next_action="Inspect failing checks and peak sample context below, then rerun with one stress driver at a time."
+  fi
+elif [[ "$result" == "INCONCLUSIVE" ]]; then
+  diagnosis_bucket="Inconclusive Telemetry"
+  diagnosis_next_action="Run again with metrics enabled and reachable; current run lacked enough signal to score."
+fi
+
 {
   echo "# Real Firmware Soak Summary"
   echo ""
@@ -1256,6 +1825,27 @@ fi
   echo "- Reset line count (\`rst:0x\`): $serial_reset_count"
   echo "- WDT/panic signature count: $serial_wdt_or_panic_count"
   echo "- Guru Meditation count: $serial_guru_count"
+  echo ""
+  echo "## Actionable Diagnosis"
+  echo ""
+  echo "- Primary bucket: ${diagnosis_bucket}"
+  echo "- Suggested next action: ${diagnosis_next_action}"
+  if [[ -n "$diagnosis_baseline_note" ]]; then
+    echo "- Baseline note: ${diagnosis_baseline_note}"
+  fi
+  echo "- Failing checks:"
+  if [[ ${#fail_reasons[@]} -gt 0 ]]; then
+    for reason in "${fail_reasons[@]}"; do
+      echo "  - ${reason}"
+    done
+  else
+    echo "  - none"
+  fi
+  echo "- Peak sample context (UTC):"
+  echo "  - loop peak: ts=${loop_peak_ts:-n/a} loop=${loop_max_peak:-n/a} wifi=${loop_peak_wifi:-n/a} flush=${loop_peak_flush:-n/a} bleDrain=${loop_peak_ble_drain:-n/a} displayUpdates=${loop_peak_display_updates:-n/a} rxPackets=${loop_peak_rx_packets:-n/a}"
+  echo "  - wifi peak: ts=${wifi_peak_ts:-n/a} wifi=${wifi_max_peak:-n/a} loop=${wifi_peak_loop:-n/a} flush=${wifi_peak_flush:-n/a} bleDrain=${wifi_peak_ble_drain:-n/a} displayUpdates=${wifi_peak_display_updates:-n/a} rxPackets=${wifi_peak_rx_packets:-n/a}"
+  echo "  - flush peak: ts=${flush_peak_ts:-n/a} flush=${flush_max_peak:-n/a}"
+  echo "  - bleDrain peak: ts=${ble_drain_peak_ts:-n/a} bleDrain=${ble_drain_max_peak:-n/a}"
   echo ""
   echo "## Debug API Metrics"
   echo ""
@@ -1286,6 +1876,28 @@ fi
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
   echo "- Lockout core guard tripped count: ${core_guard_tripped_count:-n/a}"
+  echo ""
+  echo "## Baseline-Derived Gates"
+  echo ""
+  if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
+    echo "- Baseline perf CSV: \`${BASELINE_PERF_CSV}\`"
+    echo "- Baseline session: ${BASELINE_SELECTED_SESSION}"
+    echo "- Baseline rows: ${BASELINE_SELECTED_ROWS}"
+    echo "- Baseline duration (ms): ${BASELINE_SELECTED_DURATION_MS}"
+    echo "- Baseline rx rate (/s): ${BASELINE_RX_RATE_PER_SEC}"
+    echo "- Baseline parse rate (/s): ${BASELINE_PARSE_RATE_PER_SEC}"
+    echo "- Baseline peaks (loop/flush/wifi/bleDrain): ${BASELINE_PEAK_LOOP_US} / ${BASELINE_PEAK_FLUSH_US} / ${BASELINE_PEAK_WIFI_US} / ${BASELINE_PEAK_BLE_DRAIN_US}"
+    echo "- Derived min rxPackets delta: ${BASELINE_DERIVED_MIN_RX_DELTA}"
+    echo "- Derived min parseSuccesses delta: ${BASELINE_DERIVED_MIN_PARSE_DELTA}"
+    echo "- Derived max loopMaxUs: ${BASELINE_DERIVED_MAX_LOOP_US}"
+    echo "- Derived max flushMaxUs: ${BASELINE_DERIVED_MAX_FLUSH_US}"
+    echo "- Derived max wifiMaxUs: ${BASELINE_DERIVED_MAX_WIFI_US} (0 means no derived gate)"
+    echo "- Derived max bleDrainMaxUs: ${BASELINE_DERIVED_MAX_BLE_DRAIN_US}"
+    echo "- Baseline latency factor: ${BASELINE_LATENCY_FACTOR}"
+    echo "- Baseline throughput factor: ${BASELINE_THROUGHPUT_FACTOR}"
+  else
+    echo "- Baseline perf CSV: disabled"
+  fi
   echo ""
   echo "## Display Drive"
   echo ""
@@ -1323,6 +1935,9 @@ fi
   echo "- Serial capture stderr: \`$SERIAL_CAPTURE_ERR\`"
   echo "- Metrics JSONL: \`$METRICS_JSONL\`"
   echo "- Panic JSONL: \`$PANIC_JSONL\`"
+  if [[ -n "$BASELINE_GATES_KV_FILE" ]]; then
+    echo "- Baseline derived gates KV: \`$BASELINE_GATES_KV_FILE\`"
+  fi
 } > "$SUMMARY_MD"
 
 echo "==> Real firmware soak complete"
