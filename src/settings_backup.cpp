@@ -101,6 +101,11 @@ int backupCandidateScore(const JsonDocument& doc) {
     return backupDocumentVersion(doc) * 100 + backupCriticalFieldScore(doc);
 }
 
+bool shouldSkipProfileReferenceValidation(size_t availableProfileCount,
+                                          bool hasConfiguredSlotReferences) {
+    return availableProfileCount == 0 && hasConfiguredSlotReferences;
+}
+
 bool loadBestBackupDocument(fs::FS* fs,
                                    JsonDocument& outDoc,
                                    const char** outPath,
@@ -950,8 +955,8 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         settings.slot1_highway.profileName.length() > 0 ||
         settings.slot2_comfort.profileName.length() > 0;
     const size_t availableProfileCount = profileMgr.listProfiles().size();
-    if (backup_pure::shouldSkipProfileReferenceValidation(availableProfileCount,
-                                                          hasConfiguredSlotReferences)) {
+    if (shouldSkipProfileReferenceValidation(availableProfileCount,
+                                             hasConfiguredSlotReferences)) {
         Serial.println("[Settings] Profile catalog empty; preserving slot profile references");
         return;
     }
