@@ -204,6 +204,9 @@ private:
     // If neither STA nor AP has any connected client for long enough, shut WiFi
     // down until manual restart to preserve core runtime headroom.
     static constexpr unsigned long WIFI_NO_CLIENT_SHUTDOWN_MS = 60000;
+    // When STA is connected, keep AP alive briefly for setup-page races, then
+    // retire AP once no AP clients have been seen for this long.
+    static constexpr unsigned long WIFI_AP_IDLE_DROP_AFTER_STA_MS = 60000;
     unsigned long lastAnyClientSeenMs = 0;
 
     // Rate limiting

@@ -612,6 +612,25 @@ void WiFiManager::process() {
 
     const bool staConnectedNow =
         (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
+    if (apInterfaceActive && apClientCount > 0) {
+        lastClientSeenMs = now;
+    }
+
+    if (apInterfaceActive &&
+        staConnectedNow &&
+        apClientCount == 0 &&
+        lastClientSeenMs != 0 &&
+        (now - lastClientSeenMs) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
+        Serial.printf("[WiFi] STA connected and AP idle for %lu ms - dropping AP\n",
+                      static_cast<unsigned long>(WIFI_AP_IDLE_DROP_AFTER_STA_MS));
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_STA);
+        apInterfaceEnabled = false;
+        cachedApStaCount = 0;
+        lastApStaCountPollMs = 0;
+        return;
+    }
+
     if (staConnectedNow || apClientCount > 0) {
         lastAnyClientSeenMs = now;
     } else if (apInterfaceActive &&

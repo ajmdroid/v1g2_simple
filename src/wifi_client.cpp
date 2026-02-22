@@ -309,16 +309,11 @@ void WiFiManager::checkWifiClientStatus() {
                 wifiClientState = WIFI_CLIENT_CONNECTED;
                 wifiConnectStartMs = 0;
                 Serial.printf("[WiFiClient] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-
                 if (isSetupModeActive()) {
-                    // Policy: once STA is connected to external network, retire AP to
-                    // recover memory and reduce dual-radio overhead.
-                    WiFi.softAPdisconnect(true);
-                    WiFi.mode(WIFI_STA);
-                    apInterfaceEnabled = false;
-                    cachedApStaCount = 0;
-                    lastApStaCountPollMs = 0;
-                    Serial.println("[WiFiClient] STA connected; AP dropped by policy");
+                    // Arm AP idle timer from STA connect so setup UI clients have
+                    // a full grace window before AP retirement.
+                    lastClientSeenMs = millis();
+                    Serial.println("[WiFiClient] STA connected; AP idle-retire timer armed");
                 }
                 
                 // Reset failure counter on successful connection
