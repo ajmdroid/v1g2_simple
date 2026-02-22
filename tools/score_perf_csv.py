@@ -326,12 +326,16 @@ def camera_max_window_hz(rows: List[Dict[str, int]]) -> float:
     peak = 0.0
     for end in range(1, len(rows)):
         # Walk start backwards until the window spans >= MIN_WINDOW_MS
-        best_start = end - 1
+        best_start = None
         for start in range(end - 1, -1, -1):
             span_ms = rows[end]["millis"] - rows[start]["millis"]
             if span_ms >= MIN_WINDOW_MS:
                 best_start = start
                 break
+        if best_start is None:
+            # No eligible >=15s window for this sample; do not estimate with
+            # shorter windows (that re-introduces poll-interval aliasing).
+            continue
         dt = (rows[end]["millis"] - rows[best_start]["millis"]) / 1000.0
         if dt <= 0:
             continue

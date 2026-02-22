@@ -611,7 +611,8 @@ Options:
   --max-camera-max-tick-us N
                         Maximum cameraMaxTickUs peak (0 disables gate)
   --max-camera-max-window-hz N
-                        Maximum camera Hz (sliding window); empty disables gate
+                        Maximum camera Hz (sliding window); 0 or empty disables
+                        gate
   --max-ble-mutex-timeout-delta N
                         Maximum bleMutexTimeout delta (default: 0)
   --max-camera-budget-exceeded-delta N
@@ -775,9 +776,16 @@ done
 # cameraMaxWindowHz is a float gate (empty = disabled)
 if [[ -n "$MAX_CAMERA_MAX_WINDOW_HZ" ]]; then
   if ! [[ "$MAX_CAMERA_MAX_WINDOW_HZ" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    echo "Invalid MAX_CAMERA_MAX_WINDOW_HZ value '$MAX_CAMERA_MAX_WINDOW_HZ' (expected positive number or empty)." >&2
+    echo "Invalid MAX_CAMERA_MAX_WINDOW_HZ value '$MAX_CAMERA_MAX_WINDOW_HZ' (expected non-negative number or empty)." >&2
     exit 2
   fi
+fi
+
+CAMERA_MAX_WINDOW_HZ_GATE_ENABLED=0
+CAMERA_MAX_WINDOW_HZ_GATE_LABEL="disabled"
+if [[ -n "$MAX_CAMERA_MAX_WINDOW_HZ" ]] && awk -v v="$MAX_CAMERA_MAX_WINDOW_HZ" 'BEGIN { exit (v > 0) ? 0 : 1 }'; then
+  CAMERA_MAX_WINDOW_HZ_GATE_ENABLED=1
+  CAMERA_MAX_WINDOW_HZ_GATE_LABEL="$MAX_CAMERA_MAX_WINDOW_HZ"
 fi
 
 if ! [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
@@ -1086,7 +1094,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
   echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)"
-  echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${MAX_CAMERA_MAX_WINDOW_HZ:-disabled} (0 disables)"
+  echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)"
   echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}"
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
@@ -1152,7 +1160,7 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
 fi
 echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}" | tee -a "$RUN_LOG"
 echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
-echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${MAX_CAMERA_MAX_WINDOW_HZ:-disabled} (0 disables)" | tee -a "$RUN_LOG"
+echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)" | tee -a "$RUN_LOG"
 echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
@@ -1858,9 +1866,13 @@ if [[ -n "$METRICS_URL" ]]; then
       fi
     fi
 
-    # cameraMaxWindowHz (empty disables; float comparison via awk)
-    if [[ -n "$MAX_CAMERA_MAX_WINDOW_HZ" && -n "$camera_max_window_hz_peak" ]]; then
-      if awk -v obs="$camera_max_window_hz_peak" -v lim="$MAX_CAMERA_MAX_WINDOW_HZ" \
+    # cameraMaxWindowHz (0/empty disables; missing metric is a hard failure)
+    if [[ "$CAMERA_MAX_WINDOW_HZ_GATE_ENABLED" -eq 1 ]]; then
+      if [[ -z "$camera_max_window_hz_peak" ]]; then
+        mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz unavailable (required <= ${MAX_CAMERA_MAX_WINDOW_HZ})."
+      elif ! [[ "$camera_max_window_hz_peak" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz invalid value '${camera_max_window_hz_peak}' (required <= ${MAX_CAMERA_MAX_WINDOW_HZ})."
+      elif awk -v obs="$camera_max_window_hz_peak" -v lim="$MAX_CAMERA_MAX_WINDOW_HZ" \
           'BEGIN { exit (obs > lim) ? 0 : 1 }'; then
         mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz ${camera_max_window_hz_peak} above max ${MAX_CAMERA_MAX_WINDOW_HZ}."
       fi
@@ -2071,7 +2083,7 @@ fi
   echo "- Peak bleProcessMaxUs: ${ble_process_max_peak:-n/a} (max gate ${MAX_BLE_PROCESS_MAX_US})"
   echo "- Peak dispPipeMaxUs: ${disp_pipe_max_peak:-n/a} (max gate ${MAX_DISP_PIPE_MAX_US})"
   echo "- Peak cameraMaxTickUs: ${camera_max_tick_peak:-n/a} (max gate ${MAX_CAMERA_MAX_TICK_US})"
-  echo "- Peak cameraMaxWindowHz (computed, 15s window): ${camera_max_window_hz_peak:-n/a} (ts ${camera_max_window_hz_peak_ts:-n/a}, max gate ${MAX_CAMERA_MAX_WINDOW_HZ:-disabled})"
+  echo "- Peak cameraMaxWindowHz (computed, 15s window): ${camera_max_window_hz_peak:-n/a} (ts ${camera_max_window_hz_peak_ts:-n/a}, max gate ${CAMERA_MAX_WINDOW_HZ_GATE_LABEL})"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
   echo "- queueHighWater first/peak: ${queue_high_water_first:-n/a} / ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
   echo "- Inherited counter suspect: ${inherited_counter_suspect:-n/a}"

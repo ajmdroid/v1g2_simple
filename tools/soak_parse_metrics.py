@@ -336,13 +336,13 @@ def main() -> int:
                 if camera_ticks is not None and sample_epoch is not None:
                     camera_tick_ring.append((sample_epoch, camera_ticks))
                     # Find the oldest entry that gives us >= CAMERA_HZ_MIN_WINDOW_S
-                    best_start = len(camera_tick_ring) - 2  # fallback: previous
+                    best_start = None
                     for si in range(len(camera_tick_ring) - 2, -1, -1):
                         span = sample_epoch - camera_tick_ring[si][0]
                         if span >= CAMERA_HZ_MIN_WINDOW_S:
                             best_start = si
                             break
-                    if best_start >= 0:
+                    if best_start is not None:
                         ref_epoch, ref_ticks = camera_tick_ring[best_start]
                         dt_seconds = sample_epoch - ref_epoch
                         tick_inc = camera_ticks - ref_ticks
