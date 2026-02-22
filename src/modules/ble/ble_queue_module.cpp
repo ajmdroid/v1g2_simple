@@ -7,7 +7,7 @@
 #include <cstring>
 
 // Maximum bytes to buffer from BLE RX before dropping
-static constexpr size_t RX_BUFFER_MAX = 512;
+static constexpr size_t RX_BUFFER_MAX = 1024;
 static constexpr size_t RX_COMPACT_THRESHOLD = RX_BUFFER_MAX / 2;
 
 static void compactRxBuffer(std::vector<uint8_t>& rxBuffer, size_t& readPos) {
@@ -167,6 +167,7 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
     queueHandle = xQueueCreate(config.queueDepth, sizeof(BLEDataPacket));
     rxReadPos = 0;
     rxBuffer.reserve(std::max(config.rxBufferCap, RX_BUFFER_MAX));
+    backpressureActive = false;
 }
 
 void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charUUID) {
@@ -195,14 +196,26 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
     }
 }
 
+void BleQueueModule::refreshBackpressureState() {
+    const size_t unreadBytes = (rxReadPos < rxBuffer.size()) ? (rxBuffer.size() - rxReadPos) : 0;
+    const UBaseType_t queueDepth = queueHandle ? uxQueueMessagesWaiting(queueHandle) : 0;
+    const size_t queuePressureThreshold = std::max<size_t>(4, config.queueDepth / 4);
+    static constexpr size_t RX_BACKPRESSURE_BYTES = 192;
+    backpressureActive =
+        (unreadBytes >= RX_BACKPRESSURE_BYTES) ||
+        (static_cast<size_t>(queueDepth) >= queuePressureThreshold);
+}
+
 void BleQueueModule::process() {
     bool previewActive = preview && preview->isRunning();
+    UBaseType_t queueDepthBeforeDrain = 0;
     
 #ifdef REPLAY_MODE
     processReplayData();
 #else
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
+    queueDepthBeforeDrain = queueHandle ? uxQueueMessagesWaiting(queueHandle) : 0;
 
     while (queueHandle && xQueueReceive(queueHandle, &pkt, 0) == pdTRUE) {
         appendRxClamped(rxBuffer, rxReadPos, pkt.data, pkt.length);
@@ -223,32 +236,61 @@ void BleQueueModule::process() {
     if (rxReadPos >= rxBuffer.size()) {
         rxBuffer.clear();
         rxReadPos = 0;
+        refreshBackpressureState();
         return;
     }
 
     size_t availableBytes = rxBuffer.size() - rxReadPos;
     if (availableBytes == 0) {
+        refreshBackpressureState();
         return;
-    }
-
-    if (availableBytes > 256 && availableBytes > config.rxTrimKeep) {
-        rxReadPos = rxBuffer.size() - config.rxTrimKeep;
-        compactRxBuffer(rxBuffer, rxReadPos);
-        availableBytes = rxBuffer.size() - rxReadPos;
     }
 
     const size_t MIN_HEADER_SIZE = 6;
     const size_t MAX_PACKET_SIZE = 512;
     
-    // Limit packets processed per cycle to prevent long stalls during bursts
-    // After reconnect, 100+ packets may be buffered - process in chunks to keep UI responsive
-    static constexpr size_t MAX_PACKETS_PER_CYCLE = 8;
+    // Adaptive drain budget: keep a low-latency baseline but accelerate when
+    // queue/backlog indicates BLE ingest is falling behind.
+    static constexpr size_t BASE_PACKETS_PER_CYCLE = 8;
+    static constexpr size_t MID_PACKETS_PER_CYCLE = 16;
+    static constexpr size_t HIGH_PACKETS_PER_CYCLE = 24;
+    static constexpr size_t MAX_PACKETS_PER_CYCLE = 32;
+    static constexpr uint32_t BASE_PARSE_BUDGET_US = 2500;
+    static constexpr uint32_t BURST_PARSE_BUDGET_US = 7000;
+    static constexpr size_t MID_BACKLOG_BYTES = 192;
+    static constexpr size_t HIGH_BACKLOG_BYTES = 320;
+    static constexpr size_t MAX_BACKLOG_BYTES = 448;
+
+    const size_t queueDepthSnapshot = static_cast<size_t>(queueDepthBeforeDrain);
+    const size_t queueHalfThreshold = std::max<size_t>(4, config.queueDepth / 2);
+    const size_t queueHighThreshold = std::max<size_t>(6, (config.queueDepth * 3) / 4);
+
+    size_t maxPacketsPerCycle = BASE_PACKETS_PER_CYCLE;
+    if (availableBytes >= MID_BACKLOG_BYTES || queueDepthSnapshot >= queueHalfThreshold) {
+        maxPacketsPerCycle = MID_PACKETS_PER_CYCLE;
+    }
+    if (availableBytes >= HIGH_BACKLOG_BYTES || queueDepthSnapshot >= queueHighThreshold) {
+        maxPacketsPerCycle = HIGH_PACKETS_PER_CYCLE;
+    }
+    if (availableBytes >= MAX_BACKLOG_BYTES && queueDepthSnapshot >= queueHighThreshold) {
+        maxPacketsPerCycle = MAX_PACKETS_PER_CYCLE;
+    }
+    if (previewActive && maxPacketsPerCycle > MID_PACKETS_PER_CYCLE) {
+        maxPacketsPerCycle = MID_PACKETS_PER_CYCLE;
+    }
+
+    const uint32_t parseCycleStartUs = PERF_TIMESTAMP_US();
+    const uint32_t parseBudgetUs =
+        (maxPacketsPerCycle > BASE_PACKETS_PER_CYCLE) ? BURST_PARSE_BUDGET_US : BASE_PARSE_BUDGET_US;
     size_t packetsProcessedThisCycle = 0;
 
     while (true) {
-        // Rate limit: don't process more than MAX_PACKETS_PER_CYCLE to keep loop responsive
-        if (packetsProcessedThisCycle >= MAX_PACKETS_PER_CYCLE) {
-            break;  // Continue next loop() iteration
+        if (packetsProcessedThisCycle >= maxPacketsPerCycle) {
+            break;
+        }
+        if (packetsProcessedThisCycle >= BASE_PACKETS_PER_CYCLE &&
+            (PERF_TIMESTAMP_US() - parseCycleStartUs) >= parseBudgetUs) {
+            break;
         }
         
         availableBytes = rxBuffer.size() - rxReadPos;
@@ -354,6 +396,8 @@ void BleQueueModule::process() {
     } else if (rxReadPos >= RX_COMPACT_THRESHOLD) {
         compactRxBuffer(rxBuffer, rxReadPos);
     }
+
+    refreshBackpressureState();
 }
 
 #ifdef REPLAY_MODE

@@ -114,7 +114,8 @@ test/
 │   ├── Arduino.h        # Basic Arduino types
 │   ├── display_driver.h # Display/graphics mocks
 │   ├── settings.h       # Settings manager mock
-│   ├── external_deps.h  # BLE/GPS/Battery manager mocks
+│   ├── battery_manager.h # Battery manager mock
+│   ├── ble_client.h     # BLE client mock
 │   └── freertos/        # FreeRTOS stubs
 ├── test_device_boot/    # [DEVICE] System baseline + chip detection
 ├── test_device_heap/    # [DEVICE] Heap fragmentation + leak detection

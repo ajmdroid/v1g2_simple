@@ -767,7 +767,8 @@ void loop() {
     unsigned long audioTickUs = micros();
     unsigned long sinceAudioUs = audioTickUs - lastAudioTickUs;
     lastAudioTickUs = audioTickUs;
-    bool skipNonCoreThisLoop = sinceAudioUs > AUDIO_TICK_MAX_US;
+    bool bleBackpressure = bleQueueModule.isBackpressured();
+    bool skipNonCoreThisLoop = (sinceAudioUs > AUDIO_TICK_MAX_US) || bleBackpressure;
     bool overloadThisLoop = (lastLoopUs >= OVERLOAD_LOOP_US) || skipNonCoreThisLoop;
 
     // RUN_START marker: fires once when boot phase is complete
@@ -851,6 +852,9 @@ void loop() {
     uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
     bleQueueModule.process();
     perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
+    bleBackpressure = bleQueueModule.isBackpressured();
+    const bool skipLateNonCoreThisLoop = skipNonCoreThisLoop || bleBackpressure;
+    const bool overloadLateThisLoop = overloadThisLoop || bleBackpressure;
 
     static bool obdRuntimeDisabledLatched = false;
     if (!obdServiceEnabled) {
@@ -983,7 +987,7 @@ void loop() {
     if (!bootSplashHoldActive &&
         bleClient.isConnected() &&
         !displayPreviewModule.isRunning() &&
-        overloadThisLoop &&
+        overloadLateThisLoop &&
         (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
         const auto& allAlerts = parser.getAllAlerts();
         int alertCount = static_cast<int>(parser.getAlertCount());
@@ -1000,7 +1004,7 @@ void loop() {
     // alerts (BSM, door openers, etc.) must not suppress camera matching.
     uint32_t cameraStartUs = PERF_TIMESTAMP_US();
     {
-        cameraRuntimeModule.process(now, skipNonCoreThisLoop, overloadThisLoop, loopSignalPriorityActive);
+        cameraRuntimeModule.process(now, skipLateNonCoreThisLoop, overloadLateThisLoop, loopSignalPriorityActive);
     }
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
@@ -1025,7 +1029,7 @@ void loop() {
 
     // Process WiFi/web server only when WiFi is actually enabled.
     // Explicit gate keeps this path a near-no-op in wifi-off profiles.
-    if (!skipNonCoreThisLoop && isWifiProcessingEnabled(loopSettings)) {
+    if (!skipLateNonCoreThisLoop && isWifiProcessingEnabled(loopSettings)) {
         uint32_t wifiStartUs = PERF_TIMESTAMP_US();
         wifiManager.process();
         perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);

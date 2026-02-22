@@ -44,6 +44,7 @@ public:
     void process();
 
     unsigned long getLastRxMillis() const { return lastRxMillis; }
+    bool isBackpressured() const { return backpressureActive; }
 
 private:
     struct BLEDataPacket {
@@ -68,8 +69,10 @@ private:
     uint32_t lastParsedTsMs = 0;      // Timestamp of last successful parse (for display latency)
     bool hadSuccessfulParse = false;  // Flag: at least one packet parsed since last check
     uint32_t parsedEventSeq = 0;
+    bool backpressureActive = false;
 
     Config config;
+    void refreshBackpressureState();
 
 #ifdef REPLAY_MODE
     void processReplayData();
