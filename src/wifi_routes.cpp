@@ -346,6 +346,27 @@ void WiFiManager::setupWebServer() {
     server.on("/api/debug/panic", HTTP_GET, [this]() {
         DebugApiService::handleApiPanic(server);
     });
+    server.on("/api/debug/v1-scenario/list", HTTP_GET, [this]() {
+        DebugApiService::handleApiV1ScenarioList(server);
+    });
+    server.on("/api/debug/v1-scenario/status", HTTP_GET, [this]() {
+        DebugApiService::handleApiV1ScenarioStatus(server);
+    });
+    server.on("/api/debug/v1-scenario/load", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiV1ScenarioLoad(
+            server,
+            rateLimitCallback);
+    });
+    server.on("/api/debug/v1-scenario/start", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiV1ScenarioStart(
+            server,
+            rateLimitCallback);
+    });
+    server.on("/api/debug/v1-scenario/stop", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiV1ScenarioStop(
+            server,
+            rateLimitCallback);
+    });
     server.on("/api/debug/enable", HTTP_POST, [this, rateLimitCallback]() {
         DebugApiService::handleApiDebugEnable(
             server,

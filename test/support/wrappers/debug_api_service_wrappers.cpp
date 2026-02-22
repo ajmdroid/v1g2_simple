@@ -5,8 +5,13 @@ namespace DebugApiService {
 #ifdef UNIT_TEST
 void sendMetrics(WebServer& server);
 void sendPanic(WebServer& server);
+void sendV1ScenarioList(WebServer& server);
+void sendV1ScenarioStatus(WebServer& server);
 void handleDebugEnable(WebServer& server);
 void handleMetricsReset(WebServer& server);
+void handleV1ScenarioLoad(WebServer& server);
+void handleV1ScenarioStart(WebServer& server);
+void handleV1ScenarioStop(WebServer& server);
 void sendPerfFilesList(WebServer& server);
 void handlePerfFileDownload(WebServer& server);
 void handlePerfFileDelete(WebServer& server);
@@ -19,6 +24,14 @@ void handleApiPanic(WebServer& server) {
     sendPanic(server);
 }
 
+void handleApiV1ScenarioList(WebServer& server) {
+    sendV1ScenarioList(server);
+}
+
+void handleApiV1ScenarioStatus(WebServer& server) {
+    sendV1ScenarioStatus(server);
+}
+
 void handleApiDebugEnable(WebServer& server,
                           const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
@@ -29,6 +42,24 @@ void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     handleMetricsReset(server);
+}
+
+void handleApiV1ScenarioLoad(WebServer& server,
+                             const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleV1ScenarioLoad(server);
+}
+
+void handleApiV1ScenarioStart(WebServer& server,
+                              const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleV1ScenarioStart(server);
+}
+
+void handleApiV1ScenarioStop(WebServer& server,
+                             const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleV1ScenarioStop(server);
 }
 
 void handleApiPerfFilesList(WebServer& server,

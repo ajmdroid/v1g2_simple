@@ -15,8 +15,13 @@ namespace {
 
 int sendMetricsCalls = 0;
 int sendPanicCalls = 0;
+int sendV1ScenarioListCalls = 0;
+int sendV1ScenarioStatusCalls = 0;
 int handleDebugEnableCalls = 0;
 int handleMetricsResetCalls = 0;
+int handleV1ScenarioLoadCalls = 0;
+int handleV1ScenarioStartCalls = 0;
+int handleV1ScenarioStopCalls = 0;
 int sendPerfFilesListCalls = 0;
 int handlePerfFileDownloadCalls = 0;
 int handlePerfFileDeleteCalls = 0;
@@ -49,6 +54,31 @@ void sendPanic(WebServer& server) {
     server.send(200, "application/json", "{\"route\":\"panic\"}");
 }
 
+void sendV1ScenarioList(WebServer& server) {
+    sendV1ScenarioListCalls++;
+    server.send(200, "application/json", "{\"route\":\"v1-scenario-list\"}");
+}
+
+void sendV1ScenarioStatus(WebServer& server) {
+    sendV1ScenarioStatusCalls++;
+    server.send(200, "application/json", "{\"route\":\"v1-scenario-status\"}");
+}
+
+void handleV1ScenarioLoad(WebServer& server) {
+    handleV1ScenarioLoadCalls++;
+    server.send(200, "application/json", "{\"route\":\"v1-scenario-load\"}");
+}
+
+void handleV1ScenarioStart(WebServer& server) {
+    handleV1ScenarioStartCalls++;
+    server.send(200, "application/json", "{\"route\":\"v1-scenario-start\"}");
+}
+
+void handleV1ScenarioStop(WebServer& server) {
+    handleV1ScenarioStopCalls++;
+    server.send(200, "application/json", "{\"route\":\"v1-scenario-stop\"}");
+}
+
 void sendPerfFilesList(WebServer& server) {
     sendPerfFilesListCalls++;
     server.send(200, "application/json", "{\"route\":\"perf-files\"}");
@@ -72,8 +102,13 @@ void setUp() {
 
     sendMetricsCalls = 0;
     sendPanicCalls = 0;
+    sendV1ScenarioListCalls = 0;
+    sendV1ScenarioStatusCalls = 0;
     handleDebugEnableCalls = 0;
     handleMetricsResetCalls = 0;
+    handleV1ScenarioLoadCalls = 0;
+    handleV1ScenarioStartCalls = 0;
+    handleV1ScenarioStopCalls = 0;
     sendPerfFilesListCalls = 0;
     handlePerfFileDownloadCalls = 0;
     handlePerfFileDeleteCalls = 0;
@@ -99,6 +134,26 @@ void test_handle_api_panic_delegates() {
     TEST_ASSERT_EQUAL_INT(1, sendPanicCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"panic\""));
+}
+
+void test_handle_api_v1_scenario_list_delegates() {
+    WebServer server(80);
+
+    DebugApiService::handleApiV1ScenarioList(server);
+
+    TEST_ASSERT_EQUAL_INT(1, sendV1ScenarioListCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-list\""));
+}
+
+void test_handle_api_v1_scenario_status_delegates() {
+    WebServer server(80);
+
+    DebugApiService::handleApiV1ScenarioStatus(server);
+
+    TEST_ASSERT_EQUAL_INT(1, sendV1ScenarioStatusCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-status\""));
 }
 
 void test_handle_api_debug_enable_rate_limited_short_circuits() {
@@ -165,6 +220,73 @@ void test_handle_api_metrics_reset_delegates_when_allowed() {
     TEST_ASSERT_EQUAL_INT(1, handleMetricsResetCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"metrics-reset\""));
+}
+
+void test_handle_api_v1_scenario_load_rate_limited_short_circuits() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiV1ScenarioLoad(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, handleV1ScenarioLoadCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_v1_scenario_load_delegates_when_allowed() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiV1ScenarioLoad(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioLoadCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-load\""));
+}
+
+void test_handle_api_v1_scenario_start_delegates_when_allowed() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiV1ScenarioStart(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioStartCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-start\""));
+}
+
+void test_handle_api_v1_scenario_stop_delegates_when_allowed() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiV1ScenarioStop(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioStopCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-stop\""));
 }
 
 void test_handle_api_perf_files_list_rate_limited_short_circuits() {
@@ -250,10 +372,16 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_api_metrics_delegates);
     RUN_TEST(test_handle_api_panic_delegates);
+    RUN_TEST(test_handle_api_v1_scenario_list_delegates);
+    RUN_TEST(test_handle_api_v1_scenario_status_delegates);
     RUN_TEST(test_handle_api_debug_enable_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_debug_enable_delegates_when_allowed);
     RUN_TEST(test_handle_api_metrics_reset_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_metrics_reset_delegates_when_allowed);
+    RUN_TEST(test_handle_api_v1_scenario_load_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_v1_scenario_load_delegates_when_allowed);
+    RUN_TEST(test_handle_api_v1_scenario_start_delegates_when_allowed);
+    RUN_TEST(test_handle_api_v1_scenario_stop_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_list_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_perf_files_list_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_download_delegates_when_allowed);

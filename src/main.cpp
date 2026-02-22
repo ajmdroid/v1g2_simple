@@ -70,6 +70,7 @@
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/lockout/lockout_pre_quiet_controller.h"
 #include "modules/lockout/lockout_orchestration_module.h"
+#include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/perf/debug_macros.h"
@@ -891,6 +892,8 @@ void loop() {
     perfRecordBleProcessUs(PERF_TIMESTAMP_US() - bleProcessStartUs);
 #endif
     
+    DebugApiService::process(now);
+
     // Process queued BLE data (safe for SPI - runs in main loop context)
     uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
     bleQueueModule.process();
