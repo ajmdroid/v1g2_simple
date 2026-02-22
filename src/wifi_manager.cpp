@@ -73,11 +73,19 @@ static void getWifiStartThresholds(bool apStaMode, uint32_t& minFree, uint32_t& 
                          : WiFiManager::WIFI_START_MIN_BLOCK_AP_ONLY;
 }
 
-static void getWifiRuntimeThresholds(bool apStaMode, uint32_t& minFree, uint32_t& minBlock) {
-    minFree = apStaMode ? WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_STA
-                        : WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_ONLY;
-    minBlock = apStaMode ? WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_STA
-                         : WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
+static void getWifiRuntimeThresholds(bool apStaMode, bool staOnlyMode, uint32_t& minFree, uint32_t& minBlock) {
+    if (apStaMode) {
+        minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_STA;
+        minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_STA;
+        return;
+    }
+    if (staOnlyMode) {
+        minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_STA_ONLY;
+        minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_STA_ONLY;
+        return;
+    }
+    minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_ONLY;
+    minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
 }
 
 // Helper to serve files from LittleFS (with gzip support)
@@ -532,7 +540,7 @@ void WiFiManager::process() {
     const char* runtimeModeLabel = dualRadioMode ? "AP+STA" : (staRadioOn ? "STA" : "AP");
     uint32_t criticalFree = 0;
     uint32_t criticalBlock = 0;
-    getWifiRuntimeThresholds(dualRadioMode, criticalFree, criticalBlock);
+    getWifiRuntimeThresholds(dualRadioMode, staOnlyMode, criticalFree, criticalBlock);
 
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

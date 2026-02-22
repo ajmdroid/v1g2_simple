@@ -83,6 +83,8 @@ public:
     static constexpr uint32_t WIFI_START_MIN_BLOCK_AP_STA = 20480;      // 20KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_AP_ONLY = 16384;    // 16KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_AP_ONLY = 8192;    // 8KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_STA_ONLY = 16384;   // 16KB
+    static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_STA_ONLY = 7168;   // 7KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_AP_STA = 20480;     // 20KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_AP_STA = 8192;    // 8KB (was 10KB; FreeRTOS task stacks fragment heap)
     // STA-only mode can oscillate within a few dozen bytes of the largest-block
