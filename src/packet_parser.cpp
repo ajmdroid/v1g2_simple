@@ -15,6 +15,13 @@
 #include <algorithm>
 #include "debug_logger.h"
 
+#ifndef UNIT_TEST
+#include "perf_metrics.h"
+#define PARSER_PERF_INC(counter) PERF_INC(counter)
+#else
+#define PARSER_PERF_INC(counter) do { } while (0)
+#endif
+
 namespace {
 struct BandArrowData {
     bool laser = false;
@@ -99,7 +106,9 @@ PacketParser::PacketParser()
     : alertCount(0),
       chunkCount(0),
       assemblingAlertCount(0),
-      alertIndexMode(AlertIndexMode::Unknown) {
+      alertIndexMode(AlertIndexMode::Unknown),
+      displayPriorityIndexRaw(0),
+      hasDisplayPriorityIndex(false) {
     alertChunkPresent.fill(false);
 }
 
@@ -109,6 +118,7 @@ void PacketParser::resetAlertAssembly() {
     assemblingAlertCount = 0;
     alertIndexMode = AlertIndexMode::Unknown;
     alertChunkPresent.fill(false);
+    hasDisplayPriorityIndex = false;
 }
 
 
@@ -287,6 +297,13 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         uint8_t ledBitmap = payload[2];
         displayState.signalBars = decodeLEDBitmap(ledBitmap);
     }
+
+    // Display payload aux0 carries the V1-priority row index for the current alert table.
+    // Keep the raw value and resolve 0/1-based mapping once we have the assembled rows.
+    if (length > 5) {
+        displayPriorityIndexRaw = payload[5];
+        hasDisplayPriorityIndex = true;
+    }
     
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
@@ -390,6 +407,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         assemblingAlertCount = 0;
         alertIndexMode = AlertIndexMode::Unknown;
         alertChunkPresent.fill(false);
+        hasDisplayPriorityIndex = false;
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
         displayState.arrows = DIR_NONE;
         displayState.muted = false;
@@ -409,6 +427,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         assemblingAlertCount = 0;
         alertIndexMode = AlertIndexMode::Unknown;
         alertChunkPresent.fill(false);
+        hasDisplayPriorityIndex = false;
         s_resetAlertCountFlag = false;
     }
 
@@ -418,6 +437,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         assemblingAlertCount = 0;
         alertIndexMode = AlertIndexMode::Unknown;
         alertChunkPresent.fill(false);
+        hasDisplayPriorityIndex = false;
         return false;
     }
 
@@ -535,14 +555,101 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     displayState.hasPhotoAlert = anyPhoto;
 
     if (alertCount > 0) {
-        // Find the priority alert using isPriority flag (aux0 bit 7)
-        // JB's Java: (aux0 & 128) != 0
-        int priorityIdx = 0;  // Default to first if none marked
+        // Priority resolution order:
+        // 1) V1 display packet aux0 priority index (source of truth for on-device UI)
+        // 2) Per-row aux0 bit7 fallback (legacy/compat)
+        // 3) First usable alert
+        auto isUsableAlert = [this](int idx) -> bool {
+            if (idx < 0 || idx >= static_cast<int>(alertCount)) return false;
+            const AlertData& a = alerts[static_cast<size_t>(idx)];
+            if (!a.isValid || a.band == BAND_NONE) return false;
+            if (a.band != BAND_LASER && a.frequency == 0) return false;
+            return true;
+        };
+
+        int priorityFromRowFlag = -1;
         for (size_t i = 0; i < alertCount; ++i) {
             if (alerts[i].isPriority) {
-                priorityIdx = i;
+                priorityFromRowFlag = static_cast<int>(i);
                 break;
             }
+        }
+
+        enum class PrioritySource : uint8_t {
+            DisplayIndex = 1,
+            RowFlag = 2,
+            FirstUsable = 3,
+            FirstEntry = 4
+        };
+
+        int priorityIdx = -1;
+        PrioritySource source = PrioritySource::FirstEntry;
+        if (hasDisplayPriorityIndex) {
+            const int raw = static_cast<int>(displayPriorityIndexRaw);
+            const int zeroBasedCandidate = (raw >= 0 && raw < static_cast<int>(alertCount)) ? raw : -1;
+            const int oneBasedCandidate =
+                (raw >= 1 && raw <= static_cast<int>(alertCount)) ? (raw - 1) : -1;
+            const bool zeroUsable = isUsableAlert(zeroBasedCandidate);
+            const bool oneUsable = isUsableAlert(oneBasedCandidate);
+
+            if (zeroUsable && oneUsable) {
+                PARSER_PERF_INC(prioritySelectAmbiguousIndex);
+                if (priorityFromRowFlag == zeroBasedCandidate) {
+                    priorityIdx = zeroBasedCandidate;
+                } else if (priorityFromRowFlag == oneBasedCandidate) {
+                    priorityIdx = oneBasedCandidate;
+                } else {
+                    // Alert table rows are officially one-based in protocol docs.
+                    priorityIdx = oneBasedCandidate;
+                }
+            } else if (zeroUsable) {
+                priorityIdx = zeroBasedCandidate;
+            } else if (oneUsable) {
+                priorityIdx = oneBasedCandidate;
+            }
+            if (priorityIdx >= 0) {
+                source = PrioritySource::DisplayIndex;
+            } else {
+                PARSER_PERF_INC(prioritySelectUnusableIndex);
+            }
+        }
+
+        if (priorityIdx < 0 && isUsableAlert(priorityFromRowFlag)) {
+            priorityIdx = priorityFromRowFlag;
+            source = PrioritySource::RowFlag;
+        }
+        if (priorityIdx < 0) {
+            for (size_t i = 0; i < alertCount; ++i) {
+                if (isUsableAlert(static_cast<int>(i))) {
+                    priorityIdx = static_cast<int>(i);
+                    source = PrioritySource::FirstUsable;
+                    break;
+                }
+            }
+        }
+        if (priorityIdx < 0) {
+            priorityIdx = 0;
+            source = PrioritySource::FirstEntry;
+        }
+
+        switch (source) {
+            case PrioritySource::DisplayIndex:
+                PARSER_PERF_INC(prioritySelectDisplayIndex);
+                break;
+            case PrioritySource::RowFlag:
+                PARSER_PERF_INC(prioritySelectRowFlag);
+                break;
+            case PrioritySource::FirstUsable:
+                PARSER_PERF_INC(prioritySelectFirstUsable);
+                break;
+            case PrioritySource::FirstEntry:
+            default:
+                PARSER_PERF_INC(prioritySelectFirstEntry);
+                break;
+        }
+
+        if (!isUsableAlert(priorityIdx)) {
+            PARSER_PERF_INC(prioritySelectInvalidChosen);
         }
         
         displayState.v1PriorityIndex = priorityIdx;
@@ -638,8 +745,8 @@ AlertData PacketParser::getPriorityAlert() const {
         return AlertData();
     }
 
-    // Use V1's isPriority flag (aux0 bit 7) to determine which alert is priority
-    // displayState.v1PriorityIndex is set in parseAlertData() by scanning for isPriority
+    // displayState.v1PriorityIndex is resolved in parseAlertData():
+    // display-packet index first, row priority bit fallback.
     uint8_t idx = displayState.v1PriorityIndex;
     if (idx < alertCount) {
         return alerts[idx];

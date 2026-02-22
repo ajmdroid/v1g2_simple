@@ -284,6 +284,43 @@ void test_alert_stream_aux0_junk_gated_before_41032() {
     TEST_ASSERT_FALSE(state.hasPhotoAlert);
 }
 
+void test_alert_stream_display_priority_index_one_based_when_row_flags_absent() {
+    PacketParser parser;
+
+    // Display aux0 priority index = 2, count=2 table => second row (one-based).
+    const auto display = makePacket(PACKET_ID_DISPLAY_DATA, makeDisplayPayload(63, 0x03, 0x24, 0x24, 0x02));
+    TEST_ASSERT_TRUE(parser.parse(display.data(), display.size()));
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 33800, 0x90, 0x00, 0x22, 0x00));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 33820, 0xA0, 0x00, 0x22, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_EQUAL_UINT32(33820, priority.frequency);
+    TEST_ASSERT_EQUAL_UINT8(1, parser.getDisplayState().v1PriorityIndex);
+}
+
+void test_alert_stream_display_priority_index_overrides_row_priority_flag() {
+    PacketParser parser;
+
+    // Display aux0 points to second row, while row1 sets the per-row priority bit.
+    // Parser should follow display-side priority selection.
+    const auto display = makePacket(PACKET_ID_DISPLAY_DATA, makeDisplayPayload(63, 0x03, 0x24, 0x24, 0x02));
+    TEST_ASSERT_TRUE(parser.parse(display.data(), display.size()));
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 24150, 0x90, 0x00, 0x24, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 33800, 0xA0, 0x00, 0x22, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_EQUAL_UINT32(33800, priority.frequency);
+    TEST_ASSERT_EQUAL_UINT8(1, parser.getDisplayState().v1PriorityIndex);
+}
+
 void test_alert_stream_missing_row_keeps_previous_complete_table() {
     PacketParser parser;
 
@@ -404,6 +441,8 @@ int main() {
     RUN_TEST(test_alert_stream_aux0_decodes_junk_photo_and_priority);
     RUN_TEST(test_alert_stream_aux0_photo_gated_before_41037);
     RUN_TEST(test_alert_stream_aux0_junk_gated_before_41032);
+    RUN_TEST(test_alert_stream_display_priority_index_one_based_when_row_flags_absent);
+    RUN_TEST(test_alert_stream_display_priority_index_overrides_row_priority_flag);
     RUN_TEST(test_alert_stream_missing_row_keeps_previous_complete_table);
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
 

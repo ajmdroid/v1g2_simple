@@ -64,7 +64,7 @@ struct DisplayState {
     uint32_t v1FirmwareVersion;  // V1 firmware version as integer (e.g., 41028 for 4.1028)
     bool hasV1Version;      // True if we've received version from V1
     bool hasVolumeData;     // True if we've received volume data in display packet
-    uint8_t v1PriorityIndex; // V1's reported priority alert index (0-based)
+    uint8_t v1PriorityIndex; // Resolved priority alert index for current table (0-based)
     uint8_t bogeyCounterByte;  // Raw 7-segment byte from V1 display (for decoding J, P, volume, etc)
     char bogeyCounterChar;     // Decoded character from bogeyCounterByte
     bool bogeyCounterDot;      // Decimal point from bogeyCounterByte (bit 7)
@@ -96,7 +96,7 @@ public:
     // Get current display state
     const DisplayState& getDisplayState() const { return displayState; }
     
-    // Get priority alert (highest strength)
+    // Get resolved priority alert (follows V1 priority signal)
     AlertData getPriorityAlert() const;
     
     // Get all alerts
@@ -138,6 +138,8 @@ private:
     size_t chunkCount;
     uint8_t assemblingAlertCount;
     AlertIndexMode alertIndexMode;
+    uint8_t displayPriorityIndexRaw;
+    bool hasDisplayPriorityIndex;
     
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);
