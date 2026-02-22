@@ -111,15 +111,24 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         }
 
         // Safety override: live Ka/Laser must break through mute.
-        // Retry at a low rate until V1 reports unmuted.
+        // Retry at a low rate until V1 reports unmuted, capped to avoid
+        // flooding a stuck/noisy link forever.
         constexpr uint32_t OVERRIDE_UNMUTE_RETRY_MS = 400;
         const bool needsOverrideUnmute =
             ble_->isConnected() && overrideBandActive && lockoutDisplayState.muted;
         if (needsOverrideUnmute) {
-            if (!overrideUnmuteActive_ ||
+            if (overrideUnmuteRetryCount_ >= MAX_OVERRIDE_UNMUTE_RETRIES) {
+                // Exhausted — stop retrying until condition recycles.
+                if (overrideUnmuteActive_) {
+                    Serial.printf("[Safety] Override unmute exhausted after %u retries\n",
+                                  overrideUnmuteRetryCount_);
+                    overrideUnmuteActive_ = false;
+                }
+            } else if (!overrideUnmuteActive_ ||
                 static_cast<uint32_t>(nowMs - overrideUnmuteLastRetryMs_) >= OVERRIDE_UNMUTE_RETRY_MS) {
                 ble_->setMute(false);
                 overrideUnmuteLastRetryMs_ = nowMs;
+                overrideUnmuteRetryCount_++;
                 if (!overrideUnmuteActive_) {
                     Serial.println("[Safety] Ka/Laser override active: unmute sent to V1");
                 }
@@ -128,6 +137,7 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         } else {
             overrideUnmuteActive_ = false;
             overrideUnmuteLastRetryMs_ = 0;
+            overrideUnmuteRetryCount_ = 0;
         }
 
         // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
@@ -183,4 +193,5 @@ void LockoutOrchestrationModule::reset() {
     preQuietState_ = PreQuietState{};
     overrideUnmuteActive_ = false;
     overrideUnmuteLastRetryMs_ = 0;
+    overrideUnmuteRetryCount_ = 0;
 }

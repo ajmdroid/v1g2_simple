@@ -63,6 +63,8 @@ private:
     PreQuietState preQuietState_{};
     bool overrideUnmuteActive_ = false;
     uint32_t overrideUnmuteLastRetryMs_ = 0;
+    uint8_t overrideUnmuteRetryCount_ = 0;
+    static constexpr uint8_t MAX_OVERRIDE_UNMUTE_RETRIES = 15;  // 15 × 400ms = 6s
 
     // DI pointers (set in begin())
     V1BLEClient* ble_ = nullptr;
