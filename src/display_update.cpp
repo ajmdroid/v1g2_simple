@@ -61,13 +61,18 @@ void V1Display::drawStatusStrip(const DisplayState& state,
                                 bool topDot) {
     drawTopCounter(topChar, topMuted, topDot);
     const V1Settings& s = settingsManager.get();
-    if (state.supportsVolume() && !s.hideVolumeIndicator) {
+    static bool rightStripCleared = false;
+    const bool showVolumeAndRssi = state.supportsVolume() && !s.hideVolumeIndicator;
+    if (showVolumeAndRssi) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
+        rightStripCleared = false;
     } else {
-        // Keep this strip artifact-free when entering modes that do not show
-        // volume/RSSI (or when the indicator is hidden by setting).
-        FILL_RECT(8, 75, 75, 68, PALETTE_BG);
+        // Clear once on transition into hidden/unsupported state.
+        if (!rightStripCleared) {
+            FILL_RECT(8, 75, 75, 68, PALETTE_BG);
+            rightStripCleared = true;
+        }
     }
 }
 
@@ -85,15 +90,16 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
                                              bool& flushLeftStrip,
                                              bool& flushRightStrip) {
     const V1Settings& s = settingsManager.get();
+    const bool showVolumeAndRssi = state.supportsVolume() && !s.hideVolumeIndicator;
 
-    if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
+    if (volumeChanged && showVolumeAndRssi) {
         lastMainVol = state.mainVolume;
         lastMuteVol = state.muteVolume;
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
         markRssiRefreshed(now);  // Reset RSSI timer when we update with volume
         flushRightStrip = true;
-    } else if (rssiNeedsUpdate) {
+    } else if (rssiNeedsUpdate && showVolumeAndRssi) {
         // Periodic RSSI-only update
         drawRssiIndicator(bleCtx_.v1Rssi);
         markRssiRefreshed(now);

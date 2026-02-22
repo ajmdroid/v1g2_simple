@@ -440,14 +440,12 @@ static void sendMetricsSoak(WebServer& server) {
     JsonDocument doc;
 
     doc["rxPackets"] = perfCounters.rxPackets.load();
-    doc["rxBytes"] = perfCounters.rxBytes.load();
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
     doc["queueDrops"] = perfCounters.queueDrops.load();
     doc["perfDrop"] = perfCounters.perfDrop.load();
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
-    doc["cmdBleBusy"] = perfCounters.cmdBleBusy.load();
     doc["bleMutexTimeout"] = perfCounters.bleMutexTimeout.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
@@ -482,39 +480,15 @@ static void sendMetricsSoak(WebServer& server) {
     doc["heapDmaLargest"] = StorageManager::getCachedLargestDma();
     doc["heapDmaLargestMin"] = perfGetMinLargestDma();
 
-#if PERF_METRICS
-    doc["monitoringEnabled"] = (bool)PERF_MONITORING;
-#if PERF_MONITORING
-    uint32_t minUsVal = perfLatency.minUs.load();
-    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
-    doc["latencyMinUs"] = minUs;
-    doc["latencyAvgUs"] = perfLatency.avgUs();
+#if PERF_METRICS && PERF_MONITORING
     doc["latencyMaxUs"] = perfLatency.maxUs.load();
-    doc["latencySamples"] = perfLatency.sampleCount.load();
-    doc["debugEnabled"] = perfDebugEnabled;
 #else
-    doc["latencyMinUs"] = 0;
-    doc["latencyAvgUs"] = 0;
     doc["latencyMaxUs"] = 0;
-    doc["latencySamples"] = 0;
-    doc["debugEnabled"] = false;
-#endif
-#else
-    doc["metricsEnabled"] = false;
-    doc["latencyMinUs"] = 0;
-    doc["latencyAvgUs"] = 0;
-    doc["latencyMaxUs"] = 0;
-    doc["latencySamples"] = 0;
-    doc["debugEnabled"] = false;
 #endif
 
     const ProxyMetrics& proxy = bleClient.getProxyMetrics();
     JsonObject proxyObj = doc["proxy"].to<JsonObject>();
-    proxyObj["sendCount"] = proxy.sendCount;
     proxyObj["dropCount"] = proxy.dropCount;
-    proxyObj["errorCount"] = proxy.errorCount;
-    proxyObj["queueHighWater"] = proxy.queueHighWater;
-    proxyObj["connected"] = bleClient.isProxyClientConnected();
 
     JsonObject eventBusObj = doc["eventBus"].to<JsonObject>();
     eventBusObj["publishCount"] = systemEventBus.getPublishCount();
@@ -531,14 +505,7 @@ static void sendMetricsSoak(WebServer& server) {
         perfCounters.perfDrop.load(),
         systemEventBus.getDropCount());
     JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
-    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
-    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
-    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
     lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
-    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
-    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
 
     sendJsonStream(server, doc);
 }
@@ -607,15 +574,14 @@ void sendPanic(WebServer& server, bool soakMode) {
     doc["hasPanicFile"] = panicSnapshot.hasPanicFile;
     if (!soakMode) {
         doc["panicInfo"] = panicSnapshot.panicInfo;
+        // Current heap stats for interactive debugging/comparison.
+        doc["heapFree"] = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+        doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+        doc["heapMinEver"] = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+        doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        doc["heapDmaMin"] = perfGetMinFreeDma();
     }
 
-    // Current heap stats for comparison
-    doc["heapFree"] = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
-    doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
-    doc["heapMinEver"] = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
-    doc["heapDma"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    doc["heapDmaMin"] = perfGetMinFreeDma();
-    
     sendJsonStream(server, doc);
 }
 

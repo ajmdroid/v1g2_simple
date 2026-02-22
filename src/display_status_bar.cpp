@@ -69,7 +69,7 @@ void V1Display::drawRssiIndicator(int rssi) {
 
     // Check if RSSI indicator is hidden
     const V1Settings& s = settingsManager.get();
-    if (s.hideRssiIndicator) {
+    if (s.hideRssiIndicator || s.hideVolumeIndicator) {
         FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
         return;  // Don't draw anything
     }
