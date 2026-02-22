@@ -104,20 +104,18 @@ void V1Display::drawGpsIndicator() {
     const int w  = 50;  // Wide enough for "G" + 2-digit sat count
 
     if (wantShow) {
-        // User-configurable GPS badge colour (matches lockout "L" style).
+        // User-configurable GPS text colour (no background/border).
         const V1Settings& s = settingsManager.get();
         const uint16_t textColor = s.colorGps;
-        const uint16_t fillColor = dimColor(textColor, 45);
 
-        FILL_ROUND_RECT(x, y, w, h, 5, fillColor);
-        DRAW_ROUND_RECT(x, y, w, h, 5, textColor);
+        FILL_RECT(x, y, w, h, PALETTE_BG);
 
         char buf[6];
         snprintf(buf, sizeof(buf), "G%u", curSats);
 
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(textColor, fillColor);
+        TFT_CALL(setTextColor)(textColor, PALETTE_BG);
         GFX_drawString(tft, buf, x + w / 2, y + h / 2);
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
@@ -156,14 +154,12 @@ void V1Display::drawObdIndicator() {
     if (wantShow) {
         const V1Settings& s = settingsManager.get();
         const uint16_t textColor = s.colorObd;
-        const uint16_t fillColor = dimColor(textColor, 45);
 
-        FILL_ROUND_RECT(x, y, w, h, 5, fillColor);
-        DRAW_ROUND_RECT(x, y, w, h, 5, textColor);
+        FILL_RECT(x, y, w, h, PALETTE_BG);
 
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(textColor, fillColor);
+        TFT_CALL(setTextColor)(textColor, PALETTE_BG);
         GFX_drawString(tft, "OBD", x + w / 2, y + h / 2);
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
