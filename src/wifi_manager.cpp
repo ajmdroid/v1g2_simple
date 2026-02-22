@@ -365,6 +365,9 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     } else {
         WIFI_LOG("[SetupMode] Stopping WiFi (strict OFF contract)...\n");
         lowDmaSinceMs = 0;
+        const wifi_mode_t currentMode = WiFi.getMode();
+        const bool modeHasSta = (currentMode == WIFI_AP_STA || currentMode == WIFI_STA);
+        const bool modeHasAp = (currentMode == WIFI_AP_STA || currentMode == WIFI_AP);
 
         // ========== 1. STOP ALL SERVICES ==========
         // Stop HTTP server first (no more requests)
@@ -374,16 +377,21 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
 
         // ========== 2. STOP RADIO CLEANLY ==========
         // Disconnect STA if connected (with erase=true to clear stored credentials from radio)
-        if (wifiClientState == WIFI_CLIENT_CONNECTED || wifiClientState == WIFI_CLIENT_CONNECTING) {
+        if (modeHasSta &&
+            (wifiClientState == WIFI_CLIENT_CONNECTED ||
+             wifiClientState == WIFI_CLIENT_CONNECTING ||
+             WiFi.status() == WL_CONNECTED)) {
             WiFi.disconnect(true);  // true = also clear stored config in radio
             WIFI_LOG("[SetupMode] STA disconnected\n");
             vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
         }
 
         // Disconnect AP (with wifiOff=true to prepare for mode change)
-        WiFi.softAPdisconnect(true);
-        WIFI_LOG("[SetupMode] AP disconnected\n");
-        vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
+        if (modeHasAp || apInterfaceEnabled) {
+            WiFi.softAPdisconnect(true);
+            WIFI_LOG("[SetupMode] AP disconnected\n");
+            vTaskDelay(pdMS_TO_TICKS(1));  // Yield for display
+        }
 
         // Set mode to OFF (tells Arduino WiFi class we're done)
         WiFi.mode(WIFI_OFF);
@@ -590,7 +598,8 @@ void WiFiManager::process() {
     
     const unsigned long now = millis();
     int apClientCount = 0;
-    if (isSetupModeActive()) {
+    const bool apInterfaceActive = isSetupModeActive();
+    if (apInterfaceActive) {
         if (lastApStaCountPollMs == 0 ||
             (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
             cachedApStaCount = WiFi.softAPgetStationNum();
@@ -605,7 +614,8 @@ void WiFiManager::process() {
         (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
     if (staConnectedNow || apClientCount > 0) {
         lastAnyClientSeenMs = now;
-    } else if (lastAnyClientSeenMs != 0 &&
+    } else if (apInterfaceActive &&
+               lastAnyClientSeenMs != 0 &&
                (now - lastAnyClientSeenMs) >= WIFI_NO_CLIENT_SHUTDOWN_MS) {
         Serial.printf("[WiFi] No AP/STA clients for %lu ms - stopping WiFi\n",
                       static_cast<unsigned long>(WIFI_NO_CLIENT_SHUTDOWN_MS));
