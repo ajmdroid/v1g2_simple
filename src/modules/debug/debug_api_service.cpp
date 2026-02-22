@@ -159,9 +159,13 @@ constexpr uint16_t kScenarioCharLong = 0xB4E0;
 constexpr uint8_t kScenarioDest = 0x04;
 constexpr uint8_t kScenarioSrc = ESP_PACKET_ORIGIN_V1;
 
-constexpr uint16_t kFreqKBase = 2415;
-constexpr uint16_t kFreqKa = 3450;
-constexpr uint16_t kFreqX = 1050;
+// Frequency values are rendered as freq/1000.0 in UI, so 24150 => 24.150 GHz.
+constexpr uint16_t kFreqKBase = 24150;
+constexpr uint16_t kFreqKa = 34700;
+constexpr uint16_t kFreqX = 10525;
+
+// Stretch scenario timing so alerts persist long enough to resemble live traffic.
+constexpr uint32_t kScenarioTimeScale = 4;
 
 constexpr uint8_t kBandKFront = 0x24;
 constexpr uint8_t kBandKSide = 0x44;
@@ -310,7 +314,7 @@ void addScenarioPacket(std::vector<ScenarioPacket>& events,
     if (packet.empty()) {
         return;
     }
-    events.push_back(ScenarioPacket{atMs, std::move(packet), charUuid});
+    events.push_back(ScenarioPacket{atMs * kScenarioTimeScale, std::move(packet), charUuid});
 }
 
 void addSplitScenarioPacket(std::vector<ScenarioPacket>& events,
