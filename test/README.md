@@ -175,7 +175,7 @@ The `test_display` suite comprehensively tests the display system:
 - Alert to muted
 
 ### Multi-Alert Scenarios (3 tests)
-- Priority selection (display packet priority index with row-flag fallback)
+- Priority selection (alert-row priority bit with first-usable fallback)
 - Card count calculation
 - Single alert (no cards)
 

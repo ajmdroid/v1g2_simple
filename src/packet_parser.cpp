@@ -18,8 +18,10 @@
 #ifndef UNIT_TEST
 #include "perf_metrics.h"
 #define PARSER_PERF_INC(counter) PERF_INC(counter)
+#define PARSER_TRACE_ENABLED() (perfDebugEnabled)
 #else
 #define PARSER_PERF_INC(counter) do { } while (0)
+#define PARSER_TRACE_ENABLED() (false)
 #endif
 
 namespace {
@@ -103,22 +105,34 @@ char decodeBogeyCounterByte(uint8_t bogeyImage, bool& hasDot) {
 } // namespace
 
 PacketParser::PacketParser()
-    : alertCount(0),
-      chunkCount(0),
-      assemblingAlertCount(0),
-      alertIndexMode(AlertIndexMode::Unknown),
-      displayPriorityIndexRaw(0),
-      hasDisplayPriorityIndex(false) {
+    : alertCount(0) {
     alertChunkPresent.fill(false);
+    alertChunkCountTag.fill(0);
+    alertIndexModeByCount.fill(AlertIndexMode::Unknown);
 }
 
 void PacketParser::resetAlertAssembly() {
     // Drop any partially collected alert rows without altering display state
-    chunkCount = 0;
-    assemblingAlertCount = 0;
-    alertIndexMode = AlertIndexMode::Unknown;
+    clearAlertCache();
+}
+
+void PacketParser::clearAlertCache() {
     alertChunkPresent.fill(false);
-    hasDisplayPriorityIndex = false;
+    alertChunkCountTag.fill(0);
+    alertIndexModeByCount.fill(AlertIndexMode::Unknown);
+}
+
+void PacketParser::clearAlertCacheForCount(uint8_t count) {
+    if (count == 0 || count > MAX_ALERTS) {
+        return;
+    }
+    for (size_t i = 0; i < MAX_ALERTS; ++i) {
+        if (alertChunkPresent[i] && alertChunkCountTag[i] == count) {
+            alertChunkPresent[i] = false;
+            alertChunkCountTag[i] = 0;
+        }
+    }
+    alertIndexModeByCount[count] = AlertIndexMode::Unknown;
 }
 
 
@@ -228,8 +242,8 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // payload[2] = LED bar bitmap
     // payload[3] = image1 (currently ON bits - bands/arrows)
     // payload[4] = image2 (steady/NOT-flashing bits)
-    // payload[5] = auxData0 (priority index)
-    // payload[6] = auxData1 (reserved)
+    // payload[5] = auxData0 (status bits: soft/system/euro/display-active)
+    // payload[6] = auxData1 (mode/bluetooth flags)
     // payload[7] = auxData2 (volume: upper=main, lower=mute)
     // Bits in image1 but NOT in image2 = FLASHING
     // V1 hardware handles the actual blink animation internally - we must do the same
@@ -298,12 +312,8 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         displayState.signalBars = decodeLEDBitmap(ledBitmap);
     }
 
-    // Display payload aux0 carries the V1-priority row index for the current alert table.
-    // Keep the raw value and resolve 0/1-based mapping once we have the assembled rows.
-    if (length > 5) {
-        displayPriorityIndexRaw = payload[5];
-        hasDisplayPriorityIndex = true;
-    }
+    // AndroidESPLibrary2 treats display aux0 as status flags (soft mute/system/euro/display active),
+    // not as a direct alert-table priority index. Priority selection is resolved from alert rows.
     
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
@@ -403,11 +413,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
         alertCount = 0;
-        chunkCount = 0;
-        assemblingAlertCount = 0;
-        alertIndexMode = AlertIndexMode::Unknown;
-        alertChunkPresent.fill(false);
-        hasDisplayPriorityIndex = false;
+        clearAlertCache();
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap
         displayState.arrows = DIR_NONE;
         displayState.muted = false;
@@ -423,65 +429,63 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     // Check if reset was requested (e.g., on V1 disconnect)
     if (s_resetAlertCountFlag) {
-        chunkCount = 0;
-        assemblingAlertCount = 0;
-        alertIndexMode = AlertIndexMode::Unknown;
-        alertChunkPresent.fill(false);
-        hasDisplayPriorityIndex = false;
+        clearAlertCache();
         s_resetAlertCountFlag = false;
     }
 
     if (receivedAlertCount > MAX_ALERTS) {
-        // Invalid table size - drop and wait for next valid set.
-        chunkCount = 0;
-        assemblingAlertCount = 0;
-        alertIndexMode = AlertIndexMode::Unknown;
-        alertChunkPresent.fill(false);
-        hasDisplayPriorityIndex = false;
+        // Invalid table size - drop and wait for next valid row.
         return false;
     }
 
-    if (receivedAlertCount != assemblingAlertCount) {
-        // Alert count changed - discard any partial assembly and start fresh
-        chunkCount = 0;
-        assemblingAlertCount = receivedAlertCount;
-        alertIndexMode = AlertIndexMode::Unknown;
-        alertChunkPresent.fill(false);
-    }
-
-    // Auto-detect index base per-table once and keep it stable for that table.
-    if (alertIndexMode == AlertIndexMode::Unknown) {
-        if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
-            alertIndexMode = AlertIndexMode::OneBased;
-        } else if (alertIndex < receivedAlertCount) {
-            alertIndexMode = AlertIndexMode::ZeroBased;
+    // Keep a per-count index-mode hint so we can follow whichever index base the
+    // V1 stream uses without discarding partial rows when count changes.
+    AlertIndexMode mode = alertIndexModeByCount[receivedAlertCount];
+    if (mode == AlertIndexMode::Unknown) {
+        const bool oneBasedCandidate = (alertIndex >= 1 && alertIndex <= receivedAlertCount);
+        const bool zeroBasedCandidate = (alertIndex < receivedAlertCount);
+        if (alertIndex == 0 && zeroBasedCandidate) {
+            mode = AlertIndexMode::ZeroBased;
+        } else if (alertIndex == receivedAlertCount && oneBasedCandidate) {
+            mode = AlertIndexMode::OneBased;
+        } else if (oneBasedCandidate && !zeroBasedCandidate) {
+            mode = AlertIndexMode::OneBased;
+        } else if (!oneBasedCandidate && zeroBasedCandidate) {
+            mode = AlertIndexMode::ZeroBased;
+        } else if (oneBasedCandidate) {
+            // Ambiguous interior rows (e.g., idx=1 when count=2) default to
+            // one-based, matching VR library table assembly.
+            mode = AlertIndexMode::OneBased;
         }
+        alertIndexModeByCount[receivedAlertCount] = mode;
     }
 
     size_t slot = MAX_ALERTS;
-    if (alertIndexMode == AlertIndexMode::OneBased) {
+    if (mode == AlertIndexMode::OneBased) {
         if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
             slot = static_cast<size_t>(alertIndex - 1);
         }
-    } else if (alertIndexMode == AlertIndexMode::ZeroBased) {
+    } else if (mode == AlertIndexMode::ZeroBased) {
         if (alertIndex < receivedAlertCount) {
             slot = static_cast<size_t>(alertIndex);
         }
     }
 
-    // If the row index is invalid for the detected mode, drop this row but keep assembly alive.
+    // If row index is invalid for this table mode, drop it and keep existing cache.
     if (slot >= MAX_ALERTS) {
+        if (PARSER_TRACE_ENABLED()) {
+            Serial.printf("[AlertAsm] drop idx=%u cnt=%u mode=%u (invalid slot)\n",
+                          static_cast<unsigned>(alertIndex),
+                          static_cast<unsigned>(receivedAlertCount),
+                          static_cast<unsigned>(mode));
+        }
         return true;
     }
 
-    if (!alertChunkPresent[slot]) {
-        if (chunkCount >= MAX_ALERTS) {
-            return false;
-        }
-        alertChunkPresent[slot] = true;
-        ++chunkCount;
-    }
-
+    const bool replacingRow =
+        alertChunkPresent[slot] && (alertChunkCountTag[slot] == receivedAlertCount);
+    alertChunkPresent[slot] = true;
+    alertChunkCountTag[slot] = receivedAlertCount;
     std::array<uint8_t, 8>& chunk = alertChunks[slot];
     chunk.fill(0);
     size_t copyLen = std::min<size_t>(8, length);
@@ -489,21 +493,57 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         chunk[i] = payload[i];
     }
 
-    // Wait until we've received the full set of alert table rows
-    if (chunkCount < receivedAlertCount) {
+    size_t rowsForCount = 0;
+    for (size_t i = 0; i < receivedAlertCount; ++i) {
+        if (alertChunkPresent[i] && alertChunkCountTag[i] == receivedAlertCount) {
+            ++rowsForCount;
+        }
+    }
+
+    if (PARSER_TRACE_ENABLED()) {
+        Serial.printf(
+            "[AlertRow] idx=%u cnt=%u slot=%u rows=%u/%u mode=%u repl=%u raw0=0x%02X f=%u bandArrow=0x%02X aux0=0x%02X\n",
+                      static_cast<unsigned>(alertIndex),
+                      static_cast<unsigned>(receivedAlertCount),
+                      static_cast<unsigned>(slot),
+                      static_cast<unsigned>(rowsForCount),
+                      static_cast<unsigned>(receivedAlertCount),
+                      static_cast<unsigned>(mode),
+                      replacingRow ? 1u : 0u,
+                      static_cast<unsigned>(payload[0]),
+                      static_cast<unsigned>(combineMSBLSB(payload[1], payload[2])),
+                      static_cast<unsigned>(payload[5]),
+                      static_cast<unsigned>(payload[6]));
+    }
+
+    // Rolling per-index cache: only publish when every row 0..count-1 is present
+    // for the same table count.
+    if (rowsForCount < receivedAlertCount) {
+        if (PARSER_TRACE_ENABLED()) {
+            Serial.printf("[AlertAsm] partial rows=%u/%u mode=%u\n",
+                          static_cast<unsigned>(rowsForCount),
+                          static_cast<unsigned>(receivedAlertCount),
+                          static_cast<unsigned>(mode));
+        }
         return true;
     }
 
-    alertCount = 0;
-    // Note: Don't reset displayState.activeBands here - let parseDisplayData() be source of truth
-    // for what bands are visually shown (including blink behavior). We just extract alert details.
+    std::array<AlertData, MAX_ALERTS> nextAlerts{};
+    size_t nextAlertCount = 0;
     bool anyMuted = false;
     bool anyJunk = false;
     bool anyPhoto = false;
 
+    // We have enough rows; validate all required row slots for this count and
+    // decode into a new table buffer before publishing.
     for (size_t i = 0; i < receivedAlertCount && i < MAX_ALERTS; ++i) {
-        if (!alertChunkPresent[i]) {
-            // Missing row for this table - keep current partial assembly alive.
+        if (!alertChunkPresent[i] || alertChunkCountTag[i] != receivedAlertCount) {
+            if (PARSER_TRACE_ENABLED()) {
+                Serial.printf("[AlertAsm] missing row slot=%u cnt=%u rows=%u\n",
+                              static_cast<unsigned>(i),
+                              static_cast<unsigned>(receivedAlertCount),
+                              static_cast<unsigned>(rowsForCount));
+            }
             return true;
         }
 
@@ -523,9 +563,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         bool isJunk = junkSupported && ((aux0 & 0x40) != 0);
         uint8_t photoType = photoSupported ? static_cast<uint8_t>(aux0 & 0x0F) : 0;
 
-        // Add new alert, checking for overflow
-        if (alertCount < MAX_ALERTS) {
-            AlertData& alert = alerts[alertCount++];
+        if (nextAlertCount < MAX_ALERTS) {
+            AlertData& alert = nextAlerts[nextAlertCount++];
             alert.band = band;
             alert.direction = dir;
             alert.isPriority = isPriority;
@@ -540,25 +579,20 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
 
-            // Note: We no longer update displayState.activeBands here
-            // The display packet (image1) is authoritative for band indicators
             anyMuted |= ((bandArrow & 0x10) != 0);
             anyJunk |= isJunk;
             anyPhoto |= (photoType != 0);
         }
     }
 
-    // Combine alert mute bits with display packet's mute flag
-    // V1 logic mute shows in display packet even if alert entries don't have mute bit
-    displayState.muted = displayState.muted || anyMuted;
-    displayState.hasJunkAlert = anyJunk;
-    displayState.hasPhotoAlert = anyPhoto;
+    alerts = nextAlerts;
+    alertCount = nextAlertCount;
 
     if (alertCount > 0) {
         // Priority resolution order:
-        // 1) V1 display packet aux0 priority index (source of truth for on-device UI)
-        // 2) Per-row aux0 bit7 fallback (legacy/compat)
-        // 3) First usable alert
+        // 1) Per-row aux0 bit7 (matches AndroidESPLibrary2 AlertData::isPriority())
+        // 2) First usable alert
+        // 3) Entry 0 as last-resort safety fallback
         auto isUsableAlert = [this](int idx) -> bool {
             if (idx < 0 || idx >= static_cast<int>(alertCount)) return false;
             const AlertData& a = alerts[static_cast<size_t>(idx)];
@@ -575,46 +609,11 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             }
         }
 
-        enum class PrioritySource : uint8_t {
-            DisplayIndex = 1,
-            RowFlag = 2,
-            FirstUsable = 3,
-            FirstEntry = 4
-        };
+        enum class PrioritySource : uint8_t { RowFlag = 2, FirstUsable = 3, FirstEntry = 4 };
 
         int priorityIdx = -1;
         PrioritySource source = PrioritySource::FirstEntry;
-        if (hasDisplayPriorityIndex) {
-            const int raw = static_cast<int>(displayPriorityIndexRaw);
-            const int zeroBasedCandidate = (raw >= 0 && raw < static_cast<int>(alertCount)) ? raw : -1;
-            const int oneBasedCandidate =
-                (raw >= 1 && raw <= static_cast<int>(alertCount)) ? (raw - 1) : -1;
-            const bool zeroUsable = isUsableAlert(zeroBasedCandidate);
-            const bool oneUsable = isUsableAlert(oneBasedCandidate);
-
-            if (zeroUsable && oneUsable) {
-                PARSER_PERF_INC(prioritySelectAmbiguousIndex);
-                if (priorityFromRowFlag == zeroBasedCandidate) {
-                    priorityIdx = zeroBasedCandidate;
-                } else if (priorityFromRowFlag == oneBasedCandidate) {
-                    priorityIdx = oneBasedCandidate;
-                } else {
-                    // Alert table rows are officially one-based in protocol docs.
-                    priorityIdx = oneBasedCandidate;
-                }
-            } else if (zeroUsable) {
-                priorityIdx = zeroBasedCandidate;
-            } else if (oneUsable) {
-                priorityIdx = oneBasedCandidate;
-            }
-            if (priorityIdx >= 0) {
-                source = PrioritySource::DisplayIndex;
-            } else {
-                PARSER_PERF_INC(prioritySelectUnusableIndex);
-            }
-        }
-
-        if (priorityIdx < 0 && isUsableAlert(priorityFromRowFlag)) {
+        if (isUsableAlert(priorityFromRowFlag)) {
             priorityIdx = priorityFromRowFlag;
             source = PrioritySource::RowFlag;
         }
@@ -633,9 +632,6 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
 
         switch (source) {
-            case PrioritySource::DisplayIndex:
-                PARSER_PERF_INC(prioritySelectDisplayIndex);
-                break;
             case PrioritySource::RowFlag:
                 PARSER_PERF_INC(prioritySelectRowFlag);
                 break;
@@ -651,13 +647,26 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         if (!isUsableAlert(priorityIdx)) {
             PARSER_PERF_INC(prioritySelectInvalidChosen);
         }
+
+        if (PARSER_TRACE_ENABLED()) {
+            const char* src =
+                (source == PrioritySource::RowFlag) ? "rowFlag" :
+                (source == PrioritySource::FirstUsable) ? "firstUsable" : "firstEntry";
+            Serial.printf("[AlertPri] src=%s idx=%u cnt=%u rowFlagIdx=%d\n",
+                          src,
+                          static_cast<unsigned>(priorityIdx),
+                          static_cast<unsigned>(alertCount),
+                          priorityFromRowFlag);
+        }
         
         displayState.v1PriorityIndex = priorityIdx;
         displayState.priorityArrow = alerts[priorityIdx].direction;
-        
-        // Note: displayState.arrows already set by parseDisplayData() - shows ALL active directions
     }
-    // When alertCount == 0, DON'T clear signalBars - parseDisplayData handles it
+
+    // Combine alert mute bits with display packet's mute flag.
+    displayState.muted = displayState.muted || anyMuted;
+    displayState.hasJunkAlert = anyJunk;
+    displayState.hasPhotoAlert = anyPhoto;
 
     if (debugLogger.isEnabledFor(DebugLogCategory::Alerts)) {
         static bool hasLast = false;
@@ -717,10 +726,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
     }
 
-    // Clear assembled rows; next table rebuilds from fresh chunks.
-    chunkCount = 0;
-    alertChunkPresent.fill(false);
-    alertIndexMode = AlertIndexMode::Unknown;
+    // Match VR AlertDataProcessor behavior: clear per-count rows after a complete
+    // table publish so the next table is assembled from fresh rows.
+    clearAlertCacheForCount(receivedAlertCount);
     return true;
 }
 
@@ -746,7 +754,7 @@ AlertData PacketParser::getPriorityAlert() const {
     }
 
     // displayState.v1PriorityIndex is resolved in parseAlertData():
-    // display-packet index first, row priority bit fallback.
+    // alert-row aux0 bit7 first, then safety fallbacks.
     uint8_t idx = displayState.v1PriorityIndex;
     if (idx < alertCount) {
         return alerts[idx];

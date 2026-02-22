@@ -135,16 +135,15 @@ private:
     size_t alertCount;
     std::array<std::array<uint8_t, 8>, MAX_ALERTS> alertChunks;  // full 8-byte alert rows
     std::array<bool, MAX_ALERTS> alertChunkPresent;
-    size_t chunkCount;
-    uint8_t assemblingAlertCount;
-    AlertIndexMode alertIndexMode;
-    uint8_t displayPriorityIndexRaw;
-    bool hasDisplayPriorityIndex;
-    
+    std::array<uint8_t, MAX_ALERTS> alertChunkCountTag;
+    std::array<AlertIndexMode, MAX_ALERTS + 1> alertIndexModeByCount;
+
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);
     bool parseAlertData(const uint8_t* payload, size_t length);
     bool validatePacket(const uint8_t* data, size_t length);
+    void clearAlertCache();
+    void clearAlertCacheForCount(uint8_t count);
     
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
