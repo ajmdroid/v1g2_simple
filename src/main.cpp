@@ -223,9 +223,11 @@ static void updateBleWifiPriority(unsigned long now, bool obdServiceEnabled) {
     // a minimum hold period to avoid sub-second flapping caused by HTTP request
     // arrival racing with this check within the same loop iteration.
     constexpr unsigned long WIFI_PRIORITY_ENABLE_TIMEOUT_MS = 3500;
-    constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 8000;
-    constexpr unsigned long WIFI_PRIORITY_MIN_HOLD_MS = 5000;
+    constexpr unsigned long WIFI_PRIORITY_DISABLE_TIMEOUT_MS = 20000;
+    constexpr unsigned long WIFI_PRIORITY_MIN_HOLD_MS = 12000;
+    constexpr unsigned long OBD_BLE_CRITICAL_HOLD_MS = 8000;
     static unsigned long wifiPriorityLastTransitionMs = 0;
+    static unsigned long obdBleCriticalHoldUntilMs = 0;
     const bool wifiPriorityAllowed = bleClient.isConnected();
     const bool wifiPriorityCurrent = bleClient.isWifiPriority();
     const unsigned long uiTimeoutMs = wifiPriorityCurrent ? WIFI_PRIORITY_DISABLE_TIMEOUT_MS
@@ -239,12 +241,21 @@ static void updateBleWifiPriority(unsigned long now, bool obdServiceEnabled) {
     // when WiFi is completely off).
     const bool wifiApOn = wifiManager.isSetupModeActive();
     const OBDState obdState = obdHandler.getState();
-    const bool obdBleCritical =
+    const bool obdBleCriticalNow =
         wifiApOn &&
         obdServiceEnabled &&
         (obdHandler.isScanActive() ||
          obdState == OBDState::CONNECTING ||
          obdState == OBDState::INITIALIZING);
+    if (obdBleCriticalNow) {
+        obdBleCriticalHoldUntilMs = now + OBD_BLE_CRITICAL_HOLD_MS;
+    }
+    const bool obdBleCriticalHeld =
+        wifiApOn &&
+        obdServiceEnabled &&
+        (obdBleCriticalHoldUntilMs != 0) &&
+        (static_cast<int32_t>(obdBleCriticalHoldUntilMs - now) > 0);
+    const bool obdBleCritical = obdBleCriticalNow || obdBleCriticalHeld;
     // Keep BLE background suppression active through OBD scan/connect/init so
     // proxy advertising or scan resumes do not interrupt OBD pairing flow
     // (only relevant when WiFi AP is on and could cause radio contention).
