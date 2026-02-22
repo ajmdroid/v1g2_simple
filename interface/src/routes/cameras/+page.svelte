@@ -8,6 +8,12 @@
 
 	const STATUS_POLL_INTERVAL_MS = 3000;
 	const EVENTS_LIMIT = 24;
+	const CAMERA_ALERT_DISTANCE_FT_MIN = 500;
+	const CAMERA_ALERT_DISTANCE_FT_MAX = 2000;
+	const CAMERA_ALERT_DISTANCE_FT_DEFAULT = 1640;
+	const CAMERA_ALERT_PERSIST_SEC_MIN = 3;
+	const CAMERA_ALERT_PERSIST_SEC_MAX = 10;
+	const CAMERA_ALERT_PERSIST_SEC_DEFAULT = 5;
 
 	let loading = $state(true);
 	let refreshing = $state(false);
@@ -91,7 +97,9 @@
 
 	let runtimeConfig = $state({
 		gpsEnabled: false,
-		cameraEnabled: true
+		cameraEnabled: true,
+		cameraAlertDistanceFt: CAMERA_ALERT_DISTANCE_FT_DEFAULT,
+		cameraAlertPersistSec: CAMERA_ALERT_PERSIST_SEC_DEFAULT
 	});
 	let demoInFlight = $state(false);
 	let demoMode = $state('cycle');
@@ -143,6 +151,30 @@
 	function runtimeDatasetsLabel() {
 		const datasets = Array.isArray(catalog.runtimeDatasets) ? catalog.runtimeDatasets : [];
 		return datasets.length > 0 ? datasets.join(', ') : 'none';
+	}
+
+	function clampInt(value, min, max, fallback) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return fallback;
+		return Math.max(min, Math.min(max, Math.round(parsed)));
+	}
+
+	function clampCameraAlertDistanceFt(value) {
+		return clampInt(
+			value,
+			CAMERA_ALERT_DISTANCE_FT_MIN,
+			CAMERA_ALERT_DISTANCE_FT_MAX,
+			CAMERA_ALERT_DISTANCE_FT_DEFAULT
+		);
+	}
+
+	function clampCameraAlertPersistSec(value) {
+		return clampInt(
+			value,
+			CAMERA_ALERT_PERSIST_SEC_MIN,
+			CAMERA_ALERT_PERSIST_SEC_MAX,
+			CAMERA_ALERT_PERSIST_SEC_DEFAULT
+		);
 	}
 
 	async function fetchCameraStatus(silent = false) {
@@ -245,7 +277,9 @@
 			const data = await res.json();
 			runtimeConfig = {
 				gpsEnabled: !!data.gpsEnabled,
-				cameraEnabled: data.cameraEnabled === undefined ? true : !!data.cameraEnabled
+				cameraEnabled: data.cameraEnabled === undefined ? true : !!data.cameraEnabled,
+				cameraAlertDistanceFt: clampCameraAlertDistanceFt(data.cameraAlertDistanceFt),
+				cameraAlertPersistSec: clampCameraAlertPersistSec(data.cameraAlertPersistSec)
 			};
 		} catch (e) {
 			if (!silent) configError = 'Failed to load runtime camera settings.';
@@ -254,13 +288,15 @@
 		}
 	}
 
-	async function saveCameraEnabled(nextEnabled) {
+	async function saveCameraConfig(values) {
 		if (configSaveInFlight) return;
 		configSaveInFlight = true;
 		configError = '';
 		try {
 			const payload = new URLSearchParams();
-			payload.set('cameraEnabled', nextEnabled ? '1' : '0');
+			for (const [key, value] of Object.entries(values)) {
+				payload.set(key, String(value));
+			}
 			const res = await fetchWithTimeout('/api/settings', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -281,6 +317,21 @@
 		} finally {
 			configSaveInFlight = false;
 		}
+	}
+
+	async function saveCameraEnabled(nextEnabled) {
+		await saveCameraConfig({
+			cameraEnabled: nextEnabled ? 1 : 0
+		});
+	}
+
+	async function saveCameraBehavior() {
+		runtimeConfig.cameraAlertDistanceFt = clampCameraAlertDistanceFt(runtimeConfig.cameraAlertDistanceFt);
+		runtimeConfig.cameraAlertPersistSec = clampCameraAlertPersistSec(runtimeConfig.cameraAlertPersistSec);
+		await saveCameraConfig({
+			cameraAlertDistanceFt: runtimeConfig.cameraAlertDistanceFt,
+			cameraAlertPersistSec: runtimeConfig.cameraAlertPersistSec
+		});
 	}
 
 	function selectedDemoType() {
@@ -388,6 +439,46 @@
 						GPS is disabled. Camera index can still load, but live matching remains inactive.
 					</div>
 				{/if}
+				<div class="surface-divider space-y-2">
+					<div class="copy-mini-title">ALPR Alert Behavior</div>
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+						<label class="form-control">
+							<span class="label-text-field">Alert distance (ft)</span>
+							<input
+								type="number"
+								min={CAMERA_ALERT_DISTANCE_FT_MIN}
+								max={CAMERA_ALERT_DISTANCE_FT_MAX}
+								step="10"
+								class="input input-bordered input-sm"
+								bind:value={runtimeConfig.cameraAlertDistanceFt}
+								onchange={saveCameraBehavior}
+								disabled={configSaveInFlight}
+							/>
+							<div class="copy-caption-soft">
+								Trigger radius: {runtimeConfig.cameraAlertDistanceFt} ft
+							</div>
+						</label>
+						<label class="form-control">
+							<span class="label-text-field">Alert persistence (sec)</span>
+							<input
+								type="number"
+								min={CAMERA_ALERT_PERSIST_SEC_MIN}
+								max={CAMERA_ALERT_PERSIST_SEC_MAX}
+								step="1"
+								class="input input-bordered input-sm"
+								bind:value={runtimeConfig.cameraAlertPersistSec}
+								onchange={saveCameraBehavior}
+								disabled={configSaveInFlight}
+							/>
+							<div class="copy-caption-soft">
+								Max on-screen time and post-clear hold: {runtimeConfig.cameraAlertPersistSec}s
+							</div>
+						</label>
+					</div>
+					<div class="copy-caption-soft">
+						Fail-safe: if pass distance is never met, the banner clears at the persistence timeout.
+					</div>
+				</div>
 				<div class="surface-divider space-y-2">
 					<div class="copy-mini-title">Display Demo</div>
 					<div class="copy-caption-soft">

@@ -102,6 +102,10 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const auto& currentAlerts = parser->getAllAlerts();
 
         // Live V1 alerts own the screen/audio path and preempt camera UX.
+        lastCameraAlertActive = false;
+        lastCameraAlertType = 0;
+        cameraHoldUntilMs = 0;
+        cameraHoldType = 0;
         lastCameraVoiceStartTsMs = 0;
         lastCameraVoiceCameraId = 0;
 
@@ -178,6 +182,10 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
         if (persistSec > 0 && alertPersistence->getPersistedAlert().isValid) {
             // Persisted V1 alert remains higher priority than camera UX.
+            lastCameraAlertActive = false;
+            lastCameraAlertType = 0;
+            cameraHoldUntilMs = 0;
+            cameraHoldType = 0;
             lastCameraVoiceStartTsMs = 0;
             lastCameraVoiceCameraId = 0;
             alertPersistence->startPersistence(nowMs);
@@ -206,10 +214,41 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         } else {
             alertPersistence->clearPersistence();
             const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
-            const bool showCameraBanner =
+            uint8_t cameraPersistSec = s.cameraAlertPersistSec;
+            if (cameraPersistSec < CameraRuntimeModule::kAlertPersistSecMin) {
+                cameraPersistSec = CameraRuntimeModule::kAlertPersistSecMin;
+            } else if (cameraPersistSec > CameraRuntimeModule::kAlertPersistSecMax) {
+                cameraPersistSec = CameraRuntimeModule::kAlertPersistSecMax;
+            }
+            const uint32_t cameraPersistMs = static_cast<uint32_t>(cameraPersistSec) * 1000UL;
+            const bool cameraActive =
                 cameraStatus.enabled && cameraStatus.activeAlert.active && cameraStatus.activeAlert.type != 0;
+            const bool clearStartedThisFrame = lastCameraAlertActive && !cameraActive;
 
-            if (showCameraBanner) {
+            if (clearStartedThisFrame &&
+                lastCameraAlertType != 0 &&
+                cameraPersistMs > 0 &&
+                cameraStatus.lastClearReason != CameraClearReason::PASS_DISTANCE &&
+                cameraStatus.lastClearReason != CameraClearReason::TIMEOUT) {
+                cameraHoldType = lastCameraAlertType;
+                cameraHoldUntilMs = nowMs + cameraPersistMs;
+            }
+
+            bool holdActive = false;
+            if (cameraHoldType != 0 && cameraHoldUntilMs != 0) {
+                holdActive = static_cast<int32_t>(cameraHoldUntilMs - nowMs) > 0;
+                if (!holdActive) {
+                    cameraHoldType = 0;
+                    cameraHoldUntilMs = 0;
+                }
+            }
+
+            if (cameraActive) {
+                lastCameraAlertActive = true;
+                lastCameraAlertType = cameraStatus.activeAlert.type;
+                cameraHoldType = 0;
+                cameraHoldUntilMs = 0;
+
                 const bool shouldAnnounceCamera =
                     !state.muted &&
                     !ble->isProxyClientConnected() &&
@@ -229,7 +268,19 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
                 if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.camera", startUs, endUs);
                 recordPerfTiming("display.camera", startUs, endUs);
+            } else if (holdActive) {
+                lastCameraAlertActive = false;
+                lastCameraVoiceStartTsMs = 0;
+                lastCameraVoiceCameraId = 0;
+                if (debug) debug->notifyRenderState(true);
+                unsigned long startUs = micros();
+                display->updateCameraAlert(cameraHoldType, state.muted);
+                unsigned long endUs = micros();
+                if (debug) debug->notifyRenderState(false);
+                recordDisplayTiming("display.camera", startUs, endUs);
+                recordPerfTiming("display.camera", startUs, endUs);
             } else {
+                lastCameraAlertActive = false;
                 lastCameraVoiceStartTsMs = 0;
                 lastCameraVoiceCameraId = 0;
                 if (debug) debug->notifyRenderState(true);
