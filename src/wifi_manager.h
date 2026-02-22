@@ -87,6 +87,9 @@ public:
     static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_STA_ONLY = 7168;   // 7KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_FREE_AP_STA = 20480;     // 20KB
     static constexpr uint32_t WIFI_RUNTIME_MIN_BLOCK_AP_STA = 8192;    // 8KB (was 10KB; FreeRTOS task stacks fragment heap)
+    // AP+STA can hover a few bytes below free-heap floor from allocator churn.
+    // Ignore tiny deficits to avoid WARN/RECOVER oscillation near the boundary.
+    static constexpr uint32_t WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE = 256;
     // STA-only mode can oscillate within a few dozen bytes of the largest-block
     // threshold due to allocator churn; ignore tiny deficits to avoid WARN spam.
     static constexpr uint32_t WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE = 128;

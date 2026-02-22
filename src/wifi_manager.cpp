@@ -544,6 +544,13 @@ void WiFiManager::process() {
 
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    bool freeLow = (freeInternal < criticalFree);
+    if (freeLow && dualRadioMode) {
+        const uint32_t freeDeficit = criticalFree - freeInternal;
+        if (freeDeficit <= WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE) {
+            freeLow = false;
+        }
+    }
     bool blockLow = (largestInternal < criticalBlock);
     if (blockLow && staOnlyMode) {
         const uint32_t blockDeficit = criticalBlock - largestInternal;
@@ -551,7 +558,7 @@ void WiFiManager::process() {
             blockLow = false;
         }
     }
-    const bool lowHeap = (freeInternal < criticalFree) || blockLow;
+    const bool lowHeap = freeLow || blockLow;
 
     if (lowHeap) {
         const unsigned long now = millis();
