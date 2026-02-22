@@ -187,6 +187,34 @@ void test_lightweight_refresh_updates_frequency_and_cards() {
     TEST_ASSERT_EQUAL(1, display.lastSecondaryAlertCount);
 }
 
+void test_lightweight_refresh_does_not_fallback_from_invalid_priority() {
+    ble.setConnected(true);
+    preview.setRunning(false);
+
+    parser.state.muted = false;
+    parser.state.hasPhotoAlert = false;
+    parser.state.bogeyCounterChar = '3';
+    parser.hasAlertsFlag = true;
+    parser.priorityAlert = AlertData::create(BAND_NONE, DIR_NONE, 0, 0, 0, true, false);
+    parser.alerts = {
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24150, true, false),
+        AlertData::create(BAND_KA, DIR_REAR, 5, 0, 33820, true, false)
+    };
+
+    DisplayOrchestrationRefreshContext ctx;
+    ctx.nowMs = 500;
+    ctx.bootSplashHoldActive = false;
+    ctx.overloadLateThisLoop = true;
+    ctx.pipelineRanThisLoop = false;
+
+    const auto result = module.processLightweightRefresh(ctx);
+
+    TEST_ASSERT_FALSE(result.signalPriorityActive);
+    TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
+    TEST_ASSERT_EQUAL(0u, display.lastFrequencyMHz);
+    TEST_ASSERT_EQUAL(BAND_NONE, display.lastFrequencyBand);
+}
+
 void test_pipeline_draw_resets_frequency_timer_for_same_tick() {
     ble.setConnected(true);
     parser.setAlerts({
@@ -211,6 +239,7 @@ int main() {
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
     RUN_TEST(test_stale_lockout_badge_is_cleared_when_disconnected);
     RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
+    RUN_TEST(test_lightweight_refresh_does_not_fallback_from_invalid_priority);
     RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
     return UNITY_END();
 }
