@@ -91,6 +91,21 @@ def main() -> int:
     event_size_peak = None
     core_guard_tripped_count = 0
 
+    # Additional SLO-aligned metrics (available in debug/metrics API)
+    oversize_drops_first = None
+    oversize_drops_last = None
+    sd_max_peak = None
+    fs_max_peak = None
+    queue_high_water_peak = None
+    wifi_connect_deferred_first = None
+    wifi_connect_deferred_last = None
+    reconnects_first = None
+    reconnects_last = None
+    disconnects_first = None
+    disconnects_last = None
+    dma_free_min_val = None
+    dma_largest_min_val = None
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             for raw in f:
@@ -210,6 +225,38 @@ def main() -> int:
                 lockout = data.get("lockout")
                 if isinstance(lockout, dict) and lockout.get("coreGuardTripped") is True:
                     core_guard_tripped_count += 1
+
+                # Additional SLO-aligned metrics
+                oversize_drops = num(data.get("oversizeDrops"))
+                if oversize_drops_first is None and oversize_drops is not None:
+                    oversize_drops_first = oversize_drops
+                if oversize_drops is not None:
+                    oversize_drops_last = oversize_drops
+
+                sd_max_peak = update_max(sd_max_peak, num(data.get("sdMaxUs")))
+                fs_max_peak = update_max(fs_max_peak, num(data.get("fsMaxUs")))
+                queue_high_water_peak = update_max(queue_high_water_peak, num(data.get("queueHighWater")))
+
+                wifi_connect_deferred = num(data.get("wifiConnectDeferred"))
+                if wifi_connect_deferred_first is None and wifi_connect_deferred is not None:
+                    wifi_connect_deferred_first = wifi_connect_deferred
+                if wifi_connect_deferred is not None:
+                    wifi_connect_deferred_last = wifi_connect_deferred
+
+                reconnects_val = num(data.get("reconnects"))
+                if reconnects_first is None and reconnects_val is not None:
+                    reconnects_first = reconnects_val
+                if reconnects_val is not None:
+                    reconnects_last = reconnects_val
+
+                disconnects_val = num(data.get("disconnects"))
+                if disconnects_first is None and disconnects_val is not None:
+                    disconnects_first = disconnects_val
+                if disconnects_val is not None:
+                    disconnects_last = disconnects_val
+
+                dma_free_min_val = update_min(dma_free_min_val, num(data.get("heapDmaMin")))
+                dma_largest_min_val = update_min(dma_largest_min_val, num(data.get("heapDmaLargestMin")))
     except FileNotFoundError:
         pass
 
@@ -259,6 +306,41 @@ def main() -> int:
     emit("event_drop_last", event_drop_last)
     emit("event_size_peak", event_size_peak)
     emit("core_guard_tripped_count", core_guard_tripped_count)
+
+    # Additional SLO-aligned metrics
+    emit("oversize_drops_first", oversize_drops_first)
+    emit("oversize_drops_last", oversize_drops_last)
+    emit("sd_max_peak", sd_max_peak)
+    emit("fs_max_peak", fs_max_peak)
+    emit("queue_high_water_peak", queue_high_water_peak)
+    emit("wifi_connect_deferred_first", wifi_connect_deferred_first)
+    emit("wifi_connect_deferred_last", wifi_connect_deferred_last)
+    emit("reconnects_first", reconnects_first)
+    emit("reconnects_last", reconnects_last)
+    emit("disconnects_first", disconnects_first)
+    emit("disconnects_last", disconnects_last)
+    emit("dma_free_min", dma_free_min_val)
+    emit("dma_largest_min", dma_largest_min_val)
+
+    if oversize_drops_first is None or oversize_drops_last is None:
+        print("oversize_drops_delta=")
+    else:
+        print(f"oversize_drops_delta={oversize_drops_last - oversize_drops_first}")
+
+    if wifi_connect_deferred_first is None or wifi_connect_deferred_last is None:
+        print("wifi_connect_deferred_delta=")
+    else:
+        print(f"wifi_connect_deferred_delta={wifi_connect_deferred_last - wifi_connect_deferred_first}")
+
+    if reconnects_first is None or reconnects_last is None:
+        print("reconnects_delta=")
+    else:
+        print(f"reconnects_delta={reconnects_last - reconnects_first}")
+
+    if disconnects_first is None or disconnects_last is None:
+        print("disconnects_delta=")
+    else:
+        print(f"disconnects_delta={disconnects_last - disconnects_first}")
 
     if event_publish_first is None or event_publish_last is None:
         print("event_publish_delta=")

@@ -42,6 +42,14 @@ MAX_FLUSH_MAX_US=0
 MAX_LOOP_MAX_US=0
 MAX_WIFI_MAX_US=0
 MAX_BLE_DRAIN_MAX_US=0
+MAX_SD_MAX_US=0
+MAX_FS_MAX_US=0
+MAX_OVERSIZE_DROPS_DELTA=0
+MAX_QUEUE_HIGH_WATER=0
+MAX_WIFI_CONNECT_DEFERRED=0
+MIN_DMA_FREE=0
+MIN_DMA_LARGEST=0
+SOAK_PROFILE=""
 BASELINE_PERF_CSV=""
 BASELINE_PERF_SESSION="last-connected"
 BASELINE_LATENCY_FACTOR="1.20"
@@ -244,6 +252,70 @@ while [[ $# -gt 0 ]]; do
       MAX_BLE_DRAIN_MAX_US="$2"
       shift
       ;;
+    --max-sd-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-sd-max-us" >&2
+        exit 2
+      fi
+      MAX_SD_MAX_US="$2"
+      shift
+      ;;
+    --max-fs-max-us)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-fs-max-us" >&2
+        exit 2
+      fi
+      MAX_FS_MAX_US="$2"
+      shift
+      ;;
+    --max-oversize-drops-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-oversize-drops-delta" >&2
+        exit 2
+      fi
+      MAX_OVERSIZE_DROPS_DELTA="$2"
+      shift
+      ;;
+    --max-queue-high-water)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-queue-high-water" >&2
+        exit 2
+      fi
+      MAX_QUEUE_HIGH_WATER="$2"
+      shift
+      ;;
+    --max-wifi-connect-deferred)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-wifi-connect-deferred" >&2
+        exit 2
+      fi
+      MAX_WIFI_CONNECT_DEFERRED="$2"
+      shift
+      ;;
+    --min-dma-free)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-dma-free" >&2
+        exit 2
+      fi
+      MIN_DMA_FREE="$2"
+      shift
+      ;;
+    --min-dma-largest)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-dma-largest" >&2
+        exit 2
+      fi
+      MIN_DMA_LARGEST="$2"
+      shift
+      ;;
+    --profile)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --profile" >&2
+        exit 2
+      fi
+      SOAK_PROFILE="$2"
+      shift
+      ;;
     --baseline-perf-csv)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --baseline-perf-csv" >&2
@@ -409,6 +481,18 @@ Options:
   --camera-demo-duration-ms N
                         Camera demo duration per trigger (default: 2200)
   --camera-demo-muted   Request muted camera demo
+  --max-sd-max-us N     Maximum observed sdMaxUs peak (0 disables gate)
+  --max-fs-max-us N     Maximum observed fsMaxUs peak (0 disables gate)
+  --max-oversize-drops-delta N
+                        Maximum oversizeDrops delta across soak (default: 0)
+  --max-queue-high-water N
+                        Maximum queueHighWater observed (0 disables gate)
+  --max-wifi-connect-deferred N
+                        Maximum wifiConnectDeferred delta (0 disables gate)
+  --min-dma-free N      Minimum heapDmaMin floor (0 disables gate)
+  --min-dma-largest N   Minimum heapDmaLargestMin floor (0 disables gate)
+  --profile PROFILE     Apply PERF_SLOS.md gates: drive_wifi_ap (default when
+                        metrics enabled) or drive_wifi_off
   --dry-run             Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
@@ -423,6 +507,52 @@ EOF
   esac
   shift
 done
+
+# ------------------------------------------------------------------
+# Profile resolution: apply PERF_SLOS.md hard limits as defaults.
+# The soak test polls over WiFi so drive_wifi_ap is the realistic default.
+# CLI-provided overrides take precedence (they were set above).
+# ------------------------------------------------------------------
+if [[ -z "$SOAK_PROFILE" && -n "$METRICS_URL" ]]; then
+  SOAK_PROFILE="drive_wifi_ap"
+elif [[ -z "$SOAK_PROFILE" && -z "$METRICS_URL" ]]; then
+  SOAK_PROFILE="drive_wifi_off"
+fi
+
+if [[ -n "$SOAK_PROFILE" ]]; then
+  case "$SOAK_PROFILE" in
+    drive_wifi_off)
+      [[ "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
+      [[ "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
+      [[ "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
+      [[ "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
+      [[ "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
+      [[ "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=1000
+      [[ "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
+      [[ "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
+      [[ "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
+      # wifiConnectDeferred must be 0 for wifi-off profile
+      [[ "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=0
+      ;;
+    drive_wifi_ap)
+      [[ "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
+      [[ "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
+      [[ "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
+      [[ "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
+      [[ "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
+      [[ "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=5000
+      [[ "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
+      [[ "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
+      [[ "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
+      # wifiConnectDeferred <= 5 for wifi-ap profile
+      [[ "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=5
+      ;;
+    *)
+      echo "Unknown --profile '$SOAK_PROFILE'. Use 'drive_wifi_off' or 'drive_wifi_ap'." >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if ! [[ "$DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DURATION_SECONDS" -lt 1 ]]; then
   echo "Invalid --duration-seconds value '$DURATION_SECONDS' (expected positive integer)." >&2
@@ -469,7 +599,14 @@ for gate_var in \
   MAX_FLUSH_MAX_US \
   MAX_LOOP_MAX_US \
   MAX_WIFI_MAX_US \
-  MAX_BLE_DRAIN_MAX_US
+  MAX_BLE_DRAIN_MAX_US \
+  MAX_SD_MAX_US \
+  MAX_FS_MAX_US \
+  MAX_OVERSIZE_DROPS_DELTA \
+  MAX_QUEUE_HIGH_WATER \
+  MAX_WIFI_CONNECT_DEFERRED \
+  MIN_DMA_FREE \
+  MIN_DMA_LARGEST
 do
   gate_val="${!gate_var}"
   if ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
@@ -754,6 +891,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "==> Dry run (no flash, no soak)"
   echo "    env: $ENV_NAME"
   echo "    port: ${TEST_PORT:-auto-detect (skipped in dry-run)}"
+  echo "    profile: ${SOAK_PROFILE:-none}"
   echo "    duration: ${DURATION_SECONDS}s"
   echo "    poll: ${POLL_SECONDS}s"
   echo "    serial baud: ${SERIAL_BAUD}"
@@ -762,8 +900,9 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    panic url: ${PANIC_URL:-disabled}"
   echo "    metrics required: ${METRICS_REQUIRED}"
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
-  echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA}"
-  echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} (0 disables)"
+  echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
+  echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)"
+  echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables)"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
   echo "    camera drive: enabled=${CAMERA_DRIVE_ENABLED} url=${CAMERA_DEMO_URL:-disabled} interval=${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}"
   echo "    out dir: $OUT_DIR"
@@ -813,6 +952,7 @@ PY
 echo "==> Real firmware soak starting" | tee -a "$RUN_LOG"
 echo "    env: $ENV_NAME" | tee -a "$RUN_LOG"
 echo "    port: $TEST_PORT" | tee -a "$RUN_LOG"
+echo "    profile: ${SOAK_PROFILE:-none}" | tee -a "$RUN_LOG"
 echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
@@ -821,8 +961,9 @@ echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
 fi
-echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA}" | tee -a "$RUN_LOG"
-echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
+echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}" | tee -a "$RUN_LOG"
+echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
+echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables)" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
   echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
   echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
@@ -1106,6 +1247,15 @@ event_publish_delta=""
 event_drop_delta=""
 event_size_peak=""
 core_guard_tripped_count=""
+oversize_drops_delta=""
+sd_max_peak=""
+fs_max_peak=""
+queue_high_water_peak=""
+wifi_connect_deferred_delta=""
+reconnects_delta=""
+disconnects_delta=""
+dma_free_min_parsed=""
+dma_largest_min_parsed=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -1150,6 +1300,15 @@ while IFS='=' read -r key value; do
     event_drop_delta) event_drop_delta="$value" ;;
     event_size_peak) event_size_peak="$value" ;;
     core_guard_tripped_count) core_guard_tripped_count="$value" ;;
+    oversize_drops_delta) oversize_drops_delta="$value" ;;
+    sd_max_peak) sd_max_peak="$value" ;;
+    fs_max_peak) fs_max_peak="$value" ;;
+    queue_high_water_peak) queue_high_water_peak="$value" ;;
+    wifi_connect_deferred_delta) wifi_connect_deferred_delta="$value" ;;
+    reconnects_delta) reconnects_delta="$value" ;;
+    disconnects_delta) disconnects_delta="$value" ;;
+    dma_free_min) dma_free_min_parsed="$value" ;;
+    dma_largest_min) dma_largest_min_parsed="$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -1236,6 +1395,16 @@ gate_serial_panic_fail=0
 gate_panic_endpoint_fail=0
 gate_display_drive_fail=0
 gate_camera_drive_fail=0
+gate_oversize_drop_fail=0
+gate_sd_max_fail=0
+gate_fs_max_fail=0
+gate_queue_high_water_fail=0
+gate_wifi_connect_deferred_fail=0
+gate_dma_free_fail=0
+gate_dma_largest_fail=0
+
+# Advisory SLO tracking (warn-only, do not cause FAIL)
+advisory_warnings=()
 
 if [[ "$monitor_died_early" -eq 1 ]]; then
   mark_gate_fail gate_serial_monitor_fail "Serial capture exited during soak."
@@ -1319,6 +1488,78 @@ if [[ -n "$METRICS_URL" ]]; then
         mark_gate_fail gate_ble_drain_fail "bleDrainMaxUs peak ${ble_drain_max_peak} above max ${MAX_BLE_DRAIN_MAX_US}."
       fi
     fi
+    if [[ "$MAX_SD_MAX_US" -gt 0 ]]; then
+      if ! is_uint "$sd_max_peak"; then
+        mark_gate_fail gate_sd_max_fail "sdMaxUs peak ${sd_max_peak:-n/a} above max ${MAX_SD_MAX_US}."
+      elif [[ "$sd_max_peak" -gt "$MAX_SD_MAX_US" ]]; then
+        mark_gate_fail gate_sd_max_fail "sdMaxUs peak ${sd_max_peak} above max ${MAX_SD_MAX_US}."
+      fi
+    fi
+    if [[ "$MAX_FS_MAX_US" -gt 0 ]]; then
+      if ! is_uint "$fs_max_peak"; then
+        mark_gate_fail gate_fs_max_fail "fsMaxUs peak ${fs_max_peak:-n/a} above max ${MAX_FS_MAX_US}."
+      elif [[ "$fs_max_peak" -gt "$MAX_FS_MAX_US" ]]; then
+        mark_gate_fail gate_fs_max_fail "fsMaxUs peak ${fs_max_peak} above max ${MAX_FS_MAX_US}."
+      fi
+    fi
+
+    # oversizeDrops must be zero (packet framing safety)
+    if is_uint "$oversize_drops_delta" && [[ "$oversize_drops_delta" -gt "$MAX_OVERSIZE_DROPS_DELTA" ]]; then
+      mark_gate_fail gate_oversize_drop_fail "oversizeDrops delta ${oversize_drops_delta} above max ${MAX_OVERSIZE_DROPS_DELTA}."
+    fi
+
+    # queueHighWater (resource gate, 0 disables)
+    if [[ "$MAX_QUEUE_HIGH_WATER" -gt 0 ]]; then
+      if is_uint "$queue_high_water_peak" && [[ "$queue_high_water_peak" -gt "$MAX_QUEUE_HIGH_WATER" ]]; then
+        mark_gate_fail gate_queue_high_water_fail "queueHighWater peak ${queue_high_water_peak} above max ${MAX_QUEUE_HIGH_WATER}."
+      fi
+    fi
+
+    # wifiConnectDeferred (profile-specific, 0 gate means must be exactly 0 for wifi-off)
+    if [[ -n "$SOAK_PROFILE" ]]; then
+      if is_uint "$wifi_connect_deferred_delta"; then
+        if [[ "$SOAK_PROFILE" == "drive_wifi_off" && "$wifi_connect_deferred_delta" -gt 0 ]]; then
+          mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} must be 0 for profile drive_wifi_off."
+        elif [[ "$MAX_WIFI_CONNECT_DEFERRED" -gt 0 && "$wifi_connect_deferred_delta" -gt "$MAX_WIFI_CONNECT_DEFERRED" ]]; then
+          mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} above max ${MAX_WIFI_CONNECT_DEFERRED}."
+        fi
+      fi
+    fi
+
+    # DMA memory floors (0 disables)
+    if [[ "$MIN_DMA_FREE" -gt 0 ]]; then
+      if is_uint "$dma_free_min_parsed" && [[ "$dma_free_min_parsed" -lt "$MIN_DMA_FREE" ]]; then
+        mark_gate_fail gate_dma_free_fail "heapDmaMin ${dma_free_min_parsed} below floor ${MIN_DMA_FREE}."
+      fi
+    fi
+    if [[ "$MIN_DMA_LARGEST" -gt 0 ]]; then
+      if is_uint "$dma_largest_min_parsed" && [[ "$dma_largest_min_parsed" -lt "$MIN_DMA_LARGEST" ]]; then
+        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed} below floor ${MIN_DMA_LARGEST}."
+      fi
+    fi
+
+    # ----- Advisory SLOs (warn-only, do not cause FAIL) -----
+    if is_uint "$display_updates_delta" && is_uint "$display_skips_delta"; then
+      display_total=$((display_updates_delta + display_skips_delta))
+      if [[ "$display_total" -gt 0 ]]; then
+        display_skip_pct=$((display_skips_delta * 100 / display_total))
+        if [[ "$display_skip_pct" -gt 20 ]]; then
+          advisory_warnings+=("displaySkipPct=${display_skip_pct}% exceeds 20% advisory limit.")
+        fi
+      fi
+      if [[ "$soak_elapsed_s" -gt 0 ]]; then
+        display_skips_per_min=$((display_skips_delta * 60 / soak_elapsed_s))
+        if [[ "$display_skips_per_min" -gt 120 ]]; then
+          advisory_warnings+=("displaySkipsPerMin=${display_skips_per_min} exceeds 120 advisory limit.")
+        fi
+      fi
+    fi
+    if is_uint "$reconnects_delta" && [[ "$reconnects_delta" -gt 2 ]]; then
+      advisory_warnings+=("reconnects delta=${reconnects_delta} exceeds advisory limit of 2.")
+    fi
+    if is_uint "$disconnects_delta" && [[ "$disconnects_delta" -gt 2 ]]; then
+      advisory_warnings+=("disconnects delta=${disconnects_delta} exceeds advisory limit of 2.")
+    fi
   fi
 fi
 
@@ -1362,10 +1603,10 @@ if [[ "$result" == "FAIL" ]]; then
   elif [[ "$gate_serial_monitor_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
     diagnosis_bucket="USB Serial Capture Failure"
     diagnosis_next_action="Stabilize /dev/cu.usbmodem capture (close other monitors/cables), rerun soak."
-  elif [[ "$gate_parse_fail_fail" -eq 1 || "$gate_queue_drop_fail" -eq 1 || "$gate_perf_drop_fail" -eq 1 || "$gate_event_drop_fail" -eq 1 ]]; then
+  elif [[ "$gate_parse_fail_fail" -eq 1 || "$gate_queue_drop_fail" -eq 1 || "$gate_perf_drop_fail" -eq 1 || "$gate_event_drop_fail" -eq 1 || "$gate_oversize_drop_fail" -eq 1 ]]; then
     diagnosis_bucket="Core Data-Path Integrity Regression"
     diagnosis_next_action="Inspect parser/queue/event counters around failing timestamps and bisect recent BLE/parser changes."
-  elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 ]]; then
+  elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 || "$gate_sd_max_fail" -eq 1 || "$gate_fs_max_fail" -eq 1 ]]; then
     if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
       diagnosis_bucket="Stress Latency Regression"
       diagnosis_next_action="Run paired tests: core (no stress drivers) and stress (drivers on). Optimize only the delta introduced by stress paths."
@@ -1390,6 +1631,7 @@ fi
   echo ""
   echo "- Result: **$result**"
   echo "- Firmware env: \`$ENV_NAME\`"
+  echo "- Profile: \`${SOAK_PROFILE:-none}\`"
   echo "- Port: \`$MONITOR_PORT\`"
   echo "- Soak start (UTC): $soak_start_utc"
   echo "- Soak end (UTC): $soak_end_utc"
@@ -1452,8 +1694,27 @@ fi
   echo "- Peak loopMaxUs: ${loop_max_peak:-n/a} (max gate ${MAX_LOOP_MAX_US})"
   echo "- Peak wifiMaxUs: ${wifi_max_peak:-n/a} (max gate ${MAX_WIFI_MAX_US})"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
+  echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
+  echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
+  echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
+  echo "- queueHighWater peak: ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
+  echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED})"
+  echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
+  echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"
+  echo "- reconnects delta: ${reconnects_delta:-n/a}"
+  echo "- disconnects delta: ${disconnects_delta:-n/a}"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
   echo "- Lockout core guard tripped count: ${core_guard_tripped_count:-n/a}"
+  echo ""
+  echo "## Advisory SLO Warnings"
+  echo ""
+  if [[ ${#advisory_warnings[@]} -gt 0 ]]; then
+    for warn in "${advisory_warnings[@]}"; do
+      echo "  - [ADVISORY] ${warn}"
+    done
+  else
+    echo "  - none"
+  fi
   echo ""
   echo "## Baseline-Derived Gates"
   echo ""
