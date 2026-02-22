@@ -449,6 +449,12 @@ private:
     unsigned long proxyAdvertisingRetryAtMs = 0;
     static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 60000;
     static constexpr unsigned long PROXY_ADVERTISING_RETRY_MS = 120000;
+    // If no proxy client connects within this boot-time window, disable proxy
+    // advertising for the rest of the boot to protect DMA headroom.
+    static constexpr unsigned long PROXY_NO_CLIENT_TIMEOUT_MS = 180000;  // 3 minutes
+    unsigned long proxyNoClientDeadlineMs = 0;
+    bool proxyNoClientTimeoutLatched = false;
+    bool proxyClientConnectedOnceThisBoot = false;
     
     // Write verification state
     bool verifyPending = false;

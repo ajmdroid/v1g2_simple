@@ -684,6 +684,10 @@ bool V1BLEClient::isProxyClientConnected() {
 
 void V1BLEClient::setProxyClientConnected(bool connected) {
     proxyClientConnected = connected;
+    if (connected) {
+        proxyClientConnectedOnceThisBoot = true;
+        proxyNoClientDeadlineMs = 0;
+    }
 }
 
 void V1BLEClient::onDataReceived(DataCallback callback) {
@@ -844,8 +848,27 @@ void V1BLEClient::process() {
         }
     }
 
+    // Enforce boot-lifetime proxy no-client timeout.
+    if (proxyEnabled && proxyServerInitialized && !proxyNoClientTimeoutLatched &&
+        !proxyClientConnectedOnceThisBoot && proxyNoClientDeadlineMs != 0) {
+        const unsigned long nowMs = millis();
+        if (static_cast<int32_t>(nowMs - proxyNoClientDeadlineMs) >= 0) {
+            proxyNoClientTimeoutLatched = true;
+            proxyAdvertisingStartMs = 0;
+            proxyAdvertisingWindowStartMs = 0;
+            proxyAdvertisingRetryAtMs = 0;
+            NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+            if (pAdv && pAdv->isAdvertising()) {
+                NimBLEDevice::stopAdvertising();
+            }
+            Serial.printf("[BLE] Proxy disabled until reboot (no client connected within %lus)\n",
+                          static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
+        }
+    }
+
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
-    if (proxyAdvertisingStartMs != 0 && millis() >= proxyAdvertisingStartMs) {
+    if (!proxyNoClientTimeoutLatched &&
+        proxyAdvertisingStartMs != 0 && millis() >= proxyAdvertisingStartMs) {
         proxyAdvertisingStartMs = 0;  // Clear pending flag
         
         if (isConnected() && proxyEnabled && proxyServerInitialized) {
@@ -856,7 +879,8 @@ void V1BLEClient::process() {
 
     // Throttle idle proxy advertising while STA is connected:
     // advertise for a bounded window, then pause before retrying.
-    if (isConnected() && proxyEnabled && proxyServerInitialized && !wifiPriorityMode) {
+    if (isConnected() && proxyEnabled && proxyServerInitialized &&
+        !wifiPriorityMode && !proxyNoClientTimeoutLatched) {
         const bool staConnected = (WiFi.status() == WL_CONNECTED);
         const bool proxyConnected = proxyClientConnected.load();
         NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
@@ -1159,7 +1183,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         if (shouldLog) Serial.println("[BLE] WiFi priority DISABLED - resuming normal BLE operation");
         
         // Resume proxy advertising if we're connected and proxy is enabled
-        if (isConnected() && proxyEnabled && proxyServerInitialized) {
+        if (isConnected() && proxyEnabled && proxyServerInitialized && !proxyNoClientTimeoutLatched) {
             if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
             proxyAdvertisingStartMs = millis() + 500;

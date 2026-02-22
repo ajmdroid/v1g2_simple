@@ -28,7 +28,7 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
     pServer->updateConnParams(connHandle, 12, 36, 0, 400);
     
     if (bleClient) {
-        bleClient->proxyClientConnected = true;
+        bleClient->setProxyClientConnected(true);
         bleClient->proxyAdvertisingWindowStartMs = 0;
         bleClient->proxyAdvertisingRetryAtMs = 0;
     }
@@ -239,6 +239,16 @@ void V1BLEClient::startProxyAdvertising() {
 
     if (wifiPriorityMode) {
         return;
+    }
+
+    if (proxyNoClientTimeoutLatched) {
+        return;
+    }
+
+    if (!proxyClientConnectedOnceThisBoot && proxyNoClientDeadlineMs == 0) {
+        proxyNoClientDeadlineMs = millis() + PROXY_NO_CLIENT_TIMEOUT_MS;
+        Serial.printf("[BLE] Proxy no-client timeout armed (%lus)\n",
+                      static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
     }
     
     // Don't restart if client already connected
