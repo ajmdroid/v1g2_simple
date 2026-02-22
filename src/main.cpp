@@ -950,7 +950,12 @@ void loop() {
     if (!wifiAutoStartDone && loopSettings.enableWifiAtBoot) {
         constexpr uint32_t WIFI_SETTLE_MS  = 3000;
         constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
-        const uint32_t msSinceV1 = (v1ConnectedAtMs > 0) ? (now - v1ConnectedAtMs) : 0;
+        // `now` is captured near loop start; V1 connect callback can stamp a slightly
+        // newer `v1ConnectedAtMs` later in the same loop. Saturate to avoid underflow.
+        const uint32_t msSinceV1 =
+            (v1ConnectedAtMs > 0 && now >= v1ConnectedAtMs)
+                ? static_cast<uint32_t>(now - v1ConnectedAtMs)
+                : 0;
         const bool canDma = wifiManager.canStartSetupMode(nullptr, nullptr);
         if (WifiBootPolicy::shouldAutoStartWifi(
                 true, false, bleClient.isConnected(),
