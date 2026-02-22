@@ -42,7 +42,8 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     if (!hasAlerts && state.activeBands != BAND_NONE) {
         unsigned long gapNow = nowMs;
         if (gapNow - lastAlertGapRecoverMs > 50) {
-            parser->resetAlertAssembly();
+            // Preserve partially assembled alert rows; parser freshness/timeout
+            // guards handle stale data without discarding in-progress tables.
             ble->requestAlertData();
             lastAlertGapRecoverMs = gapNow;
         }
