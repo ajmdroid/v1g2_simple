@@ -42,7 +42,8 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         const char c0 = static_cast<char>(name[0] | 0x20);  // lowercase
         const char c1 = static_cast<char>(name[1] | 0x20);
         const char c2 = static_cast<char>(name[2] | 0x20);
-        nameLooksV1 = (c0 == 'v' && c1 == '1' && (c2 == 'g' || c2 == '-'));
+        // Field variants: V1G..., V1C..., and V1-... have all been observed.
+        nameLooksV1 = (c0 == 'v' && c1 == '1' && (c2 == 'g' || c2 == 'c' || c2 == '-'));
     }
     static const NimBLEUUID kV1ServiceUuid(V1_SERVICE_UUID);
     const bool serviceLooksV1 = advertisedDevice->isAdvertisingService(kV1ServiceUuid);

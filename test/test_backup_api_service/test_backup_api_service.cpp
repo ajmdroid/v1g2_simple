@@ -14,6 +14,7 @@ unsigned long mockMicros = 0;
 namespace {
 
 int sendBackupCalls = 0;
+int handleBackupNowCalls = 0;
 int handleRestoreCalls = 0;
 
 bool responseContains(const WebServer& server, const char* needle) {
@@ -29,6 +30,11 @@ void sendBackup(WebServer& server) {
     server.send(200, "application/json", "{\"route\":\"backup\"}");
 }
 
+void handleBackupNow(WebServer& server) {
+    handleBackupNowCalls++;
+    server.send(200, "application/json", "{\"route\":\"backup-now\"}");
+}
+
 void handleRestore(WebServer& server) {
     handleRestoreCalls++;
     server.send(200, "application/json", "{\"route\":\"restore\"}");
@@ -40,6 +46,7 @@ void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
     sendBackupCalls = 0;
+    handleBackupNowCalls = 0;
     handleRestoreCalls = 0;
 }
 
@@ -78,6 +85,45 @@ void test_handle_api_restore_rate_limited_short_circuits() {
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
+void test_handle_api_backup_now_rate_limited_short_circuits() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    BackupApiService::handleApiBackupNow(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(0, handleBackupNowCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_backup_now_marks_ui_activity_and_delegates_when_allowed() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+    int uiActivityCalls = 0;
+
+    BackupApiService::handleApiBackupNow(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        },
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, handleBackupNowCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"backup-now\""));
+}
+
 void test_handle_api_restore_marks_ui_activity_and_delegates_when_allowed() {
     WebServer server(80);
     int rateLimitCalls = 0;
@@ -102,6 +148,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_api_backup_marks_ui_activity_and_delegates);
     RUN_TEST(test_handle_api_restore_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_backup_now_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_backup_now_marks_ui_activity_and_delegates_when_allowed);
     RUN_TEST(test_handle_api_restore_marks_ui_activity_and_delegates_when_allowed);
     return UNITY_END();
 }

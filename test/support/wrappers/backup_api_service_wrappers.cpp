@@ -4,6 +4,7 @@ namespace BackupApiService {
 
 // Internal implementation entrypoints defined in backup_api_service.cpp.
 void sendBackup(WebServer& server);
+void handleBackupNow(WebServer& server);
 void handleRestore(WebServer& server);
 
 void handleApiBackup(WebServer& server,
@@ -12,6 +13,16 @@ void handleApiBackup(WebServer& server,
         markUiActivity();
     }
     sendBackup(server);
+}
+
+void handleApiBackupNow(WebServer& server,
+                        const std::function<bool()>& checkRateLimit,
+                        const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleBackupNow(server);
 }
 
 void handleApiRestore(WebServer& server,

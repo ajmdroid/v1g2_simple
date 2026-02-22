@@ -5,6 +5,7 @@
 
 #include "../../settings.h"
 #include "../../settings_sanitize.h"
+#include "../../storage_manager.h"
 #include "../../v1_profiles.h"
 #include "../../obd_handler.h"
 #include "../gps/gps_runtime_module.h"
@@ -226,12 +227,36 @@ static void sendBackup(WebServer& server) {
     server.send(200, "application/json", json);
 }
 
+static void handleBackupNow(WebServer& server) {
+    Serial.println("[HTTP] POST /api/settings/backup-now");
+
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        server.send(503, "application/json",
+                    "{\"success\":false,\"error\":\"SD card unavailable\"}");
+        return;
+    }
+
+    settingsManager.backupToSD();
+    server.send(200, "application/json",
+                "{\"success\":true,\"message\":\"Backup written to SD\"}");
+}
+
 void handleApiBackup(WebServer& server,
                      const std::function<void()>& markUiActivity) {
     if (markUiActivity) {
         markUiActivity();
     }
     sendBackup(server);
+}
+
+void handleApiBackupNow(WebServer& server,
+                        const std::function<bool()>& checkRateLimit,
+                        const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    handleBackupNow(server);
 }
 
 static void handleRestore(WebServer& server) {

@@ -191,6 +191,46 @@ bool parseBoolVariant(const JsonVariantConst& value, bool& out) {
     return false;
 }
 
+bool backupFieldMatchesBool(const JsonDocument& doc, const char* key, bool expected) {
+    bool parsed = false;
+    return parseBoolVariant(doc[key], parsed) && parsed == expected;
+}
+
+bool backupFieldMatchesInt(const JsonDocument& doc, const char* key, int expected) {
+    return doc[key].is<int>() && doc[key].as<int>() == expected;
+}
+
+bool backupFieldMatchesString(const JsonDocument& doc, const char* key, const String& expected) {
+    return doc[key].is<const char*>() && String(doc[key].as<const char*>()) == expected;
+}
+
+bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& current) {
+    // Core fields that should track one-for-one between healthy NVS and SD backup.
+    return
+        backupFieldMatchesBool(doc, "enableWifi", current.enableWifi) &&
+        backupFieldMatchesInt(doc, "wifiMode", static_cast<int>(current.wifiMode)) &&
+        backupFieldMatchesBool(doc, "wifiClientEnabled", current.wifiClientEnabled) &&
+        backupFieldMatchesString(doc, "wifiClientSSID", current.wifiClientSSID) &&
+        backupFieldMatchesBool(doc, "proxyBLE", current.proxyBLE) &&
+        backupFieldMatchesString(doc, "proxyName", current.proxyName) &&
+        backupFieldMatchesBool(doc, "obdEnabled", current.obdEnabled) &&
+        backupFieldMatchesBool(doc, "obdVwDataEnabled", current.obdVwDataEnabled) &&
+        backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
+        backupFieldMatchesBool(doc, "cameraEnabled", current.cameraEnabled) &&
+        backupFieldMatchesInt(doc, "cameraAlertDistanceFt", current.cameraAlertDistanceFt) &&
+        backupFieldMatchesInt(doc, "cameraAlertPersistSec", current.cameraAlertPersistSec) &&
+        backupFieldMatchesInt(doc, "brightness", current.brightness) &&
+        backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
+        backupFieldMatchesBool(doc, "autoPushEnabled", current.autoPushEnabled) &&
+        backupFieldMatchesInt(doc, "activeSlot", current.activeSlot) &&
+        backupFieldMatchesString(doc, "slot0ProfileName", current.slot0_default.profileName) &&
+        backupFieldMatchesInt(doc, "slot0Mode", current.slot0_default.mode) &&
+        backupFieldMatchesString(doc, "slot1ProfileName", current.slot1_highway.profileName) &&
+        backupFieldMatchesInt(doc, "slot1Mode", current.slot1_highway.mode) &&
+        backupFieldMatchesString(doc, "slot2ProfileName", current.slot2_comfort.profileName) &&
+        backupFieldMatchesInt(doc, "slot2Mode", current.slot2_comfort.mode);
+}
+
 bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
     if (!fs) {
         return false;
@@ -330,10 +370,14 @@ bool SettingsManager::checkAndRestoreFromSD() {
                 bestBackupDoc["cameraEnabled"].isNull() ||
                 bestBackupDoc["displayStyle"].isNull() ||
                 bestBackupDoc["brightness"].isNull();
-            if (backupVersion < SD_BACKUP_VERSION || missingCoreFields) {
+            const bool backupOutOfSync = !backupAppearsInSyncWithNvs(bestBackupDoc, settings);
+            if (backupVersion < SD_BACKUP_VERSION || missingCoreFields || backupOutOfSync) {
                 Serial.printf("[Settings] Refreshing SD backup schema (path=%s version=%d)\n",
                               bestBackupPath ? bestBackupPath : "(unknown)",
                               backupVersion);
+                if (backupOutOfSync) {
+                    Serial.println("[Settings] SD backup differs from healthy NVS; refreshing backup content");
+                }
                 backupToSD();
             }
         }
@@ -386,8 +430,9 @@ bool SettingsManager::checkNeedsRestore() {
     }
     
     // Also check if brightness is still at exact default - common indicator of wipe
-    // combined with missing settingsVer (which would be >= 2 if properly saved)
-    if (settingsVer <= 1 && settings.brightness == 200) {
+    // combined with missing settingsVer (which would be >= 2 if properly saved).
+    // Only apply this heuristic when the commit marker is missing.
+    if (nvsMarker == 0 && settingsVer <= 1 && settings.brightness == 200) {
         Serial.println("[Settings] NVS appears default (v1 migration + default brightness)");
         return true;
     }
@@ -399,12 +444,8 @@ bool SettingsManager::checkNeedsRestore() {
         return true;
     }
 
-    // nvsValid is written by modern atomic saves and should never co-exist with
-    // a missing/legacy settings version marker.
-    if (nvsMarker > 0 && settingsVer <= 1) {
-        Serial.println("[Settings] NVS marker present but settingsVer is missing/legacy");
-        return true;
-    }
+    // nvsValid means a full write completed; tolerate legacy/missing settingsVer
+    // to avoid clobbering valid user settings with an older SD backup.
 
     // Detect incomplete writes: settingsVer is the FIRST key written and
     // nvsValid is the LAST.  If settingsVer exists but nvsValid does not,

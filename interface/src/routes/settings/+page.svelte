@@ -20,6 +20,7 @@
 	let message = $state(null);
 	let restoreFile = $state(null);
 	let restoring = $state(false);
+	let backingUpNow = $state(false);
 	
 	// WiFi client (STA) state
 	let wifiStatus = $state({
@@ -414,6 +415,23 @@
 			message = { type: 'error', text: 'Connection error' };
 		}
 	}
+
+	async function backupNowToSd() {
+		backingUpNow = true;
+		try {
+			const res = await fetchWithTimeout('/api/settings/backup-now', { method: 'POST' });
+			const data = await res.json().catch(() => ({}));
+			if (res.ok && data.success) {
+				message = { type: 'success', text: data.message || 'Backup saved to SD card.' };
+			} else {
+				message = { type: 'error', text: data.error || 'Failed to save backup to SD' };
+			}
+		} catch (e) {
+			message = { type: 'error', text: 'Connection error' };
+		} finally {
+			backingUpNow = false;
+		}
+	}
 	
 	function handleFileSelect(e) {
 		const file = e.target.files[0];
@@ -778,27 +796,36 @@
 				/>
 				
 					<div class="flex flex-col gap-3">
+						<button class="btn btn-primary btn-sm" onclick={backupNowToSd} disabled={backingUpNow}>
+							{#if backingUpNow}
+								<span class="loading loading-spinner loading-sm"></span>
+							{/if}
+							Backup to SD Now
+						</button>
+
+						<div class="divider my-0">OR</div>
+
 						<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
 							Download Backup
 						</button>
-					
-					<div class="divider my-0">OR</div>
-					
-					<input 
-						type="file" 
-						accept=".json,application/json"
-						class="file-input file-input-bordered file-input-sm w-full"
-						onchange={handleFileSelect}
-					/>
-					
-						<button 
-							class="btn btn-warning btn-sm" 
+
+						<div class="divider my-0">OR</div>
+
+						<input
+							type="file"
+							accept=".json,application/json"
+							class="file-input file-input-bordered file-input-sm w-full"
+							onchange={handleFileSelect}
+						/>
+
+						<button
+							class="btn btn-warning btn-sm"
 							onclick={restoreBackup}
 							disabled={!restoreFile || restoring}
 						>
-						{#if restoring}
-							<span class="loading loading-spinner loading-sm"></span>
-						{/if}
+							{#if restoring}
+								<span class="loading loading-spinner loading-sm"></span>
+							{/if}
 							Restore from Backup
 						</button>
 					</div>

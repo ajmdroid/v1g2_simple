@@ -493,6 +493,9 @@ bool BatteryManager::powerOff() {
     // Step 1: Save settings to ensure state is preserved
     Serial.println("[Battery] Saving settings...");
     settingsManager.save();
+    // Force a final SD snapshot even if NVS persistence failed during save().
+    Serial.println("[Battery] Forcing final SD settings backup...");
+    settingsManager.backupToSD();
     
     // Step 1b: Flush dirty lockout zones and learner candidates to storage
     if (storageManager.isReady()) {

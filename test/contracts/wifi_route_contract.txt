@@ -39,4 +39,5 @@ HTTP_POST /api/obd/forget
 HTTP_POST /api/obd/remembered/autoconnect
 HTTP_POST /api/obd/scan
 HTTP_POST /api/obd/scan/stop
+HTTP_POST /api/settings/backup-now
 HTTP_POST /api/settings/restore

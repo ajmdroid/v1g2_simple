@@ -304,6 +304,12 @@ void WiFiManager::setupWebServer() {
             server,
             [this]() { markUiActivity(); });
     });
+    server.on("/api/settings/backup-now", HTTP_POST, [this, rateLimitCallback]() {
+        BackupApiService::handleApiBackupNow(
+            server,
+            rateLimitCallback,
+            [this]() { markUiActivity(); });
+    });
     server.on("/api/settings/restore", HTTP_POST, [this, rateLimitCallback]() {
         BackupApiService::handleApiRestore(
             server,

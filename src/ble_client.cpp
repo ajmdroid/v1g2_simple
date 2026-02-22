@@ -572,8 +572,9 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setInterval(160);  // 100ms interval 
     pScan->setWindow(120);    // 75ms window - 75% duty cycle (was 50%)
     pScan->setMaxResults(0);  // Unlimited results
-    // Filter duplicate advertisements to reduce scan load and radio time
-    pScan->setDuplicateFilter(true);
+    // Reliability first: allow duplicate reports so we don't miss a late name/scan-response
+    // update under WiFi coexistence stress.
+    pScan->setDuplicateFilter(false);
     
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
     lastScanStart = millis();
