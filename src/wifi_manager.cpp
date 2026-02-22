@@ -276,6 +276,7 @@ bool WiFiManager::startSetupMode() {
 
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
+    lastAnyClientSeenMs = setupModeStartTime;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
     lastMaintenanceFastMs = 0;
@@ -407,6 +408,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
+    lastAnyClientSeenMs = 0;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
     lastMaintenanceFastMs = 0;
@@ -584,12 +586,36 @@ void WiFiManager::process() {
         lowDmaSinceMs = 0;
     }
     
+    const unsigned long now = millis();
+    int apClientCount = 0;
+    if (isSetupModeActive()) {
+        if (lastApStaCountPollMs == 0 ||
+            (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
+            cachedApStaCount = WiFi.softAPgetStationNum();
+            lastApStaCountPollMs = now;
+        }
+        apClientCount = cachedApStaCount;
+    } else {
+        cachedApStaCount = 0;
+    }
+
+    const bool staConnectedNow =
+        (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
+    if (staConnectedNow || apClientCount > 0) {
+        lastAnyClientSeenMs = now;
+    } else if (lastAnyClientSeenMs != 0 &&
+               (now - lastAnyClientSeenMs) >= WIFI_NO_CLIENT_SHUTDOWN_MS) {
+        Serial.printf("[WiFi] No AP/STA clients for %lu ms - stopping WiFi\n",
+                      static_cast<unsigned long>(WIFI_NO_CLIENT_SHUTDOWN_MS));
+        stopSetupMode(false, "no_clients");
+        return;
+    }
+
     // Handle web requests only while AP interface is enabled.
     if (isSetupModeActive()) {
         server.handleClient();
     }
 
-    const unsigned long now = millis();
     if (lastMaintenanceFastMs == 0 ||
         (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {
         processWifiClientConnectPhase();

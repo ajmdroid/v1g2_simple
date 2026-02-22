@@ -201,6 +201,11 @@ private:
     // Low-DMA protection state (prevents rapid restart loops under heap pressure)
     unsigned long lowDmaCooldownUntilMs = 0;
     unsigned long lowDmaSinceMs = 0;
+    // If neither STA nor AP has any connected client for long enough, shut WiFi
+    // down until manual restart to preserve core runtime headroom.
+    static constexpr unsigned long WIFI_NO_CLIENT_SHUTDOWN_MS = 60000;
+    unsigned long lastAnyClientSeenMs = 0;
+
     // Rate limiting
     static constexpr int RATE_LIMIT_WINDOW_MS = 60000;  // 60 second window (1 minute)
     static constexpr int RATE_LIMIT_MAX_REQUESTS = 120; // Max 120 requests per minute

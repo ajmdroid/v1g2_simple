@@ -611,7 +611,7 @@ void setup() {
 
     // Touch/UI module callbacks
     TouchUiModule::Callbacks touchCbs{
-        .isWifiSetupActive = [] { return wifiManager.isSetupModeActive(); },
+        .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
         .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
         .startWifi = [] { getWifiOrchestrator().startWifi(); },
         .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
