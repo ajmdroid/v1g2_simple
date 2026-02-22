@@ -48,7 +48,9 @@
 #include "modules/power/power_module.h"
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
+#include "modules/ble/connection_runtime_module.h"
 #include "modules/display/display_pipeline_module.h"
+#include "modules/display/display_orchestration_module.h"
 #include "modules/system/system_event_bus.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
@@ -181,7 +183,9 @@ TapGestureModule tapGestureModule;
 PowerModule powerModule;
 BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
+ConnectionRuntimeModule connectionRuntimeModule;
 DisplayPipelineModule displayPipelineModule;
+DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 
@@ -652,8 +656,31 @@ void setup() {
                                 &debugLogger);
     systemEventBus.reset();
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
+    ConnectionRuntimeModule::Providers connectionRuntimeProviders;
+    connectionRuntimeProviders.isBleConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    connectionRuntimeProviders.isBackpressured = [](void* ctx) -> bool {
+        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
+    };
+    connectionRuntimeProviders.getLastRxMillis = [](void* ctx) -> unsigned long {
+        return static_cast<BleQueueModule*>(ctx)->getLastRxMillis();
+    };
+    connectionRuntimeProviders.bleContext = &bleClient;
+    connectionRuntimeProviders.queueContext = &bleQueueModule;
+    connectionRuntimeModule.begin(connectionRuntimeProviders);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    displayOrchestrationModule.begin(&display,
+                                     &bleClient,
+                                     &bleQueueModule,
+                                     &displayPreviewModule,
+                                     &displayRestoreModule,
+                                     &parser,
+                                     &settingsManager,
+                                     &gpsRuntimeModule,
+                                     &obdHandler,
+                                     &lockoutOrchestrationModule);
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
@@ -742,75 +769,40 @@ void loop() {
     unsigned long loopStartUs = micros();
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();
-    static constexpr unsigned long AUDIO_TICK_MAX_US = 25000;
-    static constexpr unsigned long OVERLOAD_LOOP_US = 25000;
-    static constexpr unsigned long FREQ_UI_MAX_MS = 75;
-    static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
-    static constexpr unsigned long CARD_UI_MAX_MS = 100;
-    static unsigned long lastAudioTickUs = 0;
-    static unsigned long lastFreqUiMs = 0;
-    static unsigned long lastCardUiMs = 0;
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
 
-    if (bootSplashHoldActive && now >= bootSplashHoldUntilMs) {
-        bootSplashHoldActive = false;
-        if (!bleClient.isConnected()) {
-            showInitialScanningScreen();
-        } else {
-            initialScanningScreenShown = true;
-        }
+    const auto connectionSnapshot = connectionRuntimeModule.process(
+        now,
+        micros(),
+        lastLoopUs,
+        bootSplashHoldActive,
+        bootSplashHoldUntilMs,
+        initialScanningScreenShown);
+
+    bootSplashHoldActive = connectionSnapshot.bootSplashHoldActive;
+    initialScanningScreenShown = connectionSnapshot.initialScanningScreenShown;
+    if (connectionSnapshot.requestShowInitialScanning) {
+        showInitialScanningScreen();
     }
 
-    bool bleConnectedNow = bleClient.isConnected();
+    bool bleConnectedNow = connectionSnapshot.connected;
+    bool bleBackpressure = connectionSnapshot.backpressured;
+    bool skipNonCoreThisLoop = connectionSnapshot.skipNonCore;
+    bool overloadThisLoop = connectionSnapshot.overloaded;
 
-    unsigned long audioTickUs = micros();
-    unsigned long sinceAudioUs = audioTickUs - lastAudioTickUs;
-    lastAudioTickUs = audioTickUs;
-    bool bleBackpressure = bleQueueModule.isBackpressured();
-    bool skipNonCoreThisLoop = (sinceAudioUs > AUDIO_TICK_MAX_US) || bleBackpressure;
-    bool overloadThisLoop = (lastLoopUs >= OVERLOAD_LOOP_US) || skipNonCoreThisLoop;
-
-    // RUN_START marker: fires once when boot phase is complete
-    // Helps analyzers distinguish flash/boot noise from runtime behavior
-    static bool runStartLogged = false;
-    if (!runStartLogged) {
-        // Fire when: BLE connected OR 30 seconds elapsed (whichever first)
-        bool bleReady = bleClient.isConnected();
-        bool timeReady = (now >= 30000);
-        if (bleReady || timeReady) {
-            runStartLogged = true;
-            const char* trigger = bleReady ? "ble_connected" : "timeout_30s";
-            SerialLog.printf("RUN_START trigger=%s millis=%lu\n", trigger, now);
-        }
-    }
-
-    if (!overloadThisLoop) {
-        // Update BLE indicator: show when V1 is connected; color reflects JBV1 connection
-        // Third param is "receiving" - true if we got V1 packets in last 2s (heartbeat visual)
-        if (!bootSplashHoldActive) {
-            unsigned long lastRx = bleQueueModule.getLastRxMillis();
-            bool bleReceiving = (now - lastRx) < 2000;
-            // Push BLE snapshot so display files never need extern bleClient
-            display.setBleContext({
-                bleClient.isConnected(),
-                bleClient.isProxyClientConnected(),
-                bleClient.getConnectionRssi(),
-                bleClient.getProxyClientRssi()
-            });
-            display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
-        }
-    }
-    
-    // Drive color preview (band cycle) first; skip other updates if active
-    if (!overloadThisLoop && !bootSplashHoldActive) {
-        if (displayPreviewModule.isRunning()) {
-            displayPreviewModule.update();
-        } else {
-            // Check if preview/test ended and restore display if needed
-            displayRestoreModule.process();
-        }
-    }
+    DisplayOrchestrationEarlyContext displayEarlyCtx;
+    displayEarlyCtx.nowMs = now;
+    displayEarlyCtx.bootSplashHoldActive = bootSplashHoldActive;
+    displayEarlyCtx.overloadThisLoop = overloadThisLoop;
+    displayEarlyCtx.bleContext = {
+        bleConnectedNow,
+        bleClient.isProxyClientConnected(),
+        bleClient.getConnectionRssi(),
+        bleClient.getProxyClientRssi()
+    };
+    displayEarlyCtx.bleReceiving = connectionSnapshot.receiving;
+    displayOrchestrationModule.processEarly(displayEarlyCtx);
 
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
@@ -904,97 +896,39 @@ void loop() {
         }
     }
 
-    // Drive display pipeline separately from BLE drain (decoupled for accurate timing)
-    // This is intentionally outside the bleDrain timing to isolate display latency
-    if (parsedReady && !bootSplashHoldActive) {
-        const uint32_t nowMs = millis();
-        const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-        const bool proxyClientConnected = bleClient.isProxyClientConnected();
-        bool lockoutPrioritySuppressed = false;
-
-        uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-        const auto lockoutResult = lockoutOrchestrationModule.process(
-            nowMs, gpsStatus, proxyClientConnected,
-            loopSettings.enableSignalTraceLogging);
-        lockoutPrioritySuppressed = lockoutResult.prioritySuppressed;
+    // Drive display orchestration separately from BLE drain for better timing attribution.
+    const uint32_t displayNowMs = millis();
+    DisplayOrchestrationParsedContext parsedDisplayCtx;
+    parsedDisplayCtx.nowMs = displayNowMs;
+    parsedDisplayCtx.parsedReady = parsedReady;
+    parsedDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
+    parsedDisplayCtx.enableSignalTraceLogging = loopSettings.enableSignalTraceLogging;
+    const uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
+    const auto parsedDisplayResult = displayOrchestrationModule.processParsedFrame(parsedDisplayCtx);
+    if (parsedDisplayResult.lockoutEvaluated) {
         perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
-
-        // Feed GPS satellite count into display indicator (throttled to ~90 s).
-        {
-            static uint32_t lastGpsSatUpdateMs = 0;
-            constexpr uint32_t GPS_SAT_UPDATE_INTERVAL_MS = 90000;  // 90 seconds
-            if (lastGpsSatUpdateMs == 0 || (nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
-                display.setGpsSatellites(gpsStatus.enabled, gpsStatus.hasFix, gpsStatus.satellites);
-                lastGpsSatUpdateMs = nowMs;
-            }
-        }
-
-        // Feed OBD connection state into display indicator.
-        {
-            const bool obdEnabled = settingsManager.get().obdEnabled;
-            display.setObdConnected(obdEnabled, obdHandler.isConnected(), obdHandler.hasValidData());
-        }
-
-        // Skip display pipeline if preview is running (don't overwrite demo)
-        if (!displayPreviewModule.isRunning()) {
-            if (parsedTsMs != 0 && nowMs >= parsedTsMs) {
-                perfRecordNotifyToDisplayMs(nowMs - parsedTsMs);
-            }
-            // No overload guard: handleParsed's internal 25ms throttle gates
-            // expensive draws; fade/debounce/gap-recovery are microsecond-cheap
-            // and must run every frame (BLE volume restore is tier-2 priority).
-            uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
-            displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
-            perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
-            lastFreqUiMs = nowMs;
-        }
-    } else if (!bootSplashHoldActive) {
-        // Clear stale lockout badge if parser traffic has stopped or link is down.
-        // Avoids showing a latched "L" when we no longer have fresh lockout decisions.
-        static constexpr uint32_t LOCKOUT_INDICATOR_STALE_MS = 2000;
-        const uint32_t nowMs = millis();
-        const uint32_t lastParsedMs = bleQueueModule.getLastParsedTimestamp();
-        if (!bleClient.isConnected() ||
-            lastParsedMs == 0 ||
-            static_cast<uint32_t>(nowMs - lastParsedMs) > LOCKOUT_INDICATOR_STALE_MS) {
-            display.setLockoutIndicator(false);
-        }
     }
 
-    const bool loopHasAlerts = parser.hasAlerts();
-    const AlertData loopPriority = loopHasAlerts ? parser.getPriorityAlert() : AlertData();
-    const bool loopSignalPriorityActive =
-        loopHasAlerts && loopPriority.isValid && loopPriority.band != BAND_NONE;
-
-    bool previewRunning = displayPreviewModule.isRunning();
-    unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
-    if (!bootSplashHoldActive && bleClient.isConnected() && (now - lastFreqUiMs) >= freqUiMaxMs) {
-        const DisplayState& state = parser.getDisplayState();
-        bool hasPriority = loopSignalPriorityActive;
-        const AlertData& priority = loopPriority;
-        const bool isPhotoRadar =
-            (priority.photoType != 0) ||
-            state.hasPhotoAlert ||
-            (state.bogeyCounterChar == 'P');
-        if (hasPriority) {
-            display.refreshFrequencyOnly(loopPriority.frequency, loopPriority.band, state.muted, isPhotoRadar);
-        } else {
-            display.refreshFrequencyOnly(0, BAND_NONE, false, false);
+    bool pipelineRanThisLoop = false;
+    if (parsedDisplayResult.runDisplayPipeline) {
+        if (parsedTsMs != 0 && displayNowMs >= parsedTsMs) {
+            perfRecordNotifyToDisplayMs(displayNowMs - parsedTsMs);
         }
-        lastFreqUiMs = now;
+        // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
+        // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
+        uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
+        displayPipelineModule.handleParsed(displayNowMs, parsedDisplayResult.lockoutPrioritySuppressed);
+        perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
+        pipelineRanThisLoop = true;
     }
 
-    if (!bootSplashHoldActive &&
-        bleClient.isConnected() &&
-        !displayPreviewModule.isRunning() &&
-        overloadLateThisLoop &&
-        (now - lastCardUiMs) >= CARD_UI_MAX_MS) {
-        const auto& allAlerts = parser.getAllAlerts();
-        int alertCount = static_cast<int>(parser.getAlertCount());
-        const DisplayState& state = parser.getDisplayState();
-        display.refreshSecondaryAlertCards(allAlerts.data(), alertCount, loopPriority, state.muted);
-        lastCardUiMs = now;
-    }
+    DisplayOrchestrationRefreshContext refreshCtx;
+    refreshCtx.nowMs = displayNowMs;
+    refreshCtx.bootSplashHoldActive = bootSplashHoldActive;
+    refreshCtx.overloadLateThisLoop = overloadLateThisLoop;
+    refreshCtx.pipelineRanThisLoop = pipelineRanThisLoop;
+    const auto refreshResult = displayOrchestrationModule.processLightweightRefresh(refreshCtx);
+    const bool loopSignalPriorityActive = refreshResult.signalPriorityActive;
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();

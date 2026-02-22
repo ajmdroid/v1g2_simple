@@ -7,12 +7,11 @@
 
 #include "ble_client.h"
 #include "packet_parser.h"
-#include "display.h"
-#include "modules/display/display_preview_module.h"
-#include "modules/power/power_module.h"
-#include "v1_profiles.h"
 
 class SystemEventBus;
+class DisplayPreviewModule;
+class PowerModule;
+class V1ProfileManager;
 
 class BleQueueModule {
 public:

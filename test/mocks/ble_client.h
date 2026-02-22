@@ -15,7 +15,11 @@ public:
     uint8_t lastVolume = 0;
     uint8_t lastMuteVolume = 0;
     int requestAlertDataCalls = 0;
+    int processProxyQueueCalls = 0;
+    int onUserBytesReceivedCalls = 0;
     bool bootReadyFlag = true;  // Default true to preserve existing test behavior
+    int connectionRssi = -70;
+    int proxyRssi = -80;
     
     void reset() {
         proxyConnected = false;
@@ -26,7 +30,11 @@ public:
         lastVolume = 0;
         lastMuteVolume = 0;
         requestAlertDataCalls = 0;
+        processProxyQueueCalls = 0;
+        onUserBytesReceivedCalls = 0;
         bootReadyFlag = true;
+        connectionRssi = -70;
+        proxyRssi = -80;
     }
     
     // Connection state
@@ -36,6 +44,10 @@ public:
     void setConnected(bool v) { connected = v; }
     void setBootReady(bool ready) { bootReadyFlag = ready; }
     bool isBootReady() const { return bootReadyFlag; }
+    int getConnectionRssi() const { return connectionRssi; }
+    int getProxyClientRssi() const { return proxyRssi; }
+    void setConnectionRssi(int rssi) { connectionRssi = rssi; }
+    void setProxyRssi(int rssi) { proxyRssi = rssi; }
     
     // BLE commands (tracked)
     bool setMute(bool mute) { 
@@ -53,6 +65,14 @@ public:
     
     void requestAlertData() {
         requestAlertDataCalls++;
+    }
+
+    void processProxyQueue() {
+        processProxyQueueCalls++;
+    }
+
+    void onUserBytesReceived(const uint8_t* /*bytes*/) {
+        onUserBytesReceivedCalls++;
     }
     
 private:

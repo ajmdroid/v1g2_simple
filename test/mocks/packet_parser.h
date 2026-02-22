@@ -33,6 +33,7 @@ struct AlertData {
     uint32_t frequency = 0;
     bool isValid = false;
     bool isPriority = false;
+    uint8_t photoType = 0;
     
     static AlertData create(Band b, Direction d, uint8_t front, uint8_t rear, 
                            uint32_t freq, bool valid = true, bool priority = false) {
@@ -71,6 +72,7 @@ struct DisplayState {
     uint8_t bogeyCounterByte = 0;
     char bogeyCounterChar = '0';
     bool bogeyCounterDot = false;
+    bool hasPhotoAlert = false;
 };
 
 /**
@@ -83,6 +85,8 @@ public:
     std::vector<AlertData> alerts;
     AlertData priorityAlert;
     bool hasAlertsFlag = false;
+    int parseCalls = 0;
+    bool parseReturnValue = true;
     
     // Static call tracking
     static int resetAlertCountTrackerCalls;
@@ -92,6 +96,8 @@ public:
         alerts.clear();
         priorityAlert = AlertData();
         hasAlertsFlag = false;
+        parseCalls = 0;
+        parseReturnValue = true;
         resetAlertCountTrackerCalls = 0;
         resetAlertAssemblyCalls = 0;
     }
@@ -123,6 +129,11 @@ public:
     AlertData getPriorityAlert() const { return priorityAlert; }
     const std::vector<AlertData>& getAllAlerts() const { return alerts; }
     DisplayState getDisplayState() const { return state; }
+
+    bool parse(const uint8_t* /*data*/, size_t /*length*/) {
+        parseCalls++;
+        return parseReturnValue;
+    }
     
     // Reset methods
     int resetAlertAssemblyCalls = 0;

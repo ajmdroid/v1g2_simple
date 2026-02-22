@@ -2,6 +2,7 @@
 #include <climits>
 #include <cstdint>
 #include <vector>
+#include <string>
 
 #include "Arduino.h"
 
@@ -43,6 +44,16 @@ public:
     OBDData getData() const { return data; }
     std::vector<OBDDeviceInfo> getFoundDevices() const { return foundDevices; }
     std::vector<OBDRememberedDevice> getRememberedDevices() const { return rememberedDevices; }
+    bool isDataStale(uint32_t staleMs) const {
+        if (!validData) {
+            return true;
+        }
+        if (data.timestamp_ms == 0) {
+            return false;
+        }
+        const unsigned long now = millis();
+        return now >= data.timestamp_ms && (now - data.timestamp_ms) > staleMs;
+    }
 
     void setModuleDetected(bool v) { moduleDetected = v; }
     void setStateString(const String& v) { stateString = v.c_str(); }

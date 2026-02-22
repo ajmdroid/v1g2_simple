@@ -2,6 +2,10 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
+#include <vector>
+#include <algorithm>
+#include <cstring>
 #include "../mock_heap_caps_state.h"
 
 // Semaphore/Mutex types
@@ -13,6 +17,16 @@ typedef void* TaskHandle_t;
 typedef uint32_t TickType_t;
 #define portMAX_DELAY 0xFFFFFFFF
 
+typedef int BaseType_t;
+typedef unsigned int UBaseType_t;
+
+#ifndef pdTRUE
+#define pdTRUE 1
+#endif
+#ifndef pdFALSE
+#define pdFALSE 0
+#endif
+
 // Semaphore stubs
 inline SemaphoreHandle_t xSemaphoreCreateMutex() { return (void*)1; }
 inline SemaphoreHandle_t xSemaphoreCreateBinary() { return (void*)1; }
@@ -21,10 +35,48 @@ inline int xSemaphoreGive(SemaphoreHandle_t) { return 1; }
 inline void vSemaphoreDelete(SemaphoreHandle_t) {}
 
 // Queue stubs
-inline QueueHandle_t xQueueCreate(uint32_t, uint32_t) { return (void*)1; }
-inline int xQueueSend(QueueHandle_t, const void*, TickType_t) { return 1; }
-inline int xQueueReceive(QueueHandle_t, void*, TickType_t) { return 0; }
-inline int uxQueueMessagesWaiting(QueueHandle_t) { return 0; }
+struct MockQueueState {
+    uint32_t capacity = 0;
+    uint32_t itemSize = 0;
+    std::deque<std::vector<uint8_t>> items;
+};
+
+inline QueueHandle_t xQueueCreate(uint32_t length, uint32_t itemSize) {
+    MockQueueState* q = new MockQueueState();
+    q->capacity = length;
+    q->itemSize = itemSize;
+    return reinterpret_cast<QueueHandle_t>(q);
+}
+
+inline BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t) {
+    if (!queue || !item) return pdFALSE;
+    MockQueueState* q = reinterpret_cast<MockQueueState*>(queue);
+    if (q->items.size() >= q->capacity) return pdFALSE;
+    const uint8_t* bytes = static_cast<const uint8_t*>(item);
+    q->items.emplace_back(bytes, bytes + q->itemSize);
+    return pdTRUE;
+}
+
+inline BaseType_t xQueueReceive(QueueHandle_t queue, void* out, TickType_t) {
+    if (!queue || !out) return pdFALSE;
+    MockQueueState* q = reinterpret_cast<MockQueueState*>(queue);
+    if (q->items.empty()) return pdFALSE;
+    std::vector<uint8_t> item = std::move(q->items.front());
+    q->items.pop_front();
+    std::memcpy(out, item.data(), std::min<size_t>(q->itemSize, item.size()));
+    return pdTRUE;
+}
+
+inline UBaseType_t uxQueueMessagesWaiting(QueueHandle_t queue) {
+    if (!queue) return 0;
+    MockQueueState* q = reinterpret_cast<MockQueueState*>(queue);
+    return static_cast<UBaseType_t>(q->items.size());
+}
+
+inline void vQueueDelete(QueueHandle_t queue) {
+    MockQueueState* q = reinterpret_cast<MockQueueState*>(queue);
+    delete q;
+}
 
 // Task stubs
 inline void vTaskDelay(TickType_t) {}

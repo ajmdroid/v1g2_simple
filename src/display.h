@@ -162,6 +162,20 @@ private:
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
+    void drawStatusStrip(const DisplayState& state, char topChar, bool topMuted, bool topDot);
+    void updateStatusStripIncremental(const DisplayState& state,
+                                      char topChar,
+                                      bool topMuted,
+                                      bool topDot,
+                                      bool volumeChanged,
+                                      bool rssiNeedsUpdate,
+                                      bool bogeyCounterChanged,
+                                      uint8_t& lastMainVol,
+                                      uint8_t& lastMuteVol,
+                                      uint8_t& lastBogeyByte,
+                                      unsigned long now,
+                                      bool& flushLeftStrip,
+                                      bool& flushRightStrip);
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);

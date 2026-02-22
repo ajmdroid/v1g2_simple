@@ -28,6 +28,14 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 static unsigned long s_lastRssiUpdateMs = 0;
 static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;  // Update RSSI every 2 seconds
 
+inline bool shouldRefreshRssi(unsigned long nowMs) {
+    return (nowMs - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
+}
+
+inline void markRssiRefreshed(unsigned long nowMs) {
+    s_lastRssiUpdateMs = nowMs;
+}
+
 // Debug timing for display operations (set to true to profile display)
 static constexpr bool DISPLAY_PERF_TIMING = false;  // Disable for production
 static unsigned long _dispPerfStart = 0;
@@ -46,6 +54,54 @@ const char* cameraTokenForType(uint8_t cameraType) {
     return "CAM";
 }
 } // namespace
+
+void V1Display::drawStatusStrip(const DisplayState& state,
+                                char topChar,
+                                bool topMuted,
+                                bool topDot) {
+    drawTopCounter(topChar, topMuted, topDot);
+    const V1Settings& s = settingsManager.get();
+    if (state.supportsVolume() && !s.hideVolumeIndicator) {
+        drawVolumeIndicator(state.mainVolume, state.muteVolume);
+        drawRssiIndicator(bleCtx_.v1Rssi);
+    }
+}
+
+void V1Display::updateStatusStripIncremental(const DisplayState& state,
+                                             char topChar,
+                                             bool topMuted,
+                                             bool topDot,
+                                             bool volumeChanged,
+                                             bool rssiNeedsUpdate,
+                                             bool bogeyCounterChanged,
+                                             uint8_t& lastMainVol,
+                                             uint8_t& lastMuteVol,
+                                             uint8_t& lastBogeyByte,
+                                             unsigned long now,
+                                             bool& flushLeftStrip,
+                                             bool& flushRightStrip) {
+    const V1Settings& s = settingsManager.get();
+
+    if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
+        lastMainVol = state.mainVolume;
+        lastMuteVol = state.muteVolume;
+        drawVolumeIndicator(state.mainVolume, state.muteVolume);
+        drawRssiIndicator(bleCtx_.v1Rssi);
+        markRssiRefreshed(now);  // Reset RSSI timer when we update with volume
+        flushRightStrip = true;
+    } else if (rssiNeedsUpdate) {
+        // Periodic RSSI-only update
+        drawRssiIndicator(bleCtx_.v1Rssi);
+        markRssiRefreshed(now);
+        flushRightStrip = true;
+    }
+
+    if (bogeyCounterChanged) {
+        lastBogeyByte = state.bogeyCounterByte;
+        drawTopCounter(topChar, topMuted, topDot);
+        flushLeftStrip = true;
+    }
+}
 
 void V1Display::update(const DisplayState& state) {
     // Track if we're transitioning FROM persisted mode (need full redraw)
@@ -113,7 +169,7 @@ void V1Display::update(const DisplayState& state) {
     }
     
     // Check if RSSI needs periodic refresh (every 2 seconds)
-    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
+    bool rssiNeedsUpdate = shouldRefreshRssi(now);
     
     // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
@@ -171,26 +227,19 @@ void V1Display::update(const DisplayState& state) {
             drawVerticalSignalBars(state.signalBars, state.signalBars, primaryBand, effectiveMuted);
             flushRightStrip = true;
         }
-        const V1Settings& s = settingsManager.get();
-        if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
-            lastRestingMainVol = state.mainVolume;
-            lastRestingMuteVol = state.muteVolume;
-            drawVolumeIndicator(state.mainVolume, state.muteVolume);
-            drawRssiIndicator(bleCtx_.v1Rssi);
-            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
-            flushRightStrip = true;
-        }
-        if (rssiNeedsUpdate && !volumeChanged) {
-            // Periodic RSSI-only update
-            drawRssiIndicator(bleCtx_.v1Rssi);
-            s_lastRssiUpdateMs = now;
-            flushRightStrip = true;
-        }
-        if (bogeyCounterChanged) {
-            lastRestingBogeyByte = state.bogeyCounterByte;
-            drawTopCounter(state.bogeyCounterChar, effectiveMuted, state.bogeyCounterDot);
-            flushLeftStrip = true;
-        }
+        updateStatusStripIncremental(state,
+                                     state.bogeyCounterChar,
+                                     effectiveMuted,
+                                     state.bogeyCounterDot,
+                                     volumeChanged,
+                                     rssiNeedsUpdate,
+                                     bogeyCounterChanged,
+                                     lastRestingMainVol,
+                                     lastRestingMuteVol,
+                                     lastRestingBogeyByte,
+                                     now,
+                                     flushLeftStrip,
+                                     flushRightStrip);
         const bool cardsChanged = drawRestTelemetryCards(false);
 #if defined(DISPLAY_WAVESHARE_349)
         (void)flushLeftStrip;
@@ -210,17 +259,12 @@ void V1Display::update(const DisplayState& state) {
     lastRestingMainVol = state.mainVolume;
     lastRestingMuteVol = state.muteVolume;
     lastRestingBogeyByte = state.bogeyCounterByte;
-    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
+    markRssiRefreshed(now);  // Reset RSSI timer on full redraw
     
     drawBaseFrame();
     // Use V1's decoded bogey counter byte - shows mode, volume, etc.
     char topChar = state.bogeyCounterChar;
-    drawTopCounter(topChar, effectiveMuted, state.bogeyCounterDot);
-    const V1Settings& s = settingsManager.get();
-    if (state.supportsVolume() && !s.hideVolumeIndicator) {
-        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
-        drawRssiIndicator(bleCtx_.v1Rssi);
-    }
+    drawStatusStrip(state, topChar, effectiveMuted, state.bogeyCounterDot);
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
     
@@ -382,12 +426,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     // Bogey counter shows V1's decoded display - NOT greyed, always visible
     char topChar = state.bogeyCounterChar;
-    drawTopCounter(topChar, false, state.bogeyCounterDot);  // muted=false to keep it visible
-    const V1Settings& s = settingsManager.get();
-    if (state.supportsVolume() && !s.hideVolumeIndicator) {
-        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
-        drawRssiIndicator(bleCtx_.v1Rssi);
-    }
+    drawStatusStrip(state, topChar, false, state.bogeyCounterDot);
     
     // Band indicator in persisted color
     uint8_t bandMask = alert.band;
@@ -599,7 +638,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Check if RSSI needs periodic refresh (every 2 seconds)
     unsigned long now = millis();
-    bool rssiNeedsUpdate = (now - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
+    bool rssiNeedsUpdate = shouldRefreshRssi(now);
     
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
@@ -648,26 +687,19 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
             flushLeftStrip = true;
         }
-        if (volumeChanged && state.supportsVolume() && !s.hideVolumeIndicator) {
-            lastMainVol = state.mainVolume;
-            lastMuteVol = state.muteVolume;
-            drawVolumeIndicator(state.mainVolume, state.muteVolume);
-            drawRssiIndicator(bleCtx_.v1Rssi);
-            s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
-            flushRightStrip = true;
-        }
-        if (rssiNeedsUpdate && !volumeChanged) {
-            // Periodic RSSI-only update
-            drawRssiIndicator(bleCtx_.v1Rssi);
-            s_lastRssiUpdateMs = now;
-            flushRightStrip = true;
-        }
-        if (bogeyCounterChanged) {
-            // Bogey counter update - use V1's decoded byte (shows J, P, volume, etc.)
-            lastBogeyByte = state.bogeyCounterByte;
-            drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
-            flushLeftStrip = true;
-        }
+        updateStatusStripIncremental(state,
+                                     liveTopCounterChar,
+                                     state.muted,
+                                     liveTopCounterDot,
+                                     volumeChanged,
+                                     rssiNeedsUpdate,
+                                     bogeyCounterChanged,
+                                     lastMainVol,
+                                     lastMuteVol,
+                                     lastBogeyByte,
+                                     now,
+                                     flushLeftStrip,
+                                     flushRightStrip);
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
 #if defined(DISPLAY_WAVESHARE_349)
@@ -688,7 +720,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     lastActiveBands = state.activeBands;
     lastMainVol = state.mainVolume;
     lastMuteVol = state.muteVolume;
-    s_lastRssiUpdateMs = now;  // Reset RSSI timer on full redraw
+    markRssiRefreshed(now);  // Reset RSSI timer on full redraw
     // Store all alerts for change detection (V1 supports up to 15)
     // We only display primary + 2 cards, but track all for accurate change detection
     for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
@@ -703,13 +735,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     uint8_t bandMask = state.activeBands;
     
     // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
-    drawTopCounter(liveTopCounterChar, state.muted, liveTopCounterDot);
-    
-    const V1Settings& settings = settingsManager.get();
-    if (state.supportsVolume() && !settings.hideVolumeIndicator) {
-        drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
-        drawRssiIndicator(bleCtx_.v1Rssi);
-    }
+    drawStatusStrip(state, liveTopCounterChar, state.muted, liveTopCounterDot);
     DISP_PERF_LOG("counters+vol");
     
     // Main alert display (frequency, bands, arrows, signal bars)

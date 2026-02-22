@@ -13,6 +13,16 @@
 struct AlertData;
 struct DisplayState;
 
+#ifndef DISPLAY_BLE_CONTEXT_H
+#define DISPLAY_BLE_CONTEXT_H
+struct DisplayBleContext {
+    bool v1Connected = false;
+    bool proxyConnected = false;
+    int v1Rssi = 0;
+    int proxyRssi = 0;
+};
+#endif
+
 // Screen dimensions (needed by some tests)
 #ifndef SCREEN_WIDTH
 #define SCREEN_WIDTH 640
@@ -44,6 +54,28 @@ public:
     bool lastLockoutIndicatorValue = false;
     int setPreQuietActiveCalls = 0;
     bool lastPreQuietActiveValue = false;
+    int setBleContextCalls = 0;
+    DisplayBleContext lastBleContext{};
+    int setBLEProxyStatusCalls = 0;
+    bool lastBleProxyEnabled = false;
+    bool lastBleProxyConnected = false;
+    bool lastBleReceiving = true;
+    int setGpsSatellitesCalls = 0;
+    bool lastGpsEnabled = false;
+    bool lastGpsHasFix = false;
+    uint8_t lastGpsSatellites = 0;
+    int setObdConnectedCalls = 0;
+    bool lastObdEnabled = false;
+    bool lastObdConnected = false;
+    bool lastObdHasData = false;
+    int refreshFrequencyOnlyCalls = 0;
+    uint32_t lastFrequencyMHz = 0;
+    int lastFrequencyBand = 0;
+    bool lastFrequencyMuted = false;
+    bool lastFrequencyPhotoRadar = false;
+    int refreshSecondaryAlertCardsCalls = 0;
+    int lastSecondaryAlertCount = 0;
+    bool lastSecondaryMuted = false;
 
     // Static method tracking
     static int resetChangeTrackingCalls;
@@ -66,6 +98,28 @@ public:
         lastLockoutIndicatorValue = false;
         setPreQuietActiveCalls = 0;
         lastPreQuietActiveValue = false;
+        setBleContextCalls = 0;
+        lastBleContext = DisplayBleContext{};
+        setBLEProxyStatusCalls = 0;
+        lastBleProxyEnabled = false;
+        lastBleProxyConnected = false;
+        lastBleReceiving = true;
+        setGpsSatellitesCalls = 0;
+        lastGpsEnabled = false;
+        lastGpsHasFix = false;
+        lastGpsSatellites = 0;
+        setObdConnectedCalls = 0;
+        lastObdEnabled = false;
+        lastObdConnected = false;
+        lastObdHasData = false;
+        refreshFrequencyOnlyCalls = 0;
+        lastFrequencyMHz = 0;
+        lastFrequencyBand = 0;
+        lastFrequencyMuted = false;
+        lastFrequencyPhotoRadar = false;
+        refreshSecondaryAlertCardsCalls = 0;
+        lastSecondaryAlertCount = 0;
+        lastSecondaryMuted = false;
         resetChangeTrackingCalls = 0;
     }
 
@@ -106,7 +160,51 @@ public:
         lastPreQuietActiveValue = active;
     }
     
-    void setBLEProxyStatus(bool /*connected*/, bool /*proxy*/, bool /*receiving*/) {}
+    void setBleContext(const DisplayBleContext& ctx) {
+        setBleContextCalls++;
+        lastBleContext = ctx;
+    }
+
+    const DisplayBleContext& getBleContext() const {
+        return lastBleContext;
+    }
+
+    void setBLEProxyStatus(bool proxyEnabled, bool proxyConnected, bool receiving) {
+        setBLEProxyStatusCalls++;
+        lastBleProxyEnabled = proxyEnabled;
+        lastBleProxyConnected = proxyConnected;
+        lastBleReceiving = receiving;
+    }
+
+    void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) {
+        setGpsSatellitesCalls++;
+        lastGpsEnabled = enabled;
+        lastGpsHasFix = hasFix;
+        lastGpsSatellites = satellites;
+    }
+
+    void setObdConnected(bool enabled, bool connected, bool hasData) {
+        setObdConnectedCalls++;
+        lastObdEnabled = enabled;
+        lastObdConnected = connected;
+        lastObdHasData = hasData;
+    }
+
+    void refreshFrequencyOnly(uint32_t freqMHz, int band, bool muted, bool isPhotoRadar = false) {
+        refreshFrequencyOnlyCalls++;
+        lastFrequencyMHz = freqMHz;
+        lastFrequencyBand = band;
+        lastFrequencyMuted = muted;
+        lastFrequencyPhotoRadar = isPhotoRadar;
+    }
+
+    void refreshSecondaryAlertCards(const AlertData* /*alerts*/, int alertCount,
+                                    const AlertData& /*priority*/, bool muted = false) {
+        refreshSecondaryAlertCardsCalls++;
+        lastSecondaryAlertCount = alertCount;
+        lastSecondaryMuted = muted;
+    }
+
     void setBrightness(uint8_t /*level*/) {}
     
     // Static methods

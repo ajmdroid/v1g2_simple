@@ -3,6 +3,11 @@
 #include "../../../include/config.h"
 #include "debug_logger.h"
 #include "modules/system/system_event_bus.h"
+#ifndef UNIT_TEST
+#include "v1_profiles.h"
+#include "modules/display/display_preview_module.h"
+#include "modules/power/power_module.h"
+#endif
 #include <algorithm>
 #include <cstring>
 
