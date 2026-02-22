@@ -35,16 +35,18 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         bleClient->enqueueObdScanResult(name.c_str(), addrStr.c_str(), rssi);
     }
     
-    // *** V1 NAME FILTER - Only connect to Valentine V1 Gen2 devices ***
-    // V1 Gen2 advertises as "V1G*" (like "V1G27B7A") or sometimes "V1-*"
-    // Case-insensitive check without creating String objects
-    bool isV1 = false;
+    // V1 discovery should tolerate missing scan-response names: some stacks expose
+    // the V1 service UUID without a readable name in the advertisement payload.
+    bool nameLooksV1 = false;
     if (name.length() >= 3) {
-        char c0 = name[0] | 0x20;  // lowercase
-        char c1 = name[1] | 0x20;
-        char c2 = name[2] | 0x20;
-        isV1 = (c0 == 'v' && c1 == '1' && (c2 == 'g' || c2 == '-'));
+        const char c0 = static_cast<char>(name[0] | 0x20);  // lowercase
+        const char c1 = static_cast<char>(name[1] | 0x20);
+        const char c2 = static_cast<char>(name[2] | 0x20);
+        nameLooksV1 = (c0 == 'v' && c1 == '1' && (c2 == 'g' || c2 == '-'));
     }
+    static const NimBLEUUID kV1ServiceUuid(V1_SERVICE_UUID);
+    const bool serviceLooksV1 = advertisedDevice->isAdvertisingService(kV1ServiceUuid);
+    const bool isV1 = nameLooksV1 || serviceLooksV1;
     
     if (!isV1) {
         // Not a V1 device, keep scanning
