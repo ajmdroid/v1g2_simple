@@ -150,6 +150,7 @@ DisplayOrchestrationRefreshResult DisplayOrchestrationModule::processLightweight
     if (!ctx.bootSplashHoldActive &&
         ble->isConnected() &&
         !previewRunning &&
+        !ctx.pipelineRanThisLoop &&
         ctx.overloadLateThisLoop &&
         (ctx.nowMs - lastCardUiMs) >= CARD_UI_MAX_MS) {
         const auto& allAlerts = parser->getAllAlerts();
