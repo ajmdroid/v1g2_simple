@@ -1,5 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -34,34 +35,33 @@
 
 	let loading = $state(true);
 	let error = $state(null);
-	let statusInterval = null;
 	let statusFetchInFlight = false;
 	let gpsFetchInFlight = false;
 	let statusPollTicks = 0;
 	const STATUS_POLL_INTERVAL_MS = 3000;
 	const GPS_POLL_MULTIPLIER = 3;
 
+	const statusPoll = createPoll(async () => {
+		await fetchStatus();
+		statusPollTicks += 1;
+		if ((statusPollTicks % GPS_POLL_MULTIPLIER) === 0) {
+			await fetchGpsStatus();
+		}
+	}, STATUS_POLL_INTERVAL_MS);
+
 	onMount(async () => {
 		await fetchStatus();
 		void fetchGpsStatus();
-		statusInterval = setInterval(() => {
-			void fetchStatus();
-			statusPollTicks += 1;
-			if ((statusPollTicks % GPS_POLL_MULTIPLIER) === 0) {
-				void fetchGpsStatus();
-			}
-		}, STATUS_POLL_INTERVAL_MS);
+		statusPoll.start();
 	});
 
-	onDestroy(() => {
-		if (statusInterval) clearInterval(statusInterval);
-	});
+	onDestroy(() => statusPoll.stop());
 
 	async function fetchStatus() {
 		if (statusFetchInFlight) return;
 		statusFetchInFlight = true;
 		try {
-			const statusRes = await fetch('/api/status');
+			const statusRes = await fetchWithTimeout('/api/status');
 
 			if (statusRes.ok) {
 				status = await statusRes.json();
@@ -81,7 +81,7 @@
 		if (gpsFetchInFlight) return;
 		gpsFetchInFlight = true;
 		try {
-			const gpsRes = await fetch('/api/gps/status');
+			const gpsRes = await fetchWithTimeout('/api/gps/status');
 			if (!gpsRes.ok) return;
 			const gpsData = await gpsRes.json();
 			gps = { ...gps, ...gpsData };

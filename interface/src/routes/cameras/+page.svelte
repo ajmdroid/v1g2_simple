@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { formatBytes } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -20,7 +21,6 @@
 	let eventsError = $state('');
 	let configError = $state('');
 	let demoError = $state('');
-	let pollHandle = null;
 
 	let status = $state({
 		enabled: false,
@@ -97,20 +97,17 @@
 	let demoMode = $state('cycle');
 	let demoMuted = $state(false);
 
+	const statusPoll = createPoll(async () => {
+		await fetchCameraStatus(true);
+		await fetchCameraEvents(true);
+	}, STATUS_POLL_INTERVAL_MS);
+
 	onMount(async () => {
 		await refreshAll();
-		pollHandle = setInterval(() => {
-			void fetchCameraStatus(true);
-			void fetchCameraEvents(true);
-		}, STATUS_POLL_INTERVAL_MS);
+		statusPoll.start();
 	});
 
-	onDestroy(() => {
-		if (pollHandle) {
-			clearInterval(pollHandle);
-			pollHandle = null;
-		}
-	});
+	onDestroy(() => statusPoll.stop());
 
 	async function refreshAll() {
 		refreshing = true;
@@ -153,7 +150,7 @@
 		statusFetchInFlight = true;
 		if (!silent) statusError = '';
 		try {
-			const res = await fetch('/api/cameras/status');
+			const res = await fetchWithTimeout('/api/cameras/status');
 			if (!res.ok) {
 				if (!silent) statusError = 'Failed to load camera runtime status.';
 				return;
@@ -178,7 +175,7 @@
 		catalogFetchInFlight = true;
 		if (!silent) catalogError = '';
 		try {
-			const res = await fetch('/api/cameras/catalog');
+			const res = await fetchWithTimeout('/api/cameras/catalog');
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok || data.success === false) {
 				if (!silent) catalogError = data.message || 'Failed to load camera dataset catalog.';
@@ -214,7 +211,7 @@
 		eventsFetchInFlight = true;
 		if (!silent) eventsError = '';
 		try {
-			const res = await fetch(`/api/cameras/events?limit=${EVENTS_LIMIT}`);
+			const res = await fetchWithTimeout('/api/cameras/events?limit=' + EVENTS_LIMIT);
 			if (!res.ok) {
 				if (!silent) eventsError = 'Failed to load camera events.';
 				return;
