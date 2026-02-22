@@ -1243,6 +1243,32 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
   sleep "$POLL_SECONDS"
 done
 
+# Capture one final sample at/near soak end so throughput deltas span the full
+# run window instead of ending early due poll/sleep cadence.
+final_sample_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+if [[ -n "$METRICS_POLL_URL" ]]; then
+  metrics_samples=$((metrics_samples + 1))
+  final_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_POLL_URL" 2>/dev/null || true)"
+  if [[ -n "$final_payload" ]]; then
+    metrics_ok_samples=$((metrics_ok_samples + 1))
+    final_payload_oneline="$(printf "%s" "$final_payload" | tr -d '\r\n')"
+    printf '{"ts":"%s","ok":true,"data":%s}\n' "$final_sample_utc" "$final_payload_oneline" >> "$METRICS_JSONL"
+  else
+    printf '{"ts":"%s","ok":false}\n' "$final_sample_utc" >> "$METRICS_JSONL"
+  fi
+fi
+if [[ -n "$PANIC_URL" ]]; then
+  panic_samples=$((panic_samples + 1))
+  final_panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_URL" 2>/dev/null || true)"
+  if [[ -n "$final_panic_payload" ]]; then
+    panic_ok_samples=$((panic_ok_samples + 1))
+    final_panic_oneline="$(printf "%s" "$final_panic_payload" | tr -d '\r\n')"
+    printf '{"ts":"%s","ok":true,"data":%s}\n' "$final_sample_utc" "$final_panic_oneline" >> "$PANIC_JSONL"
+  else
+    printf '{"ts":"%s","ok":false}\n' "$final_sample_utc" >> "$PANIC_JSONL"
+  fi
+fi
+
 soak_end_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 soak_end_epoch_actual="$(date +%s)"
 soak_elapsed_s=$((soak_end_epoch_actual - soak_start_epoch))
