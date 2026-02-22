@@ -137,9 +137,32 @@ void assertContainsFrequencies(const PacketParser& parser, uint16_t a, uint16_t 
     TEST_ASSERT_TRUE(foundB);
 }
 
+void assertContainsThreeFrequencies(const PacketParser& parser, uint16_t a, uint16_t b, uint16_t c) {
+    const auto& alerts = parser.getAllAlerts();
+    const size_t count = parser.getAlertCount();
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(count));
+
+    bool foundA = false;
+    bool foundB = false;
+    bool foundC = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (alerts[i].frequency == a) foundA = true;
+        if (alerts[i].frequency == b) foundB = true;
+        if (alerts[i].frequency == c) foundC = true;
+    }
+    TEST_ASSERT_TRUE(foundA);
+    TEST_ASSERT_TRUE(foundB);
+    TEST_ASSERT_TRUE(foundC);
+}
+
 }  // namespace
 
-void setUp() {}
+void setUp() {
+#ifndef ARDUINO
+    mockMillis = 0;
+    mockMicros = 0;
+#endif
+}
 void tearDown() {}
 
 void test_display_stream_decodes_junk_counter_char() {
@@ -371,6 +394,61 @@ void test_alert_stream_count_zero_clears_alerts() {
     TEST_ASSERT_FALSE(state.hasPhotoAlert);
 }
 
+void test_alert_stream_stale_row_not_reused_for_completion() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 24150, 0x90, 0x00, 0x24, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 33800, 0xA0, 0x00, 0x22, 0x00));
+
+    mockMillis = 0;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    // Row1 should age out and not be reused to complete count=2.
+    mockMillis = 2000;
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    mockMillis = 2001;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24150, 33800);
+}
+
+void test_alert_stream_partial_timeout_restarts_assembly() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 3, 24150, 0x90, 0x00, 0x24, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 3, 33800, 0xA0, 0x00, 0x22, 0x00));
+    const auto row3 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(3, 3, 34700, 0xB0, 0x00, 0x22, 0x00));
+
+    mockMillis = 0;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    // Keep refreshing one row so it stays fresh, but not complete. The parser
+    // should eventually timeout and drop the partial set.
+    mockMillis = 600;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    mockMillis = 1200;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    mockMillis = 1900;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    // After timeout reset, a fresh 3-row set should publish normally.
+    mockMillis = 1901;
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    mockMillis = 1902;
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    mockMillis = 1903;
+    TEST_ASSERT_TRUE(parser.parse(row3.data(), row3.size()));
+
+    TEST_ASSERT_TRUE(parser.hasAlerts());
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsThreeFrequencies(parser, 24150, 33800, 34700);
+}
+
 void test_strict_alert_stream_duplicate_index_replaces_prior_row() {
     requireStrictAuditEnabled();
     PacketParser parser;
@@ -460,6 +538,8 @@ int main() {
     RUN_TEST(test_alert_stream_unusable_row_priority_falls_back_to_first_usable);
     RUN_TEST(test_alert_stream_missing_row_keeps_previous_complete_table);
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
+    RUN_TEST(test_alert_stream_stale_row_not_reused_for_completion);
+    RUN_TEST(test_alert_stream_partial_timeout_restarts_assembly);
 
     RUN_TEST(test_strict_alert_stream_duplicate_index_replaces_prior_row);
     RUN_TEST(test_strict_contract_parser_aux0_fields_exist);

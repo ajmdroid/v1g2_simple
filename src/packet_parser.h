@@ -136,7 +136,9 @@ private:
     std::array<std::array<uint8_t, 8>, MAX_ALERTS> alertChunks;  // full 8-byte alert rows
     std::array<bool, MAX_ALERTS> alertChunkPresent;
     std::array<uint8_t, MAX_ALERTS> alertChunkCountTag;
+    std::array<uint32_t, MAX_ALERTS> alertChunkRxMs;
     std::array<AlertIndexMode, MAX_ALERTS + 1> alertIndexModeByCount;
+    std::array<uint32_t, MAX_ALERTS + 1> alertTableFirstSeenMs;
 
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);
