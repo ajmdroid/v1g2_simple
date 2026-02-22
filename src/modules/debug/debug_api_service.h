@@ -16,6 +16,10 @@ void handleApiPanic(WebServer& server);
 void handleApiDebugEnable(WebServer& server,
                           const std::function<bool()>& checkRateLimit);
 
+/// POST /api/debug/metrics/reset handler with route-level rate limiting.
+void handleApiMetricsReset(WebServer& server,
+                           const std::function<bool()>& checkRateLimit);
+
 /// GET /api/debug/perf-files handler with route-level policy callbacks.
 void handleApiPerfFilesList(WebServer& server,
                             const std::function<bool()>& checkRateLimit,

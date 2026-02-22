@@ -406,6 +406,20 @@ void handleApiDebugEnable(WebServer& server,
     handleDebugEnable(server);
 }
 
+void handleMetricsReset(WebServer& server) {
+    // Clear soak-facing counters without touching runtime state/queues.
+    perfMetricsReset();
+    systemEventBus.resetStats();
+    bleClient.resetProxyMetrics();
+    server.send(200, "application/json", "{\"success\":true,\"metricsReset\":true}");
+}
+
+void handleApiMetricsReset(WebServer& server,
+                           const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleMetricsReset(server);
+}
+
 void sendPanic(WebServer& server) {
     // Return last panic info from LittleFS (written by logPanicBreadcrumbs on crash recovery)
     JsonDocument doc;

@@ -39,6 +39,13 @@ public:
         dropCount = 0;
     }
 
+    // Reset only counters while preserving any queued events.
+    void resetStats() {
+        LockGuard guard(*this);
+        publishCount = 0;
+        dropCount = 0;
+    }
+
     // Non-blocking publish: never waits.
     // Overflow policy favors preserving low-rate control events by dropping the
     // oldest frame event first when available.

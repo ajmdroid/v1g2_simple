@@ -96,6 +96,7 @@ def main() -> int:
     oversize_drops_last = None
     sd_max_peak = None
     fs_max_peak = None
+    queue_high_water_first = None
     queue_high_water_peak = None
     wifi_connect_deferred_first = None
     wifi_connect_deferred_last = None
@@ -235,7 +236,10 @@ def main() -> int:
 
                 sd_max_peak = update_max(sd_max_peak, num(data.get("sdMaxUs")))
                 fs_max_peak = update_max(fs_max_peak, num(data.get("fsMaxUs")))
-                queue_high_water_peak = update_max(queue_high_water_peak, num(data.get("queueHighWater")))
+                queue_high_water = num(data.get("queueHighWater"))
+                if queue_high_water_first is None and queue_high_water is not None:
+                    queue_high_water_first = queue_high_water
+                queue_high_water_peak = update_max(queue_high_water_peak, queue_high_water)
 
                 wifi_connect_deferred = num(data.get("wifiConnectDeferred"))
                 if wifi_connect_deferred_first is None and wifi_connect_deferred is not None:
@@ -312,6 +316,7 @@ def main() -> int:
     emit("oversize_drops_last", oversize_drops_last)
     emit("sd_max_peak", sd_max_peak)
     emit("fs_max_peak", fs_max_peak)
+    emit("queue_high_water_first", queue_high_water_first)
     emit("queue_high_water_peak", queue_high_water_peak)
     emit("wifi_connect_deferred_first", wifi_connect_deferred_first)
     emit("wifi_connect_deferred_last", wifi_connect_deferred_last)
@@ -321,6 +326,13 @@ def main() -> int:
     emit("disconnects_last", disconnects_last)
     emit("dma_free_min", dma_free_min_val)
     emit("dma_largest_min", dma_largest_min_val)
+
+    inherited_counter_suspect = 0
+    for first_val in (queue_drops_first, perf_drop_first, event_drop_first):
+        if first_val is not None and first_val > 0:
+            inherited_counter_suspect = 1
+            break
+    emit("inherited_counter_suspect", inherited_counter_suspect)
 
     if oversize_drops_first is None or oversize_drops_last is None:
         print("oversize_drops_delta=")

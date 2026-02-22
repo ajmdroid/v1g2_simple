@@ -16,6 +16,7 @@ namespace {
 int sendMetricsCalls = 0;
 int sendPanicCalls = 0;
 int handleDebugEnableCalls = 0;
+int handleMetricsResetCalls = 0;
 int sendPerfFilesListCalls = 0;
 int handlePerfFileDownloadCalls = 0;
 int handlePerfFileDeleteCalls = 0;
@@ -36,6 +37,11 @@ void sendMetrics(WebServer& server) {
 void handleDebugEnable(WebServer& server) {
     handleDebugEnableCalls++;
     server.send(200, "application/json", "{\"route\":\"enable\"}");
+}
+
+void handleMetricsReset(WebServer& server) {
+    handleMetricsResetCalls++;
+    server.send(200, "application/json", "{\"route\":\"metrics-reset\"}");
 }
 
 void sendPanic(WebServer& server) {
@@ -67,6 +73,7 @@ void setUp() {
     sendMetricsCalls = 0;
     sendPanicCalls = 0;
     handleDebugEnableCalls = 0;
+    handleMetricsResetCalls = 0;
     sendPerfFilesListCalls = 0;
     handlePerfFileDownloadCalls = 0;
     handlePerfFileDeleteCalls = 0;
@@ -125,6 +132,39 @@ void test_handle_api_debug_enable_delegates_when_allowed() {
     TEST_ASSERT_EQUAL_INT(1, handleDebugEnableCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enable\""));
+}
+
+void test_handle_api_metrics_reset_rate_limited_short_circuits() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiMetricsReset(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return false;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(0, handleMetricsResetCalls);
+    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
+}
+
+void test_handle_api_metrics_reset_delegates_when_allowed() {
+    WebServer server(80);
+    int rateLimitCalls = 0;
+
+    DebugApiService::handleApiMetricsReset(
+        server,
+        [&rateLimitCalls]() {
+            rateLimitCalls++;
+            return true;
+        });
+
+    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, handleMetricsResetCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"metrics-reset\""));
 }
 
 void test_handle_api_perf_files_list_rate_limited_short_circuits() {
@@ -212,6 +252,8 @@ int main() {
     RUN_TEST(test_handle_api_panic_delegates);
     RUN_TEST(test_handle_api_debug_enable_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_debug_enable_delegates_when_allowed);
+    RUN_TEST(test_handle_api_metrics_reset_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_metrics_reset_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_list_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_perf_files_list_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_download_delegates_when_allowed);

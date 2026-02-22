@@ -30,6 +30,7 @@ UPLOAD_FS=0
 SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
+METRICS_RESET_URL="${REAL_FW_METRICS_RESET_URL:-}"
 METRICS_REQUIRED=0
 MIN_METRICS_OK_SAMPLES=1
 MIN_RX_PACKETS_DELTA=1
@@ -682,6 +683,9 @@ fi
 if [[ -n "$METRICS_URL" && -z "$PANIC_URL" ]]; then
   PANIC_URL="${METRICS_URL%/api/debug/metrics}/api/debug/panic"
 fi
+if [[ -n "$METRICS_URL" && -z "$METRICS_RESET_URL" ]]; then
+  METRICS_RESET_URL="${METRICS_URL%/api/debug/metrics}/api/debug/metrics/reset"
+fi
 
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" && -n "$METRICS_URL" ]]; then
   DISPLAY_PREVIEW_URL="${METRICS_URL%/api/debug/metrics}/api/displaycolors/preview"
@@ -919,6 +923,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    serial baud: ${SERIAL_BAUD}"
   echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s"
   echo "    metrics url: ${METRICS_URL:-disabled}"
+  echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}"
   echo "    panic url: ${PANIC_URL:-disabled}"
   echo "    metrics required: ${METRICS_REQUIRED}"
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
@@ -980,6 +985,7 @@ echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
+echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
 fi
@@ -1037,6 +1043,27 @@ if ! wait_for_port "$MONITOR_PORT" 20; then
 fi
 if ! ensure_port_unlocked "$MONITOR_PORT"; then
   exit 1
+fi
+
+metrics_reset_attempted=0
+metrics_reset_success=0
+metrics_reset_http_code=""
+metrics_reset_reason="not-attempted"
+if [[ "$SKIP_FLASH" -eq 1 && -n "$METRICS_RESET_URL" ]]; then
+  metrics_reset_attempted=1
+  echo "==> Resetting debug metrics counters via ${METRICS_RESET_URL}" | tee -a "$RUN_LOG"
+  metrics_reset_http_code="$(curl -sS --max-time "$HTTP_TIMEOUT_SECONDS" -o /dev/null -w "%{http_code}" -X POST "$METRICS_RESET_URL" 2>/dev/null || true)"
+  if [[ "$metrics_reset_http_code" == "200" ]]; then
+    metrics_reset_success=1
+    metrics_reset_reason="ok"
+    echo "    metrics reset: OK (HTTP 200)" | tee -a "$RUN_LOG"
+  elif [[ -n "$metrics_reset_http_code" ]]; then
+    metrics_reset_reason="http_${metrics_reset_http_code}"
+    echo "    metrics reset: WARN (HTTP ${metrics_reset_http_code})" | tee -a "$RUN_LOG"
+  else
+    metrics_reset_reason="no_response"
+    echo "    metrics reset: WARN (no response)" | tee -a "$RUN_LOG"
+  fi
 fi
 
 echo "==> Starting serial capture on $MONITOR_PORT" | tee -a "$RUN_LOG"
@@ -1272,12 +1299,14 @@ core_guard_tripped_count=""
 oversize_drops_delta=""
 sd_max_peak=""
 fs_max_peak=""
+queue_high_water_first=""
 queue_high_water_peak=""
 wifi_connect_deferred_delta=""
 reconnects_delta=""
 disconnects_delta=""
 dma_free_min_parsed=""
 dma_largest_min_parsed=""
+inherited_counter_suspect=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -1325,12 +1354,14 @@ while IFS='=' read -r key value; do
     oversize_drops_delta) oversize_drops_delta="$value" ;;
     sd_max_peak) sd_max_peak="$value" ;;
     fs_max_peak) fs_max_peak="$value" ;;
+    queue_high_water_first) queue_high_water_first="$value" ;;
     queue_high_water_peak) queue_high_water_peak="$value" ;;
     wifi_connect_deferred_delta) wifi_connect_deferred_delta="$value" ;;
     reconnects_delta) reconnects_delta="$value" ;;
     disconnects_delta) disconnects_delta="$value" ;;
     dma_free_min) dma_free_min_parsed="$value" ;;
     dma_largest_min) dma_largest_min_parsed="$value" ;;
+    inherited_counter_suspect) inherited_counter_suspect="$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -1703,6 +1734,11 @@ fi
   echo "## Debug API Metrics"
   echo ""
   echo "- Metrics polling configured: $([[ -n "$METRICS_URL" ]] && echo "yes" || echo "no")"
+  echo "- Metrics reset URL: ${METRICS_RESET_URL:-disabled}"
+  echo "- Metrics pre-reset attempted: $([[ "$metrics_reset_attempted" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Metrics pre-reset success: $([[ "$metrics_reset_success" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Metrics pre-reset HTTP code: ${metrics_reset_http_code:-n/a}"
+  echo "- Metrics pre-reset reason: ${metrics_reset_reason}"
   echo "- Metrics samples (shell): $metrics_samples"
   echo "- Metrics successful (shell): $metrics_ok_samples"
   echo "- Metrics samples parsed: ${metrics_samples_parsed:-0}"
@@ -1730,7 +1766,8 @@ fi
   echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
-  echo "- queueHighWater peak: ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
+  echo "- queueHighWater first/peak: ${queue_high_water_first:-n/a} / ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
+  echo "- Inherited counter suspect: ${inherited_counter_suspect:-n/a}"
   echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"

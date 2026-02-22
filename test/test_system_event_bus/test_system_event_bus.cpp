@@ -132,6 +132,39 @@ void test_reset_clears_queue_and_counters() {
     TEST_ASSERT_FALSE(bus.consume(out));
 }
 
+void test_reset_stats_preserves_queue() {
+    for (uint32_t seq = 1; seq <= 3; ++seq) {
+        SystemEvent event;
+        event.type = SystemEventType::BLE_FRAME_PARSED;
+        event.seq = seq;
+        TEST_ASSERT_TRUE(bus.publish(event));
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(3, bus.getPublishCount());
+    TEST_ASSERT_EQUAL_UINT32(0, bus.getDropCount());
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(bus.size()));
+
+    bus.resetStats();
+    TEST_ASSERT_EQUAL_UINT32(0, bus.getPublishCount());
+    TEST_ASSERT_EQUAL_UINT32(0, bus.getDropCount());
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(bus.size()));
+
+    SystemEvent out;
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(1, out.seq);
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(2, out.seq);
+    TEST_ASSERT_TRUE(bus.consume(out));
+    TEST_ASSERT_EQUAL_UINT32(3, out.seq);
+    TEST_ASSERT_FALSE(bus.consume(out));
+
+    SystemEvent extra;
+    extra.type = SystemEventType::BLE_DISCONNECTED;
+    extra.seq = 99;
+    TEST_ASSERT_TRUE(bus.publish(extra));
+    TEST_ASSERT_EQUAL_UINT32(1, bus.getPublishCount());
+}
+
 void test_fifo_wraparound_preserves_order() {
     // Fill and partially drain to force tail/head wrap behavior.
     for (size_t i = 0; i < SystemEventBus::kCapacity; ++i) {
@@ -259,6 +292,7 @@ int main() {
     RUN_TEST(test_publish_overflow_prefers_dropping_frame_events);
     RUN_TEST(test_publish_overflow_without_frames_drops_oldest_control);
     RUN_TEST(test_reset_clears_queue_and_counters);
+    RUN_TEST(test_reset_stats_preserves_queue);
     RUN_TEST(test_fifo_wraparound_preserves_order);
     RUN_TEST(test_mixed_event_types_drain_to_empty);
     RUN_TEST(test_consume_by_type_preserves_other_events);

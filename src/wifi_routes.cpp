@@ -323,6 +323,11 @@ void WiFiManager::setupWebServer() {
             server,
             rateLimitCallback);
     });
+    server.on("/api/debug/metrics/reset", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiMetricsReset(
+            server,
+            rateLimitCallback);
+    });
     server.on("/api/debug/perf-files", HTTP_GET, [this, rateLimitCallback]() {
         DebugApiService::handleApiPerfFilesList(
             server,
