@@ -199,6 +199,13 @@ static void sendMetrics(WebServer& server) {
     doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
     doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
     doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
+    doc["prioritySelectDisplayIndex"] = perfCounters.prioritySelectDisplayIndex.load();
+    doc["prioritySelectRowFlag"] = perfCounters.prioritySelectRowFlag.load();
+    doc["prioritySelectFirstUsable"] = perfCounters.prioritySelectFirstUsable.load();
+    doc["prioritySelectFirstEntry"] = perfCounters.prioritySelectFirstEntry.load();
+    doc["prioritySelectAmbiguousIndex"] = perfCounters.prioritySelectAmbiguousIndex.load();
+    doc["prioritySelectUnusableIndex"] = perfCounters.prioritySelectUnusableIndex.load();
+    doc["prioritySelectInvalidChosen"] = perfCounters.prioritySelectInvalidChosen.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();

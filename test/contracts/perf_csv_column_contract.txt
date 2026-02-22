@@ -150,3 +150,10 @@ lockoutSaveMax_us
 learnerSaveMax_us
 timeSaveMax_us
 perfReportMax_us
+prioritySelectDisplayIndex
+prioritySelectRowFlag
+prioritySelectFirstUsable
+prioritySelectFirstEntry
+prioritySelectAmbiguousIndex
+prioritySelectUnusableIndex
+prioritySelectInvalidChosen

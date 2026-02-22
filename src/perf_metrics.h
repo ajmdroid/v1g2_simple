@@ -121,6 +121,13 @@ struct PerfCounters {
     std::atomic<uint32_t> speedVolRestores{0};    // Speed-volume restores applied
     std::atomic<uint32_t> speedVolFadeTakeovers{0}; // Fade took over while speed boost active
     std::atomic<uint32_t> speedVolNoHeadroom{0};  // Boost requested but volume already maxed
+    std::atomic<uint32_t> prioritySelectDisplayIndex{0}; // Priority chosen from display aux0 index
+    std::atomic<uint32_t> prioritySelectRowFlag{0};      // Priority chosen from alert-row isPriority bit
+    std::atomic<uint32_t> prioritySelectFirstUsable{0};  // Priority chosen from first usable alert fallback
+    std::atomic<uint32_t> prioritySelectFirstEntry{0};   // Priority fell back to entry 0 (last resort)
+    std::atomic<uint32_t> prioritySelectAmbiguousIndex{0}; // Raw display index valid as both 0/1-based
+    std::atomic<uint32_t> prioritySelectUnusableIndex{0};  // Display index present but mapped to unusable alert
+    std::atomic<uint32_t> prioritySelectInvalidChosen{0};  // Chosen alert invalid/zero-freq non-laser
     std::atomic<uint32_t> voiceAnnouncePriority{0}; // Voice priority announcements emitted
     std::atomic<uint32_t> voiceAnnounceDirection{0}; // Voice direction/bogey announcements emitted
     std::atomic<uint32_t> voiceAnnounceSecondary{0}; // Voice secondary announcements emitted
@@ -192,6 +199,13 @@ struct PerfCounters {
         speedVolRestores.store(0, std::memory_order_relaxed);
         speedVolFadeTakeovers.store(0, std::memory_order_relaxed);
         speedVolNoHeadroom.store(0, std::memory_order_relaxed);
+        prioritySelectDisplayIndex.store(0, std::memory_order_relaxed);
+        prioritySelectRowFlag.store(0, std::memory_order_relaxed);
+        prioritySelectFirstUsable.store(0, std::memory_order_relaxed);
+        prioritySelectFirstEntry.store(0, std::memory_order_relaxed);
+        prioritySelectAmbiguousIndex.store(0, std::memory_order_relaxed);
+        prioritySelectUnusableIndex.store(0, std::memory_order_relaxed);
+        prioritySelectInvalidChosen.store(0, std::memory_order_relaxed);
         voiceAnnouncePriority.store(0, std::memory_order_relaxed);
         voiceAnnounceDirection.store(0, std::memory_order_relaxed);
         voiceAnnounceSecondary.store(0, std::memory_order_relaxed);

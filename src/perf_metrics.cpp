@@ -152,6 +152,13 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.speedVolRestores = perfCounters.speedVolRestores.load(std::memory_order_relaxed);
     snapshot.speedVolFadeTakeovers = perfCounters.speedVolFadeTakeovers.load(std::memory_order_relaxed);
     snapshot.speedVolNoHeadroom = perfCounters.speedVolNoHeadroom.load(std::memory_order_relaxed);
+    snapshot.prioritySelectDisplayIndex = perfCounters.prioritySelectDisplayIndex.load(std::memory_order_relaxed);
+    snapshot.prioritySelectRowFlag = perfCounters.prioritySelectRowFlag.load(std::memory_order_relaxed);
+    snapshot.prioritySelectFirstUsable = perfCounters.prioritySelectFirstUsable.load(std::memory_order_relaxed);
+    snapshot.prioritySelectFirstEntry = perfCounters.prioritySelectFirstEntry.load(std::memory_order_relaxed);
+    snapshot.prioritySelectAmbiguousIndex = perfCounters.prioritySelectAmbiguousIndex.load(std::memory_order_relaxed);
+    snapshot.prioritySelectUnusableIndex = perfCounters.prioritySelectUnusableIndex.load(std::memory_order_relaxed);
+    snapshot.prioritySelectInvalidChosen = perfCounters.prioritySelectInvalidChosen.load(std::memory_order_relaxed);
     snapshot.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
@@ -733,6 +740,13 @@ String perfMetricsToJson() {
     doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
     doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
     doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
+    doc["prioritySelectDisplayIndex"] = perfCounters.prioritySelectDisplayIndex.load();
+    doc["prioritySelectRowFlag"] = perfCounters.prioritySelectRowFlag.load();
+    doc["prioritySelectFirstUsable"] = perfCounters.prioritySelectFirstUsable.load();
+    doc["prioritySelectFirstEntry"] = perfCounters.prioritySelectFirstEntry.load();
+    doc["prioritySelectAmbiguousIndex"] = perfCounters.prioritySelectAmbiguousIndex.load();
+    doc["prioritySelectUnusableIndex"] = perfCounters.prioritySelectUnusableIndex.load();
+    doc["prioritySelectInvalidChosen"] = perfCounters.prioritySelectInvalidChosen.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();
