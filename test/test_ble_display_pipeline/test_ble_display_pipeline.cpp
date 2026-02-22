@@ -119,9 +119,33 @@ void test_ble_queue_publishes_parsed_event_to_bus() {
     TEST_ASSERT_TRUE(event.seq > 0);
 }
 
+void test_ble_queue_coalesces_parsed_events_per_process_cycle() {
+    const std::vector<uint8_t> payloadA = {
+        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52
+    };
+    const std::vector<uint8_t> payloadB = {
+        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41
+    };
+
+    const std::vector<uint8_t> packetA = makePacket(PACKET_ID_DISPLAY_DATA, payloadA);
+    const std::vector<uint8_t> packetB = makePacket(PACKET_ID_DISPLAY_DATA, payloadB);
+
+    mockMillis = 7777;
+    mockMicros = 7777 * 1000UL;
+    bleQueue.onNotify(packetA.data(), packetA.size(), 0xB2CE);
+    bleQueue.onNotify(packetB.data(), packetB.size(), 0xB2CE);
+    bleQueue.process();
+
+    SystemEvent event{};
+    TEST_ASSERT_TRUE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_FALSE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_TRUE(bleQueue.consumeParsedFlag());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_ble_queue_parses_display_packet_into_display_state);
     RUN_TEST(test_ble_queue_publishes_parsed_event_to_bus);
+    RUN_TEST(test_ble_queue_coalesces_parsed_events_per_process_cycle);
     return UNITY_END();
 }

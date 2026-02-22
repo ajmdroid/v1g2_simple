@@ -19,7 +19,7 @@ public:
         size_t queueDepth;
         size_t rxBufferCap;
         size_t rxTrimKeep;
-        Config() : queueDepth(48), rxBufferCap(512), rxTrimKeep(128) {}
+        Config() : queueDepth(64), rxBufferCap(512), rxTrimKeep(128) {}
     };
 
     void begin(V1BLEClient* bleClient,

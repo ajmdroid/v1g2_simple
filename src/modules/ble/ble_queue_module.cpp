@@ -214,6 +214,8 @@ void BleQueueModule::refreshBackpressureState() {
 void BleQueueModule::process() {
     bool previewActive = preview && preview->isRunning();
     UBaseType_t queueDepthBeforeDrain = 0;
+    bool parsedEventPending = false;
+    uint16_t parsedEventDetail = 0;
     
 #ifdef REPLAY_MODE
     processReplayData();
@@ -384,15 +386,18 @@ void BleQueueModule::process() {
             // This decouples BLE processing from slow display updates
             hadSuccessfulParse = true;
             lastParsedTsMs = lastNotifyTsMs;
-            if (bus) {
-                SystemEvent event;
-                event.type = SystemEventType::BLE_FRAME_PARSED;
-                event.tsMs = lastParsedTsMs;
-                event.seq = ++parsedEventSeq;
-                event.detail = packetId;
-                bus->publish(event);
-            }
+            parsedEventPending = true;
+            parsedEventDetail = packetId;
         }
+    }
+
+    if (parsedEventPending && bus) {
+        SystemEvent event;
+        event.type = SystemEventType::BLE_FRAME_PARSED;
+        event.tsMs = lastParsedTsMs;
+        event.seq = ++parsedEventSeq;
+        event.detail = parsedEventDetail;
+        bus->publish(event);
     }
 
     if (rxReadPos >= rxBuffer.size()) {
