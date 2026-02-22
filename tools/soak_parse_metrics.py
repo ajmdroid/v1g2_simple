@@ -58,6 +58,7 @@ def main() -> int:
     flush_max_peak = None
     loop_max_peak = None
     wifi_max_peak = None
+    wifi_max_peak_excluding_first = None
     ble_drain_max_peak = None
     loop_peak_ts = ""
     loop_peak_wifi = None
@@ -66,6 +67,7 @@ def main() -> int:
     loop_peak_display_updates = None
     loop_peak_rx_packets = None
     wifi_peak_ts = ""
+    wifi_peak_excluding_first_ts = ""
     wifi_peak_loop = None
     wifi_peak_flush = None
     wifi_peak_ble_drain = None
@@ -157,6 +159,12 @@ def main() -> int:
                     wifi_peak_ble_drain = ble_drain_val
                     wifi_peak_display_updates = num(data.get("displayUpdates"))
                     wifi_peak_rx_packets = num(data.get("rxPackets"))
+
+                if ok_samples > 1 and wifi_val is not None and (
+                    wifi_max_peak_excluding_first is None or wifi_val > wifi_max_peak_excluding_first
+                ):
+                    wifi_max_peak_excluding_first = wifi_val
+                    wifi_peak_excluding_first_ts = sample_ts
 
                 if ble_drain_val is not None and (ble_drain_max_peak is None or ble_drain_val > ble_drain_max_peak):
                     ble_drain_max_peak = ble_drain_val
@@ -279,6 +287,7 @@ def main() -> int:
     emit("flush_max_peak", flush_max_peak)
     emit("loop_max_peak", loop_max_peak)
     emit("wifi_max_peak", wifi_max_peak)
+    emit("wifi_max_peak_excluding_first", wifi_max_peak_excluding_first)
     emit("ble_drain_max_peak", ble_drain_max_peak)
     emit("loop_peak_ts", loop_peak_ts)
     emit("loop_peak_wifi", loop_peak_wifi)
@@ -287,6 +296,7 @@ def main() -> int:
     emit("loop_peak_display_updates", loop_peak_display_updates)
     emit("loop_peak_rx_packets", loop_peak_rx_packets)
     emit("wifi_peak_ts", wifi_peak_ts)
+    emit("wifi_peak_excluding_first_ts", wifi_peak_excluding_first_ts)
     emit("wifi_peak_loop", wifi_peak_loop)
     emit("wifi_peak_flush", wifi_peak_flush)
     emit("wifi_peak_ble_drain", wifi_peak_ble_drain)

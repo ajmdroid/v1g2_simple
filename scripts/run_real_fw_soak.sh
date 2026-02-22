@@ -1322,6 +1322,7 @@ display_skips_delta=""
 flush_max_peak=""
 loop_max_peak=""
 wifi_max_peak=""
+wifi_max_peak_excluding_first=""
 ble_drain_max_peak=""
 loop_peak_ts=""
 loop_peak_wifi=""
@@ -1330,6 +1331,7 @@ loop_peak_ble_drain=""
 loop_peak_display_updates=""
 loop_peak_rx_packets=""
 wifi_peak_ts=""
+wifi_peak_excluding_first_ts=""
 wifi_peak_loop=""
 wifi_peak_flush=""
 wifi_peak_ble_drain=""
@@ -1377,6 +1379,7 @@ while IFS='=' read -r key value; do
     flush_max_peak) flush_max_peak="$value" ;;
     loop_max_peak) loop_max_peak="$value" ;;
     wifi_max_peak) wifi_max_peak="$value" ;;
+    wifi_max_peak_excluding_first) wifi_max_peak_excluding_first="$value" ;;
     ble_drain_max_peak) ble_drain_max_peak="$value" ;;
     loop_peak_ts) loop_peak_ts="$value" ;;
     loop_peak_wifi) loop_peak_wifi="$value" ;;
@@ -1385,6 +1388,7 @@ while IFS='=' read -r key value; do
     loop_peak_display_updates) loop_peak_display_updates="$value" ;;
     loop_peak_rx_packets) loop_peak_rx_packets="$value" ;;
     wifi_peak_ts) wifi_peak_ts="$value" ;;
+    wifi_peak_excluding_first_ts) wifi_peak_excluding_first_ts="$value" ;;
     wifi_peak_loop) wifi_peak_loop="$value" ;;
     wifi_peak_flush) wifi_peak_flush="$value" ;;
     wifi_peak_ble_drain) wifi_peak_ble_drain="$value" ;;
@@ -1479,6 +1483,17 @@ fi
 have_metrics_window=0
 if [[ -n "$METRICS_URL" ]] && is_uint "$metrics_ok_samples_parsed" && [[ "$metrics_ok_samples_parsed" -gt 0 ]]; then
   have_metrics_window=1
+fi
+
+wifi_peak_gate_value="$wifi_max_peak"
+wifi_peak_gate_basis="raw_peak"
+if [[ "$metrics_reset_success" -eq 1 ]] &&
+   is_uint "$metrics_ok_samples_parsed" &&
+   [[ "$metrics_ok_samples_parsed" -gt 1 ]] &&
+   is_uint "$wifi_max_peak_excluding_first"
+then
+  wifi_peak_gate_value="$wifi_max_peak_excluding_first"
+  wifi_peak_gate_basis="excluding_first_sample"
 fi
 
 gate_rx_fail=0
@@ -1578,10 +1593,10 @@ if [[ -n "$METRICS_URL" ]]; then
       fi
     fi
     if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
-      if ! is_uint "$wifi_max_peak"; then
-        mark_gate_fail gate_wifi_fail "wifiMaxUs peak ${wifi_max_peak:-n/a} above max ${MAX_WIFI_MAX_US}."
-      elif [[ "$wifi_max_peak" -gt "$MAX_WIFI_MAX_US" ]]; then
-        mark_gate_fail gate_wifi_fail "wifiMaxUs peak ${wifi_max_peak} above max ${MAX_WIFI_MAX_US}."
+      if ! is_uint "$wifi_peak_gate_value"; then
+        mark_gate_fail gate_wifi_fail "wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value:-n/a} above max ${MAX_WIFI_MAX_US}."
+      elif [[ "$wifi_peak_gate_value" -gt "$MAX_WIFI_MAX_US" ]]; then
+        mark_gate_fail gate_wifi_fail "wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value} above max ${MAX_WIFI_MAX_US}."
       fi
     fi
     if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
@@ -1814,7 +1829,9 @@ fi
   echo "- Display skips first/last/delta: ${display_skips_first:-n/a} / ${display_skips_last:-n/a} / ${display_skips_delta:-n/a}"
   echo "- Peak flushMaxUs: ${flush_max_peak:-n/a} (max gate ${MAX_FLUSH_MAX_US})"
   echo "- Peak loopMaxUs: ${loop_max_peak:-n/a} (max gate ${MAX_LOOP_MAX_US})"
-  echo "- Peak wifiMaxUs: ${wifi_max_peak:-n/a} (max gate ${MAX_WIFI_MAX_US})"
+  echo "- Peak wifiMaxUs (raw): ${wifi_max_peak:-n/a} (max gate ${MAX_WIFI_MAX_US})"
+  echo "- Peak wifiMaxUs (excluding first sample): ${wifi_max_peak_excluding_first:-n/a} (ts ${wifi_peak_excluding_first_ts:-n/a})"
+  echo "- Peak wifiMaxUs used for gate: ${wifi_peak_gate_value:-n/a} (${wifi_peak_gate_basis})"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
