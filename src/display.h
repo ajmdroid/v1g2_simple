@@ -25,6 +25,7 @@
 #include "packet_parser.h"
 #include "../include/color_themes.h"
 #include "../include/display_layout.h"  // Centralized layout constants
+#include "../include/display_ble_context.h"
 
 class V1Display {
 public:
@@ -112,6 +113,11 @@ public:
     // Pre-quiet active flag — suppresses VOL 0 warning when volume was
     // intentionally dropped by the lockout pre-quiet feature.
     void setPreQuietActive(bool active);
+
+    // BLE context snapshot — populated each loop iteration by main.cpp
+    // so display files never depend on extern V1BLEClient.
+    void setBleContext(const DisplayBleContext& ctx) { bleCtx_ = ctx; }
+    const DisplayBleContext& getBleContext() const { return bleCtx_; }
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
@@ -209,6 +215,7 @@ private:
     bool obdEnabled_ = false;              // OBD service enabled
     bool obdConnected_ = false;            // OBD adapter connected
     bool obdHasData_ = false;              // OBD polling with valid data
+    DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

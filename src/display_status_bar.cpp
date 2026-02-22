@@ -16,10 +16,7 @@
 #include "settings.h"
 #include "battery_manager.h"
 #include "wifi_manager.h"
-#include "ble_client.h"
 #include <cstring>
-
-extern V1BLEClient bleClient;
 
 using namespace DisplaySegments;
 
@@ -81,7 +78,7 @@ void V1Display::drawRssiIndicator(int rssi) {
     
     // Get both RSSIs
     int v1Rssi = rssi;  // V1 RSSI passed in
-    int jbv1Rssi = bleClient.getProxyClientRssi();  // JBV1/phone RSSI
+    int jbv1Rssi = bleCtx_.proxyRssi;  // JBV1/phone RSSI
     
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);  // Match volume text size

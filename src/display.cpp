@@ -56,8 +56,7 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
 VolumeZeroWarning volZeroWarn;
 
-// External reference to BLE client for checking proxy connection
-extern V1BLEClient bleClient;
+
 
 // getEffectiveScreenHeight() now lives in display_layout.h
 
@@ -321,7 +320,7 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
     
     // Update RSSI display when proxy connection changes
     if (proxyChanged) {
-        drawRssiIndicator(bleClient.getConnectionRssi());
+        drawRssiIndicator(bleCtx_.v1Rssi);
     }
     
     flush();

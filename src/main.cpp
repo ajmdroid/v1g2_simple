@@ -790,6 +790,13 @@ void loop() {
         if (!bootSplashHoldActive) {
             unsigned long lastRx = bleQueueModule.getLastRxMillis();
             bool bleReceiving = (now - lastRx) < 2000;
+            // Push BLE snapshot so display files never need extern bleClient
+            display.setBleContext({
+                bleClient.isConnected(),
+                bleClient.isProxyClientConnected(),
+                bleClient.getConnectionRssi(),
+                bleClient.getProxyClientRssi()
+            });
             display.setBLEProxyStatus(bleClient.isConnected(), bleClient.isProxyClientConnected(), bleReceiving);
         }
     }

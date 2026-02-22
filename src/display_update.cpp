@@ -15,7 +15,6 @@
 #include "../include/display_flush.h"
 #include "../include/display_vol_warn.h"
 #include "settings.h"
-#include "ble_client.h"
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "packet_parser.h"
@@ -24,8 +23,6 @@
 
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
-
-extern V1BLEClient bleClient;
 
 // RSSI periodic update timer (shared between resting and alert modes)
 static unsigned long s_lastRssiUpdateMs = 0;
@@ -138,7 +135,7 @@ void V1Display::update(const DisplayState& state) {
     bool bogeyCounterChanged = (state.bogeyCounterByte != lastRestingBogeyByte);
     
     // Check if volume zero warning needs a flashing redraw
-    bool currentProxyConnected = bleClient.isProxyClientConnected();
+    bool currentProxyConnected = bleCtx_.proxyConnected;
     bool volZero = (state.mainVolume == 0 && state.hasVolumeData);
     if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_)) {
         needsFullRedraw = true;
@@ -179,13 +176,13 @@ void V1Display::update(const DisplayState& state) {
             lastRestingMainVol = state.mainVolume;
             lastRestingMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
-            drawRssiIndicator(bleClient.getConnectionRssi());
+            drawRssiIndicator(bleCtx_.v1Rssi);
             s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
             flushRightStrip = true;
         }
         if (rssiNeedsUpdate && !volumeChanged) {
             // Periodic RSSI-only update
-            drawRssiIndicator(bleClient.getConnectionRssi());
+            drawRssiIndicator(bleCtx_.v1Rssi);
             s_lastRssiUpdateMs = now;
             flushRightStrip = true;
         }
@@ -222,7 +219,7 @@ void V1Display::update(const DisplayState& state) {
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
-        drawRssiIndicator(bleClient.getConnectionRssi());
+        drawRssiIndicator(bleCtx_.v1Rssi);
     }
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
@@ -235,7 +232,7 @@ void V1Display::update(const DisplayState& state) {
     else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
     
     // Volume-zero warning: 15s delay → 10s flashing "VOL 0" → acknowledge
-    bool proxyConnected = bleClient.isProxyClientConnected();
+    bool proxyConnected = bleCtx_.proxyConnected;
     bool showVolumeWarning = volZeroWarn.evaluate(
         volZero, proxyConnected, preQuietActive_, play_vol0_beep);
     
@@ -389,7 +386,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     const V1Settings& s = settingsManager.get();
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show current volume (V1 4.1028+)
-        drawRssiIndicator(bleClient.getConnectionRssi());
+        drawRssiIndicator(bleCtx_.v1Rssi);
     }
     
     // Band indicator in persisted color
@@ -655,13 +652,13 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             lastMainVol = state.mainVolume;
             lastMuteVol = state.muteVolume;
             drawVolumeIndicator(state.mainVolume, state.muteVolume);
-            drawRssiIndicator(bleClient.getConnectionRssi());
+            drawRssiIndicator(bleCtx_.v1Rssi);
             s_lastRssiUpdateMs = now;  // Reset RSSI timer when we update with volume
             flushRightStrip = true;
         }
         if (rssiNeedsUpdate && !volumeChanged) {
             // Periodic RSSI-only update
-            drawRssiIndicator(bleClient.getConnectionRssi());
+            drawRssiIndicator(bleCtx_.v1Rssi);
             s_lastRssiUpdateMs = now;
             flushRightStrip = true;
         }
@@ -711,7 +708,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     const V1Settings& settings = settingsManager.get();
     if (state.supportsVolume() && !settings.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);  // Show volume below bogey counter (V1 4.1028+)
-        drawRssiIndicator(bleClient.getConnectionRssi());
+        drawRssiIndicator(bleCtx_.v1Rssi);
     }
     DISP_PERF_LOG("counters+vol");
     

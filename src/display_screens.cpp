@@ -19,13 +19,10 @@
 #include "display_font_manager.h"
 #include "v1simple_logo.h"
 #include "settings.h"
-#include "ble_client.h"
 #include "perf_metrics.h"
 
 using namespace DisplaySegments;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
-
-extern V1BLEClient bleClient;
 
 // ============================================================================
 // showDisconnected
@@ -66,7 +63,7 @@ void V1Display::showResting(bool forceRedraw) {
         // Draw idle state: if V1 is connected, show last known mode; otherwise show "0"
         char topChar = '0';
         bool topDot = true;
-        if (bleClient.isConnected() && savedBogeyChar != 0) {
+        if (bleCtx_.v1Connected && savedBogeyChar != 0) {
             topChar = savedBogeyChar;
             topDot = savedBogeyDot;
         }
