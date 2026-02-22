@@ -1636,6 +1636,9 @@ if [[ "$result" == "FAIL" ]]; then
   elif [[ "$gate_parse_fail_fail" -eq 1 || "$gate_queue_drop_fail" -eq 1 || "$gate_perf_drop_fail" -eq 1 || "$gate_event_drop_fail" -eq 1 || "$gate_oversize_drop_fail" -eq 1 ]]; then
     diagnosis_bucket="Core Data-Path Integrity Regression"
     diagnosis_next_action="Inspect parser/queue/event counters around failing timestamps and bisect recent BLE/parser changes."
+  elif [[ "$gate_queue_high_water_fail" -eq 1 || "$gate_wifi_connect_deferred_fail" -eq 1 || "$gate_dma_free_fail" -eq 1 || "$gate_dma_largest_fail" -eq 1 ]]; then
+    diagnosis_bucket="Resource Pressure Regression"
+    diagnosis_next_action="Inspect queueHighWater/wifiConnectDeferred/DMA floor counters around failing samples and tune backpressure or memory usage."
   elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 || "$gate_sd_max_fail" -eq 1 || "$gate_fs_max_fail" -eq 1 ]]; then
     if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
       diagnosis_bucket="Stress Latency Regression"
