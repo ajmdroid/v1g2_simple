@@ -47,7 +47,7 @@ static void sendBackup(WebServer& server) {
     JsonDocument doc;
     
     // Metadata
-    doc["_version"] = 5;  // Backup format version
+    doc["_version"] = 6;  // Backup format version
     doc["_type"] = "v1simple_backup";
     doc["_timestamp"] = millis();
     doc["timestamp"] = doc["_timestamp"];
@@ -64,6 +64,8 @@ static void sendBackup(WebServer& server) {
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["cameraEnabled"] = s.cameraEnabled;
+    doc["cameraAlertDistanceFt"] = s.cameraAlertDistanceFt;
+    doc["cameraAlertPersistSec"] = s.cameraAlertPersistSec;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
@@ -280,6 +282,12 @@ static void handleRestore(WebServer& server) {
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
     if (doc["cameraEnabled"].is<bool>()) s.cameraEnabled = doc["cameraEnabled"];
+    if (doc["cameraAlertDistanceFt"].is<int>()) {
+        s.cameraAlertDistanceFt = clampCameraAlertDistanceFtValue(doc["cameraAlertDistanceFt"].as<int>());
+    }
+    if (doc["cameraAlertPersistSec"].is<int>()) {
+        s.cameraAlertPersistSec = clampCameraAlertPersistSecValue(doc["cameraAlertPersistSec"].as<int>());
+    }
     if (doc["gpsLockoutMode"].is<int>()) {
         s.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {
@@ -540,6 +548,8 @@ static void handleRestore(WebServer& server) {
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
     cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(settingsManager.get()));
+    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
+                                       settingsManager.get().cameraAlertPersistSec);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);

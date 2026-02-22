@@ -327,6 +327,9 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [this](bool enabled) {
             cameraRuntimeModule.setEnabled(enabled);
         },
+        [this](uint16_t distanceFt, uint8_t persistSec) {
+            cameraRuntimeModule.setAlertTuning(distanceFt, persistSec);
+        },
         [this](bool enabled) {
             lockoutSetKaLearningEnabled(enabled);
         },

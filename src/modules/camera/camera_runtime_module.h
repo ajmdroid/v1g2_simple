@@ -36,6 +36,7 @@ enum class CameraClearReason : uint8_t {
     ELIGIBILITY_INVALID = 3,
     PREEMPTED_BY_SIGNAL = 4,
     REPLACED_BY_NEW_MATCH = 5,
+    TIMEOUT = 6,
 };
 
 struct CameraActiveAlertStatus {
@@ -66,6 +67,8 @@ struct CameraRuntimeStatus {
     CameraLifecycleState lifecycleState = CameraLifecycleState::IDLE;
     CameraClearReason lastClearReason = CameraClearReason::NONE;
     uint32_t suppressedCameraId = 0;
+    uint16_t alertDistanceFt = 0;
+    uint8_t alertPersistSec = 0;
     CameraActiveAlertStatus activeAlert;
     CameraRuntimeCounters counters;
     CameraDataLoaderStatus loader;
@@ -74,12 +77,20 @@ struct CameraRuntimeStatus {
 class CameraRuntimeModule {
 public:
     static constexpr uint32_t DEFAULT_TICK_INTERVAL_MS = 200;
+    static constexpr uint16_t kAlertDistanceFtMin = 500;
+    static constexpr uint16_t kAlertDistanceFtMax = 2000;
+    // Preserve historical fixed 500 m trigger behavior by default.
+    static constexpr uint16_t kAlertDistanceFtDefault = 1640;
+    static constexpr uint8_t kAlertPersistSecMin = 3;
+    static constexpr uint8_t kAlertPersistSecMax = 10;
+    static constexpr uint8_t kAlertPersistSecDefault = 5;
     // Must stay above WiFi AP+STA runtime threshold (20 KiB) + margin.
     static constexpr uint32_t kMemoryGuardMinFreeInternal = 32768;      // 32 KiB
     static constexpr uint32_t kMemoryGuardMinLargestBlock = 16384;      // 16 KiB
 
     void begin(bool enabled);
     void setEnabled(bool enabled);
+    void setAlertTuning(uint16_t distanceFt, uint8_t persistSec);
     bool isEnabled() const { return enabled_; }
 
     // Main-loop low-priority hook.
@@ -121,6 +132,10 @@ private:
     uint32_t lastInternalLargestBlock_ = 0;
     CameraLifecycleState lifecycleState_ = CameraLifecycleState::IDLE;
     CameraClearReason lastClearReason_ = CameraClearReason::NONE;
+    float alertRadiusM_ = static_cast<float>(kAlertDistanceFtDefault) * 0.3048f;
+    uint32_t maxAlertDurationMs_ = static_cast<uint32_t>(kAlertPersistSecDefault) * 1000UL;
+    uint16_t alertDistanceFt_ = kAlertDistanceFtDefault;
+    uint8_t alertPersistSec_ = kAlertPersistSecDefault;
     CameraActiveAlertStatus activeAlert_ = {};
     uint32_t suppressedCameraId_ = 0;
     uint8_t turnAwayConsecutiveTicks_ = 0;

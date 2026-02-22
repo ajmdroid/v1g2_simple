@@ -377,6 +377,48 @@ void test_memory_guard_skip_counter_accumulates_under_sustained_pressure() {
     TEST_ASSERT_TRUE(recovered.activeAlert.active);
 }
 
+void test_alert_distance_tuning_expands_match_gate() {
+    // ~556m from origin.
+    queueSingleCamera(0.0f, 0.0050f, 900, 35, 4);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus defaultDistance = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_FALSE(defaultDistance.activeAlert.active);
+
+    cameraRuntimeModule.begin(true);
+    cameraRuntimeModule.setAlertTuning(2000, 5);  // ~610m trigger radius
+    queueSingleCamera(0.0f, 0.0050f, 900, 35, 4);
+    setGpsSample(0.0f, 0.0f, 90.0f, 2000);
+    processCameraTick(2000);
+
+    CameraRuntimeStatus expandedDistance = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(expandedDistance.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT32(1, expandedDistance.activeAlert.cameraId);
+}
+
+void test_active_alert_times_out_when_pass_distance_not_met() {
+    cameraRuntimeModule.setAlertTuning(1640, 3);
+    queueSingleCamera(0.0f, 0.0010f, 900, 35, 4);
+    setGpsSample(0.0f, 0.0f, 90.0f, 1000);
+    processCameraTick(1000);
+
+    CameraRuntimeStatus started = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_TRUE(started.activeAlert.active);
+
+    // Stay on course but never pass the camera; timeout should clear lifecycle.
+    setGpsSample(0.0f, 0.0f, 90.0f, 4100);
+    processCameraTick(4100);
+
+    CameraRuntimeStatus timedOut = cameraRuntimeModule.snapshot();
+    TEST_ASSERT_FALSE(timedOut.activeAlert.active);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(CameraLifecycleState::SUPPRESSED_UNTIL_EXIT),
+                            static_cast<uint8_t>(timedOut.lifecycleState));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(CameraClearReason::TIMEOUT),
+                            static_cast<uint8_t>(timedOut.lastClearReason));
+    TEST_ASSERT_EQUAL_UINT32(1, timedOut.suppressedCameraId);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_forward_only_start_requires_heading_alignment);
@@ -391,5 +433,7 @@ int main() {
     RUN_TEST(test_memory_guard_blocks_when_largest_block_below_threshold);
     RUN_TEST(test_memory_guard_allows_scan_at_exact_thresholds);
     RUN_TEST(test_memory_guard_skip_counter_accumulates_under_sustained_pressure);
+    RUN_TEST(test_alert_distance_tuning_expands_match_gate);
+    RUN_TEST(test_active_alert_times_out_when_pass_distance_not_met);
     return UNITY_END();
 }

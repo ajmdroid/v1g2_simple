@@ -52,6 +52,9 @@ struct FakeRuntime {
 
     int setCameraRuntimeEnabledCalls = 0;
     bool lastCameraRuntimeEnabled = false;
+    int setCameraRuntimeAlertTuningCalls = 0;
+    uint16_t lastCameraAlertDistanceFt = 0;
+    uint8_t lastCameraAlertPersistSec = 0;
 
     int setLockoutKaLearningEnabledCalls = 0;
     bool lastLockoutKaLearningEnabled = false;
@@ -109,6 +112,11 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.setCameraRuntimeEnabledCalls++;
             rt.lastCameraRuntimeEnabled = enabled;
         },
+        [&rt](uint16_t distanceFt, uint8_t persistSec) {
+            rt.setCameraRuntimeAlertTuningCalls++;
+            rt.lastCameraAlertDistanceFt = distanceFt;
+            rt.lastCameraAlertPersistSec = persistSec;
+        },
         [&rt](bool enabled) {
             rt.setLockoutKaLearningEnabledCalls++;
             rt.lastLockoutKaLearningEnabled = enabled;
@@ -136,6 +144,8 @@ void test_settings_get_serializes_expected_payload() {
     rt.settings.obdEnabled = false;
     rt.settings.gpsEnabled = true;
     rt.settings.cameraEnabled = true;
+    rt.settings.cameraAlertDistanceFt = 1800;
+    rt.settings.cameraAlertPersistSec = 8;
     rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
     rt.settings.autoPowerOffMinutes = 12;
     rt.settings.apTimeoutMinutes = 25;
@@ -150,6 +160,8 @@ void test_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"isDefaultPassword\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"proxy_ble\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"proxy_name\":\"Proxy-Test\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertDistanceFt\":1800"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertPersistSec\":8"));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutModeName\":\"advisory\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableWifiAtBoot\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
@@ -274,6 +286,8 @@ void test_settings_save_updates_runtime_dependencies() {
     server.setArg("obdEnabled", "false");
     server.setArg("gpsEnabled", "true");
     server.setArg("cameraEnabled", "true");
+    server.setArg("cameraAlertDistanceFt", "2500");
+    server.setArg("cameraAlertPersistSec", "1");
     server.setArg("gpsLockoutMode", "enforce");
     server.setArg("gpsLockoutMaxQueueDrops", "70000");
     server.setArg("gpsLockoutKaLearningEnabled", "true");
@@ -294,11 +308,16 @@ void test_settings_save_updates_runtime_dependencies() {
     TEST_ASSERT_TRUE(rt.lastSpeedSourceGpsEnabled);
     TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastCameraRuntimeEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeAlertTuningCalls);
+    TEST_ASSERT_EQUAL_UINT16(2000, rt.lastCameraAlertDistanceFt);
+    TEST_ASSERT_EQUAL_UINT8(3, rt.lastCameraAlertPersistSec);
     TEST_ASSERT_EQUAL_INT(1, rt.setLockoutKaLearningEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastLockoutKaLearningEnabled);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(LOCKOUT_RUNTIME_ENFORCE),
                           static_cast<int>(rt.settings.gpsLockoutMode));
     TEST_ASSERT_EQUAL_UINT16(65535, rt.settings.gpsLockoutMaxQueueDrops);
+    TEST_ASSERT_EQUAL_UINT16(2000, rt.settings.cameraAlertDistanceFt);
+    TEST_ASSERT_EQUAL_UINT8(3, rt.settings.cameraAlertPersistSec);
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 

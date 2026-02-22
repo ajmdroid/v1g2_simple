@@ -110,6 +110,7 @@ void sendStatus(WebServer& server,
             case CameraClearReason::ELIGIBILITY_INVALID: return "ELIGIBILITY_INVALID";
             case CameraClearReason::PREEMPTED_BY_SIGNAL: return "PREEMPTED_BY_SIGNAL";
             case CameraClearReason::REPLACED_BY_NEW_MATCH: return "REPLACED_BY_NEW_MATCH";
+            case CameraClearReason::TIMEOUT: return "TIMEOUT";
             default: return "UNKNOWN";
         }
     };
@@ -135,6 +136,8 @@ void sendStatus(WebServer& server,
     doc["lastClearReason"] = clearReasonName(runtimeStatus.lastClearReason);
     doc["lastClearReasonRaw"] = static_cast<uint8_t>(runtimeStatus.lastClearReason);
     doc["suppressedCameraId"] = runtimeStatus.suppressedCameraId;
+    doc["alertDistanceFt"] = runtimeStatus.alertDistanceFt;
+    doc["alertPersistSec"] = runtimeStatus.alertPersistSec;
     doc["lastInternalFree"] = runtimeStatus.lastInternalFree;
     doc["lastInternalLargestBlock"] = runtimeStatus.lastInternalLargestBlock;
     doc["memoryGuardMinFree"] = runtimeStatus.memoryGuardMinFree;

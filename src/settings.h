@@ -114,6 +114,28 @@ static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
 static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
 static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
 
+// Camera runtime alert tuning (ALPR) exposed in web UI.
+// Distance is user-facing feet; runtime converts to meters.
+static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_MIN = 500;
+static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_MAX = 2000;
+// Preserve historical 500 m behavior by default (~1640 ft).
+static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_DEFAULT = 1640;
+static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_MIN = 3;
+static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_MAX = 10;
+static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_DEFAULT = 5;
+
+inline uint16_t clampCameraAlertDistanceFtValue(int rawDistanceFt) {
+    return static_cast<uint16_t>(
+        std::max(static_cast<int>(CAMERA_ALERT_DISTANCE_FT_MIN),
+                 std::min(rawDistanceFt, static_cast<int>(CAMERA_ALERT_DISTANCE_FT_MAX))));
+}
+
+inline uint8_t clampCameraAlertPersistSecValue(int rawPersistSec) {
+    return static_cast<uint8_t>(
+        std::max(static_cast<int>(CAMERA_ALERT_PERSIST_SEC_MIN),
+                 std::min(rawPersistSec, static_cast<int>(CAMERA_ALERT_PERSIST_SEC_MAX))));
+}
+
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
                                          std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
@@ -179,6 +201,8 @@ struct V1Settings {
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
     bool cameraEnabled;     // Enable camera runtime module + index loading
+    uint16_t cameraAlertDistanceFt; // ALPR trigger distance gate (feet)
+    uint8_t cameraAlertPersistSec;  // ALPR display persistence / failsafe timeout (seconds)
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
     bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
     uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
@@ -329,6 +353,8 @@ struct V1Settings {
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
         cameraEnabled(true),    // Camera defaults on for runtime/index preload
+        cameraAlertDistanceFt(CAMERA_ALERT_DISTANCE_FT_DEFAULT),
+        cameraAlertPersistSec(CAMERA_ALERT_PERSIST_SEC_DEFAULT),
         gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
         gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
         gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default

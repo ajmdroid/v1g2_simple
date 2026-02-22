@@ -448,6 +448,8 @@ void SettingsManager::backupToSD() {
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["cameraEnabled"] = settings.cameraEnabled;
+    doc["cameraAlertDistanceFt"] = settings.cameraAlertDistanceFt;
+    doc["cameraAlertPersistSec"] = settings.cameraAlertPersistSec;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
@@ -682,6 +684,14 @@ bool SettingsManager::restoreFromSD() {
     restoreBool("obdVwDataEnabled", settings.obdVwDataEnabled);
     restoreBool("gpsEnabled", settings.gpsEnabled);
     restoreBool("cameraEnabled", settings.cameraEnabled);
+    if (doc["cameraAlertDistanceFt"].is<int>()) {
+        settings.cameraAlertDistanceFt =
+            clampCameraAlertDistanceFtValue(doc["cameraAlertDistanceFt"].as<int>());
+    }
+    if (doc["cameraAlertPersistSec"].is<int>()) {
+        settings.cameraAlertPersistSec =
+            clampCameraAlertPersistSecValue(doc["cameraAlertPersistSec"].as<int>());
+    }
     if (doc["gpsLockoutMode"].is<int>()) {
         settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {

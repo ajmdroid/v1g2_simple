@@ -8,7 +8,6 @@
 #include <limits>
 
 namespace {
-constexpr float kAlertRadiusM = 500.0f;
 constexpr float kEarthRadiusM = 6371000.0f;
 constexpr float kMinimumMatchSpeedMph = 3.0f;
 constexpr uint32_t kMaximumGpsSampleAgeMs = 2000;
@@ -303,6 +302,13 @@ void CameraRuntimeModule::setEnabled(bool enabled) {
     }
 }
 
+void CameraRuntimeModule::setAlertTuning(uint16_t distanceFt, uint8_t persistSec) {
+    alertDistanceFt_ = std::clamp<uint16_t>(distanceFt, kAlertDistanceFtMin, kAlertDistanceFtMax);
+    alertPersistSec_ = std::clamp<uint8_t>(persistSec, kAlertPersistSecMin, kAlertPersistSecMax);
+    alertRadiusM_ = static_cast<float>(alertDistanceFt_) * 0.3048f;
+    maxAlertDurationMs_ = static_cast<uint32_t>(alertPersistSec_) * 1000UL;
+}
+
 bool CameraRuntimeModule::tryLoadDefault(uint32_t nowMs) {
     (void)nowMs;
     dataLoader_.requestReload();
@@ -523,7 +529,7 @@ void CameraRuntimeModule::process(uint32_t nowMs,
                                                         gpsStatus.longitudeDeg,
                                                         anchorLatitudeDeg,
                                                         anchorLongitudeDeg);
-                if (!std::isfinite(distanceM) || distanceM > kAlertRadiusM) {
+                if (!std::isfinite(distanceM) || distanceM > alertRadiusM_) {
                     continue;
                 }
                 if (suppressedCameraId_ != 0 && cameraId == suppressedCameraId_) {
@@ -601,6 +607,13 @@ void CameraRuntimeModule::process(uint32_t nowMs,
             } else {
                 turnAwayConsecutiveTicks_ = 0;
             }
+
+            if (activeAlert_.active &&
+                maxAlertDurationMs_ > 0 &&
+                activeAlert_.startTsMs != 0 &&
+                static_cast<uint32_t>(nowMs - activeAlert_.startTsMs) >= maxAlertDurationMs_) {
+                clearActiveAlert(CameraClearReason::TIMEOUT, nowMs, true);
+            }
         }
     }
 
@@ -654,6 +667,8 @@ CameraRuntimeStatus CameraRuntimeModule::snapshot() const {
     out.lifecycleState = lifecycleState_;
     out.lastClearReason = lastClearReason_;
     out.suppressedCameraId = suppressedCameraId_;
+    out.alertDistanceFt = alertDistanceFt_;
+    out.alertPersistSec = alertPersistSec_;
     out.activeAlert = activeAlert_;
     out.counters = counters_;
     out.loader = dataLoader_.status();

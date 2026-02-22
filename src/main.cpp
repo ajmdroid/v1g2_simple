@@ -688,6 +688,8 @@ void setup() {
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
     cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
+    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
+                                       settingsManager.get().cameraAlertPersistSec);
     // Wire lockout store only if not already done during zone-load above.
     // Calling begin() again would reset the dirty flag set by legacy migration.
     if (!lockoutStore.isInitialized()) {
