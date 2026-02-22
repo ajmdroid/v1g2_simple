@@ -84,6 +84,9 @@ BASELINE_PERF_CSV=""
 BASELINE_PERF_SESSION="last-connected"
 BASELINE_LATENCY_FACTOR="1.0"
 BASELINE_THROUGHPUT_FACTOR="0.50"
+BASELINE_PROFILE=""
+BASELINE_STRESS_CLASS=""
+RUN_STRESS_CLASS=""
 BASELINE_GATES_APPLIED=0
 BASELINE_GATES_KV_FILE=""
 BASELINE_SELECTED_SESSION=""
@@ -444,6 +447,22 @@ while [[ $# -gt 0 ]]; do
       BASELINE_PERF_SESSION="$2"
       shift
       ;;
+    --baseline-profile)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-profile" >&2
+        exit 2
+      fi
+      BASELINE_PROFILE="$2"
+      shift
+      ;;
+    --baseline-stress-class)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --baseline-stress-class" >&2
+        exit 2
+      fi
+      BASELINE_STRESS_CLASS="$2"
+      shift
+      ;;
     --baseline-latency-factor)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --baseline-latency-factor" >&2
@@ -573,6 +592,12 @@ Options:
   --baseline-perf-session MODE
                         Session selector: last-connected (default), last,
                         longest-connected, longest, or 1-based index
+  --baseline-profile PROFILE
+                        Declared baseline capture profile: drive_wifi_off or
+                        drive_wifi_ap (required with --baseline-perf-csv)
+  --baseline-stress-class CLASS
+                        Declared baseline stress class: core, display, camera,
+                        or display_camera (required with --baseline-perf-csv)
   --baseline-latency-factor F
                         Multiply baseline peaks for max gates (default: 1.0)
   --baseline-throughput-factor F
@@ -638,6 +663,23 @@ EOF
   esac
   shift
 done
+
+derive_stress_class() {
+  local display_enabled="$1"
+  local camera_enabled="$2"
+
+  if [[ "$display_enabled" -eq 1 && "$camera_enabled" -eq 1 ]]; then
+    echo "display_camera"
+  elif [[ "$display_enabled" -eq 1 ]]; then
+    echo "display"
+  elif [[ "$camera_enabled" -eq 1 ]]; then
+    echo "camera"
+  else
+    echo "core"
+  fi
+}
+
+RUN_STRESS_CLASS="$(derive_stress_class "$DISPLAY_DRIVE_ENABLED" "$CAMERA_DRIVE_ENABLED")"
 
 # ------------------------------------------------------------------
 # Profile resolution: apply PERF_SLOS.md hard limits as defaults.
@@ -804,7 +846,46 @@ if [[ -n "$BASELINE_PERF_CSV" && ! -f "$BASELINE_PERF_CSV" ]]; then
   exit 2
 fi
 
+if [[ -z "$BASELINE_PERF_CSV" && ( -n "$BASELINE_PROFILE" || -n "$BASELINE_STRESS_CLASS" ) ]]; then
+  echo "--baseline-profile/--baseline-stress-class require --baseline-perf-csv." >&2
+  exit 2
+fi
+
 if [[ -n "$BASELINE_PERF_CSV" ]]; then
+  if [[ -z "$BASELINE_PROFILE" ]]; then
+    echo "Missing --baseline-profile when --baseline-perf-csv is set." >&2
+    exit 2
+  fi
+  case "$BASELINE_PROFILE" in
+    drive_wifi_off|drive_wifi_ap) ;;
+    *)
+      echo "Invalid --baseline-profile '$BASELINE_PROFILE'. Use 'drive_wifi_off' or 'drive_wifi_ap'." >&2
+      exit 2
+      ;;
+  esac
+  if [[ "$BASELINE_PROFILE" != "$SOAK_PROFILE" ]]; then
+    echo "Baseline profile mismatch: baseline='$BASELINE_PROFILE' run='$SOAK_PROFILE'." >&2
+    echo "Use a profile-matched baseline CSV (or adjust --profile)." >&2
+    exit 2
+  fi
+
+  if [[ -z "$BASELINE_STRESS_CLASS" ]]; then
+    echo "Missing --baseline-stress-class when --baseline-perf-csv is set." >&2
+    exit 2
+  fi
+  case "$BASELINE_STRESS_CLASS" in
+    core|display|camera|display_camera) ;;
+    *)
+      echo "Invalid --baseline-stress-class '$BASELINE_STRESS_CLASS'. Use core|display|camera|display_camera." >&2
+      exit 2
+      ;;
+  esac
+  if [[ "$BASELINE_STRESS_CLASS" != "$RUN_STRESS_CLASS" ]]; then
+    echo "Baseline stress-class mismatch: baseline='$BASELINE_STRESS_CLASS' run='$RUN_STRESS_CLASS'." >&2
+    echo "Use a stress-matched baseline CSV (same display/camera drive class)." >&2
+    exit 2
+  fi
+
   if ! [[ "$BASELINE_LATENCY_FACTOR" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     echo "Invalid --baseline-latency-factor value '$BASELINE_LATENCY_FACTOR' (expected positive number)." >&2
     exit 2
@@ -1091,6 +1172,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    env: $ENV_NAME"
   echo "    port: ${TEST_PORT:-auto-detect (skipped in dry-run)}"
   echo "    profile: ${SOAK_PROFILE:-none}"
+  echo "    run stress class: ${RUN_STRESS_CLASS}"
   echo "    duration: ${DURATION_SECONDS}s"
   echo "    poll: ${POLL_SECONDS}s"
   echo "    serial baud: ${SERIAL_BAUD}"
@@ -1112,7 +1194,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    camera drive: enabled=${CAMERA_DRIVE_ENABLED} url=${CAMERA_DEMO_URL:-disabled} interval=${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}"
   echo "    out dir: $OUT_DIR"
   if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
-    echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})"
+    echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})"
     echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s"
   else
     echo "    baseline csv: disabled"
@@ -1158,6 +1240,7 @@ echo "==> Real firmware soak starting" | tee -a "$RUN_LOG"
 echo "    env: $ENV_NAME" | tee -a "$RUN_LOG"
 echo "    port: $TEST_PORT" | tee -a "$RUN_LOG"
 echo "    profile: ${SOAK_PROFILE:-none}" | tee -a "$RUN_LOG"
+echo "    run stress class: ${RUN_STRESS_CLASS}" | tee -a "$RUN_LOG"
 echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
@@ -1176,7 +1259,7 @@ echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipe
 echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
-  echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
+  echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
   echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
 fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
@@ -1975,7 +2058,7 @@ diagnosis_bucket="No issues"
 diagnosis_next_action="No action required."
 diagnosis_baseline_note=""
 
-if [[ "$BASELINE_GATES_APPLIED" -eq 1 && ( "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ) ]]; then
+if [[ "$BASELINE_GATES_APPLIED" -eq 1 && ( "$BASELINE_PROFILE" != "$SOAK_PROFILE" || "$BASELINE_STRESS_CLASS" != "$RUN_STRESS_CLASS" ) ]]; then
   diagnosis_baseline_note="Baseline gates came from perf CSV and this run used active stress drivers; compare against a stress baseline for release gating."
 fi
 
@@ -2018,6 +2101,7 @@ fi
   echo "- Result: **$result**"
   echo "- Firmware env: \`$ENV_NAME\`"
   echo "- Profile: \`${SOAK_PROFILE:-none}\`"
+  echo "- Run stress class: \`${RUN_STRESS_CLASS}\`"
   echo "- Port: \`$MONITOR_PORT\`"
   echo "- Soak start (UTC): $soak_start_utc"
   echo "- Soak end (UTC): $soak_end_utc"
@@ -2126,6 +2210,9 @@ fi
   echo ""
   if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
     echo "- Baseline perf CSV: \`${BASELINE_PERF_CSV}\`"
+    echo "- Baseline profile (declared): ${BASELINE_PROFILE}"
+    echo "- Baseline stress class (declared): ${BASELINE_STRESS_CLASS}"
+    echo "- Baseline comparability check: run profile=${SOAK_PROFILE}, run stress class=${RUN_STRESS_CLASS}"
     echo "- Baseline session: ${BASELINE_SELECTED_SESSION}"
     echo "- Baseline rows: ${BASELINE_SELECTED_ROWS}"
     echo "- Baseline duration (ms): ${BASELINE_SELECTED_DURATION_MS}"
