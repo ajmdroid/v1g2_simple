@@ -478,7 +478,7 @@
 							<!-- Proxy Stats -->
 							{#if metrics.proxy}
 								<div class="surface-panel">
-									<h3 class="copy-subheading mb-2">V1 Proxy (to JBV1/V1C)</h3>
+									<h3 class="copy-subheading mb-2">V1 Proxy (to companion app)</h3>
 									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div class="flex justify-between">
 											<span class="copy-caption">Connected:</span>

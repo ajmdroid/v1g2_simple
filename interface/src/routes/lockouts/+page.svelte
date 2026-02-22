@@ -70,8 +70,8 @@
 		learnerUnlearnIntervalHours: 0,
 		manualDemotionMissCount: 0
 	};
-	const LOCKOUT_PRESET_JBV1_BLEND = {
-		name: 'JBV1 Blend',
+	const LOCKOUT_PRESET_BALANCED_BLEND = {
+		name: 'Balanced Blend',
 		learnerPromotionHits: 3,
 		learnerLearnIntervalHours: 4,
 		learnerFreqToleranceMHz: 10,
@@ -1205,14 +1205,14 @@
 					</button>
 					<button
 						class="btn btn-outline btn-xs"
-						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_JBV1_BLEND)}
+						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_BALANCED_BLEND)}
 						disabled={!advancedUnlocked}
 					>
-						Stage JBV1 Blend
+						Stage Balanced Blend
 					</button>
 				</div>
 				<div class="copy-meta">
-					JBV1 blend stages: 3 hits · 4h learn interval · ±10 MHz · 492 ft · unlearn 5 misses / 4h · manual delete 25 misses.
+					Balanced preset stages: 3 hits · 4h learn interval · ±10 MHz · 492 ft · unlearn 5 misses / 4h · manual delete 25 misses.
 				</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 					<label class="form-control">
