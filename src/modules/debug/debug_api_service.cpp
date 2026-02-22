@@ -5,14 +5,18 @@
 #include <cmath>
 #include "json_stream_response.h"
 #include <algorithm>
+#include <initializer_list>
+#include <utility>
 #include <vector>
 
+#include "../../../include/config.h"
 #include "../../perf_metrics.h"
 #include "../../settings.h"
 #include "../../obd_handler.h"
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
+#include "../ble/ble_queue_module.h"
 #include "../camera/camera_runtime_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
@@ -24,6 +28,7 @@
 
 // Extern globals (defined in main.cpp / module .cpp files).
 extern V1BLEClient bleClient;
+extern BleQueueModule bleQueueModule;
 extern SystemEventBus systemEventBus;
 
 // Conditionally-compiled perf latency externs (must be at file scope, not inside namespace).
