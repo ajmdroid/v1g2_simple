@@ -325,15 +325,15 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
     constexpr uint32_t OBD_ICON_FRESH_MS = 1500;
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    const bool gpsShow = gpsStatus.enabled && gpsStatus.hasFix;
-    const uint8_t gpsSats = gpsShow ? gpsStatus.satellites : 0;
+    const bool gpsShow = gpsStatus.enabled && gpsStatus.stableHasFix;
+    const uint8_t gpsSats = gpsShow ? gpsStatus.stableSatellites : 0;
 
     const V1Settings& settings = settingsManager.get();
     const bool obdConnected = obdHandler.isConnected();
     const bool obdFresh = !obdHandler.isDataStale(OBD_ICON_FRESH_MS);
     const bool obdShow = settings.obdEnabled && obdConnected && obdFresh;
 
-    setGpsSatellites(gpsStatus.enabled, gpsStatus.hasFix, gpsStatus.satellites);
+    setGpsSatellites(gpsStatus.enabled, gpsStatus.stableHasFix, gpsStatus.stableSatellites);
     setObdConnected(settings.obdEnabled, obdConnected, obdFresh);
 
     const bool forceBadgeFlush = dirty.lockout || dirty.gpsIndicator || dirty.obdIndicator;

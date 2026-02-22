@@ -6,8 +6,10 @@ struct GpsRuntimeStatus {
     bool enabled = false;
     bool sampleValid = false;
     bool hasFix = false;
+    bool stableHasFix = false;
     float speedMph = 0.0f;
     uint8_t satellites = 0;
+    uint8_t stableSatellites = 0;
     float hdop = NAN;
     bool locationValid = false;
     float latitudeDeg = NAN;
@@ -19,6 +21,7 @@ struct GpsRuntimeStatus {
     uint32_t sampleTsMs = 0;
     uint32_t sampleAgeMs = UINT32_MAX;
     uint32_t fixAgeMs = UINT32_MAX;
+    uint32_t stableFixAgeMs = UINT32_MAX;
     uint32_t injectedSamples = 0;
     bool moduleDetected = false;
     bool detectionTimedOut = false;
@@ -75,8 +78,9 @@ private:
     static constexpr uint32_t GPS_BAUD = 9600;
     static constexpr uint32_t DETECTION_TIMEOUT_MS = 60000;
     static constexpr uint32_t FIX_STALE_MS = 15000;
+    static constexpr uint32_t STABLE_FIX_HOLD_MS = 3000;
     static constexpr size_t NMEA_LINE_MAX = 128;
-    static constexpr uint16_t MAX_BYTES_PER_UPDATE = 512;
+    static constexpr uint16_t MAX_BYTES_PER_UPDATE = 1024;
     static constexpr float KNOTS_TO_MPH = 1.150779f;
     static constexpr uint32_t GPS_TIME_UPDATE_INTERVAL_MS = 300000;  // Rebase time at most every 5 minutes
 
@@ -85,6 +89,8 @@ private:
     void publishObservation(uint32_t timestampMs);
     void updateDetectionTimeout(uint32_t nowMs);
     void updateFixStaleness(uint32_t nowMs);
+    void updateStableFixState(uint32_t nowMs);
+    bool stableHasFixAt(uint32_t nowMs) const;
     void ingestByte(char c, uint32_t nowMs);
     bool processSentence(char* sentence, uint32_t nowMs);
     bool parseGga(char* fields[], size_t fieldCount, uint32_t nowMs);
@@ -121,6 +127,7 @@ private:
     bool ggaFix_ = false;
     uint32_t detectionStartMs_ = 0;
     uint32_t lastFixTsMs_ = 0;
+    uint32_t lastStableFixTsMs_ = 0;
     uint32_t lastSentenceTsMs_ = 0;
     uint32_t hardwareSamples_ = 0;
     uint32_t bytesRead_ = 0;
@@ -131,6 +138,7 @@ private:
     uint32_t bufferOverruns_ = 0;
     uint32_t lastGpsTimeUpdateMs_ = 0;
     uint32_t lastNoFixPublishMs_ = 0;  // Throttle: last no-fix observation publish timestamp
+    uint8_t stableSatellites_ = 0;
     static constexpr uint32_t NO_FIX_PUBLISH_INTERVAL_MS = 5000;  // Publish no-fix at most every 5s
     bool sentenceActive_ = false;
     size_t sentenceLen_ = 0;

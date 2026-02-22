@@ -104,7 +104,9 @@ void test_parsed_frame_sets_status_indicators_and_requests_pipeline() {
     settingsManager.settings.obdEnabled = true;
     gpsRuntime.nextSnapshot.enabled = true;
     gpsRuntime.nextSnapshot.hasFix = true;
+    gpsRuntime.nextSnapshot.stableHasFix = true;
     gpsRuntime.nextSnapshot.satellites = 9;
+    gpsRuntime.nextSnapshot.stableSatellites = 9;
     obdHandler.setConnected(true);
     obdHandler.setValidData(true);
     lockout.nextResult.prioritySuppressed = true;

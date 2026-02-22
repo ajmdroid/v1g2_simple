@@ -45,7 +45,9 @@ void sendStatus(WebServer& server,
                       : "scaffold";
     doc["sampleValid"] = gpsStatus.sampleValid;
     doc["hasFix"] = gpsStatus.hasFix;
+    doc["stableHasFix"] = gpsStatus.stableHasFix;
     doc["satellites"] = gpsStatus.satellites;
+    doc["stableSatellites"] = gpsStatus.stableSatellites;
     doc["injectedSamples"] = gpsStatus.injectedSamples;
     doc["moduleDetected"] = gpsStatus.moduleDetected;
     doc["detectionTimedOut"] = gpsStatus.detectionTimedOut;
@@ -92,6 +94,11 @@ void sendStatus(WebServer& server,
         doc["sampleAgeMs"] = nullptr;
     } else {
         doc["sampleAgeMs"] = gpsStatus.sampleAgeMs;
+    }
+    if (gpsStatus.stableFixAgeMs == UINT32_MAX) {
+        doc["stableFixAgeMs"] = nullptr;
+    } else {
+        doc["stableFixAgeMs"] = gpsStatus.stableFixAgeMs;
     }
     if (gpsStatus.courseAgeMs == UINT32_MAX) {
         doc["courseAgeMs"] = nullptr;

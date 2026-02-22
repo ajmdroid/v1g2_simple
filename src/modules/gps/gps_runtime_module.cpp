@@ -40,7 +40,7 @@ void GpsRuntimeModule::setEnabled(bool enabled) {
     } else {
         pinMode(GPS_EN_PIN, OUTPUT);
         digitalWrite(GPS_EN_PIN, LOW);
-        Serial2.setRxBufferSize(1024);  // 256 default too small for typical GPS output rate
+        Serial2.setRxBufferSize(2048);  // absorb brief loop stalls without dropping NMEA bursts
         Serial2.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
     }
 #endif
@@ -75,6 +75,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     ggaFix_ = false;
     detectionStartMs_ = 0;
     lastFixTsMs_ = 0;
+    lastStableFixTsMs_ = 0;
     lastSentenceTsMs_ = 0;
     hardwareSamples_ = 0;
     bytesRead_ = 0;
@@ -85,6 +86,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     bufferOverruns_ = 0;
     lastGpsTimeUpdateMs_ = 0;
     lastNoFixPublishMs_ = 0;
+    stableSatellites_ = 0;
     sentenceActive_ = false;
     sentenceLen_ = 0;
     sentenceBuf_[0] = '\0';
@@ -120,6 +122,7 @@ void GpsRuntimeModule::updateDetectionTimeout(uint32_t nowMs) {
     courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
+    updateStableFixState(nowMs);
     publishObservation(nowMs);
 
 #if !defined(UNIT_TEST)
@@ -150,7 +153,43 @@ void GpsRuntimeModule::updateFixStaleness(uint32_t nowMs) {
     courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
     invalidateSpeedSample();
+    updateStableFixState(nowMs);
     publishObservation(nowMs);
+}
+
+void GpsRuntimeModule::updateStableFixState(uint32_t nowMs) {
+    const uint32_t tsMs = (nowMs == 0) ? millis() : nowMs;
+    if (hasFix_) {
+        lastStableFixTsMs_ = tsMs;
+        const uint8_t targetSatellites = satellites_;
+        if (stableSatellites_ == 0) {
+            stableSatellites_ = targetSatellites;
+        } else if (targetSatellites > stableSatellites_ + 1) {
+            stableSatellites_ = static_cast<uint8_t>(stableSatellites_ + 1);
+        } else if (stableSatellites_ > targetSatellites + 1) {
+            stableSatellites_ = static_cast<uint8_t>(stableSatellites_ - 1);
+        } else {
+            stableSatellites_ = targetSatellites;
+        }
+        return;
+    }
+
+    if (lastStableFixTsMs_ != 0 &&
+        static_cast<uint32_t>(tsMs - lastStableFixTsMs_) <= STABLE_FIX_HOLD_MS) {
+        return;
+    }
+    stableSatellites_ = 0;
+}
+
+bool GpsRuntimeModule::stableHasFixAt(uint32_t nowMs) const {
+    if (hasFix_) {
+        return true;
+    }
+    if (lastStableFixTsMs_ == 0) {
+        return false;
+    }
+    const uint32_t tsMs = (nowMs == 0) ? millis() : nowMs;
+    return static_cast<uint32_t>(tsMs - lastStableFixTsMs_) <= STABLE_FIX_HOLD_MS;
 }
 
 void GpsRuntimeModule::update(uint32_t nowMs) {
@@ -330,7 +369,9 @@ bool GpsRuntimeModule::parseGga(char* fields[], size_t fieldCount, uint32_t nowM
         invalidateSpeedSample();
     }
 
-    publishObservation((nowMs == 0) ? millis() : nowMs);
+    const uint32_t tsMs = (nowMs == 0) ? millis() : nowMs;
+    updateStableFixState(tsMs);
+    publishObservation(tsMs);
 
     return true;
 }
@@ -353,7 +394,9 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
             latitudeDeg_ = NAN;
             longitudeDeg_ = NAN;
         }
-        publishObservation((nowMs == 0) ? millis() : nowMs);
+        const uint32_t tsMs = (nowMs == 0) ? millis() : nowMs;
+        updateStableFixState(tsMs);
+        publishObservation(tsMs);
         return true;
     }
 
@@ -410,6 +453,7 @@ bool GpsRuntimeModule::parseRmc(char* fields[], size_t fieldCount, uint32_t nowM
     courseDeg_ = parsedCourseValid ? parsedCourseDeg : NAN;
     courseSampleTsMs_ = parsedCourseValid ? sampleTsMs_ : 0;
     hardwareSamples_++;
+    updateStableFixState(sampleTsMs_);
     publishObservation(sampleTsMs_);
 
     // Inject GPS UTC time into system clock (rate-limited).
@@ -717,10 +761,12 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
     }
     courseSampleTsMs_ = courseValid_ ? sampleTsMs_ : 0;
     injectedSamples_++;
+    updateStableFixState(sampleTsMs_);
     publishObservation(sampleTsMs_);
 }
 
 void GpsRuntimeModule::clearSample() {
+    const uint32_t nowMs = millis();
     invalidateSpeedSample();
     hasFix_ = false;
     rmcFix_ = false;
@@ -734,7 +780,8 @@ void GpsRuntimeModule::clearSample() {
     courseDeg_ = NAN;
     courseSampleTsMs_ = 0;
     lastFixTsMs_ = 0;
-    publishObservation(millis());
+    updateStableFixState(nowMs);
+    publishObservation(nowMs);
 }
 
 bool GpsRuntimeModule::getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const {
@@ -754,8 +801,10 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     status.enabled = enabled_;
     status.sampleValid = sampleValid_;
     status.hasFix = hasFix_;
+    status.stableHasFix = stableHasFixAt(nowMs);
     status.speedMph = speedMph_;
     status.satellites = satellites_;
+    status.stableSatellites = status.stableHasFix ? stableSatellites_ : 0;
     status.hdop = hdop_;
     status.locationValid = locationValid_;
     status.latitudeDeg = latitudeDeg_;
@@ -786,6 +835,11 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
         status.fixAgeMs = static_cast<uint32_t>(nowMs - lastFixTsMs_);
     } else {
         status.fixAgeMs = UINT32_MAX;
+    }
+    if (status.stableHasFix && lastStableFixTsMs_ != 0) {
+        status.stableFixAgeMs = static_cast<uint32_t>(nowMs - lastStableFixTsMs_);
+    } else {
+        status.stableFixAgeMs = UINT32_MAX;
     }
     if (courseValid_ && courseSampleTsMs_ != 0) {
         status.courseAgeMs = static_cast<uint32_t>(nowMs - courseSampleTsMs_);

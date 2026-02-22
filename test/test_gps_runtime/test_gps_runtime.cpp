@@ -149,6 +149,37 @@ void test_stale_fix_is_cleared() {
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, status.fixAgeMs);
 }
 
+void test_stable_fix_holds_briefly_after_fix_drop() {
+    gpsRuntimeModule.setScaffoldSample(32.0f, true, 8, 0.9f, 1000);
+    mockMillis = 2000;
+    gpsRuntimeModule.clearSample();
+
+    GpsRuntimeStatus held = gpsRuntimeModule.snapshot(3500);
+    TEST_ASSERT_FALSE(held.hasFix);
+    TEST_ASSERT_TRUE(held.stableHasFix);
+    TEST_ASSERT_EQUAL_UINT8(8, held.stableSatellites);
+
+    GpsRuntimeStatus expired = gpsRuntimeModule.snapshot(5005);
+    TEST_ASSERT_FALSE(expired.stableHasFix);
+    TEST_ASSERT_EQUAL_UINT8(0, expired.stableSatellites);
+}
+
+void test_stable_satellites_slew_toward_raw_count() {
+    gpsRuntimeModule.setScaffoldSample(25.0f, true, 6, 0.8f, 1000);
+    GpsRuntimeStatus first = gpsRuntimeModule.snapshot(1000);
+    TEST_ASSERT_EQUAL_UINT8(6, first.satellites);
+    TEST_ASSERT_EQUAL_UINT8(6, first.stableSatellites);
+
+    gpsRuntimeModule.setScaffoldSample(25.0f, true, 10, 0.8f, 2000);
+    GpsRuntimeStatus second = gpsRuntimeModule.snapshot(2000);
+    TEST_ASSERT_EQUAL_UINT8(10, second.satellites);
+    TEST_ASSERT_EQUAL_UINT8(7, second.stableSatellites);
+
+    gpsRuntimeModule.setScaffoldSample(25.0f, true, 10, 0.8f, 3000);
+    GpsRuntimeStatus third = gpsRuntimeModule.snapshot(3000);
+    TEST_ASSERT_EQUAL_UINT8(8, third.stableSatellites);
+}
+
 void test_parseRmcDateTime_valid_date() {
     // 2026-02-15 12:35:19.00 UTC
     int64_t epochMs = 0;
@@ -222,6 +253,8 @@ int main() {
     RUN_TEST(test_invalid_coordinate_is_rejected);
     RUN_TEST(test_detection_timeout_disables_runtime_polling);
     RUN_TEST(test_stale_fix_is_cleared);
+    RUN_TEST(test_stable_fix_holds_briefly_after_fix_drop);
+    RUN_TEST(test_stable_satellites_slew_toward_raw_count);
     RUN_TEST(test_overlong_sentence_is_rejected);
     RUN_TEST(test_parseRmcDateTime_valid_date);
     RUN_TEST(test_parseRmcDateTime_known_epoch);

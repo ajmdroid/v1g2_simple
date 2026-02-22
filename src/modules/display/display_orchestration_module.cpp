@@ -85,7 +85,9 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
 
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
-            display->setGpsSatellites(gpsStatus.enabled, gpsStatus.hasFix, gpsStatus.satellites);
+            display->setGpsSatellites(gpsStatus.enabled,
+                                      gpsStatus.stableHasFix,
+                                      gpsStatus.stableSatellites);
             lastGpsSatUpdateMs = ctx.nowMs;
         }
 

@@ -27,7 +27,9 @@
 		runtimeEnabled: false,
 		mode: 'scaffold',
 		hasFix: false,
+		stableHasFix: false,
 		satellites: 0,
+		stableSatellites: 0,
 		speedMph: null,
 		moduleDetected: false,
 		detectionTimedOut: false
@@ -105,6 +107,15 @@
 		if (rssi >= -50) return 'text-success';
 		if (rssi >= -70) return 'text-warning';
 		return 'text-error';
+	}
+
+	function gpsHasFixStable() {
+		return (typeof gps.stableHasFix === 'boolean') ? gps.stableHasFix : !!gps.hasFix;
+	}
+
+	function gpsSatCountStable() {
+		if (typeof gps.stableSatellites === 'number') return gps.stableSatellites;
+		return gps.satellites || 0;
 	}
 </script>
 
@@ -212,10 +223,10 @@
 				{:else if gps.detectionTimedOut}
 					<div class="status-heading-warning">Not Found</div>
 					<div class="copy-caption">Module timeout</div>
-				{:else if gps.hasFix}
-					<div class="status-heading-success">
-						{gps.satellites || 0} sats
-					</div>
+					{:else if gpsHasFixStable()}
+						<div class="status-heading-success">
+							{gpsSatCountStable()} sats
+						</div>
 					<div class="copy-caption">
 						{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
 					</div>

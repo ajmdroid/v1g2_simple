@@ -55,8 +55,11 @@
 		runtimeEnabled: false,
 		mode: 'scaffold',
 		hasFix: false,
+		stableHasFix: false,
 		satellites: 0,
+		stableSatellites: 0,
 		sampleAgeMs: null,
+		stableFixAgeMs: null,
 		moduleDetected: false,
 		detectionTimedOut: false,
 		parserActive: false
@@ -120,6 +123,15 @@
 			ghzDecimals: 3,
 			mhzDecimals: 1
 		});
+	}
+
+	function gpsHasFixStable() {
+		return (typeof gpsStatus.stableHasFix === 'boolean') ? gpsStatus.stableHasFix : !!gpsStatus.hasFix;
+	}
+
+	function gpsSatellitesStable() {
+		if (typeof gpsStatus.stableSatellites === 'number') return gpsStatus.stableSatellites;
+		return gpsStatus.satellites || 0;
 	}
 
 	async function refreshAll() {
@@ -486,25 +498,25 @@
 					<div class="stat-value text-base">{gpsStatus.mode || 'scaffold'}</div>
 					<div class="stat-desc">{gpsStatus.runtimeEnabled ? 'runtime active' : 'runtime idle'}</div>
 				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Fix</div>
-					<div class="stat-value text-base">{gpsStatus.hasFix ? 'Yes' : 'No'}</div>
-					<div class="stat-desc">{gpsStatus.moduleDetected ? 'module detected' : 'waiting for module'}</div>
-				</div>
-				<div class="stat py-3 px-4">
-					<div class="stat-title">Satellites</div>
-					<div class="stat-value text-base">{gpsStatus.satellites || 0}</div>
-					<div class="stat-desc">{gpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
-				</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Fix</div>
+						<div class="stat-value text-base">{gpsHasFixStable() ? 'Yes' : 'No'}</div>
+						<div class="stat-desc">{gpsStatus.moduleDetected ? 'module detected' : 'waiting for module'}</div>
+					</div>
+					<div class="stat py-3 px-4">
+						<div class="stat-title">Satellites</div>
+						<div class="stat-value text-base">{gpsSatellitesStable()}</div>
+						<div class="stat-desc">{gpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
+					</div>
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Sample Age</div>
 					<div class="stat-value text-base">
 						{typeof gpsStatus.sampleAgeMs === 'number' ? `${Math.round(gpsStatus.sampleAgeMs / 1000)}s` : '—'}
+						</div>
+						<div class="stat-desc">
+							{gpsStatus.detectionTimedOut ? 'module timeout' : gpsHasFixStable() ? 'latest fix sample' : 'waiting for fix'}
+						</div>
 					</div>
-					<div class="stat-desc">
-						{gpsStatus.detectionTimedOut ? 'module timeout' : gpsStatus.hasFix ? 'latest fix sample' : 'waiting for fix'}
-					</div>
-				</div>
 			</div>
 		</div>
 	</div>
