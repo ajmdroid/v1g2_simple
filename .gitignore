@@ -81,6 +81,7 @@ docs/SD_BACKUP_IMPLEMENTATION.md
 # Local reference repos (kept out of version control)
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/
+.scratch/
 AUDIT_SUMMARY.md
 
 # Local test captures
