@@ -23,6 +23,7 @@ route=HTTP_GET /api/settings/backup rate_limit=0 ui_activity=1 obd_enabled_gate=
 route=HTTP_POST /api/cameras/demo rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleApiDemo
 route=HTTP_POST /api/cameras/demo/clear rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=CameraApiService::handleApiDemoClear
 route=HTTP_POST /api/debug/enable rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiDebugEnable
+route=HTTP_POST /api/debug/metrics/reset rate_limit=0 ui_activity=0 obd_enabled_gate=0 delegates=DebugApiService::handleApiMetricsReset
 route=HTTP_POST /api/debug/perf-files/delete rate_limit=0 ui_activity=1 obd_enabled_gate=0 delegates=DebugApiService::handleApiPerfFilesDelete
 route=HTTP_POST /api/gps/config rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=GpsApiService::handleApiConfig
 route=HTTP_POST /api/lockout/zones/delete rate_limit=1 ui_activity=1 obd_enabled_gate=0 delegates=LockoutApiService::handleApiZoneDelete

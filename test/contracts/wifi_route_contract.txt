@@ -23,6 +23,7 @@ HTTP_GET /api/settings/backup
 HTTP_POST /api/cameras/demo
 HTTP_POST /api/cameras/demo/clear
 HTTP_POST /api/debug/enable
+HTTP_POST /api/debug/metrics/reset
 HTTP_POST /api/debug/perf-files/delete
 HTTP_POST /api/gps/config
 HTTP_POST /api/lockout/zones/delete
