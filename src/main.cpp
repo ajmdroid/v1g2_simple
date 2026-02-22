@@ -1092,6 +1092,14 @@ void loop() {
     // Learner pending candidates: periodic best-effort save (Tier 7).
     processLearnerPendingSave(now);
 
+    // If BLE ingest was backpressured this loop, do one late opportunistic drain
+    // so queued notifications don't sit through the sleep + next-loop startup.
+    if (bleBackpressure) {
+        uint32_t bleDrainLateStartUs = PERF_TIMESTAMP_US();
+        bleQueueModule.process();
+        perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainLateStartUs);
+    }
+
     // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
     vTaskDelay(pdMS_TO_TICKS(1));
     lastLoopUs = micros() - loopStartUs;
