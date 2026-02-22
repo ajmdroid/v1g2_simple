@@ -518,10 +518,12 @@ void WiFiManager::process() {
     // Runtime SRAM guard with persistence + mode-aware thresholds:
     // AP+STA needs more memory than AP-only, and short dips should not force shutdown.
     const wifi_mode_t mode = WiFi.getMode();
-    const bool apStaMode = (mode == WIFI_AP_STA || mode == WIFI_STA);
+    const bool staRadioOn = (mode == WIFI_AP_STA || mode == WIFI_STA);
+    const bool dualRadioMode = isSetupModeActive() && staRadioOn;
+    const char* runtimeModeLabel = dualRadioMode ? "AP+STA" : (staRadioOn ? "STA" : "AP");
     uint32_t criticalFree = 0;
     uint32_t criticalBlock = 0;
-    getWifiRuntimeThresholds(apStaMode, criticalFree, criticalBlock);
+    getWifiRuntimeThresholds(dualRadioMode, criticalFree, criticalBlock);
 
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -532,7 +534,7 @@ void WiFiManager::process() {
         if (lowDmaSinceMs == 0) {
             lowDmaSinceMs = now;
             Serial.printf("[WiFi] WARN: Internal SRAM low (mode=%s free=%lu block=%lu need>=%lu/%lu) - grace %lu ms\n",
-                          apStaMode ? "AP+STA" : "AP",
+                          runtimeModeLabel,
                           (unsigned long)freeInternal,
                           (unsigned long)largestInternal,
                           (unsigned long)criticalFree,
@@ -549,7 +551,7 @@ void WiFiManager::process() {
                           (unsigned long)largestInternal);
 
             // In AP+STA mode, drop AP first to preserve STA utility under pressure.
-            if (apStaMode) {
+            if (dualRadioMode) {
                 Serial.println("[WiFi] ACTION: dropping AP due to sustained low SRAM (keeping STA online)");
                 WiFi.softAPdisconnect(true);
                 WiFi.mode(WIFI_STA);
