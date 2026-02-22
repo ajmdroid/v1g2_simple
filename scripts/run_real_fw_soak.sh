@@ -884,7 +884,28 @@ if [[ -z "$SERIAL_PYTHON" ]]; then
   exit 1
 fi
 
-"$SERIAL_PYTHON" - "$MONITOR_PORT" "$SERIAL_BAUD" "$SERIAL_LOG" "$DURATION_SECONDS" > "$SERIAL_CAPTURE_ERR" 2>&1 <<'PY' &
+serial_capture_call_budget=0
+if [[ -n "$METRICS_URL" ]]; then
+  serial_capture_call_budget=$((serial_capture_call_budget + 1))
+fi
+if [[ -n "$PANIC_URL" ]]; then
+  serial_capture_call_budget=$((serial_capture_call_budget + 1))
+fi
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
+  # Account for the preview retry path in the same loop iteration.
+  serial_capture_call_budget=$((serial_capture_call_budget + 2))
+fi
+if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+  serial_capture_call_budget=$((serial_capture_call_budget + 1))
+fi
+SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
+if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
+  SERIAL_CAPTURE_GRACE_SECONDS=20
+fi
+SERIAL_CAPTURE_DURATION_SECONDS=$((DURATION_SECONDS + SERIAL_CAPTURE_GRACE_SECONDS))
+echo "    serial capture duration: ${SERIAL_CAPTURE_DURATION_SECONDS}s (grace ${SERIAL_CAPTURE_GRACE_SECONDS}s)" | tee -a "$RUN_LOG"
+
+"$SERIAL_PYTHON" - "$MONITOR_PORT" "$SERIAL_BAUD" "$SERIAL_LOG" "$SERIAL_CAPTURE_DURATION_SECONDS" > "$SERIAL_CAPTURE_ERR" 2>&1 <<'PY' &
 import serial
 import sys
 import time
