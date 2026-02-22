@@ -147,7 +147,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), setupModeStartTime(0), rateLimitWindowStart(0), rateLimitRequestCount(0) {
+WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), apInterfaceEnabled(false), setupModeStartTime(0), rateLimitWindowStart(0), rateLimitRequestCount(0) {
 }
 
 // Rate limiting: returns true if request is allowed, false if rate limited
@@ -303,6 +303,7 @@ bool WiFiManager::startSetupMode() {
 
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
+    apInterfaceEnabled = true;
 
     // When AP+STA mode is active, connect to the saved STA network directly.
     // WiFi.mode(WIFI_AP_STA) is already set and setupAP() has configured the AP,
@@ -395,6 +396,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     
     // ========== 3. RESET ALL STATE ==========
     setupModeState = SETUP_MODE_OFF;
+    apInterfaceEnabled = false;
     wifiClientState = WIFI_CLIENT_DISABLED;
     wifiScanRunning = false;
     wifiConnectStartMs = 0;
@@ -473,7 +475,7 @@ void WiFiManager::setupAP() {
 void WiFiManager::checkAutoTimeout() {
     uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
     if (timeoutMins == 0) return;  // Disabled (always on)
-    if (setupModeState != SETUP_MODE_AP_ON) return;
+    if (!isSetupModeActive()) return;
 
     unsigned long timeoutMs = (unsigned long)timeoutMins * 60UL * 1000UL;
     unsigned long now = millis();
@@ -549,6 +551,7 @@ void WiFiManager::process() {
                 Serial.println("[WiFi] ACTION: dropping AP due to sustained low SRAM (keeping STA online)");
                 WiFi.softAPdisconnect(true);
                 WiFi.mode(WIFI_STA);
+                apInterfaceEnabled = false;
 
                 const wl_status_t staStatus = WiFi.status();
                 if (staStatus == WL_CONNECTED) {
@@ -581,12 +584,11 @@ void WiFiManager::process() {
         lowDmaSinceMs = 0;
     }
     
-    // Handle web requests
-    if (setupModeState != SETUP_MODE_AP_ON) {
-        return;
+    // Handle web requests only while AP interface is enabled.
+    if (isSetupModeActive()) {
+        server.handleClient();
     }
 
-    server.handleClient();
     const unsigned long now = millis();
     if (lastMaintenanceFastMs == 0 ||
         (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {

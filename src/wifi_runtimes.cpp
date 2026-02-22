@@ -261,7 +261,7 @@ WifiTimeApiService::TimeRuntime WiFiManager::makeTimeRuntime() {
 
 WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
     WifiStatusApiService::StatusRuntime runtime{
-        [this]() { return setupModeState == SETUP_MODE_AP_ON; },
+        [this]() { return isSetupModeActive(); },
         [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
         []() { return WiFi.localIP().toString(); },
         [this]() { return getAPIPAddress(); },

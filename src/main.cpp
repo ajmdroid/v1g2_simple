@@ -211,7 +211,7 @@ static WifiOrchestrator& getWifiOrchestrator() {
 }
 
 static bool isWifiProcessingEnabled(const V1Settings& settings) {
-    return wifiManager.isSetupModeActive() ||
+    return wifiManager.isWifiServiceActive() ||
            wifiManager.isConnected() ||
            (settings.enableWifiAtBoot && !wifiAutoStartDone);
 }

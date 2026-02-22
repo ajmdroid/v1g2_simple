@@ -15,7 +15,7 @@
 
 
 String WiFiManager::getAPIPAddress() const {
-    if (setupModeState == SETUP_MODE_AP_ON) {
+    if (isSetupModeActive()) {
         return WiFi.softAPIP().toString();
     }
     return "";
@@ -145,7 +145,7 @@ void WiFiManager::processWifiClientConnectPhase() {
     unsigned long now = millis();
     switch (wifiConnectPhase) {
         case WifiConnectPhase::PREPARE_OFF:
-            if (setupModeState == SETUP_MODE_AP_ON) {
+            if (isSetupModeActive()) {
                 // Keep AP online and use a direct STA begin path.
                 // Repeated STA resets in AP+STA mode have proven brittle on some routers.
                 Serial.println("[WiFiClient] Preserving AP, preparing STA connect...");
@@ -309,6 +309,17 @@ void WiFiManager::checkWifiClientStatus() {
                 wifiClientState = WIFI_CLIENT_CONNECTED;
                 wifiConnectStartMs = 0;
                 Serial.printf("[WiFiClient] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+
+                if (isSetupModeActive()) {
+                    // Policy: once STA is connected to external network, retire AP to
+                    // recover memory and reduce dual-radio overhead.
+                    WiFi.softAPdisconnect(true);
+                    WiFi.mode(WIFI_STA);
+                    apInterfaceEnabled = false;
+                    cachedApStaCount = 0;
+                    lastApStaCountPollMs = 0;
+                    Serial.println("[WiFiClient] STA connected; AP dropped by policy");
+                }
                 
                 // Reset failure counter on successful connection
                 wifiReconnectFailures = 0;

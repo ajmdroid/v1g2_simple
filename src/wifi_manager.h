@@ -1,7 +1,8 @@
 /**
  * WiFi Manager for V1 Gen2 Display
- * AP+STA: always-on access point serving the local UI/API
- *         plus optional station mode to connect to external network
+ * AP+STA: setup AP for local UI/API plus optional STA for external network.
+ * AP may be dropped dynamically (e.g., after STA connect) while WiFi service
+ * state remains active.
  */
 
 #ifndef WIFI_MANAGER_H
@@ -47,7 +48,7 @@ namespace WifiV1DevicesApiService {
 struct Runtime;
 }
 
-// Setup Mode state (AP is always on, STA is optional)
+// WiFi service state (AP may be enabled or disabled while service is active)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
     SETUP_MODE_AP_ON,
@@ -91,7 +92,8 @@ public:
     bool startSetupMode();      // Start AP for configuration (idempotent)
     bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
     bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
-    bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON; }
+    bool isWifiServiceActive() const { return setupModeState == SETUP_MODE_AP_ON; }
+    bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
     
     // Process web server requests (call in loop)
     void process();
@@ -109,7 +111,7 @@ public:
     
     // Status
     bool isConnected() const { return wifiClientState == WIFI_CLIENT_CONNECTED; }
-    bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON; }
+    bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
     String getIPAddress() const;  // STA IP when connected
     String getAPIPAddress() const;
     
@@ -151,6 +153,7 @@ public:
 private:
     WebServer server;
     SetupModeState setupModeState;
+    bool apInterfaceEnabled = false;  // True only when softAP interface is enabled
     unsigned long setupModeStartTime;
     unsigned long lastClientSeenMs = 0;  // Tracks last STA presence for timeout
     unsigned long lastApStaCountPollMs = 0;
@@ -198,7 +201,6 @@ private:
     // Low-DMA protection state (prevents rapid restart loops under heap pressure)
     unsigned long lowDmaCooldownUntilMs = 0;
     unsigned long lowDmaSinceMs = 0;
-    
     // Rate limiting
     static constexpr int RATE_LIMIT_WINDOW_MS = 60000;  // 60 second window (1 minute)
     static constexpr int RATE_LIMIT_MAX_REQUESTS = 120; // Max 120 requests per minute
