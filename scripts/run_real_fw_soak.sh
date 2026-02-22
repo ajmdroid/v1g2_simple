@@ -508,7 +508,9 @@ Options:
   --max-queue-high-water N
                         Maximum queueHighWater observed (0 disables gate)
   --max-wifi-connect-deferred N
-                        Maximum wifiConnectDeferred delta (0 disables gate)
+                        Maximum wifiConnectDeferred delta for drive_wifi_ap
+                        (0 disables this gate in drive_wifi_ap)
+                        drive_wifi_off always enforces delta 0
   --min-dma-free N      Minimum heapDmaMin floor (0 disables gate)
   --min-dma-largest N   Minimum heapDmaLargestMin floor (0 disables gate)
   --profile PROFILE     Apply PERF_SLOS.md gates: drive_wifi_ap (default when
@@ -922,7 +924,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
   echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)"
-  echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables)"
+  echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
   echo "    camera drive: enabled=${CAMERA_DRIVE_ENABLED} url=${CAMERA_DEMO_URL:-disabled} interval=${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}"
   echo "    out dir: $OUT_DIR"
@@ -983,7 +985,7 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
 fi
 echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}" | tee -a "$RUN_LOG"
 echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
-echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables)" | tee -a "$RUN_LOG"
+echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
   echo "    baseline csv: ${BASELINE_PERF_CSV} (session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
   echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
@@ -1523,37 +1525,45 @@ if [[ -n "$METRICS_URL" ]]; then
       fi
     fi
 
-    # oversizeDrops must be zero (packet framing safety)
-    if is_uint "$oversize_drops_delta" && [[ "$oversize_drops_delta" -gt "$MAX_OVERSIZE_DROPS_DELTA" ]]; then
+    # oversizeDrops must be available and within threshold (packet framing safety)
+    if ! is_uint "$oversize_drops_delta"; then
+      mark_gate_fail gate_oversize_drop_fail "oversizeDrops delta ${oversize_drops_delta:-n/a} above max ${MAX_OVERSIZE_DROPS_DELTA}."
+    elif [[ "$oversize_drops_delta" -gt "$MAX_OVERSIZE_DROPS_DELTA" ]]; then
       mark_gate_fail gate_oversize_drop_fail "oversizeDrops delta ${oversize_drops_delta} above max ${MAX_OVERSIZE_DROPS_DELTA}."
     fi
 
     # queueHighWater (resource gate, 0 disables)
     if [[ "$MAX_QUEUE_HIGH_WATER" -gt 0 ]]; then
-      if is_uint "$queue_high_water_peak" && [[ "$queue_high_water_peak" -gt "$MAX_QUEUE_HIGH_WATER" ]]; then
+      if ! is_uint "$queue_high_water_peak"; then
+        mark_gate_fail gate_queue_high_water_fail "queueHighWater peak ${queue_high_water_peak:-n/a} above max ${MAX_QUEUE_HIGH_WATER}."
+      elif [[ "$queue_high_water_peak" -gt "$MAX_QUEUE_HIGH_WATER" ]]; then
         mark_gate_fail gate_queue_high_water_fail "queueHighWater peak ${queue_high_water_peak} above max ${MAX_QUEUE_HIGH_WATER}."
       fi
     fi
 
-    # wifiConnectDeferred (profile-specific, 0 gate means must be exactly 0 for wifi-off)
+    # wifiConnectDeferred (profile-specific; drive_wifi_off must be exactly 0)
     if [[ -n "$SOAK_PROFILE" ]]; then
-      if is_uint "$wifi_connect_deferred_delta"; then
-        if [[ "$SOAK_PROFILE" == "drive_wifi_off" && "$wifi_connect_deferred_delta" -gt 0 ]]; then
-          mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} must be 0 for profile drive_wifi_off."
-        elif [[ "$MAX_WIFI_CONNECT_DEFERRED" -gt 0 && "$wifi_connect_deferred_delta" -gt "$MAX_WIFI_CONNECT_DEFERRED" ]]; then
-          mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} above max ${MAX_WIFI_CONNECT_DEFERRED}."
-        fi
+      if ! is_uint "$wifi_connect_deferred_delta"; then
+        mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta:-n/a} unavailable for profile ${SOAK_PROFILE}."
+      elif [[ "$SOAK_PROFILE" == "drive_wifi_off" && "$wifi_connect_deferred_delta" -gt 0 ]]; then
+        mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} must be 0 for profile drive_wifi_off."
+      elif [[ "$MAX_WIFI_CONNECT_DEFERRED" -gt 0 && "$wifi_connect_deferred_delta" -gt "$MAX_WIFI_CONNECT_DEFERRED" ]]; then
+        mark_gate_fail gate_wifi_connect_deferred_fail "wifiConnectDeferred delta ${wifi_connect_deferred_delta} above max ${MAX_WIFI_CONNECT_DEFERRED}."
       fi
     fi
 
     # DMA memory floors (0 disables)
     if [[ "$MIN_DMA_FREE" -gt 0 ]]; then
-      if is_uint "$dma_free_min_parsed" && [[ "$dma_free_min_parsed" -lt "$MIN_DMA_FREE" ]]; then
+      if ! is_uint "$dma_free_min_parsed"; then
+        mark_gate_fail gate_dma_free_fail "heapDmaMin ${dma_free_min_parsed:-n/a} below floor ${MIN_DMA_FREE}."
+      elif [[ "$dma_free_min_parsed" -lt "$MIN_DMA_FREE" ]]; then
         mark_gate_fail gate_dma_free_fail "heapDmaMin ${dma_free_min_parsed} below floor ${MIN_DMA_FREE}."
       fi
     fi
     if [[ "$MIN_DMA_LARGEST" -gt 0 ]]; then
-      if is_uint "$dma_largest_min_parsed" && [[ "$dma_largest_min_parsed" -lt "$MIN_DMA_LARGEST" ]]; then
+      if ! is_uint "$dma_largest_min_parsed"; then
+        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed:-n/a} below floor ${MIN_DMA_LARGEST}."
+      elif [[ "$dma_largest_min_parsed" -lt "$MIN_DMA_LARGEST" ]]; then
         mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed} below floor ${MIN_DMA_LARGEST}."
       fi
     fi
@@ -1718,7 +1728,7 @@ fi
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
   echo "- queueHighWater peak: ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
-  echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED})"
+  echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"
   echo "- reconnects delta: ${reconnects_delta:-n/a}"
