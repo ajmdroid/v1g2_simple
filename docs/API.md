@@ -123,6 +123,8 @@ Get all device settings.
   "obdVwDataEnabled": false,
   "gpsEnabled": false,
   "cameraEnabled": true,
+  "cameraAlertDistanceFt": 1640,
+  "cameraAlertPersistSec": 5,
   "gpsLockoutMode": 3,
   "gpsLockoutModeName": "enforce",
   "gpsLockoutCoreGuardEnabled": true,
@@ -149,6 +151,8 @@ Get all device settings.
 | `obdVwDataEnabled` | boolean | - | Enable VW-specific OBD decoding |
 | `gpsEnabled` | boolean | - | Enable GPS runtime |
 | `cameraEnabled` | boolean | - | Enable camera runtime/index loading (live matching still requires valid GPS fix/course) |
+| `cameraAlertDistanceFt` | int | 500-2000 | ALPR trigger radius in feet |
+| `cameraAlertPersistSec` | int | 3-10 | ALPR banner persistence and fail-safe timeout in seconds |
 | `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
 | `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
 | `gpsLockoutMaxQueueDrops` | int | 0-65535 | Queue-drop threshold for core guard |
@@ -167,7 +171,7 @@ Update device settings. Send only fields you want to change.
 
 **Request (form data):**
 ```
-ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&cameraEnabled=true&gpsLockoutMode=3
+ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&cameraEnabled=true&cameraAlertDistanceFt=1800&cameraAlertPersistSec=5&gpsLockoutMode=3
 ```
 
 **Response:** `Settings saved` (text/plain)
@@ -552,6 +556,8 @@ Get camera runtime, loader, index, and lifecycle status.
   "lifecycleState": "ACTIVE",
   "lastClearReason": "NONE",
   "suppressedCameraId": 0,
+  "alertDistanceFt": 1640,
+  "alertPersistSec": 5,
   "activeAlert": {
     "active": true,
     "cameraId": 12345,

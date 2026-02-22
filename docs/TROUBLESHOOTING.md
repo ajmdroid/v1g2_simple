@@ -180,6 +180,8 @@ Quick solutions for common issues with the V1-Simple device.
 5. **Verify catalog + scope**: Check `/api/cameras/catalog` for file presence and runtime scope fields (`runtimeDatasets`, `alprRuntimeLoaded`)
 6. **Run display demo**: Web UI → Cameras → Display Demo (or POST `/api/cameras/demo`) to validate screen/audio pipeline without live GPS matches
 7. **Check audio path**: Confirm device is not muted and your current audio profile allows camera announcements
+8. **Tune ALPR distance**: Increase `cameraAlertDistanceFt` (500-2000) if alerts are not triggering early enough
+9. **Tune persistence timeout**: Set `cameraAlertPersistSec` (3-10) to control hold time and timeout-based clears when pass distance is never reached
 
 ### Camera dataset missing or empty
 

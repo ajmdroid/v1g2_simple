@@ -889,6 +889,8 @@ ESP32 Preferences API with namespace `v1settings`:
 | proxyBLE | bool | true | BLE proxy enabled |
 | proxyName | String | "V1C-LE-S3" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
+| camAlertFt | uint16 | 1640 | ALPR trigger distance (500-2000 ft) |
+| camAlertSec | uint8 | 5 | ALPR persistence + fail-safe timeout (3-10 sec) |
 | voiceVol | uint8 | 75 | Voice alert volume 0-100% |
 | voiceMode | uint8 | 3 | Voice mode: 0=off, 1=band, 2=freq, 3=band+freq |
 | voiceDir | bool | true | Include direction in voice announcements |
