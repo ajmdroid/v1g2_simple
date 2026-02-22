@@ -156,6 +156,7 @@ private:
     bool apInterfaceEnabled = false;  // True only when softAP interface is enabled
     unsigned long setupModeStartTime;
     unsigned long lastClientSeenMs = 0;  // Tracks last STA presence for timeout
+    bool apClientSeenSinceStart = false;
     unsigned long lastApStaCountPollMs = 0;
     int cachedApStaCount = 0;
     static constexpr unsigned long AP_STA_COUNT_POLL_MS = 250;

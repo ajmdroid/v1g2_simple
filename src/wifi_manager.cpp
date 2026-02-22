@@ -276,6 +276,7 @@ bool WiFiManager::startSetupMode() {
 
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
+    apClientSeenSinceStart = false;
     lastAnyClientSeenMs = setupModeStartTime;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
@@ -416,6 +417,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
+    apClientSeenSinceStart = false;
     lastAnyClientSeenMs = 0;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
@@ -614,10 +616,12 @@ void WiFiManager::process() {
         (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
     if (apInterfaceActive && apClientCount > 0) {
         lastClientSeenMs = now;
+        apClientSeenSinceStart = true;
     }
 
     if (apInterfaceActive &&
         staConnectedNow &&
+        apClientSeenSinceStart &&
         apClientCount == 0 &&
         lastClientSeenMs != 0 &&
         (now - lastClientSeenMs) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
