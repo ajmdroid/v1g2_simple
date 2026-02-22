@@ -276,6 +276,8 @@ bool WiFiManager::startSetupMode() {
 
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
+    lastApStaCountPollMs = 0;
+    cachedApStaCount = 0;
     lowDmaSinceMs = 0;
     lowDmaCooldownUntilMs = 0;
 
@@ -400,6 +402,8 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
+    lastApStaCountPollMs = 0;
+    cachedApStaCount = 0;
     lastReconnectAttemptMs = 0;
     wifiReconnectDeferredLogged = false;
 
@@ -467,7 +471,15 @@ void WiFiManager::checkAutoTimeout() {
 
     unsigned long timeoutMs = (unsigned long)timeoutMins * 60UL * 1000UL;
     unsigned long now = millis();
-    int staCount = WiFi.softAPgetStationNum();
+    int staCount = cachedApStaCount;
+    if (lastApStaCountPollMs == 0 ||
+        (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
+        // softAPgetStationNum() can be slow on some loops; cache short-term to
+        // reduce loop jitter without changing timeout semantics materially.
+        staCount = WiFi.softAPgetStationNum();
+        cachedApStaCount = staCount;
+        lastApStaCountPollMs = now;
+    }
     if (staCount > 0) {
         lastClientSeenMs = now;
     }

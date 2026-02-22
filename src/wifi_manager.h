@@ -149,6 +149,9 @@ private:
     SetupModeState setupModeState;
     unsigned long setupModeStartTime;
     unsigned long lastClientSeenMs = 0;  // Tracks last STA presence for timeout
+    unsigned long lastApStaCountPollMs = 0;
+    int cachedApStaCount = 0;
+    static constexpr unsigned long AP_STA_COUNT_POLL_MS = 250;
     
     // WiFi client (STA) state
     WifiClientState wifiClientState = WIFI_CLIENT_DISABLED;
