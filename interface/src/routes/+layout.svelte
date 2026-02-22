@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import BrandMark from '$lib/components/BrandMark.svelte';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	
 	let { children } = $props();
 	let showPasswordWarning = $state(false);
@@ -43,7 +44,7 @@
 		}
 		sessionStorage.setItem(TIME_SYNC_CACHE_KEY, String(now));
 		runWhenIdle(() => {
-			fetch('/api/time/set', {
+			fetchWithTimeout('/api/time/set', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -57,7 +58,7 @@
 
 	async function refreshDefaultPasswordWarning() {
 		try {
-			const res = await fetch('/api/settings');
+			const res = await fetchWithTimeout('/api/settings');
 			if (!res.ok) return;
 			const data = await res.json();
 			const isDefaultPassword = data.isDefaultPassword === true;

@@ -1,4 +1,6 @@
-#pragma once
+#ifndef BLE_CLIENT_H
+#define BLE_CLIENT_H
+
 #include <stdint.h>
 
 /**
@@ -57,3 +59,5 @@ private:
     bool proxyConnected = false;
     bool connected = true;
 };
+
+#endif  // BLE_CLIENT_H

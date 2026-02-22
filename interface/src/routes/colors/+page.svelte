@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -103,7 +104,7 @@
 	async function fetchColors() {
 		loading = true;
 		try {
-			const res = await fetch('/api/displaycolors');
+			const res = await fetchWithTimeout('/api/displaycolors');
 			if (res.ok) {
 				const data = await res.json();
 				// Ensure all color values are parsed as integers (API might return strings)
@@ -123,7 +124,7 @@
 	
 	async function fetchDisplayStyle() {
 		try {
-			const res = await fetch('/api/settings');
+			const res = await fetchWithTimeout('/api/settings');
 			if (res.ok) {
 				const data = await res.json();
 				displayStyle = data.displayStyle || 0;
@@ -273,7 +274,7 @@
 			params.append('showRestTelemetryCards', colors.showRestTelemetryCards);
 			params.append('brightness', colors.brightness);
 			
-			const res = await fetch('/api/displaycolors', {
+			const res = await fetchWithTimeout('/api/displaycolors', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: params
@@ -283,7 +284,7 @@
 				message = { type: 'success', text: 'Colors saved! Previewing on display...' };
 				// Clear preview after 3 seconds
 				setTimeout(() => {
-					fetch('/api/displaycolors/clear', { method: 'POST' })
+					fetchWithTimeout('/api/displaycolors/clear', { method: 'POST' })
 						.catch(() => {}); // Ignore errors
 				}, 3000);
 			} else {
@@ -298,7 +299,7 @@
 	
 	async function testColors() {
 		try {
-			await fetch('/api/displaycolors/preview', { method: 'POST' });
+			await fetchWithTimeout('/api/displaycolors/preview', { method: 'POST' });
 		} catch {
 			// Silent fail for test
 		}
@@ -308,7 +309,7 @@
 		if (!confirm('Reset all colors to defaults?')) return;
 		
 		try {
-			const res = await fetch('/api/displaycolors/reset', { method: 'POST' });
+			const res = await fetchWithTimeout('/api/displaycolors/reset', { method: 'POST' });
 			if (res.ok) {
 				// Set default values
 				colors = {

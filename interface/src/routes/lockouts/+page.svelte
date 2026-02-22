@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { formatFrequencyMhz } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -7,7 +8,6 @@
 
 	let loading = $state(true);
 	let message = $state(null);
-	let statusPoll = $state(null);
 	let gpsStatusFetchInFlight = false;
 	let lockoutFetchInFlight = false;
 	let lockoutZonesFetchInFlight = false;
@@ -80,6 +80,10 @@
 		learnerUnlearnIntervalHours: 4,
 		manualDemotionMissCount: 25
 	};
+
+	const statusPoll = createPoll(async () => {
+		await fetchGpsStatus();
+	}, STATUS_POLL_INTERVAL_MS);
 
 	let gpsStatus = $state({
 		enabled: false,
@@ -166,11 +170,9 @@
 
 	onMount(async () => {
 		await refreshAll();
-		statusPoll = setInterval(async () => {
-			await fetchGpsStatus();
-		}, STATUS_POLL_INTERVAL_MS);
+		statusPoll.start();
 		return () => {
-			if (statusPoll) clearInterval(statusPoll);
+			statusPoll.stop();
 		};
 	});
 
@@ -678,7 +680,7 @@
 		if (gpsStatusFetchInFlight) return;
 		gpsStatusFetchInFlight = true;
 		try {
-			const res = await fetch('/api/gps/status');
+			const res = await fetchWithTimeout('/api/gps/status');
 			if (!res.ok) return;
 			const data = await res.json();
 			gpsStatus = { ...gpsStatus, ...data };
@@ -699,7 +701,7 @@
 		}
 		lockoutError = '';
 		try {
-			const res = await fetch(`/api/lockouts/events?limit=${LOCKOUT_EVENTS_LIMIT}`);
+			const res = await fetchWithTimeout(`/api/lockouts/events?limit=${LOCKOUT_EVENTS_LIMIT}`);
 			if (!res.ok) {
 				if (!silent) lockoutError = 'Failed to load lockout candidates';
 				return;
@@ -737,7 +739,7 @@
 		if (!silent) lockoutZonesLoading = true;
 		lockoutZonesError = '';
 		try {
-			const res = await fetch(
+			const res = await fetchWithTimeout(
 				`/api/lockouts/zones?activeLimit=${LOCKOUT_ZONES_LIMIT}&pendingLimit=${LOCKOUT_ZONES_LIMIT}`
 			);
 			if (!res.ok) {
@@ -819,7 +821,7 @@
 				lockoutKaLearningEnabled: kaLearningEnabled,
 				lockoutPreQuiet: !!lockoutConfig.preQuiet
 			};
-			const res = await fetch('/api/gps/config', {
+			const res = await fetchWithTimeout('/api/gps/config', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
@@ -873,7 +875,7 @@
 		try {
 			const creating = zoneEditorSlot === null;
 			const requestPayload = creating ? payload : { slot: zoneEditorSlot, ...payload };
-			const res = await fetch(creating ? '/api/lockouts/zones/create' : '/api/lockouts/zones/update', {
+			const res = await fetchWithTimeout(creating ? '/api/lockouts/zones/create' : '/api/lockouts/zones/update', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(requestPayload)
@@ -910,7 +912,7 @@
 		if (!confirm(`Delete ${lockoutZoneSourceLabel(zone)} lockout zone in slot ${slot}?`)) return;
 		deletingZoneSlot = slot;
 		try {
-			const res = await fetch('/api/lockouts/zones/delete', {
+			const res = await fetchWithTimeout('/api/lockouts/zones/delete', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ slot })
@@ -938,7 +940,7 @@
 		if (exportingZones) return;
 		exportingZones = true;
 		try {
-			const res = await fetch('/api/lockouts/zones/export');
+			const res = await fetchWithTimeout('/api/lockouts/zones/export');
 			const payload = await res.text().catch(() => '');
 			if (!res.ok || !payload) {
 				setMsg('error', `Failed to export lockout zones (${res.status})`);
@@ -987,7 +989,7 @@
 		try {
 			const payload = await file.text();
 			JSON.parse(payload);
-			const res = await fetch('/api/lockouts/zones/import', {
+			const res = await fetchWithTimeout('/api/lockouts/zones/import', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: payload

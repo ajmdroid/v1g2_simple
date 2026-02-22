@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -36,13 +37,15 @@
 	let selectedNetwork = $state(null);
 	let wifiPassword = $state('');
 	let wifiConnecting = $state(false);
-	let wifiPollInterval = $state(null);
-	let timePollInterval = $state(null);
+	let wifiPoll = $state(null);
 	let timeTickInterval = $state(null);
 	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
 	let timeStatusFetchInFlight = false;
 	const TIME_STATUS_POLL_INTERVAL_MS = 7000;
+	const timeStatusPoll = createPoll(async () => {
+		await fetchTimeStatus();
+	}, TIME_STATUS_POLL_INTERVAL_MS);
 
 	let timeStatus = $state({
 		valid: false,
@@ -59,24 +62,28 @@
 		await fetchSettings();
 		await fetchWifiStatus();
 		await fetchTimeStatus();
-		timePollInterval = setInterval(() => {
-			void fetchTimeStatus();
-		}, TIME_STATUS_POLL_INTERVAL_MS);
+		timeStatusPoll.start();
 		timeTickInterval = setInterval(() => {
 			clientNowMs = Date.now();
 		}, 1000);
 		
 		// Poll WiFi status every 3 seconds when modal is open
 		return () => {
-			if (wifiPollInterval) clearInterval(wifiPollInterval);
-			if (timePollInterval) clearInterval(timePollInterval);
+			stopWifiPoll();
+			timeStatusPoll.stop();
 			if (timeTickInterval) clearInterval(timeTickInterval);
 		};
 	});
+
+	function stopWifiPoll() {
+		if (!wifiPoll) return;
+		wifiPoll.stop();
+		wifiPoll = null;
+	}
 	
 	async function fetchSettings() {
 		try {
-			const res = await fetch('/api/settings');
+			const res = await fetchWithTimeout('/api/settings');
 			if (res.ok) {
 				const data = await res.json();
 				settings = { ...settings, ...data };
@@ -92,7 +99,7 @@
 		if (wifiStatusFetchInFlight) return;
 		wifiStatusFetchInFlight = true;
 		try {
-			const res = await fetch('/api/wifi/status');
+			const res = await fetchWithTimeout('/api/wifi/status');
 			if (res.ok) {
 				const data = await res.json();
 				wifiStatus = { ...wifiStatus, ...data };
@@ -169,7 +176,7 @@
 		if (timeStatusFetchInFlight) return;
 		timeStatusFetchInFlight = true;
 		try {
-			const res = await fetch('/api/status');
+			const res = await fetchWithTimeout('/api/status');
 			if (res.ok) {
 				const data = await res.json();
 				const t = data?.time || {};
@@ -192,7 +199,7 @@
 	async function syncTimeFromPhone() {
 		timeStatus.syncing = true;
 		try {
-			const res = await fetch('/api/time/set', {
+			const res = await fetchWithTimeout('/api/time/set', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -229,32 +236,34 @@
 		showWifiModal = true;
 		
 		// Start polling for scan results
-		if (wifiPollInterval) clearInterval(wifiPollInterval);
-		wifiPollInterval = setInterval(pollWifiScan, 1000);
+		stopWifiPoll();
+		wifiPoll = createPoll(async () => {
+			await pollWifiScan();
+		}, 1000);
+		wifiPoll.start();
 		
 		try {
-			await fetch('/api/wifi/scan', { method: 'POST' });
+			await fetchWithTimeout('/api/wifi/scan', { method: 'POST' });
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to start WiFi scan' };
 			wifiScanning = false;
+			stopWifiPoll();
 		}
 	}
 	
 	async function pollWifiScan() {
 		try {
-			const res = await fetch('/api/wifi/scan', { method: 'POST' });
+			const res = await fetchWithTimeout('/api/wifi/scan', { method: 'POST' });
 			if (res.ok) {
 				const data = await res.json();
 				if (!data.scanning && data.networks.length > 0) {
 					wifiNetworks = data.networks;
 					wifiScanning = false;
-					clearInterval(wifiPollInterval);
-					wifiPollInterval = null;
+					stopWifiPoll();
 				} else if (!data.scanning) {
 					// Scan complete but no networks
 					wifiScanning = false;
-					clearInterval(wifiPollInterval);
-					wifiPollInterval = null;
+					stopWifiPoll();
 				}
 			}
 		} catch (e) {
@@ -275,7 +284,7 @@
 		
 		wifiConnecting = true;
 		try {
-			const res = await fetch('/api/wifi/connect', {
+			const res = await fetchWithTimeout('/api/wifi/connect', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -287,20 +296,19 @@
 			if (res.ok) {
 				message = { type: 'success', text: `Connecting to ${selectedNetwork.ssid}...` };
 				// Start polling for connection status
-				if (wifiPollInterval) clearInterval(wifiPollInterval);
-				wifiPollInterval = setInterval(async () => {
+				stopWifiPoll();
+				wifiPoll = createPoll(async () => {
 					await fetchWifiStatus();
 					if (wifiStatus.state === 'connected') {
-						clearInterval(wifiPollInterval);
-						wifiPollInterval = null;
+						stopWifiPoll();
 						showWifiModal = false;
 						message = { type: 'success', text: `Connected to ${wifiStatus.connectedSSID}!` };
 					} else if (wifiStatus.state === 'failed') {
-						clearInterval(wifiPollInterval);
-						wifiPollInterval = null;
+						stopWifiPoll();
 						message = { type: 'error', text: 'Connection failed. Check password.' };
 					}
 				}, 1000);
+				wifiPoll.start();
 			} else {
 				message = { type: 'error', text: 'Failed to initiate connection' };
 			}
@@ -313,7 +321,7 @@
 	
 	async function disconnectWifi() {
 		try {
-			await fetch('/api/wifi/disconnect', { method: 'POST' });
+			await fetchWithTimeout('/api/wifi/disconnect', { method: 'POST' });
 			await fetchWifiStatus();
 			message = { type: 'success', text: 'Disconnected from WiFi' };
 		} catch (e) {
@@ -325,7 +333,7 @@
 		if (!confirm('Forget saved WiFi network? You will need to reconnect manually.')) return;
 		
 		try {
-			await fetch('/api/wifi/forget', { method: 'POST' });
+			await fetchWithTimeout('/api/wifi/forget', { method: 'POST' });
 			await fetchWifiStatus();
 			message = { type: 'success', text: 'WiFi credentials forgotten' };
 		} catch (e) {
@@ -335,7 +343,7 @@
 	
 	async function toggleWifiClient(enabled) {
 		try {
-			const res = await fetch('/api/wifi/enable', {
+			const res = await fetchWithTimeout('/api/wifi/enable', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ enabled })
@@ -355,10 +363,7 @@
 		showWifiModal = false;
 		selectedNetwork = null;
 		wifiPassword = '';
-		if (wifiPollInterval) {
-			clearInterval(wifiPollInterval);
-			wifiPollInterval = null;
-		}
+		stopWifiPoll();
 	}
 
 	async function saveSettings() {
@@ -390,7 +395,7 @@
 	
 	async function downloadBackup() {
 		try {
-			const res = await fetch('/api/settings/backup');
+			const res = await fetchWithTimeout('/api/settings/backup');
 			if (res.ok) {
 				const blob = await res.blob();
 				const url = window.URL.createObjectURL(blob);
@@ -433,7 +438,7 @@
 		
 		try {
 			const text = await restoreFile.text();
-			const res = await fetch('/api/settings/restore', {
+			const res = await fetchWithTimeout('/api/settings/restore', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: text

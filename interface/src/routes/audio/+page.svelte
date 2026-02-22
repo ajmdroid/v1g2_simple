@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -49,7 +50,7 @@
 	async function fetchSettings() {
 		loading = true;
 		try {
-			const res = await fetch('/api/displaycolors');
+			const res = await fetchWithTimeout('/api/displaycolors');
 			if (res.ok) {
 				const data = await res.json();
 				// Support both old and new API format
@@ -119,7 +120,7 @@
 			params.append('lowSpeedMuteThresholdMph', settings.lowSpeedMuteThresholdMph);
 			params.append('lowSpeedVolume', settings.lowSpeedVolume);
 			
-			const res = await fetch('/api/displaycolors', {
+			const res = await fetchWithTimeout('/api/displaycolors', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: params

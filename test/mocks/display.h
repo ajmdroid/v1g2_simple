@@ -1,5 +1,6 @@
 // Mock display.h for native unit testing
-#pragma once
+#ifndef DISPLAY_H
+#define DISPLAY_H
 
 #include <cstdint>
 #ifdef ARDUINO
@@ -39,6 +40,10 @@ public:
     int drawProfileIndicatorCalls = 0;
     int setLockoutMutedCalls = 0;
     bool lastLockoutMutedValue = false;
+    int setLockoutIndicatorCalls = 0;
+    bool lastLockoutIndicatorValue = false;
+    int setPreQuietActiveCalls = 0;
+    bool lastPreQuietActiveValue = false;
 
     // Static method tracking
     static int resetChangeTrackingCalls;
@@ -57,6 +62,10 @@ public:
         drawProfileIndicatorCalls = 0;
         setLockoutMutedCalls = 0;
         lastLockoutMutedValue = false;
+        setLockoutIndicatorCalls = 0;
+        lastLockoutIndicatorValue = false;
+        setPreQuietActiveCalls = 0;
+        lastPreQuietActiveValue = false;
         resetChangeTrackingCalls = 0;
     }
 
@@ -86,6 +95,16 @@ public:
         setLockoutMutedCalls++; 
         lastLockoutMutedValue = muted;
     }
+
+    void setLockoutIndicator(bool show) {
+        setLockoutIndicatorCalls++;
+        lastLockoutIndicatorValue = show;
+    }
+
+    void setPreQuietActive(bool active) {
+        setPreQuietActiveCalls++;
+        lastPreQuietActiveValue = active;
+    }
     
     void setBLEProxyStatus(bool /*connected*/, bool /*proxy*/, bool /*receiving*/) {}
     void setBrightness(uint8_t /*level*/) {}
@@ -96,3 +115,5 @@ public:
 
 // Definition of static member
 inline int V1Display::resetChangeTrackingCalls = 0;
+
+#endif  // DISPLAY_H

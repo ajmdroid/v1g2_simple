@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { formatFrequencyMhz } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -9,7 +10,6 @@
 	let scanning = $state(false);
 	let connecting = $state(false);
 	let message = $state(null);
-	let statusPoll = $state(null);
 	let scanPoll = $state(null);
 	let statusFetchInFlight = false;
 	let gpsStatusFetchInFlight = false;
@@ -20,6 +20,14 @@
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const SCAN_POLL_INTERVAL_MS = 1500;
+
+	const statusPoll = createPoll(async () => {
+		await Promise.all([fetchStatus(), fetchGpsStatus()]);
+		if (!status.scanning) {
+			scanning = false;
+			stopScanPoll();
+		}
+	}, STATUS_POLL_INTERVAL_MS);
 
 	let status = $state({
 		enabled: true,
@@ -65,23 +73,17 @@
 
 	onMount(async () => {
 		await refreshAll();
-		statusPoll = setInterval(async () => {
-			await Promise.all([fetchStatus(), fetchGpsStatus()]);
-			if (!status.scanning) {
-				scanning = false;
-				stopScanPoll();
-			}
-		}, STATUS_POLL_INTERVAL_MS);
+		statusPoll.start();
 
 		return () => {
-			if (statusPoll) clearInterval(statusPoll);
+			statusPoll.stop();
 			stopScanPoll();
 		};
 	});
 
 	function stopScanPoll() {
 		if (scanPoll) {
-			clearInterval(scanPoll);
+			scanPoll.stop();
 			scanPoll = null;
 		}
 	}
@@ -134,7 +136,7 @@
 		if (statusFetchInFlight) return;
 		statusFetchInFlight = true;
 		try {
-			const res = await fetch('/api/obd/status');
+			const res = await fetchWithTimeout('/api/obd/status');
 			if (!res.ok) return;
 			const data = await res.json();
 			status = { ...status, ...data };
@@ -150,7 +152,7 @@
 		if (gpsStatusFetchInFlight) return;
 		gpsStatusFetchInFlight = true;
 		try {
-			const res = await fetch('/api/gps/status');
+			const res = await fetchWithTimeout('/api/gps/status');
 			if (!res.ok) return;
 			const data = await res.json();
 			gpsStatus = { ...gpsStatus, ...data };
@@ -165,7 +167,7 @@
 		if (nearbyFetchInFlight) return;
 		nearbyFetchInFlight = true;
 		try {
-			const res = await fetch('/api/obd/devices');
+			const res = await fetchWithTimeout('/api/obd/devices');
 			if (!res.ok) return;
 			const data = await res.json();
 			nearby = data.devices || [];
@@ -179,7 +181,7 @@
 
 	async function fetchRemembered() {
 		try {
-			const res = await fetch('/api/obd/remembered');
+			const res = await fetchWithTimeout('/api/obd/remembered');
 			if (!res.ok) return;
 			const data = await res.json();
 			remembered = data.devices || [];
@@ -203,7 +205,7 @@
 		nearby = [];
 
 		try {
-			const res = await fetch('/api/obd/scan', { method: 'POST' });
+			const res = await fetchWithTimeout('/api/obd/scan', { method: 'POST' });
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				setMsg('error', data.message || 'Failed to start scan');
@@ -212,12 +214,13 @@
 			}
 
 			stopScanPoll();
-			scanPoll = setInterval(async () => {
+			scanPoll = createPoll(async () => {
 				await fetchNearby();
 				if (!scanning) {
 					stopScanPoll();
 				}
 			}, SCAN_POLL_INTERVAL_MS);
+			scanPoll.start();
 		} catch (e) {
 			setMsg('error', 'Failed to start scan');
 			scanning = false;
@@ -226,7 +229,7 @@
 
 	async function stopScan() {
 		try {
-			await fetch('/api/obd/scan/stop', { method: 'POST' });
+			await fetchWithTimeout('/api/obd/scan/stop', { method: 'POST' });
 		} finally {
 			scanning = false;
 			stopScanPoll();
@@ -261,7 +264,7 @@
 				autoConnect: rememberDevice ? autoConnect : false
 			};
 
-			const res = await fetch('/api/obd/connect', {
+			const res = await fetchWithTimeout('/api/obd/connect', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
@@ -290,7 +293,7 @@
 
 	async function toggleRememberedAutoConnect(device, enabled) {
 		try {
-			const res = await fetch('/api/obd/remembered/autoconnect', {
+			const res = await fetchWithTimeout('/api/obd/remembered/autoconnect', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ address: device.address, enabled })
@@ -311,7 +314,7 @@
 		if (!confirmed) return;
 
 		try {
-			const res = await fetch('/api/obd/forget', {
+			const res = await fetchWithTimeout('/api/obd/forget', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ address: device.address })
@@ -329,7 +332,7 @@
 
 	async function disconnectObd() {
 		try {
-			await fetch('/api/obd/disconnect', { method: 'POST' });
+			await fetchWithTimeout('/api/obd/disconnect', { method: 'POST' });
 			setMsg('info', 'OBD disconnected');
 			await fetchStatus();
 		} catch (e) {
@@ -339,7 +342,7 @@
 
 	async function clearNearby() {
 		try {
-			await fetch('/api/obd/devices/clear', { method: 'POST' });
+			await fetchWithTimeout('/api/obd/devices/clear', { method: 'POST' });
 			nearby = [];
 		} catch (e) {
 			// ignore
@@ -353,7 +356,7 @@
 		savingObdEnabled = true;
 
 		try {
-			const res = await fetch('/api/obd/config', {
+			const res = await fetchWithTimeout('/api/obd/config', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ enabled })
@@ -396,7 +399,7 @@
 		savingVwData = true;
 
 		try {
-			const res = await fetch('/api/obd/config', {
+			const res = await fetchWithTimeout('/api/obd/config', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ vwDataEnabled: enabled })
@@ -425,7 +428,7 @@
 		savingGpsEnabled = true;
 
 		try {
-			const res = await fetch('/api/gps/config', {
+			const res = await fetchWithTimeout('/api/gps/config', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ enabled })

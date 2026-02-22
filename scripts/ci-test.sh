@@ -56,6 +56,11 @@ echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
 pio test -e native
 echo -e "${GREEN}✅ Native unit tests passed${NC}"
 
+# Step 0h: Frontend HTTP resilience contract guard
+echo -e "${YELLOW}🔒 Checking frontend HTTP resilience contract...${NC}"
+python3 scripts/check_frontend_http_resilience_contract.py
+echo -e "${GREEN}✅ Frontend HTTP resilience contract matches${NC}"
+
 # Step 1: Build web interface
 echo -e "${YELLOW}📦 Building web interface...${NC}"
 cd interface

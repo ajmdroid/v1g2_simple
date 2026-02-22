@@ -237,7 +237,7 @@
 		configFetchInFlight = true;
 		if (!silent) configError = '';
 		try {
-			const res = await fetch('/api/settings');
+			const res = await fetchWithTimeout('/api/settings');
 			if (!res.ok) {
 				if (!silent) configError = 'Failed to load runtime camera settings.';
 				return;
@@ -261,7 +261,7 @@
 		try {
 			const payload = new URLSearchParams();
 			payload.set('cameraEnabled', nextEnabled ? '1' : '0');
-			const res = await fetch('/api/settings', {
+			const res = await fetchWithTimeout('/api/settings', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: payload.toString()
@@ -298,7 +298,7 @@
 			if (type !== 0 && demoMuted) {
 				payload.set('muted', '1');
 			}
-			const res = await fetch('/api/cameras/demo', {
+			const res = await fetchWithTimeout('/api/cameras/demo', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: payload.toString()
@@ -320,7 +320,7 @@
 		demoInFlight = true;
 		demoError = '';
 		try {
-			const res = await fetch('/api/cameras/demo/clear', { method: 'POST' });
+			const res = await fetchWithTimeout('/api/cameras/demo/clear', { method: 'POST' });
 			if (!res.ok) {
 				demoError = 'Failed to clear camera display demo.';
 				return;

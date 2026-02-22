@@ -14,7 +14,6 @@
 #include "settings.h"
 #include "battery_manager.h"
 #include "wifi_manager.h"
-#include "ble_client.h"
 #include "obd_handler.h"
 #include "storage_manager.h"
 #include "audio_beep.h"

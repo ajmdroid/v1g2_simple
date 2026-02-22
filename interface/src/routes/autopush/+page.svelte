@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
@@ -31,7 +32,7 @@
 	
 	async function fetchSlots() {
 		try {
-			const res = await fetch('/api/autopush/slots');
+			const res = await fetchWithTimeout('/api/autopush/slots');
 			if (res.ok) {
 				const loaded = await res.json();
 				// Normalize defaults for new fields
@@ -49,7 +50,7 @@
 	
 	async function fetchProfiles() {
 		try {
-			const res = await fetch('/api/v1/profiles');
+			const res = await fetchWithTimeout('/api/v1/profiles');
 			if (res.ok) {
 				const d = await res.json();
 				profiles = d.profiles || [];
@@ -66,7 +67,7 @@
 			formData.append('slot', slot);
 			formData.append('enable', 'true');
 			
-			const res = await fetch('/api/autopush/activate', {
+			const res = await fetchWithTimeout('/api/autopush/activate', {
 				method: 'POST',
 				body: formData
 			});
@@ -89,7 +90,7 @@
 			const formData = new FormData();
 			formData.append('slot', slot);
 			
-			const res = await fetch('/api/autopush/push', {
+			const res = await fetchWithTimeout('/api/autopush/push', {
 				method: 'POST',
 				body: formData
 			});
@@ -124,7 +125,7 @@
 			formData.append('alertPersist', persist);
 			formData.append('priorityArrowOnly', s.priorityArrowOnly ? 'true' : 'false');
 			
-			const res = await fetch('/api/autopush/slot', {
+			const res = await fetchWithTimeout('/api/autopush/slot', {
 				method: 'POST',
 				body: formData
 			});

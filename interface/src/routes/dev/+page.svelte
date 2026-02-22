@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { formatBytes } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -29,7 +30,7 @@
 	let metrics = $state(null);
 	let metricsLoading = $state(false);
 	let metricsAutoRefresh = $state(false);
-	let metricsRefreshInterval = $state(null);
+	const METRICS_REFRESH_INTERVAL_MS = 2000;
 
 	// Perf CSV file management
 	let perfFiles = $state([]);
@@ -40,6 +41,10 @@
 		onSdCard: false,
 		path: '/perf'
 	});
+
+	const metricsPoll = createPoll(async () => {
+		await loadMetrics();
+	}, METRICS_REFRESH_INTERVAL_MS);
 
 	function setMessage(type, text) {
 		message = { type, text };
@@ -90,7 +95,7 @@
 
 	async function loadSettings() {
 		try {
-			const response = await fetch('/api/settings');
+			const response = await fetchWithTimeout('/api/settings');
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableSignalTraceLogging = data.enableSignalTraceLogging ?? true;
@@ -117,7 +122,7 @@
 			params.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
 			params.append('skipPreview', 'true');
 
-			const response = await fetch('/api/displaycolors', {
+			const response = await fetchWithTimeout('/api/displaycolors', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: params
@@ -153,7 +158,7 @@
 	async function loadMetrics() {
 		metricsLoading = true;
 		try {
-			const response = await fetch('/api/debug/metrics');
+			const response = await fetchWithTimeout('/api/debug/metrics');
 			if (!response.ok) throw new Error('Failed to load metrics');
 			metrics = await response.json();
 		} catch (error) {
@@ -173,18 +178,13 @@
 
 	function startMetricsAutoRefresh() {
 		metricsAutoRefresh = true;
-		loadMetrics(); // Load immediately
-		metricsRefreshInterval = setInterval(() => {
-			loadMetrics();
-		}, 2000); // Refresh every 2 seconds
+		void loadMetrics(); // Load immediately
+		metricsPoll.start();
 	}
 
 	function stopMetricsAutoRefresh() {
 		metricsAutoRefresh = false;
-		if (metricsRefreshInterval) {
-			clearInterval(metricsRefreshInterval);
-			metricsRefreshInterval = null;
-		}
+		metricsPoll.stop();
 	}
 
 	function formatLatency(us) {
@@ -196,7 +196,7 @@
 	async function loadPerfFiles() {
 		perfFilesLoading = true;
 		try {
-			const response = await fetch('/api/debug/perf-files?limit=24');
+			const response = await fetchWithTimeout('/api/debug/perf-files?limit=24');
 			if (!response.ok) throw new Error('Failed to load perf files');
 			const data = await response.json();
 			perfFiles = data.files || [];
@@ -239,7 +239,7 @@
 		try {
 			const params = new URLSearchParams();
 			params.append('name', name);
-			const response = await fetch('/api/debug/perf-files/delete', {
+			const response = await fetchWithTimeout('/api/debug/perf-files/delete', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: params

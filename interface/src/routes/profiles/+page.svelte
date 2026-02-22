@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -87,7 +88,7 @@
 	
 	async function fetchProfiles() {
 		try {
-			const res = await fetch('/api/v1/profiles');
+			const res = await fetchWithTimeout('/api/v1/profiles');
 			if (res.ok) {
 				const data = await res.json();
 				profiles = data.profiles || [];
@@ -101,7 +102,7 @@
 	
 	async function fetchCurrentSettings() {
 		try {
-			const res = await fetch('/api/v1/current');
+			const res = await fetchWithTimeout('/api/v1/current');
 			if (res.ok) {
 				const data = await res.json();
 				currentProfile = {
@@ -118,7 +119,7 @@
 	async function pullFromV1() {
 		message = { type: 'info', text: 'Pulling settings from V1...' };
 		try {
-			const res = await fetch('/api/v1/pull', { method: 'POST' });
+			const res = await fetchWithTimeout('/api/v1/pull', { method: 'POST' });
 			if (res.ok) {
 				// Wait for BLE response to arrive (async) then fetch updated settings
 				// Poll a few times with delay to catch the async BLE response
@@ -164,7 +165,7 @@
 				settings: toApiSettings(currentProfile.settings)
 			};
 			
-			const res = await fetch('/api/v1/profile', {
+			const res = await fetchWithTimeout('/api/v1/profile', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -202,7 +203,7 @@
 	async function editProfile(name) {
 		message = { type: 'info', text: `Loading ${name}...` };
 		try {
-			const res = await fetch(`/api/v1/profile?name=${encodeURIComponent(name)}`);
+			const res = await fetchWithTimeout(`/api/v1/profile?name=${encodeURIComponent(name)}`);
 			if (res.ok) {
 				const data = await res.json();
 				currentProfile = {
@@ -236,7 +237,7 @@
 				settings: toApiSettings(editedSettings)
 			};
 
-			const res = await fetch('/api/v1/profile', {
+			const res = await fetchWithTimeout('/api/v1/profile', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -270,7 +271,7 @@
 				settings: toApiSettings(editedSettings)
 			};
 			
-			const res = await fetch('/api/v1/push', {
+			const res = await fetchWithTimeout('/api/v1/push', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -296,7 +297,7 @@
 	async function pushToV1(profileName) {
 		message = { type: 'info', text: `Pushing ${profileName} to V1...` };
 		try {
-			const res = await fetch('/api/v1/push', { 
+			const res = await fetchWithTimeout('/api/v1/push', { 
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -319,7 +320,7 @@
 		if (!confirm(`Delete profile "${name}"?`)) return;
 		
 		try {
-			const res = await fetch('/api/v1/profile/delete', { 
+			const res = await fetchWithTimeout('/api/v1/profile/delete', { 
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

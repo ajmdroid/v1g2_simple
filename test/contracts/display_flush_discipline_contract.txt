@@ -1,12 +1,12 @@
 # Display flush discipline contract (flush call-site snapshot)
 
-kind=BARE_FLUSH file=src/display.cpp line=326 function=setBLEProxyStatus
+kind=BARE_FLUSH file=src/display.cpp line=325 function=setBLEProxyStatus
 kind=BARE_FLUSH file=src/display_screens.cpp line=129 function=showResting
 kind=BARE_FLUSH file=src/display_screens.cpp line=309 function=showDemo
-kind=DISPLAY_FLUSH file=src/display.cpp line=207 function=begin
-kind=DISPLAY_FLUSH file=src/display.cpp line=288 function=clear
-kind=DISPLAY_FLUSH file=src/display.cpp line=347 function=flush
-kind=DISPLAY_FLUSH file=src/display.cpp line=366 function=flushRegion
+kind=DISPLAY_FLUSH file=src/display.cpp line=206 function=begin
+kind=DISPLAY_FLUSH file=src/display.cpp line=287 function=clear
+kind=DISPLAY_FLUSH file=src/display.cpp line=346 function=flush
+kind=DISPLAY_FLUSH file=src/display.cpp line=365 function=flushRegion
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=113 function=showResting
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=263 function=showScanning
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=352 function=showBootSplash
