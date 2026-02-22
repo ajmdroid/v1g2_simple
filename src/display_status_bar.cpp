@@ -564,21 +564,24 @@ void V1Display::drawWiFiIndicator() {
         return;
     }
     
-    // Show WiFi icon when Setup Mode (AP) is active
-    bool isSetupMode = wifiManager.isSetupModeActive();
-    
-    if (!isSetupMode) {
-        // Clear the WiFi icon area when Setup Mode is off
+    const bool wifiServiceActive = wifiManager.isWifiServiceActive();
+    const bool staConnected = wifiManager.isConnected();
+    const bool apActive = wifiManager.isSetupModeActive();
+    const bool showWifiIcon = wifiServiceActive || staConnected;
+
+    if (!showWifiIcon) {
+        // Clear the WiFi icon area when WiFi is fully inactive.
         FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
         return;
     }
     
-    // Check if any clients are connected to the AP
-    bool hasClients = WiFi.softAPgetStationNum() > 0;
+    // Check if any clients are connected to the AP (only when AP is enabled).
+    bool hasApClients = apActive && (WiFi.softAPgetStationNum() > 0);
     
     // WiFi icon color: connected vs disconnected (like BLE icon)
-    uint16_t wifiColor = hasClients ? dimColor(s.colorWiFiConnected, 85)
-                                    : dimColor(s.colorWiFiIcon, 85);
+    uint16_t wifiColor = (staConnected || hasApClients)
+                             ? dimColor(s.colorWiFiConnected, 85)
+                             : dimColor(s.colorWiFiIcon, 85);
     
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);

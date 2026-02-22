@@ -1037,20 +1037,21 @@ void loop() {
         }
     }
 
-    // Keep WiFi icon state in sync with AP lifecycle even when no alert redraws
-    // happen (auto-start AP can come up after the last full-screen paint).
+    // Keep WiFi icon state in sync with WiFi lifecycle even when no alert redraws
+    // happen (STA can remain active after AP retirement).
     {
-        static bool lastWifiSetupActive = false;
+        static bool lastWifiVisualActive = false;
         static unsigned long lastWifiIconRefreshMs = 0;
-        const bool wifiSetupActiveNow = wifiManager.isSetupModeActive();
+        const bool wifiVisualActiveNow =
+            wifiManager.isWifiServiceActive() || wifiManager.isConnected();
         const unsigned long nowMs = millis();
 
         bool refreshWifiIcon = false;
-        if (wifiSetupActiveNow != lastWifiSetupActive) {
+        if (wifiVisualActiveNow != lastWifiVisualActive) {
             refreshWifiIcon = true;
-            lastWifiSetupActive = wifiSetupActiveNow;
-        } else if (wifiSetupActiveNow && (nowMs - lastWifiIconRefreshMs) >= 2000UL) {
-            // Periodic refresh keeps AP client-connect color current.
+            lastWifiVisualActive = wifiVisualActiveNow;
+        } else if (wifiVisualActiveNow && (nowMs - lastWifiIconRefreshMs) >= 2000UL) {
+            // Periodic refresh keeps WiFi/AP client-connect color current.
             refreshWifiIcon = true;
         }
 
