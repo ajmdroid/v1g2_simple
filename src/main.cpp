@@ -31,6 +31,7 @@
 #include "settings.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
+#include "v1_devices.h"
 #include "obd_handler.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
@@ -266,10 +267,36 @@ void onV1Connected() {
 
     const V1Settings& s = settingsManager.get();
     int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
-    const AutoPushSlot& slot = settingsManager.getSlot(activeSlotIndex);
-    SerialLog.printf("[AutoPush] onV1Connected autoPush=%s slot=%d profile='%s' mode=%d\n",
+
+    String connectedAddress;
+    NimBLEAddress connected = bleClient.getConnectedAddress();
+    if (!connected.isNull()) {
+        connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
+    }
+    if (connectedAddress.length() == 0) {
+        connectedAddress = normalizeV1DeviceAddress(s.lastV1Address);
+    }
+
+    if (connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
+        v1DeviceStore.upsertDevice(connectedAddress);
+    }
+
+    uint8_t deviceDefaultProfile = 0;
+    int selectedSlotIndex = activeSlotIndex;
+    if (connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
+        deviceDefaultProfile = v1DeviceStore.getDeviceDefaultProfile(connectedAddress);
+        if (deviceDefaultProfile >= 1 && deviceDefaultProfile <= 3) {
+            selectedSlotIndex = static_cast<int>(deviceDefaultProfile) - 1;
+        }
+    }
+
+    const AutoPushSlot& slot = settingsManager.getSlot(selectedSlotIndex);
+    SerialLog.printf("[AutoPush] onV1Connected autoPush=%s activeSlot=%d selectedSlot=%d defaultProfile=%u addr='%s' profile='%s' mode=%d\n",
                      s.autoPushEnabled ? "on" : "off",
                      activeSlotIndex,
+                     selectedSlotIndex,
+                     static_cast<unsigned>(deviceDefaultProfile),
+                     connectedAddress.c_str(),
                      slot.profileName.c_str(),
                      static_cast<int>(slot.mode));
     if (activeSlotIndex != s.activeSlot) {
@@ -291,10 +318,15 @@ void onV1Connected() {
         return;
     }
 
-    // Use global activeSlot
-    AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", activeSlotIndex);
+    if (deviceDefaultProfile >= 1 && deviceDefaultProfile <= 3) {
+        AUTO_PUSH_LOGF("[AutoPush] Using per-device default profile %u -> slot %d\n",
+                       static_cast<unsigned>(deviceDefaultProfile),
+                       selectedSlotIndex);
+    } else {
+        AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selectedSlotIndex);
+    }
 
-    autoPushModule.start(activeSlotIndex);
+    autoPushModule.start(selectedSlotIndex);
 }
 
 // fatalBootError() — moved to main_boot.cpp
@@ -449,6 +481,7 @@ void setup() {
     if (storageManager.begin()) {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
+        v1DeviceStore.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
         audio_init_sd();  // Initialize SD-based frequency voice audio
 
         // Retry settings restore now that SD is mounted
@@ -456,6 +489,11 @@ void setup() {
         if (settingsManager.checkAndRestoreFromSD()) {
             // Settings were restored from SD - update display with restored brightness
             display.setBrightness(settingsManager.get().brightness);
+        }
+
+        const String restoredLastKnownV1 = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
+        if (restoredLastKnownV1.length() > 0 && v1DeviceStore.isReady()) {
+            v1DeviceStore.upsertDevice(restoredLastKnownV1);
         }
 
         // Validate profile references in auto-push slots

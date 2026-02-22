@@ -9,6 +9,7 @@
 #include "settings_sanitize.h"
 #include "display.h"
 #include "v1_profiles.h"
+#include "v1_devices.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "obd_handler.h"
@@ -23,6 +24,7 @@
 #include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
+#include "modules/wifi/wifi_v1_devices_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "time_service.h"
 #include "../include/config.h"
@@ -447,5 +449,66 @@ WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
         []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
         []() { return bleClient.isConnected(); },
         [this]() { settingsManager.backupToSD(); },
+    };
+}
+
+WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
+    return WifiV1DevicesApiService::Runtime{
+        [this]() {
+            std::vector<WifiV1DevicesApiService::DeviceInfo> payload;
+            if (!v1DeviceStore.isReady()) {
+                return payload;
+            }
+
+            auto devices = v1DeviceStore.listDevices();
+            auto hasAddress = [&](const String& address) {
+                if (address.length() == 0) {
+                    return true;
+                }
+                for (const auto& device : devices) {
+                    if (device.address.equalsIgnoreCase(address)) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            const String lastV1Address = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
+            if (!hasAddress(lastV1Address)) {
+                v1DeviceStore.upsertDevice(lastV1Address);
+                devices = v1DeviceStore.listDevices();
+            }
+
+            String connectedAddress;
+            NimBLEAddress connected = bleClient.getConnectedAddress();
+            if (!connected.isNull()) {
+                connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
+                if (!hasAddress(connectedAddress)) {
+                    v1DeviceStore.upsertDevice(connectedAddress);
+                    devices = v1DeviceStore.listDevices();
+                }
+            }
+
+            payload.reserve(devices.size());
+            for (const auto& device : devices) {
+                WifiV1DevicesApiService::DeviceInfo info;
+                info.address = device.address;
+                info.name = device.name;
+                info.defaultProfile = device.defaultProfile;
+                info.connected = connectedAddress.length() > 0 &&
+                                 connectedAddress.equalsIgnoreCase(device.address);
+                payload.push_back(info);
+            }
+            return payload;
+        },
+        [](const String& address, const String& name) {
+            return v1DeviceStore.setDeviceName(address, name);
+        },
+        [](const String& address, uint8_t defaultProfile) {
+            return v1DeviceStore.setDeviceDefaultProfile(address, defaultProfile);
+        },
+        [](const String& address) {
+            return v1DeviceStore.removeDevice(address);
+        },
     };
 }

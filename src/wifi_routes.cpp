@@ -29,6 +29,7 @@
 #include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
+#include "modules/wifi/wifi_v1_devices_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
@@ -235,6 +236,27 @@ void WiFiManager::setupWebServer() {
     });
     server.on("/api/v1/current", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiCurrentSettings(server, makeV1ProfileRuntime());
+    });
+    server.on("/api/v1/devices", HTTP_GET, [this]() {
+        WifiV1DevicesApiService::handleApiDevicesList(server, makeV1DevicesRuntime());
+    });
+    server.on("/api/v1/devices/name", HTTP_POST, [this, rateLimitCallback]() {
+        WifiV1DevicesApiService::handleApiDeviceNameSave(
+            server,
+            makeV1DevicesRuntime(),
+            rateLimitCallback);
+    });
+    server.on("/api/v1/devices/profile", HTTP_POST, [this, rateLimitCallback]() {
+        WifiV1DevicesApiService::handleApiDeviceProfileSave(
+            server,
+            makeV1DevicesRuntime(),
+            rateLimitCallback);
+    });
+    server.on("/api/v1/devices/delete", HTTP_POST, [this, rateLimitCallback]() {
+        WifiV1DevicesApiService::handleApiDeviceDelete(
+            server,
+            makeV1DevicesRuntime(),
+            rateLimitCallback);
     });
     
     // Auto-Push routes
