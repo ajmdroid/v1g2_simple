@@ -82,7 +82,7 @@ CLI_OVERRIDE_MAX_CAMERA_LOAD_FAILURES_DELTA=0
 CLI_OVERRIDE_MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
 BASELINE_PERF_CSV=""
 BASELINE_PERF_SESSION="last-connected"
-BASELINE_LATENCY_FACTOR="1.20"
+BASELINE_LATENCY_FACTOR="1.0"
 BASELINE_THROUGHPUT_FACTOR="0.50"
 BASELINE_GATES_APPLIED=0
 BASELINE_GATES_KV_FILE=""
@@ -574,7 +574,7 @@ Options:
                         Session selector: last-connected (default), last,
                         longest-connected, longest, or 1-based index
   --baseline-latency-factor F
-                        Multiply baseline peaks for max gates (default: 1.20)
+                        Multiply baseline peaks for max gates (default: 1.0)
   --baseline-throughput-factor F
                         Fraction of baseline rx/parse rates used for min deltas
                         (default: 0.50)
