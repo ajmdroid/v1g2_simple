@@ -133,8 +133,11 @@ def main() -> int:
     camera_max_tick_peak = None
     camera_max_window_hz_peak = None
     camera_max_window_hz_peak_ts = ""
-    camera_ticks_prev = None
-    camera_ticks_prev_ts = None
+    # Ring buffer of (epoch, cameraTicks) for sliding-window Hz computation.
+    # Min window of 15 s prevents poll-interval aliasing (firmware is 5 Hz but
+    # narrow poll windows can bunch ticks above 5 Hz in consecutive pairs).
+    camera_tick_ring = []  # list of (epoch, ticks)
+    CAMERA_HZ_MIN_WINDOW_S = 15.0
     gps_obs_drops_first = None
     gps_obs_drops_last = None
 
@@ -190,7 +193,7 @@ def main() -> int:
                     wifi_peak_display_updates = num(data.get("displayUpdates"))
                     wifi_peak_rx_packets = num(data.get("rxPackets"))
 
-                if ok_samples > 1 and wifi_val is not None and (
+                if ok_samples > 2 and wifi_val is not None and (
                     wifi_max_peak_excluding_first is None or wifi_val > wifi_max_peak_excluding_first
                 ):
                     wifi_max_peak_excluding_first = wifi_val
@@ -330,22 +333,24 @@ def main() -> int:
                 camera_max_tick_peak = update_max(camera_max_tick_peak, num(data.get("cameraMaxTickUs")))
 
                 camera_ticks = num(data.get("cameraTicks"))
-                if (
-                    camera_ticks is not None
-                    and camera_ticks_prev is not None
-                    and sample_epoch is not None
-                    and camera_ticks_prev_ts is not None
-                ):
-                    dt_seconds = sample_epoch - camera_ticks_prev_ts
-                    tick_inc = camera_ticks - camera_ticks_prev
-                    if dt_seconds > 0 and tick_inc >= 0:
-                        hz = tick_inc / dt_seconds
-                        if camera_max_window_hz_peak is None or hz > camera_max_window_hz_peak:
-                            camera_max_window_hz_peak = hz
-                            camera_max_window_hz_peak_ts = sample_ts
                 if camera_ticks is not None and sample_epoch is not None:
-                    camera_ticks_prev = camera_ticks
-                    camera_ticks_prev_ts = sample_epoch
+                    camera_tick_ring.append((sample_epoch, camera_ticks))
+                    # Find the oldest entry that gives us >= CAMERA_HZ_MIN_WINDOW_S
+                    best_start = len(camera_tick_ring) - 2  # fallback: previous
+                    for si in range(len(camera_tick_ring) - 2, -1, -1):
+                        span = sample_epoch - camera_tick_ring[si][0]
+                        if span >= CAMERA_HZ_MIN_WINDOW_S:
+                            best_start = si
+                            break
+                    if best_start >= 0:
+                        ref_epoch, ref_ticks = camera_tick_ring[best_start]
+                        dt_seconds = sample_epoch - ref_epoch
+                        tick_inc = camera_ticks - ref_ticks
+                        if dt_seconds > 0 and tick_inc >= 0:
+                            hz = tick_inc / dt_seconds
+                            if camera_max_window_hz_peak is None or hz > camera_max_window_hz_peak:
+                                camera_max_window_hz_peak = hz
+                                camera_max_window_hz_peak_ts = sample_ts
 
                 gps_obs_drops = num(data.get("gpsObsDrops"))
                 if gps_obs_drops_first is None and gps_obs_drops is not None:

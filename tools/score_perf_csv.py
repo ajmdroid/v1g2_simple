@@ -36,7 +36,7 @@ HARD_COMMON = [
     ("loopMax_us", "max", "<=", 250000.0),
     ("bleDrainMax_us", "max", "<=", 10000.0),
     ("bleProcessMax_us", "max", "<=", 120000.0),
-    ("dispPipeMax_us", "max", "<=", 120000.0),
+    ("dispPipeMax_us", "max", "<=", 80000.0),
     ("flushMax_us", "max", "<=", 100000.0),
     ("sdMax_us", "max", "<=", 50000.0),
     ("fsMax_us", "max", "<=", 50000.0),
@@ -313,14 +313,29 @@ def duration_s(rows: List[Dict[str, int]]) -> float:
 
 
 def camera_max_window_hz(rows: List[Dict[str, int]]) -> float:
+    """Compute peak camera tick Hz over a minimum 15-second sliding window.
+
+    Using consecutive-pair Hz is susceptible to poll-interval aliasing: the
+    firmware enforces 200 ms minimum tick interval (5 Hz) but narrow poll
+    windows can bunch ticks and produce false readings above 5 Hz.  A sliding
+    window of >= 15 s (3+ typical CSV rows at 5 s cadence) eliminates this.
+    """
+    if len(rows) < 2:
+        return 0.0
+    MIN_WINDOW_MS = 15000
     peak = 0.0
-    for i in range(1, len(rows)):
-        prev = rows[i - 1]
-        cur = rows[i]
-        dt = (cur["millis"] - prev["millis"]) / 1000.0
+    for end in range(1, len(rows)):
+        # Walk start backwards until the window spans >= MIN_WINDOW_MS
+        best_start = end - 1
+        for start in range(end - 1, -1, -1):
+            span_ms = rows[end]["millis"] - rows[start]["millis"]
+            if span_ms >= MIN_WINDOW_MS:
+                best_start = start
+                break
+        dt = (rows[end]["millis"] - rows[best_start]["millis"]) / 1000.0
         if dt <= 0:
             continue
-        tick_inc = cur["cameraTicks"] - prev["cameraTicks"]
+        tick_inc = rows[end]["cameraTicks"] - rows[best_start]["cameraTicks"]
         hz = tick_inc / dt
         if hz > peak:
             peak = hz
