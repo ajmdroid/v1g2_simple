@@ -31,6 +31,8 @@ SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_RESET_URL="${REAL_FW_METRICS_RESET_URL:-}"
+METRICS_SOAK_MODE="${REAL_FW_METRICS_SOAK_MODE:-1}"
+METRICS_POLL_URL=""
 METRICS_REQUIRED=0
 MIN_METRICS_OK_SAMPLES=1
 MIN_RX_PACKETS_DELTA=1
@@ -612,6 +614,11 @@ if ! [[ "$MIN_METRICS_OK_SAMPLES" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if ! [[ "$METRICS_SOAK_MODE" =~ ^[01]$ ]]; then
+  echo "Invalid REAL_FW_METRICS_SOAK_MODE value '$METRICS_SOAK_MODE' (expected 0 or 1)." >&2
+  exit 2
+fi
+
 for gate_var in \
   MIN_RX_PACKETS_DELTA \
   MIN_PARSE_SUCCESSES_DELTA \
@@ -680,19 +687,32 @@ if [[ "$DRY_RUN" -ne 1 ]]; then
   fi
 fi
 
-if [[ -n "$METRICS_URL" && -z "$PANIC_URL" ]]; then
-  PANIC_URL="${METRICS_URL%/api/debug/metrics}/api/debug/panic"
-fi
-if [[ -n "$METRICS_URL" && -z "$METRICS_RESET_URL" ]]; then
-  METRICS_RESET_URL="${METRICS_URL%/api/debug/metrics}/api/debug/metrics/reset"
-fi
+METRICS_POLL_URL="$METRICS_URL"
+if [[ -n "$METRICS_URL" ]]; then
+  metrics_url_base="${METRICS_URL%%\?*}"
 
-if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" && -n "$METRICS_URL" ]]; then
-  DISPLAY_PREVIEW_URL="${METRICS_URL%/api/debug/metrics}/api/displaycolors/preview"
-fi
+  if [[ -z "$PANIC_URL" ]]; then
+    PANIC_URL="${metrics_url_base%/api/debug/metrics}/api/debug/panic"
+  fi
+  if [[ -z "$METRICS_RESET_URL" ]]; then
+    METRICS_RESET_URL="${metrics_url_base%/api/debug/metrics}/api/debug/metrics/reset"
+  fi
 
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" && -n "$METRICS_URL" ]]; then
-  CAMERA_DEMO_URL="${METRICS_URL%/api/debug/metrics}/api/cameras/demo"
+  if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
+    DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/preview"
+  fi
+
+  if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" ]]; then
+    CAMERA_DEMO_URL="${metrics_url_base%/api/debug/metrics}/api/cameras/demo"
+  fi
+
+  if [[ "$METRICS_SOAK_MODE" -eq 1 && "$METRICS_URL" != *"soak="* ]]; then
+    if [[ "$METRICS_URL" == *"?"* ]]; then
+      METRICS_POLL_URL="${METRICS_URL}&soak=1"
+    else
+      METRICS_POLL_URL="${METRICS_URL}?soak=1"
+    fi
+  fi
 fi
 
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
@@ -923,6 +943,8 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    serial baud: ${SERIAL_BAUD}"
   echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s"
   echo "    metrics url: ${METRICS_URL:-disabled}"
+  echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}"
+  echo "    metrics soak mode: ${METRICS_SOAK_MODE}"
   echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}"
   echo "    panic url: ${PANIC_URL:-disabled}"
   echo "    metrics required: ${METRICS_REQUIRED}"
@@ -985,6 +1007,8 @@ echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
+echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
+echo "    metrics soak mode: ${METRICS_SOAK_MODE}" | tee -a "$RUN_LOG"
 echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
@@ -1159,9 +1183,9 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
     echo "[WARN] Serial capture process exited unexpectedly during soak." | tee -a "$RUN_LOG"
   fi
 
-  if [[ -n "$METRICS_URL" ]]; then
+  if [[ -n "$METRICS_POLL_URL" ]]; then
     metrics_samples=$((metrics_samples + 1))
-    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_URL" 2>/dev/null || true)"
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_POLL_URL" 2>/dev/null || true)"
     if [[ -n "$payload" ]]; then
       metrics_ok_samples=$((metrics_ok_samples + 1))
       payload_oneline="$(printf "%s" "$payload" | tr -d '\r\n')"
@@ -1734,6 +1758,9 @@ fi
   echo "## Debug API Metrics"
   echo ""
   echo "- Metrics polling configured: $([[ -n "$METRICS_URL" ]] && echo "yes" || echo "no")"
+  echo "- Metrics URL: ${METRICS_URL:-disabled}"
+  echo "- Metrics poll URL: ${METRICS_POLL_URL:-disabled}"
+  echo "- Metrics soak mode: ${METRICS_SOAK_MODE}"
   echo "- Metrics reset URL: ${METRICS_RESET_URL:-disabled}"
   echo "- Metrics pre-reset attempted: $([[ "$metrics_reset_attempted" -eq 1 ]] && echo "yes" || echo "no")"
   echo "- Metrics pre-reset success: $([[ "$metrics_reset_success" -eq 1 ]] && echo "yes" || echo "no")"

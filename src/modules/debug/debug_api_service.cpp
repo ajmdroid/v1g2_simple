@@ -114,6 +114,11 @@ void invalidatePerfFileCache() {
     gPerfFileListCache.rows.clear();
 }
 
+bool isTruthyArgValue(const String& value) {
+    return value == "1" || value == "true" || value == "TRUE" ||
+           value == "on" || value == "ON";
+}
+
 }  // anonymous namespace
 
 namespace DebugApiService {
@@ -387,7 +392,106 @@ static void sendMetrics(WebServer& server) {
     sendJsonStream(server, doc);
 }
 
+static void sendMetricsSoak(WebServer& server) {
+    // Soak mode trims heavyweight diagnostic blocks (GPS/OBD/speed snapshots)
+    // while preserving all fields consumed by soak_parse_metrics.py.
+    JsonDocument doc;
+
+    doc["rxPackets"] = perfCounters.rxPackets.load();
+    doc["rxBytes"] = perfCounters.rxBytes.load();
+    doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
+    doc["parseFailures"] = perfCounters.parseFailures.load();
+    doc["queueDrops"] = perfCounters.queueDrops.load();
+    doc["perfDrop"] = perfCounters.perfDrop.load();
+    doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
+    doc["queueHighWater"] = perfCounters.queueHighWater.load();
+    doc["cmdBleBusy"] = perfCounters.cmdBleBusy.load();
+    doc["displayUpdates"] = perfCounters.displayUpdates.load();
+    doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["reconnects"] = perfCounters.reconnects.load();
+    doc["disconnects"] = perfCounters.disconnects.load();
+    doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
+
+    doc["loopMaxUs"] = perfGetLoopMaxUs();
+    doc["wifiMaxUs"] = perfGetWifiMaxUs();
+    doc["fsMaxUs"] = perfGetFsMaxUs();
+    doc["sdMaxUs"] = perfGetSdMaxUs();
+    doc["flushMaxUs"] = perfGetFlushMaxUs();
+    doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
+
+    doc["heapFree"] = ESP.getFreeHeap();
+    doc["heapMinFree"] = perfGetMinFreeHeap();
+    doc["heapDma"] = StorageManager::getCachedFreeDma();
+    doc["heapDmaMin"] = perfGetMinFreeDma();
+    doc["heapDmaLargest"] = StorageManager::getCachedLargestDma();
+    doc["heapDmaLargestMin"] = perfGetMinLargestDma();
+
+#if PERF_METRICS
+    doc["monitoringEnabled"] = (bool)PERF_MONITORING;
+#if PERF_MONITORING
+    uint32_t minUsVal = perfLatency.minUs.load();
+    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
+    doc["latencyMinUs"] = minUs;
+    doc["latencyAvgUs"] = perfLatency.avgUs();
+    doc["latencyMaxUs"] = perfLatency.maxUs.load();
+    doc["latencySamples"] = perfLatency.sampleCount.load();
+    doc["debugEnabled"] = perfDebugEnabled;
+#else
+    doc["latencyMinUs"] = 0;
+    doc["latencyAvgUs"] = 0;
+    doc["latencyMaxUs"] = 0;
+    doc["latencySamples"] = 0;
+    doc["debugEnabled"] = false;
+#endif
+#else
+    doc["metricsEnabled"] = false;
+    doc["latencyMinUs"] = 0;
+    doc["latencyAvgUs"] = 0;
+    doc["latencyMaxUs"] = 0;
+    doc["latencySamples"] = 0;
+    doc["debugEnabled"] = false;
+#endif
+
+    const ProxyMetrics& proxy = bleClient.getProxyMetrics();
+    JsonObject proxyObj = doc["proxy"].to<JsonObject>();
+    proxyObj["sendCount"] = proxy.sendCount;
+    proxyObj["dropCount"] = proxy.dropCount;
+    proxyObj["errorCount"] = proxy.errorCount;
+    proxyObj["queueHighWater"] = proxy.queueHighWater;
+    proxyObj["connected"] = bleClient.isProxyClientConnected();
+
+    JsonObject eventBusObj = doc["eventBus"].to<JsonObject>();
+    eventBusObj["publishCount"] = systemEventBus.getPublishCount();
+    eventBusObj["dropCount"] = systemEventBus.getDropCount();
+    eventBusObj["size"] = static_cast<uint32_t>(systemEventBus.size());
+
+    const V1Settings& settings = settingsManager.get();
+    const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
+        settings.gpsLockoutCoreGuardEnabled,
+        settings.gpsLockoutMaxQueueDrops,
+        settings.gpsLockoutMaxPerfDrops,
+        settings.gpsLockoutMaxEventBusDrops,
+        perfCounters.queueDrops.load(),
+        perfCounters.perfDrop.load(),
+        systemEventBus.getDropCount());
+    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
+    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
+    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
+    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+
+    sendJsonStream(server, doc);
+}
+
 void handleApiMetrics(WebServer& server) {
+    if (server.hasArg("soak") && isTruthyArgValue(server.arg("soak"))) {
+        sendMetricsSoak(server);
+        return;
+    }
     sendMetrics(server);
 }
 
