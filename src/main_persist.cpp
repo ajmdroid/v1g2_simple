@@ -12,6 +12,24 @@
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_learner.h"
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
+
+#ifndef MALLOC_CAP_DMA
+#define MALLOC_CAP_DMA (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+#endif
+
+namespace {
+// Keep background SD writes out of the danger zone during AP+STA operation.
+// These thresholds match the WiFi low-memory guard that has proven stable.
+static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_FREE = 20480;
+static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_BLOCK = 8192;
+
+inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma, uint32_t& largestDma) {
+    freeDma = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    return (freeDma >= LOCKOUT_SAVE_MIN_DMA_FREE) && (largestDma >= LOCKOUT_SAVE_MIN_DMA_BLOCK);
+}
+}  // namespace
 
 // ---- processLockoutStoreSave ----
 
@@ -20,7 +38,7 @@ void processLockoutStoreSave(uint32_t nowMs) {
     static uint32_t lastLockoutSaveMs = 0;
     static uint32_t lastLockoutSaveAttemptMs = 0;
     static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
-    static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 5000;      // Retry backoff on contention/failure
+    static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 15000;     // Retry backoff on contention/failure
     if (lockoutStore.isDirty() && storageManager.isReady() &&
         (nowMs - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
         (nowMs - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
@@ -32,17 +50,32 @@ void processLockoutStoreSave(uint32_t nowMs) {
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
-                StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
-                if (sdLock) {
-                    JsonDocument doc;
-                    lockoutStore.toJson(doc);
-                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
-                } else {
+                uint32_t freeDma = 0;
+                uint32_t largestDma = 0;
+                if (!hasDmaHeadroomForBackgroundSave(freeDma, largestDma)) {
                     saveDeferred = true;
-                    static uint32_t lastLockoutSaveSkipLogMs = 0;
-                    if ((nowMs - lastLockoutSaveSkipLogMs) >= 10000) {
-                        lastLockoutSaveSkipLogMs = nowMs;
-                        Serial.println("[Lockout] Save deferred (SD busy or DMA-starved)");
+                    static uint32_t lastLowDmaLogMs = 0;
+                    if ((nowMs - lastLowDmaLogMs) >= 10000) {
+                        lastLowDmaLogMs = nowMs;
+                        Serial.printf("[Lockout] Save deferred (low DMA heap free=%lu block=%lu need>=%lu/%lu)\n",
+                                      static_cast<unsigned long>(freeDma),
+                                      static_cast<unsigned long>(largestDma),
+                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_FREE),
+                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_BLOCK));
+                    }
+                } else {
+                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
+                    if (sdLock) {
+                        JsonDocument doc;
+                        lockoutStore.toJson(doc);
+                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
+                    } else {
+                        saveDeferred = true;
+                        static uint32_t lastLockoutSaveSkipLogMs = 0;
+                        if ((nowMs - lastLockoutSaveSkipLogMs) >= 10000) {
+                            lastLockoutSaveSkipLogMs = nowMs;
+                            Serial.println("[Lockout] Save deferred (SD busy)");
+                        }
                     }
                 }
             } else {
@@ -72,7 +105,7 @@ void processLearnerPendingSave(uint32_t nowMs) {
     static uint32_t lastLearnerSaveMs = 0;
     static uint32_t lastLearnerSaveAttemptMs = 0;
     static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
-    static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 5000;      // Retry backoff
+    static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 15000;     // Retry backoff
     if (lockoutLearner.isDirty() && storageManager.isReady() &&
         (nowMs - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
         (nowMs - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
@@ -84,13 +117,28 @@ void processLearnerPendingSave(uint32_t nowMs) {
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
-                StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
-                if (sdLock) {
-                    JsonDocument doc;
-                    lockoutLearner.toJson(doc);
-                    saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
-                } else {
+                uint32_t freeDma = 0;
+                uint32_t largestDma = 0;
+                if (!hasDmaHeadroomForBackgroundSave(freeDma, largestDma)) {
                     saveDeferred = true;
+                    static uint32_t lastLowDmaLogMs = 0;
+                    if ((nowMs - lastLowDmaLogMs) >= 10000) {
+                        lastLowDmaLogMs = nowMs;
+                        Serial.printf("[Learner] Save deferred (low DMA heap free=%lu block=%lu need>=%lu/%lu)\n",
+                                      static_cast<unsigned long>(freeDma),
+                                      static_cast<unsigned long>(largestDma),
+                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_FREE),
+                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_BLOCK));
+                    }
+                } else {
+                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
+                    if (sdLock) {
+                        JsonDocument doc;
+                        lockoutLearner.toJson(doc);
+                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
+                    } else {
+                        saveDeferred = true;
+                    }
                 }
             } else {
                 // LittleFS fallback path (single-CPU filesystem access).
