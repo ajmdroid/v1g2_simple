@@ -120,6 +120,35 @@ bool isTruthyArgValue(const String& value) {
            value == "on" || value == "ON";
 }
 
+struct PanicFileSnapshot {
+    bool loaded = false;
+    bool hasPanicFile = false;
+    String panicInfo = "";
+};
+
+PanicFileSnapshot gPanicFileSnapshot;
+
+const PanicFileSnapshot& getPanicFileSnapshot() {
+    if (gPanicFileSnapshot.loaded) {
+        return gPanicFileSnapshot;
+    }
+    gPanicFileSnapshot.loaded = true;
+    gPanicFileSnapshot.hasPanicFile = LittleFS.exists("/panic.txt");
+    if (!gPanicFileSnapshot.hasPanicFile) {
+        return gPanicFileSnapshot;
+    }
+
+    File f = LittleFS.open("/panic.txt", "r");
+    if (!f) {
+        // If open fails, surface a conservative "present but unreadable" snapshot.
+        gPanicFileSnapshot.panicInfo = "";
+        return gPanicFileSnapshot;
+    }
+    gPanicFileSnapshot.panicInfo = f.readString();
+    f.close();
+    return gPanicFileSnapshot;
+}
+
 }  // anonymous namespace
 
 namespace DebugApiService {
@@ -182,6 +211,7 @@ static void sendMetrics(WebServer& server) {
     doc["powerCriticalWarn"] = perfCounters.powerCriticalWarn.load();
     doc["powerCriticalShutdown"] = perfCounters.powerCriticalShutdown.load();
     doc["loopMaxUs"] = perfGetLoopMaxUs();
+    doc["uptimeMs"] = millis();
     doc["wifiMaxUs"] = perfGetWifiMaxUs();
     doc["fsMaxUs"] = perfGetFsMaxUs();
     doc["sdMaxUs"] = perfGetSdMaxUs();
@@ -426,6 +456,7 @@ static void sendMetricsSoak(WebServer& server) {
     doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
 
     doc["loopMaxUs"] = perfGetLoopMaxUs();
+    doc["uptimeMs"] = millis();
     doc["wifiMaxUs"] = perfGetWifiMaxUs();
     doc["fsMaxUs"] = perfGetFsMaxUs();
     doc["sdMaxUs"] = perfGetSdMaxUs();
@@ -549,8 +580,9 @@ void handleApiMetricsReset(WebServer& server,
     handleMetricsReset(server);
 }
 
-void sendPanic(WebServer& server) {
+void sendPanic(WebServer& server, bool soakMode) {
     // Return last panic info from LittleFS (written by logPanicBreadcrumbs on crash recovery)
+    // with a lightweight soak mode that avoids streaming large panic strings.
     JsonDocument doc;
     
     // Get last reset reason
@@ -570,21 +602,13 @@ void sendPanic(WebServer& server) {
     doc["lastResetReason"] = reasonStr;
     doc["wasCrash"] = (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || 
                        reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT);
-    
-    // Try to read panic.txt from LittleFS
-    String panicContent = "";
-    if (LittleFS.exists("/panic.txt")) {
-        File f = LittleFS.open("/panic.txt", "r");
-        if (f) {
-            panicContent = f.readString();
-            f.close();
-        }
-        doc["hasPanicFile"] = true;
-    } else {
-        doc["hasPanicFile"] = false;
+
+    const PanicFileSnapshot& panicSnapshot = getPanicFileSnapshot();
+    doc["hasPanicFile"] = panicSnapshot.hasPanicFile;
+    if (!soakMode) {
+        doc["panicInfo"] = panicSnapshot.panicInfo;
     }
-    doc["panicInfo"] = panicContent;
-    
+
     // Current heap stats for comparison
     doc["heapFree"] = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
     doc["heapLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
@@ -596,7 +620,8 @@ void sendPanic(WebServer& server) {
 }
 
 void handleApiPanic(WebServer& server) {
-    sendPanic(server);
+    const bool soakMode = server.hasArg("soak") && isTruthyArgValue(server.arg("soak"));
+    sendPanic(server, soakMode);
 }
 
 void sendPerfFilesList(WebServer& server) {

@@ -156,6 +156,13 @@ private:
     unsigned long lastApStaCountPollMs = 0;
     int cachedApStaCount = 0;
     static constexpr unsigned long AP_STA_COUNT_POLL_MS = 250;
+    // Keep request handling hot while amortizing lower-priority maintenance work.
+    static constexpr unsigned long WIFI_MAINTENANCE_FAST_MS = 10;
+    static constexpr unsigned long WIFI_STATUS_CHECK_MS = 50;
+    static constexpr unsigned long WIFI_TIMEOUT_CHECK_MS = 250;
+    unsigned long lastMaintenanceFastMs = 0;
+    unsigned long lastStatusCheckMs = 0;
+    unsigned long lastTimeoutCheckMs = 0;
     
     // WiFi client (STA) state
     WifiClientState wifiClientState = WIFI_CLIENT_DISABLED;

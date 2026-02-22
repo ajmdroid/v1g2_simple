@@ -169,7 +169,10 @@ def main() -> int:
                 wifi_val = num(data.get("wifiMaxUs"))
                 ble_drain_val = num(data.get("bleDrainMaxUs"))
                 sample_ts = rec.get("ts") if isinstance(rec.get("ts"), str) else ""
-                sample_epoch = parse_ts_epoch(sample_ts)
+                # Prefer firmware uptime for per-device rate calculations; host wall-clock
+                # sampling jitter can inflate short-window Hz estimates under load.
+                uptime_ms_val = num(data.get("uptimeMs"))
+                sample_epoch = (uptime_ms_val / 1000.0) if uptime_ms_val is not None else parse_ts_epoch(sample_ts)
 
                 if flush_val is not None and (flush_max_peak is None or flush_val > flush_max_peak):
                     flush_max_peak = flush_val

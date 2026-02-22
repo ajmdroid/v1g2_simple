@@ -33,6 +33,7 @@ PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_RESET_URL="${REAL_FW_METRICS_RESET_URL:-}"
 METRICS_SOAK_MODE="${REAL_FW_METRICS_SOAK_MODE:-1}"
 METRICS_POLL_URL=""
+PANIC_POLL_URL=""
 METRICS_REQUIRED=0
 MIN_METRICS_OK_SAMPLES=1
 MIN_RX_PACKETS_DELTA=1
@@ -831,12 +832,14 @@ if [[ "$DRY_RUN" -ne 1 ]]; then
 fi
 
 METRICS_POLL_URL="$METRICS_URL"
+PANIC_POLL_URL="$PANIC_URL"
 if [[ -n "$METRICS_URL" ]]; then
   metrics_url_base="${METRICS_URL%%\?*}"
 
   if [[ -z "$PANIC_URL" ]]; then
     PANIC_URL="${metrics_url_base%/api/debug/metrics}/api/debug/panic"
   fi
+  PANIC_POLL_URL="$PANIC_URL"
   if [[ -z "$METRICS_RESET_URL" ]]; then
     METRICS_RESET_URL="${metrics_url_base%/api/debug/metrics}/api/debug/metrics/reset"
   fi
@@ -854,6 +857,13 @@ if [[ -n "$METRICS_URL" ]]; then
       METRICS_POLL_URL="${METRICS_URL}&soak=1"
     else
       METRICS_POLL_URL="${METRICS_URL}?soak=1"
+    fi
+  fi
+  if [[ "$METRICS_SOAK_MODE" -eq 1 && -n "$PANIC_URL" && "$PANIC_URL" != *"soak="* ]]; then
+    if [[ "$PANIC_URL" == *"?"* ]]; then
+      PANIC_POLL_URL="${PANIC_URL}&soak=1"
+    else
+      PANIC_POLL_URL="${PANIC_URL}?soak=1"
     fi
   fi
 fi
@@ -1090,6 +1100,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    metrics soak mode: ${METRICS_SOAK_MODE}"
   echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}"
   echo "    panic url: ${PANIC_URL:-disabled}"
+  echo "    panic poll url: ${PANIC_POLL_URL:-disabled}"
   echo "    metrics required: ${METRICS_REQUIRED}"
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
@@ -1155,6 +1166,7 @@ echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics soak mode: ${METRICS_SOAK_MODE}" | tee -a "$RUN_LOG"
 echo "    metrics reset url: ${METRICS_RESET_URL:-disabled}" | tee -a "$RUN_LOG"
+echo "    panic poll url: ${PANIC_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
 if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
   echo "    metrics gate: require >= ${MIN_METRICS_OK_SAMPLES} parsed successes" | tee -a "$RUN_LOG"
 fi
@@ -1249,7 +1261,7 @@ serial_capture_call_budget=0
 if [[ -n "$METRICS_URL" ]]; then
   serial_capture_call_budget=$((serial_capture_call_budget + 1))
 fi
-if [[ -n "$PANIC_URL" ]]; then
+if [[ -n "$PANIC_POLL_URL" ]]; then
   serial_capture_call_budget=$((serial_capture_call_budget + 1))
 fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
@@ -1342,9 +1354,9 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
     fi
   fi
 
-  if [[ -n "$PANIC_URL" ]]; then
+  if [[ -n "$PANIC_POLL_URL" ]]; then
     panic_samples=$((panic_samples + 1))
-    panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_URL" 2>/dev/null || true)"
+    panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_POLL_URL" 2>/dev/null || true)"
     if [[ -n "$panic_payload" ]]; then
       panic_ok_samples=$((panic_ok_samples + 1))
       panic_oneline="$(printf "%s" "$panic_payload" | tr -d '\r\n')"
@@ -1404,9 +1416,9 @@ if [[ -n "$METRICS_POLL_URL" ]]; then
     printf '{"ts":"%s","ok":false}\n' "$final_sample_utc" >> "$METRICS_JSONL"
   fi
 fi
-if [[ -n "$PANIC_URL" ]]; then
+if [[ -n "$PANIC_POLL_URL" ]]; then
   panic_samples=$((panic_samples + 1))
-  final_panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_URL" 2>/dev/null || true)"
+  final_panic_payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$PANIC_POLL_URL" 2>/dev/null || true)"
   if [[ -n "$final_panic_payload" ]]; then
     panic_ok_samples=$((panic_ok_samples + 1))
     final_panic_oneline="$(printf "%s" "$final_panic_payload" | tr -d '\r\n')"
@@ -2155,6 +2167,7 @@ fi
   echo "## Panic Endpoint"
   echo ""
   echo "- Panic URL: ${PANIC_URL:-disabled}"
+  echo "- Panic poll URL: ${PANIC_POLL_URL:-disabled}"
   echo "- Panic samples parsed: ${panic_samples_parsed:-0}"
   echo "- Panic successful parsed: ${panic_ok_samples_parsed:-0}"
   echo "- Panic wasCrash=true count: ${panic_was_crash_true:-0}"

@@ -278,6 +278,9 @@ bool WiFiManager::startSetupMode() {
     lastClientSeenMs = setupModeStartTime;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
+    lastMaintenanceFastMs = 0;
+    lastStatusCheckMs = 0;
+    lastTimeoutCheckMs = 0;
     lowDmaSinceMs = 0;
     lowDmaCooldownUntilMs = 0;
 
@@ -404,6 +407,9 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     lastClientSeenMs = 0;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
+    lastMaintenanceFastMs = 0;
+    lastStatusCheckMs = 0;
+    lastTimeoutCheckMs = 0;
     lastReconnectAttemptMs = 0;
     wifiReconnectDeferredLogged = false;
 
@@ -575,12 +581,26 @@ void WiFiManager::process() {
     }
 
     server.handleClient();
-    processWifiClientConnectPhase();
-    processPendingPushNow();
-    checkAutoTimeout();
-    
-    // Check WiFi client (STA) connection status
-    checkWifiClientStatus();
+    const unsigned long now = millis();
+    if (lastMaintenanceFastMs == 0 ||
+        (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {
+        processWifiClientConnectPhase();
+        processPendingPushNow();
+        lastMaintenanceFastMs = now;
+    }
+    if (lastTimeoutCheckMs == 0 ||
+        (now - lastTimeoutCheckMs) >= WIFI_TIMEOUT_CHECK_MS) {
+        checkAutoTimeout();
+        lastTimeoutCheckMs = now;
+    }
+
+    // Check WiFi client (STA) status at a moderate cadence to avoid tight-loop
+    // status polling jitter while preserving reconnect responsiveness.
+    if (lastStatusCheckMs == 0 ||
+        (now - lastStatusCheckMs) >= WIFI_STATUS_CHECK_MS) {
+        checkWifiClientStatus();
+        lastStatusCheckMs = now;
+    }
 }
 
 // --- getAPIPAddress, getIPAddress, getConnectedSSID, startWifiScan,
