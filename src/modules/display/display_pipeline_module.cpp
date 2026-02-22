@@ -263,7 +263,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
                 if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
-                display->updateCameraAlert(cameraStatus.activeAlert.type, state.muted);
+                display->updateCameraAlert(cameraStatus.activeAlert.type, state);
                 unsigned long endUs = micros();
                 if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.camera", startUs, endUs);
@@ -274,7 +274,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
                 lastCameraVoiceCameraId = 0;
                 if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
-                display->updateCameraAlert(cameraHoldType, state.muted);
+                display->updateCameraAlert(cameraHoldType, state);
                 unsigned long endUs = micros();
                 if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.camera", startUs, endUs);

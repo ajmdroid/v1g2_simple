@@ -58,12 +58,6 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
 // ============================================================================
 
 void V1Display::drawRssiIndicator(int rssi) {
-    // Check if RSSI indicator is hidden
-    const V1Settings& s = settingsManager.get();
-    if (s.hideRssiIndicator) {
-        return;  // Don't draw anything
-    }
-    
     // Draw BLE RSSI below volume indicator
     // Shows V1 RSSI and JBV1 RSSI (if connected) stacked vertically
     const int x = 8;
@@ -72,7 +66,14 @@ void V1Display::drawRssiIndicator(int rssi) {
     const int lineHeight = 22;  // Increased spacing between V and P lines
     const int clearW = 70;
     const int clearH = lineHeight * 2;  // Room for two lines
-    
+
+    // Check if RSSI indicator is hidden
+    const V1Settings& s = settingsManager.get();
+    if (s.hideRssiIndicator) {
+        FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+        return;  // Don't draw anything
+    }
+
     // Clear the area first
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
     

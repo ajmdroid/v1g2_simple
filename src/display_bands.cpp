@@ -198,7 +198,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     const int barHeight = 10;
     const int barSpacing = 6;
 #endif
-    [[maybe_unused]] const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
+    const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
 
 #if defined(DISPLAY_WAVESHARE_349)
     int startX = SCREEN_WIDTH - 200;
@@ -207,6 +207,12 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
 #endif
     int startY = 18;
     if (startY < 8) startY = 8;
+
+    // On forced redraws, clear the full signal-column subregion once so
+    // inter-bar spacing does not retain stale pixels from prior modes.
+    if (!cacheValid) {
+        FILL_RECT(startX, startY, barWidth, totalH, PALETTE_BG);
+    }
 
     for (int i = 0; i < barCount; i++) {
         bool wasLit = cacheValid && (i < lastStrength);

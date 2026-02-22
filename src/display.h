@@ -51,6 +51,7 @@ public:
     // Camera alert display (forward-only one-shot camera lifecycle).
     // Uses existing frequency and arrow primitives; no new layout regions.
     void updateCameraAlert(uint8_t cameraType, bool muted = false);
+    void updateCameraAlert(uint8_t cameraType, const DisplayState& state);
     
     // Check if currently in persisted mode (for color selection)
     bool isPersistedMode() const { return persistedMode; }
@@ -159,6 +160,7 @@ private:
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0, uint16_t frontColorOverride = 0);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
+    void invalidateAllCaches();
     void drawBaseFrame();
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)

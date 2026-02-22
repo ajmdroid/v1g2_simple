@@ -64,6 +64,10 @@ void V1Display::drawStatusStrip(const DisplayState& state,
     if (state.supportsVolume() && !s.hideVolumeIndicator) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
+    } else {
+        // Keep this strip artifact-free when entering modes that do not show
+        // volume/RSSI (or when the indicator is hidden by setting).
+        FILL_RECT(8, 75, 75, 68, PALETTE_BG);
     }
 }
 
@@ -261,7 +265,7 @@ void V1Display::update(const DisplayState& state) {
     lastRestingBogeyByte = state.bogeyCounterByte;
     markRssiRefreshed(now);  // Reset RSSI timer on full redraw
     
-    drawBaseFrame();
+    invalidateAllCaches();
     // Use V1's decoded bogey counter byte - shows mode, volume, etc.
     char topChar = state.bogeyCounterChar;
     drawStatusStrip(state, topChar, effectiveMuted, state.bogeyCounterDot);
@@ -422,7 +426,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     multiAlertMode = false;  // No cards to draw
     wasInMultiAlertMode = false;
     
-    drawBaseFrame();
+    invalidateAllCaches();
     
     // Bogey counter shows V1's decoded display - NOT greyed, always visible
     char topChar = state.bogeyCounterChar;
@@ -444,9 +448,12 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     // Arrows in dark grey
     drawDirectionArrow(alert.direction, true);  // muted=true for grey
-    
-    // No mute badge
-    // drawMuteIcon intentionally skipped
+
+    // Draw explicit top-row states so stale badges do not persist between modes.
+    drawMuteIcon(false);
+    drawLockoutIndicator();
+    drawGpsIndicator();
+    drawObdIndicator();
     
     // Profile indicator still shown
     drawProfileIndicator(currentProfileSlot);
@@ -462,6 +469,13 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 }
 
 void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
+    DisplayState cameraState = lastState;
+    cameraState.muted = muted;
+    updateCameraAlert(cameraType, cameraState);
+}
+
+void V1Display::updateCameraAlert(uint8_t cameraType, const DisplayState& state) {
+    const bool muted = state.muted;
     persistedMode = false;
 
     // Camera banner occupies the same primary zone as resting/live content.
@@ -477,8 +491,8 @@ void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
     }
     currentScreen = ScreenMode::Camera;
 
-    drawBaseFrame();
-    drawTopCounter('~', muted, false);
+    invalidateAllCaches();
+    drawStatusStrip(state, '~', muted, false);
     drawBandIndicators(0, muted);
     drawVerticalSignalBars(0, 0, BAND_KA, muted);
     drawCameraToken(cameraTokenForType(cameraType), muted);
@@ -728,8 +742,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
     
     DISP_PERF_START();
-    drawBaseFrame();
-    DISP_PERF_LOG("drawBaseFrame");
+    invalidateAllCaches();
+    DISP_PERF_LOG("invalidateAllCaches");
 
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
@@ -759,9 +773,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     DISP_PERF_LOG("arrows+icons");
-    
-    // Force card redraw since drawBaseFrame cleared the screen
-    dirty.cards = true;
     
     // Draw secondary alert cards at bottom
     drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
