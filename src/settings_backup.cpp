@@ -392,15 +392,24 @@ bool SettingsManager::checkNeedsRestore() {
         return true;
     }
 
-    if (missingCriticalKey && (settingsVer >= 2 || nvsMarker == 0)) {
+    // Any missing critical key means this namespace is not trustworthy,
+    // regardless of marker/version combinations.
+    if (missingCriticalKey) {
         Serial.println("[Settings] NVS appears partial/corrupt (critical keys missing)");
+        return true;
+    }
+
+    // nvsValid is written by modern atomic saves and should never co-exist with
+    // a missing/legacy settings version marker.
+    if (nvsMarker > 0 && settingsVer <= 1) {
+        Serial.println("[Settings] NVS marker present but settingsVer is missing/legacy");
         return true;
     }
 
     // Detect incomplete writes: settingsVer is the FIRST key written and
     // nvsValid is the LAST.  If settingsVer exists but nvsValid does not,
     // the namespace was only partially written (crash/reset mid-save).
-    if (nvsMarker == 0 && settingsVer >= 2) {
+    if (nvsMarker == 0 && settingsVer >= SETTINGS_VERSION) {
         Serial.println("[Settings] NVS appears incomplete (settingsVer present but nvsValid missing)");
         return true;
     }
