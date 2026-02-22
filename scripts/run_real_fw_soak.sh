@@ -50,6 +50,16 @@ MAX_WIFI_CONNECT_DEFERRED=0
 MIN_DMA_FREE=0
 MIN_DMA_LARGEST=0
 SOAK_PROFILE=""
+CLI_OVERRIDE_MAX_FLUSH_MAX_US=0
+CLI_OVERRIDE_MAX_LOOP_MAX_US=0
+CLI_OVERRIDE_MAX_WIFI_MAX_US=0
+CLI_OVERRIDE_MAX_BLE_DRAIN_MAX_US=0
+CLI_OVERRIDE_MAX_SD_MAX_US=0
+CLI_OVERRIDE_MAX_FS_MAX_US=0
+CLI_OVERRIDE_MAX_QUEUE_HIGH_WATER=0
+CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED=0
+CLI_OVERRIDE_MIN_DMA_FREE=0
+CLI_OVERRIDE_MIN_DMA_LARGEST=0
 BASELINE_PERF_CSV=""
 BASELINE_PERF_SESSION="last-connected"
 BASELINE_LATENCY_FACTOR="1.20"
@@ -226,6 +236,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_FLUSH_MAX_US="$2"
+      CLI_OVERRIDE_MAX_FLUSH_MAX_US=1
       shift
       ;;
     --max-loop-max-us)
@@ -234,6 +245,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_LOOP_MAX_US="$2"
+      CLI_OVERRIDE_MAX_LOOP_MAX_US=1
       shift
       ;;
     --max-wifi-max-us)
@@ -242,6 +254,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_WIFI_MAX_US="$2"
+      CLI_OVERRIDE_MAX_WIFI_MAX_US=1
       shift
       ;;
     --max-ble-drain-max-us)
@@ -250,6 +263,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_BLE_DRAIN_MAX_US="$2"
+      CLI_OVERRIDE_MAX_BLE_DRAIN_MAX_US=1
       shift
       ;;
     --max-sd-max-us)
@@ -258,6 +272,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_SD_MAX_US="$2"
+      CLI_OVERRIDE_MAX_SD_MAX_US=1
       shift
       ;;
     --max-fs-max-us)
@@ -266,6 +281,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_FS_MAX_US="$2"
+      CLI_OVERRIDE_MAX_FS_MAX_US=1
       shift
       ;;
     --max-oversize-drops-delta)
@@ -282,6 +298,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_QUEUE_HIGH_WATER="$2"
+      CLI_OVERRIDE_MAX_QUEUE_HIGH_WATER=1
       shift
       ;;
     --max-wifi-connect-deferred)
@@ -290,6 +307,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MAX_WIFI_CONNECT_DEFERRED="$2"
+      CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED=1
       shift
       ;;
     --min-dma-free)
@@ -298,6 +316,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MIN_DMA_FREE="$2"
+      CLI_OVERRIDE_MIN_DMA_FREE=1
       shift
       ;;
     --min-dma-largest)
@@ -306,6 +325,7 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       MIN_DMA_LARGEST="$2"
+      CLI_OVERRIDE_MIN_DMA_LARGEST=1
       shift
       ;;
     --profile)
@@ -522,30 +542,30 @@ fi
 if [[ -n "$SOAK_PROFILE" ]]; then
   case "$SOAK_PROFILE" in
     drive_wifi_off)
-      [[ "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
-      [[ "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
-      [[ "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
-      [[ "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
-      [[ "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
-      [[ "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=1000
-      [[ "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
-      [[ "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
-      [[ "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
+      [[ "$CLI_OVERRIDE_MAX_LOOP_MAX_US" -eq 0 && "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
+      [[ "$CLI_OVERRIDE_MAX_BLE_DRAIN_MAX_US" -eq 0 && "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
+      [[ "$CLI_OVERRIDE_MAX_FLUSH_MAX_US" -eq 0 && "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
+      [[ "$CLI_OVERRIDE_MAX_SD_MAX_US" -eq 0 && "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
+      [[ "$CLI_OVERRIDE_MAX_FS_MAX_US" -eq 0 && "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
+      [[ "$CLI_OVERRIDE_MAX_WIFI_MAX_US" -eq 0 && "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=1000
+      [[ "$CLI_OVERRIDE_MAX_QUEUE_HIGH_WATER" -eq 0 && "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
+      [[ "$CLI_OVERRIDE_MIN_DMA_FREE" -eq 0 && "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
+      [[ "$CLI_OVERRIDE_MIN_DMA_LARGEST" -eq 0 && "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
       # wifiConnectDeferred must be 0 for wifi-off profile
-      [[ "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=0
+      [[ "$CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED" -eq 0 && "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=0
       ;;
     drive_wifi_ap)
-      [[ "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
-      [[ "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
-      [[ "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
-      [[ "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
-      [[ "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
-      [[ "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=5000
-      [[ "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
-      [[ "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
-      [[ "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
+      [[ "$CLI_OVERRIDE_MAX_LOOP_MAX_US" -eq 0 && "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
+      [[ "$CLI_OVERRIDE_MAX_BLE_DRAIN_MAX_US" -eq 0 && "$MAX_BLE_DRAIN_MAX_US" -eq 0 ]] && MAX_BLE_DRAIN_MAX_US=10000
+      [[ "$CLI_OVERRIDE_MAX_FLUSH_MAX_US" -eq 0 && "$MAX_FLUSH_MAX_US" -eq 0 ]] && MAX_FLUSH_MAX_US=100000
+      [[ "$CLI_OVERRIDE_MAX_SD_MAX_US" -eq 0 && "$MAX_SD_MAX_US" -eq 0 ]] && MAX_SD_MAX_US=50000
+      [[ "$CLI_OVERRIDE_MAX_FS_MAX_US" -eq 0 && "$MAX_FS_MAX_US" -eq 0 ]] && MAX_FS_MAX_US=50000
+      [[ "$CLI_OVERRIDE_MAX_WIFI_MAX_US" -eq 0 && "$MAX_WIFI_MAX_US" -eq 0 ]] && MAX_WIFI_MAX_US=5000
+      [[ "$CLI_OVERRIDE_MAX_QUEUE_HIGH_WATER" -eq 0 && "$MAX_QUEUE_HIGH_WATER" -eq 0 ]] && MAX_QUEUE_HIGH_WATER=12
+      [[ "$CLI_OVERRIDE_MIN_DMA_FREE" -eq 0 && "$MIN_DMA_FREE" -eq 0 ]] && MIN_DMA_FREE=20000
+      [[ "$CLI_OVERRIDE_MIN_DMA_LARGEST" -eq 0 && "$MIN_DMA_LARGEST" -eq 0 ]] && MIN_DMA_LARGEST=10000
       # wifiConnectDeferred <= 5 for wifi-ap profile
-      [[ "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=5
+      [[ "$CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED" -eq 0 && "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=5
       ;;
     *)
       echo "Unknown --profile '$SOAK_PROFILE'. Use 'drive_wifi_off' or 'drive_wifi_ap'." >&2
