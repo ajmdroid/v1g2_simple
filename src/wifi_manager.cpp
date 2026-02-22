@@ -276,7 +276,6 @@ bool WiFiManager::startSetupMode() {
 
     setupModeStartTime = millis();
     lastClientSeenMs = setupModeStartTime;
-    apClientSeenSinceStart = false;
     lastAnyClientSeenMs = setupModeStartTime;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
@@ -417,7 +416,6 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     pendingConnectPersistCredentials = true;
     lastUiActivityMs = 0;
     lastClientSeenMs = 0;
-    apClientSeenSinceStart = false;
     lastAnyClientSeenMs = 0;
     lastApStaCountPollMs = 0;
     cachedApStaCount = 0;
@@ -564,7 +562,6 @@ void WiFiManager::process() {
             if (dualRadioMode) {
                 Serial.println("[WiFi] ACTION: dropping AP due to sustained low SRAM (keeping STA online)");
                 WiFi.softAPdisconnect(true);
-                WiFi.mode(WIFI_STA);
                 apInterfaceEnabled = false;
 
                 const wl_status_t staStatus = WiFi.status();
@@ -616,22 +613,29 @@ void WiFiManager::process() {
         (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
     if (apInterfaceActive && apClientCount > 0) {
         lastClientSeenMs = now;
-        apClientSeenSinceStart = true;
     }
 
     if (apInterfaceActive &&
         staConnectedNow &&
-        apClientSeenSinceStart &&
         apClientCount == 0 &&
         lastClientSeenMs != 0 &&
         (now - lastClientSeenMs) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
         Serial.printf("[WiFi] STA connected and AP idle for %lu ms - dropping AP\n",
                       static_cast<unsigned long>(WIFI_AP_IDLE_DROP_AFTER_STA_MS));
+        const bool staWasConnected = (WiFi.status() == WL_CONNECTED);
         WiFi.softAPdisconnect(true);
-        WiFi.mode(WIFI_STA);
         apInterfaceEnabled = false;
         cachedApStaCount = 0;
         lastApStaCountPollMs = 0;
+        if (staWasConnected && WiFi.status() != WL_CONNECTED) {
+            Serial.println("[WiFi] WARN: STA dropped during AP retire; reconnecting");
+            wifiClientState = WIFI_CLIENT_DISCONNECTED;
+            const V1Settings& settings = settingsManager.get();
+            if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+                String savedPassword = settingsManager.getWifiClientPassword();
+                connectToNetwork(settings.wifiClientSSID, savedPassword, false);
+            }
+        }
         return;
     }
 
