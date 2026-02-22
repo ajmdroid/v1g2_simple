@@ -13,6 +13,7 @@
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
+#include "../camera/camera_runtime_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
 #include "../gps/gps_lockout_safety.h"
@@ -143,6 +144,7 @@ static void sendMetrics(WebServer& server) {
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["cmdBleBusy"] = perfCounters.cmdBleBusy.load();
+    doc["bleMutexTimeout"] = perfCounters.bleMutexTimeout.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
@@ -185,6 +187,8 @@ static void sendMetrics(WebServer& server) {
     doc["sdMaxUs"] = perfGetSdMaxUs();
     doc["flushMaxUs"] = perfGetFlushMaxUs();
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
+    doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
+    doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
 
     // OBD health snapshot (non-blocking lock attempt in OBD handler).
     const OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
@@ -277,6 +281,14 @@ static void sendMetrics(WebServer& server) {
     gpsLogObj["drops"] = gpsLogStats.drops;
     gpsLogObj["size"] = static_cast<uint32_t>(gpsLogStats.size);
     gpsLogObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
+    doc["gpsObsDrops"] = gpsLogStats.drops;
+
+    const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
+    doc["cameraBudgetExceeded"] = cameraStatus.counters.cameraBudgetExceeded;
+    doc["cameraLoadFailures"] = cameraStatus.loader.loadFailures;
+    doc["cameraIndexSwapFailures"] = cameraStatus.counters.cameraIndexSwapFailures;
+    doc["cameraMaxTickUs"] = cameraStatus.maxTickDurationUs;
+    doc["cameraTicks"] = cameraStatus.counters.cameraTicks;
 
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
@@ -406,6 +418,7 @@ static void sendMetricsSoak(WebServer& server) {
     doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["cmdBleBusy"] = perfCounters.cmdBleBusy.load();
+    doc["bleMutexTimeout"] = perfCounters.bleMutexTimeout.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["reconnects"] = perfCounters.reconnects.load();
@@ -418,6 +431,18 @@ static void sendMetricsSoak(WebServer& server) {
     doc["sdMaxUs"] = perfGetSdMaxUs();
     doc["flushMaxUs"] = perfGetFlushMaxUs();
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
+    doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
+    doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+
+    const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
+    doc["cameraBudgetExceeded"] = cameraStatus.counters.cameraBudgetExceeded;
+    doc["cameraLoadFailures"] = cameraStatus.loader.loadFailures;
+    doc["cameraIndexSwapFailures"] = cameraStatus.counters.cameraIndexSwapFailures;
+    doc["cameraMaxTickUs"] = cameraStatus.maxTickDurationUs;
+    doc["cameraTicks"] = cameraStatus.counters.cameraTicks;
+
+    const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    doc["gpsObsDrops"] = gpsLogStats.drops;
 
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapMinFree"] = perfGetMinFreeHeap();

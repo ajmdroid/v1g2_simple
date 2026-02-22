@@ -3,6 +3,7 @@
 
 import json
 import sys
+from datetime import datetime
 
 
 def update_min(cur, val):
@@ -34,6 +35,17 @@ def emit(key, val):
         print(f"{key}=")
     else:
         print(f"{key}={val}")
+
+
+def parse_ts_epoch(ts):
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        if ts.endswith("Z"):
+            return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(ts).timestamp()
+    except ValueError:
+        return None
 
 
 def main() -> int:
@@ -108,6 +120,23 @@ def main() -> int:
     disconnects_last = None
     dma_free_min_val = None
     dma_largest_min_val = None
+    ble_process_max_peak = None
+    disp_pipe_max_peak = None
+    ble_mutex_timeout_first = None
+    ble_mutex_timeout_last = None
+    camera_budget_exceeded_first = None
+    camera_budget_exceeded_last = None
+    camera_load_failures_first = None
+    camera_load_failures_last = None
+    camera_index_swap_failures_first = None
+    camera_index_swap_failures_last = None
+    camera_max_tick_peak = None
+    camera_max_window_hz_peak = None
+    camera_max_window_hz_peak_ts = ""
+    camera_ticks_prev = None
+    camera_ticks_prev_ts = None
+    gps_obs_drops_first = None
+    gps_obs_drops_last = None
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -137,6 +166,7 @@ def main() -> int:
                 wifi_val = num(data.get("wifiMaxUs"))
                 ble_drain_val = num(data.get("bleDrainMaxUs"))
                 sample_ts = rec.get("ts") if isinstance(rec.get("ts"), str) else ""
+                sample_epoch = parse_ts_epoch(sample_ts)
 
                 if flush_val is not None and (flush_max_peak is None or flush_val > flush_max_peak):
                     flush_max_peak = flush_val
@@ -269,6 +299,59 @@ def main() -> int:
 
                 dma_free_min_val = update_min(dma_free_min_val, num(data.get("heapDmaMin")))
                 dma_largest_min_val = update_min(dma_largest_min_val, num(data.get("heapDmaLargestMin")))
+
+                ble_process_max_peak = update_max(ble_process_max_peak, num(data.get("bleProcessMaxUs")))
+                disp_pipe_max_peak = update_max(disp_pipe_max_peak, num(data.get("dispPipeMaxUs")))
+
+                ble_mutex_timeout = num(data.get("bleMutexTimeout"))
+                if ble_mutex_timeout_first is None and ble_mutex_timeout is not None:
+                    ble_mutex_timeout_first = ble_mutex_timeout
+                if ble_mutex_timeout is not None:
+                    ble_mutex_timeout_last = ble_mutex_timeout
+
+                camera_budget_exceeded = num(data.get("cameraBudgetExceeded"))
+                if camera_budget_exceeded_first is None and camera_budget_exceeded is not None:
+                    camera_budget_exceeded_first = camera_budget_exceeded
+                if camera_budget_exceeded is not None:
+                    camera_budget_exceeded_last = camera_budget_exceeded
+
+                camera_load_failures = num(data.get("cameraLoadFailures"))
+                if camera_load_failures_first is None and camera_load_failures is not None:
+                    camera_load_failures_first = camera_load_failures
+                if camera_load_failures is not None:
+                    camera_load_failures_last = camera_load_failures
+
+                camera_index_swap_failures = num(data.get("cameraIndexSwapFailures"))
+                if camera_index_swap_failures_first is None and camera_index_swap_failures is not None:
+                    camera_index_swap_failures_first = camera_index_swap_failures
+                if camera_index_swap_failures is not None:
+                    camera_index_swap_failures_last = camera_index_swap_failures
+
+                camera_max_tick_peak = update_max(camera_max_tick_peak, num(data.get("cameraMaxTickUs")))
+
+                camera_ticks = num(data.get("cameraTicks"))
+                if (
+                    camera_ticks is not None
+                    and camera_ticks_prev is not None
+                    and sample_epoch is not None
+                    and camera_ticks_prev_ts is not None
+                ):
+                    dt_seconds = sample_epoch - camera_ticks_prev_ts
+                    tick_inc = camera_ticks - camera_ticks_prev
+                    if dt_seconds > 0 and tick_inc >= 0:
+                        hz = tick_inc / dt_seconds
+                        if camera_max_window_hz_peak is None or hz > camera_max_window_hz_peak:
+                            camera_max_window_hz_peak = hz
+                            camera_max_window_hz_peak_ts = sample_ts
+                if camera_ticks is not None and sample_epoch is not None:
+                    camera_ticks_prev = camera_ticks
+                    camera_ticks_prev_ts = sample_epoch
+
+                gps_obs_drops = num(data.get("gpsObsDrops"))
+                if gps_obs_drops_first is None and gps_obs_drops is not None:
+                    gps_obs_drops_first = gps_obs_drops
+                if gps_obs_drops is not None:
+                    gps_obs_drops_last = gps_obs_drops
     except FileNotFoundError:
         pass
 
@@ -336,6 +419,11 @@ def main() -> int:
     emit("disconnects_last", disconnects_last)
     emit("dma_free_min", dma_free_min_val)
     emit("dma_largest_min", dma_largest_min_val)
+    emit("ble_process_max_peak", ble_process_max_peak)
+    emit("disp_pipe_max_peak", disp_pipe_max_peak)
+    emit("camera_max_tick_peak", camera_max_tick_peak)
+    emit("camera_max_window_hz_peak", round(camera_max_window_hz_peak, 3) if camera_max_window_hz_peak is not None else None)
+    emit("camera_max_window_hz_peak_ts", camera_max_window_hz_peak_ts)
 
     inherited_counter_suspect = 0
     for first_val in (queue_drops_first, perf_drop_first, event_drop_first):
@@ -363,6 +451,37 @@ def main() -> int:
         print("disconnects_delta=")
     else:
         print(f"disconnects_delta={disconnects_last - disconnects_first}")
+
+    if ble_mutex_timeout_first is None or ble_mutex_timeout_last is None:
+        print("ble_mutex_timeout_delta=")
+    else:
+        print(f"ble_mutex_timeout_delta={ble_mutex_timeout_last - ble_mutex_timeout_first}")
+
+    if camera_budget_exceeded_first is None or camera_budget_exceeded_last is None:
+        print("camera_budget_exceeded_delta=")
+    else:
+        print(
+            "camera_budget_exceeded_delta="
+            f"{camera_budget_exceeded_last - camera_budget_exceeded_first}"
+        )
+
+    if camera_load_failures_first is None or camera_load_failures_last is None:
+        print("camera_load_failures_delta=")
+    else:
+        print(f"camera_load_failures_delta={camera_load_failures_last - camera_load_failures_first}")
+
+    if camera_index_swap_failures_first is None or camera_index_swap_failures_last is None:
+        print("camera_index_swap_failures_delta=")
+    else:
+        print(
+            "camera_index_swap_failures_delta="
+            f"{camera_index_swap_failures_last - camera_index_swap_failures_first}"
+        )
+
+    if gps_obs_drops_first is None or gps_obs_drops_last is None:
+        print("gps_obs_drops_delta=")
+    else:
+        print(f"gps_obs_drops_delta={gps_obs_drops_last - gps_obs_drops_first}")
 
     if event_publish_first is None or event_publish_last is None:
         print("event_publish_delta=")

@@ -1359,6 +1359,16 @@ disconnects_delta=""
 dma_free_min_parsed=""
 dma_largest_min_parsed=""
 inherited_counter_suspect=""
+ble_process_max_peak=""
+disp_pipe_max_peak=""
+ble_mutex_timeout_delta=""
+camera_budget_exceeded_delta=""
+camera_load_failures_delta=""
+camera_index_swap_failures_delta=""
+camera_max_tick_peak=""
+camera_max_window_hz_peak=""
+camera_max_window_hz_peak_ts=""
+gps_obs_drops_delta=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -1416,6 +1426,16 @@ while IFS='=' read -r key value; do
     dma_free_min) dma_free_min_parsed="$value" ;;
     dma_largest_min) dma_largest_min_parsed="$value" ;;
     inherited_counter_suspect) inherited_counter_suspect="$value" ;;
+    ble_process_max_peak) ble_process_max_peak="$value" ;;
+    disp_pipe_max_peak) disp_pipe_max_peak="$value" ;;
+    ble_mutex_timeout_delta) ble_mutex_timeout_delta="$value" ;;
+    camera_budget_exceeded_delta) camera_budget_exceeded_delta="$value" ;;
+    camera_load_failures_delta) camera_load_failures_delta="$value" ;;
+    camera_index_swap_failures_delta) camera_index_swap_failures_delta="$value" ;;
+    camera_max_tick_peak) camera_max_tick_peak="$value" ;;
+    camera_max_window_hz_peak) camera_max_window_hz_peak="$value" ;;
+    camera_max_window_hz_peak_ts) camera_max_window_hz_peak_ts="$value" ;;
+    gps_obs_drops_delta) gps_obs_drops_delta="$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -1686,6 +1706,21 @@ if [[ -n "$METRICS_URL" ]]; then
     if is_uint "$disconnects_delta" && [[ "$disconnects_delta" -gt 2 ]]; then
       advisory_warnings+=("disconnects delta=${disconnects_delta} exceeds advisory limit of 2.")
     fi
+    if is_uint "$ble_mutex_timeout_delta" && [[ "$ble_mutex_timeout_delta" -gt 0 ]]; then
+      advisory_warnings+=("bleMutexTimeout delta=${ble_mutex_timeout_delta} indicates BLE lock contention.")
+    fi
+    if is_uint "$camera_budget_exceeded_delta" && [[ "$camera_budget_exceeded_delta" -gt 0 ]]; then
+      advisory_warnings+=("cameraBudgetExceeded delta=${camera_budget_exceeded_delta} indicates camera budget pressure.")
+    fi
+    if is_uint "$camera_load_failures_delta" && [[ "$camera_load_failures_delta" -gt 0 ]]; then
+      advisory_warnings+=("cameraLoadFailures delta=${camera_load_failures_delta} indicates camera index load failures.")
+    fi
+    if is_uint "$camera_index_swap_failures_delta" && [[ "$camera_index_swap_failures_delta" -gt 0 ]]; then
+      advisory_warnings+=("cameraIndexSwapFailures delta=${camera_index_swap_failures_delta} indicates camera index swap contention.")
+    fi
+    if is_uint "$gps_obs_drops_delta" && [[ "$gps_obs_drops_delta" -gt 0 ]]; then
+      advisory_warnings+=("gpsObsDrops delta=${gps_obs_drops_delta} indicates dropped GPS observations.")
+    fi
   fi
 fi
 
@@ -1835,10 +1870,19 @@ fi
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
+  echo "- Peak bleProcessMaxUs: ${ble_process_max_peak:-n/a} (report-only)"
+  echo "- Peak dispPipeMaxUs: ${disp_pipe_max_peak:-n/a} (report-only)"
+  echo "- Peak cameraMaxTickUs: ${camera_max_tick_peak:-n/a} (report-only)"
+  echo "- Peak cameraMaxWindowHz (computed): ${camera_max_window_hz_peak:-n/a} (ts ${camera_max_window_hz_peak_ts:-n/a}, report-only)"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
   echo "- queueHighWater first/peak: ${queue_high_water_first:-n/a} / ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
   echo "- Inherited counter suspect: ${inherited_counter_suspect:-n/a}"
   echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
+  echo "- bleMutexTimeout delta: ${ble_mutex_timeout_delta:-n/a} (report-only)"
+  echo "- cameraBudgetExceeded delta: ${camera_budget_exceeded_delta:-n/a} (report-only)"
+  echo "- cameraLoadFailures delta: ${camera_load_failures_delta:-n/a} (report-only)"
+  echo "- cameraIndexSwapFailures delta: ${camera_index_swap_failures_delta:-n/a} (report-only)"
+  echo "- gpsObsDrops delta: ${gps_obs_drops_delta:-n/a} (advisory report-only)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"
   echo "- reconnects delta: ${reconnects_delta:-n/a}"
