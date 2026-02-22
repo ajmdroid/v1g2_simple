@@ -24,10 +24,29 @@ namespace {
 static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_FREE = 20480;
 static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_BLOCK = 8192;
 // If dirty data remains unsaved for too long, allow a cautious retry using a
-// slightly lower free-heap floor but stricter largest-block requirement.
-static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_FREE = 17600;
-static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_BLOCK = 12288;
-static constexpr uint32_t LOCKOUT_SAVE_MAX_DIRTY_AGE_MS = 300000;  // 5 minutes
+// lower free-heap floor tuned to observed AP+STA steady-state with a stricter
+// largest-block guard.
+static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_FREE = 16896;
+static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_BLOCK = 10240;
+static constexpr uint32_t LOCKOUT_SAVE_MAX_DIRTY_AGE_MS = 90000;  // 90 seconds
+static constexpr uint32_t SAVE_DIAG_REPORT_INTERVAL_MS = 60000;    // 60 seconds
+
+struct SaveDiagStats {
+    uint32_t attempts = 0;
+    uint32_t success = 0;
+    uint32_t fail = 0;
+    uint32_t deferLowDma = 0;
+    uint32_t deferSdBusy = 0;
+    uint32_t agedRetryAttempts = 0;
+    uint32_t minFreeOnSuccess = UINT32_MAX;
+    uint32_t minBlockOnSuccess = UINT32_MAX;
+    uint32_t minFreeOnFail = UINT32_MAX;
+    uint32_t minBlockOnFail = UINT32_MAX;
+    uint32_t minFreeOnDeferLow = UINT32_MAX;
+    uint32_t minBlockOnDeferLow = UINT32_MAX;
+    uint32_t lastReportMs = 0;
+    uint32_t lastReportedAttempts = 0;
+};
 
 inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma, uint32_t& largestDma) {
     freeDma = heap_caps_get_free_size(MALLOC_CAP_DMA);
@@ -38,6 +57,42 @@ inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma, uint32_t& largest
 inline bool hasAgedDmaHeadroomForBackgroundSave(uint32_t freeDma, uint32_t largestDma) {
     return (freeDma >= LOCKOUT_SAVE_AGED_DMA_FREE) && (largestDma >= LOCKOUT_SAVE_AGED_DMA_BLOCK);
 }
+
+inline void noteMin(uint32_t& target, uint32_t sample) {
+    if (sample < target) {
+        target = sample;
+    }
+}
+
+inline unsigned long sampleOrZero(uint32_t sample) {
+    return static_cast<unsigned long>((sample == UINT32_MAX) ? 0 : sample);
+}
+
+void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
+    if ((nowMs - stats.lastReportMs) < SAVE_DIAG_REPORT_INTERVAL_MS) {
+        return;
+    }
+    if (stats.attempts == stats.lastReportedAttempts) {
+        stats.lastReportMs = nowMs;
+        return;
+    }
+    stats.lastReportMs = nowMs;
+    stats.lastReportedAttempts = stats.attempts;
+    Serial.printf("[%s] SaveDiag attempts=%lu ok=%lu fail=%lu deferLow=%lu deferBusy=%lu agedTry=%lu minOk=%lu/%lu minFail=%lu/%lu minDeferLow=%lu/%lu\n",
+                  tag,
+                  static_cast<unsigned long>(stats.attempts),
+                  static_cast<unsigned long>(stats.success),
+                  static_cast<unsigned long>(stats.fail),
+                  static_cast<unsigned long>(stats.deferLowDma),
+                  static_cast<unsigned long>(stats.deferSdBusy),
+                  static_cast<unsigned long>(stats.agedRetryAttempts),
+                  sampleOrZero(stats.minFreeOnSuccess),
+                  sampleOrZero(stats.minBlockOnSuccess),
+                  sampleOrZero(stats.minFreeOnFail),
+                  sampleOrZero(stats.minBlockOnFail),
+                  sampleOrZero(stats.minFreeOnDeferLow),
+                  sampleOrZero(stats.minBlockOnDeferLow));
+}
 }  // namespace
 
 // ---- processLockoutStoreSave ----
@@ -47,6 +102,7 @@ void processLockoutStoreSave(uint32_t nowMs) {
     static uint32_t lastLockoutSaveMs = 0;
     static uint32_t lastLockoutSaveAttemptMs = 0;
     static uint32_t lockoutDirtySinceMs = 0;
+    static SaveDiagStats diag;
     static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
     static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 15000;     // Retry backoff on contention/failure
     if (lockoutStore.isDirty()) {
@@ -59,11 +115,15 @@ void processLockoutStoreSave(uint32_t nowMs) {
     if (lockoutStore.isDirty() && storageManager.isReady() &&
         (nowMs - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
         (nowMs - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
+        diag.attempts++;
         lastLockoutSaveAttemptMs = nowMs;
         static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
         fs::FS* fs = storageManager.getFilesystem();
         bool saveOk = false;
         bool saveDeferred = false;
+        bool hadDmaSample = false;
+        uint32_t sampledFreeDma = 0;
+        uint32_t sampledLargestDma = 0;
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
@@ -75,9 +135,13 @@ void processLockoutStoreSave(uint32_t nowMs) {
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
                     hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                hadDmaSample = true;
+                sampledFreeDma = freeDma;
+                sampledLargestDma = largestDma;
 
                 if (normalHeadroom || allowAgedRetry) {
                     if (allowAgedRetry) {
+                        diag.agedRetryAttempts++;
                         static uint32_t lastAgedRetryLogMs = 0;
                         if ((nowMs - lastAgedRetryLogMs) >= 10000) {
                             lastAgedRetryLogMs = nowMs;
@@ -96,6 +160,7 @@ void processLockoutStoreSave(uint32_t nowMs) {
                         saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
                     } else {
                         saveDeferred = true;
+                        diag.deferSdBusy++;
                         static uint32_t lastLockoutSaveSkipLogMs = 0;
                         if ((nowMs - lastLockoutSaveSkipLogMs) >= 10000) {
                             lastLockoutSaveSkipLogMs = nowMs;
@@ -104,6 +169,9 @@ void processLockoutStoreSave(uint32_t nowMs) {
                     }
                 } else {
                     saveDeferred = true;
+                    diag.deferLowDma++;
+                    noteMin(diag.minFreeOnDeferLow, freeDma);
+                    noteMin(diag.minBlockOnDeferLow, largestDma);
                     static uint32_t lastLowDmaLogMs = 0;
                     if ((nowMs - lastLowDmaLogMs) >= 10000) {
                         lastLowDmaLogMs = nowMs;
@@ -126,12 +194,23 @@ void processLockoutStoreSave(uint32_t nowMs) {
             lastLockoutSaveMs = nowMs;
             lockoutStore.clearDirty();
             lockoutDirtySinceMs = 0;
+            diag.success++;
+            if (hadDmaSample) {
+                noteMin(diag.minFreeOnSuccess, sampledFreeDma);
+                noteMin(diag.minBlockOnSuccess, sampledLargestDma);
+            }
             Serial.printf("[Lockout] Saved %lu zones to %s\n",
                           static_cast<unsigned long>(lockoutStore.stats().entriesSaved),
                           LOCKOUT_ZONES_PATH);
         } else if (!saveDeferred) {
+            diag.fail++;
+            if (hadDmaSample) {
+                noteMin(diag.minFreeOnFail, sampledFreeDma);
+                noteMin(diag.minBlockOnFail, sampledLargestDma);
+            }
             Serial.println("[Lockout] Save failed");
         }
+        maybeLogSaveDiag("Lockout", diag, nowMs);
     }
     perfRecordLockoutSaveUs(PERF_TIMESTAMP_US() - lockoutSaveStartUs);
 }
@@ -143,6 +222,7 @@ void processLearnerPendingSave(uint32_t nowMs) {
     static uint32_t lastLearnerSaveMs = 0;
     static uint32_t lastLearnerSaveAttemptMs = 0;
     static uint32_t learnerDirtySinceMs = 0;
+    static SaveDiagStats diag;
     static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
     static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 15000;     // Retry backoff
     if (lockoutLearner.isDirty()) {
@@ -155,11 +235,15 @@ void processLearnerPendingSave(uint32_t nowMs) {
     if (lockoutLearner.isDirty() && storageManager.isReady() &&
         (nowMs - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
         (nowMs - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
+        diag.attempts++;
         lastLearnerSaveAttemptMs = nowMs;
         static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
         fs::FS* fs = storageManager.getFilesystem();
         bool saveOk = false;
         bool saveDeferred = false;
+        bool hadDmaSample = false;
+        uint32_t sampledFreeDma = 0;
+        uint32_t sampledLargestDma = 0;
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
@@ -171,9 +255,13 @@ void processLearnerPendingSave(uint32_t nowMs) {
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
                     hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                hadDmaSample = true;
+                sampledFreeDma = freeDma;
+                sampledLargestDma = largestDma;
 
                 if (normalHeadroom || allowAgedRetry) {
                     if (allowAgedRetry) {
+                        diag.agedRetryAttempts++;
                         static uint32_t lastAgedRetryLogMs = 0;
                         if ((nowMs - lastAgedRetryLogMs) >= 10000) {
                             lastAgedRetryLogMs = nowMs;
@@ -192,9 +280,13 @@ void processLearnerPendingSave(uint32_t nowMs) {
                         saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
                     } else {
                         saveDeferred = true;
+                        diag.deferSdBusy++;
                     }
                 } else {
                     saveDeferred = true;
+                    diag.deferLowDma++;
+                    noteMin(diag.minFreeOnDeferLow, freeDma);
+                    noteMin(diag.minBlockOnDeferLow, largestDma);
                     static uint32_t lastLowDmaLogMs = 0;
                     if ((nowMs - lastLowDmaLogMs) >= 10000) {
                         lastLowDmaLogMs = nowMs;
@@ -217,12 +309,23 @@ void processLearnerPendingSave(uint32_t nowMs) {
             lastLearnerSaveMs = nowMs;
             lockoutLearner.clearDirty();
             learnerDirtySinceMs = 0;
+            diag.success++;
+            if (hadDmaSample) {
+                noteMin(diag.minFreeOnSuccess, sampledFreeDma);
+                noteMin(diag.minBlockOnSuccess, sampledLargestDma);
+            }
             Serial.printf("[Learner] Saved %u pending candidates to %s\n",
                           static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
                           LOCKOUT_PENDING_PATH);
         } else if (!saveDeferred) {
+            diag.fail++;
+            if (hadDmaSample) {
+                noteMin(diag.minFreeOnFail, sampledFreeDma);
+                noteMin(diag.minBlockOnFail, sampledLargestDma);
+            }
             Serial.println("[Learner] Pending save failed");
         }
+        maybeLogSaveDiag("Learner", diag, nowMs);
     }
     perfRecordLearnerSaveUs(PERF_TIMESTAMP_US() - learnerSaveStartUs);
 }
