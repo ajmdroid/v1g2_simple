@@ -23,6 +23,9 @@ namespace {
 // These thresholds match the WiFi low-memory guard that has proven stable.
 static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_FREE = 20480;
 static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_BLOCK = 8192;
+// DMA free heap can oscillate within a few bytes of the floor in AP+STA mode.
+// Allow tiny deficits to avoid defer/retry churn at the threshold edge.
+static constexpr uint32_t LOCKOUT_SAVE_DMA_FREE_JITTER_TOLERANCE = 256;
 // If dirty data remains unsaved for too long, allow a cautious retry using a
 // lower free-heap floor tuned to observed AP+STA steady-state with a stricter
 // largest-block guard.
@@ -48,10 +51,19 @@ struct SaveDiagStats {
     uint32_t lastReportedAttempts = 0;
 };
 
+inline bool withinDeficitTolerance(uint32_t sample, uint32_t required, uint32_t tolerance) {
+    return sample < required && (required - sample) <= tolerance;
+}
+
 inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma, uint32_t& largestDma) {
     freeDma = heap_caps_get_free_size(MALLOC_CAP_DMA);
     largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
-    return (freeDma >= LOCKOUT_SAVE_MIN_DMA_FREE) && (largestDma >= LOCKOUT_SAVE_MIN_DMA_BLOCK);
+    const bool freeOk =
+        (freeDma >= LOCKOUT_SAVE_MIN_DMA_FREE) ||
+        withinDeficitTolerance(freeDma,
+                               LOCKOUT_SAVE_MIN_DMA_FREE,
+                               LOCKOUT_SAVE_DMA_FREE_JITTER_TOLERANCE);
+    return freeOk && (largestDma >= LOCKOUT_SAVE_MIN_DMA_BLOCK);
 }
 
 inline bool hasAgedDmaHeadroomForBackgroundSave(uint32_t freeDma, uint32_t largestDma) {
