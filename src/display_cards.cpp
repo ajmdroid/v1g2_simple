@@ -222,14 +222,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
         lastPriorityForCards = AlertData();
         
-        // Clear the full card row content area.
-        FILL_RECT(DisplayLayout::CONTENT_LEFT_MARGIN,
-                  cardY,
-                  DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                  cardH,
-                  PALETTE_BG);
-        if (lastDrawnCount > 0) {
-            secondaryCardsRenderDirty_ = true;
+        // Clear the card area
+        [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
+        const int clearWidth = signalBarsX - startX;
+        if (clearWidth > 0) {
+            FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
+            if (lastDrawnCount > 0) {
+                secondaryCardsRenderDirty_ = true;
+            }
         }
         // Reset last drawn count so next time cards appear, change is detected
         lastDrawnCount = 0;
@@ -433,15 +433,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         return false;
     };
     
-    if (doForceRedraw) {
-        // Forced redraw path: clear once across the entire cards content row so
-        // gaps/margins between cards cannot retain stale pixels.
-        FILL_RECT(DisplayLayout::CONTENT_LEFT_MARGIN,
-                  cardY,
-                  DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                  cardH,
-                  PALETTE_BG);
-    }
+    [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
     
     // Process each card position
     for (int i = 0; i < 2; i++) {

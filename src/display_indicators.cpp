@@ -16,18 +16,11 @@
 // Base frame
 // ============================================================================
 
-void V1Display::invalidateAllCaches() {
-    bleProxyDrawn = false;  // Force indicator redraw after full clears
-    dirty.setAll();         // Invalidate every element cache
-    dirty.cards = true;     // Force secondary card row redraw on next render
-    frequencyRenderDirty = false;
-    frequencyDirtyValid = false;
-}
-
 void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
-    invalidateAllCaches();
+    bleProxyDrawn = false;  // Force indicator redraw after full clears
+    dirty.setAll();         // Invalidate every element cache after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 

@@ -73,7 +73,6 @@ void V1Display::drawRssiIndicator(int rssi) {
         FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
         return;  // Don't draw anything
     }
-
     // Clear the area first
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
     
