@@ -174,6 +174,10 @@ struct PerfSdSnapshot {
     uint32_t prioritySelectAmbiguousIndex; // Display raw index valid both 0/1-based
     uint32_t prioritySelectUnusableIndex;  // Display index present but unusable for current table
     uint32_t prioritySelectInvalidChosen;  // Final chosen alert invalid/zero-freq non-laser
+    uint32_t alertTablePublishes;          // Complete alert tables published
+    uint32_t alertTablePublishes3Bogey;    // Complete tables published with count=3
+    uint32_t alertTableRowReplacements;    // Duplicate row-index replacements
+    uint32_t alertTableAssemblyTimeouts;   // Partial table assemblies dropped on timeout
 };
 
 class PerfSdLogger {

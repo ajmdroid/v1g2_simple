@@ -449,6 +449,28 @@ void test_alert_stream_partial_timeout_restarts_assembly() {
     assertContainsThreeFrequencies(parser, 24150, 33800, 34700);
 }
 
+void test_alert_stream_three_bogey_publishes_only_when_complete() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 3, 24150, 0x90, 0x00, 0x24, 0x80));
+    const auto row2a = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 3, 33800, 0xA0, 0x00, 0x22, 0x00));
+    const auto row2b = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 3, 33810, 0xA1, 0x00, 0x22, 0x00));
+    const auto row3 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(3, 3, 34700, 0xB0, 0x00, 0x22, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2a.data(), row2a.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    // Duplicate row index should replace row2 data but still wait for index 3.
+    TEST_ASSERT_TRUE(parser.parse(row2b.data(), row2b.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    TEST_ASSERT_TRUE(parser.parse(row3.data(), row3.size()));
+    TEST_ASSERT_TRUE(parser.hasAlerts());
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsThreeFrequencies(parser, 24150, 33810, 34700);
+}
+
 void test_strict_alert_stream_duplicate_index_replaces_prior_row() {
     requireStrictAuditEnabled();
     PacketParser parser;
@@ -540,6 +562,7 @@ int main() {
     RUN_TEST(test_alert_stream_count_zero_clears_alerts);
     RUN_TEST(test_alert_stream_stale_row_not_reused_for_completion);
     RUN_TEST(test_alert_stream_partial_timeout_restarts_assembly);
+    RUN_TEST(test_alert_stream_three_bogey_publishes_only_when_complete);
 
     RUN_TEST(test_strict_alert_stream_duplicate_index_replaces_prior_row);
     RUN_TEST(test_strict_contract_parser_aux0_fields_exist);

@@ -531,6 +531,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     const bool replacingRow =
         alertChunkPresent[slot] && (alertChunkCountTag[slot] == receivedAlertCount);
+    if (replacingRow) {
+        PARSER_PERF_INC(alertTableRowReplacements);
+    }
     alertChunkPresent[slot] = true;
     alertChunkCountTag[slot] = receivedAlertCount;
     alertChunkRxMs[slot] = nowMs;
@@ -574,6 +577,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     if (rowsForCount < receivedAlertCount) {
         if ((alertTableFirstSeenMs[receivedAlertCount] != 0) &&
             ((nowMs - alertTableFirstSeenMs[receivedAlertCount]) > kAlertAssemblyTimeoutMs)) {
+            PARSER_PERF_INC(alertTableAssemblyTimeouts);
             if (PARSER_TRACE_ENABLED()) {
                 Serial.printf("[AlertAsm] timeout cnt=%u rows=%u/%u ageMs=%lu\n",
                               static_cast<unsigned>(receivedAlertCount),
@@ -796,6 +800,11 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             lastRear = priRear;
             lastMuted = displayState.muted;
         }
+    }
+
+    PARSER_PERF_INC(alertTablePublishes);
+    if (receivedAlertCount == 3) {
+        PARSER_PERF_INC(alertTablePublishes3Bogey);
     }
 
     // Match VR AlertDataProcessor behavior: clear per-count rows after a complete

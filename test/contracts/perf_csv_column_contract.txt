@@ -157,3 +157,7 @@ prioritySelectFirstEntry
 prioritySelectAmbiguousIndex
 prioritySelectUnusableIndex
 prioritySelectInvalidChosen
+alertTablePublishes
+alertTablePublishes3Bogey
+alertTableRowReplacements
+alertTableAssemblyTimeouts

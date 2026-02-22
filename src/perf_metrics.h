@@ -128,6 +128,10 @@ struct PerfCounters {
     std::atomic<uint32_t> prioritySelectAmbiguousIndex{0}; // Raw display index valid as both 0/1-based
     std::atomic<uint32_t> prioritySelectUnusableIndex{0};  // Display index present but mapped to unusable alert
     std::atomic<uint32_t> prioritySelectInvalidChosen{0};  // Chosen alert invalid/zero-freq non-laser
+    std::atomic<uint32_t> alertTablePublishes{0};          // Complete alert tables published
+    std::atomic<uint32_t> alertTablePublishes3Bogey{0};    // Complete tables published with count=3
+    std::atomic<uint32_t> alertTableRowReplacements{0};    // Duplicate row index replacements
+    std::atomic<uint32_t> alertTableAssemblyTimeouts{0};   // Partial table assemblies dropped on timeout
     std::atomic<uint32_t> voiceAnnouncePriority{0}; // Voice priority announcements emitted
     std::atomic<uint32_t> voiceAnnounceDirection{0}; // Voice direction/bogey announcements emitted
     std::atomic<uint32_t> voiceAnnounceSecondary{0}; // Voice secondary announcements emitted
@@ -206,6 +210,10 @@ struct PerfCounters {
         prioritySelectAmbiguousIndex.store(0, std::memory_order_relaxed);
         prioritySelectUnusableIndex.store(0, std::memory_order_relaxed);
         prioritySelectInvalidChosen.store(0, std::memory_order_relaxed);
+        alertTablePublishes.store(0, std::memory_order_relaxed);
+        alertTablePublishes3Bogey.store(0, std::memory_order_relaxed);
+        alertTableRowReplacements.store(0, std::memory_order_relaxed);
+        alertTableAssemblyTimeouts.store(0, std::memory_order_relaxed);
         voiceAnnouncePriority.store(0, std::memory_order_relaxed);
         voiceAnnounceDirection.store(0, std::memory_order_relaxed);
         voiceAnnounceSecondary.store(0, std::memory_order_relaxed);

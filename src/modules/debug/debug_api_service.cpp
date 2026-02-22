@@ -206,6 +206,10 @@ static void sendMetrics(WebServer& server) {
     doc["prioritySelectAmbiguousIndex"] = perfCounters.prioritySelectAmbiguousIndex.load();
     doc["prioritySelectUnusableIndex"] = perfCounters.prioritySelectUnusableIndex.load();
     doc["prioritySelectInvalidChosen"] = perfCounters.prioritySelectInvalidChosen.load();
+    doc["alertTablePublishes"] = perfCounters.alertTablePublishes.load();
+    doc["alertTablePublishes3Bogey"] = perfCounters.alertTablePublishes3Bogey.load();
+    doc["alertTableRowReplacements"] = perfCounters.alertTableRowReplacements.load();
+    doc["alertTableAssemblyTimeouts"] = perfCounters.alertTableAssemblyTimeouts.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();

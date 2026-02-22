@@ -159,6 +159,13 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.prioritySelectAmbiguousIndex = perfCounters.prioritySelectAmbiguousIndex.load(std::memory_order_relaxed);
     snapshot.prioritySelectUnusableIndex = perfCounters.prioritySelectUnusableIndex.load(std::memory_order_relaxed);
     snapshot.prioritySelectInvalidChosen = perfCounters.prioritySelectInvalidChosen.load(std::memory_order_relaxed);
+    snapshot.alertTablePublishes = perfCounters.alertTablePublishes.load(std::memory_order_relaxed);
+    snapshot.alertTablePublishes3Bogey =
+        perfCounters.alertTablePublishes3Bogey.load(std::memory_order_relaxed);
+    snapshot.alertTableRowReplacements =
+        perfCounters.alertTableRowReplacements.load(std::memory_order_relaxed);
+    snapshot.alertTableAssemblyTimeouts =
+        perfCounters.alertTableAssemblyTimeouts.load(std::memory_order_relaxed);
     snapshot.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
@@ -747,6 +754,10 @@ String perfMetricsToJson() {
     doc["prioritySelectAmbiguousIndex"] = perfCounters.prioritySelectAmbiguousIndex.load();
     doc["prioritySelectUnusableIndex"] = perfCounters.prioritySelectUnusableIndex.load();
     doc["prioritySelectInvalidChosen"] = perfCounters.prioritySelectInvalidChosen.load();
+    doc["alertTablePublishes"] = perfCounters.alertTablePublishes.load();
+    doc["alertTablePublishes3Bogey"] = perfCounters.alertTablePublishes3Bogey.load();
+    doc["alertTableRowReplacements"] = perfCounters.alertTableRowReplacements.load();
+    doc["alertTableAssemblyTimeouts"] = perfCounters.alertTableAssemblyTimeouts.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();
