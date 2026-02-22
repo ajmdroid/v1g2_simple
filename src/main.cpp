@@ -964,9 +964,18 @@ void loop() {
     // Process WiFi/web server only when WiFi is actually enabled.
     // Explicit gate keeps this path a near-no-op in wifi-off profiles.
     if (!skipLateNonCoreThisLoop && isWifiProcessingEnabled(loopSettings)) {
-        uint32_t wifiStartUs = PERF_TIMESTAMP_US();
-        wifiManager.process();
-        perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+        // Poll WiFi/web stack at a bounded cadence to reduce loop overhead while
+        // preserving sub-frame UI responsiveness and connect-state progression.
+        static uint32_t lastWifiProcessUs = 0;
+        constexpr uint32_t WIFI_PROCESS_MIN_INTERVAL_US = 2000;  // 500 Hz max
+        const uint32_t nowProcessUs = PERF_TIMESTAMP_US();
+        if (lastWifiProcessUs == 0 ||
+            static_cast<uint32_t>(nowProcessUs - lastWifiProcessUs) >= WIFI_PROCESS_MIN_INTERVAL_US) {
+            uint32_t wifiStartUs = PERF_TIMESTAMP_US();
+            wifiManager.process();
+            perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
+            lastWifiProcessUs = nowProcessUs;
+        }
     }
 
     // Keep WiFi icon state in sync with AP lifecycle even when no alert redraws
