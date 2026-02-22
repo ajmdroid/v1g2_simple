@@ -528,6 +528,7 @@ void WiFiManager::process() {
     const wifi_mode_t mode = WiFi.getMode();
     const bool staRadioOn = (mode == WIFI_AP_STA || mode == WIFI_STA);
     const bool dualRadioMode = isSetupModeActive() && staRadioOn;
+    const bool staOnlyMode = staRadioOn && !dualRadioMode;
     const char* runtimeModeLabel = dualRadioMode ? "AP+STA" : (staRadioOn ? "STA" : "AP");
     uint32_t criticalFree = 0;
     uint32_t criticalBlock = 0;
@@ -535,7 +536,14 @@ void WiFiManager::process() {
 
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    const bool lowHeap = (freeInternal < criticalFree) || (largestInternal < criticalBlock);
+    bool blockLow = (largestInternal < criticalBlock);
+    if (blockLow && staOnlyMode) {
+        const uint32_t blockDeficit = criticalBlock - largestInternal;
+        if (blockDeficit <= WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE) {
+            blockLow = false;
+        }
+    }
+    const bool lowHeap = (freeInternal < criticalFree) || blockLow;
 
     if (lowHeap) {
         const unsigned long now = millis();
