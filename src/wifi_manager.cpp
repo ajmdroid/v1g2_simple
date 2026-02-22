@@ -561,7 +561,10 @@ void WiFiManager::process() {
             // In AP+STA mode, drop AP first to preserve STA utility under pressure.
             if (dualRadioMode) {
                 Serial.println("[WiFi] ACTION: dropping AP due to sustained low SRAM (keeping STA online)");
-                WiFi.softAPdisconnect(true);
+                if (!WiFi.enableAP(false)) {
+                    Serial.println("[WiFi] WARN: enableAP(false) failed during low-SRAM AP drop; falling back to softAPdisconnect");
+                    WiFi.softAPdisconnect(true);
+                }
                 apInterfaceEnabled = false;
 
                 const wl_status_t staStatus = WiFi.status();
@@ -623,7 +626,10 @@ void WiFiManager::process() {
         Serial.printf("[WiFi] STA connected and AP idle for %lu ms - dropping AP\n",
                       static_cast<unsigned long>(WIFI_AP_IDLE_DROP_AFTER_STA_MS));
         const bool staWasConnected = (WiFi.status() == WL_CONNECTED);
-        WiFi.softAPdisconnect(true);
+        if (!WiFi.enableAP(false)) {
+            Serial.println("[WiFi] WARN: enableAP(false) failed during idle AP retire; falling back to softAPdisconnect");
+            WiFi.softAPdisconnect(true);
+        }
         apInterfaceEnabled = false;
         cachedApStaCount = 0;
         lastApStaCountPollMs = 0;
@@ -641,8 +647,7 @@ void WiFiManager::process() {
 
     if (staConnectedNow || apClientCount > 0) {
         lastAnyClientSeenMs = now;
-    } else if (apInterfaceActive &&
-               lastAnyClientSeenMs != 0 &&
+    } else if (lastAnyClientSeenMs != 0 &&
                (now - lastAnyClientSeenMs) >= WIFI_NO_CLIENT_SHUTDOWN_MS) {
         Serial.printf("[WiFi] No AP/STA clients for %lu ms - stopping WiFi\n",
                       static_cast<unsigned long>(WIFI_NO_CLIENT_SHUTDOWN_MS));
@@ -650,8 +655,8 @@ void WiFiManager::process() {
         return;
     }
 
-    // Handle web requests only while AP interface is enabled.
-    if (isSetupModeActive()) {
+    // Continue serving HTTP while STA remains online even after AP is retired.
+    if (isWifiServiceActive()) {
         server.handleClient();
     }
 
